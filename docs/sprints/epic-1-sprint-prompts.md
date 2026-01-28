@@ -52,6 +52,7 @@ Review conceptual design and guidance at:
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
 
+
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
 docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
@@ -67,6 +68,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -83,6 +85,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -99,6 +102,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -115,6 +119,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -131,6 +136,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -147,6 +153,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -163,6 +170,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -179,6 +187,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
@@ -195,6 +204,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 Review conceptual design and guidance at: 
 docs/application/claude_headspace_v3.1_conceptual_overview.md
 docs/application/claude_headspace_v3.1_epic1_guidance.md
+docs/architecture/claude-code-hooks.md
 
 And also the Epic 1 roadmap artifacts:
 docs/roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md
