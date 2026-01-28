@@ -18,6 +18,15 @@ DEFAULTS = {
         "level": "INFO",
         "file": "logs/app.log",
     },
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "claude_headspace",
+        "user": "postgres",
+        "password": "",
+        "pool_size": 10,
+        "pool_timeout": 30,
+    },
 }
 
 # Environment variable mappings
@@ -27,6 +36,13 @@ ENV_MAPPINGS = {
     "FLASK_SERVER_PORT": ("server", "port", int),
     "FLASK_DEBUG": ("server", "debug", lambda x: x.lower() in ("true", "1", "yes")),
     "FLASK_LOG_LEVEL": ("logging", "level", str),
+    "DATABASE_HOST": ("database", "host", str),
+    "DATABASE_PORT": ("database", "port", int),
+    "DATABASE_NAME": ("database", "name", str),
+    "DATABASE_USER": ("database", "user", str),
+    "DATABASE_PASSWORD": ("database", "password", str),
+    "DATABASE_POOL_SIZE": ("database", "pool_size", int),
+    "DATABASE_POOL_TIMEOUT": ("database", "pool_timeout", int),
 }
 
 
@@ -113,3 +129,48 @@ def get_value(config: dict, *keys: str, default: Any = None) -> Any:
         else:
             return default
     return result
+
+
+def get_database_url(config: dict) -> str:
+    """
+    Build the database URL from configuration.
+
+    DATABASE_URL environment variable takes precedence over individual config fields.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        PostgreSQL connection URL
+    """
+    # DATABASE_URL takes precedence
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    # Build URL from individual config fields
+    db = config.get("database", {})
+    host = db.get("host", "localhost")
+    port = db.get("port", 5432)
+    name = db.get("name", "claude_headspace")
+    user = db.get("user", "postgres")
+    password = db.get("password", "")
+
+    if password:
+        return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+    return f"postgresql://{user}@{host}:{port}/{name}"
+
+
+def mask_database_url(url: str) -> str:
+    """
+    Mask the password in a database URL for safe logging.
+
+    Args:
+        url: Database URL that may contain a password
+
+    Returns:
+        URL with password replaced by ***
+    """
+    import re
+    # Match postgresql://user:password@host pattern
+    return re.sub(r"(postgresql://[^:]+:)[^@]+(@)", r"\1***\2", url)

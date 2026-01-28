@@ -9,3 +9,15 @@ server:
 logging:
   level: "INFO"
   file: "logs/app.log"
+
+# Database Configuration
+# DATABASE_URL env var takes precedence if set
+# Individual fields can be overridden with DATABASE_HOST, DATABASE_PORT, etc.
+database:
+  host: "localhost"
+  port: 5432
+  name: "claude_headspace"
+  user: "postgres"
+  password: ""
+  pool_size: 10
+  pool_timeout: 30

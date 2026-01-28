@@ -9,6 +9,7 @@ from flask import Flask, render_template
 
 from . import __version__
 from .config import load_config, get_value
+from .database import init_database
 
 
 def setup_logging(config: dict, app_root: Path) -> None:
@@ -90,6 +91,10 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     setup_logging(config, app_root)
     logger = logging.getLogger(__name__)
     logger.info(f"Starting Claude Headspace v{__version__}")
+
+    # Initialize database (continues even if connection fails)
+    db_connected = init_database(app, config)
+    app.config["DATABASE_CONNECTED"] = db_connected
 
     # Register error handlers
     register_error_handlers(app)

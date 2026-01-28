@@ -48,7 +48,8 @@ class TestHealthEndpoint:
         """Test GET /health response has status field."""
         response = client.get('/health')
         data = json.loads(response.data)
-        assert data['status'] == 'healthy'
+        # Status can be 'healthy' (all systems up) or 'degraded' (database down)
+        assert data['status'] in ['healthy', 'degraded']
 
     def test_health_response_has_version(self, client):
         """Test GET /health response has version field."""
