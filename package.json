@@ -1,0 +1,16 @@
+{
+  "name": "claude-headspace",
+  "version": "3.1.0",
+  "description": "Tailwind CSS build pipeline for Claude Headspace",
+  "private": true,
+  "scripts": {
+    "build:css": "postcss static/css/src/input.css -o static/css/main.css",
+    "watch:css": "postcss static/css/src/input.css -o static/css/main.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "postcss-cli": "^11.0.0",
+    "autoprefixer": "^10.4.0"
+  }
+}

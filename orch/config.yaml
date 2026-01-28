@@ -1,0 +1,58 @@
+# Orchestration Configuration for Claude Headspace
+#
+# This file contains configuration settings for the PRD orchestration system.
+
+# Project settings
+project:
+  name: "Claude Headspace"
+  type: "python"
+
+  # Base branch for PRs and merges (feature branches merge INTO this)
+  base_branch: "development"
+
+  # Main/production branch (development merges INTO this for releases)
+  main_branch: "main"
+
+  # Test runner command
+  test_command: "pytest"
+  test_command_verbose: "pytest -v"
+  test_command_coverage: "pytest --cov=."
+
+  # Source directories (Python project structure)
+  source_patterns:
+    - "*.py"
+    - "bin/*"
+    - "templates/*"
+
+  # Test directories
+  test_patterns:
+    - "tests/**/*.py"
+    - "test_*.py"
+    - "*_test.py"
+
+# PRD settings
+prds:
+  # Location for PRD documents
+  directory: "docs/prds"
+
+  # Completed PRDs subdirectory
+  done_subdirectory: "done"
+
+# Logging settings
+logging:
+  # Log level: debug, info, or warn
+  # - debug: Log everything (method entry/exit, data details, all operations)
+  # - info: Log major steps (phase transitions, command execution, key decisions)
+  # - warn: Log warnings and errors only
+  level: info
+
+  # Directory for log files (relative to orch/)
+  log_directory: log
+
+  # Include full context in log lines (timestamp, level, component, phase, change)
+  include_context: true
+
+# Notification settings (disabled for now)
+notifications:
+  enabled: false
+  # slack_webhook_url: ""
