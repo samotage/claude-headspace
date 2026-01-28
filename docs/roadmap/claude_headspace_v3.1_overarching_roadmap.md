@@ -36,12 +36,12 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 ## Epic Breakdown
 
-| Epic | Name | Sprints | Duration | Goal |
-|------|------|---------|----------|------|
-| **Epic 1** | Core Foundation + Event-Driven Hooks | 11 | 11-13 weeks | Event-driven architecture, state machine, dashboard, hooks integration |
-| **Epic 2** | UI Polish & Documentation | 4 | 3-4 weeks | Config UI, waypoint editing, help system, macOS notifications |
-| **Epic 3** | Intelligence Layer | 5 | 5-7 weeks | Turn/task summarisation, priority scoring, git-based summaries, brain reboot |
-| **Epic 4** | Data Management | 3 | 2-3 weeks | Progress archiving, project controls, performance optimisation |
+| Epic       | Name                                 | Sprints | Duration    | Goal                                                                         |
+| ---------- | ------------------------------------ | ------- | ----------- | ---------------------------------------------------------------------------- |
+| **Epic 1** | Core Foundation + Event-Driven Hooks | 11      | 11-13 weeks | Event-driven architecture, state machine, dashboard, hooks integration       |
+| **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | Config UI, waypoint editing, help system, macOS notifications                |
+| **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/task summarisation, priority scoring, git-based summaries, brain reboot |
+| **Epic 4** | Data Management                      | 3       | 2-3 weeks   | Progress archiving, project controls, performance optimisation               |
 
 **Total:** 23 sprints, ~21-27 weeks
 
@@ -70,6 +70,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 ### Acceptance Test
 
 Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
+
 - ✅ Dashboard reflects correct Task/Turn states in real-time
 - ✅ Agent cards clickable, focus correct iTerm window
 - ✅ Hook events update agent state instantly (<100ms)
@@ -243,13 +244,13 @@ Epic 1 (Foundation)
 
 ## Sprint Count by Epic
 
-| Epic | Core Sprints | Optional/Parallel | Total |
-|------|--------------|-------------------|-------|
-| Epic 1 | 10 (S1-S10) | 1 (S11 hooks) | 11 |
-| Epic 2 | 4 | 0 | 4 |
-| Epic 3 | 5 | 0 | 5 |
-| Epic 4 | 3 | 0 | 3 |
-| **Total** | **22** | **1** | **23** |
+| Epic      | Core Sprints | Optional/Parallel | Total  |
+| --------- | ------------ | ----------------- | ------ |
+| Epic 1    | 10 (S1-S10)  | 1 (S11 hooks)     | 11     |
+| Epic 2    | 4            | 0                 | 4      |
+| Epic 3    | 5            | 0                 | 5      |
+| Epic 4    | 3            | 0                 | 3      |
+| **Total** | **22**       | **1**             | **23** |
 
 ---
 
@@ -257,18 +258,18 @@ Epic 1 (Foundation)
 
 ### Tech Stack
 
-| Component | Choice | Notes |
-|-----------|--------|-------|
-| Language | Python 3.10+ | Fresh start, no v2 code |
-| Web Framework | Flask | Lightweight, proven |
-| Database | Postgres | Local install, not Docker |
-| CSS | Tailwind | Model knows it well |
-| Interactivity | HTMX | Proven for SSE |
-| Real-time | SSE | Server-Sent Events |
-| File Watching | watchdog | Watch `~/.claude/projects/` |
-| macOS Integration | AppleScript | iTerm focus, notifications |
-| Config | YAML | `config.yaml` file |
-| LLM | OpenRouter | Multi-model access |
+| Component         | Choice       | Notes                       |
+| ----------------- | ------------ | --------------------------- |
+| Language          | Python 3.10+ | Fresh start, no v2 code     |
+| Web Framework     | Flask        | Lightweight, proven         |
+| Database          | Postgres     | Local install, not Docker   |
+| CSS               | Tailwind     | Model knows it well         |
+| Interactivity     | HTMX         | Proven for SSE              |
+| Real-time         | SSE          | Server-Sent Events          |
+| File Watching     | watchdog     | Watch `~/.claude/projects/` |
+| macOS Integration | AppleScript  | iTerm focus, notifications  |
+| Config            | YAML         | `config.yaml` file          |
+| LLM               | OpenRouter   | Multi-model access          |
 
 ### Architecture Principles
 
@@ -329,11 +330,13 @@ Minimal configuration. Discover everything from filesystem:
   - Hooks resume → back to 60-second polling
 
 **Session Correlation:**
+
 - Claude `$CLAUDE_SESSION_ID` ≠ terminal pane ID
 - Match sessions via working directory (`$CLAUDE_WORKING_DIRECTORY`)
 - Cache correlations for performance
 
 **Hook Events:**
+
 - `SessionStart` → Create agent, IDLE
 - `UserPromptSubmit` → IDLE → PROCESSING
 - `Stop` → PROCESSING → IDLE (primary completion signal)
@@ -382,13 +385,13 @@ Claude Code supports lifecycle hooks that fire on significant events, enabling i
 
 ### Hook Events and State Mapping
 
-| Hook Event | When It Fires | State Transition | Confidence |
-|------------|---------------|------------------|------------|
-| `SessionStart` | Claude Code session begins | Create agent, set IDLE | 1.0 |
-| `UserPromptSubmit` | User sends a message | IDLE → PROCESSING | 1.0 |
-| `Stop` | Agent turn completes | PROCESSING → IDLE | 1.0 |
-| `Notification` | Various (idle_prompt, etc.) | Timestamp update only | - |
-| `SessionEnd` | Session closes | Mark agent inactive | 1.0 |
+| Hook Event         | When It Fires               | State Transition       | Confidence |
+| ------------------ | --------------------------- | ---------------------- | ---------- |
+| `SessionStart`     | Claude Code session begins  | Create agent, set IDLE | 1.0        |
+| `UserPromptSubmit` | User sends a message        | IDLE → PROCESSING      | 1.0        |
+| `Stop`             | Agent turn completes        | PROCESSING → IDLE      | 1.0        |
+| `Notification`     | Various (idle_prompt, etc.) | Timestamp update only  | -          |
+| `SessionEnd`       | Session closes              | Mark agent inactive    | 1.0        |
 
 ### Hybrid Mode
 
@@ -400,6 +403,7 @@ The implementation uses a hybrid approach for reliability:
 4. **Safety net** - Polling catches any missed transitions
 
 **Polling Interval Logic:**
+
 - Hooks active: 60 seconds (reconciliation only)
 - Hooks silent >300s: 2 seconds (full monitoring)
 - Hooks resume: back to 60 seconds
@@ -413,13 +417,13 @@ def correlate_session(claude_session_id, cwd):
     # 1. Check cache
     if claude_session_id in cache:
         return cache[claude_session_id]
-    
+
     # 2. Match by working directory
     for agent in agents:
         if agent.cwd == cwd:
             cache[claude_session_id] = agent
             return agent
-    
+
     # 3. Create new agent
     agent = create_agent(cwd=cwd)
     cache[claude_session_id] = agent
@@ -429,37 +433,41 @@ def correlate_session(claude_session_id, cwd):
 ### Components
 
 **1. HookReceiver Service** (`src/services/hook_receiver.py`):
+
 - Process incoming hook events
 - Correlate Claude session IDs to agents
 - Apply state transitions with confidence=1.0
 - Emit SSE events for real-time dashboard updates
 
 **2. Hook Notification Script** (`bin/notify-headspace.sh`):
+
 - Bash script that POSTs to hook endpoints
 - Uses Claude env vars: `$CLAUDE_SESSION_ID`, `$CLAUDE_WORKING_DIRECTORY`
 - Timeout: 1s connect, 2s max time
 - Silent failures (exit 0 always, don't block Claude Code)
 
 **3. Installation Script** (`bin/install-hooks.sh`):
+
 - Copies `notify-headspace.sh` to `~/.claude/hooks/`
 - Merges hook configuration into `~/.claude/settings.json`
 - Sets executable permissions
 - Validates absolute paths (not ~ or $HOME)
 
 **4. Claude Code Settings Template** (`docs/claude-code-hooks-settings.json`):
+
 - JSON configuration for all 5 hook events
 - Absolute paths required
 - Merged into user's `~/.claude/settings.json`
 
 ### Benefits vs Polling
 
-| Aspect | Polling | Hooks |
-|--------|---------|-------|
-| **Latency** | 0-2 seconds | <100ms |
-| **Confidence** | 30-90% (inference) | 100% (event-based) |
-| **Resource Usage** | High (constant scraping) | Low (event-driven) |
-| **Missed Transitions** | Possible (between polls) | Never |
-| **Setup Required** | None | One-time installation |
+| Aspect                 | Polling                  | Hooks                 |
+| ---------------------- | ------------------------ | --------------------- |
+| **Latency**            | 0-2 seconds              | <100ms                |
+| **Confidence**         | 30-90% (inference)       | 100% (event-based)    |
+| **Resource Usage**     | High (constant scraping) | Low (event-driven)    |
+| **Missed Transitions** | Possible (between polls) | Never                 |
+| **Setup Required**     | None                     | One-time installation |
 
 ### User Setup
 
@@ -491,6 +499,7 @@ def correlate_session(claude_session_id, cwd):
 **Impact:** Medium (blocks Epic 1 start)
 
 **Mitigation:**
+
 - Provide clear setup instructions in README
 - Consider SQLite fallback for simpler local development
 - Docker Compose option for one-command setup
@@ -504,6 +513,7 @@ def correlate_session(claude_session_id, cwd):
 **Impact:** Medium (degrades to polling-only mode)
 
 **Mitigation:**
+
 - Make hooks optional with graceful degradation
 - Polling fallback works without hooks
 - Provide clear installation instructions and benefits
@@ -517,6 +527,7 @@ def correlate_session(claude_session_id, cwd):
 **Impact:** Medium (breaks click-to-focus)
 
 **Mitigation:**
+
 - Clear permission instructions in setup docs
 - Detect permission failures and show actionable error
 - Provide manual focus fallback (show session path)
@@ -530,6 +541,7 @@ def correlate_session(claude_session_id, cwd):
 **Impact:** Medium (affects Epic 3 adoption)
 
 **Mitigation:**
+
 - Use fast/cheap models (Haiku) for turn/task summaries
 - Use Sonnet only for project/objective-level inference
 - Add inference call throttling (max calls per hour)
@@ -544,6 +556,7 @@ def correlate_session(claude_session_id, cwd):
 **Impact:** High (delays entire roadmap)
 
 **Mitigation:**
+
 - Strictly enforce Epic 1 scope (see "Out of Scope" section)
 - Defer all LLM features to Epic 3
 - Defer all UI polish to Epic 2
@@ -652,9 +665,9 @@ Generate OpenSpec PRDs in this order to maintain logical dependencies:
 
 ## Document History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-01-28 | PM Agent (John) | Initial overarching roadmap for 4 epics |
+| Version | Date       | Author          | Changes                                 |
+| ------- | ---------- | --------------- | --------------------------------------- |
+| 1.0     | 2026-01-28 | PM Agent (John) | Initial overarching roadmap for 4 epics |
 
 ---
 
