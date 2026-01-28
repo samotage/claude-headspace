@@ -55,6 +55,11 @@ def init_database(app: Flask, config: dict) -> bool:
 
     # Initialize extensions
     db.init_app(app)
+
+    # Import models to register them with SQLAlchemy before migrate
+    # This must happen after db.init_app() but before migrate.init_app()
+    from . import models  # noqa: F401
+
     migrate.init_app(app, db)
 
     # Verify database connection
