@@ -21,3 +21,14 @@ database:
   password: ""
   pool_size: 10
   pool_timeout: 30
+
+# Claude Code integration
+claude:
+  projects_path: "~/.claude/projects"
+
+# File watcher for monitoring Claude Code session files
+file_watcher:
+  polling_interval: 2  # seconds (fallback mode)
+  reconciliation_interval: 60  # seconds (hooks-active mode)
+  inactivity_timeout: 5400  # 90 minutes in seconds
+  debounce_interval: 0.5  # seconds

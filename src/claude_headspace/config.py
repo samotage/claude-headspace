@@ -27,6 +27,15 @@ DEFAULTS = {
         "pool_size": 10,
         "pool_timeout": 30,
     },
+    "claude": {
+        "projects_path": "~/.claude/projects",
+    },
+    "file_watcher": {
+        "polling_interval": 2,
+        "reconciliation_interval": 60,
+        "inactivity_timeout": 5400,
+        "debounce_interval": 0.5,
+    },
 }
 
 # Environment variable mappings
@@ -43,6 +52,10 @@ ENV_MAPPINGS = {
     "DATABASE_PASSWORD": ("database", "password", str),
     "DATABASE_POOL_SIZE": ("database", "pool_size", int),
     "DATABASE_POOL_TIMEOUT": ("database", "pool_timeout", int),
+    "CLAUDE_PROJECTS_PATH": ("claude", "projects_path", str),
+    "FILE_WATCHER_POLLING_INTERVAL": ("file_watcher", "polling_interval", float),
+    "FILE_WATCHER_INACTIVITY_TIMEOUT": ("file_watcher", "inactivity_timeout", int),
+    "FILE_WATCHER_DEBOUNCE_INTERVAL": ("file_watcher", "debounce_interval", float),
 }
 
 
@@ -174,3 +187,43 @@ def mask_database_url(url: str) -> str:
     import re
     # Match postgresql://user:password@host pattern
     return re.sub(r"(postgresql://[^:]+:)[^@]+(@)", r"\1***\2", url)
+
+
+def get_claude_projects_path(config: dict) -> str:
+    """
+    Get the expanded path to Claude Code projects directory.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Absolute path to Claude projects directory
+    """
+    path = get_value(config, "claude", "projects_path", default="~/.claude/projects")
+    return os.path.expanduser(path)
+
+
+def get_file_watcher_config(config: dict) -> dict:
+    """
+    Get file watcher configuration with defaults.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        File watcher configuration dictionary
+    """
+    return {
+        "polling_interval": get_value(
+            config, "file_watcher", "polling_interval", default=2
+        ),
+        "reconciliation_interval": get_value(
+            config, "file_watcher", "reconciliation_interval", default=60
+        ),
+        "inactivity_timeout": get_value(
+            config, "file_watcher", "inactivity_timeout", default=5400
+        ),
+        "debounce_interval": get_value(
+            config, "file_watcher", "debounce_interval", default=0.5
+        ),
+    }
