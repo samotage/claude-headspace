@@ -1,0 +1,242 @@
+<!-- OPENSPEC:START -->
+
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
+## Project Overview
+
+Claude Headspace is a Python-based project management and orchestration system. It provides PRD-driven development workflows with Ruby orchestration and Claude Code integration.
+
+**OpenSpec Version:** 0.18.0
+
+## Tech Stack
+
+- Python 3.10+
+- Flask web framework
+- Pydantic v2 for data validation
+- PyYAML for configuration
+- pytest, pytest-cov for testing
+- Ruff for linting and formatting
+- Ruby 3.4.7 for orchestration scripts
+
+## Architecture Patterns
+
+### PRD-Driven Development
+
+Structured workflow for feature development:
+- PRD creation and validation
+- Queue-based processing
+- OpenSpec proposal generation
+- Build, test, validate phases
+- Automated finalization and merge
+
+### Ruby Orchestration
+
+Command-line orchestration system:
+- `orch/orchestrator.rb` - Main dispatcher
+- `orch/queue_manager.rb` - Queue operations
+- `orch/prd_validator.rb` - PRD validation
+- State management and logging
+- Slack notifications for checkpoints
+
+### Git Workflow
+
+```
+development (base) → feature/change-name → PR → development
+```
+
+- Feature branches created FROM `development`
+- PRs target `development` branch
+- `main` is the stable/release branch
+
+## Key Conventions
+
+### Python
+
+- Use type hints for function signatures
+- Pydantic models for data validation
+- Service objects for business logic
+- Flask blueprints for route organization
+- pytest fixtures for test setup
+
+### Testing
+
+- Run tests with `pytest`
+- Coverage with `pytest --cov=.`
+- Aim for 70%+ coverage
+- Test files mirror source structure
+
+### Configuration
+
+- YAML for configuration files
+- `.env` for secrets (gitignored)
+- `.env.example` for templates
+
+## Commands
+
+```bash
+# Python environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Testing
+pytest
+pytest --cov=.
+pytest -v
+
+# Linting
+ruff check .
+ruff format .
+
+# Pre-commit hooks
+pre-commit install
+pre-commit run --all-files
+
+# Ruby orchestration
+ruby orch/orchestrator.rb status
+ruby orch/orchestrator.rb queue list
+ruby orch/prd_validator.rb list-all
+```
+
+## AI Behavior Rules
+
+### Database & Config
+- NEVER run database operations without explicit approval
+- NEVER modify config files without showing changes first
+- NEVER install/update dependencies without approval
+
+**Database Operations (ABSOLUTE PROHIBITION):**
+- NEVER run destructive database commands
+- NEVER drop databases or tables
+- If schema issues arise: STOP and report to user
+- Do NOT attempt workarounds involving data loss
+
+### Destructive Operations
+- ALWAYS ask confirmation before destructive operations
+- ALWAYS explain what a command will do before running it
+- Wait for explicit user response before proceeding
+
+### Testing & OpenSpec
+- ALWAYS report testing status in completion summaries
+- After `openspec archive`, verify with `openspec list`
+- Run tests before claiming completion
+
+### Generated Files (NEVER EDIT)
+These files are auto-generated. Editing them directly will be overwritten:
+- Any file with `.generated.` in the name
+- Files explicitly marked as auto-generated in comments
+
+**If changes needed:** Find and edit the SOURCE file, then regenerate.
+
+### STOP Means STOP
+When user says "STOP", "HANG ON", "WAIT":
+- IMMEDIATELY stop all actions
+- Do NOT finish the current operation
+- Simply acknowledge: "Stopped." and wait for instructions
+
+### Slack Notifications (Orchestration)
+**ALWAYS send Slack notification when:**
+- Stopping for user approval/input (BEFORE prompting)
+- Encountering an error that blocks progress
+- Branch state is unexpected
+
+**Use:** `ruby orch/notify_user_input_needed.rb --message "description"`
+
+### Scope Discipline
+- Do ONLY what was explicitly requested
+- If user says "don't do X" - take it seriously
+- When fixing one thing, do NOT "improve" nearby code
+- If you discover something that needs fixing, REPORT it - don't fix it unasked
+
+### Explain Causality
+When something unexpected happens after your changes:
+- Acknowledge the unexpected behavior
+- Trace back to identify what caused it
+- Explain the connection clearly
+
+---
+
+## Project Structure
+
+```
+claude_headspace/
+├── .claude/              # Claude Code configuration
+│   ├── commands/         # Custom commands
+│   └── rules/            # AI guardrails
+├── .cursor/              # Cursor IDE configuration
+│   ├── commands/         # Cursor commands
+│   └── rules/            # Coding rules
+├── orch/                 # Ruby orchestration
+│   ├── commands/         # Phase implementations
+│   ├── orchestrator.rb   # Main dispatcher
+│   └── config.yaml       # Orchestration config
+├── docs/                 # Documentation
+│   └── prds/             # PRD documents
+├── openspec/             # OpenSpec proposals
+│   ├── AGENTS.md         # OpenSpec guide
+│   ├── changes/          # Active proposals
+│   └── specs/            # Archived specs
+├── .env                  # Environment variables (gitignored)
+├── .env.example          # Environment template
+├── .gitignore            # Git ignore rules
+├── .pre-commit-config.yaml  # Pre-commit hooks
+├── .ruby-version         # Ruby version (3.4.7)
+├── AGENTS.md             # OpenSpec instructions
+├── CLAUDE.md             # Project guide
+└── README.md             # User documentation
+```
+
+## Development Workflow
+
+### PRD Workflow
+
+1. Create PRD in `docs/prds/{subsystem}/`
+2. Run `/10: prd-workshop` to validate
+3. Switch to `development` branch
+4. Run `/10: queue-add` to add to queue
+5. Run `/20: prd-orchestrate` to start processing
+
+### OpenSpec Workflow
+
+1. Create proposal: `/openspec-proposal`
+2. Review and edit proposal in `openspec/changes/`
+3. Apply changes: `/openspec-apply`
+4. Test and verify
+5. Archive: `/openspec-archive`
+
+### Git Workflow
+
+1. Create feature branch from `development`
+2. Make changes
+3. Run tests: `pytest`
+4. Commit: `/commit-push`
+5. Create PR targeting `development`
+6. Merge after approval
+
+---
+
+## Notes for AI Assistants
+
+- This is a Python project with Ruby orchestration tooling
+- PRD-driven development is the primary workflow
+- OpenSpec is used for change proposals
+- Git workflow uses `development` as base branch
+- Testing is required before completion
+- Configuration is in YAML files
+- Secrets go in `.env` (never commit)

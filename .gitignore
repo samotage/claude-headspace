@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.claude/settings.local.json
+.claude/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+data/logs/
+
+# Claude Headspace state files (created at runtime)
+.claude-headspace-*.json
+
+# User config (use config.yaml.example as template)
+config.yaml
+
+# Orchestration working files (runtime state)
+orch/working/
+
+# Project data files (user-specific, use project.yaml.example as template)
+data/projects/*
+!data/projects/project.yaml.example
+
+# Headspace state (runtime)
+data/headspace.yaml
+data/session_state.yaml
+data/state.yaml
+.coverage

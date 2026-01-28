@@ -1,0 +1,19 @@
+# Files matching these patterns are excluded from PRs to main
+# These are branch-specific files that should stay on feature branches
+
+# Feature documentation and outlines
+docs/*-outline.md
+docs/*-design.md
+docs/*-spec.md
+docs/features/*_OUTLINE*.md
+docs/features/*_PLAN*.md
+docs/features/*_DESIGN*.md
+**/OUTLINE.md
+**/DESIGN.md
+**/FEATURE_SPEC.md
+
+# Branch-specific rules
+.claude/rules/*-branch-*
+
+# Any file containing the branch name in docs/
+# (auto-detected by the command based on current branch name)
