@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 1 implementation. It breaks Epic 1 into 11 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
+This document serves as the **high-level roadmap and baseline** for Epic 1 implementation. It breaks Epic 1 into 13 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
 
 **Epic 1 Goal:** Establish the foundational event-driven architecture and prove the Task/Turn state machine works with a functional dashboard. Integrate Claude Code hooks for instant, high-confidence state updates.
 
@@ -37,26 +37,29 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ## Epic 1 Story Mapping
 
-| Story ID | Story Name | Subsystem(s) | Sprint(s) | Priority |
-|----------|------------|--------------|-----------|----------|
-| E1-S1 | Application starts with database connection | `flask-bootstrap`, `database-setup` | Sprint 1 | P0 |
-| E1-S2 | Domain models track agents, tasks, turns | `domain-models` | Sprint 2 | P0 |
-| E1-S3 | Watch Claude Code sessions for changes | `file-watcher`, `event-system` | Sprint 3 | P0 |
-| E1-S4 | Task state machine transitions correctly | `state-machine` | Sprint 4 | P0 |
-| E1-S5 | Dashboard updates in real-time | `sse-system`, `dashboard-ui` | Sprints 5-6 | P0 |
-| E1-S6 | Set and view objectives | `objective-tab` | Sprint 7 | P0 |
-| E1-S7 | View and filter event logs | `logging-tab` | Sprint 8 | P0 |
-| E1-S8 | Launch monitored Claude Code sessions | `launcher-script` | Sprint 9 | P0 |
-| E1-S9 | Click agent card to focus iTerm window | `applescript-integration` | Sprint 10 | P0 |
-| E1-S10 | Receive hook events from Claude Code | `hook-receiver` | Sprint 11 | P0 |
+| Story ID | Story Name                                  | Subsystem                 | PRD Directory | Sprint | Priority |
+| -------- | ------------------------------------------- | ------------------------- | ------------- | ------ | -------- |
+| E1-S1    | Flask application factory and configuration | `flask-bootstrap`         | flask/        | 1      | P0       |
+| E1-S2    | Database connection and migrations          | `database-setup`          | core/         | 2      | P0       |
+| E1-S3    | Domain models track agents, tasks, turns    | `domain-models`           | core/         | 3      | P0       |
+| E1-S4    | Watch Claude Code sessions for changes      | `file-watcher`            | events/       | 4      | P0       |
+| E1-S5    | Event system writes to Postgres             | `event-system`            | events/       | 5      | P0       |
+| E1-S6    | Task state machine transitions correctly    | `state-machine`           | state/        | 6      | P0       |
+| E1-S7    | Server-sent events for real-time updates    | `sse-system`              | api/          | 7      | P0       |
+| E1-S8    | Dashboard UI with agent cards               | `dashboard-ui`            | ui/           | 8      | P0       |
+| E1-S9    | Set and view objectives                     | `objective-tab`           | ui/           | 9      | P0       |
+| E1-S10   | View and filter event logs                  | `logging-tab`             | ui/           | 10     | P0       |
+| E1-S11   | Launch monitored Claude Code sessions       | `launcher-script`         | scripts/      | 11     | P0       |
+| E1-S12   | Click agent card to focus iTerm window      | `applescript-integration` | scripts/      | 12     | P0       |
+| E1-S13   | Receive hook events from Claude Code        | `hook-receiver`           | events/       | 13     | P0       |
 
 ---
 
 ## Sprint Breakdown
 
-### Sprint 1: Project Bootstrap
+### Sprint 1: Flask Bootstrap
 
-**Goal:** Runnable Flask application with database connection and styled base template.
+**Goal:** Runnable Flask application with configuration and health check.
 
 **Duration:** 1 week  
 **Dependencies:** None
@@ -65,52 +68,102 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 - Python project structure (`pyproject.toml`, `src/` layout)
 - Flask application factory pattern
-- Postgres connection via `config.yaml`
-- Database migrations setup (Alembic or Flask-Migrate)
+- Configuration loading from `config.yaml`
+- Environment variable overrides (`.env`)
 - Basic health check endpoint (`/health`)
+- Error handlers (404, 500)
+- Logging configuration
+- Development server startup script
 - Tailwind CSS build pipeline
 - Base HTML template with dark terminal aesthetic
-- Development server startup script
 
 **Subsystem Requiring PRD:**
 
 1. `flask-bootstrap` — Flask app factory, config, health check
-2. `database-setup` — Postgres connection, migrations, config.yaml schema
+
+**PRD Location:** `docs/prds/flask/e1-s1-flask-bootstrap-prd.md`
 
 **Stories:**
 
-- E1-S1: Application starts with database connection
+- E1-S1: Flask application factory and configuration
 
 **Technical Decisions Required:**
 
-- Migration tool: Alembic vs Flask-Migrate — **recommend Flask-Migrate**
 - Tailwind integration: CDN vs build pipeline — **recommend build pipeline for customization**
-- Config format: YAML fields for database connection (host, port, user, password)
+- Config format: YAML structure for application settings
 - Environment variable overrides (.env support)
+- Development vs production modes
 
 **Risks:**
 
-- Postgres installation issues on developer machines
 - Tailwind CSS build pipeline adding complexity
 - Config.yaml schema changes breaking existing setups (mitigate: versioning)
 
 **Acceptance Criteria:**
 
 - `flask run` starts server successfully
-- Server connects to Postgres (test query succeeds)
 - Health check endpoint returns 200 OK
 - Base HTML page renders with dark theme styles
 - Config loaded from `config.yaml`
-- Database migrations can be run (`flask db upgrade`)
+- Environment variables override config
+- Errors return proper error pages
 
 ---
 
-### Sprint 2: Domain Models & Database Schema
+### Sprint 2: Database Setup
+
+**Goal:** Postgres database connection, SQLAlchemy integration, and Flask-Migrate for migrations.
+
+**Duration:** 1 week  
+**Dependencies:** Sprint 1 complete (Flask app exists)
+
+**Deliverables:**
+
+- Postgres connection configuration
+- SQLAlchemy setup and integration
+- Flask-Migrate integration
+- Migration commands (`flask db init`, `flask db migrate`, `flask db upgrade`)
+- Database initialization script
+- Connection pooling configuration
+- Config.yaml schema for database settings
+
+**Subsystem Requiring PRD:**
+
+2. `database-setup` — Postgres connection, migrations, config.yaml schema
+
+**PRD Location:** `docs/prds/core/e1-s2-database-setup-prd.md`
+
+**Stories:**
+
+- E1-S2: Database connection and migrations
+
+**Technical Decisions Required:**
+
+- Migration tool: Alembic vs Flask-Migrate — **recommend Flask-Migrate**
+- Config format: YAML fields for database connection (host, port, user, password)
+- Connection pooling settings
+
+**Risks:**
+
+- Postgres installation issues on developer machines
+- Connection errors not handled gracefully
+
+**Acceptance Criteria:**
+
+- Connect to Postgres successfully
+- Run migrations successfully (`flask db upgrade`)
+- Query database successfully
+- Connection pooling works
+- Errors logged and handled
+
+---
+
+### Sprint 3: Domain Models & Database Schema
 
 **Goal:** Database schema for core domain model (Objective, Project, Agent, Task, Turn, Event).
 
 **Duration:** 1-2 weeks  
-**Dependencies:** Sprint 1 complete (database connection exists)
+**Dependencies:** Sprint 2 complete (database connection exists)
 
 **Deliverables:**
 
@@ -129,9 +182,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 3. `domain-models` — All models, relationships, migrations, validation rules
 
+**PRD Location:** `docs/prds/core/e1-s3-domain-models-prd.md`
+
 **Stories:**
 
-- E1-S2: Domain models track agents, tasks, turns
+- E1-S3: Domain models track agents, tasks, turns
 
 **Technical Decisions Required:**
 
@@ -160,12 +215,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 3: File Watcher & Event System
+### Sprint 4: File Watcher
 
-**Goal:** Watch Claude Code jsonl files and emit events to Postgres.
+**Goal:** Watch Claude Code jsonl files for session and turn detection.
 
 **Duration:** 1-2 weeks  
-**Dependencies:** Sprint 2 complete (Event model exists)
+**Dependencies:** Sprint 3 complete (Event model exists)
 
 **Deliverables:**
 
@@ -175,18 +230,16 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 - Turn detection (parse new lines in jsonl)
 - Project auto-discovery from folder names (decode path from folder name)
 - Git metadata extraction (repo URL, branch, recent commits)
-- Event writer service (write events to Postgres)
-- Background watcher process (runs alongside Flask)
-- Event types: `session_discovered`, `turn_detected`, `session_inactive`
 
 **Subsystem Requiring PRD:**
 
 4. `file-watcher` — Watchdog setup, jsonl parsing, session/turn detection
-5. `event-system` — Event writing, background process, event types
+
+**PRD Location:** `docs/prds/events/e1-s4-file-watcher-prd.md`
 
 **Stories:**
 
-- E1-S3: Watch Claude Code sessions for changes
+- E1-S4: Watch Claude Code sessions for changes
 
 **Technical Decisions Required:**
 
@@ -194,7 +247,6 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 - jsonl parsing: line-by-line vs full-file read — **recommend line-by-line**
 - Project path decoding from folder name (handle special chars)
 - Git metadata caching strategy (avoid git calls on every event)
-- Background process: separate script vs Flask background thread — **recommend separate process**
 - Session inactivity timeout (how long before marking session inactive)
 
 **Risks:**
@@ -202,26 +254,71 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 - Watchdog missing events on high-frequency changes
 - jsonl parsing failures on malformed files
 - Git metadata extraction being slow (blocking event processing)
-- Background process crashing without recovery
 - Path decoding failing on edge cases (spaces, unicode)
 
 **Acceptance Criteria:**
 
 - Start watcher, start Claude Code session → session discovered
-- Issue command in Claude Code → turn detected, event logged
+- Issue command in Claude Code → turn detected
 - Multiple sessions tracked concurrently
 - Project metadata extracted from git
-- Events written to Postgres with correct types
-- Watcher process recovers from crashes (auto-restart or supervisor)
+- Parsing errors logged, not crashing
 
 ---
 
-### Sprint 4: Task/Turn State Machine
+### Sprint 5: Event System
+
+**Goal:** Write events to Postgres with background process.
+
+**Duration:** 1 week  
+**Dependencies:** Sprint 4 complete (file watcher detecting events)
+
+**Deliverables:**
+
+- Event writer service (write to Postgres)
+- Background watcher process
+- Event types taxonomy
+- Event payload schema
+- Process supervision (auto-restart)
+
+**Subsystem Requiring PRD:**
+
+5. `event-system` — Event writer, background process, event types
+
+**PRD Location:** `docs/prds/events/e1-s5-event-system-prd.md`
+
+**Stories:**
+
+- E1-S5: Event system writes to Postgres
+
+**Technical Decisions Required:**
+
+- Background process: separate script vs Flask background thread — **recommend separate process**
+- Event types taxonomy (session_discovered, turn_detected, etc.)
+- Event payload schema (JSON structure)
+- Process supervision strategy
+
+**Risks:**
+
+- Background process crashing without recovery
+- Event writes failing silently
+
+**Acceptance Criteria:**
+
+- Events written to Postgres successfully
+- Background process runs continuously
+- Process restarts on crash
+- Event types consistent
+- Payloads well-formed
+
+---
+
+### Sprint 6: Task/Turn State Machine
 
 **Goal:** Events correctly update Task and Turn state based on 5-state model.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 3 complete (events flowing)
+**Dependencies:** Sprint 5 complete (events flowing)
 
 **Deliverables:**
 
@@ -237,9 +334,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 6. `state-machine` — Task state logic, turn intent mapping, validators, lifecycle
 
+**PRD Location:** `docs/prds/state/e1-s6-state-machine-prd.md`
+
 **Stories:**
 
-- E1-S4: Task state machine transitions correctly
+- E1-S6: Task state machine transitions correctly
 
 **Technical Decisions Required:**
 
@@ -268,12 +367,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 5: SSE & Real-time Updates
+### Sprint 7: SSE & Real-time Updates
 
 **Goal:** Push updates to browser in real-time via Server-Sent Events.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 4 complete (state machine working)
+**Dependencies:** Sprint 6 complete (state machine working)
 
 **Deliverables:**
 
@@ -288,9 +387,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 7. `sse-system` — SSE endpoint, broadcaster, HTMX integration, reconnection
 
+**PRD Location:** `docs/prds/api/e1-s7-sse-system-prd.md`
+
 **Stories:**
 
-- E1-S5: Dashboard updates in real-time (SSE part)
+- E1-S7: Server-sent events for real-time updates
 
 **Technical Decisions Required:**
 
@@ -318,12 +419,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 6: Dashboard UI
+### Sprint 8: Dashboard UI
 
 **Goal:** Functional dashboard matching v2 design with Kanban layout.
 
 **Duration:** 2 weeks  
-**Dependencies:** Sprint 5 complete (SSE working)
+**Dependencies:** Sprint 7 complete (SSE working)
 
 **Deliverables:**
 
@@ -342,9 +443,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 8. `dashboard-ui` — Dashboard HTML/CSS/JS, Kanban layout, HTMX interactivity
 
+**PRD Location:** `docs/prds/ui/e1-s8-dashboard-ui-prd.md`
+
 **Stories:**
 
-- E1-S5: Dashboard updates in real-time (UI part)
+- E1-S8: Dashboard UI with agent cards
 
 **Technical Decisions Required:**
 
@@ -376,12 +479,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 7: Objective Tab
+### Sprint 9: Objective Tab
 
 **Goal:** Set and view objective with history.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 2 complete (Objective model exists), Sprint 6 complete (tab navigation exists)
+**Dependencies:** Sprint 3 complete (Objective model exists), Sprint 8 complete (tab navigation exists)
 
 **Deliverables:**
 
@@ -396,9 +499,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 9. `objective-tab` — Objective form, auto-save, history display, API
 
+**PRD Location:** `docs/prds/ui/e1-s9-objective-tab-prd.md`
+
 **Stories:**
 
-- E1-S6: Set and view objectives
+- E1-S9: Set and view objectives
 
 **Technical Decisions Required:**
 
@@ -424,12 +529,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 8: Logging Tab
+### Sprint 10: Logging Tab
 
 **Goal:** Viewable event log with filtering.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 3 complete (events logged), Sprint 6 complete (tab navigation)
+**Dependencies:** Sprint 5 complete (events logged), Sprint 8 complete (tab navigation)
 
 **Deliverables:**
 
@@ -444,9 +549,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 10. `logging-tab` — Event log display, filters, pagination, SSE integration
 
+**PRD Location:** `docs/prds/ui/e1-s10-logging-tab-prd.md`
+
 **Stories:**
 
-- E1-S7: View and filter event logs
+- E1-S10: View and filter event logs
 
 **Technical Decisions Required:**
 
@@ -473,12 +580,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 9: Launcher Script
+### Sprint 11: Launcher Script
 
 **Goal:** CLI tool to launch monitored Claude Code sessions.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 2 complete (Agent model), Sprint 3 complete (session discovery)
+**Dependencies:** Sprint 3 complete (Agent model), Sprint 4 complete (session discovery)
 
 **Deliverables:**
 
@@ -496,9 +603,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 11. `launcher-script` — CLI tool, session registration, iTerm pane capture, cleanup
 
+**PRD Location:** `docs/prds/scripts/e1-s11-launcher-script-prd.md`
+
 **Stories:**
 
-- E1-S8: Launch monitored Claude Code sessions
+- E1-S11: Launch monitored Claude Code sessions
 
 **Technical Decisions Required:**
 
@@ -528,12 +637,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 10: AppleScript Integration
+### Sprint 12: AppleScript Integration
 
 **Goal:** macOS integration for iTerm focus.
 
 **Duration:** 1 week  
-**Dependencies:** Sprint 9 complete (pane IDs captured), Sprint 6 complete (agent cards)
+**Dependencies:** Sprint 11 complete (pane IDs captured), Sprint 8 complete (agent cards)
 
 **Deliverables:**
 
@@ -548,9 +657,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 12. `applescript-integration` — AppleScript focus, API endpoint, permission handling
 
+**PRD Location:** `docs/prds/scripts/e1-s12-applescript-integration-prd.md`
+
 **Stories:**
 
-- E1-S9: Click agent card to focus iTerm window
+- E1-S12: Click agent card to focus iTerm window
 
 **Technical Decisions Required:**
 
@@ -577,12 +688,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 11: Claude Code Hooks Integration
+### Sprint 13: Claude Code Hooks Integration
 
 **Goal:** Receive lifecycle events directly from Claude Code via hooks for instant, high-confidence state updates.
 
 **Duration:** 1-2 weeks  
-**Dependencies:** Sprint 4 complete (state machine), Sprint 6 complete (dashboard)
+**Dependencies:** Sprint 6 complete (state machine), Sprint 8 complete (dashboard)
 
 **Deliverables:**
 
@@ -624,9 +735,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 13. `hook-receiver` — Hook receiver service, API routes, session correlation, hybrid mode
 
+**PRD Location:** `docs/prds/events/e1-s13-hook-receiver-prd.md`
+
 **Stories:**
 
-- E1-S10: Receive hook events from Claude Code
+- E1-S13: Receive hook events from Claude Code
 
 **Technical Decisions Required:**
 
@@ -640,6 +753,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 **Architecture Details:**
 
 **Event Flow:**
+
 ```
 Claude Code → Hook Script → HTTP POST → HookReceiver → State Transition
                                                       → SSE Broadcast
@@ -648,21 +762,23 @@ Claude Code → Hook Script → HTTP POST → HookReceiver → State Transition
 
 **Hook Event to State Mapping:**
 
-| Hook Event | Current State | New State | Confidence |
-|------------|---------------|-----------|------------|
-| SessionStart | - | IDLE | 1.0 |
-| UserPromptSubmit | IDLE | PROCESSING | 1.0 |
-| Stop | PROCESSING | IDLE | 1.0 |
-| Notification | any | (no change) | - |
-| SessionEnd | any | ENDED | 1.0 |
+| Hook Event       | Current State | New State   | Confidence |
+| ---------------- | ------------- | ----------- | ---------- |
+| SessionStart     | -             | IDLE        | 1.0        |
+| UserPromptSubmit | IDLE          | PROCESSING  | 1.0        |
+| Stop             | PROCESSING    | IDLE        | 1.0        |
+| Notification     | any           | (no change) | -          |
+| SessionEnd       | any           | ENDED       | 1.0        |
 
 **Hybrid Mode:**
+
 1. **Hooks active:** Polling interval = 60 seconds (reconciliation only)
 2. **Hooks silent >300s:** Revert to 2-second polling
 3. **Hooks resume:** Return to 60-second polling
 4. **Polling always runs:** Safety net for missed events
 
 **Session Correlation Logic:**
+
 ```python
 # Claude session ID ≠ terminal pane ID
 # Use working directory to match
@@ -670,13 +786,13 @@ def correlate_session(claude_session_id, cwd):
     # 1. Check cache
     if claude_session_id in cache:
         return cache[claude_session_id]
-    
+
     # 2. Match by working directory
     for agent in agents:
         if agent.cwd == cwd:
             cache[claude_session_id] = agent
             return agent
-    
+
     # 3. Create new agent
     agent = create_agent(cwd=cwd)
     cache[claude_session_id] = agent
@@ -716,11 +832,25 @@ def correlate_session(claude_session_id, cwd):
 
 The following 13 subsystems need detailed PRDs created via OpenSpec. Each PRD will be generated as a separate change proposal and validated before implementation.
 
+### PRD Directory Structure
+
+```
+docs/prds/
+├── api/          # API and transport layer (SSE, endpoints)
+├── core/         # Core infrastructure (database, models)
+├── events/       # Event system (watchers, hooks, event bus)
+├── flask/        # Flask-specific (bootstrap, app factory)
+├── scripts/      # CLI tools and integrations
+├── state/        # State management (state machine, transitions)
+└── ui/           # User interface components
+```
+
 ### 1. Flask Bootstrap
 
 **Subsystem ID:** `flask-bootstrap`  
 **Sprint:** Sprint 1  
-**Priority:** P0
+**Priority:** P0  
+**PRD Location:** `docs/prds/flask/e1-s1-flask-bootstrap-prd.md`
 
 **Scope:**
 
@@ -740,7 +870,7 @@ The following 13 subsystems need detailed PRDs created via OpenSpec. Each PRD wi
 - Must configure logging (console + file)
 - Must handle errors gracefully
 
-**OpenSpec Spec:** `openspec/specs/flask-bootstrap/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s1-flask-bootstrap/spec.md`
 
 **Related Files:**
 
@@ -767,8 +897,9 @@ The following 13 subsystems need detailed PRDs created via OpenSpec. Each PRD wi
 ### 2. Database Setup
 
 **Subsystem ID:** `database-setup`  
-**Sprint:** Sprint 1  
-**Priority:** P0
+**Sprint:** Sprint 2  
+**Priority:** P0  
+**PRD Location:** `docs/prds/core/e1-s2-database-setup-prd.md`
 
 **Scope:**
 
@@ -787,7 +918,7 @@ The following 13 subsystems need detailed PRDs created via OpenSpec. Each PRD wi
 - Must provide migration commands (init, migrate, upgrade)
 - Must handle connection errors gracefully
 
-**OpenSpec Spec:** `openspec/specs/database-setup/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s2-database-setup/spec.md`
 
 **Related Files:**
 
@@ -822,8 +953,9 @@ database:
 ### 3. Domain Models
 
 **Subsystem ID:** `domain-models`  
-**Sprint:** Sprint 2  
-**Priority:** P0
+**Sprint:** Sprint 3  
+**Priority:** P0  
+**PRD Location:** `docs/prds/core/e1-s3-domain-models-prd.md`
 
 **Scope:**
 
@@ -846,7 +978,7 @@ database:
 - Must validate required fields
 - Must support querying current state (e.g., agent's current task)
 
-**OpenSpec Spec:** `openspec/specs/domain-models/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s3-domain-models/spec.md`
 
 **Related Files:**
 
@@ -890,7 +1022,7 @@ events
   id, timestamp, project_id, agent_id, task_id, turn_id, event_type, payload (JSON)
 ```
 
-**Dependencies:** Sprint 1 complete (database setup)
+**Dependencies:** Sprint 2 complete (database setup)
 
 **Acceptance Tests:**
 
@@ -904,8 +1036,9 @@ events
 ### 4. File Watcher
 
 **Subsystem ID:** `file-watcher`  
-**Sprint:** Sprint 3  
-**Priority:** P0
+**Sprint:** Sprint 4  
+**Priority:** P0  
+**PRD Location:** `docs/prds/events/e1-s4-file-watcher-prd.md`
 
 **Scope:**
 
@@ -925,7 +1058,7 @@ events
 - Must extract git metadata (repo, branch)
 - Must handle parsing errors gracefully
 
-**OpenSpec Spec:** `openspec/specs/file-watcher/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s4-file-watcher/spec.md`
 
 **Related Files:**
 
@@ -936,7 +1069,7 @@ events
 
 **Data Model Changes:** None (uses existing models)
 
-**Dependencies:** Sprint 2 complete (models exist)
+**Dependencies:** Sprint 3 complete (models exist)
 
 **Acceptance Tests:**
 
@@ -951,8 +1084,9 @@ events
 ### 5. Event System
 
 **Subsystem ID:** `event-system`  
-**Sprint:** Sprint 3  
-**Priority:** P0
+**Sprint:** Sprint 5  
+**Priority:** P0  
+**PRD Location:** `docs/prds/events/e1-s5-event-system-prd.md`
 
 **Scope:**
 
@@ -970,7 +1104,7 @@ events
 - Must structure event payloads consistently (JSON)
 - Must auto-restart on crash
 
-**OpenSpec Spec:** `openspec/specs/event-system/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s5-event-system/spec.md`
 
 **Related Files:**
 
@@ -978,9 +1112,9 @@ events
 - `bin/watcher.py` (background process)
 - `supervisord.conf` or `systemd` unit file
 
-**Data Model Changes:** None (uses Event model from Sprint 2)
+**Data Model Changes:** None (uses Event model from Sprint 3)
 
-**Dependencies:** Sprint 4 complete (file watcher)
+**Dependencies:** Sprint 4 complete (file watcher detecting events)
 
 **Acceptance Tests:**
 
@@ -995,8 +1129,9 @@ events
 ### 6. State Machine
 
 **Subsystem ID:** `state-machine`  
-**Sprint:** Sprint 4  
-**Priority:** P0
+**Sprint:** Sprint 6  
+**Priority:** P0  
+**PRD Location:** `docs/prds/state/e1-s6-state-machine-prd.md`
 
 **Scope:**
 
@@ -1016,7 +1151,7 @@ events
 - Must derive agent state from current task
 - Must have comprehensive unit tests
 
-**OpenSpec Spec:** `openspec/specs/state-machine/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s6-state-machine/spec.md`
 
 **Related Files:**
 
@@ -1026,7 +1161,7 @@ events
 
 **Data Model Changes:** None (uses Task/Turn models)
 
-**Dependencies:** Sprint 3 complete (events flowing)
+**Dependencies:** Sprint 5 complete (events flowing)
 
 **Acceptance Tests:**
 
@@ -1042,8 +1177,9 @@ events
 ### 7. SSE System
 
 **Subsystem ID:** `sse-system`  
-**Sprint:** Sprint 5  
-**Priority:** P0
+**Sprint:** Sprint 7  
+**Priority:** P0  
+**PRD Location:** `docs/prds/api/e1-s7-sse-system-prd.md`
 
 **Scope:**
 
@@ -1063,7 +1199,7 @@ events
 - Must support event filtering (client subscribes to types)
 - Must send heartbeats to keep connections alive
 
-**OpenSpec Spec:** `openspec/specs/sse-system/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s7-sse-system/spec.md`
 
 **Related Files:**
 
@@ -1074,7 +1210,7 @@ events
 
 **Data Model Changes:** None
 
-**Dependencies:** Sprint 4 complete (state machine)
+**Dependencies:** Sprint 6 complete (state machine)
 
 **Acceptance Tests:**
 
@@ -1090,8 +1226,9 @@ events
 ### 8. Dashboard UI
 
 **Subsystem ID:** `dashboard-ui`  
-**Sprint:** Sprint 6  
-**Priority:** P0
+**Sprint:** Sprint 8  
+**Priority:** P0  
+**PRD Location:** `docs/prds/ui/e1-s8-dashboard-ui-prd.md`
 
 **Scope:**
 
@@ -1116,7 +1253,7 @@ events
 - Must colour-code state bars
 - Must update in real-time via SSE
 
-**OpenSpec Spec:** `openspec/specs/dashboard-ui/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s8-dashboard-ui/spec.md`
 
 **Related Files:**
 
@@ -1127,7 +1264,7 @@ events
 
 **Data Model Changes:** None
 
-**Dependencies:** Sprint 5 complete (SSE system)
+**Dependencies:** Sprint 7 complete (SSE system)
 
 **Acceptance Tests:**
 
@@ -1146,8 +1283,9 @@ events
 ### 9. Objective Tab
 
 **Subsystem ID:** `objective-tab`  
-**Sprint:** Sprint 7  
-**Priority:** P0
+**Sprint:** Sprint 9  
+**Priority:** P0  
+**PRD Location:** `docs/prds/ui/e1-s9-objective-tab-prd.md`
 
 **Scope:**
 
@@ -1165,7 +1303,7 @@ events
 - Must persist to Postgres (Objective + ObjectiveHistory)
 - Must work with multiple concurrent users (shared state)
 
-**OpenSpec Spec:** `openspec/specs/objective-tab/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s9-objective-tab/spec.md`
 
 **Related Files:**
 
@@ -1173,9 +1311,9 @@ events
 - `static/js/objective.js` (auto-save logic)
 - `src/routes/objective.py` (API endpoints)
 
-**Data Model Changes:** None (uses Objective model from Sprint 2)
+**Data Model Changes:** None (uses Objective model from Sprint 3)
 
-**Dependencies:** Sprint 2 complete (Objective model), Sprint 6 complete (tab navigation)
+**Dependencies:** Sprint 3 complete (Objective model), Sprint 8 complete (tab navigation)
 
 **Acceptance Tests:**
 
@@ -1190,8 +1328,9 @@ events
 ### 10. Logging Tab
 
 **Subsystem ID:** `logging-tab`  
-**Sprint:** Sprint 8  
-**Priority:** P0
+**Sprint:** Sprint 10  
+**Priority:** P0  
+**PRD Location:** `docs/prds/ui/e1-s10-logging-tab-prd.md`
 
 **Scope:**
 
@@ -1210,7 +1349,7 @@ events
 - Must update in real-time via SSE
 - Must expand event details inline
 
-**OpenSpec Spec:** `openspec/specs/logging-tab/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s10-logging-tab/spec.md`
 
 **Related Files:**
 
@@ -1220,7 +1359,7 @@ events
 
 **Data Model Changes:** None (uses Event model)
 
-**Dependencies:** Sprint 3 complete (events logged), Sprint 6 complete (tab navigation)
+**Dependencies:** Sprint 5 complete (events logged), Sprint 8 complete (tab navigation)
 
 **Acceptance Tests:**
 
@@ -1236,8 +1375,9 @@ events
 ### 11. Launcher Script
 
 **Subsystem ID:** `launcher-script`  
-**Sprint:** Sprint 9  
-**Priority:** P0
+**Sprint:** Sprint 11  
+**Priority:** P0  
+**PRD Location:** `docs/prds/scripts/e1-s11-launcher-script-prd.md`
 
 **Scope:**
 
@@ -1261,7 +1401,7 @@ events
 - Must set environment variable for hooks
 - Must mark session inactive on exit
 
-**OpenSpec Spec:** `openspec/specs/launcher-script/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s11-launcher-script/spec.md`
 
 **Related Files:**
 
@@ -1270,7 +1410,7 @@ events
 
 **Data Model Changes:** None (uses Agent model)
 
-**Dependencies:** Sprint 2 complete (Agent model), Sprint 3 complete (session discovery)
+**Dependencies:** Sprint 3 complete (Agent model), Sprint 4 complete (session discovery)
 
 **Acceptance Tests:**
 
@@ -1287,8 +1427,9 @@ events
 ### 12. AppleScript Integration
 
 **Subsystem ID:** `applescript-integration`  
-**Sprint:** Sprint 10  
-**Priority:** P0
+**Sprint:** Sprint 12  
+**Priority:** P0  
+**PRD Location:** `docs/prds/scripts/e1-s12-applescript-integration-prd.md`
 
 **Scope:**
 
@@ -1307,7 +1448,7 @@ events
 - Must provide fallback if focus fails
 - Must support iTerm2 (WezTerm in future)
 
-**OpenSpec Spec:** `openspec/specs/applescript-integration/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s12-applescript-integration/spec.md`
 
 **Related Files:**
 
@@ -1317,7 +1458,7 @@ events
 
 **Data Model Changes:** None
 
-**Dependencies:** Sprint 9 complete (pane IDs captured), Sprint 6 complete (agent cards)
+**Dependencies:** Sprint 11 complete (pane IDs captured), Sprint 8 complete (agent cards)
 
 **Acceptance Tests:**
 
@@ -1333,8 +1474,9 @@ events
 ### 13. Hook Receiver
 
 **Subsystem ID:** `hook-receiver`  
-**Sprint:** Sprint 11  
-**Priority:** P0
+**Sprint:** Sprint 13  
+**Priority:** P0  
+**PRD Location:** `docs/prds/events/e1-s13-hook-receiver-prd.md`
 
 **Scope:**
 
@@ -1395,7 +1537,7 @@ events
 - Must use absolute paths in hook configuration
 - Must handle hook failures silently (don't block Claude Code)
 
-**OpenSpec Spec:** `openspec/specs/hook-receiver/spec.md`
+**OpenSpec Spec:** `openspec/specs/e1-s13-hook-receiver/spec.md`
 
 **Related Files:**
 
@@ -1446,15 +1588,15 @@ class Agent:
 
 **Hook Event to State Mapping:**
 
-| Hook Event | Current State | New State | Action |
-|------------|---------------|-----------|--------|
-| SessionStart | - | IDLE | Create agent if not exists |
-| UserPromptSubmit | IDLE | PROCESSING | Start task turn |
-| Stop | PROCESSING | IDLE | Complete task turn |
-| Notification | any | (no change) | Update timestamp only |
-| SessionEnd | any | ENDED | Mark agent inactive |
+| Hook Event       | Current State | New State   | Action                     |
+| ---------------- | ------------- | ----------- | -------------------------- |
+| SessionStart     | -             | IDLE        | Create agent if not exists |
+| UserPromptSubmit | IDLE          | PROCESSING  | Start task turn            |
+| Stop             | PROCESSING    | IDLE        | Complete task turn         |
+| Notification     | any           | (no change) | Update timestamp only      |
+| SessionEnd       | any           | ENDED       | Mark agent inactive        |
 
-**Dependencies:** Sprint 4 complete (state machine), Sprint 6 complete (dashboard), Sprint 3 complete (agent_store)
+**Dependencies:** Sprint 6 complete (state machine), Sprint 8 complete (dashboard), Sprint 4 complete (agent_store)
 
 **Acceptance Tests:**
 
@@ -1500,39 +1642,42 @@ class Agent:
 ## Sprint Dependencies & Critical Path
 
 ```
-Sprint 1 (Bootstrap)
+Sprint 1 (Flask Bootstrap)
     │
-    ├──▶ Sprint 2 (Domain Models)
+    └──▶ Sprint 2 (Database Setup)
             │
-            ├──▶ Sprint 3 (File Watcher + Events)
-            │       │
-            │       └──▶ Sprint 4 (State Machine)
-            │               │
-            │               └──▶ Sprint 5 (SSE)
-            │                       │
-            │                       └──▶ Sprint 6 (Dashboard UI)
-            │                               │
-            │                               ├──▶ Sprint 7 (Objective)
-            │                               ├──▶ Sprint 8 (Logging)
-            │                               ├──▶ Sprint 11 (Hooks)
-            │                               └──▶ Sprint 10 (AppleScript)
-            │                                       │
-            │                                       └──▶ [Epic 1 Complete]
-            │
-            └──▶ Sprint 9 (Launcher)
+            └──▶ Sprint 3 (Domain Models)
                     │
-                    └──▶ Sprint 10 (AppleScript)
+                    ├──▶ Sprint 4 (File Watcher)
+                    │       │
+                    │       └──▶ Sprint 5 (Event System)
+                    │               │
+                    │               └──▶ Sprint 6 (State Machine)
+                    │                       │
+                    │                       └──▶ Sprint 7 (SSE)
+                    │                               │
+                    │                               └──▶ Sprint 8 (Dashboard UI)
+                    │                                       │
+                    │                                       ├──▶ Sprint 9 (Objective)
+                    │                                       ├──▶ Sprint 10 (Logging)
+                    │                                       └──▶ Sprint 13 (Hooks)
+                    │
+                    └──▶ Sprint 11 (Launcher)
+                            │
+                            └──▶ Sprint 12 (AppleScript)
+                                    │
+                                    └──▶ [Epic 1 Complete]
 ```
 
-**Critical Path:** Sprint 1 → Sprint 2 → Sprint 3 → Sprint 4 → Sprint 5 → Sprint 6
+**Critical Path:** Sprint 1 → Sprint 2 → Sprint 3 → Sprint 4 → Sprint 5 → Sprint 6 → Sprint 7 → Sprint 8
 
 **Parallel Tracks:**
 
-- Sprint 7, 8, 9 can run in parallel after Sprint 6
-- Sprint 10 depends on Sprint 9 (needs pane IDs)
-- Sprint 11 can run anytime after Sprint 4 (state machine)
+- Sprint 9, 10, 13 can run in parallel after Sprint 8
+- Sprint 11 can start after Sprint 3 (Agent model exists)
+- Sprint 12 depends on Sprint 11 (needs pane IDs)
 
-**Total Duration:** 11-13 weeks
+**Total Duration:** 13-15 weeks
 
 ---
 
@@ -1545,6 +1690,7 @@ Sprint 1 (Bootstrap)
 **Rationale:** Events from Claude Code jsonl files are the source of truth. State machine reacts to events. Enables dual event sources (hooks + polling).
 
 **Impact:**
+
 - All state updates triggered by events
 - Event log provides audit trail
 - Easier to add hook events later
@@ -1556,12 +1702,14 @@ Sprint 1 (Bootstrap)
 
 **Decision:** Use 5-state model (idle, commanded, processing, awaiting_input, complete) instead of 3-state.
 
-**Rationale:** 
+**Rationale:**
+
 - More granular visibility (know when agent is waiting vs working)
 - Aligns with turn intents (command → commanded, question → awaiting_input)
 - Enables better prioritisation (awaiting_input is high priority)
 
 **Impact:**
+
 - State machine more complex
 - Intent detection critical
 - Better UX in dashboard
@@ -1573,11 +1721,13 @@ Sprint 1 (Bootstrap)
 **Decision:** Track every turn (user/agent exchange), not just task-level.
 
 **Rationale:**
+
 - Foundation for Epic 3 turn summarisation
 - Enables fine-grained audit trail
 - Better understanding of agent behavior (how many turns per task?)
 
 **Impact:**
+
 - More database writes (one per turn)
 - Richer data for future features
 - Slight performance overhead
@@ -1589,12 +1739,14 @@ Sprint 1 (Bootstrap)
 **Decision:** Support both Claude Code hooks (instant) and jsonl polling (fallback).
 
 **Rationale:**
+
 - Hooks require user setup (may not adopt)
 - Polling works without setup (graceful degradation)
 - Hooks provide instant updates (<100ms vs ~2 seconds)
 - Dual sources = best of both worlds
 
 **Impact:**
+
 - Two code paths for same events (hooks vs polling)
 - Need deduplication logic (same event from both sources)
 - More complex, but better UX
@@ -1606,11 +1758,13 @@ Sprint 1 (Bootstrap)
 **Decision:** Use Postgres from day one (not SQLite).
 
 **Rationale:**
+
 - Better concurrency (multiple writers: watcher + Flask)
 - Better performance for event logs (10k+ events)
 - Production-ready (no migration needed later)
 
 **Impact:**
+
 - Setup complexity (users need Postgres installed)
 - Mitigated by: clear setup docs, Docker Compose option
 
@@ -1621,12 +1775,14 @@ Sprint 1 (Bootstrap)
 **Decision:** Use Tailwind CSS (not Bootstrap or custom CSS).
 
 **Rationale:**
+
 - Model knows Tailwind well
 - Utility-first = faster development
 - Dark theme easy to implement
 - Modern, customizable
 
 **Impact:**
+
 - Build pipeline required (PostCSS)
 - Larger CSS bundle (mitigate: purge unused)
 - Faster development velocity
@@ -1638,12 +1794,14 @@ Sprint 1 (Bootstrap)
 **Decision:** Use HTMX for interactivity (not React/Vue).
 
 **Rationale:**
+
 - Server-rendered HTML (simpler, less JS)
 - SSE integration built-in
 - Proven in v2
 - No build pipeline for JS
 
 **Impact:**
+
 - Limited to HTMX capabilities (no complex client-side state)
 - Good for Epic 1 scope (dashboard, forms)
 - May need React later for advanced features
@@ -1655,11 +1813,13 @@ Sprint 1 (Bootstrap)
 **Decision:** Use Flask-Migrate wrapper around Alembic.
 
 **Rationale:**
+
 - Flask integration (commands via Flask CLI)
 - Easier for most users
 - Still uses Alembic under the hood
 
 **Impact:**
+
 - Simpler commands (`flask db upgrade`)
 - Flask dependency
 
@@ -1672,13 +1832,14 @@ Sprint 1 (Bootstrap)
 **Question:** How long before marking a session inactive?
 
 **Options:**
+
 - **Option A:** 5 minutes (aggressive, may false-positive on slow tasks)
 - **Option B:** 15 minutes (balanced)
 - **Option C:** 30 minutes (conservative, may leave stale sessions visible)
 
 **Recommendation:** Start with 15 minutes, make configurable in `config.yaml`.
 
-**Decision needed by:** Sprint 3 implementation
+**Decision needed by:** Sprint 4 implementation
 
 ---
 
@@ -1687,6 +1848,7 @@ Sprint 1 (Bootstrap)
 **Question:** What regex patterns indicate each turn intent?
 
 **Options:**
+
 - **command:** User starts with command-like text (e.g., "Create a...", "Add a...", "Fix...")
 - **question:** Agent ends with "?" or "Would you like...", "Should I..."
 - **completion:** Agent says "Done", "Completed", "Finished", "Ready for..."
@@ -1695,7 +1857,7 @@ Sprint 1 (Bootstrap)
 
 **Recommendation:** Start with simple regex, iterate based on false positives/negatives.
 
-**Decision needed by:** Sprint 4 implementation
+**Decision needed by:** Sprint 6 implementation
 
 ---
 
@@ -1704,13 +1866,14 @@ Sprint 1 (Bootstrap)
 **Question:** How should hooks authenticate requests?
 
 **Options:**
+
 - **Option A:** Shared secret in environment variable (simple, local-friendly)
 - **Option B:** API key per user (more secure, more complex)
 - **Option C:** None (local only, trust all requests)
 
 **Recommendation:** Option A (shared secret) for Epic 1, Option B for production deployment.
 
-**Decision needed by:** Sprint 11 implementation
+**Decision needed by:** Sprint 13 implementation
 
 ---
 
@@ -1723,6 +1886,7 @@ Sprint 1 (Bootstrap)
 **Impact:** High (breaks core feature — state tracking)
 
 **Mitigation:**
+
 - Comprehensive unit tests (all transitions, edge cases)
 - Regex patterns tuned on real Claude Code sessions
 - Fallback: LLM-based intent detection in Epic 3
@@ -1739,6 +1903,7 @@ Sprint 1 (Bootstrap)
 **Impact:** Medium (instant updates are nice-to-have, not required)
 
 **Mitigation:**
+
 - Make hooks optional (graceful degradation)
 - Clear value proposition (instant vs 2-second polling)
 - Simple installation script (`bin/notify-headspace.sh`)
@@ -1755,6 +1920,7 @@ Sprint 1 (Bootstrap)
 **Impact:** Medium (click-to-focus is high-value feature)
 
 **Mitigation:**
+
 - Clear setup instructions (System Preferences → Privacy → Automation)
 - Detect permission errors, show actionable message
 - Fallback: show session path (user can manually switch)
@@ -1771,6 +1937,7 @@ Sprint 1 (Bootstrap)
 **Impact:** Medium (affects logging tab usability)
 
 **Mitigation:**
+
 - Database indexing on timestamp, project_id, agent_id, event_type
 - Pagination (limit to 100 events per page)
 - Server-side filtering (don't load all events into browser)
@@ -1787,6 +1954,7 @@ Sprint 1 (Bootstrap)
 **Impact:** Medium (missing turns = incomplete state tracking)
 
 **Mitigation:**
+
 - Periodic full scan (every 30 seconds) in addition to watch events
 - Compare jsonl line count to database turn count (detect missing turns)
 - Log watchdog errors and missed events
@@ -1805,6 +1973,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** Start application, start Claude Code session via launcher.
 
 **Success:**
+
 - ✅ Session discovered and appears in dashboard
 - ✅ Issue command → Task created in `commanded` state
 - ✅ Agent responds → Task transitions to `processing`
@@ -1818,6 +1987,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** Start 3 Claude Code sessions across 2 projects.
 
 **Success:**
+
 - ✅ All 3 sessions appear in dashboard
 - ✅ Each session tracked independently
 - ✅ Status counts accurate (INPUT NEEDED, WORKING, IDLE)
@@ -1830,6 +2000,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** 2 active Claude Code sessions in iTerm.
 
 **Success:**
+
 - ✅ Click agent card for session 1 → iTerm focuses session 1
 - ✅ Click agent card for session 2 → iTerm focuses session 2
 - ✅ Focus latency <500ms
@@ -1841,6 +2012,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** Claude Code sessions with hooks installed.
 
 **Success:**
+
 - ✅ Hook events received at endpoints
 - ✅ State updates instantly (<100ms)
 - ✅ Hook status dashboard shows last event times
@@ -1853,6 +2025,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** Navigate to objective tab.
 
 **Success:**
+
 - ✅ Set objective text → auto-saves after debounce
 - ✅ Changes persist across page reload
 - ✅ Objective history shows previous objectives
@@ -1864,6 +2037,7 @@ From Epic 1 Acceptance Criteria:
 **Setup:** Generate multiple event types, navigate to logging tab.
 
 **Success:**
+
 - ✅ Event log displays all events
 - ✅ Filter by project → only matching events shown
 - ✅ Filter by event type → only matching events shown
@@ -1895,8 +2069,8 @@ Generate OpenSpec PRDs in implementation order with rationale:
 
 ### Phase 1: Foundation (Weeks 1-2)
 
-1. **flask-bootstrap** — Application factory, config, health check
-2. **database-setup** — Postgres connection, migrations
+1. **flask-bootstrap** (`docs/prds/flask/e1-s1-flask-bootstrap-prd.md`) — Application factory, config, health check
+2. **database-setup** (`docs/prds/core/e1-s2-database-setup-prd.md`) — Postgres connection, migrations
 
 **Rationale:** Must have runnable application before building features.
 
@@ -1904,52 +2078,52 @@ Generate OpenSpec PRDs in implementation order with rationale:
 
 ### Phase 2: Data Model (Weeks 3-4)
 
-3. **domain-models** — All models, relationships, migrations
+3. **domain-models** (`docs/prds/core/e1-s3-domain-models-prd.md`) — All models, relationships, migrations
 
 **Rationale:** Data model is foundation for all features.
 
 ---
 
-### Phase 3: Event System (Weeks 5-6)
+### Phase 3: Event System (Weeks 5-7)
 
-4. **file-watcher** — Watchdog, jsonl parsing, session/turn detection
-5. **event-system** — Event writer, background process
+4. **file-watcher** (`docs/prds/events/e1-s4-file-watcher-prd.md`) — Watchdog, jsonl parsing, session/turn detection
+5. **event-system** (`docs/prds/events/e1-s5-event-system-prd.md`) — Event writer, background process
 
 **Rationale:** Event flow must work before state machine can react.
 
 ---
 
-### Phase 4: State Machine (Week 7)
+### Phase 4: State Machine (Week 8)
 
-6. **state-machine** — Task state logic, turn intent mapping
+6. **state-machine** (`docs/prds/state/e1-s6-state-machine-prd.md`) — Task state logic, turn intent mapping
 
 **Rationale:** State machine is core logic, needs events flowing.
 
 ---
 
-### Phase 5: Real-time UI (Weeks 8-10)
+### Phase 5: Real-time UI (Weeks 9-11)
 
-7. **sse-system** — SSE endpoint, broadcaster, HTMX
-8. **dashboard-ui** — Dashboard layout, agent cards, real-time updates
+7. **sse-system** (`docs/prds/api/e1-s7-sse-system-prd.md`) — SSE endpoint, broadcaster, HTMX
+8. **dashboard-ui** (`docs/prds/ui/e1-s8-dashboard-ui-prd.md`) — Dashboard layout, agent cards, real-time updates
 
 **Rationale:** SSE must work before dashboard can update in real-time.
 
 ---
 
-### Phase 6: User Features (Weeks 11-12)
+### Phase 6: User Features (Weeks 12-13)
 
-9. **objective-tab** — Objective form, auto-save, history
-10. **logging-tab** — Event log display, filters, pagination
+9. **objective-tab** (`docs/prds/ui/e1-s9-objective-tab-prd.md`) — Objective form, auto-save, history
+10. **logging-tab** (`docs/prds/ui/e1-s10-logging-tab-prd.md`) — Event log display, filters, pagination
 
 **Rationale:** Dashboard exists, add supporting features.
 
 ---
 
-### Phase 7: Integration (Weeks 13-15)
+### Phase 7: Integration (Weeks 14-15)
 
-11. **launcher-script** — CLI tool, session registration
-12. **applescript-integration** — iTerm focus, API endpoint
-13. **hook-receiver** — Hook endpoints, event processing
+11. **launcher-script** (`docs/prds/scripts/e1-s11-launcher-script-prd.md`) — CLI tool, session registration
+12. **applescript-integration** (`docs/prds/scripts/e1-s12-applescript-integration-prd.md`) — iTerm focus, API endpoint
+13. **hook-receiver** (`docs/prds/events/e1-s13-hook-receiver-prd.md`) — Hook endpoints, event processing
 
 **Rationale:** Integration features tie everything together.
 
@@ -1957,9 +2131,10 @@ Generate OpenSpec PRDs in implementation order with rationale:
 
 ## Document History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-01-28 | PM Agent (John) | Initial detailed roadmap for Epic 1 (11 sprints) |
+| Version | Date       | Author          | Changes                                                                                      |
+| ------- | ---------- | --------------- | -------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-01-28 | PM Agent (John) | Initial detailed roadmap for Epic 1 (11 sprints)                                             |
+| 1.1     | 2026-01-29 | PM Agent (John) | Restructured to 13 sprints (one PRD per sprint), added PRD directory structure and filenames |
 
 ---
 
