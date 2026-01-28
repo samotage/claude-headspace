@@ -3,7 +3,7 @@
 
 server:
   host: "127.0.0.1"
-  port: 5050
+  port: 5055
   debug: false
 
 logging:
