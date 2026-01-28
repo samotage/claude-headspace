@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties for theme colors */
+:root {
+    /* Backgrounds */
+    --bg-void: #08080a;
+    --bg-deep: #0c0c0e;
+    --bg-surface: #111114;
+    --bg-elevated: #18181c;
+    --bg-hover: #1e1e24;
+
+    /* Accent colors */
+    --cyan: #56d4dd;
+    --green: #73e0a0;
+    --amber: #e0b073;
+    --red: #e07373;
+    --blue: #7399e0;
+    --magenta: #d073e0;
+
+    /* Text */
+    --text-primary: #e8e8ed;
+    --text-secondary: #a0a0ab;
+    --text-muted: #6a6a78;
+
+    /* Borders */
+    --border: #252530;
+    --border-bright: #363644;
+
+    /* Font */
+    --font-mono: 'SF Mono', 'Monaco', 'Menlo', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* Base styles */
+@layer base {
+    body {
+        background-color: var(--bg-void);
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+    }
+
+    a {
+        color: var(--cyan);
+    }
+
+    a:hover {
+        color: var(--text-primary);
+    }
+}

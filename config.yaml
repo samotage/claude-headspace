@@ -1,0 +1,11 @@
+# Claude Headspace Configuration
+# Environment variables override these values (e.g., FLASK_SERVER_PORT=8080)
+
+server:
+  host: "127.0.0.1"
+  port: 5050
+  debug: false
+
+logging:
+  level: "INFO"
+  file: "logs/app.log"
