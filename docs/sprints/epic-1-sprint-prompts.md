@@ -12,6 +12,7 @@
 Each prompt below corresponds to one sprint from the Epic 1 detailed roadmap. Use these prompts with the `/10: prd-workshop` command to generate PRDs that will feed into the orchestration system.
 
 **Workflow:**
+
 1. Copy the prompt for the sprint you want to work on
 2. Run `/10: prd-workshop` in Claude Code
 3. Paste the prompt when asked
@@ -21,13 +22,12 @@ Each prompt below corresponds to one sprint from the Epic 1 detailed roadmap. Us
 
 ---
 
-## Sprint 1: Project Bootstrap
+## Epic 1 Sprint 1: Project Bootstrap
 
 ### Subsystem: flask-bootstrap
 
 **Prompt:**
 
-```
 Create a PRD for the Flask application bootstrap subsystem.
 
 CONTEXT:
@@ -39,6 +39,7 @@ OBJECTIVE:
 Build a runnable Flask application using the application factory pattern with proper configuration loading, error handling, and logging.
 
 REQUIREMENTS:
+
 - Python project structure with pyproject.toml and src/ layout
 - Flask application factory pattern
 - Configuration loading from config.yaml with environment variable overrides
@@ -49,12 +50,14 @@ REQUIREMENTS:
 - Base HTML template structure ready for Tailwind CSS
 
 TECHNICAL CONSTRAINTS:
+
 - Must use Flask (not FastAPI or other frameworks)
 - Must support YAML configuration
 - Must be testable (application factory enables test isolation)
 - Configuration schema should match config.yaml structure in Epic 1 guidance
 
 SUCCESS CRITERIA:
+
 - `flask run` starts the server successfully
 - Server responds to health check at /health with 200 OK
 - Configuration loads from config.yaml
@@ -64,7 +67,8 @@ SUCCESS CRITERIA:
 - Base HTML renders with dark theme structure
 
 DELIVERABLES:
-- src/__init__.py
+
+- src/**init**.py
 - src/app.py (application factory)
 - src/config.py (config loader)
 - config.yaml (template)
@@ -73,8 +77,7 @@ DELIVERABLES:
 - Basic test suite
 
 OUTPUT LOCATION:
-docs/prds/flask-bootstrap/flask-bootstrap-prd.md
-```
+docs/prds/flask/e1-s1-flask-bootstrap-prd.md
 
 ---
 
@@ -82,7 +85,6 @@ docs/prds/flask-bootstrap/flask-bootstrap-prd.md
 
 **Prompt:**
 
-```
 Create a PRD for the database setup and migration subsystem.
 
 CONTEXT:
@@ -94,6 +96,7 @@ OBJECTIVE:
 Establish Postgres database connection with migration support using Flask-Migrate.
 
 REQUIREMENTS:
+
 - Postgres connection using credentials from config.yaml
 - SQLAlchemy ORM configuration
 - Flask-Migrate integration
@@ -103,6 +106,7 @@ REQUIREMENTS:
 - Connection error handling with graceful degradation
 
 TECHNICAL CONSTRAINTS:
+
 - Must use Postgres (local installation, not Docker in Epic 1)
 - Must use Flask-Migrate (wrapper around Alembic)
 - Connection string format: postgresql://user:password@host:port/database
@@ -110,6 +114,7 @@ TECHNICAL CONSTRAINTS:
 - Must support connection testing before server starts
 
 DATABASE CONFIGURATION SCHEMA:
+
 ```yaml
 database:
   host: localhost
@@ -121,6 +126,7 @@ database:
 ```
 
 SUCCESS CRITERIA:
+
 - Application connects to Postgres on startup
 - Test query succeeds (e.g., SELECT 1)
 - Migration commands work: flask db init, flask db migrate, flask db upgrade
@@ -129,6 +135,7 @@ SUCCESS CRITERIA:
 - Database initialization script creates database if not exists
 
 DELIVERABLES:
+
 - src/database.py (SQLAlchemy setup)
 - migrations/ directory structure
 - Database initialization script
@@ -136,18 +143,16 @@ DELIVERABLES:
 - Connection testing utility
 
 OUTPUT LOCATION:
-docs/prds/database-setup/database-setup-prd.md
-```
+docs/prds/core/e1-s1-database-setup-prd.md
 
 ---
 
-## Sprint 2: Domain Models & Database Schema
+## Epic 1 Sprint 2: Domain Models & Database Schema
 
 ### Subsystem: domain-models
 
 **Prompt:**
 
-```
 Create a PRD for the complete domain model implementation with database schema.
 
 CONTEXT:
@@ -217,6 +222,7 @@ REQUIREMENTS:
    - payload (JSON)
 
 TECHNICAL CONSTRAINTS:
+
 - Use SQLAlchemy ORM
 - Define enums using SQLAlchemy Enum type
 - Foreign keys must have proper cascade rules
@@ -225,11 +231,13 @@ TECHNICAL CONSTRAINTS:
 - Support for querying current state (e.g., agent.current_task)
 
 STATE ENUM VALUES:
+
 - Task.state: idle | commanded | processing | awaiting_input | complete
 - Turn.actor: user | agent
 - Turn.intent: command | answer | question | completion | progress
 
 EVENT TYPES (initial set):
+
 - session_discovered
 - session_inactive
 - turn_detected
@@ -238,6 +246,7 @@ EVENT TYPES (initial set):
 - task_completed
 
 SUCCESS CRITERIA:
+
 - All models can be created via SQLAlchemy
 - Database migrations run cleanly
 - Foreign key relationships enforced
@@ -248,7 +257,8 @@ SUCCESS CRITERIA:
 - Model validations prevent invalid data
 
 DELIVERABLES:
-- src/models/__init__.py
+
+- src/models/**init**.py
 - src/models/objective.py
 - src/models/project.py
 - src/models/agent.py
@@ -260,18 +270,16 @@ DELIVERABLES:
 - Query pattern documentation
 
 OUTPUT LOCATION:
-docs/prds/domain-models/domain-models-prd.md
-```
+docs/prds/core/e1-s2-domain-models-prd.md
 
 ---
 
-## Sprint 3: File Watcher & Event System
+## Epic 1 Sprint 3: File Watcher & Event System
 
 ### Subsystem: file-watcher
 
 **Prompt:**
 
-```
 Create a PRD for the file watcher subsystem that monitors Claude Code jsonl files.
 
 CONTEXT:
@@ -325,6 +333,7 @@ REQUIREMENTS:
    - Handle non-git directories gracefully
 
 TECHNICAL CONSTRAINTS:
+
 - Use watchdog library for filesystem monitoring
 - Line-by-line parsing (not full-file reads)
 - Store file offset in memory (or database for persistence)
@@ -332,12 +341,14 @@ TECHNICAL CONSTRAINTS:
 - Error handling: parsing failures should not crash watcher
 
 JSONL FORMAT EXAMPLE:
+
 ```json
 {"type":"user_message","text":"Create a health check endpoint","timestamp":"2026-01-29T10:30:00Z"}
 {"type":"assistant_message","text":"I'll create a health check endpoint for you...","timestamp":"2026-01-29T10:30:15Z"}
 ```
 
 SESSION DISCOVERY FLOW:
+
 1. Watchdog detects new file: ~/.claude/projects/-Users-...-project/abc123.jsonl
 2. Extract session_uuid: abc123
 3. Decode project path from folder name
@@ -345,6 +356,7 @@ SESSION DISCOVERY FLOW:
 5. Emit session_discovered event
 
 TURN DETECTION FLOW:
+
 1. Watchdog detects file modification
 2. Read new lines from last offset
 3. Parse each line as Turn
@@ -353,6 +365,7 @@ TURN DETECTION FLOW:
 6. Update Agent.last_seen_at
 
 SUCCESS CRITERIA:
+
 - Start watcher, start Claude Code session → session discovered
 - Issue command in Claude Code → turn detected within 2 seconds
 - Turn records created with correct actor, text, intent
@@ -364,6 +377,7 @@ SUCCESS CRITERIA:
 - Watcher recovers from crashes (if using supervisor)
 
 DELIVERABLES:
+
 - src/services/file_watcher.py (Watchdog setup)
 - src/services/jsonl_parser.py (parsing logic)
 - src/services/project_discovery.py (path decoding)
@@ -373,8 +387,7 @@ DELIVERABLES:
 - Documentation: jsonl format, session discovery flow
 
 OUTPUT LOCATION:
-docs/prds/file-watcher/file-watcher-prd.md
-```
+docs/prds/events/e1-s3-file-watcher-prd.md
 
 ---
 
@@ -382,7 +395,6 @@ docs/prds/file-watcher/file-watcher-prd.md
 
 **Prompt:**
 
-```
 Create a PRD for the event system that writes events to Postgres and runs as a background process.
 
 CONTEXT:
@@ -439,6 +451,7 @@ REQUIREMENTS:
    - Startup/shutdown scripts
 
 TECHNICAL CONSTRAINTS:
+
 - Background process must not block Flask application
 - Event writes must be atomic (use transactions)
 - Bulk writes should batch up to 100 events or 1 second timeout
@@ -447,6 +460,7 @@ TECHNICAL CONSTRAINTS:
 - Process must release database connections on shutdown
 
 EVENT WRITER FLOW:
+
 1. File watcher detects change
 2. Call event_writer.write(event_type, project_id, agent_id, payload)
 3. Event writer creates Event record
@@ -455,6 +469,7 @@ EVENT WRITER FLOW:
 6. On failure: retry with backoff, then log error
 
 BACKGROUND PROCESS FLOW:
+
 1. Load configuration
 2. Connect to database
 3. Initialize file watcher
@@ -463,6 +478,7 @@ BACKGROUND PROCESS FLOW:
 6. On SIGTERM: stop observer, close database, exit gracefully
 
 SUCCESS CRITERIA:
+
 - Events written to Postgres successfully
 - Background process runs continuously without manual intervention
 - Process restarts automatically on crash (if supervised)
@@ -473,6 +489,7 @@ SUCCESS CRITERIA:
 - No memory leaks over long runs (24+ hours)
 
 DELIVERABLES:
+
 - src/services/event_writer.py (event writing logic)
 - bin/watcher.py (background process entry point)
 - supervisord.conf or systemd unit file
@@ -482,18 +499,16 @@ DELIVERABLES:
 - Test suite: unit tests for event_writer, integration test for watcher
 
 OUTPUT LOCATION:
-docs/prds/event-system/event-system-prd.md
-```
+docs/prds/events/e1-s3-event-system-prd.md
 
 ---
 
-## Sprint 4: Task/Turn State Machine
+## Epic 1 Sprint 4: Task/Turn State Machine
 
 ### Subsystem: state-machine
 
 **Prompt:**
 
-```
 Create a PRD for the Task/Turn state machine that governs state transitions.
 
 CONTEXT:
@@ -546,6 +561,7 @@ REQUIREMENTS:
    - Test intent detection accuracy with sample turns
 
 TECHNICAL CONSTRAINTS:
+
 - Intent detection: regex-based in Epic 1 (LLM-based in Epic 3)
 - State transitions must emit state_transition events
 - Transitions must be atomic (database transaction)
@@ -553,19 +569,20 @@ TECHNICAL CONSTRAINTS:
 - State machine should be testable in isolation (unit tests)
 
 STATE TRANSITION MATRIX:
-| Current State  | Turn Actor | Turn Intent | New State      |
+| Current State | Turn Actor | Turn Intent | New State |
 |----------------|------------|-------------|----------------|
-| idle           | user       | command     | commanded      |
-| commanded      | agent      | progress    | processing     |
-| commanded      | agent      | question    | awaiting_input |
-| commanded      | agent      | completion  | complete       |
-| processing     | agent      | progress    | processing     |
-| processing     | agent      | question    | awaiting_input |
-| processing     | agent      | completion  | complete       |
-| awaiting_input | user       | answer      | processing     |
-| complete       | -          | -           | idle (task ends) |
+| idle | user | command | commanded |
+| commanded | agent | progress | processing |
+| commanded | agent | question | awaiting_input |
+| commanded | agent | completion | complete |
+| processing | agent | progress | processing |
+| processing | agent | question | awaiting_input |
+| processing | agent | completion | complete |
+| awaiting_input | user | answer | processing |
+| complete | - | - | idle (task ends) |
 
 TASK LIFECYCLE EXAMPLE:
+
 ```
 1. User: "Create a health check endpoint"
    → Turn: { actor: user, intent: command }
@@ -589,6 +606,7 @@ TASK LIFECYCLE EXAMPLE:
 ```
 
 SUCCESS CRITERIA:
+
 - All valid transitions succeed
 - Invalid transitions rejected with error log
 - Task lifecycle correct: command → ... → completion
@@ -599,6 +617,7 @@ SUCCESS CRITERIA:
 - Edge cases handled: agent crash → task stays in last state, marked as stale
 
 DELIVERABLES:
+
 - src/services/state_machine.py (state machine logic)
 - src/services/intent_detector.py (regex-based detection)
 - tests/test_state_machine.py (comprehensive unit tests)
@@ -607,18 +626,16 @@ DELIVERABLES:
 - Test dataset: 100 sample turns with expected intents
 
 OUTPUT LOCATION:
-docs/prds/state-machine/state-machine-prd.md
-```
+docs/prds/state/e1-s4-state-machine-prd.md
 
 ---
 
-## Sprint 5: SSE & Real-time Updates
+## Epic 1 Sprint 5: SSE & Real-time Updates
 
 ### Subsystem: sse-system
 
 **Prompt:**
 
-```
 Create a PRD for the Server-Sent Events (SSE) system for real-time browser updates.
 
 CONTEXT:
@@ -669,6 +686,7 @@ REQUIREMENTS:
    - Helps detect disconnected clients
 
 TECHNICAL CONSTRAINTS:
+
 - SSE is HTTP/1.1 only (not WebSocket)
 - Must handle client disconnects gracefully
 - In-memory broadcaster sufficient for Epic 1 (single Flask process)
@@ -677,6 +695,7 @@ TECHNICAL CONSTRAINTS:
 - Heartbeat interval: 30 seconds recommended
 
 SSE EVENT FORMAT:
+
 ```
 event: state_change
 data: {"agent_id": "abc123", "old_state": "processing", "new_state": "idle"}
@@ -688,6 +707,7 @@ data: {"task_id": 42, "summary": "Created health check endpoint"}
 ```
 
 HTMX SSE SETUP (FRONTEND):
+
 ```html
 <div hx-ext="sse" sse-connect="/api/events">
   <div sse-swap="state_change" hx-swap="innerHTML">
@@ -697,6 +717,7 @@ HTMX SSE SETUP (FRONTEND):
 ```
 
 BROADCASTER FLOW:
+
 1. Event occurs (e.g., task state change)
 2. State machine calls broadcaster.broadcast('state_change', payload)
 3. Broadcaster formats as SSE: event: state_change\ndata: {...}\n\n
@@ -704,6 +725,7 @@ BROADCASTER FLOW:
 5. Clients receive and trigger HTMX updates
 
 SSE ENDPOINT FLOW:
+
 1. Client connects to /api/events
 2. Server adds client to broadcaster's subscriber list
 3. Server sends initial connection event (optional)
@@ -712,6 +734,7 @@ SSE ENDPOINT FLOW:
 6. On disconnect: server removes client from list
 
 SUCCESS CRITERIA:
+
 - SSE endpoint streams events to connected clients
 - Multiple clients receive same events (broadcast works)
 - Disconnected clients reconnect automatically
@@ -722,6 +745,7 @@ SUCCESS CRITERIA:
 - Browser shows real-time updates with <1 second latency
 
 DELIVERABLES:
+
 - src/routes/sse.py (SSE endpoint)
 - src/services/broadcaster.py (event broadcaster)
 - templates/base.html (HTMX SSE setup)
@@ -730,18 +754,16 @@ DELIVERABLES:
 - Documentation: SSE event format, HTMX integration
 
 OUTPUT LOCATION:
-docs/prds/sse-system/sse-system-prd.md
-```
+docs/prds/api/e1-s5-sse-system-prd.md
 
 ---
 
-## Sprint 6: Dashboard UI
+## Epic 1 Sprint 6: Dashboard UI
 
 ### Subsystem: dashboard-ui
 
 **Prompt:**
 
-```
 Create a PRD for the dashboard UI implementation with Kanban layout and real-time updates.
 
 CONTEXT:
@@ -755,7 +777,7 @@ Build a fully functional dashboard matching the v2 design with Kanban-style agen
 REQUIREMENTS:
 
 1. HEADER BAR
-   - Application title: "CLAUDE >_headspace"
+   - Application title: "CLAUDE >\_headspace"
    - Navigation tabs: dashboard | objective | logging | config | help
    - Status counts: INPUT NEEDED (n) | WORKING (n) | IDLE (n)
    - Hooks/polling indicator: "HOOKS enabled" or "POLLING only"
@@ -823,6 +845,7 @@ REQUIREMENTS:
     - Responsive layout: desktop and tablet
 
 TECHNICAL CONSTRAINTS:
+
 - Use Tailwind CSS for styling (no custom CSS if possible)
 - HTMX for interactivity (no React/Vue)
 - SSE for real-time updates
@@ -834,10 +857,12 @@ TECHNICAL CONSTRAINTS:
 - Mobile responsiveness: basic support (Epic 1), full support (Epic 2)
 
 DASHBOARD API ENDPOINTS:
+
 - GET /api/dashboard → JSON: projects, agents, tasks, objective
 - POST /api/focus/<agent_id> → focus iTerm window (Sprint 10)
 
 TRAFFIC LIGHT LOGIC:
+
 ```python
 def get_traffic_light(agents):
     if any(a.state == 'awaiting_input' for a in agents):
@@ -848,6 +873,7 @@ def get_traffic_light(agents):
 ```
 
 AGENT CARD HTML STRUCTURE (example):
+
 ```html
 <div class="agent-card" data-agent-id="abc123">
   <div class="card-header">
@@ -857,19 +883,16 @@ AGENT CARD HTML STRUCTURE (example):
     <span class="uptime">up 32h 38m</span>
     <button class="focus-btn">Headspace</button>
   </div>
-  <div class="state-bar state-processing">
-    Processing...
-  </div>
+  <div class="state-bar state-processing">Processing...</div>
   <div class="task-summary">
     Creating health check endpoint with database connection test
   </div>
-  <div class="priority">
-    [60] // Default priority (no LLM result)
-  </div>
+  <div class="priority">[60] // Default priority (no LLM result)</div>
 </div>
 ```
 
 SUCCESS CRITERIA:
+
 - Dashboard displays all projects, agents, tasks
 - Status counts accurate (INPUT NEEDED, WORKING, IDLE)
 - Recommended next panel highlights highest priority agent
@@ -884,6 +907,7 @@ SUCCESS CRITERIA:
 - Dark theme aesthetic matches v2 design
 
 DELIVERABLES:
+
 - templates/dashboard.html (main template)
 - templates/components/ (reusable card components)
 - static/css/dashboard.css (Tailwind components if needed)
@@ -893,18 +917,16 @@ DELIVERABLES:
 - Documentation: component structure, SSE events
 
 OUTPUT LOCATION:
-docs/prds/dashboard-ui/dashboard-ui-prd.md
-```
+docs/prds/ui/e1-s6-dashboard-ui-prd.md
 
 ---
 
-## Sprint 7: Objective Tab
+## Epic 1 Sprint 7: Objective Tab
 
 ### Subsystem: objective-tab
 
 **Prompt:**
 
-```
 Create a PRD for the objective tab with form, auto-save, and history display.
 
 CONTEXT:
@@ -950,6 +972,7 @@ REQUIREMENTS:
    - Concurrent edits: last write wins (no conflict resolution in Epic 1)
 
 TECHNICAL CONSTRAINTS:
+
 - Auto-save debounce: 2-3 seconds recommended
 - History limit: show recent 10, paginate if more (Epic 2)
 - Character limits enforced client-side and server-side
@@ -957,6 +980,7 @@ TECHNICAL CONSTRAINTS:
 - Database transaction: atomic update (current → history, new → current)
 
 AUTO-SAVE FLOW:
+
 1. User types in objective input
 2. Debounce timer starts (reset on each keystroke)
 3. After 2-3 seconds of inactivity, trigger save
@@ -966,6 +990,7 @@ AUTO-SAVE FLOW:
 7. Client: show "Saved" message or error
 
 OBJECTIVE TAB LAYOUT (from guidance doc):
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Current Objective                                │
@@ -995,6 +1020,7 @@ OBJECTIVE TAB LAYOUT (from guidance doc):
 ```
 
 SUCCESS CRITERIA:
+
 - Can type objective text, auto-saves after debounce (2-3 seconds)
 - Can add optional constraints
 - Changes persist across page reloads
@@ -1006,6 +1032,7 @@ SUCCESS CRITERIA:
 - Character limits enforced (500/1000)
 
 DELIVERABLES:
+
 - templates/objective.html (objective tab template)
 - static/js/objective.js (auto-save logic with debounce)
 - src/routes/objective.py (API endpoints)
@@ -1014,18 +1041,16 @@ DELIVERABLES:
 - Documentation: auto-save behavior, history display
 
 OUTPUT LOCATION:
-docs/prds/objective-tab/objective-tab-prd.md
-```
+docs/prds/ui/e1-s7-objective-tab-prd.md
 
 ---
 
-## Sprint 8: Logging Tab
+## Epic 1 Sprint 8: Logging Tab
 
 ### Subsystem: logging-tab
 
 **Prompt:**
 
-```
 Create a PRD for the logging tab with event display and filtering.
 
 CONTEXT:
@@ -1075,6 +1100,7 @@ REQUIREMENTS:
    - Response: { events: [...], total_count: n, page: 1 }
 
 TECHNICAL CONSTRAINTS:
+
 - Server-side filtering (not client-side)
 - Pagination: 100 events per page recommended
 - Real-time updates: prepend new events (not full reload)
@@ -1083,6 +1109,7 @@ TECHNICAL CONSTRAINTS:
 - Handle large logs: test with 10,000+ events
 
 EVENT LOG TABLE LAYOUT:
+
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ LOGGING                                                                   │
@@ -1100,6 +1127,7 @@ EVENT LOG TABLE LAYOUT:
 ```
 
 FILTER QUERY LOGIC:
+
 ```python
 def get_events(project_id=None, agent_id=None, event_type=None, page=1, limit=100):
     query = Event.query
@@ -1109,13 +1137,14 @@ def get_events(project_id=None, agent_id=None, event_type=None, page=1, limit=10
         query = query.filter_by(agent_id=agent_id)
     if event_type:
         query = query.filter_by(event_type=event_type)
-    
+
     total = query.count()
     events = query.order_by(Event.timestamp.desc()).offset((page-1)*limit).limit(limit).all()
     return events, total
 ```
 
 SSE INTEGRATION:
+
 ```html
 <div hx-ext="sse" sse-connect="/api/events-stream">
   <div id="event-log" sse-swap="event_log_update" hx-swap="afterbegin">
@@ -1125,6 +1154,7 @@ SSE INTEGRATION:
 ```
 
 SUCCESS CRITERIA:
+
 - Event log displays all events with columns: timestamp, project, agent, event type, details
 - Can filter by project, agent, event type
 - Filters apply correctly (matching events shown)
@@ -1136,6 +1166,7 @@ SUCCESS CRITERIA:
 - No full page reload on filter change (use HTMX)
 
 DELIVERABLES:
+
 - templates/logging.html (logging tab template)
 - static/js/logging.js (filter logic, timestamp updates, expand/collapse)
 - src/routes/logging.py (API endpoint with filtering)
@@ -1144,18 +1175,16 @@ DELIVERABLES:
 - Documentation: filter logic, SSE integration
 
 OUTPUT LOCATION:
-docs/prds/logging-tab/logging-tab-prd.md
-```
+docs/prds/ui/e1-s8-logging-tab-prd.md
 
 ---
 
-## Sprint 9: Launcher Script
+## Epic 1 Sprint 9: Launcher Script
 
 ### Subsystem: launcher-script
 
 **Prompt:**
 
-```
 Create a PRD for the CLI launcher script to start monitored Claude Code sessions.
 
 CONTEXT:
@@ -1213,6 +1242,7 @@ REQUIREMENTS:
    - Mark session as inactive in database
 
 TECHNICAL CONSTRAINTS:
+
 - Script language: Python (use argparse for CLI) or Bash
 - Recommend Python for cross-platform portability
 - iTerm2 pane ID capture: requires iTerm2 (not other terminals in Epic 1)
@@ -1221,6 +1251,7 @@ TECHNICAL CONSTRAINTS:
 - Registration failure: warn but proceed (graceful degradation)
 
 CLI USAGE EXAMPLE:
+
 ```bash
 cd ~/dev/my-project
 claude-headspace start
@@ -1228,6 +1259,7 @@ claude-headspace start
 ```
 
 SESSION REGISTRATION FLOW:
+
 1. User runs `claude-headspace start` in project directory
 2. Script detects project path from pwd
 3. Script generates session UUID
@@ -1241,6 +1273,7 @@ SESSION REGISTRATION FLOW:
 11. Server marks Agent as inactive
 
 API ENDPOINTS:
+
 - POST /api/register-session
   - Body: { session_uuid, project_path, iterm_pane_id }
   - Response: { success: true, agent_id: "..." }
@@ -1249,6 +1282,7 @@ API ENDPOINTS:
   - Response: { success: true }
 
 APPLESCRIPT EXAMPLE (iTerm pane ID):
+
 ```applescript
 tell application "iTerm"
     tell current session of current window
@@ -1258,6 +1292,7 @@ end tell
 ```
 
 SUCCESS CRITERIA:
+
 - `claude-headspace start` launches Claude Code successfully
 - Session UUID generated and stored
 - Project detected correctly from pwd
@@ -1270,6 +1305,7 @@ SUCCESS CRITERIA:
 - Graceful degradation: if registration fails, warn but proceed with Claude Code launch
 
 DELIVERABLES:
+
 - bin/claude-headspace (CLI script)
 - src/services/session_registration.py (API for registration endpoints)
 - src/routes/session.py (session registration routes)
@@ -1278,18 +1314,16 @@ DELIVERABLES:
 - Documentation: CLI usage, environment variables
 
 OUTPUT LOCATION:
-docs/prds/launcher-script/launcher-script-prd.md
-```
+docs/prds/scripts/e1-s9-launcher-script-prd.md
 
 ---
 
-## Sprint 10: AppleScript Integration
+## Epic 1 Sprint 10: AppleScript Integration
 
 ### Subsystem: applescript-integration
 
 **Prompt:**
 
-```
 Create a PRD for macOS AppleScript integration to focus iTerm2 windows and send system notifications.
 
 CONTEXT:
@@ -1339,6 +1373,7 @@ REQUIREMENTS:
    - Notification action: click to focus iTerm window (optional)
 
 TECHNICAL CONSTRAINTS:
+
 - iTerm2 required (not other terminals in Epic 1)
 - macOS only (Linux/Windows not supported)
 - AppleScript execution: use Python subprocess to run osascript
@@ -1346,6 +1381,7 @@ TECHNICAL CONSTRAINTS:
 - Focus latency: target <500ms
 
 APPLESCRIPT FOCUS COMMAND:
+
 ```applescript
 tell application "iTerm"
     activate
@@ -1358,6 +1394,7 @@ end tell
 ```
 
 PYTHON EXECUTION:
+
 ```python
 import subprocess
 
@@ -1382,11 +1419,13 @@ def focus_iterm_pane(pane_id):
 ```
 
 SYSTEM NOTIFICATION COMMAND:
+
 ```applescript
 display notification "Agent #abc123 completed task" with title "Claude Headspace"
 ```
 
 API ENDPOINT FLOW:
+
 1. Client clicks agent card
 2. HTMX POSTs to /api/focus/<agent_id>
 3. Server looks up Agent by agent_id
@@ -1396,6 +1435,7 @@ API ENDPOINT FLOW:
 7. Client shows feedback (success: no UI change, error: show message)
 
 SUCCESS CRITERIA:
+
 - Click agent card → iTerm window focuses
 - Correct pane activated (not just iTerm window)
 - Permission errors detected, actionable message shown
@@ -1407,6 +1447,7 @@ SUCCESS CRITERIA:
 - Notifications appear in macOS notification center
 
 DELIVERABLES:
+
 - src/services/iterm_focus.py (AppleScript wrapper)
 - src/services/macos_notifications.py (notification wrapper)
 - src/routes/focus.py (API endpoint)
@@ -1416,18 +1457,16 @@ DELIVERABLES:
 - Documentation: iTerm2 setup, permission requirements
 
 OUTPUT LOCATION:
-docs/prds/applescript-integration/applescript-integration-prd.md
-```
+docs/prds/scripts/e1-s10-applescript-integration-prd.md
 
 ---
 
-## Sprint 11: Claude Code Hooks Integration
+## Epic 1 Sprint 11: Claude Code Hooks Integration
 
 ### Subsystem: hook-receiver
 
 **Prompt:**
 
-```
 Create a PRD for the Claude Code hooks integration system for event-driven state updates.
 
 CONTEXT:
@@ -1503,6 +1542,7 @@ REQUIREMENTS:
     - Hook script fails → Claude Code session unaffected
 
 TECHNICAL CONSTRAINTS:
+
 - Hook authentication: none (local only, trust localhost) — Epic 1, add in Epic 2
 - Session correlation: working directory matching (Claude session ID ≠ terminal pane ID)
 - Hybrid mode polling: 60s when hooks active, 2s fallback after 300s silence
@@ -1511,15 +1551,16 @@ TECHNICAL CONSTRAINTS:
 - Confidence level: hooks = 1.0, polling = 0.8
 
 HOOK EVENT TO STATE MAPPING:
-| Hook Event         | Current State | New State  | Confidence |
+| Hook Event | Current State | New State | Confidence |
 |--------------------|---------------|------------|------------|
-| SessionStart       | -             | IDLE       | 1.0        |
-| UserPromptSubmit   | IDLE          | PROCESSING | 1.0        |
-| Stop               | PROCESSING    | IDLE       | 1.0        |
-| Notification       | any           | (no change)| -          |
-| SessionEnd         | any           | ENDED      | 1.0        |
+| SessionStart | - | IDLE | 1.0 |
+| UserPromptSubmit | IDLE | PROCESSING | 1.0 |
+| Stop | PROCESSING | IDLE | 1.0 |
+| Notification | any | (no change)| - |
+| SessionEnd | any | ENDED | 1.0 |
 
 HYBRID MODE LOGIC:
+
 ```python
 def get_polling_interval(agent):
     if agent.last_hook_event_at:
@@ -1531,18 +1572,19 @@ def get_polling_interval(agent):
 ```
 
 SESSION CORRELATION LOGIC:
+
 ```python
 def correlate_session(claude_session_id, cwd):
     # 1. Check cache
     if claude_session_id in correlation_cache:
         return correlation_cache[claude_session_id]
-    
+
     # 2. Match by working directory
     for agent in agents:
         if agent.project.path == cwd:
             correlation_cache[claude_session_id] = agent
             return agent
-    
+
     # 3. Create new agent
     project = Project.get_or_create(path=cwd)
     agent = Agent.create(project=project, claude_session_id=claude_session_id)
@@ -1551,6 +1593,7 @@ def correlate_session(claude_session_id, cwd):
 ```
 
 HOOK NOTIFICATION SCRIPT (bin/notify-headspace.sh):
+
 ```bash
 #!/bin/bash
 EVENT_TYPE=$1
@@ -1567,6 +1610,7 @@ exit 0  # always exit successfully
 ```
 
 CLAUDE CODE SETTINGS TEMPLATE (docs/claude-code-hooks-settings.json):
+
 ```json
 {
   "hooks": {
@@ -1580,6 +1624,7 @@ CLAUDE CODE SETTINGS TEMPLATE (docs/claude-code-hooks-settings.json):
 ```
 
 EVENT FLOW:
+
 ```
 Claude Code → Hook Script → HTTP POST → HookReceiver.process_event()
                                                      ↓
@@ -1595,6 +1640,7 @@ Claude Code → Hook Script → HTTP POST → HookReceiver.process_event()
 ```
 
 SUCCESS CRITERIA:
+
 - HookReceiver service processes all hook events correctly
 - Hook endpoints receive events from Claude Code
 - Hook events update Agent/Task/Turn state with confidence=1.0
@@ -1612,6 +1658,7 @@ SUCCESS CRITERIA:
 - End-to-end test: start Claude Code → hooks fire → state transitions → polling adjusts
 
 DELIVERABLES:
+
 - src/services/hook_receiver.py (core service)
 - src/routes/hooks.py (API endpoints)
 - src/models/config.py (HookConfig model)
@@ -1624,8 +1671,7 @@ DELIVERABLES:
 - Documentation: architecture, event flow, setup instructions
 
 OUTPUT LOCATION:
-docs/prds/hook-receiver/hook-receiver-prd.md
-```
+docs/prds/events/e1-s11-hook-receiver-prd.md
 
 ---
 
@@ -1640,6 +1686,7 @@ These 11 prompts cover all sprints in Epic 1. Each prompt:
 - Is ready to use with `/10: prd-workshop`
 
 **Usage Pattern:**
+
 1. Copy the prompt for the sprint
 2. Run `/10: prd-workshop`
 3. Paste the prompt
@@ -1649,6 +1696,7 @@ These 11 prompts cover all sprints in Epic 1. Each prompt:
 
 **Sprint Order:**
 Follow the dependency graph from the detailed roadmap:
+
 - Phase 1: Sprints 1-2 (Foundation)
 - Phase 2: Sprints 3-5 (Event System + State Machine + SSE)
 - Phase 3: Sprints 6-8 (UI Features)
