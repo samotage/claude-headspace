@@ -36,7 +36,7 @@ You are helping me discover what "magic" (skills and plugins) is available in th
 
 **Group remaining skills by module:**
 
-- `openspec:*` - OpenSpec change management
+- `opsx:*` - OpenSpec change management
 - `bmad:cis:*` - Creative Innovation Suite
 - `bmad:bmb:*` - BMAD Module Builder
 - `bmad:bmm:*` - BMAD Method Module
@@ -77,9 +77,12 @@ Structured change proposals for codebase modifications.
 
 | Skill | Purpose |
 |-------|---------|
-| `/openspec:proposal` | Create a change proposal |
-| `/openspec:apply` | Apply an approved proposal |
-| `/openspec:archive` | Archive completed changes |
+| `/opsx:new` | Start a new change proposal |
+| `/opsx:continue` | Continue working on a change |
+| `/opsx:apply` | Implement tasks from a change |
+| `/opsx:archive` | Archive completed changes |
+| `/opsx:explore` | Explore mode for thinking through ideas |
+| `/opsx:ff` | Fast-forward (generate all artifacts) |
 
 ### BMAD Creative Innovation Suite (bmad:cis)
 Creative thinking and innovation workflows.
@@ -123,7 +126,7 @@ End with a quick reference section:
 ## Quick Reference
 
 **Invoking Skills:**
-- Type `/skill-name` in chat (e.g., `/openspec:proposal`)
+- Type `/skill-name` in chat (e.g., `/opsx:new`)
 - Or use the full path for nested skills
 
 **Plugins:**

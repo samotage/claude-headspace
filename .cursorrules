@@ -214,11 +214,12 @@ claude_headspace/
 
 ### OpenSpec Workflow
 
-1. Create proposal: `/openspec-proposal`
-2. Review and edit proposal in `openspec/changes/`
-3. Apply changes: `/openspec-apply`
-4. Test and verify
-5. Archive: `/openspec-archive`
+1. Create proposal: `/opsx:new`
+2. Continue work on artifacts: `/opsx:continue`
+3. Review and edit proposal in `openspec/changes/`
+4. Apply changes: `/opsx:apply`
+5. Test and verify
+6. Archive: `/opsx:archive`
 
 ### Git Workflow
 

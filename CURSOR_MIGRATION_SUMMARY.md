@@ -188,7 +188,7 @@ grep -r "Pylance\|Ruff\|pytest" .cursorrules .cursor/ .vscode/
 - ❌ Turbo/Avo restrictions
 
 ### Already in .claude/ (as requested)
-- ❌ `.cursor/commands/openspec-*.md` (3 files)
+- ❌ `.cursor/commands/openspec-*.md` (3 files) - superseded by `/opsx:*` commands
 - ❌ `.cursor/commands/otl/` (entire subtree)
 
 ### Miscellaneous
