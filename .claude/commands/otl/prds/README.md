@@ -138,6 +138,7 @@ docs/prds/
 ```
 
 - **Pending PRDs**: `docs/prds/{subsystem}/{prd-name}.md`
+- **Epic/Sprint prefix**: If the initial workshop prompt (or Phase 0 response) includes an epic and sprint, the workshop saves the PRD as `e<epic>-s<sprint>-{prd-name}.md` (e.g. `e2-s3-voice-bridge-prd.md`).
 - **Completed PRDs**: `docs/prds/{subsystem}/done/{prd-name}.md`
 - **Root-level PRDs**: Ignored by orchestration
 

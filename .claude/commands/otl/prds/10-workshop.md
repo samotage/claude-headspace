@@ -63,6 +63,7 @@ You are a PRD Workshop facilitator. Your job is to help create requirement-focus
   1. **High-level requirement**: What capability or feature do you want to build? (1-3 sentences)
   2. **Subsystem**: Which subsystem does this belong to? (e.g., beta_signups, campaigns, core)
   3. **Context**: Any existing related PRDs, OpenSpec changes, or implementations I should be aware of? (optional)
+  4. **Epic & Sprint** (optional): If this PRD is part of a roadmap epic/sprint, specify epic number and sprint number (e.g., Epic 2, Sprint 3).
 
   What would you like to build?
   ```
@@ -71,9 +72,13 @@ You are a PRD Workshop facilitator. Your job is to help create requirement-focus
 - **YOU MUST NOT proceed to Phase 2 until the user provides at least the high-level requirement and subsystem**
 - **YOU MUST end your message/turn after asking for input**
 
+**Epic/Sprint detection:**
+- **Initial prompt:** If the user's very first message when invoking the command (or their Phase 0 response) contains epic and sprint details (e.g., "Epic 2, Sprint 3", "e2 s3", "epic 1 sprint 2"), extract and store the epic number and sprint number for use in the filename (Phase 8).
+- **Store:** epic number and sprint number (numeric only) when present; leave unset when absent.
+
 **After user provides input:**
 - **YOU MUST output:** `✓ Phase 0 complete - Create Mode initialized`
-- Store the provided information for use in subsequent phases
+- Store the provided information for use in subsequent phases (including epic and sprint when present)
 - **YOU MUST proceed to Phase 2** (skip Phase 1 - it's for Remediate Mode only)
 
 ---
@@ -358,6 +363,15 @@ CHECKPOINT: Should we split this PRD? [y/n]
 
 **IMPORTANT:** Do NOT display the full PRD content to the user. The user has already reviewed and approved all sections through the workshop checkpoints. Generate the PRD using the structure below and write it directly to the file.
 
+**Filename convention:**
+- **If epic and sprint were provided** (in the initial workshop prompt or Phase 0 response): use prefix `e<epic>-s<sprint>-` before the PRD filename.
+  - Example: epic 2, sprint 3, prd-name `voice-bridge-prd` → filename `e2-s3-voice-bridge-prd.md`
+- **If epic or sprint are missing:** use the standard filename with no prefix: `[prd-name].md`
+
+**File Path:**
+- With epic + sprint: `docs/prds/[subsystem]/e<epic>-s<sprint>-[prd-name].md`
+- Without: `docs/prds/[subsystem]/[prd-name].md`
+
 **PRD Structure to Generate:**
 
 ```markdown
@@ -426,15 +440,15 @@ CHECKPOINT: Should we split this PRD? [y/n]
 [Informal description of key screens/interactions]
 ```
 
-**File Path:** `docs/prds/[subsystem]/[prd-name].md`
-
-**After writing the file, output:**
+**After writing the file, output** (use the actual path you used):
 
 ```
-✓ PRD saved to: docs/prds/[subsystem]/[prd-name].md
+✓ PRD saved to: docs/prds/[subsystem]/[filename].md
 
 Proceeding to auto-validation...
 ```
+
+(Where `[filename]` is either `e<epic>-s<sprint>-[prd-name].md` when epic/sprint were provided, or `[prd-name].md` otherwise.)
 
 ---
 
@@ -447,12 +461,13 @@ Proceeding to auto-validation...
 ```
 Automatically validating PRD...
 
-Running: 30: prd-validate docs/prds/[subsystem]/[prd-name].md
+Running: 30: prd-validate <path-from-phase-8>
 ```
+(Use the exact path you saved in Phase 8, e.g. `docs/prds/dashboard/e2-s3-voice-bridge-prd.md` or `docs/prds/dashboard/voice-bridge-prd.md`.)
 
 **Invoke the validation command as a sub-step:**
 
-Execute the `30: prd-validate` command with the saved PRD path. The validation command will:
+Execute the `30: prd-validate` command with the **same path** you used when saving in Phase 8 (including the `e<epic>-s<sprint>-` prefix when applicable). The validation command will:
 1. Perform all validation checks
 2. Update the PRD frontmatter with validation status
 3. Return PASS/FAIL/BLOCKED result
@@ -549,9 +564,10 @@ PRDs must be saved in subsystem folders:
 ```
 docs/prds/
 ├── beta_signups/
-│   ├── beta-signups-05-prd.md       # Pending (to build)
+│   ├── beta-signups-05-prd.md           # Pending (to build)
+│   ├── e2-s3-voice-bridge-prd.md        # Epic/sprint-prefixed (pending)
 │   └── done/
-│       └── beta-signups-04-prd.md   # Completed
+│       └── beta-signups-04-prd.md       # Completed
 ├── campaigns/
 │   ├── campaign-feature-prd.md
 │   └── done/
@@ -559,6 +575,7 @@ docs/prds/
 ```
 
 - **Pending PRDs**: `docs/prds/{subsystem}/{prd-name}.md`
+- **Epic/Sprint prefix**: When the initial workshop prompt (or Phase 0 response) includes an epic and sprint, use filename `e<epic>-s<sprint>-{prd-name}.md` (e.g. `e2-s3-voice-bridge-prd.md`).
 - **Completed PRDs**: `docs/prds/{subsystem}/done/{prd-name}.md`
 - **Root-level PRDs**: Ignored by orchestration (e.g., `walking-skeleton-prd.md`)
 
