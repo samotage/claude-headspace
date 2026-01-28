@@ -1,3 +1,9 @@
+---
+validation:
+  status: valid
+  validated_at: '2026-01-29T10:33:04+11:00'
+---
+
 ## Product Requirements Document (PRD) — Dashboard Interactivity
 
 **Project:** Claude Headspace v3.1
