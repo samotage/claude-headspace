@@ -1,0 +1,335 @@
+"""Task lifecycle manager for creating and managing tasks."""
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from sqlalchemy.orm import Session
+
+from ..models.agent import Agent
+from ..models.event import Event, EventType
+from ..models.task import Task, TaskState
+from ..models.turn import Turn, TurnActor, TurnIntent
+from .event_writer import EventWriter, WriteResult
+from .intent_detector import IntentResult, detect_intent
+from .state_machine import StateMachine, TransitionResult
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TurnProcessingResult:
+    """Result of processing a turn event."""
+
+    success: bool
+    task: Optional[Task] = None
+    transition: Optional[TransitionResult] = None
+    intent: Optional[IntentResult] = None
+    event_written: bool = False
+    error: Optional[str] = None
+    new_task_created: bool = False
+
+
+class TaskLifecycleManager:
+    """
+    Manager for task lifecycle operations.
+
+    Handles task creation, state transitions, and event logging.
+    Uses dependency injection for the event writer and state machine.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        event_writer: Optional[EventWriter] = None,
+        state_machine: Optional[StateMachine] = None,
+    ) -> None:
+        """
+        Initialize the task lifecycle manager.
+
+        Args:
+            session: SQLAlchemy session for database operations
+            event_writer: Optional EventWriter for logging state transitions
+            state_machine: Optional StateMachine instance (created if not provided)
+        """
+        self._session = session
+        self._event_writer = event_writer
+        self._state_machine = state_machine or StateMachine()
+
+    def create_task(self, agent: Agent, initial_state: TaskState = TaskState.COMMANDED) -> Task:
+        """
+        Create a new task for an agent.
+
+        Args:
+            agent: The agent to create the task for
+            initial_state: Initial state for the task (default: COMMANDED)
+
+        Returns:
+            The created Task instance
+        """
+        task = Task(
+            agent_id=agent.id,
+            state=initial_state,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(task)
+        self._session.flush()  # Get the task ID
+
+        logger.info(f"Created task id={task.id} for agent id={agent.id} with state={initial_state.value}")
+
+        # Write state transition event for task creation
+        if self._event_writer:
+            self._write_transition_event(
+                agent=agent,
+                task=task,
+                from_state=TaskState.IDLE,
+                to_state=initial_state,
+                trigger="user:command",
+                confidence=1.0,
+            )
+
+        return task
+
+    def get_current_task(self, agent: Agent) -> Optional[Task]:
+        """
+        Get the current (incomplete) task for an agent.
+
+        Args:
+            agent: The agent to get the task for
+
+        Returns:
+            The current Task, or None if no incomplete task exists
+        """
+        return (
+            self._session.query(Task)
+            .filter(
+                Task.agent_id == agent.id,
+                Task.state != TaskState.COMPLETE,
+            )
+            .order_by(Task.started_at.desc())
+            .first()
+        )
+
+    def derive_agent_state(self, agent: Agent) -> TaskState:
+        """
+        Derive the agent's current state from its current task.
+
+        This is a computed property - the agent's state is determined by
+        its most recent incomplete task.
+
+        Args:
+            agent: The agent to get the state for
+
+        Returns:
+            The derived TaskState (IDLE if no active task)
+        """
+        current_task = self.get_current_task(agent)
+        if current_task:
+            return current_task.state
+        return TaskState.IDLE
+
+    def update_task_state(
+        self,
+        task: Task,
+        to_state: TaskState,
+        trigger: str,
+        confidence: float = 1.0,
+    ) -> bool:
+        """
+        Update a task's state.
+
+        Args:
+            task: The task to update
+            to_state: The new state
+            trigger: The trigger that caused the transition (e.g., "agent:question")
+            confidence: Confidence in the transition (0.0-1.0)
+
+        Returns:
+            True if the update was successful
+        """
+        from_state = task.state
+        task.state = to_state
+
+        logger.debug(f"Task id={task.id} state updated: {from_state.value} -> {to_state.value}")
+
+        # Write state transition event
+        if self._event_writer:
+            self._write_transition_event(
+                agent=task.agent,
+                task=task,
+                from_state=from_state,
+                to_state=to_state,
+                trigger=trigger,
+                confidence=confidence,
+            )
+
+        return True
+
+    def complete_task(self, task: Task, trigger: str = "agent:completion") -> bool:
+        """
+        Mark a task as complete.
+
+        Sets the state to COMPLETE and records the completed_at timestamp.
+
+        Args:
+            task: The task to complete
+            trigger: The trigger that caused completion
+
+        Returns:
+            True if the task was completed successfully
+        """
+        from_state = task.state
+        task.state = TaskState.COMPLETE
+        task.completed_at = datetime.now(timezone.utc)
+
+        logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
+
+        # Write state transition event
+        if self._event_writer:
+            self._write_transition_event(
+                agent=task.agent,
+                task=task,
+                from_state=from_state,
+                to_state=TaskState.COMPLETE,
+                trigger=trigger,
+                confidence=1.0,
+            )
+
+        return True
+
+    def process_turn(
+        self,
+        agent: Agent,
+        actor: TurnActor,
+        text: Optional[str],
+    ) -> TurnProcessingResult:
+        """
+        Process a turn and update task state accordingly.
+
+        This is the main entry point for handling turn events. It:
+        1. Gets the current task (or determines if a new one is needed)
+        2. Detects the intent of the turn
+        3. Validates and applies the state transition
+        4. Logs the transition event
+
+        Args:
+            agent: The agent the turn is for
+            actor: Who produced the turn (USER or AGENT)
+            text: The text content of the turn
+
+        Returns:
+            TurnProcessingResult with the outcome
+        """
+        current_task = self.get_current_task(agent)
+        current_state = current_task.state if current_task else TaskState.IDLE
+
+        # Detect intent
+        intent_result = detect_intent(text, actor, current_state)
+        logger.debug(
+            f"Detected intent: {intent_result.intent.value} "
+            f"(confidence={intent_result.confidence})"
+        )
+
+        # Special case: User command while awaiting_input or no active task
+        if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
+            if current_state == TaskState.IDLE or current_state == TaskState.AWAITING_INPUT:
+                # Create new task
+                new_task = self.create_task(agent, TaskState.COMMANDED)
+                return TurnProcessingResult(
+                    success=True,
+                    task=new_task,
+                    intent=intent_result,
+                    event_written=self._event_writer is not None,
+                    new_task_created=True,
+                )
+
+        # No active task and not a user command - nothing to do
+        if not current_task:
+            logger.warning(f"No active task for agent id={agent.id} and turn is not a command")
+            return TurnProcessingResult(
+                success=False,
+                error="No active task and turn is not a user command",
+                intent=intent_result,
+            )
+
+        # Validate transition
+        transition_result = self._state_machine.transition(
+            from_state=current_state,
+            actor=actor,
+            intent=intent_result.intent,
+        )
+
+        if not transition_result.valid:
+            logger.warning(f"Invalid transition rejected: {transition_result.reason}")
+            return TurnProcessingResult(
+                success=False,
+                task=current_task,
+                transition=transition_result,
+                intent=intent_result,
+                error=transition_result.reason,
+            )
+
+        # Apply the transition
+        if transition_result.to_state == TaskState.COMPLETE:
+            self.complete_task(current_task, trigger=transition_result.trigger or "unknown")
+        else:
+            self.update_task_state(
+                task=current_task,
+                to_state=transition_result.to_state,
+                trigger=transition_result.trigger or "unknown",
+                confidence=intent_result.confidence,
+            )
+
+        return TurnProcessingResult(
+            success=True,
+            task=current_task,
+            transition=transition_result,
+            intent=intent_result,
+            event_written=self._event_writer is not None,
+        )
+
+    def _write_transition_event(
+        self,
+        agent: Agent,
+        task: Task,
+        from_state: TaskState,
+        to_state: TaskState,
+        trigger: str,
+        confidence: float,
+    ) -> Optional[WriteResult]:
+        """
+        Write a state_transition event.
+
+        Args:
+            agent: The agent involved
+            task: The task involved
+            from_state: The previous state
+            to_state: The new state
+            trigger: What triggered the transition
+            confidence: Confidence in the transition
+
+        Returns:
+            WriteResult if event writer is available, else None
+        """
+        if not self._event_writer:
+            return None
+
+        payload = {
+            "from_state": from_state.value,
+            "to_state": to_state.value,
+            "trigger": trigger,
+            "confidence": confidence,
+        }
+
+        result = self._event_writer.write_event(
+            event_type=EventType.STATE_TRANSITION,
+            payload=payload,
+            agent_id=agent.id,
+            task_id=task.id,
+        )
+
+        if not result.success:
+            logger.error(f"Failed to write state_transition event: {result.error}")
+
+        return result

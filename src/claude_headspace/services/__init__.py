@@ -15,6 +15,23 @@ from .event_schemas import (
 )
 from .event_writer import EventWriter, WriteResult, create_event_writer
 from .process_monitor import ProcessMonitor, WatcherStatus
+from .intent_detector import (
+    IntentResult,
+    detect_agent_intent,
+    detect_user_intent,
+    detect_intent,
+    QUESTION_PATTERNS,
+    COMPLETION_PATTERNS,
+)
+from .state_machine import (
+    StateMachine,
+    TransitionResult,
+    validate_transition,
+    get_valid_transitions_from,
+    is_terminal_state,
+    VALID_TRANSITIONS,
+)
+from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult
 
 __all__ = [
     # Session registry
@@ -47,4 +64,21 @@ __all__ = [
     # Process monitor
     "ProcessMonitor",
     "WatcherStatus",
+    # Intent detector
+    "IntentResult",
+    "detect_agent_intent",
+    "detect_user_intent",
+    "detect_intent",
+    "QUESTION_PATTERNS",
+    "COMPLETION_PATTERNS",
+    # State machine
+    "StateMachine",
+    "TransitionResult",
+    "validate_transition",
+    "get_valid_transitions_from",
+    "is_terminal_state",
+    "VALID_TRANSITIONS",
+    # Task lifecycle
+    "TaskLifecycleManager",
+    "TurnProcessingResult",
 ]
