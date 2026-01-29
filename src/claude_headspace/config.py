@@ -53,6 +53,15 @@ DEFAULTS = {
         "polling_interval_with_hooks": 60,
         "fallback_timeout": 300,
     },
+    "notifications": {
+        "enabled": True,
+        "sound": True,
+        "events": {
+            "task_complete": True,
+            "awaiting_input": True,
+        },
+        "rate_limit_seconds": 5,
+    },
 }
 
 # Environment variable mappings
@@ -84,6 +93,9 @@ ENV_MAPPINGS = {
     "HOOKS_ENABLED": ("hooks", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
     "HOOKS_POLLING_INTERVAL_WITH_HOOKS": ("hooks", "polling_interval_with_hooks", int),
     "HOOKS_FALLBACK_TIMEOUT": ("hooks", "fallback_timeout", int),
+    "NOTIFICATIONS_ENABLED": ("notifications", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
+    "NOTIFICATIONS_SOUND": ("notifications", "sound", lambda x: x.lower() in ("true", "1", "yes")),
+    "NOTIFICATIONS_RATE_LIMIT_SECONDS": ("notifications", "rate_limit_seconds", int),
 }
 
 
@@ -328,5 +340,33 @@ def get_hooks_config(config: dict) -> dict:
         ),
         "fallback_timeout": get_value(
             config, "hooks", "fallback_timeout", default=300
+        ),
+    }
+
+
+def get_notifications_config(config: dict) -> dict:
+    """
+    Get notifications configuration with defaults.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Notifications configuration dictionary
+    """
+    events = config.get("notifications", {}).get("events", {})
+    return {
+        "enabled": get_value(
+            config, "notifications", "enabled", default=True
+        ),
+        "sound": get_value(
+            config, "notifications", "sound", default=True
+        ),
+        "events": {
+            "task_complete": events.get("task_complete", True),
+            "awaiting_input": events.get("awaiting_input", True),
+        },
+        "rate_limit_seconds": get_value(
+            config, "notifications", "rate_limit_seconds", default=5
         ),
     }

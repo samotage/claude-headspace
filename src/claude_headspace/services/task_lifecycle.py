@@ -153,6 +153,20 @@ class TaskLifecycleManager:
 
         logger.debug(f"Task id={task.id} state updated: {from_state.value} -> {to_state.value}")
 
+        # Send notification for awaiting_input state
+        if to_state == TaskState.AWAITING_INPUT:
+            try:
+                # Lazy import to avoid circular imports and test context issues
+                from .notification_service import get_notification_service
+                notification_service = get_notification_service()
+                notification_service.notify_awaiting_input(
+                    agent_id=str(task.agent_id),
+                    agent_name=task.agent.name or f"Agent {task.agent_id}",
+                    project=task.agent.project,
+                )
+            except Exception as notif_err:
+                logger.debug(f"Notification send failed (non-fatal): {notif_err}")
+
         # Write state transition event
         if self._event_writer:
             self._write_transition_event(

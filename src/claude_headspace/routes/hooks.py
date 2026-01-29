@@ -15,6 +15,7 @@ from ..services.hook_receiver import (
     process_stop,
     process_user_prompt_submit,
 )
+from ..services.notification_service import get_notification_service
 from ..services.session_correlator import correlate_session
 
 logger = logging.getLogger(__name__)
@@ -256,6 +257,17 @@ def hook_stop():
         _log_hook_event("stop", session_id, latency_ms)
 
         if result.success:
+            # Send notification for task completion
+            try:
+                notification_service = get_notification_service()
+                notification_service.notify_task_complete(
+                    agent_id=str(result.agent_id),
+                    agent_name=correlation.agent.name or f"Agent {result.agent_id}",
+                    project=correlation.agent.project,
+                )
+            except Exception as notif_err:
+                logger.debug(f"Notification send failed (non-fatal): {notif_err}")
+
             return jsonify({
                 "status": "ok",
                 "agent_id": result.agent_id,

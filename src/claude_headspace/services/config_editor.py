@@ -129,6 +129,15 @@ CONFIG_SCHEMA = [
             FieldSchema("fallback_timeout", "integer", "Fallback timeout in seconds", min_value=60, max_value=3600, default=300),
         ],
     ),
+    SectionSchema(
+        name="notifications",
+        title="Notifications",
+        fields=[
+            FieldSchema("enabled", "boolean", "Enable macOS notifications (requires terminal-notifier)", default=True),
+            FieldSchema("sound", "boolean", "Play sound with notifications", default=True),
+            FieldSchema("rate_limit_seconds", "integer", "Minimum seconds between notifications per agent", min_value=0, max_value=60, default=5),
+        ],
+    ),
 ]
 
 
