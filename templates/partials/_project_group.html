@@ -59,7 +59,8 @@
                 Waypoint: {{ project.waypoint }}
             </span>
             <button class="text-cyan text-sm hover:text-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    disabled>
+                    onclick="event.stopPropagation(); openWaypointEditor({{ project.id }})"
+                    aria-label="Edit waypoint for {{ project.name }}">
                 [Edit]
             </button>
         </div>
