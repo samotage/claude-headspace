@@ -124,12 +124,14 @@ def register_error_handlers(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
     from .routes.dashboard import dashboard_bp
+    from .routes.focus import focus_bp
     from .routes.health import health_bp
     from .routes.logging import logging_bp
     from .routes.objective import objective_bp
     from .routes.sessions import sessions_bp
 
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(focus_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(logging_bp)
     app.register_blueprint(objective_bp)
