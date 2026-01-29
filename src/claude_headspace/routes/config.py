@@ -27,10 +27,14 @@ def config_page():
     # Get schema for form generation
     schema = get_config_schema()
 
+    # Provide status_counts for header partial (defaults for non-dashboard pages)
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+
     return render_template(
         "config.html",
         config=config,
         schema=schema,
+        status_counts=status_counts,
     )
 
 

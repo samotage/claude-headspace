@@ -164,9 +164,20 @@ class TestProcessSessionStart:
 class TestProcessSessionEnd:
     """Tests for process_session_end function."""
 
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_session_end(self, mock_db, mock_agent, fresh_state):
+    def test_successful_session_end(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
         """Test successful session end processing."""
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        # Mock the bridge
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_session_end.return_value = TurnProcessingResult(
+            success=True,
+            task=None,
+        )
+
         result = process_session_end(mock_agent, "session-123")
 
         assert result.success is True
@@ -178,27 +189,53 @@ class TestProcessSessionEnd:
 class TestProcessUserPromptSubmit:
     """Tests for process_user_prompt_submit function."""
 
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    @patch("claude_headspace.services.hook_receiver.Task")
     def test_creates_task_when_none_exists(
-        self, MockTask, mock_db, mock_agent, fresh_state
+        self, mock_db, mock_get_bridge, mock_agent, fresh_state
     ):
-        """Should create task when no current task exists."""
-        mock_agent.get_current_task.return_value = None
+        """Should create task when no current task exists via bridge."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        # Mock the bridge
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+
+        # Create a mock task
         mock_task = MagicMock()
-        MockTask.return_value = mock_task
+        mock_task.state = TaskState.PROCESSING
+
+        mock_bridge.process_user_prompt_submit.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+            new_task_created=True,
+        )
 
         result = process_user_prompt_submit(mock_agent, "session-123")
 
         assert result.success is True
-        mock_db.session.add.assert_called()
+        mock_bridge.process_user_prompt_submit.assert_called_once()
 
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_transitions_existing_task(self, mock_db, mock_agent, fresh_state):
-        """Should transition existing task to processing."""
+    def test_transitions_existing_task(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
+        """Should transition existing task to processing via bridge."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        # Mock the bridge
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+
+        # Create a mock task
         mock_task = MagicMock()
-        mock_task.state.value = "idle"
-        mock_agent.get_current_task.return_value = mock_task
+        mock_task.state = TaskState.PROCESSING
+
+        mock_bridge.process_user_prompt_submit.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
 
         result = process_user_prompt_submit(mock_agent, "session-123")
 
@@ -209,16 +246,27 @@ class TestProcessUserPromptSubmit:
 class TestProcessStop:
     """Tests for process_stop function."""
 
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_stop(self, mock_db, mock_agent, fresh_state):
-        """Test successful stop processing."""
+    def test_successful_stop(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
+        """Test successful stop processing via bridge."""
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        # Mock the bridge
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+
         mock_task = MagicMock()
-        mock_agent.get_current_task.return_value = mock_task
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
 
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
         assert result.state_changed is True
+        mock_bridge.process_stop.assert_called_once()
 
 
 class TestProcessNotification:

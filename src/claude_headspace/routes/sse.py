@@ -85,7 +85,7 @@ def generate_events(client_id: str) -> Generator[str, None, None]:
         logger.debug(f"Client {client_id} unregistered from generator cleanup")
 
 
-@sse_bp.route("/api/events")
+@sse_bp.route("/api/events/stream")
 def events():
     """
     SSE endpoint for real-time event streaming.

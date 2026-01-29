@@ -61,6 +61,7 @@ DEFAULTS = {
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
+        "dashboard_url": "http://localhost:5050",
     },
 }
 
@@ -368,5 +369,8 @@ def get_notifications_config(config: dict) -> dict:
         },
         "rate_limit_seconds": get_value(
             config, "notifications", "rate_limit_seconds", default=5
+        ),
+        "dashboard_url": get_value(
+            config, "notifications", "dashboard_url", default="http://localhost:5050"
         ),
     }

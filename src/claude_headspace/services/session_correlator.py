@@ -1,6 +1,7 @@
 """Session correlator for matching Claude Code sessions to agents."""
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import NamedTuple
 from uuid import UUID, uuid4
@@ -20,8 +21,31 @@ class CorrelationResult(NamedTuple):
     correlation_method: str  # "session_id", "working_directory", "created"
 
 
-# In-memory cache for Claude session ID to agent mapping
-_session_cache: dict[str, int] = {}
+class CacheEntry(NamedTuple):
+    """Cache entry with timestamp for TTL support."""
+
+    agent_id: int
+    cached_at: float
+
+
+# WARNING: This in-memory cache is process-local. In multi-process deployments
+# (gunicorn with multiple workers), each process has its own cache.
+# For production, replace with Redis or database-backed cache.
+_session_cache: dict[str, CacheEntry] = {}
+CACHE_TTL_SECONDS = 3600  # 1 hour
+
+
+def _cleanup_stale_cache_entries() -> None:
+    """Remove cache entries older than TTL."""
+    now = time.time()
+    stale_keys = [
+        key for key, entry in _session_cache.items()
+        if now - entry.cached_at > CACHE_TTL_SECONDS
+    ]
+    for key in stale_keys:
+        del _session_cache[key]
+    if stale_keys:
+        logger.debug(f"Cleaned up {len(stale_keys)} stale cache entries")
 
 
 def correlate_session(
@@ -43,9 +67,12 @@ def correlate_session(
     Returns:
         CorrelationResult with the matched or created agent
     """
+    # Cleanup stale cache entries periodically
+    _cleanup_stale_cache_entries()
+
     # Strategy 1: Check session cache
     if claude_session_id in _session_cache:
-        agent_id = _session_cache[claude_session_id]
+        agent_id = _session_cache[claude_session_id].agent_id
         agent = db.session.get(Agent, agent_id)
         if agent:
             logger.debug(
@@ -76,7 +103,7 @@ def correlate_session(
             )
             if agent:
                 # Cache the session ID -> agent mapping
-                _session_cache[claude_session_id] = agent.id
+                _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
                 logger.debug(
                     f"Session {claude_session_id} matched to agent {agent.id} "
                     f"via working directory {working_directory}"
@@ -91,7 +118,7 @@ def correlate_session(
     agent, project = _create_agent_for_session(claude_session_id, working_directory)
 
     # Cache the new mapping
-    _session_cache[claude_session_id] = agent.id
+    _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
 
     logger.info(
         f"Created new agent {agent.id} for session {claude_session_id} "
@@ -138,7 +165,7 @@ def _create_agent_for_session(
         # Create placeholder project for unknown sessions
         project = Project(
             name=f"unknown-{claude_session_id[:8]}",
-            path=None,
+            path=f"__unknown__/{claude_session_id}",  # Unique placeholder path
         )
         db.session.add(project)
         db.session.flush()
@@ -173,7 +200,8 @@ def get_cached_agent_id(claude_session_id: str) -> int | None:
     Returns:
         Agent ID if cached, None otherwise
     """
-    return _session_cache.get(claude_session_id)
+    entry = _session_cache.get(claude_session_id)
+    return entry.agent_id if entry else None
 
 
 def cache_session_mapping(claude_session_id: str, agent_id: int) -> None:
@@ -184,5 +212,5 @@ def cache_session_mapping(claude_session_id: str, agent_id: int) -> None:
         claude_session_id: The Claude Code session ID
         agent_id: The agent database ID
     """
-    _session_cache[claude_session_id] = agent_id
+    _session_cache[claude_session_id] = CacheEntry(agent_id, time.time())
     logger.debug(f"Cached session {claude_session_id} -> agent {agent_id}")

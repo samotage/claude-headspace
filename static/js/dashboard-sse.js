@@ -42,7 +42,7 @@
 
         // Create SSE client
         const client = new SSEClient({
-            url: '/api/events',
+            url: '/api/events/stream',
             reconnectBaseDelay: 1000,
             reconnectMaxDelay: 30000
         });

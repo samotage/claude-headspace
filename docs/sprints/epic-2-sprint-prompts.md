@@ -10,7 +10,7 @@
 | Document                                                                              | Purpose                                                               |
 | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | [Epic 2 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic2_detailed_roadmap.md) | Primary reference for sprint scope, deliverables, acceptance criteria |
-| [Conceptual Overview](../application/claude_headspace_v3.1_conceptual_overview.md)    | Domain concepts (waypoint, progress_summary, brain_reboot)            |
+| [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md)     | Domain concepts (waypoint, progress_summary, brain_reboot)            |
 | [Overarching Roadmap](../roadmap/claude_headspace_v3.1_overarching_roadmap.md)        | Epic 2 goals, success criteria, dependencies                          |
 | [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md) | Context on existing infrastructure (dashboard, SSE, tabs)             |
 
@@ -53,7 +53,7 @@
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md
 
 And also the roadmap artifacts:
 
@@ -66,7 +66,7 @@ And also the roadmap artifacts:
 
 **PRD:** `docs/prds/ui/e2-s2-waypoint-editor-prd.md`
 
-> Create a PRD for the Waypoint Editor subsystem. Reference Sprint 2 (E2-S2) in the [Epic 2 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic2_detailed_roadmap.md#sprint-2-waypoint-editing-ui-e2-s2) and the waypoint definition in the [Conceptual Overview](../application/claude_headspace_v3.1_conceptual_overview.md#62-artifact-definitions).
+> Create a PRD for the Waypoint Editor subsystem. Reference Sprint 2 (E2-S2) in the [Epic 2 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic2_detailed_roadmap.md#sprint-2-waypoint-editing-ui-e2-s2) and the waypoint definition in the [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md#62-artifact-definitions).
 >
 > **Deliverables:**
 >
@@ -119,7 +119,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts)
 
 And also the roadmap artifacts:
 
@@ -170,7 +170,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md
 
 And also the roadmap artifacts:
 
@@ -227,7 +227,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md
 
 And also the roadmap artifacts:
 

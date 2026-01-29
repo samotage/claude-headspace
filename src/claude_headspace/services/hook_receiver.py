@@ -1,4 +1,13 @@
-"""Hook receiver service for processing Claude Code hook events."""
+"""Hook receiver service for processing Claude Code hook events.
+
+This module processes incoming hook events from Claude Code and translates
+them into appropriate state transitions via the HookLifecycleBridge.
+
+Remediation Notes (Issue 3 & 9):
+- Issue 3: Previously bypassed state machine validation by directly setting task.state
+- Issue 9: Previously failed to write events to the audit log
+- Now uses HookLifecycleBridge for proper state machine validation and event logging
+"""
 
 import logging
 import threading
@@ -11,6 +20,7 @@ from typing import NamedTuple
 from ..database import db
 from ..models.agent import Agent
 from ..models.task import Task, TaskState
+from .hook_lifecycle_bridge import get_hook_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +139,22 @@ def configure_receiver(
             state.fallback_timeout = fallback_timeout
 
 
+def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> None:
+    """Broadcast state change to SSE clients."""
+    try:
+        from .broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast("state_changed", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "event_type": event_type,
+            "new_state": new_state,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.debug(f"Broadcast failed (non-fatal): {e}")
+
+
 def process_session_start(
     agent: Agent,
     claude_session_id: str,
@@ -178,6 +204,8 @@ def process_session_end(
     """
     Process a session end hook event.
 
+    Uses HookLifecycleBridge for proper state machine validation and event logging.
+
     Args:
         agent: The correlated agent
         claude_session_id: The Claude session ID
@@ -192,13 +220,14 @@ def process_session_end(
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Complete any active tasks
-        current_task = agent.get_current_task()
-        if current_task:
-            current_task.state = TaskState.COMPLETE
-            current_task.completed_at = datetime.now(timezone.utc)
+        # Use lifecycle bridge for proper state management and event logging
+        bridge = get_hook_bridge()
+        result = bridge.process_session_end(agent, claude_session_id)
 
         db.session.commit()
+
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value)
 
         logger.info(
             f"hook_event: type=session_end, agent_id={agent.id}, "
@@ -206,10 +235,11 @@ def process_session_end(
         )
 
         return HookEventResult(
-            success=True,
+            success=result.success,
             agent_id=agent.id,
             state_changed=True,
             new_state=TaskState.COMPLETE.value,
+            error_message=result.error,
         )
     except Exception as e:
         logger.exception(f"Error processing session_end: {e}")
@@ -227,7 +257,8 @@ def process_user_prompt_submit(
     """
     Process a user prompt submit hook event.
 
-    Transitions agent to PROCESSING state.
+    Uses HookLifecycleBridge for proper state machine validation and event logging.
+    Transitions: IDLE -> COMMANDED -> PROCESSING
 
     Args:
         agent: The correlated agent
@@ -243,33 +274,29 @@ def process_user_prompt_submit(
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Get or create current task
-        current_task = agent.get_current_task()
-        if current_task is None:
-            # Create new task
-            current_task = Task(
-                agent_id=agent.id,
-                state=TaskState.COMMANDED,
-                started_at=datetime.now(timezone.utc),
-            )
-            db.session.add(current_task)
-
-        # Transition to processing
-        if current_task.state in (TaskState.IDLE, TaskState.COMMANDED):
-            current_task.state = TaskState.PROCESSING
+        # Use lifecycle bridge for proper state management and event logging
+        bridge = get_hook_bridge()
+        result = bridge.process_user_prompt_submit(agent, claude_session_id)
 
         db.session.commit()
 
+        # Determine new state for response
+        new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
+
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "user_prompt_submit", new_state)
+
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
-            f"session_id={claude_session_id}, new_state={current_task.state.value}"
+            f"session_id={claude_session_id}, new_state={new_state}"
         )
 
         return HookEventResult(
-            success=True,
+            success=result.success,
             agent_id=agent.id,
             state_changed=True,
-            new_state=current_task.state.value,
+            new_state=new_state,
+            error_message=result.error,
         )
     except Exception as e:
         logger.exception(f"Error processing user_prompt_submit: {e}")
@@ -287,7 +314,8 @@ def process_stop(
     """
     Process a stop (turn complete) hook event.
 
-    Transitions agent to IDLE state.
+    Uses HookLifecycleBridge for proper state machine validation and event logging.
+    Transitions: PROCESSING -> COMPLETE (agent returns to IDLE for next task)
 
     Args:
         agent: The correlated agent
@@ -303,13 +331,15 @@ def process_stop(
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Complete current task and return to idle
-        current_task = agent.get_current_task()
-        if current_task:
-            current_task.state = TaskState.COMPLETE
-            current_task.completed_at = datetime.now(timezone.utc)
+        # Use lifecycle bridge for proper state management and event logging
+        bridge = get_hook_bridge()
+        result = bridge.process_stop(agent, claude_session_id)
 
         db.session.commit()
+
+        # Broadcast state change to SSE clients
+        # Agent is IDLE after task completion
+        _broadcast_state_change(agent, "stop", TaskState.IDLE.value)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
@@ -317,10 +347,11 @@ def process_stop(
         )
 
         return HookEventResult(
-            success=True,
+            success=result.success,
             agent_id=agent.id,
             state_changed=True,
             new_state=TaskState.IDLE.value,
+            error_message=result.error,
         )
     except Exception as e:
         logger.exception(f"Error processing stop: {e}")

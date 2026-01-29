@@ -109,10 +109,10 @@ class TestDetectAgentIntent:
 
     # Progress detection tests (default fallback)
     def test_progress_default(self):
-        """Non-question, non-completion text should default to progress."""
+        """Non-question, non-completion text should default to progress with lower confidence."""
         result = detect_agent_intent("I'm now updating the configuration file.")
         assert result.intent == TurnIntent.PROGRESS
-        assert result.confidence == 1.0
+        assert result.confidence == 0.5  # Lower confidence for fallback (no pattern match)
 
     def test_progress_with_code_output(self):
         """Code output should default to progress."""

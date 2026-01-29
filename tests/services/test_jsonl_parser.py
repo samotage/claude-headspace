@@ -3,7 +3,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -18,7 +18,7 @@ class TestParsedTurn:
         turn = ParsedTurn(
             actor="user",
             text="Hello",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             raw_data={"type": "user"},
             message_type="user",
         )

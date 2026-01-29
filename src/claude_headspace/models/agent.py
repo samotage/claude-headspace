@@ -63,6 +63,19 @@ class Agent(db.Model):
             return TaskState.IDLE
         return current_task.state
 
+    @property
+    def name(self) -> str:
+        """
+        Get a human-readable name for the agent.
+
+        Returns:
+            Name derived from session UUID prefix and project name
+        """
+        session_prefix = str(self.session_uuid)[:8]
+        if self.project:
+            return f"{self.project.name}/{session_prefix}"
+        return f"Agent-{session_prefix}"
+
     def get_current_task(self) -> "Task | None":
         """
         Get the most recent incomplete task for this agent.

@@ -12,11 +12,21 @@ logger = logging.getLogger(__name__)
 class EventType:
     """Supported event types for the event system."""
 
+    # Core events
     SESSION_REGISTERED = "session_registered"
     SESSION_ENDED = "session_ended"
     TURN_DETECTED = "turn_detected"
     STATE_TRANSITION = "state_transition"
+
+    # Generic hook event (legacy)
     HOOK_RECEIVED = "hook_received"
+
+    # Specific hook events (Issue 9 remediation)
+    HOOK_SESSION_START = "hook_session_start"
+    HOOK_SESSION_END = "hook_session_end"
+    HOOK_USER_PROMPT = "hook_user_prompt"
+    HOOK_STOP = "hook_stop"
+    HOOK_NOTIFICATION = "hook_notification"
 
     # List of all valid event types
     ALL_TYPES = [
@@ -25,6 +35,11 @@ class EventType:
         TURN_DETECTED,
         STATE_TRANSITION,
         HOOK_RECEIVED,
+        HOOK_SESSION_START,
+        HOOK_SESSION_END,
+        HOOK_USER_PROMPT,
+        HOOK_STOP,
+        HOOK_NOTIFICATION,
     ]
 
 
@@ -37,6 +52,8 @@ class PayloadSchema:
 
 
 # Payload schemas per event type
+# Note: agent_id, task_id, etc. are passed as function parameters to write_event(),
+# not in the payload. The payload contains semantic event data only.
 PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
     EventType.SESSION_REGISTERED: PayloadSchema(
         required_fields=["session_uuid", "project_path", "working_directory"],
@@ -50,13 +67,37 @@ PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
         required_fields=["session_uuid", "actor", "text", "source", "turn_timestamp"],
         optional_fields=[],
     ),
+    # STATE_TRANSITION: agent_id and task_id are passed as function params, not payload
+    # (Issue 9 remediation - fixed schema to match actual usage in task_lifecycle.py)
     EventType.STATE_TRANSITION: PayloadSchema(
-        required_fields=["agent_id", "task_id", "from_state", "to_state", "trigger"],
-        optional_fields=[],
+        required_fields=["from_state", "to_state", "trigger"],
+        optional_fields=["confidence"],
     ),
+    # Generic hook event (legacy)
     EventType.HOOK_RECEIVED: PayloadSchema(
         required_fields=["hook_type", "claude_session_id", "working_directory"],
         optional_fields=[],
+    ),
+    # Specific hook event schemas (Issue 9 remediation)
+    EventType.HOOK_SESSION_START: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory"],
+    ),
+    EventType.HOOK_SESSION_END: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory"],
+    ),
+    EventType.HOOK_USER_PROMPT: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory"],
+    ),
+    EventType.HOOK_STOP: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory"],
+    ),
+    EventType.HOOK_NOTIFICATION: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory", "title", "message"],
     ),
 }
 
