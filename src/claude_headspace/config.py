@@ -42,6 +42,12 @@ DEFAULTS = {
         "max_restarts_per_minute": 5,
         "shutdown_timeout_seconds": 2,
     },
+    "sse": {
+        "heartbeat_interval_seconds": 30,
+        "max_connections": 100,
+        "connection_timeout_seconds": 60,
+        "retry_after_seconds": 5,
+    },
 }
 
 # Environment variable mappings
@@ -66,6 +72,10 @@ ENV_MAPPINGS = {
     "EVENT_SYSTEM_WRITE_RETRY_DELAY_MS": ("event_system", "write_retry_delay_ms", int),
     "EVENT_SYSTEM_MAX_RESTARTS_PER_MINUTE": ("event_system", "max_restarts_per_minute", int),
     "EVENT_SYSTEM_SHUTDOWN_TIMEOUT_SECONDS": ("event_system", "shutdown_timeout_seconds", int),
+    "SSE_HEARTBEAT_INTERVAL_SECONDS": ("sse", "heartbeat_interval_seconds", int),
+    "SSE_MAX_CONNECTIONS": ("sse", "max_connections", int),
+    "SSE_CONNECTION_TIMEOUT_SECONDS": ("sse", "connection_timeout_seconds", int),
+    "SSE_RETRY_AFTER_SECONDS": ("sse", "retry_after_seconds", int),
 }
 
 
@@ -261,5 +271,31 @@ def get_event_system_config(config: dict) -> dict:
         ),
         "shutdown_timeout_seconds": get_value(
             config, "event_system", "shutdown_timeout_seconds", default=2
+        ),
+    }
+
+
+def get_sse_config(config: dict) -> dict:
+    """
+    Get SSE (Server-Sent Events) configuration with defaults.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        SSE configuration dictionary
+    """
+    return {
+        "heartbeat_interval_seconds": get_value(
+            config, "sse", "heartbeat_interval_seconds", default=30
+        ),
+        "max_connections": get_value(
+            config, "sse", "max_connections", default=100
+        ),
+        "connection_timeout_seconds": get_value(
+            config, "sse", "connection_timeout_seconds", default=60
+        ),
+        "retry_after_seconds": get_value(
+            config, "sse", "retry_after_seconds", default=5
         ),
     }
