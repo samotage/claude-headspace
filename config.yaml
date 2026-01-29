@@ -39,3 +39,10 @@ event_system:
   write_retry_delay_ms: 100
   max_restarts_per_minute: 5
   shutdown_timeout_seconds: 2
+
+# Server-Sent Events (SSE) for real-time updates
+sse:
+  heartbeat_interval_seconds: 30
+  max_connections: 100
+  connection_timeout_seconds: 60
+  retry_after_seconds: 5

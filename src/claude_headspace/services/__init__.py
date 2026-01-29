@@ -32,6 +32,14 @@ from .state_machine import (
     VALID_TRANSITIONS,
 )
 from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult
+from .broadcaster import (
+    Broadcaster,
+    SSEClient,
+    SSEEvent,
+    get_broadcaster,
+    init_broadcaster,
+    shutdown_broadcaster,
+)
 
 __all__ = [
     # Session registry
@@ -81,4 +89,11 @@ __all__ = [
     # Task lifecycle
     "TaskLifecycleManager",
     "TurnProcessingResult",
+    # Broadcaster
+    "Broadcaster",
+    "SSEClient",
+    "SSEEvent",
+    "get_broadcaster",
+    "init_broadcaster",
+    "shutdown_broadcaster",
 ]
