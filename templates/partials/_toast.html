@@ -1,0 +1,146 @@
+<!-- Toast Container -->
+<div id="toast-container"
+     class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+     aria-live="polite"
+     aria-atomic="true">
+    <!-- Toasts will be inserted here dynamically -->
+</div>
+
+<!-- Toast Template (hidden, used for cloning) -->
+<template id="toast-template">
+    <div class="toast pointer-events-auto bg-surface border border-border rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px] transform transition-all duration-300 translate-x-full opacity-0"
+         role="alert">
+        <div class="flex items-start gap-3">
+            <!-- Icon -->
+            <span class="toast-icon text-lg flex-shrink-0"></span>
+
+            <!-- Content -->
+            <div class="flex-1 min-w-0">
+                <p class="toast-title font-medium text-primary text-sm"></p>
+                <p class="toast-message text-muted text-xs mt-1"></p>
+            </div>
+
+            <!-- Close button -->
+            <button class="toast-close flex-shrink-0 text-muted hover:text-primary transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2 -mt-2"
+                    aria-label="Dismiss notification"
+                    onclick="this.closest('.toast').remove()">
+                <span aria-hidden="true">✕</span>
+            </button>
+        </div>
+    </div>
+</template>
+
+<!-- Toast JavaScript -->
+<script>
+(function() {
+    const TOAST_DURATION = 5000; // 5 seconds auto-dismiss
+
+    window.Toast = {
+        /**
+         * Show a toast notification
+         * @param {string} type - 'success', 'error', 'warning', 'info'
+         * @param {string} title - Toast title
+         * @param {string} message - Toast message
+         * @param {number} duration - Auto-dismiss duration in ms (0 for no auto-dismiss)
+         */
+        show: function(type, title, message, duration = TOAST_DURATION) {
+            const container = document.getElementById('toast-container');
+            const template = document.getElementById('toast-template');
+
+            if (!container || !template) {
+                console.warn('Toast container or template not found');
+                return;
+            }
+
+            // Clone the template
+            const toast = template.content.cloneNode(true).querySelector('.toast');
+
+            // Set icon and colors based on type
+            const iconEl = toast.querySelector('.toast-icon');
+            switch (type) {
+                case 'success':
+                    iconEl.textContent = '✓';
+                    iconEl.className = 'toast-icon text-lg flex-shrink-0 text-green';
+                    break;
+                case 'error':
+                    iconEl.textContent = '⚠';
+                    iconEl.className = 'toast-icon text-lg flex-shrink-0 text-red';
+                    break;
+                case 'warning':
+                    iconEl.textContent = '⚠';
+                    iconEl.className = 'toast-icon text-lg flex-shrink-0 text-amber';
+                    break;
+                case 'info':
+                default:
+                    iconEl.textContent = 'ℹ';
+                    iconEl.className = 'toast-icon text-lg flex-shrink-0 text-blue';
+                    break;
+            }
+
+            // Set content
+            toast.querySelector('.toast-title').textContent = title;
+            toast.querySelector('.toast-message').textContent = message;
+
+            // Add to container
+            container.appendChild(toast);
+
+            // Trigger animation (enter)
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            // Auto-dismiss
+            if (duration > 0) {
+                setTimeout(() => {
+                    this.dismiss(toast);
+                }, duration);
+            }
+
+            return toast;
+        },
+
+        /**
+         * Dismiss a toast with animation
+         */
+        dismiss: function(toast) {
+            if (!toast || !toast.parentNode) return;
+
+            // Animate out
+            toast.classList.add('translate-x-full', 'opacity-0');
+
+            // Remove after animation
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        },
+
+        /**
+         * Show a success toast
+         */
+        success: function(title, message) {
+            return this.show('success', title, message);
+        },
+
+        /**
+         * Show an error toast
+         */
+        error: function(title, message) {
+            return this.show('error', title, message);
+        },
+
+        /**
+         * Show a warning toast
+         */
+        warning: function(title, message) {
+            return this.show('warning', title, message);
+        },
+
+        /**
+         * Show an info toast
+         */
+        info: function(title, message) {
+            return this.show('info', title, message);
+        }
+    };
+})();
+</script>

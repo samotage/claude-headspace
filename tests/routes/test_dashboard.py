@@ -378,11 +378,12 @@ class TestDashboardRoute:
         assert "objective" in html.lower()
         assert "logging" in html.lower()
 
-    def test_dashboard_shows_monitoring_mode(self, client):
-        """Test that monitoring mode indicator is shown."""
+    def test_dashboard_shows_connection_indicator(self, client):
+        """Test that connection indicator is shown."""
         response = client.get("/")
         html = response.data.decode("utf-8")
-        assert "POLLING" in html
+        # Sprint 8b replaced POLLING with SSE connection indicator
+        assert "connection-indicator" in html
 
     def test_empty_projects_message(self, client):
         """Test message shown when no projects exist."""
