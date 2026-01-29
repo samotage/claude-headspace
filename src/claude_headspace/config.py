@@ -36,6 +36,12 @@ DEFAULTS = {
         "inactivity_timeout": 5400,
         "debounce_interval": 0.5,
     },
+    "event_system": {
+        "write_retry_attempts": 3,
+        "write_retry_delay_ms": 100,
+        "max_restarts_per_minute": 5,
+        "shutdown_timeout_seconds": 2,
+    },
 }
 
 # Environment variable mappings
@@ -56,6 +62,10 @@ ENV_MAPPINGS = {
     "FILE_WATCHER_POLLING_INTERVAL": ("file_watcher", "polling_interval", float),
     "FILE_WATCHER_INACTIVITY_TIMEOUT": ("file_watcher", "inactivity_timeout", int),
     "FILE_WATCHER_DEBOUNCE_INTERVAL": ("file_watcher", "debounce_interval", float),
+    "EVENT_SYSTEM_WRITE_RETRY_ATTEMPTS": ("event_system", "write_retry_attempts", int),
+    "EVENT_SYSTEM_WRITE_RETRY_DELAY_MS": ("event_system", "write_retry_delay_ms", int),
+    "EVENT_SYSTEM_MAX_RESTARTS_PER_MINUTE": ("event_system", "max_restarts_per_minute", int),
+    "EVENT_SYSTEM_SHUTDOWN_TIMEOUT_SECONDS": ("event_system", "shutdown_timeout_seconds", int),
 }
 
 
@@ -225,5 +235,31 @@ def get_file_watcher_config(config: dict) -> dict:
         ),
         "debounce_interval": get_value(
             config, "file_watcher", "debounce_interval", default=0.5
+        ),
+    }
+
+
+def get_event_system_config(config: dict) -> dict:
+    """
+    Get event system configuration with defaults.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Event system configuration dictionary
+    """
+    return {
+        "write_retry_attempts": get_value(
+            config, "event_system", "write_retry_attempts", default=3
+        ),
+        "write_retry_delay_ms": get_value(
+            config, "event_system", "write_retry_delay_ms", default=100
+        ),
+        "max_restarts_per_minute": get_value(
+            config, "event_system", "max_restarts_per_minute", default=5
+        ),
+        "shutdown_timeout_seconds": get_value(
+            config, "event_system", "shutdown_timeout_seconds", default=2
         ),
     }

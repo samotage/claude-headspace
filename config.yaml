@@ -32,3 +32,10 @@ file_watcher:
   reconciliation_interval: 60  # seconds (hooks-active mode)
   inactivity_timeout: 5400  # 90 minutes in seconds
   debounce_interval: 0.5  # seconds
+
+# Event system for persisting events to Postgres
+event_system:
+  write_retry_attempts: 3
+  write_retry_delay_ms: 100
+  max_restarts_per_minute: 5
+  shutdown_timeout_seconds: 2
