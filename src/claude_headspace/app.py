@@ -130,6 +130,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.help import help_bp
     from .routes.hooks import hooks_bp
     from .routes.logging import logging_bp
+    from .routes.notifications import notifications_bp
     from .routes.objective import objective_bp
     from .routes.sessions import sessions_bp
     from .routes.waypoint import waypoint_bp
@@ -141,6 +142,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(help_bp)
     app.register_blueprint(hooks_bp)
     app.register_blueprint(logging_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(objective_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(waypoint_bp)

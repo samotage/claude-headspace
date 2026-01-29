@@ -339,6 +339,45 @@
     }
 
     /**
+     * Handle URL highlight parameter for notification click-to-navigate.
+     * Scrolls to agent card and applies highlight animation.
+     */
+    function handleHighlightParam() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const highlightId = urlParams.get('highlight');
+
+        if (!highlightId) return;
+
+        // Find the agent card
+        const card = document.querySelector(`[data-agent-id="${highlightId}"]`);
+        if (!card) {
+            console.warn('Agent card not found for highlight:', highlightId);
+            return;
+        }
+
+        // Scroll to the card with smooth behavior
+        card.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+
+        // Add highlight animation
+        card.classList.add('ring-2', 'ring-cyan', 'ring-opacity-75', 'animate-pulse');
+
+        // Remove highlight after 3 seconds
+        setTimeout(function() {
+            card.classList.remove('ring-2', 'ring-cyan', 'ring-opacity-75', 'animate-pulse');
+        }, 3000);
+
+        // Clean up URL (remove highlight param without page reload)
+        urlParams.delete('highlight');
+        const newUrl = urlParams.toString()
+            ? window.location.pathname + '?' + urlParams.toString()
+            : window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+    }
+
+    /**
      * Initialize agent states from the DOM on page load
      */
     function initAgentStates() {
@@ -356,9 +395,21 @@
     global.DashboardSSE = {
         init: function() {
             initAgentStates();
+            handleHighlightParam();
             return initDashboardSSE();
         },
-        updateConnectionIndicator: updateConnectionIndicator
+        updateConnectionIndicator: updateConnectionIndicator,
+        highlightAgent: function(agentId) {
+            // Allow programmatic highlighting
+            const card = document.querySelector(`[data-agent-id="${agentId}"]`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.classList.add('ring-2', 'ring-cyan', 'ring-opacity-75', 'animate-pulse');
+                setTimeout(function() {
+                    card.classList.remove('ring-2', 'ring-cyan', 'ring-opacity-75', 'animate-pulse');
+                }, 3000);
+            }
+        }
     };
 
     // Auto-initialize on DOM ready
