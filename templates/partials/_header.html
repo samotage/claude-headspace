@@ -8,17 +8,24 @@
 
             <nav class="flex gap-4" role="navigation" aria-label="Main navigation">
                 <a href="{{ url_for('dashboard.dashboard') }}"
-                   class="px-4 py-2 rounded bg-surface text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
-                   aria-current="page">
+                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'dashboard.dashboard' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
+                   {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>
                     dashboard
                 </a>
                 <a href="{{ url_for('objective.objective_page') }}"
-                   class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'objective.objective_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
+                   {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>
                     objective
                 </a>
                 <a href="{{ url_for('logging.logging_page') }}"
-                   class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'logging.logging_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
+                   {% if request.endpoint == 'logging.logging_page' %}aria-current="page"{% endif %}>
                     logging
+                </a>
+                <a href="{{ url_for('config.config_page') }}"
+                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'config.config_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
+                   {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>
+                    config
                 </a>
             </nav>
         </div>
