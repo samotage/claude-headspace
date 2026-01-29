@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 from sqlalchemy.orm import selectinload
 
 from ..database import db
@@ -12,6 +12,100 @@ dashboard_bp = Blueprint("dashboard", __name__)
 
 # Constants
 ACTIVE_TIMEOUT_MINUTES = 5  # Agent is ACTIVE if last_seen_at within this time
+
+
+def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
+    """
+    Get the highest priority agent to recommend.
+
+    Priority order:
+    1. Agents with AWAITING_INPUT (oldest waiting first)
+    2. Most recently active agent (by last_seen_at)
+
+    Args:
+        all_agents: List of Agent model instances
+        agent_data_map: Dict mapping agent.id to processed agent data dict
+
+    Returns:
+        Dictionary with recommended agent data and rationale, or None
+    """
+    if not all_agents:
+        return None
+
+    # Filter to agents awaiting input
+    awaiting_input = [a for a in all_agents if a.state == TaskState.AWAITING_INPUT]
+
+    if awaiting_input:
+        # Sort by last_seen_at ascending (oldest waiting first)
+        awaiting_input.sort(key=lambda a: a.last_seen_at)
+        agent = awaiting_input[0]
+
+        # Calculate wait time
+        wait_delta = datetime.now(timezone.utc) - agent.last_seen_at
+        wait_minutes = int(wait_delta.total_seconds() // 60)
+        if wait_minutes >= 60:
+            wait_hours = wait_minutes // 60
+            rationale = f"Awaiting input for {wait_hours}h {wait_minutes % 60}m"
+        elif wait_minutes > 0:
+            rationale = f"Awaiting input for {wait_minutes}m"
+        else:
+            rationale = "Awaiting input"
+
+        agent_data = agent_data_map.get(agent.id)
+        if agent_data:
+            return {
+                **agent_data,
+                "rationale": rationale,
+            }
+
+    # No agents awaiting input - get most recently active
+    active_agents = [a for a in all_agents if is_agent_active(a)]
+    if active_agents:
+        # Sort by last_seen_at descending (most recent first)
+        active_agents.sort(key=lambda a: a.last_seen_at, reverse=True)
+        agent = active_agents[0]
+        agent_data = agent_data_map.get(agent.id)
+        if agent_data:
+            return {
+                **agent_data,
+                "rationale": "Most recently active",
+            }
+
+    return None
+
+
+def sort_agents_by_priority(all_agents_data: list) -> list:
+    """
+    Sort agents by priority for the By Priority view.
+
+    Order:
+    1. AWAITING_INPUT (by last_seen_at descending)
+    2. COMMANDED/PROCESSING (by last_seen_at descending)
+    3. IDLE/COMPLETE (by last_seen_at descending)
+
+    Args:
+        all_agents_data: List of agent data dictionaries
+
+    Returns:
+        Sorted list of agent data dictionaries
+    """
+
+    def priority_key(agent_data):
+        state = agent_data.get("state")
+        # Lower number = higher priority
+        if state == TaskState.AWAITING_INPUT:
+            priority_group = 0
+        elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
+            priority_group = 1
+        else:
+            priority_group = 2
+
+        # Within group, sort by last_seen_at descending (most recent first)
+        # We use negative timestamp for descending order
+        last_seen = agent_data.get("last_seen_at", datetime.min.replace(tzinfo=timezone.utc))
+        return (priority_group, -last_seen.timestamp())
+
+    return sorted(all_agents_data, key=priority_key)
 
 
 def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
@@ -196,9 +290,17 @@ def dashboard():
     """
     Main dashboard route showing all projects and agents.
 
+    Query parameters:
+        sort: 'project' (default) or 'priority'
+
     Returns:
         Rendered dashboard template
     """
+    # Get sort mode from query parameter (default to 'project')
+    sort_mode = request.args.get("sort", "project")
+    if sort_mode not in ("project", "priority"):
+        sort_mode = "project"
+
     # Query all projects with eager-loaded relationships
     projects = (
         db.session.query(Project)
@@ -209,8 +311,11 @@ def dashboard():
         .all()
     )
 
-    # Collect all agents for status counts
+    # Collect all agents for status counts and recommended next
     all_agents = []
+    agent_data_map = {}  # Maps agent.id to agent data dict
+    all_agents_data = []  # Flat list of all agent data for priority view
+
     for project in projects:
         all_agents.extend(project.agents)
 
@@ -222,18 +327,22 @@ def dashboard():
     for project in projects:
         agents_data = []
         for agent in project.agents:
-            agents_data.append(
-                {
-                    "id": agent.id,
-                    "session_uuid": str(agent.session_uuid)[:8],
-                    "is_active": is_agent_active(agent),
-                    "uptime": format_uptime(agent.started_at),
-                    "state": agent.state,
-                    "state_info": get_state_info(agent.state),
-                    "task_summary": get_task_summary(agent),
-                    "priority": 50,  # Default priority for Epic 1
-                }
-            )
+            agent_dict = {
+                "id": agent.id,
+                "session_uuid": str(agent.session_uuid)[:8],
+                "is_active": is_agent_active(agent),
+                "uptime": format_uptime(agent.started_at),
+                "state": agent.state,
+                "state_info": get_state_info(agent.state),
+                "task_summary": get_task_summary(agent),
+                "priority": 50,  # Default priority for Epic 1
+                "project_name": project.name,
+                "project_id": project.id,
+                "last_seen_at": agent.last_seen_at,
+            }
+            agents_data.append(agent_dict)
+            agent_data_map[agent.id] = agent_dict
+            all_agents_data.append(agent_dict)
 
         project_data.append(
             {
@@ -246,9 +355,17 @@ def dashboard():
             }
         )
 
+    # Calculate recommended next agent
+    recommended_next = get_recommended_next(all_agents, agent_data_map)
+
+    # Sort agents for priority view
+    priority_sorted_agents = sort_agents_by_priority(all_agents_data)
+
     return render_template(
         "dashboard.html",
         projects=project_data,
         status_counts=status_counts,
-        monitoring_mode="polling",  # Placeholder for Part 2
+        recommended_next=recommended_next,
+        sort_mode=sort_mode,
+        priority_sorted_agents=priority_sorted_agents,
     )

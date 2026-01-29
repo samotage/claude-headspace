@@ -1,0 +1,61 @@
+<!-- Recommended Next Panel -->
+<section id="recommended-next-panel"
+         class="bg-surface rounded-lg border border-cyan/30 overflow-hidden mb-6"
+         aria-labelledby="recommended-next-heading">
+    {% if recommended_next %}
+    <div class="p-4 cursor-pointer hover:bg-hover transition-colors focus-target"
+         data-agent-id="{{ recommended_next.id }}"
+         onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ recommended_next.id }})"
+         onkeypress="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
+         tabindex="0"
+         role="button"
+         aria-label="Focus on recommended agent {{ recommended_next.session_uuid }}">
+
+        <!-- Header row -->
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+                <span class="text-cyan font-bold text-sm">★ RECOMMENDED NEXT</span>
+            </div>
+            <span class="px-2 py-1 text-xs font-mono rounded bg-cyan/20 text-cyan"
+                  title="Priority score">
+                [{{ recommended_next.priority }}]
+            </span>
+        </div>
+
+        <!-- Agent info row -->
+        <div class="flex items-center gap-4 mb-2">
+            <span class="text-primary font-mono text-sm">#{{ recommended_next.session_uuid }}</span>
+            <span class="text-secondary text-sm">{{ recommended_next.project_name }}</span>
+
+            <!-- State indicator -->
+            <div class="flex items-center gap-2">
+                <div class="w-16 h-2 rounded-full bg-deep overflow-hidden">
+                    <div class="h-full {{ recommended_next.state_info.bg_class }}"
+                         style="width: 100%;"
+                         aria-hidden="true"></div>
+                </div>
+                <span class="text-xs {{ 'text-amber' if recommended_next.state.name == 'AWAITING_INPUT' else 'text-secondary' }} whitespace-nowrap">
+                    {{ recommended_next.state_info.label }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Rationale -->
+        <p class="text-muted text-sm italic">
+            "{{ recommended_next.rationale }}"
+        </p>
+
+        <!-- Click hint -->
+        <p class="text-muted/60 text-xs mt-2">
+            Click to focus iTerm window
+        </p>
+    </div>
+    {% else %}
+    <div class="p-4">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="text-muted font-bold text-sm">★ RECOMMENDED NEXT</span>
+        </div>
+        <p class="text-muted text-sm">No agents to recommend</p>
+    </div>
+    {% endif %}
+</section>
