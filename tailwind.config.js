@@ -4,6 +4,9 @@ module.exports = {
     "./templates/**/*.html",
     "./static/**/*.js",
   ],
+  safelist: [
+    'hidden',
+  ],
   theme: {
     extend: {
       colors: {

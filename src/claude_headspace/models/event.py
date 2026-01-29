@@ -48,13 +48,23 @@ class Event(db.Model):
 class EventType:
     """Supported event types."""
 
+    # Core events
     SESSION_DISCOVERED = "session_discovered"
     SESSION_ENDED = "session_ended"
     TURN_DETECTED = "turn_detected"
     STATE_TRANSITION = "state_transition"
-    HOOK_RECEIVED = "hook_received"
     OBJECTIVE_CHANGED = "objective_changed"
     NOTIFICATION_SENT = "notification_sent"
+
+    # Generic hook event (legacy)
+    HOOK_RECEIVED = "hook_received"
+
+    # Specific hook events (Issue 9 remediation)
+    HOOK_SESSION_START = "hook_session_start"
+    HOOK_SESSION_END = "hook_session_end"
+    HOOK_USER_PROMPT = "hook_user_prompt"
+    HOOK_STOP = "hook_stop"
+    HOOK_NOTIFICATION = "hook_notification"
 
 
 # Composite indexes for common query patterns

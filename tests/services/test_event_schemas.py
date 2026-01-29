@@ -25,14 +25,29 @@ class TestEventType:
         assert EventType.STATE_TRANSITION == "state_transition"
         assert EventType.HOOK_RECEIVED == "hook_received"
 
+    def test_hook_event_types_defined(self):
+        """Test that specific hook event types are defined (Issue 9 remediation)."""
+        assert EventType.HOOK_SESSION_START == "hook_session_start"
+        assert EventType.HOOK_SESSION_END == "hook_session_end"
+        assert EventType.HOOK_USER_PROMPT == "hook_user_prompt"
+        assert EventType.HOOK_STOP == "hook_stop"
+        assert EventType.HOOK_NOTIFICATION == "hook_notification"
+
     def test_all_types_list(self):
         """Test that ALL_TYPES contains all event types."""
-        assert len(EventType.ALL_TYPES) == 5
+        # Core types + hook_received + 5 specific hook types = 10
+        assert len(EventType.ALL_TYPES) == 10
         assert EventType.SESSION_REGISTERED in EventType.ALL_TYPES
         assert EventType.SESSION_ENDED in EventType.ALL_TYPES
         assert EventType.TURN_DETECTED in EventType.ALL_TYPES
         assert EventType.STATE_TRANSITION in EventType.ALL_TYPES
         assert EventType.HOOK_RECEIVED in EventType.ALL_TYPES
+        # New hook types
+        assert EventType.HOOK_SESSION_START in EventType.ALL_TYPES
+        assert EventType.HOOK_SESSION_END in EventType.ALL_TYPES
+        assert EventType.HOOK_USER_PROMPT in EventType.ALL_TYPES
+        assert EventType.HOOK_STOP in EventType.ALL_TYPES
+        assert EventType.HOOK_NOTIFICATION in EventType.ALL_TYPES
 
 
 class TestPayloadSchemas:
@@ -69,13 +84,19 @@ class TestPayloadSchemas:
         assert "turn_timestamp" in schema.required_fields
 
     def test_state_transition_schema(self):
-        """Test state_transition schema."""
+        """Test state_transition schema.
+
+        Note: agent_id and task_id are passed as function parameters to write_event(),
+        not in the payload (Issue 9 remediation fix).
+        """
         schema = PAYLOAD_SCHEMAS[EventType.STATE_TRANSITION]
-        assert "agent_id" in schema.required_fields
-        assert "task_id" in schema.required_fields
         assert "from_state" in schema.required_fields
         assert "to_state" in schema.required_fields
         assert "trigger" in schema.required_fields
+        assert "confidence" in schema.optional_fields
+        # agent_id and task_id are NOT in payload - passed as function params
+        assert "agent_id" not in schema.required_fields
+        assert "task_id" not in schema.required_fields
 
     def test_hook_received_schema(self):
         """Test hook_received schema."""
@@ -83,6 +104,38 @@ class TestPayloadSchemas:
         assert "hook_type" in schema.required_fields
         assert "claude_session_id" in schema.required_fields
         assert "working_directory" in schema.required_fields
+
+    def test_hook_session_start_schema(self):
+        """Test hook_session_start schema (Issue 9 remediation)."""
+        schema = PAYLOAD_SCHEMAS[EventType.HOOK_SESSION_START]
+        assert "claude_session_id" in schema.required_fields
+        assert "working_directory" in schema.optional_fields
+
+    def test_hook_session_end_schema(self):
+        """Test hook_session_end schema (Issue 9 remediation)."""
+        schema = PAYLOAD_SCHEMAS[EventType.HOOK_SESSION_END]
+        assert "claude_session_id" in schema.required_fields
+        assert "working_directory" in schema.optional_fields
+
+    def test_hook_user_prompt_schema(self):
+        """Test hook_user_prompt schema (Issue 9 remediation)."""
+        schema = PAYLOAD_SCHEMAS[EventType.HOOK_USER_PROMPT]
+        assert "claude_session_id" in schema.required_fields
+        assert "working_directory" in schema.optional_fields
+
+    def test_hook_stop_schema(self):
+        """Test hook_stop schema (Issue 9 remediation)."""
+        schema = PAYLOAD_SCHEMAS[EventType.HOOK_STOP]
+        assert "claude_session_id" in schema.required_fields
+        assert "working_directory" in schema.optional_fields
+
+    def test_hook_notification_schema(self):
+        """Test hook_notification schema (Issue 9 remediation)."""
+        schema = PAYLOAD_SCHEMAS[EventType.HOOK_NOTIFICATION]
+        assert "claude_session_id" in schema.required_fields
+        assert "working_directory" in schema.optional_fields
+        assert "title" in schema.optional_fields
+        assert "message" in schema.optional_fields
 
 
 class TestValidateEventType:
@@ -161,13 +214,25 @@ class TestValidatePayload:
         assert is_valid is True
 
     def test_valid_state_transition_payload(self):
-        """Test valid state_transition payload."""
+        """Test valid state_transition payload.
+
+        Note: agent_id and task_id are passed as function params, not in payload.
+        """
         payload = {
-            "agent_id": 1,
-            "task_id": 2,
             "from_state": "idle",
             "to_state": "processing",
-            "trigger": "turn",
+            "trigger": "user:command",
+        }
+        is_valid, error = validate_payload(EventType.STATE_TRANSITION, payload)
+        assert is_valid is True
+
+    def test_valid_state_transition_payload_with_confidence(self):
+        """Test state_transition payload with optional confidence field."""
+        payload = {
+            "from_state": "idle",
+            "to_state": "processing",
+            "trigger": "user:command",
+            "confidence": 0.95,
         }
         is_valid, error = validate_payload(EventType.STATE_TRANSITION, payload)
         assert is_valid is True
@@ -180,6 +245,33 @@ class TestValidatePayload:
             "working_directory": "/Users/test",
         }
         is_valid, error = validate_payload(EventType.HOOK_RECEIVED, payload)
+        assert is_valid is True
+
+    def test_valid_hook_session_start_payload(self):
+        """Test valid hook_session_start payload (Issue 9 remediation)."""
+        payload = {
+            "claude_session_id": "session-123",
+        }
+        is_valid, error = validate_payload(EventType.HOOK_SESSION_START, payload)
+        assert is_valid is True
+
+    def test_valid_hook_stop_payload(self):
+        """Test valid hook_stop payload (Issue 9 remediation)."""
+        payload = {
+            "claude_session_id": "session-123",
+            "working_directory": "/Users/test/project",  # optional
+        }
+        is_valid, error = validate_payload(EventType.HOOK_STOP, payload)
+        assert is_valid is True
+
+    def test_valid_hook_notification_payload(self):
+        """Test valid hook_notification payload with optional fields."""
+        payload = {
+            "claude_session_id": "session-123",
+            "title": "Task Complete",
+            "message": "Your task has finished",
+        }
+        is_valid, error = validate_payload(EventType.HOOK_NOTIFICATION, payload)
         assert is_valid is True
 
     def test_invalid_event_type(self):
@@ -233,13 +325,15 @@ class TestCreateValidatedEvent:
         assert event.timestamp == custom_time
 
     def test_create_event_with_foreign_keys(self):
-        """Test creating event with foreign keys."""
+        """Test creating event with foreign keys.
+
+        Note: agent_id and task_id are passed as function params, not in payload.
+        """
         payload = {
-            "agent_id": 1,
-            "task_id": 2,
             "from_state": "idle",
             "to_state": "processing",
-            "trigger": "turn",
+            "trigger": "user:command",
+            "confidence": 0.95,
         }
         event, error = create_validated_event(
             event_type=EventType.STATE_TRANSITION,

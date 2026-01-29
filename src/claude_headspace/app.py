@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, render_template
 
 from . import __version__
-from .config import load_config, get_value
+from .config import load_config, get_value, get_database_url
 from .database import init_database
 
 
@@ -96,6 +96,21 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     db_connected = init_database(app, config)
     app.config["DATABASE_CONNECTED"] = db_connected
 
+    # Initialize event writer for audit logging (only if database connected)
+    if db_connected:
+        from .services.event_writer import create_event_writer
+        try:
+            db_url = get_database_url(config)
+            event_writer = create_event_writer(db_url, config)
+            app.extensions["event_writer"] = event_writer
+            logger.info("Event writer initialized for audit logging")
+        except Exception as e:
+            logger.warning(f"Event writer initialization failed (non-fatal): {e}")
+            app.extensions["event_writer"] = None
+    else:
+        app.extensions["event_writer"] = None
+        logger.debug("Event writer disabled (no database connection)")
+
     # Initialize broadcaster for SSE
     from .services.broadcaster import init_broadcaster, shutdown_broadcaster
     broadcaster = init_broadcaster(config)
@@ -118,6 +133,10 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             shutdown_broadcaster()
             if "file_watcher" in app.extensions:
                 app.extensions["file_watcher"].stop()
+            # Stop event writer to close database connections
+            event_writer = app.extensions.get("event_writer")
+            if event_writer:
+                event_writer.stop()
         except Exception:
             pass  # Ignore errors during shutdown
 
@@ -158,6 +177,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.notifications import notifications_bp
     from .routes.objective import objective_bp
     from .routes.sessions import sessions_bp
+    from .routes.sse import sse_bp
     from .routes.waypoint import waypoint_bp
 
     app.register_blueprint(config_bp)
@@ -170,4 +190,5 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(notifications_bp)
     app.register_blueprint(objective_bp)
     app.register_blueprint(sessions_bp)
+    app.register_blueprint(sse_bp)
     app.register_blueprint(waypoint_bp)

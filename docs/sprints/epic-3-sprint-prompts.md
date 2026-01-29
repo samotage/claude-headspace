@@ -10,7 +10,7 @@
 | Document                                                                              | Purpose                                                                      |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md) | Primary reference for sprint scope, deliverables, acceptance criteria        |
-| [Conceptual Overview](../application/claude_headspace_v3.1_conceptual_overview.md)    | Domain concepts (inference levels, brain_reboot, waypoint, progress_summary) |
+| [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md)     | Domain concepts (inference levels, brain_reboot, waypoint, progress_summary) |
 | [Overarching Roadmap](../roadmap/claude_headspace_v3.1_overarching_roadmap.md)        | Epic 3 goals, success criteria, dependencies                                 |
 | [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md) | Context on existing infrastructure (Task/Turn models, SSE, dashboard)        |
 
@@ -22,7 +22,7 @@
 
 **PRD:** `docs/prds/inference/e3-s1-openrouter-integration-prd.md`
 
-> Create a PRD for the OpenRouter Integration subsystem. Reference Sprint 1 (E3-S1) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-1-openrouter-integration--inference-service-e3-s1) and the inference levels table in [Conceptual Overview Section 3](../application/claude_headspace_v3.1_conceptual_overview.md#3-inference-logging--setup).
+> Create a PRD for the OpenRouter Integration subsystem. Reference Sprint 1 (E3-S1) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-1-openrouter-integration--inference-service-e3-s1) and the inference levels table in [Conceptual Overview Section 3](../conceptual/claude_headspace_v3.1_conceptual_overview.md#3-inference-logging--setup).
 >
 > **Deliverables:**
 >
@@ -64,7 +64,7 @@
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 3: Inference, Logging & Setup)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 3: Inference, Logging & Setup)
 
 And also the roadmap artifacts:
 
@@ -131,7 +131,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 3: inference levels)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 3: inference levels)
 
 And also the roadmap artifacts:
 
@@ -212,7 +212,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 1: prioritisation concept)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 1: prioritisation concept)
 
 And also the roadmap artifacts:
 
@@ -225,7 +225,7 @@ And also the roadmap artifacts:
 
 **PRD:** `docs/prds/inference/e3-s4-git-analyzer-prd.md`
 
-> Create a PRD for the Git Analyzer & Progress Summary subsystem. Reference Sprint 4 (E3-S4) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-4-git-analyzer--progress-summary-e3-s4) and the progress_summary definition in [Conceptual Overview Section 6](../application/claude_headspace_v3.1_conceptual_overview.md#6-repo-artifacts).
+> Create a PRD for the Git Analyzer & Progress Summary subsystem. Reference Sprint 4 (E3-S4) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-4-git-analyzer--progress-summary-e3-s4) and the progress_summary definition in [Conceptual Overview Section 6](../conceptual/claude_headspace_v3.1_conceptual_overview.md#6-repo-artifacts).
 >
 > **Deliverables:**
 >
@@ -297,7 +297,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts)
 
 And also the roadmap artifacts:
 
@@ -310,7 +310,7 @@ And also the roadmap artifacts:
 
 **PRD:** `docs/prds/inference/e3-s5-brain-reboot-prd.md`
 
-> Create a PRD for the Brain Reboot subsystem. Reference Sprint 5 (E3-S5) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-5-brain-reboot-generation-e3-s5) and the brain_reboot definition in [Conceptual Overview Section 6](../application/claude_headspace_v3.1_conceptual_overview.md#62-artifact-definitions).
+> Create a PRD for the Brain Reboot subsystem. Reference Sprint 5 (E3-S5) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-5-brain-reboot-generation-e3-s5) and the brain_reboot definition in [Conceptual Overview Section 6](../conceptual/claude_headspace_v3.1_conceptual_overview.md#62-artifact-definitions).
 >
 > **Deliverables:**
 >
@@ -389,7 +389,7 @@ And also the roadmap artifacts:
 
 Review conceptual design and guidance at:
 
-- docs/application/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts, brain_reboot definition)
+- docs/conceptual/claude_headspace_v3.1_conceptual_overview.md (Section 6: Repo Artifacts, brain_reboot definition)
 
 And also the roadmap artifacts:
 

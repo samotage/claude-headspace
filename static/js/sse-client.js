@@ -21,7 +21,7 @@
 
   // Default configuration
   const DEFAULT_CONFIG = {
-    url: "/api/events",
+    url: "/api/events/stream",
     reconnectBaseDelay: 1000, // 1 second
     reconnectMaxDelay: 30000, // 30 seconds
     reconnectJitter: 0.3, // 30% jitter
