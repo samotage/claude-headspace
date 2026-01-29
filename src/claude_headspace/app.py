@@ -131,6 +131,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.logging import logging_bp
     from .routes.objective import objective_bp
     from .routes.sessions import sessions_bp
+    from .routes.waypoint import waypoint_bp
 
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)
@@ -140,3 +141,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(logging_bp)
     app.register_blueprint(objective_bp)
     app.register_blueprint(sessions_bp)
+    app.register_blueprint(waypoint_bp)
