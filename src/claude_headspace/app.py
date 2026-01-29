@@ -127,8 +127,10 @@ def register_blueprints(app: Flask) -> None:
     from .routes.health import health_bp
     from .routes.logging import logging_bp
     from .routes.objective import objective_bp
+    from .routes.sessions import sessions_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(logging_bp)
     app.register_blueprint(objective_bp)
+    app.register_blueprint(sessions_bp)

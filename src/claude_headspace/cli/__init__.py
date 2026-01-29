@@ -1,0 +1,5 @@
+"""Claude Headspace CLI package."""
+
+from .launcher import main
+
+__all__ = ["main"]
