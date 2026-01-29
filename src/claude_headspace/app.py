@@ -123,6 +123,8 @@ def register_error_handlers(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
+    from .routes.dashboard import dashboard_bp
     from .routes.health import health_bp
 
+    app.register_blueprint(dashboard_bp)
     app.register_blueprint(health_bp)

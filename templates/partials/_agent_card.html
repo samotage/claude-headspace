@@ -1,0 +1,70 @@
+<article class="bg-elevated rounded-lg border border-border overflow-hidden"
+         data-agent-id="{{ agent.id }}"
+         aria-labelledby="agent-{{ agent.id }}-heading">
+    <!-- Card header: Status, Session ID, Uptime -->
+    <div class="flex items-center justify-between p-3 border-b border-border">
+        <div class="flex items-center gap-2">
+            <!-- Status badge -->
+            {% if agent.is_active %}
+                <span class="px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
+                      role="status">
+                    ACTIVE
+                </span>
+            {% else %}
+                <span class="px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
+                      role="status">
+                    IDLE
+                </span>
+            {% endif %}
+
+            <!-- Session ID -->
+            <h3 id="agent-{{ agent.id }}-heading" class="text-primary font-mono text-sm">
+                #{{ agent.session_uuid }}
+            </h3>
+        </div>
+
+        <!-- Uptime -->
+        <span class="text-muted text-xs">
+            {{ agent.uptime }}
+        </span>
+    </div>
+
+    <!-- State bar -->
+    <div class="px-3 py-2"
+         role="status"
+         aria-label="Agent state: {{ agent.state_info.label }}">
+        <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 rounded-full bg-deep overflow-hidden">
+                <div class="h-full {{ agent.state_info.bg_class }} transition-all duration-300"
+                     style="width: 100%;"
+                     aria-hidden="true"></div>
+            </div>
+            <span class="text-xs text-secondary whitespace-nowrap">
+                {{ agent.state_info.label }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Task summary -->
+    <div class="px-3 py-2 border-t border-border">
+        <p class="text-secondary text-sm line-clamp-2">
+            {{ agent.task_summary }}
+        </p>
+    </div>
+
+    <!-- Footer: Priority and Headspace button -->
+    <div class="flex items-center justify-between px-3 py-2 border-t border-border bg-deep">
+        <!-- Priority score -->
+        <span class="px-2 py-1 text-xs font-mono rounded bg-surface text-muted"
+              title="Priority score">
+            [{{ agent.priority }}]
+        </span>
+
+        <!-- Headspace button (placeholder) -->
+        <button class="px-3 py-1 text-xs font-medium rounded bg-cyan/20 text-cyan hover:bg-cyan/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
+                disabled
+                title="Focus on this agent (coming in Part 2)">
+            Headspace
+        </button>
+    </div>
+</article>
