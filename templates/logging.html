@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Logging - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    <!-- Simple header for logging page -->
+    <header class="bg-deep border-b border-border sticky top-0 z-50" role="banner">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between py-4">
+                <h1 class="text-xl font-bold text-primary">
+                    <span class="text-cyan">CLAUDE</span> <span class="text-muted">&gt;_</span>headspace
+                </h1>
+
+                <nav class="flex gap-4" role="navigation" aria-label="Main navigation">
+                    <a href="{{ url_for('dashboard.dashboard') }}"
+                       class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                        dashboard
+                    </a>
+                    <a href="{{ url_for('objective.objective_page') }}"
+                       class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                        objective
+                    </a>
+                    <a href="{{ url_for('logging.logging_page') }}"
+                       class="px-4 py-2 rounded bg-surface text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
+                       aria-current="page">
+                        logging
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6" role="main">
+        <!-- Filter Bar -->
+        <section class="mb-6" aria-labelledby="filter-heading">
+            <div class="bg-elevated rounded-lg border border-border p-4">
+                <div class="flex flex-wrap items-center gap-4">
+                    <h2 id="filter-heading" class="sr-only">Event Filters</h2>
+
+                    <!-- Project Filter -->
+                    <div class="flex items-center gap-2">
+                        <label for="filter-project" class="text-sm text-secondary">Project:</label>
+                        <select id="filter-project"
+                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                aria-label="Filter by project">
+                            <option value="">All Projects</option>
+                        </select>
+                    </div>
+
+                    <!-- Agent Filter -->
+                    <div class="flex items-center gap-2">
+                        <label for="filter-agent" class="text-sm text-secondary">Agent:</label>
+                        <select id="filter-agent"
+                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                aria-label="Filter by agent">
+                            <option value="">All Agents</option>
+                        </select>
+                    </div>
+
+                    <!-- Event Type Filter -->
+                    <div class="flex items-center gap-2">
+                        <label for="filter-event-type" class="text-sm text-secondary">Type:</label>
+                        <select id="filter-event-type"
+                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                aria-label="Filter by event type">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+
+                    <!-- Clear Filters Button -->
+                    <button id="clear-filters-btn"
+                            class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px]"
+                            aria-label="Clear all filters">
+                        Clear Filters
+                    </button>
+
+                    <!-- SSE Connection indicator -->
+                    <div id="connection-indicator"
+                         class="ml-auto flex items-center gap-2"
+                         role="status"
+                         aria-live="polite">
+                        <span class="connection-dot w-2 h-2 rounded-full bg-muted" aria-hidden="true"></span>
+                        <span class="connection-text text-muted text-sm">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Event Table Section -->
+        <section aria-labelledby="events-heading">
+            <div class="bg-elevated rounded-lg border border-border">
+                <h2 id="events-heading" class="sr-only">System Events</h2>
+
+                <!-- Event Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full" aria-describedby="events-heading">
+                        <thead class="bg-surface border-b border-border">
+                            <tr>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Timestamp</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Project</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Agent</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Event Type</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="events-table-body" class="divide-y divide-border">
+                            <!-- Events will be rendered by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden text-center py-12">
+                    <p class="text-secondary">No events recorded yet.</p>
+                    <p class="text-muted text-sm mt-1">Events will appear here as they occur.</p>
+                </div>
+
+                <!-- No Results State -->
+                <div id="no-results-state" class="hidden text-center py-12">
+                    <p class="text-secondary">No events match the current filters.</p>
+                    <p class="text-muted text-sm mt-1">Try adjusting your filter criteria.</p>
+                </div>
+
+                <!-- Error State -->
+                <div id="error-state" class="hidden text-center py-12">
+                    <p class="text-red">Failed to load events.</p>
+                    <p class="text-muted text-sm mt-1">Please try refreshing the page.</p>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading-state" class="text-center py-12">
+                    <p class="text-secondary">Loading events...</p>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div id="pagination-controls" class="hidden flex items-center justify-between px-4 py-3 border-t border-border">
+                    <div class="flex items-center gap-2">
+                        <button id="prev-page-btn"
+                                class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled
+                                aria-label="Previous page">
+                            Previous
+                        </button>
+                        <button id="next-page-btn"
+                                class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled
+                                aria-label="Next page">
+                            Next
+                        </button>
+                    </div>
+                    <div id="page-indicator" class="text-sm text-muted">
+                        Page 1 of 1
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/sse-client.js') }}"></script>
+<script src="{{ url_for('static', filename='js/logging.js') }}"></script>
+{% endblock %}
