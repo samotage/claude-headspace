@@ -10,6 +10,10 @@
     <main class="container mx-auto px-4 py-8">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Help Modal (available on all pages) -->
+    {% include "partials/_help_modal.html" %}
+
     {% block scripts %}{% endblock %}
 </body>
 </html>

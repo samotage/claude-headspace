@@ -127,6 +127,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.dashboard import dashboard_bp
     from .routes.focus import focus_bp
     from .routes.health import health_bp
+    from .routes.help import help_bp
     from .routes.hooks import hooks_bp
     from .routes.logging import logging_bp
     from .routes.objective import objective_bp
@@ -137,6 +138,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(focus_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(help_bp)
     app.register_blueprint(hooks_bp)
     app.register_blueprint(logging_bp)
     app.register_blueprint(objective_bp)

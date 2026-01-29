@@ -27,6 +27,13 @@
                    {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>
                     config
                 </a>
+                <button type="button"
+                        onclick="openHelpModal()"
+                        class="nav-link px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
+                        aria-label="Open help"
+                        title="Help (?)">
+                    ?
+                </button>
             </nav>
         </div>
 
