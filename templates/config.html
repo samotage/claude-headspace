@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Config - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="container mx-auto px-4 py-6" role="main">
+        <div class="max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold text-primary mb-6">Configuration</h2>
+
+            <form id="config-form" class="space-y-8">
+                {% for section in schema %}
+                <fieldset class="bg-elevated rounded-lg border border-border p-6">
+                    <legend class="text-lg font-semibold text-primary px-2">{{ section.title }}</legend>
+
+                    <div class="space-y-4 mt-4">
+                        {% for field in section.fields %}
+                        <div class="field-group" data-section="{{ section.name }}" data-field="{{ field.name }}">
+                            <label for="{{ section.name }}-{{ field.name }}"
+                                   class="block text-sm font-medium text-secondary mb-1">
+                                {{ field.name }}
+                                {% if field.required %}
+                                <span class="text-amber" aria-label="required">*</span>
+                                {% endif %}
+                            </label>
+
+                            {% if field.type == 'boolean' %}
+                            <!-- Boolean toggle -->
+                            <div class="flex items-center gap-3">
+                                <button type="button"
+                                        id="{{ section.name }}-{{ field.name }}"
+                                        class="toggle-btn relative w-12 h-6 rounded-full transition-colors {% if config[section.name][field.name] %}bg-cyan{% else %}bg-surface{% endif %}"
+                                        data-value="{{ 'true' if config[section.name][field.name] else 'false' }}"
+                                        aria-pressed="{{ 'true' if config[section.name][field.name] else 'false' }}"
+                                        aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                    <span class="toggle-dot absolute top-1 w-4 h-4 rounded-full bg-primary transition-all {% if config[section.name][field.name] %}left-7{% else %}left-1{% endif %}"></span>
+                                </button>
+                                <span class="toggle-label text-sm text-muted">
+                                    {{ 'Enabled' if config[section.name][field.name] else 'Disabled' }}
+                                </span>
+                            </div>
+
+                            {% elif field.type == 'password' %}
+                            <!-- Password field with reveal toggle -->
+                            <div class="relative">
+                                <input type="password"
+                                       id="{{ section.name }}-{{ field.name }}"
+                                       name="{{ section.name }}.{{ field.name }}"
+                                       value="{{ config[section.name][field.name] or '' }}"
+                                       class="field-input w-full px-3 py-2 bg-surface border border-border rounded text-primary focus:outline-none focus:border-cyan pr-10"
+                                       aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                <button type="button"
+                                        class="password-toggle absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
+                                        aria-label="Toggle password visibility">
+                                    <svg class="eye-icon w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    <svg class="eye-off-icon w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {% elif field.type == 'integer' or field.type == 'float' %}
+                            <!-- Number input -->
+                            <input type="number"
+                                   id="{{ section.name }}-{{ field.name }}"
+                                   name="{{ section.name }}.{{ field.name }}"
+                                   value="{{ config[section.name][field.name] }}"
+                                   {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+                                   {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+                                   {% if field.type == 'float' %}step="0.1"{% else %}step="1"{% endif %}
+                                   class="field-input w-full px-3 py-2 bg-surface border border-border rounded text-primary focus:outline-none focus:border-cyan"
+                                   aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+
+                            {% else %}
+                            <!-- Text input -->
+                            <input type="text"
+                                   id="{{ section.name }}-{{ field.name }}"
+                                   name="{{ section.name }}.{{ field.name }}"
+                                   value="{{ config[section.name][field.name] or '' }}"
+                                   class="field-input w-full px-3 py-2 bg-surface border border-border rounded text-primary focus:outline-none focus:border-cyan"
+                                   aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                            {% endif %}
+
+                            <p id="{{ section.name }}-{{ field.name }}-hint" class="text-xs text-muted mt-1">
+                                {{ field.description }}
+                                {% if field.min is defined and field.max is defined %}
+                                ({{ field.min }} - {{ field.max }})
+                                {% endif %}
+                            </p>
+
+                            <p class="field-error text-xs text-red mt-1 hidden" role="alert"></p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                {% endfor %}
+
+                <!-- Form actions -->
+                <div class="flex items-center justify-between">
+                    <button type="submit"
+                            id="save-btn"
+                            class="px-6 py-2 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors min-h-[44px] flex items-center gap-2">
+                        <span class="save-text">Save Configuration</span>
+                        <span class="loading-spinner hidden">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+
+                    <button type="button"
+                            id="refresh-btn"
+                            class="hidden px-6 py-2 bg-amber text-void font-medium rounded hover:bg-amber/90 transition-colors min-h-[44px]"
+                            title="Restart server to apply changes">
+                        Apply Changes (Restart Required)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+
+<!-- Toast container -->
+{% include "partials/_toast.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const form = document.getElementById('config-form');
+    const saveBtn = document.getElementById('save-btn');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const saveText = saveBtn.querySelector('.save-text');
+    const loadingSpinner = saveBtn.querySelector('.loading-spinner');
+
+    // Toggle button handling
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const currentValue = this.getAttribute('data-value') === 'true';
+            const newValue = !currentValue;
+
+            this.setAttribute('data-value', newValue);
+            this.setAttribute('aria-pressed', newValue);
+
+            // Update visual state
+            const dot = this.querySelector('.toggle-dot');
+            const label = this.nextElementSibling;
+
+            if (newValue) {
+                this.classList.remove('bg-surface');
+                this.classList.add('bg-cyan');
+                dot.classList.remove('left-1');
+                dot.classList.add('left-7');
+                label.textContent = 'Enabled';
+            } else {
+                this.classList.remove('bg-cyan');
+                this.classList.add('bg-surface');
+                dot.classList.remove('left-7');
+                dot.classList.add('left-1');
+                label.textContent = 'Disabled';
+            }
+        });
+    });
+
+    // Password visibility toggle
+    document.querySelectorAll('.password-toggle').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const input = this.parentElement.querySelector('input');
+            const eyeIcon = this.querySelector('.eye-icon');
+            const eyeOffIcon = this.querySelector('.eye-off-icon');
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                eyeIcon.classList.add('hidden');
+                eyeOffIcon.classList.remove('hidden');
+            } else {
+                input.type = 'password';
+                eyeIcon.classList.remove('hidden');
+                eyeOffIcon.classList.add('hidden');
+            }
+        });
+    });
+
+    // Collect form data
+    function collectFormData() {
+        const data = {};
+
+        document.querySelectorAll('.field-group').forEach(group => {
+            const section = group.dataset.section;
+            const field = group.dataset.field;
+
+            if (!data[section]) {
+                data[section] = {};
+            }
+
+            // Check for toggle button
+            const toggleBtn = group.querySelector('.toggle-btn');
+            if (toggleBtn) {
+                data[section][field] = toggleBtn.getAttribute('data-value') === 'true';
+                return;
+            }
+
+            // Check for input
+            const input = group.querySelector('.field-input');
+            if (input) {
+                let value = input.value;
+
+                // Type conversion
+                if (input.type === 'number') {
+                    if (input.step === '0.1') {
+                        value = parseFloat(value);
+                    } else {
+                        value = parseInt(value, 10);
+                    }
+                }
+
+                data[section][field] = value;
+            }
+        });
+
+        return data;
+    }
+
+    // Clear all errors
+    function clearErrors() {
+        document.querySelectorAll('.field-error').forEach(el => {
+            el.classList.add('hidden');
+            el.textContent = '';
+        });
+        document.querySelectorAll('.field-input').forEach(el => {
+            el.classList.remove('border-red');
+        });
+    }
+
+    // Show field error
+    function showFieldError(section, field, message) {
+        const group = document.querySelector(`.field-group[data-section="${section}"][data-field="${field}"]`);
+        if (!group) return;
+
+        const errorEl = group.querySelector('.field-error');
+        const inputEl = group.querySelector('.field-input');
+
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        if (inputEl) {
+            inputEl.classList.add('border-red');
+        }
+    }
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+
+        const messageEl = toast.querySelector('.toast-message');
+        if (messageEl) {
+            messageEl.textContent = message;
+        }
+
+        // Set color based on type
+        toast.classList.remove('bg-green', 'bg-red', 'bg-amber');
+        if (type === 'success') {
+            toast.classList.add('bg-green');
+        } else if (type === 'error') {
+            toast.classList.add('bg-red');
+        } else {
+            toast.classList.add('bg-amber');
+        }
+
+        toast.classList.remove('hidden');
+        toast.classList.add('toast-visible');
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('toast-visible');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 300);
+        }, 3000);
+    }
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        clearErrors();
+
+        // Show loading state
+        saveBtn.disabled = true;
+        saveText.classList.add('hidden');
+        loadingSpinner.classList.remove('hidden');
+
+        try {
+            const data = collectFormData();
+
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.status === 'ok') {
+                showToast('Configuration saved successfully', 'success');
+                refreshBtn.classList.remove('hidden');
+            } else if (result.errors) {
+                // Show validation errors
+                result.errors.forEach(err => {
+                    showFieldError(err.section, err.field, err.message);
+                });
+                showToast('Please fix the errors above before saving', 'error');
+            } else {
+                showToast(result.message || 'Failed to save configuration', 'error');
+            }
+        } catch (err) {
+            console.error('Save error:', err);
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            // Reset loading state
+            saveBtn.disabled = false;
+            saveText.classList.remove('hidden');
+            loadingSpinner.classList.add('hidden');
+        }
+    });
+
+    // Refresh button
+    refreshBtn.addEventListener('click', function() {
+        if (confirm('This will restart the server. Continue?')) {
+            window.location.reload();
+        }
+    });
+})();
+</script>
+{% endblock %}
