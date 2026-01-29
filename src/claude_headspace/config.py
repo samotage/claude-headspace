@@ -48,6 +48,11 @@ DEFAULTS = {
         "connection_timeout_seconds": 60,
         "retry_after_seconds": 5,
     },
+    "hooks": {
+        "enabled": True,
+        "polling_interval_with_hooks": 60,
+        "fallback_timeout": 300,
+    },
 }
 
 # Environment variable mappings
@@ -76,6 +81,9 @@ ENV_MAPPINGS = {
     "SSE_MAX_CONNECTIONS": ("sse", "max_connections", int),
     "SSE_CONNECTION_TIMEOUT_SECONDS": ("sse", "connection_timeout_seconds", int),
     "SSE_RETRY_AFTER_SECONDS": ("sse", "retry_after_seconds", int),
+    "HOOKS_ENABLED": ("hooks", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
+    "HOOKS_POLLING_INTERVAL_WITH_HOOKS": ("hooks", "polling_interval_with_hooks", int),
+    "HOOKS_FALLBACK_TIMEOUT": ("hooks", "fallback_timeout", int),
 }
 
 
@@ -297,5 +305,28 @@ def get_sse_config(config: dict) -> dict:
         ),
         "retry_after_seconds": get_value(
             config, "sse", "retry_after_seconds", default=5
+        ),
+    }
+
+
+def get_hooks_config(config: dict) -> dict:
+    """
+    Get hooks configuration with defaults.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Hooks configuration dictionary
+    """
+    return {
+        "enabled": get_value(
+            config, "hooks", "enabled", default=True
+        ),
+        "polling_interval_with_hooks": get_value(
+            config, "hooks", "polling_interval_with_hooks", default=60
+        ),
+        "fallback_timeout": get_value(
+            config, "hooks", "fallback_timeout", default=300
         ),
     }

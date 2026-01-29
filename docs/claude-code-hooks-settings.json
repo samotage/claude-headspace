@@ -1,0 +1,24 @@
+{
+  "hooks": [
+    {
+      "event": "session-start",
+      "command": "/Users/YOUR_USERNAME/.claude/hooks/notify-headspace.sh session-start"
+    },
+    {
+      "event": "session-end",
+      "command": "/Users/YOUR_USERNAME/.claude/hooks/notify-headspace.sh session-end"
+    },
+    {
+      "event": "user-prompt-submit",
+      "command": "/Users/YOUR_USERNAME/.claude/hooks/notify-headspace.sh user-prompt-submit"
+    },
+    {
+      "event": "stop",
+      "command": "/Users/YOUR_USERNAME/.claude/hooks/notify-headspace.sh stop"
+    },
+    {
+      "event": "notification",
+      "command": "/Users/YOUR_USERNAME/.claude/hooks/notify-headspace.sh notification"
+    }
+  ]
+}
