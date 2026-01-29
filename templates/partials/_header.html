@@ -1,0 +1,59 @@
+<header class="bg-deep border-b border-border sticky top-0 z-50" role="banner">
+    <div class="container mx-auto px-4">
+        <!-- Top bar: Title and Navigation -->
+        <div class="flex items-center justify-between py-4">
+            <h1 class="text-xl font-bold text-primary">
+                <span class="text-cyan">CLAUDE</span> <span class="text-muted">&gt;_</span>headspace
+            </h1>
+
+            <nav class="flex gap-4" role="navigation" aria-label="Main navigation">
+                <a href="{{ url_for('dashboard.dashboard') }}"
+                   class="px-4 py-2 rounded bg-surface text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
+                   aria-current="page">
+                    dashboard
+                </a>
+                <a href="#"
+                   class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                    objective
+                </a>
+                <a href="#"
+                   class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
+                    logging
+                </a>
+            </nav>
+        </div>
+
+        <!-- Status bar -->
+        <div class="flex flex-wrap items-center gap-4 pb-4 text-sm">
+            <!-- Status badges -->
+            <div class="flex items-center gap-4">
+                <span class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
+                      aria-label="{{ status_counts.input_needed }} agents awaiting input">
+                    <span class="w-2 h-2 rounded-full bg-amber" aria-hidden="true"></span>
+                    <span class="text-amber font-medium">INPUT NEEDED</span>
+                    <span class="text-primary font-bold">[{{ status_counts.input_needed }}]</span>
+                </span>
+
+                <span class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
+                      aria-label="{{ status_counts.working }} agents working">
+                    <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span>
+                    <span class="text-blue font-medium">WORKING</span>
+                    <span class="text-primary font-bold">[{{ status_counts.working }}]</span>
+                </span>
+
+                <span class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
+                      aria-label="{{ status_counts.idle }} agents idle">
+                    <span class="w-2 h-2 rounded-full bg-muted" aria-hidden="true"></span>
+                    <span class="text-muted font-medium">IDLE</span>
+                    <span class="text-primary font-bold">[{{ status_counts.idle }}]</span>
+                </span>
+            </div>
+
+            <!-- Monitoring mode indicator -->
+            <div class="ml-auto flex items-center gap-2 text-muted">
+                <span class="w-2 h-2 rounded-full bg-green animate-pulse" aria-hidden="true"></span>
+                <span>{{ monitoring_mode | upper }}</span>
+            </div>
+        </div>
+    </div>
+</header>

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="container mx-auto px-4 py-6" role="main">
+        {% if projects %}
+            <div class="space-y-6">
+                {% for project in projects %}
+                    {% include "partials/_project_group.html" %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center py-12">
+                <p class="text-secondary text-lg">No projects found.</p>
+                <p class="text-muted mt-2">Start a Claude Code session to see agents here.</p>
+            </div>
+        {% endif %}
+    </main>
+</div>
+{% endblock %}
