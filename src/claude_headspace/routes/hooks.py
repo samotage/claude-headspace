@@ -263,7 +263,7 @@ def hook_stop():
                 notification_service.notify_task_complete(
                     agent_id=str(result.agent_id),
                     agent_name=correlation.agent.name or f"Agent {result.agent_id}",
-                    project=correlation.agent.project,
+                    project=correlation.agent.project.name if correlation.agent.project else None,
                 )
             except Exception as notif_err:
                 logger.debug(f"Notification send failed (non-fatal): {notif_err}")

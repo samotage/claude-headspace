@@ -109,11 +109,11 @@ def detect_agent_intent(text: Optional[str]) -> IntentResult:
             matched_pattern=matched,
         )
 
-    # Default to progress
+    # Default to progress with lower confidence since no pattern matched
     logger.debug("No pattern matched, defaulting to PROGRESS")
     return IntentResult(
         intent=TurnIntent.PROGRESS,
-        confidence=1.0,
+        confidence=0.5,
         matched_pattern=None,
     )
 

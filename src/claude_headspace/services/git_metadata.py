@@ -1,4 +1,9 @@
-"""Git metadata extraction with caching."""
+"""Git metadata extraction with caching.
+
+TODO (Epic 3): Add commit-based progress tracking functionality.
+The architecture mentions tracking commits for session progress measurement,
+but this is deferred to Epic 3 of the roadmap.
+"""
 
 import logging
 import os

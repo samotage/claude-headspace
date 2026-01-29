@@ -162,7 +162,7 @@ class TaskLifecycleManager:
                 notification_service.notify_awaiting_input(
                     agent_id=str(task.agent_id),
                     agent_name=task.agent.name or f"Agent {task.agent_id}",
-                    project=task.agent.project,
+                    project=task.agent.project.name if task.agent.project else None,
                 )
             except Exception as notif_err:
                 logger.debug(f"Notification send failed (non-fatal): {notif_err}")

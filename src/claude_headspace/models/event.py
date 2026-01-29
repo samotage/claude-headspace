@@ -54,6 +54,7 @@ class EventType:
     STATE_TRANSITION = "state_transition"
     HOOK_RECEIVED = "hook_received"
     OBJECTIVE_CHANGED = "objective_changed"
+    NOTIFICATION_SENT = "notification_sent"
 
 
 # Composite indexes for common query patterns

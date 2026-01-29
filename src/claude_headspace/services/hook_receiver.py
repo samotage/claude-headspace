@@ -129,6 +129,22 @@ def configure_receiver(
             state.fallback_timeout = fallback_timeout
 
 
+def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> None:
+    """Broadcast state change to SSE clients."""
+    try:
+        from .broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast("state_changed", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "event_type": event_type,
+            "new_state": new_state,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.debug(f"Broadcast failed (non-fatal): {e}")
+
+
 def process_session_start(
     agent: Agent,
     claude_session_id: str,
@@ -200,6 +216,9 @@ def process_session_end(
 
         db.session.commit()
 
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value)
+
         logger.info(
             f"hook_event: type=session_end, agent_id={agent.id}, "
             f"session_id={claude_session_id}"
@@ -260,6 +279,9 @@ def process_user_prompt_submit(
 
         db.session.commit()
 
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "user_prompt_submit", current_task.state.value)
+
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
             f"session_id={claude_session_id}, new_state={current_task.state.value}"
@@ -310,6 +332,9 @@ def process_stop(
             current_task.completed_at = datetime.now(timezone.utc)
 
         db.session.commit()
+
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "stop", TaskState.IDLE.value)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "

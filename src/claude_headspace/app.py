@@ -96,6 +96,31 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     db_connected = init_database(app, config)
     app.config["DATABASE_CONNECTED"] = db_connected
 
+    # Initialize broadcaster for SSE
+    from .services.broadcaster import init_broadcaster, shutdown_broadcaster
+    broadcaster = init_broadcaster(config)
+    app.extensions["broadcaster"] = broadcaster
+    logger.info("SSE broadcaster initialized")
+
+    # Initialize file watcher (only in non-testing environments)
+    if not app.config.get("TESTING"):
+        from .services.file_watcher import init_file_watcher
+        init_file_watcher(app, config)
+        logger.info("File watcher initialized")
+
+    # Register shutdown cleanup
+    import atexit
+
+    @atexit.register
+    def cleanup():
+        # Wrap in try-except as logging may be shut down during atexit
+        try:
+            shutdown_broadcaster()
+            if "file_watcher" in app.extensions:
+                app.extensions["file_watcher"].stop()
+        except Exception:
+            pass  # Ignore errors during shutdown
+
     # Register error handlers
     register_error_handlers(app)
 
