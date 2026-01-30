@@ -15,14 +15,12 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 
 | Key | Action |
 |-----|--------|
-| `?` | Open this help modal |
-| `Escape` | Close modal |
-| `/` | Focus search (when help is open) |
+| `/` | Focus search input |
 
 ## Getting Help
 
 If you can't find what you're looking for:
 
-1. Use the search bar above to find topics
+1. Use the search bar to find topics
 2. Check the [Troubleshooting](troubleshooting) guide
 3. Review the project README on GitHub

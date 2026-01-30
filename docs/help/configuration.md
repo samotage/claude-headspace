@@ -15,8 +15,8 @@ You can edit configuration in two ways:
 
 ```yaml
 server:
-  host: 0.0.0.0
-  port: 5050
+  host: 127.0.0.1
+  port: 5055
   debug: false
 ```
 

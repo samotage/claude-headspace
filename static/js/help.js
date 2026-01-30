@@ -1,6 +1,6 @@
 /**
  * Help system for Claude Headspace
- * Provides modal-based documentation with search functionality
+ * Provides page-based documentation with search functionality
  */
 
 (function() {
@@ -8,16 +8,12 @@
 
     // State
     let helpState = {
-        isOpen: false,
         topics: [],
         searchIndex: [],
-        currentTopic: null,
-        previousFocus: null
+        currentTopic: null
     };
 
     // Make functions global
-    window.openHelpModal = openHelpModal;
-    window.closeHelpModal = closeHelpModal;
     window.searchHelp = searchHelp;
     window.loadHelpTopic = loadHelpTopic;
 
@@ -29,119 +25,31 @@
     }
 
     function initHelp() {
-        // Load topics for TOC
         loadTopics();
 
-        // Listen for keyboard shortcuts
-        document.addEventListener('keydown', handleKeydown);
-    }
-
-    function handleKeydown(e) {
-        // Open help on ? key (Shift+/)
-        if (e.key === '?' && !isInputFocused()) {
-            e.preventDefault();
-            openHelpModal();
-            return;
-        }
-
-        // Close help on Escape
-        if (e.key === 'Escape' && helpState.isOpen) {
-            e.preventDefault();
-            closeHelpModal();
-            return;
-        }
-
-        // Focus search on / when modal is open
-        if (e.key === '/' && helpState.isOpen && !isInputFocused()) {
-            e.preventDefault();
-            const searchInput = document.getElementById('help-search-input');
-            if (searchInput) {
-                searchInput.focus();
-            }
-        }
-    }
-
-    function isInputFocused() {
-        const active = document.activeElement;
-        if (!active) return false;
-        const tag = active.tagName.toLowerCase();
-        return tag === 'input' || tag === 'textarea' || active.isContentEditable;
-    }
-
-    function openHelpModal() {
-        const modal = document.getElementById('help-modal');
-        if (!modal) return;
-
-        // Save current focus
-        helpState.previousFocus = document.activeElement;
-        helpState.isOpen = true;
-
-        // Show modal
-        modal.classList.remove('hidden');
-
-        // Focus search input
-        const searchInput = document.getElementById('help-search-input');
-        if (searchInput) {
-            searchInput.focus();
-            searchInput.value = '';
-        }
-
-        // Load index topic if no topic loaded
-        if (!helpState.currentTopic) {
-            loadHelpTopic('index');
-        }
-
-        // Setup focus trap
-        setupFocusTrap(modal);
-
-        // Announce to screen readers
-        modal.setAttribute('aria-hidden', 'false');
-    }
-
-    function closeHelpModal() {
-        const modal = document.getElementById('help-modal');
-        if (!modal) return;
-
-        helpState.isOpen = false;
-
-        // Hide modal
-        modal.classList.add('hidden');
-        modal.setAttribute('aria-hidden', 'true');
-
-        // Restore focus
-        if (helpState.previousFocus) {
-            helpState.previousFocus.focus();
-        }
-    }
-
-    function setupFocusTrap(modal) {
-        const focusable = modal.querySelectorAll(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        const firstFocusable = focusable[0];
-        const lastFocusable = focusable[focusable.length - 1];
-
-        modal.addEventListener('keydown', function(e) {
-            if (e.key !== 'Tab') return;
-
-            if (e.shiftKey) {
-                if (document.activeElement === firstFocusable) {
-                    e.preventDefault();
-                    lastFocusable.focus();
-                }
-            } else {
-                if (document.activeElement === lastFocusable) {
-                    e.preventDefault();
-                    firstFocusable.focus();
+        // Focus search on / key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '/' && !isInputFocused()) {
+                e.preventDefault();
+                var searchInput = document.getElementById('help-search-input');
+                if (searchInput) {
+                    searchInput.focus();
                 }
             }
         });
     }
 
+    function isInputFocused() {
+        var active = document.activeElement;
+        if (!active) return false;
+        var tag = active.tagName.toLowerCase();
+        return tag === 'input' || tag === 'textarea' || active.isContentEditable;
+    }
+
     async function loadTopics() {
         try {
-            const response = await fetch('/api/help/topics');
-            const data = await response.json();
+            var response = await fetch('/api/help/topics');
+            var data = await response.json();
             helpState.topics = data.topics || [];
             renderTOC(helpState.topics);
             buildSearchIndex();
@@ -151,57 +59,57 @@
     }
 
     function renderTOC(topics) {
-        const toc = document.getElementById('help-toc');
+        var toc = document.getElementById('help-toc');
         if (!toc) return;
 
-        toc.innerHTML = topics.map(topic => `
-            <button type="button"
-                    onclick="loadHelpTopic('${topic.slug}')"
-                    class="w-full text-left px-3 py-2 rounded text-sm ${
-                        helpState.currentTopic === topic.slug
-                            ? 'bg-cyan/20 text-cyan'
-                            : 'text-secondary hover:text-primary hover:bg-hover'
-                    } transition-colors"
-                    data-topic="${topic.slug}">
-                ${escapeHtml(topic.title)}
-            </button>
-        `).join('');
+        toc.innerHTML = topics.map(function(topic) {
+            var isActive = helpState.currentTopic === topic.slug;
+            return '<a href="/help/' + topic.slug + '"' +
+                   ' onclick="loadHelpTopic(\'' + topic.slug + '\'); return false;"' +
+                   ' class="block px-3 py-2 rounded text-sm ' +
+                   (isActive
+                       ? 'bg-cyan/20 text-cyan'
+                       : 'text-secondary hover:text-primary hover:bg-hover') +
+                   ' transition-colors"' +
+                   ' data-topic="' + topic.slug + '">' +
+                   escapeHtml(topic.title) +
+                   '</a>';
+        }).join('');
     }
 
     async function loadHelpTopic(slug) {
         try {
-            const response = await fetch(`/api/help/topics/${slug}`);
+            var response = await fetch('/api/help/topics/' + slug);
             if (!response.ok) {
                 throw new Error('Topic not found');
             }
 
-            const data = await response.json();
+            var data = await response.json();
             helpState.currentTopic = slug;
 
             // Render content
-            const content = document.getElementById('help-content');
+            var content = document.getElementById('help-content');
             if (content) {
                 content.innerHTML = renderMarkdown(data.content);
-            }
-
-            // Update path display
-            const path = document.getElementById('help-topic-path');
-            if (path) {
-                path.textContent = `docs/help/${slug}.md`;
             }
 
             // Update TOC active state
             renderTOC(helpState.topics);
 
+            // Update URL without reload
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, '', '/help/' + slug);
+            }
+
             // Clear search
-            const searchInput = document.getElementById('help-search-input');
+            var searchInput = document.getElementById('help-search-input');
             if (searchInput) {
                 searchInput.value = '';
             }
 
         } catch (error) {
             console.error('Failed to load topic:', error);
-            const content = document.getElementById('help-content');
+            var content = document.getElementById('help-content');
             if (content) {
                 content.innerHTML = '<div class="text-red text-center py-8">Failed to load topic</div>';
             }
@@ -210,8 +118,8 @@
 
     async function buildSearchIndex() {
         try {
-            const response = await fetch('/api/help/search');
-            const data = await response.json();
+            var response = await fetch('/api/help/search');
+            var data = await response.json();
             helpState.searchIndex = data.topics || [];
         } catch (error) {
             console.error('Failed to build search index:', error);
@@ -228,29 +136,31 @@
         }
 
         // Search through topics
-        const results = helpState.searchIndex
-            .filter(topic => {
-                const titleMatch = topic.title.toLowerCase().includes(query);
-                const contentMatch = topic.content.toLowerCase().includes(query);
+        var results = helpState.searchIndex
+            .filter(function(topic) {
+                var titleMatch = topic.title.toLowerCase().includes(query);
+                var contentMatch = topic.content.toLowerCase().includes(query);
                 return titleMatch || contentMatch;
             })
-            .map(topic => ({
-                slug: topic.slug,
-                title: topic.title,
-                excerpt: extractSearchExcerpt(topic.content, query)
-            }));
+            .map(function(topic) {
+                return {
+                    slug: topic.slug,
+                    title: topic.title,
+                    excerpt: extractSearchExcerpt(topic.content, query)
+                };
+            });
 
         renderSearchResults(results, query);
     }
 
     function extractSearchExcerpt(content, query) {
-        const lowerContent = content.toLowerCase();
-        const index = lowerContent.indexOf(query);
+        var lowerContent = content.toLowerCase();
+        var index = lowerContent.indexOf(query);
         if (index === -1) return '';
 
-        const start = Math.max(0, index - 40);
-        const end = Math.min(content.length, index + query.length + 60);
-        let excerpt = content.slice(start, end);
+        var start = Math.max(0, index - 40);
+        var end = Math.min(content.length, index + query.length + 60);
+        var excerpt = content.slice(start, end);
 
         if (start > 0) excerpt = '...' + excerpt;
         if (end < content.length) excerpt = excerpt + '...';
@@ -259,7 +169,7 @@
     }
 
     function renderSearchResults(results, query) {
-        const toc = document.getElementById('help-toc');
+        var toc = document.getElementById('help-toc');
         if (!toc) return;
 
         if (results.length === 0) {
@@ -267,24 +177,23 @@
             return;
         }
 
-        toc.innerHTML = `
-            <div class="px-3 py-2 text-xs text-muted border-b border-border mb-2">
-                ${results.length} result${results.length === 1 ? '' : 's'}
-            </div>
-            ${results.map(result => `
-                <button type="button"
-                        onclick="loadHelpTopic('${result.slug}')"
-                        class="w-full text-left px-3 py-2 rounded text-sm text-secondary hover:text-primary hover:bg-hover transition-colors">
-                    <div class="font-medium">${highlightMatch(result.title, query)}</div>
-                    ${result.excerpt ? `<div class="text-xs text-muted mt-1 line-clamp-2">${highlightMatch(escapeHtml(result.excerpt), query)}</div>` : ''}
-                </button>
-            `).join('')}
-        `;
+        toc.innerHTML =
+            '<div class="px-3 py-2 text-xs text-muted border-b border-border mb-2">' +
+                results.length + ' result' + (results.length === 1 ? '' : 's') +
+            '</div>' +
+            results.map(function(result) {
+                return '<a href="/help/' + result.slug + '"' +
+                       ' onclick="loadHelpTopic(\'' + result.slug + '\'); return false;"' +
+                       ' class="block px-3 py-2 rounded text-sm text-secondary hover:text-primary hover:bg-hover transition-colors">' +
+                       '<div class="font-medium">' + highlightMatch(result.title, query) + '</div>' +
+                       (result.excerpt ? '<div class="text-xs text-muted mt-1 line-clamp-2">' + highlightMatch(escapeHtml(result.excerpt), query) + '</div>' : '') +
+                       '</a>';
+            }).join('');
     }
 
     function highlightMatch(text, query) {
         if (!query) return text;
-        const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+        var regex = new RegExp('(' + escapeRegex(query) + ')', 'gi');
         return text.replace(regex, '<mark class="bg-cyan/30 text-primary">$1</mark>');
     }
 
@@ -293,21 +202,21 @@
     }
 
     function escapeHtml(text) {
-        const div = document.createElement('div');
+        var div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
 
     function renderMarkdown(markdown) {
         // Simple markdown to HTML rendering
-        let html = markdown
+        var html = markdown
             // Escape HTML first
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             // Code blocks (before other processing)
             .replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
-                return `<pre class="bg-surface rounded p-4 overflow-x-auto my-4"><code class="text-sm">${code.trim()}</code></pre>`;
+                return '<pre class="bg-surface rounded p-4 overflow-x-auto my-4"><code class="text-sm">' + code.trim() + '</code></pre>';
             })
             // Inline code
             .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-surface rounded text-cyan text-sm">$1</code>')
@@ -321,10 +230,10 @@
             // Links
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
                 if (url.startsWith('http')) {
-                    return `<a href="${url}" target="_blank" rel="noopener" class="text-cyan hover:underline">${text}</a>`;
+                    return '<a href="' + url + '" target="_blank" rel="noopener" class="text-cyan hover:underline">' + text + '</a>';
                 } else {
-                    // Internal link - convert to topic load
-                    return `<a href="#" onclick="loadHelpTopic('${url}'); return false;" class="text-cyan hover:underline">${text}</a>`;
+                    // Internal link - navigate to help topic
+                    return '<a href="/help/' + url + '" onclick="loadHelpTopic(\'' + url + '\'); return false;" class="text-cyan hover:underline">' + text + '</a>';
                 }
             })
             // Lists
@@ -332,11 +241,11 @@
             .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-secondary list-decimal">$2</li>')
             // Tables (simple support)
             .replace(/^\|(.+)\|$/gm, function(match, content) {
-                const cells = content.split('|').map(c => c.trim());
+                var cells = content.split('|').map(function(c) { return c.trim(); });
                 return '<tr class="border-b border-border">' +
-                    cells.map(c => {
+                    cells.map(function(c) {
                         if (c.match(/^[-:]+$/)) return ''; // Skip separator row
-                        return `<td class="px-3 py-2 text-secondary">${c}</td>`;
+                        return '<td class="px-3 py-2 text-secondary">' + c + '</td>';
                     }).join('') +
                     '</tr>';
             })

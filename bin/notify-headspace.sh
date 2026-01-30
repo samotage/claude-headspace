@@ -28,7 +28,7 @@
 set -e
 
 # Configuration
-HEADSPACE_URL="${HEADSPACE_URL:-http://localhost:5050}"
+HEADSPACE_URL="${HEADSPACE_URL:-http://localhost:5055}"
 CONNECT_TIMEOUT=1
 MAX_TIME=2
 

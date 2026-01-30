@@ -33,12 +33,15 @@ def objective_page():
     total_history = db.session.query(ObjectiveHistory).count()
     has_more = total_history > 10
 
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+
     return render_template(
         "objective.html",
         objective=objective,
         history=history_query,
         has_more=has_more,
         total_history=total_history,
+        status_counts=status_counts,
     )
 
 

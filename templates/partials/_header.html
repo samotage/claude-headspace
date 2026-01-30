@@ -1,79 +1,107 @@
-<header class="bg-deep border-b border-border sticky top-0 z-50" role="banner">
-    <div class="container mx-auto px-4">
-        <!-- Top bar: Title and Navigation -->
-        <div class="flex items-center justify-between py-4">
-            <h1 class="text-xl font-bold text-primary">
-                <span class="text-cyan">CLAUDE</span> <span class="text-muted">&gt;_</span>headspace
-            </h1>
-
-            <nav class="flex gap-4" role="navigation" aria-label="Main navigation">
-                <a href="{{ url_for('dashboard.dashboard') }}"
-                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'dashboard.dashboard' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
-                   {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>
-                    dashboard
-                </a>
-                <a href="{{ url_for('objective.objective_page') }}"
-                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'objective.objective_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
-                   {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>
-                    objective
-                </a>
-                <a href="{{ url_for('logging.logging_page') }}"
-                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'logging.logging_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
-                   {% if request.endpoint == 'logging.logging_page' %}aria-current="page"{% endif %}>
-                    logging
-                </a>
-                <a href="{{ url_for('config.config_page') }}"
-                   class="nav-link px-4 py-2 rounded {% if request.endpoint == 'config.config_page' %}bg-surface text-primary{% else %}text-secondary hover:text-primary hover:bg-hover{% endif %} transition-colors min-h-[44px] flex items-center"
-                   {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>
-                    config
-                </a>
-                <button type="button"
-                        onclick="openHelpModal()"
-                        class="nav-link px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
-                        aria-label="Open help"
-                        title="Help (?)">
-                    ?
-                </button>
-            </nav>
-        </div>
-
-        <!-- Status bar -->
-        <div class="flex flex-wrap items-center gap-4 pb-4 text-sm">
-            <!-- Status badges -->
-            <div class="flex items-center gap-4">
-                <span id="status-input-needed"
-                      class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
-                      aria-label="{{ status_counts.input_needed }} agents awaiting input">
-                    <span class="w-2 h-2 rounded-full bg-amber" aria-hidden="true"></span>
-                    <span class="text-amber font-medium">INPUT NEEDED</span>
-                    <span class="status-count text-primary font-bold">[{{ status_counts.input_needed }}]</span>
-                </span>
-
-                <span id="status-working"
-                      class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
-                      aria-label="{{ status_counts.working }} agents working">
-                    <span class="w-2 h-2 rounded-full bg-blue" aria-hidden="true"></span>
-                    <span class="text-blue font-medium">WORKING</span>
-                    <span class="status-count text-primary font-bold">[{{ status_counts.working }}]</span>
-                </span>
-
-                <span id="status-idle"
-                      class="flex items-center gap-2 px-3 py-1 rounded bg-surface"
-                      aria-label="{{ status_counts.idle }} agents idle">
-                    <span class="w-2 h-2 rounded-full bg-muted" aria-hidden="true"></span>
-                    <span class="text-muted font-medium">IDLE</span>
-                    <span class="status-count text-primary font-bold">[{{ status_counts.idle }}]</span>
-                </span>
-            </div>
-
-            <!-- SSE Connection indicator -->
-            <div id="connection-indicator"
-                 class="ml-auto flex items-center gap-2"
-                 role="status"
-                 aria-live="polite">
-                <span class="connection-dot w-2 h-2 rounded-full bg-muted" aria-hidden="true"></span>
-                <span class="connection-text text-muted">Connecting...</span>
-            </div>
-        </div>
+<!-- Tab Navigation -->
+<nav class="tab-nav" role="banner">
+    <a class="nav-brand" href="{{ url_for('dashboard.dashboard') }}" title="CLAUDE headspace">
+        <pre class="nav-ascii" aria-label="CLAUDE"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+██║     ██║     ███████║██║   ██║██║  ██║█████╗
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="nav-brand-cursor">&gt;_</span><span class="nav-brand-suffix">headspace</span>
+    </a>
+    <div class="tab-btn-group" role="navigation" aria-label="Main navigation">
+        <a href="{{ url_for('dashboard.dashboard') }}"
+           class="tab-link {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}"
+           {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>dashboard</a>
+        <a href="{{ url_for('objective.objective_page') }}"
+           class="tab-link {% if request.endpoint == 'objective.objective_page' %}active{% endif %}"
+           {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>objective</a>
+        <a href="{{ url_for('logging.logging_page') }}"
+           class="tab-link {% if request.endpoint == 'logging.logging_page' %}active{% endif %}"
+           {% if request.endpoint == 'logging.logging_page' %}aria-current="page"{% endif %}>logging</a>
+        <a href="{{ url_for('config.config_page') }}"
+           class="tab-link {% if request.endpoint == 'config.config_page' %}active{% endif %}"
+           {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>config</a>
+        <a href="{{ url_for('help.help_page') }}"
+           class="tab-link {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}"
+           {% if request.endpoint and request.endpoint.startswith('help.') %}aria-current="page"{% endif %}>help</a>
     </div>
-</header>
+    <!-- Hamburger Menu Button (mobile only) -->
+    <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+    </button>
+</nav>
+
+<!-- Mobile Menu Drawer -->
+<div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
+<div id="mobile-menu" class="mobile-menu">
+    <div class="mobile-menu-header">
+        <span class="mobile-menu-title">&gt;_ menu</span>
+        <button class="mobile-menu-close" onclick="closeMobileMenu()">&times;</button>
+    </div>
+    <div class="mobile-menu-items">
+        <a href="{{ url_for('dashboard.dashboard') }}"
+           class="mobile-menu-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9632;</span>
+            <span>dashboard</span>
+        </a>
+        <a href="{{ url_for('objective.objective_page') }}"
+           class="mobile-menu-item {% if request.endpoint == 'objective.objective_page' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9673;</span>
+            <span>objective</span>
+        </a>
+        <a href="{{ url_for('logging.logging_page') }}"
+           class="mobile-menu-item {% if request.endpoint == 'logging.logging_page' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9998;</span>
+            <span>logging</span>
+        </a>
+        <a href="{{ url_for('config.config_page') }}"
+           class="mobile-menu-item {% if request.endpoint == 'config.config_page' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9881;</span>
+            <span>config</span>
+        </a>
+        <a href="{{ url_for('help.help_page') }}"
+           class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}">
+            <span class="mobile-menu-icon">?</span>
+            <span>help</span>
+        </a>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar" id="stats-bar">
+    <div id="status-input-needed" class="stat-item">
+        <span class="stat-dot amber" aria-hidden="true"></span>
+        <span class="stat-label amber">INPUT NEEDED</span>
+        <span class="status-count stat-value">[{{ status_counts.input_needed }}]</span>
+    </div>
+    <div id="status-working" class="stat-item">
+        <span class="stat-dot blue" aria-hidden="true"></span>
+        <span class="stat-label blue">WORKING</span>
+        <span class="status-count stat-value">[{{ status_counts.working }}]</span>
+    </div>
+    <div id="status-idle" class="stat-item">
+        <span class="stat-dot muted" aria-hidden="true"></span>
+        <span class="stat-label muted">IDLE</span>
+        <span class="status-count stat-value">[{{ status_counts.idle }}]</span>
+    </div>
+    <div class="connection-indicator" id="connection-indicator" role="status" aria-live="polite">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span class="connection-text">Connecting...</span>
+    </div>
+</div>
+
+<script>
+function toggleMobileMenu() {
+    document.getElementById('mobile-menu').classList.toggle('active');
+    document.getElementById('mobile-menu-overlay').classList.toggle('active');
+    document.querySelector('.hamburger-btn').classList.toggle('active');
+}
+
+function closeMobileMenu() {
+    document.getElementById('mobile-menu').classList.remove('active');
+    document.getElementById('mobile-menu-overlay').classList.remove('active');
+    document.querySelector('.hamburger-btn').classList.remove('active');
+}
+</script>
