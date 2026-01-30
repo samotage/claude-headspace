@@ -155,6 +155,63 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> No
         logger.debug(f"Broadcast failed (non-fatal): {e}")
 
 
+# --- Debounced AWAITING_INPUT ---
+# The `stop` hook fires between tool calls (mid-turn), not just at end-of-turn.
+# To avoid false "input needed" flashes, we debounce: schedule AWAITING_INPUT
+# after a delay, and cancel it if user_prompt_submit arrives first.
+
+_AWAITING_INPUT_DELAY = 5.0  # seconds before showing "input needed"
+_awaiting_input_timers: dict[int, threading.Timer] = {}
+_timers_lock = threading.Lock()
+
+
+def _schedule_awaiting_input(agent_id: int, project_id: int) -> None:
+    """Schedule a delayed AWAITING_INPUT broadcast for an agent."""
+    with _timers_lock:
+        # Cancel any existing timer for this agent
+        existing = _awaiting_input_timers.pop(agent_id, None)
+        if existing:
+            existing.cancel()
+
+        timer = threading.Timer(
+            _AWAITING_INPUT_DELAY,
+            _fire_awaiting_input,
+            args=[agent_id, project_id],
+        )
+        timer.daemon = True
+        timer.start()
+        _awaiting_input_timers[agent_id] = timer
+
+
+def _cancel_awaiting_input(agent_id: int) -> None:
+    """Cancel a pending AWAITING_INPUT broadcast for an agent."""
+    with _timers_lock:
+        timer = _awaiting_input_timers.pop(agent_id, None)
+        if timer:
+            timer.cancel()
+            logger.debug(f"Cancelled pending AWAITING_INPUT for agent_id={agent_id}")
+
+
+def _fire_awaiting_input(agent_id: int, project_id: int) -> None:
+    """Fire the AWAITING_INPUT broadcast after the debounce period expires."""
+    with _timers_lock:
+        _awaiting_input_timers.pop(agent_id, None)
+
+    try:
+        from .broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast("state_changed", {
+            "agent_id": agent_id,
+            "project_id": project_id,
+            "event_type": "stop_debounced",
+            "new_state": "AWAITING_INPUT",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        logger.info(f"Debounced AWAITING_INPUT broadcast for agent_id={agent_id}")
+    except Exception as e:
+        logger.debug(f"Debounced AWAITING_INPUT broadcast failed: {e}")
+
+
 def process_session_start(
     agent: Agent,
     claude_session_id: str,
@@ -217,6 +274,9 @@ def process_session_end(
     state.record_event(HookEventType.SESSION_END)
 
     try:
+        # Cancel any pending AWAITING_INPUT timer
+        _cancel_awaiting_input(agent.id)
+
         # Update agent timestamp and mark as ended
         now = datetime.now(timezone.utc)
         agent.last_seen_at = now
@@ -288,6 +348,10 @@ def process_user_prompt_submit(
     state.record_event(HookEventType.USER_PROMPT_SUBMIT)
 
     try:
+        # Cancel any pending AWAITING_INPUT timer - user is sending input,
+        # so the previous stop was a mid-turn pause, not end-of-turn
+        _cancel_awaiting_input(agent.id)
+
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
@@ -371,13 +435,15 @@ def process_stop(
 
         db.session.commit()
 
-        # Broadcast state change to SSE clients
-        # Agent is IDLE after task completion
+        # Broadcast immediate IDLE, then schedule debounced AWAITING_INPUT.
+        # If user_prompt_submit arrives within the delay, the timer is cancelled
+        # (it was a mid-turn stop between tool calls, not a genuine end-of-turn).
         _broadcast_state_change(agent, "stop", TaskState.IDLE.value)
+        _schedule_awaiting_input(agent.id, agent.project_id)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
-            f"session_id={claude_session_id}, new_state=idle"
+            f"session_id={claude_session_id}, new_state=idle (awaiting_input scheduled)"
         )
 
         return HookEventResult(

@@ -374,6 +374,26 @@
     .page-content {
         padding-top: 80px;
     }
+
+    /* Stats bar: compact on mobile */
+    .stats-bar {
+        gap: 8px;
+        padding: 6px 12px;
+        flex-wrap: wrap;
+    }
+
+    .stats-bar .stat-label {
+        display: none;
+    }
+
+    .stats-bar .stat-item {
+        padding: 2px 8px;
+        gap: 4px;
+    }
+
+    .stats-bar .connection-text {
+        display: none;
+    }
 }
 
 @media (max-width: 480px) {
