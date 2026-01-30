@@ -106,10 +106,14 @@ class HookLifecycleBridge:
         claude_session_id: str,
     ) -> TurnProcessingResult:
         """
-        Process a stop hook as agent completion.
+        Process a stop (turn complete) hook event.
 
         Maps to: AGENT + COMPLETION intent
         Expected transition: PROCESSING -> COMPLETE
+
+        Note: The stop hook fires between tool calls too, not just at
+        end-of-turn. The hook_receiver uses a debounce timer to delay
+        the AWAITING_INPUT transition so that mid-turn stops are ignored.
 
         Args:
             agent: The agent receiving the hook event

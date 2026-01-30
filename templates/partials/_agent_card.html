@@ -7,7 +7,7 @@
     <div class="card-line">
       <span class="line-num">01</span>
       <div class="line-content flex items-center justify-between">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           {% if agent.is_active %}
             <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
                   role="status">ACTIVE</span>
@@ -15,8 +15,8 @@
             <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
                   role="status">IDLE</span>
           {% endif %}
-          <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono">#{{ agent.session_uuid }}</h3>
-          <span class="uptime text-muted text-xs">up {{ agent.uptime }}</span>
+          <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono truncate max-w-[140px] sm:max-w-none">#{{ agent.session_uuid }}</h3>
+          <span class="uptime text-muted text-xs hidden sm:inline">up {{ agent.uptime }}</span>
         </div>
       </div>
     </div>

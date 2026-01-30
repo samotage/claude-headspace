@@ -160,3 +160,27 @@ body::after {
     background: rgba(115,224,160,0.15);
     color: var(--green);
 }
+
+/* Mobile responsive: agent cards */
+@media (max-width: 640px) {
+    .line-num {
+        display: none;
+    }
+    .line-content {
+        padding-left: 12px;
+    }
+    .card-line {
+        min-height: 36px;
+    }
+    .state-strip {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* iOS smooth scrolling for overflow containers */
+.overflow-x-auto,
+.overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+}
