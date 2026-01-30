@@ -10,34 +10,34 @@
         <!-- Filter Bar -->
         <section class="mb-6" aria-labelledby="filter-heading">
             <div class="bg-elevated rounded-lg border border-border p-4">
-                <div class="flex flex-wrap items-center gap-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                     <h2 id="filter-heading" class="sr-only">Event Filters</h2>
 
                     <!-- Project Filter -->
-                    <div class="flex items-center gap-2">
-                        <label for="filter-project" class="text-sm text-secondary">Project:</label>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-project" class="text-sm text-secondary whitespace-nowrap">Project:</label>
                         <select id="filter-project"
-                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
                                 aria-label="Filter by project">
                             <option value="">All Projects</option>
                         </select>
                     </div>
 
                     <!-- Agent Filter -->
-                    <div class="flex items-center gap-2">
-                        <label for="filter-agent" class="text-sm text-secondary">Agent:</label>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-agent" class="text-sm text-secondary whitespace-nowrap">Agent:</label>
                         <select id="filter-agent"
-                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
                                 aria-label="Filter by agent">
                             <option value="">All Agents</option>
                         </select>
                     </div>
 
                     <!-- Event Type Filter -->
-                    <div class="flex items-center gap-2">
-                        <label for="filter-event-type" class="text-sm text-secondary">Type:</label>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-event-type" class="text-sm text-secondary whitespace-nowrap">Type:</label>
                         <select id="filter-event-type"
-                                class="px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
                                 aria-label="Filter by event type">
                             <option value="">All Types</option>
                         </select>
@@ -45,14 +45,14 @@
 
                     <!-- Clear Filters Button -->
                     <button id="clear-filters-btn"
-                            class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px]"
+                            class="w-full sm:w-auto px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px]"
                             aria-label="Clear all filters">
                         Clear Filters
                     </button>
 
                     <!-- SSE Connection indicator -->
                     <div id="connection-indicator"
-                         class="ml-auto flex items-center gap-2"
+                         class="sm:ml-auto flex items-center gap-2"
                          role="status"
                          aria-live="polite">
                         <span class="connection-dot w-2 h-2 rounded-full bg-muted" aria-hidden="true"></span>
