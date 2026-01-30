@@ -16,6 +16,9 @@
     // Make functions global
     window.searchHelp = searchHelp;
     window.loadHelpTopic = loadHelpTopic;
+    window.openDocViewer = openDocViewer;
+    window.closeDocViewer = closeDocViewer;
+    window.copyCodeBlock = copyCodeBlock;
 
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
@@ -216,7 +219,18 @@
             .replace(/>/g, '&gt;')
             // Code blocks (before other processing)
             .replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
-                return '<pre class="bg-surface rounded p-4 overflow-x-auto my-4"><code class="text-sm">' + code.trim() + '</code></pre>';
+                var trimmed = code.trim();
+                var id = 'code-' + Math.random().toString(36).slice(2, 9);
+                return '<div style="position:relative; margin: 1rem 0;">' +
+                    '<button onclick="copyCodeBlock(\'' + id + '\')" ' +
+                        'style="position:absolute; top:8px; right:8px; padding:4px 10px; border-radius:4px; font-size:12px; background:rgba(255,255,255,0.1); color:#999; border:1px solid rgba(255,255,255,0.2); cursor:pointer;" ' +
+                        'onmouseover="this.style.background=\'rgba(255,255,255,0.2)\';this.style.color=\'#fff\';" ' +
+                        'onmouseout="this.style.background=\'rgba(255,255,255,0.1)\';this.style.color=\'#999\';" ' +
+                        'title="Copy to clipboard" aria-label="Copy code">' +
+                        'Copy' +
+                    '</button>' +
+                    '<pre style="background:rgba(255,255,255,0.05); border-radius:6px; padding:1rem; overflow-x:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;"><code id="' + id + '" style="font-size:0.875rem; font-family:inherit;">' + trimmed + '</code></pre>' +
+                    '</div>';
             })
             // Inline code
             .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-surface rounded text-cyan text-sm">$1</code>')
@@ -229,7 +243,13 @@
             .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
             // Links
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
-                if (url.startsWith('http')) {
+                if (url.startsWith('doc:')) {
+                    // Document viewer link
+                    var docId = url.slice(4);
+                    return '<a href="#" onclick="openDocViewer(\'' + escapeHtml(docId) + '\'); return false;" class="inline-flex items-center gap-1 text-cyan hover:underline cursor-pointer">' +
+                        '<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                        text + '</a>';
+                } else if (url.startsWith('http')) {
                     return '<a href="' + url + '" target="_blank" rel="noopener" class="text-cyan hover:underline">' + text + '</a>';
                 } else {
                     // Internal link - navigate to help topic
@@ -268,4 +288,76 @@
 
         return '<div class="prose prose-invert max-w-none"><p class="my-3 text-secondary">' + html + '</p></div>';
     }
+
+    // Document viewer modal functions
+    async function openDocViewer(docId) {
+        var modal = document.getElementById('doc-viewer-modal');
+        if (!modal) return;
+
+        // Show modal with loading state
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        var titleEl = document.getElementById('doc-viewer-title');
+        var contentEl = document.getElementById('doc-viewer-content');
+        if (titleEl) titleEl.textContent = 'Loading...';
+        if (contentEl) contentEl.innerHTML = '<div class="text-muted text-center py-8">Loading...</div>';
+
+        try {
+            var response = await fetch('/api/help/' + docId);
+            if (!response.ok) {
+                throw new Error('Document not found');
+            }
+            var data = await response.json();
+
+            if (titleEl) titleEl.textContent = data.title || 'Document';
+            if (contentEl) contentEl.innerHTML = renderMarkdown(data.content);
+        } catch (error) {
+            console.error('Failed to load document:', error);
+            if (contentEl) {
+                contentEl.innerHTML = '<div class="text-red text-center py-8">Failed to load document</div>';
+            }
+        }
+    }
+
+    function closeDocViewer() {
+        var modal = document.getElementById('doc-viewer-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+    }
+
+    function copyCodeBlock(id) {
+        var codeEl = document.getElementById(id);
+        if (!codeEl) return;
+
+        var text = codeEl.textContent;
+        navigator.clipboard.writeText(text).then(function() {
+            // Find the button that triggered this
+            var container = codeEl.closest('div[style*="position:relative"]');
+            var btn = container ? container.querySelector('button') : null;
+            if (btn) {
+                var original = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.color = '#22d3ee';
+                btn.style.borderColor = '#22d3ee';
+                setTimeout(function() {
+                    btn.textContent = original;
+                    btn.style.color = '#999';
+                    btn.style.borderColor = 'rgba(255,255,255,0.2)';
+                }, 1500);
+            }
+        });
+    }
+
+    // Close doc viewer on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var modal = document.getElementById('doc-viewer-modal');
+            if (modal && !modal.classList.contains('hidden')) {
+                closeDocViewer();
+            }
+        }
+    });
 })();

@@ -1,6 +1,7 @@
 """Session correlator for matching Claude Code sessions to agents."""
 
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import NamedTuple
@@ -12,13 +13,33 @@ from ..models.project import Project
 
 logger = logging.getLogger(__name__)
 
+# Project root markers — if any of these exist in a directory, it's a project root
+_PROJECT_ROOT_MARKERS = (
+    ".git",
+    "pyproject.toml",
+    "package.json",
+    "Cargo.toml",
+    "go.mod",
+    "Makefile",
+    "setup.py",
+    "setup.cfg",
+    ".project",
+)
+
+# Directory prefixes that are never valid projects
+_REJECTED_PREFIXES = (
+    "/tmp",
+    "/private/tmp",
+    "/var",
+)
+
 
 class CorrelationResult(NamedTuple):
     """Result of session correlation."""
 
     agent: Agent
     is_new: bool
-    correlation_method: str  # "session_id", "working_directory", "created"
+    correlation_method: str  # "session_id", "db_session_id", "headspace_session_id", "working_directory", "created"
 
 
 class CacheEntry(NamedTuple):
@@ -48,29 +69,124 @@ def _cleanup_stale_cache_entries() -> None:
         logger.debug(f"Cleaned up {len(stale_keys)} stale cache entries")
 
 
+def _is_rejected_directory(path: str) -> bool:
+    """
+    Check if a path is a known non-project directory that should be rejected.
+
+    Rejects:
+    - Paths under /tmp, /private/tmp, /var
+    - The global ~/.claude directory
+    """
+    normalized = os.path.normpath(path)
+
+    for prefix in _REJECTED_PREFIXES:
+        if normalized == prefix or normalized.startswith(prefix + "/"):
+            return True
+
+    # Reject the global ~/.claude directory (but NOT a .claude subdir inside a project)
+    home = os.path.expanduser("~")
+    global_claude = os.path.join(home, ".claude")
+    if normalized == global_claude or normalized.startswith(global_claude + "/"):
+        return True
+
+    return False
+
+
+def _resolve_project_root(path: str) -> str:
+    """
+    Walk up from the given path to find the actual project root.
+
+    Looks for project root markers (.git, pyproject.toml, etc.) going upward.
+    If a marker is found, returns that directory. Otherwise returns the
+    original path (it may still be a valid project without markers).
+
+    This handles the case where cwd is a subdirectory like:
+    /Users/sam/dev/myproject/.claude -> resolves to /Users/sam/dev/myproject
+    /Users/sam/dev/myproject/src/lib -> resolves to /Users/sam/dev/myproject
+    """
+    normalized = os.path.normpath(path)
+    current = normalized
+
+    while True:
+        for marker in _PROJECT_ROOT_MARKERS:
+            if os.path.exists(os.path.join(current, marker)):
+                if current != normalized:
+                    logger.debug(
+                        f"Resolved project root: {normalized} -> {current}"
+                    )
+                return current
+
+        parent = os.path.dirname(current)
+        if parent == current:
+            # Reached filesystem root without finding a marker
+            break
+        current = parent
+
+    # No marker found — return the original path
+    return normalized
+
+
+def _resolve_working_directory(working_directory: str | None) -> str | None:
+    """
+    Validate and resolve a working directory to a project root.
+
+    Returns None if the directory is a known non-project path.
+    Otherwise resolves upward to find the actual project root.
+    """
+    if not working_directory:
+        return None
+
+    if _is_rejected_directory(working_directory):
+        logger.info(
+            f"Rejected non-project working directory: {working_directory}"
+        )
+        return None
+
+    resolved = _resolve_project_root(working_directory)
+
+    # After resolution, check again — the resolved path might also be rejected
+    if _is_rejected_directory(resolved):
+        logger.info(
+            f"Rejected resolved directory: {working_directory} -> {resolved}"
+        )
+        return None
+
+    return resolved
+
+
 def correlate_session(
     claude_session_id: str,
     working_directory: str | None = None,
+    headspace_session_id: str | None = None,
 ) -> CorrelationResult:
     """
     Correlate a Claude Code session to an agent.
 
     Correlation strategy:
-    1. Check if Claude session ID has been seen before (cache lookup)
-    2. Match by working directory to existing agents
-    3. Create new agent if no match found
+    1. Check in-memory cache (fast path)
+    2. Check database by claude_session_id (survives server restarts)
+    2.5. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
+    3. Match by working directory to existing project/agents (unclaimed only)
+    4. Create new agent — only if we have a valid working directory
 
     Args:
         claude_session_id: The Claude Code session ID
         working_directory: The working directory of the session
+        headspace_session_id: The CLI-assigned session UUID from
+            CLAUDE_HEADSPACE_SESSION_ID env var
 
     Returns:
         CorrelationResult with the matched or created agent
+
+    Raises:
+        ValueError: If session cannot be correlated (no working directory
+                    and not previously seen)
     """
     # Cleanup stale cache entries periodically
     _cleanup_stale_cache_entries()
 
-    # Strategy 1: Check session cache
+    # Strategy 1: Check in-memory session cache — working_directory is ignored
+    # for already-known sessions. The project was determined at first contact.
     if claude_session_id in _session_cache:
         agent_id = _session_cache[claude_session_id].agent_id
         agent = db.session.get(Agent, agent_id)
@@ -86,27 +202,125 @@ def correlate_session(
         # Agent no longer exists, remove from cache
         del _session_cache[claude_session_id]
 
-    # Strategy 2: Match by working directory
-    if working_directory:
+    # Strategy 2: Check database by claude_session_id — this survives server
+    # restarts where the in-memory cache is lost
+    agent = (
+        db.session.query(Agent)
+        .filter(Agent.claude_session_id == claude_session_id)
+        .first()
+    )
+    if agent:
+        # Re-populate the in-memory cache
+        _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
+        logger.debug(
+            f"Session {claude_session_id} matched to agent {agent.id} via DB lookup"
+        )
+        return CorrelationResult(
+            agent=agent,
+            is_new=False,
+            correlation_method="db_session_id",
+        )
+
+    # Strategy 2.5: Match by headspace_session_id → Agent.session_uuid
+    # The CLI wrapper creates agents with session_uuid and sets
+    # CLAUDE_HEADSPACE_SESSION_ID in the env. The hook script forwards this
+    # as headspace_session_id. This bridges the CLI UUID to Claude Code's
+    # internal session_id.
+    if headspace_session_id:
+        try:
+            target_uuid = UUID(headspace_session_id)
+        except ValueError:
+            logger.warning(
+                f"Invalid headspace_session_id UUID: {headspace_session_id}"
+            )
+        else:
+            agent = (
+                db.session.query(Agent)
+                .filter(Agent.session_uuid == target_uuid)
+                .first()
+            )
+            if agent:
+                dirty = False
+
+                # Link or update claude_session_id
+                if agent.claude_session_id != claude_session_id:
+                    old_id = agent.claude_session_id
+                    agent.claude_session_id = claude_session_id
+                    dirty = True
+                    logger.info(
+                        f"Linked claude_session_id={claude_session_id} to "
+                        f"agent {agent.id} (session_uuid={headspace_session_id})"
+                        f"{f', replacing {old_id}' if old_id else ''}"
+                    )
+
+                # Reactivate if the agent was ended (CLI session restarted
+                # Claude Code — same session_uuid, new claude session_id)
+                if agent.ended_at is not None:
+                    agent.ended_at = None
+                    agent.last_seen_at = datetime.now(timezone.utc)
+                    dirty = True
+                    logger.info(
+                        f"Reactivated ended agent {agent.id} for new "
+                        f"claude session {claude_session_id}"
+                    )
+
+                if dirty:
+                    db.session.commit()
+
+                # Cache for fast path on subsequent hooks
+                _session_cache[claude_session_id] = CacheEntry(
+                    agent.id, time.time()
+                )
+                logger.debug(
+                    f"Session {claude_session_id} matched to agent {agent.id} "
+                    f"via headspace_session_id {headspace_session_id}"
+                )
+                return CorrelationResult(
+                    agent=agent,
+                    is_new=False,
+                    correlation_method="headspace_session_id",
+                )
+
+    # Resolve working directory to project root, filtering out junk paths
+    resolved_directory = _resolve_working_directory(working_directory)
+    if working_directory and not resolved_directory:
+        logger.debug(
+            f"Working directory {working_directory} was rejected/unresolvable, "
+            f"proceeding without it"
+        )
+
+    # Strategy 3: Match by working directory — only unclaimed, active agents.
+    # An agent is "unclaimed" if claude_session_id is NULL (not yet linked to
+    # a Claude Code session). Excluding ended agents prevents stealing from
+    # sessions that have already finished.
+    if resolved_directory:
         project = (
             db.session.query(Project)
-            .filter(Project.path == working_directory)
+            .filter(Project.path == resolved_directory)
             .first()
         )
         if project:
-            # Find most recent active agent for this project
+            # Find most recent active, unclaimed agent for this project
             agent = (
                 db.session.query(Agent)
-                .filter(Agent.project_id == project.id)
+                .filter(
+                    Agent.project_id == project.id,
+                    Agent.ended_at.is_(None),
+                    Agent.claude_session_id.is_(None),
+                )
                 .order_by(Agent.last_seen_at.desc())
                 .first()
             )
             if agent:
+                # Claim this agent by setting claude_session_id
+                agent.claude_session_id = claude_session_id
+                db.session.commit()
+
                 # Cache the session ID -> agent mapping
                 _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
                 logger.debug(
                     f"Session {claude_session_id} matched to agent {agent.id} "
-                    f"via working directory {working_directory}"
+                    f"via working directory {resolved_directory} (claimed)"
                 )
                 return CorrelationResult(
                     agent=agent,
@@ -114,8 +328,19 @@ def correlate_session(
                     correlation_method="working_directory",
                 )
 
-    # Strategy 3: Create new agent
-    agent, project = _create_agent_for_session(claude_session_id, working_directory)
+    # Strategy 4: Create new agent — but ONLY with a valid working directory.
+    # Never create garbage placeholder projects.
+    if not resolved_directory:
+        raise ValueError(
+            f"Cannot correlate session {claude_session_id}: no valid working "
+            f"directory (received: {working_directory!r}) and session not "
+            f"previously seen. Hook events for unknown sessions without a "
+            f"project directory are dropped."
+        )
+
+    agent, project = _create_agent_for_session(
+        claude_session_id, resolved_directory
+    )
 
     # Cache the new mapping
     _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
@@ -133,46 +358,38 @@ def correlate_session(
 
 def _create_agent_for_session(
     claude_session_id: str,
-    working_directory: str | None,
+    working_directory: str,
 ) -> tuple[Agent, Project]:
     """
     Create a new agent for a Claude Code session.
 
     Args:
         claude_session_id: The Claude Code session ID
-        working_directory: The working directory (optional)
+        working_directory: The resolved working directory (required)
 
     Returns:
         Tuple of (agent, project)
     """
     # Find or create project
-    if working_directory:
-        project = (
-            db.session.query(Project)
-            .filter(Project.path == working_directory)
-            .first()
-        )
-        if not project:
-            # Extract project name from path
-            project_name = working_directory.rstrip("/").split("/")[-1]
-            project = Project(
-                name=project_name,
-                path=working_directory,
-            )
-            db.session.add(project)
-            db.session.flush()  # Get project ID
-    else:
-        # Create placeholder project for unknown sessions
+    project = (
+        db.session.query(Project)
+        .filter(Project.path == working_directory)
+        .first()
+    )
+    if not project:
+        # Extract project name from the resolved project root
+        project_name = working_directory.rstrip("/").split("/")[-1]
         project = Project(
-            name=f"unknown-{claude_session_id[:8]}",
-            path=f"__unknown__/{claude_session_id}",  # Unique placeholder path
+            name=project_name,
+            path=working_directory,
         )
         db.session.add(project)
-        db.session.flush()
+        db.session.flush()  # Get project ID
 
-    # Create agent
+    # Create agent with persistent claude_session_id
     agent = Agent(
         session_uuid=uuid4(),
+        claude_session_id=claude_session_id,
         project_id=project.id,
         started_at=datetime.now(timezone.utc),
         last_seen_at=datetime.now(timezone.utc),

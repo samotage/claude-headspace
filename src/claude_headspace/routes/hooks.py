@@ -85,10 +85,11 @@ def hook_session_start():
 
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
 
     try:
         # Correlate session to agent
-        correlation = correlate_session(session_id, working_directory)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
 
         # Process the event
         result = process_session_start(correlation.agent, session_id)
@@ -109,6 +110,10 @@ def hook_session_start():
                 "status": "error",
                 "message": result.error_message,
             }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for session_start: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
 
     except Exception as e:
         logger.exception(f"Error handling session_start hook: {e}")
@@ -143,9 +148,10 @@ def hook_session_end():
 
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
 
     try:
-        correlation = correlate_session(session_id, working_directory)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
         result = process_session_end(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -162,6 +168,10 @@ def hook_session_end():
                 "status": "error",
                 "message": result.error_message,
             }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for session_end: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
 
     except Exception as e:
         logger.exception(f"Error handling session_end hook: {e}")
@@ -195,9 +205,10 @@ def hook_user_prompt_submit():
 
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
 
     try:
-        correlation = correlate_session(session_id, working_directory)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
         result = process_user_prompt_submit(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -215,6 +226,10 @@ def hook_user_prompt_submit():
                 "status": "error",
                 "message": result.error_message,
             }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for user_prompt_submit: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
 
     except Exception as e:
         logger.exception(f"Error handling user_prompt_submit hook: {e}")
@@ -248,9 +263,10 @@ def hook_stop():
 
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
 
     try:
-        correlation = correlate_session(session_id, working_directory)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
         result = process_stop(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -279,6 +295,10 @@ def hook_stop():
                 "status": "error",
                 "message": result.error_message,
             }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for stop: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
 
     except Exception as e:
         logger.exception(f"Error handling stop hook: {e}")
@@ -312,9 +332,10 @@ def hook_notification():
 
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
 
     try:
-        correlation = correlate_session(session_id, working_directory)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
         result = process_notification(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -330,6 +351,10 @@ def hook_notification():
                 "status": "error",
                 "message": result.error_message,
             }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for notification: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
 
     except Exception as e:
         logger.exception(f"Error handling notification hook: {e}")

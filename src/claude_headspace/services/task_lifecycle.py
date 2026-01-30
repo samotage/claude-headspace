@@ -197,6 +197,16 @@ class TaskLifecycleManager:
         task.state = TaskState.COMPLETE
         task.completed_at = datetime.now(timezone.utc)
 
+        # Create completion turn record
+        turn = Turn(
+            task_id=task.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.COMPLETION,
+            text="",
+        )
+        self._session.add(turn)
+        self._session.flush()
+
         logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
 
         # Write state transition event
@@ -250,6 +260,17 @@ class TaskLifecycleManager:
             if current_state == TaskState.IDLE or current_state == TaskState.AWAITING_INPUT:
                 # Create new task
                 new_task = self.create_task(agent, TaskState.COMMANDED)
+
+                # Create turn record for the user command
+                turn = Turn(
+                    task_id=new_task.id,
+                    actor=actor,
+                    intent=intent_result.intent,
+                    text=text or "",
+                )
+                self._session.add(turn)
+                self._session.flush()
+
                 return TurnProcessingResult(
                     success=True,
                     task=new_task,
@@ -294,6 +315,16 @@ class TaskLifecycleManager:
                 trigger=transition_result.trigger or "unknown",
                 confidence=intent_result.confidence,
             )
+
+            # Create turn record for non-completion transitions
+            turn = Turn(
+                task_id=current_task.id,
+                actor=actor,
+                intent=intent_result.intent,
+                text=text or "",
+            )
+            self._session.add(turn)
+            self._session.flush()
 
         return TurnProcessingResult(
             success=True,

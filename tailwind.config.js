@@ -33,6 +33,14 @@ module.exports = {
       },
       fontFamily: {
         'mono': ['SF Mono', 'Monaco', 'Menlo', 'JetBrains Mono', 'Consolas', 'monospace'],
+        'display': ['Orbitron', 'SF Mono', 'monospace'],
+      },
+      boxShadow: {
+        'neon-cyan': '0 0 8px rgba(86,212,221,0.3), 0 0 20px rgba(86,212,221,0.1)',
+        'neon-green': '0 0 8px rgba(115,224,160,0.3), 0 0 20px rgba(115,224,160,0.1)',
+        'neon-amber': '0 0 8px rgba(224,176,115,0.3), 0 0 20px rgba(224,176,115,0.1)',
+        'neon-red': '0 0 8px rgba(224,115,115,0.3), 0 0 20px rgba(224,115,115,0.1)',
+        'neon-blue': '0 0 8px rgba(115,153,224,0.3), 0 0 20px rgba(115,153,224,0.1)',
       },
     },
   },

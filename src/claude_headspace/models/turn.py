@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum, ForeignKey, Index, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -47,7 +47,7 @@ class Turn(db.Model):
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
-        nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )
 
     # Relationships

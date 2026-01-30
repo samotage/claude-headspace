@@ -34,14 +34,14 @@
 }
 
 .nav-brand:hover .nav-ascii {
-    text-shadow: 0 0 12px rgba(86, 212, 221, 0.25);
+    text-shadow: 0 0 14px rgba(86, 212, 221, 0.5), 0 0 40px rgba(86, 212, 221, 0.2);
 }
 
 .nav-ascii {
     font-size: 0.32rem;
     line-height: 1.0;
     color: var(--cyan);
-    text-shadow: 0 0 8px rgba(86, 212, 221, 0.25);
+    text-shadow: 0 0 10px rgba(86, 212, 221, 0.4), 0 0 30px rgba(86, 212, 221, 0.15);
     white-space: pre;
     letter-spacing: -0.02em;
     margin: 0;
@@ -58,7 +58,7 @@
 }
 
 .nav-brand-suffix {
-    font-family: var(--font-mono);
+    font-family: 'Orbitron', var(--font-mono);
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -121,9 +121,9 @@
     bottom: -1px;
     left: 0;
     right: 0;
-    height: 2px;
+    height: 3px;
     background: var(--cyan);
-    box-shadow: 0 0 12px rgba(86, 212, 221, 0.25);
+    box-shadow: 0 0 12px rgba(86, 212, 221, 0.4), 0 0 30px rgba(86, 212, 221, 0.15);
 }
 
 /* Stats bar below nav */
@@ -157,8 +157,8 @@
     border-radius: 50%;
 }
 
-.stats-bar .stat-dot.amber { background: var(--amber); }
-.stats-bar .stat-dot.blue { background: var(--blue); }
+.stats-bar .stat-dot.amber { background: var(--amber); box-shadow: 0 0 6px rgba(224,176,115,0.4); }
+.stats-bar .stat-dot.blue { background: var(--blue); box-shadow: 0 0 6px rgba(115,153,224,0.4); }
 .stats-bar .stat-dot.muted { background: var(--text-muted); }
 
 .stats-bar .stat-label {
@@ -188,6 +188,11 @@
     height: 8px;
     border-radius: 50%;
     background: var(--text-muted);
+}
+
+.stats-bar .connection-dot.connected {
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(115,224,160,0.5);
 }
 
 /* Page content offset for fixed nav + stats bar */

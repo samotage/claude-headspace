@@ -39,6 +39,8 @@
 </div>
 {% endblock %}
 
+{% include "partials/_doc_viewer_modal.html" %}
+
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/help.js') }}"></script>
 <script>

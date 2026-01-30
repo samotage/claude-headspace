@@ -335,6 +335,8 @@ class Broadcaster:
             event = client.event_queue.get(timeout=timeout)
             return event  # May be None for shutdown signal
         except Empty:
+            # Touch the client to prevent stale cleanup during heartbeats
+            client.last_event_at = datetime.now(timezone.utc)
             return None
 
     def mark_failed_write(self, client_id: str) -> None:

@@ -36,6 +36,7 @@ def create_mock_agent(
     agent.state = state
     agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
+    agent.ended_at = None
 
     # Mock get_current_task
     if task_text:

@@ -9,23 +9,17 @@
 #
 # Usage: notify-headspace.sh <event_type>
 #
-# Event types:
-#   session-start       - Claude Code session started
-#   session-end         - Claude Code session ended
-#   user-prompt-submit  - User submitted a prompt
-#   stop                - Claude turn completed
-#   notification        - Claude sent a notification
-#
-# Environment variables used:
-#   CLAUDE_SESSION_ID        - The Claude Code session identifier
-#   CLAUDE_WORKING_DIRECTORY - The working directory (optional)
-#   PWD                      - Fallback for working directory
+# Claude Code passes hook data via stdin as JSON containing:
+#   session_id, cwd, transcript_path, hook_event_name, etc.
 #
 # Configuration:
-#   HEADSPACE_URL - Base URL (default: http://localhost:5050)
+#   HEADSPACE_URL - Base URL (default: http://localhost:5055)
 #
 
-set -e
+# NOTE: Do NOT use set -e — silent exits mask hook failures
+
+# Debug log (remove once hooks are confirmed working)
+DEBUG_LOG="/tmp/headspace-hook-debug.log"
 
 # Configuration
 HEADSPACE_URL="${HEADSPACE_URL:-http://localhost:5055}"
@@ -35,45 +29,69 @@ MAX_TIME=2
 # Get event type from argument
 EVENT_TYPE="${1:-}"
 
+echo "$(date '+%Y-%m-%d %H:%M:%S') ENTRY event=${EVENT_TYPE}" >> "$DEBUG_LOG"
+
 if [ -z "$EVENT_TYPE" ]; then
-    # No event type specified, exit silently
+    echo "$(date '+%Y-%m-%d %H:%M:%S') EXIT no event type" >> "$DEBUG_LOG"
     exit 0
 fi
 
-# Get session ID from environment
-SESSION_ID="${CLAUDE_SESSION_ID:-}"
+# Read hook input from stdin (Claude Code passes JSON via stdin)
+STDIN_DATA=""
+if [ ! -t 0 ]; then
+    STDIN_DATA=$(cat)
+fi
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') STDIN tty_test=$([[ -t 0 ]] && echo 'is_tty' || echo 'not_tty') len=${#STDIN_DATA} data=${STDIN_DATA:0:200}" >> "$DEBUG_LOG"
+
+# Extract session_id from stdin JSON, fall back to environment variable
+SESSION_ID=""
+WORKING_DIR=""
+if [ -n "$STDIN_DATA" ] && command -v jq &>/dev/null; then
+    SESSION_ID=$(echo "$STDIN_DATA" | jq -r '.session_id // empty' 2>/dev/null) || true
+    WORKING_DIR=$(echo "$STDIN_DATA" | jq -r '.cwd // empty' 2>/dev/null) || true
+fi
+
+# Fall back to environment variables for session ID only
+SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+# NOTE: Do NOT fall back to $PWD for working_directory.
+# $PWD may be an internal directory (.claude/, /tmp/, etc.) that does not
+# represent the actual project. Let the server handle missing working_directory.
+
+# Read CLI-assigned session UUID from env (inherited: CLI -> Claude Code -> hook)
+HEADSPACE_SESSION_ID="${CLAUDE_HEADSPACE_SESSION_ID:-}"
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY}" >> "$DEBUG_LOG"
 
 if [ -z "$SESSION_ID" ]; then
-    # No session ID, exit silently
+    echo "$(date '+%Y-%m-%d %H:%M:%S') EXIT no session_id for event=${EVENT_TYPE}" >> "$DEBUG_LOG"
     exit 0
 fi
-
-# Get working directory
-WORKING_DIR="${CLAUDE_WORKING_DIRECTORY:-$PWD}"
 
 # Build endpoint URL
 ENDPOINT="${HEADSPACE_URL}/hook/${EVENT_TYPE}"
 
-# Build JSON payload
-PAYLOAD=$(cat <<EOF
-{
-    "session_id": "${SESSION_ID}",
-    "working_directory": "${WORKING_DIR}"
-}
-EOF
-)
+# Build JSON payload — include optional fields only when present
+PAYLOAD="{\"session_id\": \"${SESSION_ID}\""
+if [ -n "$WORKING_DIR" ]; then
+    PAYLOAD="${PAYLOAD}, \"working_directory\": \"${WORKING_DIR}\""
+fi
+if [ -n "$HEADSPACE_SESSION_ID" ]; then
+    PAYLOAD="${PAYLOAD}, \"headspace_session_id\": \"${HEADSPACE_SESSION_ID}\""
+fi
+PAYLOAD="${PAYLOAD}}"
+fi
 
-# Send the request
-# - Use curl with timeout to prevent blocking
-# - Redirect all output to /dev/null
-# - Always exit 0 to not block Claude Code
-curl -s \
+# Send the request and capture result
+CURL_RESULT=$(curl -s -w "\n%{http_code}" \
     --connect-timeout "$CONNECT_TIMEOUT" \
     --max-time "$MAX_TIME" \
     -X POST \
     -H "Content-Type: application/json" \
     -d "$PAYLOAD" \
-    "$ENDPOINT" > /dev/null 2>&1 || true
+    "$ENDPOINT" 2>&1) || true
 
-# Always exit successfully to not block Claude Code
+CURL_HTTP_CODE=$(echo "$CURL_RESULT" | tail -1)
+echo "$(date '+%Y-%m-%d %H:%M:%S') SENT event=${EVENT_TYPE} sid=${SESSION_ID} endpoint=${ENDPOINT} http=${CURL_HTTP_CODE}" >> "$DEBUG_LOG"
+
 exit 0

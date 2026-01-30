@@ -3,7 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -168,13 +168,17 @@ class JSONLParser:
             datetime object (UTC)
         """
         if not timestamp_str:
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
         try:
             # Handle Z suffix
             if timestamp_str.endswith("Z"):
                 timestamp_str = timestamp_str[:-1] + "+00:00"
-            return datetime.fromisoformat(timestamp_str)
+            dt = datetime.fromisoformat(timestamp_str)
+            # Ensure result is always timezone-aware
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except ValueError:
             logger.warning(f"Invalid timestamp format: {timestamp_str}")
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)

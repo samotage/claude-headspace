@@ -11,7 +11,7 @@ from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
 from claude_headspace.models.project import Project
 from claude_headspace.models.task import Task, TaskState
-from claude_headspace.models.turn import TurnActor, TurnIntent
+from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.event_writer import EventWriter, WriteResult
 from claude_headspace.services.state_machine import StateMachine, TransitionResult
 from claude_headspace.services.task_lifecycle import TaskLifecycleManager, TurnProcessingResult
@@ -184,6 +184,14 @@ class TestTaskLifecycleManagerUnit:
         assert mock_task.state == TaskState.COMPLETE
         assert mock_task.completed_at is not None
 
+        # Verify completion turn was created
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.actor == TurnActor.AGENT
+        assert turn.intent == TurnIntent.COMPLETION
+        assert turn.task_id == mock_task.id
+
     def test_process_turn_user_command_idle(self, mock_session, mock_event_writer, mock_agent):
         """User command from IDLE should create new task."""
         manager = TaskLifecycleManager(
@@ -207,6 +215,14 @@ class TestTaskLifecycleManagerUnit:
         assert result.success is True
         assert result.new_task_created is True
         assert result.intent.intent == TurnIntent.COMMAND
+
+        # Verify user command turn was created
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.actor == TurnActor.USER
+        assert turn.intent == TurnIntent.COMMAND
+        assert turn.text == "Fix the bug"
 
     def test_process_turn_agent_progress(self, mock_session, mock_event_writer, mock_agent, mock_task):
         """Agent progress should transition from COMMANDED to PROCESSING."""
@@ -233,6 +249,14 @@ class TestTaskLifecycleManagerUnit:
         assert result.success is True
         assert result.transition.valid is True
         assert result.transition.to_state == TaskState.PROCESSING
+
+        # Verify progress turn was created
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.actor == TurnActor.AGENT
+        assert turn.intent == TurnIntent.PROGRESS
+        assert turn.text == "I'm now working on the fix."
 
     def test_process_turn_agent_question(self, mock_session, mock_event_writer, mock_agent, mock_task):
         """Agent question should transition to AWAITING_INPUT."""
@@ -313,6 +337,13 @@ class TestTaskLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.COMPLETION
         assert mock_task.state == TaskState.COMPLETE
 
+        # Verify completion turn was created (via complete_task)
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.actor == TurnActor.AGENT
+        assert turn.intent == TurnIntent.COMPLETION
+
     def test_process_turn_user_while_awaiting_treated_as_answer(self, mock_session, mock_event_writer, mock_agent, mock_task):
         """User turn while AWAITING_INPUT is treated as ANSWER (transitions to PROCESSING).
 
@@ -345,6 +376,34 @@ class TestTaskLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.ANSWER
         assert result.transition.to_state == TaskState.PROCESSING
         assert result.new_task_created is False
+
+    def test_process_turn_creates_turn_with_empty_text_when_none(self, mock_session, mock_event_writer, mock_agent):
+        """Turn text should default to empty string when None (hook path)."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        # Mock no current task
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = None
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text=None,  # Hooks don't provide text
+        )
+
+        assert result.success is True
+
+        # Verify turn was created with empty string, not None
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.text == ""
 
     def test_process_turn_invalid_transition(self, mock_session, mock_agent, mock_task):
         """Invalid transition should fail gracefully."""

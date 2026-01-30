@@ -57,6 +57,11 @@ def generate_events(client_id: str) -> Generator[str, None, None]:
     """
     broadcaster = get_broadcaster()
 
+    # Yield an immediate heartbeat to flush HTTP headers to the client.
+    # Without this, Flask buffers the response until the first real event,
+    # causing EventSource.onopen to never fire.
+    yield ": heartbeat\n\n"
+
     try:
         while True:
             # Get next event with timeout (allows checking for shutdown)

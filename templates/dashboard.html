@@ -6,7 +6,7 @@
 <div class="min-h-screen">
     {% include "partials/_header.html" %}
 
-    <main class="page-content container mx-auto px-4 py-6" role="main">
+    <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
         <!-- Recommended Next Panel -->
         {% include "partials/_recommended_next.html" %}
 
@@ -19,81 +19,66 @@
             {% if priority_sorted_agents %}
                 <div class="space-y-4" id="priority-view">
                     {% for agent in priority_sorted_agents %}
-                        <article class="bg-elevated rounded-lg border border-border overflow-hidden"
+                        <article class="bg-elevated rounded-lg border border-border overflow-hidden focus-target transition-shadow duration-300"
                                  data-agent-id="{{ agent.id }}"
                                  data-state="{{ agent.state.name }}"
                                  aria-labelledby="agent-{{ agent.id }}-heading">
-                            <!-- Card header: Status, Session ID, Project, Uptime -->
-                            <div class="flex items-center justify-between p-3 border-b border-border">
+                          <div class="card-editor">
+                            <!-- 01: Header row -->
+                            <div class="card-line">
+                              <span class="line-num">01</span>
+                              <div class="line-content flex items-center justify-between">
                                 <div class="flex items-center gap-2">
-                                    <!-- Status badge -->
-                                    {% if agent.is_active %}
-                                        <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
-                                              role="status">
-                                            ACTIVE
-                                        </span>
-                                    {% else %}
-                                        <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
-                                              role="status">
-                                            IDLE
-                                        </span>
-                                    {% endif %}
-
-                                    <!-- Session ID -->
-                                    <h3 id="agent-{{ agent.id }}-heading" class="text-primary font-mono text-sm">
-                                        #{{ agent.session_uuid }}
-                                    </h3>
-
-                                    <!-- Project name (in priority view) -->
-                                    <span class="text-muted text-sm">
-                                        {{ agent.project_name }}
-                                    </span>
+                                  {% if agent.is_active %}
+                                    <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
+                                          role="status">ACTIVE</span>
+                                  {% else %}
+                                    <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
+                                          role="status">IDLE</span>
+                                  {% endif %}
+                                  <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono">#{{ agent.session_uuid }}</h3>
+                                  <span class="text-muted text-sm">{{ agent.project_name }}</span>
+                                  <span class="uptime text-muted text-xs">up {{ agent.uptime }}</span>
                                 </div>
-
-                                <!-- Uptime -->
-                                <span class="uptime text-muted text-xs">
-                                    {{ agent.uptime }}
-                                </span>
-                            </div>
-
-                            <!-- State bar -->
-                            <div class="px-3 py-2"
-                                 role="status"
-                                 aria-label="Agent state: {{ agent.state_info.label }}">
-                                <div class="flex items-center gap-2">
-                                    <div class="flex-1 h-2 rounded-full bg-deep overflow-hidden">
-                                        <div class="state-bar h-full {{ agent.state_info.bg_class }} transition-all duration-300"
-                                             style="width: 100%;"
-                                             aria-hidden="true"></div>
-                                    </div>
-                                    <span class="state-label text-xs text-secondary whitespace-nowrap">
-                                        {{ agent.state_info.label }}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Task summary -->
-                            <div class="px-3 py-2 border-t border-border">
-                                <p class="task-summary text-secondary text-sm line-clamp-2">
-                                    {{ agent.task_summary }}
-                                </p>
-                            </div>
-
-                            <!-- Footer: Priority and Headspace button -->
-                            <div class="flex items-center justify-between px-3 py-2 border-t border-border bg-deep">
-                                <!-- Priority score -->
-                                <span class="px-2 py-1 text-xs font-mono rounded bg-surface text-muted"
-                                      title="Priority score">
-                                    [{{ agent.priority }}]
-                                </span>
-
-                                <!-- Headspace button -->
-                                <button class="headspace-btn px-3 py-1 text-xs font-medium rounded bg-cyan/20 text-cyan hover:bg-cyan/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                                <button class="headspace-btn px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
                                         onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }})"
                                         title="Focus on this agent's iTerm window">
                                     Headspace
                                 </button>
+                              </div>
                             </div>
+                            <!-- 02: spacer -->
+                            <div class="card-line">
+                              <span class="line-num">02</span>
+                              <div class="line-content"></div>
+                            </div>
+                            <!-- 03: State strip -->
+                            <div class="card-line" role="status" aria-label="Agent state: {{ agent.state_info.label }}">
+                              <span class="line-num">03</span>
+                              <div class="line-content">
+                                <div class="state-bar state-strip">
+                                  <span class="state-label">{{ agent.state_info.label }}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <!-- 04: spacer -->
+                            <div class="card-line">
+                              <span class="line-num">04</span>
+                              <div class="line-content"></div>
+                            </div>
+                            <!-- 05: Task summary -->
+                            <div class="card-line">
+                              <span class="line-num">05</span>
+                              <div class="line-content">
+                                <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <!-- Priority footer -->
+                          <div class="flex items-center gap-3 px-3 py-2 border-t border-border">
+                            <span class="px-2 py-0.5 text-xs font-mono rounded border border-border text-secondary">{{ agent.priority }}</span>
+                            <span class="text-muted text-xs italic">// {{ agent.task_summary[:50] if agent.task_summary else 'Priority score' }}</span>
+                          </div>
                         </article>
                     {% endfor %}
                 </div>
@@ -104,11 +89,12 @@
                 </div>
             {% endif %}
         {% else %}
-            <!-- By Project View: Default layout -->
+            <!-- By Project View: Kanban columns -->
             {% if projects %}
-                <div class="space-y-6" id="project-view">
+                <div class="flex gap-4 overflow-x-auto pb-4" id="project-view"
+                     style="min-height: calc(100vh - 280px);">
                     {% for project in projects %}
-                        {% include "partials/_project_group.html" %}
+                        {% include "partials/_project_column.html" %}
                     {% endfor %}
                 </div>
             {% else %}

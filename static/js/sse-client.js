@@ -234,9 +234,11 @@
 
       // Set up typed event handlers for common event types
       const commonTypes = [
+        "state_changed",
         "state_transition",
         "turn_detected",
         "session_started",
+        "session_created",
         "session_ended",
         "agent_created",
         "agent_updated",

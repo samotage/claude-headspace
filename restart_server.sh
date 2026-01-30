@@ -7,8 +7,8 @@
 cd "$(dirname "$0")"
 PORT=$(grep -A2 "^server:" config.yaml 2>/dev/null | grep "port:" | awk '{print $2}' || echo "5050")
 
-# Kill any existing server
-pkill -if "python.*run\.py" 2>/dev/null
+# Kill any existing server (scoped to this project to avoid killing other python apps)
+pkill -if "python.*claude_headspace.*run\.py" 2>/dev/null
 lsof -ti :$PORT | xargs kill -9 2>/dev/null
 
 # Wait for process to die

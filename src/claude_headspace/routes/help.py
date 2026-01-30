@@ -13,6 +13,9 @@ help_bp = Blueprint("help", __name__)
 # Help documentation directory (relative to project root)
 HELP_DIR = Path("docs/help")
 
+# Application docs directory (sibling of help dir)
+APPLICATION_DIR = Path("docs/application")
+
 # Topic metadata extracted from filenames
 TOPICS = [
     {"slug": "index", "title": "Help Overview", "order": 0},
@@ -169,6 +172,51 @@ def get_topic(slug: str):
         return jsonify({
             "error": "read_error",
             "message": f"Failed to read topic: {type(e).__name__}",
+        }), 500
+
+
+@help_bp.route("/api/help/setup-prompt", methods=["GET"])
+def get_setup_prompt():
+    """
+    Get the Claude Code setup prompt document.
+
+    Returns:
+        200: Setup prompt content as markdown
+        404: Document not found
+    """
+    project_root = getattr(current_app, "root_path", None)
+    if project_root:
+        root = Path(project_root).parent.parent
+    else:
+        root = Path.cwd()
+
+    file_path = root / APPLICATION_DIR / "claude_code_setup_prompt.md"
+
+    if not file_path.exists():
+        return jsonify({
+            "error": "not_found",
+            "message": "Setup prompt document not found",
+        }), 404
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        title = extract_title(content, "Claude Code Setup Prompt")
+
+        return jsonify({
+            "title": title,
+            "content": content,
+        }), 200
+
+    except PermissionError:
+        return jsonify({
+            "error": "permission_denied",
+            "message": "Cannot read setup prompt document",
+        }), 403
+    except Exception as e:
+        logger.exception("Error reading setup prompt document")
+        return jsonify({
+            "error": "read_error",
+            "message": f"Failed to read document: {type(e).__name__}",
         }), 500
 
 

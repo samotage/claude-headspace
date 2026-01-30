@@ -100,7 +100,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
 
             assert response.status_code == 503
             assert response.headers.get("Retry-After") == "5"
@@ -117,7 +117,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
 
             assert response.status_code == 503
 
@@ -132,7 +132,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
 
             assert response.content_type.startswith("text/event-stream")
 
@@ -147,7 +147,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
 
             assert response.headers.get("Cache-Control") == "no-cache"
 
@@ -162,7 +162,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
 
             assert response.headers.get("X-Accel-Buffering") == "no"
 
@@ -177,7 +177,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            client.get("/api/events?types=state_transition,turn_detected")
+            client.get("/api/events/stream?types=state_transition,turn_detected")
 
             mock_broadcaster.register_client.assert_called_once_with(
                 types=["state_transition", "turn_detected"],
@@ -196,7 +196,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            client.get("/api/events?project_id=42")
+            client.get("/api/events/stream?project_id=42")
 
             mock_broadcaster.register_client.assert_called_once_with(
                 types=None,
@@ -215,7 +215,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            client.get("/api/events?agent_id=7")
+            client.get("/api/events/stream?agent_id=7")
 
             mock_broadcaster.register_client.assert_called_once_with(
                 types=None,
@@ -234,7 +234,7 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            client.get("/api/events?types=state_transition&project_id=42&agent_id=7")
+            client.get("/api/events/stream?types=state_transition&project_id=42&agent_id=7")
 
             mock_broadcaster.register_client.assert_called_once_with(
                 types=["state_transition"],
@@ -255,7 +255,7 @@ class TestSSEEndpoint:
         ):
             with patch("src.claude_headspace.routes.sse.logger") as mock_logger:
                 client.get(
-                    "/api/events",
+                    "/api/events/stream",
                     headers={"Last-Event-ID": "42"},
                 )
 
@@ -280,7 +280,7 @@ class TestSSEEndpoint:
             return_value=mock_broadcaster,
         ):
             # Consume the response to trigger generator
-            response = client.get("/api/events")
+            response = client.get("/api/events/stream")
             list(response.response)  # Consume generator
 
             mock_broadcaster.unregister_client.assert_called_with("test-client-123")

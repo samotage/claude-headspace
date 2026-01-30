@@ -54,6 +54,7 @@
         });
 
         // Handle agent state changes
+        client.on('state_changed', handleStateTransition);
         client.on('state_transition', handleStateTransition);
         client.on('agent_state_changed', handleStateTransition);
 
@@ -67,6 +68,9 @@
 
         // Handle session end
         client.on('session_ended', handleSessionEnded);
+
+        // Handle session lifecycle changes that require page refresh
+        client.on('session_created', handleSessionCreated);
 
         // Connect
         client.connect();
@@ -233,32 +237,28 @@
     }
 
     /**
-     * Handle session ended events
+     * Handle session created events.
+     * Reloads the page to render the new agent card.
+     */
+    function handleSessionCreated(data, eventType) {
+        console.log('Session created:', data.agent_id, '- reloading dashboard');
+        window.location.reload();
+    }
+
+    /**
+     * Handle session ended events.
+     * Reloads the page to remove the ended agent card.
      */
     function handleSessionEnded(data, eventType) {
         const agentId = data.agent_id;
-
         if (!agentId) return;
 
-        console.log('Session ended:', agentId);
-
-        // Mark agent as inactive
-        const card = document.querySelector(`[data-agent-id="${agentId}"]`);
-        if (card) {
-            card.classList.add('opacity-50');
-
-            const statusBadge = card.querySelector('.status-badge');
-            if (statusBadge) {
-                statusBadge.textContent = 'ENDED';
-                statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-red/20 text-red';
-            }
-        }
+        console.log('Session ended:', agentId, '- reloading dashboard');
 
         // Remove from tracked states
         agentStates.delete(agentId);
 
-        // Update counts
-        updateStatusCounts();
+        window.location.reload();
     }
 
     /**

@@ -148,7 +148,7 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> No
             "agent_id": agent.id,
             "project_id": agent.project_id,
             "event_type": event_type,
-            "new_state": new_state,
+            "new_state": new_state.upper(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
@@ -217,8 +217,10 @@ def process_session_end(
     state.record_event(HookEventType.SESSION_END)
 
     try:
-        # Update agent timestamp
-        agent.last_seen_at = datetime.now(timezone.utc)
+        # Update agent timestamp and mark as ended
+        now = datetime.now(timezone.utc)
+        agent.last_seen_at = now
+        agent.ended_at = now
 
         # Use lifecycle bridge for proper state management and event logging
         bridge = get_hook_bridge()
@@ -228,6 +230,19 @@ def process_session_end(
 
         # Broadcast state change to SSE clients
         _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value)
+
+        # Broadcast session_ended as a top-level event so dashboard removes the card
+        try:
+            from .broadcaster import get_broadcaster
+            broadcaster = get_broadcaster()
+            broadcaster.broadcast("session_ended", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "session_uuid": str(agent.session_uuid),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.debug(f"session_ended broadcast failed (non-fatal): {e}")
 
         logger.info(
             f"hook_event: type=session_end, agent_id={agent.id}, "

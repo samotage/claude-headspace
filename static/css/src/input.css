@@ -35,7 +35,7 @@
 /* Base styles */
 @layer base {
     body {
-        background-color: var(--bg-void);
+        background: radial-gradient(ellipse at 50% 0%, rgba(86,212,221,0.03) 0%, transparent 60%), var(--bg-void);
         color: var(--text-primary);
         font-family: var(--font-mono);
     }
@@ -47,4 +47,116 @@
     a:hover {
         color: var(--text-primary);
     }
+}
+
+/* Scanline overlay */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+    );
+}
+
+/* State-dependent card glow borders */
+[data-state="AWAITING_INPUT"] {
+    border-color: rgba(224,176,115,0.4);
+    box-shadow: 0 0 8px rgba(224,176,115,0.15), 0 0 20px rgba(224,176,115,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="PROCESSING"] {
+    border-color: rgba(115,153,224,0.4);
+    box-shadow: 0 0 8px rgba(115,153,224,0.15), 0 0 20px rgba(115,153,224,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="COMMANDED"] {
+    border-color: rgba(224,176,115,0.3);
+    box-shadow: 0 0 6px rgba(224,176,115,0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="COMPLETE"] {
+    border-color: rgba(115,224,160,0.3);
+    box-shadow: 0 0 6px rgba(115,224,160,0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="IDLE"] {
+    border-color: var(--border);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+/* Neon text glow utility */
+.text-glow-cyan {
+    text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);
+}
+
+/* Card editor layout — code editor aesthetic */
+.card-editor {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-line {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+}
+
+.card-line + .card-line {
+    border-top: 1px solid rgba(37, 37, 48, 0.5);
+}
+
+.line-num {
+    width: 40px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 12px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    user-select: none;
+    border-right: 1px solid var(--border);
+}
+
+.line-content {
+    flex: 1;
+    padding: 4px 12px;
+    min-height: 24px;
+}
+
+/* Full-width state strip — driven by parent [data-state] attribute */
+.state-strip {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+[data-state="IDLE"] .state-strip {
+    background: rgba(106,106,120,0.15);
+    color: var(--text-muted);
+}
+[data-state="COMMANDED"] .state-strip {
+    background: rgba(224,176,115,0.15);
+    color: var(--amber);
+}
+[data-state="PROCESSING"] .state-strip {
+    background: rgba(115,153,224,0.15);
+    color: var(--blue);
+}
+[data-state="AWAITING_INPUT"] .state-strip {
+    background: rgba(224,176,115,0.15);
+    color: var(--amber);
+}
+[data-state="COMPLETE"] .state-strip {
+    background: rgba(115,224,160,0.15);
+    color: var(--green);
 }

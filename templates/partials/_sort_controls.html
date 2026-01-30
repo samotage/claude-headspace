@@ -2,16 +2,16 @@
 <div id="sort-controls" class="mb-4" role="group" aria-label="Sort options">
     <!-- Desktop: Toggle buttons -->
     <div class="hidden md:flex items-center gap-2">
-        <span class="text-muted text-sm mr-2">SORT:</span>
+        <span class="text-muted text-sm mr-2 font-display">SORT:</span>
         <button id="sort-by-project"
-                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30' if sort_mode == 'project' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
+                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'project' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
                 data-sort="project"
                 aria-pressed="{{ 'true' if sort_mode == 'project' else 'false' }}"
                 onclick="window.SortControls && window.SortControls.setSort('project')">
             By Project
         </button>
         <button id="sort-by-priority"
-                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30' if sort_mode == 'priority' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
+                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'priority' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
                 data-sort="priority"
                 aria-pressed="{{ 'true' if sort_mode == 'priority' else 'false' }}"
                 onclick="window.SortControls && window.SortControls.setSort('priority')">

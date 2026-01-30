@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Text
+from sqlalchemy import DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -22,7 +22,7 @@ class Objective(db.Model):
     current_text: Mapped[str] = mapped_column(Text, nullable=False)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
     set_at: Mapped[datetime] = mapped_column(
-        nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -54,9 +54,9 @@ class ObjectiveHistory(db.Model):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
-        nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
-    ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     objective: Mapped["Objective"] = relationship("Objective", back_populates="history")

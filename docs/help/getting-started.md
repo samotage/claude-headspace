@@ -10,9 +10,26 @@ Claude Headspace is a dashboard for tracking Claude Code sessions across multipl
 - What state each agent is in (working, waiting for input, idle)
 - Quick access to focus on any session's terminal window
 
+## Quick Setup
+
+A single prompt handles all of the setup for you. It will:
+
+- Install Claude Code lifecycle hooks into `~/.claude/settings.json`
+- Create the PostgreSQL database
+- Symlink the `claude-headspace` CLI into your PATH
+- Verify prerequisites and connectivity
+
+Copy this into a Claude Code session and let it run:
+
+```
+Read the setup instructions at docs/application/claude_code_setup_prompt.md and run them.
+```
+
+[View the full setup prompt](doc:setup-prompt) to see exactly what it does.
+
 ## Prerequisites
 
-Before starting, make sure you have:
+If you prefer to set things up manually, make sure you have:
 
 1. **Claude Headspace server running** - The Flask server must be running on the configured port (default: 5055)
 2. **Claude Code installed** - The `claude` CLI must be available in your PATH

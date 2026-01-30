@@ -10,6 +10,21 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.project import Project
 
+
+def _broadcast_session_event(agent: Agent, event_type: str) -> None:
+    """Broadcast session lifecycle event to SSE clients."""
+    try:
+        from ..services.broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast(event_type, {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "session_uuid": str(agent.session_uuid),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.debug(f"Broadcast failed (non-fatal): {e}")
+
 logger = logging.getLogger(__name__)
 
 sessions_bp = Blueprint("sessions", __name__)
@@ -101,6 +116,9 @@ def create_session():
             f"(agent_id={agent.id}, iterm_pane_id={iterm_pane_id})"
         )
 
+        # Broadcast to SSE clients so dashboard updates in real-time
+        _broadcast_session_event(agent, "session_created")
+
         return jsonify({
             "status": "created",
             "agent_id": agent.id,
@@ -136,12 +154,17 @@ def delete_session(session_uuid: UUID):
                 "error": f"Session {session_uuid} not found",
             }), 404
 
-        # Mark agent as ended by updating last_seen_at
+        # Mark agent as ended
         # The agent remains in database for historical tracking
-        agent.last_seen_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        agent.last_seen_at = now
+        agent.ended_at = now
         db.session.commit()
 
         logger.info(f"Marked session {session_uuid} as ended (agent_id={agent.id})")
+
+        # Broadcast to SSE clients so dashboard removes the card
+        _broadcast_session_event(agent, "session_ended")
 
         return jsonify({
             "status": "ended",

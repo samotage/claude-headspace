@@ -164,14 +164,16 @@ def get_traffic_light_color(agents: list[Agent]) -> str:
 
 def is_agent_active(agent: Agent) -> bool:
     """
-    Check if an agent is active based on last_seen_at.
+    Check if an agent is active based on ended_at and last_seen_at.
 
     Args:
         agent: The agent to check
 
     Returns:
-        True if active (seen within timeout), False otherwise
+        True if active (not ended and seen within timeout), False otherwise
     """
+    if agent.ended_at is not None:
+        return False
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=ACTIVE_TIMEOUT_MINUTES)
     return agent.last_seen_at >= cutoff
 
@@ -317,7 +319,9 @@ def dashboard():
     all_agents_data = []  # Flat list of all agent data for priority view
 
     for project in projects:
-        all_agents.extend(project.agents)
+        # Exclude ended agents from the dashboard
+        active_project_agents = [a for a in project.agents if a.ended_at is None]
+        all_agents.extend(active_project_agents)
 
     # Calculate header status counts
     status_counts = calculate_status_counts(all_agents)
@@ -325,8 +329,10 @@ def dashboard():
     # Prepare project data with computed values
     project_data = []
     for project in projects:
+        # Exclude ended agents from the dashboard
+        live_agents = [a for a in project.agents if a.ended_at is None]
         agents_data = []
-        for agent in project.agents:
+        for agent in live_agents:
             agent_dict = {
                 "id": agent.id,
                 "session_uuid": str(agent.session_uuid)[:8],
@@ -348,12 +354,15 @@ def dashboard():
             {
                 "id": project.id,
                 "name": project.name,
-                "traffic_light": get_traffic_light_color(project.agents),
-                "active_count": count_active_agents(project.agents),
+                "traffic_light": get_traffic_light_color(live_agents),
+                "active_count": count_active_agents(live_agents),
                 "agents": agents_data,
                 "waypoint": None,  # Waypoint will be added in Sprint 9
             }
         )
+
+    # Filter out projects with no agents for the Kanban view
+    projects_with_agents = [p for p in project_data if p["agents"]]
 
     # Calculate recommended next agent
     recommended_next = get_recommended_next(all_agents, agent_data_map)
@@ -363,7 +372,7 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
-        projects=project_data,
+        projects=projects_with_agents,
         status_counts=status_counts,
         recommended_next=recommended_next,
         sort_mode=sort_mode,

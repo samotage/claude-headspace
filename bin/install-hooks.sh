@@ -3,7 +3,8 @@
 # Claude Code Hooks Installation Script
 #
 # This script installs Claude Headspace hooks into Claude Code's configuration.
-# It creates the notification script and updates Claude Code's settings.json.
+# It creates the notification script and updates Claude Code's settings.json
+# using the nested PascalCase hook format that Claude Code expects.
 #
 # Usage: install-hooks.sh [--uninstall]
 #
@@ -43,6 +44,25 @@ is_absolute_path() {
     esac
 }
 
+# Build a single hook entry for the nested format
+# Usage: build_hook_entry "event-type"
+build_hook_entry() {
+    local event_arg="$1"
+    cat <<ENTRY
+[
+  {
+    "matcher": "",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "$NOTIFY_SCRIPT $event_arg"
+      }
+    ]
+  }
+]
+ENTRY
+}
+
 # Function to uninstall hooks
 uninstall_hooks() {
     log_info "Uninstalling Claude Headspace hooks..."
@@ -56,9 +76,26 @@ uninstall_hooks() {
     # Remove hooks from settings.json
     if [ -f "$SETTINGS_FILE" ]; then
         if command -v jq &> /dev/null; then
-            # Remove headspace hooks from settings
             TMP_FILE=$(mktemp)
-            jq 'del(.hooks[] | select(.command | contains("notify-headspace")))' "$SETTINGS_FILE" > "$TMP_FILE"
+            # Remove headspace hook entries from each event type
+            # For each event key, filter out entries whose hooks contain notify-headspace
+            jq '
+                if .hooks then
+                    .hooks |= with_entries(
+                        .value |= map(
+                            select(
+                                .hooks | all(
+                                    .command | contains("notify-headspace") | not
+                                )
+                            )
+                        )
+                    )
+                    # Remove event keys that have empty arrays
+                    | .hooks |= with_entries(select(.value | length > 0))
+                else
+                    .
+                end
+            ' "$SETTINGS_FILE" > "$TMP_FILE"
             mv "$TMP_FILE" "$SETTINGS_FILE"
             log_info "Removed hooks from $SETTINGS_FILE"
         else
@@ -103,34 +140,69 @@ fi
 # Check if jq is available
 if ! command -v jq &> /dev/null; then
     log_warn "jq is not installed. Cannot automatically update settings.json"
-    log_warn "Please install jq or manually add hooks to $SETTINGS_FILE"
+    log_warn "Please install jq (brew install jq) or manually add hooks to $SETTINGS_FILE"
     log_info ""
-    log_info "Add the following to your $SETTINGS_FILE hooks array:"
+    log_info "Merge the following into your $SETTINGS_FILE hooks object:"
     log_info ""
     cat << EOF
 {
-  "hooks": [
-    {
-      "event": "session-start",
-      "command": "$NOTIFY_SCRIPT session-start"
-    },
-    {
-      "event": "session-end",
-      "command": "$NOTIFY_SCRIPT session-end"
-    },
-    {
-      "event": "user-prompt-submit",
-      "command": "$NOTIFY_SCRIPT user-prompt-submit"
-    },
-    {
-      "event": "stop",
-      "command": "$NOTIFY_SCRIPT stop"
-    },
-    {
-      "event": "notification",
-      "command": "$NOTIFY_SCRIPT notification"
-    }
-  ]
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT session-start"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT session-end"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT stop"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT notification"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT user-prompt-submit"
+          }
+        ]
+      }
+    ]
+  }
 }
 EOF
     exit 0
@@ -142,46 +214,53 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     log_info "Created settings file: $SETTINGS_FILE"
 fi
 
-# Build hooks configuration
-HOOKS_CONFIG=$(cat << EOF
-[
-    {
-        "event": "session-start",
-        "command": "$NOTIFY_SCRIPT session-start"
-    },
-    {
-        "event": "session-end",
-        "command": "$NOTIFY_SCRIPT session-end"
-    },
-    {
-        "event": "user-prompt-submit",
-        "command": "$NOTIFY_SCRIPT user-prompt-submit"
-    },
-    {
-        "event": "stop",
-        "command": "$NOTIFY_SCRIPT stop"
-    },
-    {
-        "event": "notification",
-        "command": "$NOTIFY_SCRIPT notification"
-    }
-]
-EOF
-)
+# Build the hooks configuration using the nested PascalCase format
+# Each event type maps to an array of hook groups
+HOOKS_OBJ=$(jq -n \
+    --argjson session_start "$(build_hook_entry 'session-start')" \
+    --argjson session_end "$(build_hook_entry 'session-end')" \
+    --argjson stop "$(build_hook_entry 'stop')" \
+    --argjson notification "$(build_hook_entry 'notification')" \
+    --argjson user_prompt "$(build_hook_entry 'user-prompt-submit')" \
+    '{
+        "SessionStart": $session_start,
+        "SessionEnd": $session_end,
+        "Stop": $stop,
+        "Notification": $notification,
+        "UserPromptSubmit": $user_prompt
+    }')
 
 # Update settings.json
-# First, remove any existing headspace hooks, then add new ones
+# Merge new hooks into existing settings, preserving non-headspace hooks
 TMP_FILE=$(mktemp)
 
-# Check if hooks array exists
 if jq -e '.hooks' "$SETTINGS_FILE" > /dev/null 2>&1; then
-    # Remove existing headspace hooks and add new ones
-    jq --argjson new_hooks "$HOOKS_CONFIG" '
-        .hooks = ([.hooks[] | select(.command | contains("notify-headspace") | not)] + $new_hooks)
+    # Settings already has hooks — merge carefully
+    # For each of our 5 event types:
+    #   1. Remove existing entries that reference notify-headspace
+    #   2. Add our new entries
+    # Preserve any other event types and non-headspace hooks
+    jq --argjson new_hooks "$HOOKS_OBJ" '
+        .hooks as $existing |
+        .hooks = (
+            # Start with existing hooks
+            ($existing // {}) |
+            # For each new hook event type, merge it in
+            reduce ($new_hooks | to_entries[]) as $entry (
+                .;
+                # Get existing entries for this event type, minus any headspace ones
+                ($entry.key) as $key |
+                ((.[$key] // []) | map(
+                    select(.hooks | all(.command | contains("notify-headspace") | not))
+                )) as $kept |
+                # Append our new entries
+                .[$key] = ($kept + $entry.value)
+            )
+        )
     ' "$SETTINGS_FILE" > "$TMP_FILE"
 else
-    # Create hooks array
-    jq --argjson new_hooks "$HOOKS_CONFIG" '.hooks = $new_hooks' "$SETTINGS_FILE" > "$TMP_FILE"
+    # No hooks yet — add the hooks object
+    jq --argjson new_hooks "$HOOKS_OBJ" '.hooks = $new_hooks' "$SETTINGS_FILE" > "$TMP_FILE"
 fi
 
 mv "$TMP_FILE" "$SETTINGS_FILE"
@@ -191,8 +270,8 @@ log_info "Updated settings: $SETTINGS_FILE"
 log_info ""
 log_info "Installation complete!"
 log_info ""
-log_info "Hooks installed:"
-jq '.hooks[] | select(.command | contains("notify-headspace"))' "$SETTINGS_FILE"
+log_info "Hooks installed for events:"
+jq -r '.hooks | to_entries[] | select(.value | any(.hooks[]?; .command | contains("notify-headspace"))) | "  \(.key)"' "$SETTINGS_FILE"
 log_info ""
 log_info "To verify hooks are working:"
 log_info "  1. Start a new Claude Code session"
