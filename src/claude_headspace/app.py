@@ -3,6 +3,7 @@
 import logging
 import logging.config
 import os
+import time
 from pathlib import Path
 
 from flask import Flask, render_template
@@ -84,6 +85,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
 
     # Configure Flask
     app.config["DEBUG"] = get_value(config, "server", "debug", default=False)
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["APP_CONFIG"] = config
     app.config["APP_VERSION"] = __version__
 
@@ -139,6 +142,11 @@ def create_app(config_path: str = "config.yaml") -> Flask:
                 event_writer.stop()
         except Exception:
             pass  # Ignore errors during shutdown
+
+    # Register context processor for cache busting
+    @app.context_processor
+    def inject_cache_bust():
+        return {"cache_bust": int(time.time())}
 
     # Register error handlers
     register_error_handlers(app)

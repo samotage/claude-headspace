@@ -159,7 +159,7 @@
 
 .stats-bar .stat-dot.amber { background: var(--amber); box-shadow: 0 0 6px rgba(224,176,115,0.4); }
 .stats-bar .stat-dot.blue { background: var(--blue); box-shadow: 0 0 6px rgba(115,153,224,0.4); }
-.stats-bar .stat-dot.muted { background: var(--text-muted); }
+.stats-bar .stat-dot.green { background: var(--green); box-shadow: 0 0 6px rgba(115,224,160,0.4); }
 
 .stats-bar .stat-label {
     font-weight: 500;
@@ -168,7 +168,7 @@
 
 .stats-bar .stat-label.amber { color: var(--amber); }
 .stats-bar .stat-label.blue { color: var(--blue); }
-.stats-bar .stat-label.muted { color: var(--text-muted); }
+.stats-bar .stat-label.green { color: var(--green); }
 
 .stats-bar .stat-value {
     font-weight: 700;

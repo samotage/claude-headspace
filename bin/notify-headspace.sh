@@ -44,12 +44,14 @@ fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') STDIN tty_test=$([[ -t 0 ]] && echo 'is_tty' || echo 'not_tty') len=${#STDIN_DATA} data=${STDIN_DATA:0:200}" >> "$DEBUG_LOG"
 
-# Extract session_id from stdin JSON, fall back to environment variable
+# Extract fields from stdin JSON, fall back to environment variables
 SESSION_ID=""
 WORKING_DIR=""
+PROMPT_TEXT=""
 if [ -n "$STDIN_DATA" ] && command -v jq &>/dev/null; then
     SESSION_ID=$(echo "$STDIN_DATA" | jq -r '.session_id // empty' 2>/dev/null) || true
     WORKING_DIR=$(echo "$STDIN_DATA" | jq -r '.cwd // empty' 2>/dev/null) || true
+    PROMPT_TEXT=$(echo "$STDIN_DATA" | jq -r '.prompt // empty' 2>/dev/null) || true
 fi
 
 # Fall back to environment variables for session ID only
@@ -71,16 +73,16 @@ fi
 # Build endpoint URL
 ENDPOINT="${HEADSPACE_URL}/hook/${EVENT_TYPE}"
 
-# Build JSON payload — include optional fields only when present
-PAYLOAD="{\"session_id\": \"${SESSION_ID}\""
-if [ -n "$WORKING_DIR" ]; then
-    PAYLOAD="${PAYLOAD}, \"working_directory\": \"${WORKING_DIR}\""
-fi
-if [ -n "$HEADSPACE_SESSION_ID" ]; then
-    PAYLOAD="${PAYLOAD}, \"headspace_session_id\": \"${HEADSPACE_SESSION_ID}\""
-fi
-PAYLOAD="${PAYLOAD}}"
-fi
+# Build JSON payload using jq for safe encoding (handles quotes, newlines in prompt text)
+PAYLOAD=$(jq -n \
+    --arg sid "$SESSION_ID" \
+    --arg wd "$WORKING_DIR" \
+    --arg hsid "$HEADSPACE_SESSION_ID" \
+    --arg prompt "$PROMPT_TEXT" \
+    '{session_id: $sid}
+     + (if $wd != "" then {working_directory: $wd} else {} end)
+     + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
+     + (if $prompt != "" then {prompt: $prompt} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
 CURL_RESULT=$(curl -s -w "\n%{http_code}" \

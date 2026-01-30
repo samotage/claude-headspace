@@ -206,10 +206,11 @@ def hook_user_prompt_submit():
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
+    prompt_text = data.get("prompt")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id)
-        result = process_user_prompt_submit(correlation.agent, session_id)
+        result = process_user_prompt_submit(correlation.agent, session_id, prompt_text=prompt_text)
 
         latency_ms = int((time.time() - start_time) * 1000)
         _log_hook_event("user_prompt_submit", session_id, latency_ms)

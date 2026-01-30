@@ -9,7 +9,7 @@
  *
  * Updates DOM elements:
  * - Status counts in header
- * - Traffic lights on project groups
+ * - State indicator dots on project groups
  * - Agent card state bars, status badges, task summaries
  * - Recommended next panel
  * - Connection status indicator
@@ -20,7 +20,7 @@
 
     // State info mapping (matches Python get_state_info)
     const STATE_INFO = {
-        'IDLE': { color: 'gray', bg_class: 'bg-muted', label: 'Idle - ready for task' },
+        'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle - ready for task' },
         'COMMANDED': { color: 'yellow', bg_class: 'bg-amber', label: 'Command received' },
         'PROCESSING': { color: 'blue', bg_class: 'bg-blue', label: 'Processing...' },
         'AWAITING_INPUT': { color: 'orange', bg_class: 'bg-amber', label: 'Input needed' },
@@ -72,6 +72,11 @@
         // Handle session lifecycle changes that require page refresh
         client.on('session_created', handleSessionCreated);
 
+        // DEBUG: Wildcard handler to see ALL events
+        client.on('*', function(data, eventType) {
+            console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
+        });
+
         // Connect
         client.connect();
 
@@ -118,19 +123,34 @@
         const agentId = data.agent_id;
         const newState = data.new_state || data.state;
 
+        console.log('[DEBUG] handleStateTransition called:', {
+            eventType: eventType,
+            rawData: JSON.stringify(data),
+            agentId: agentId,
+            agentIdType: typeof agentId,
+            newState: newState,
+            newStateType: typeof newState,
+        });
+
         if (!agentId || !newState) {
-            console.warn('Invalid state transition event:', data);
+            console.warn('[DEBUG] Invalid state transition event (missing agentId or newState):', data);
             return;
         }
 
-        console.log('State transition:', agentId, '->', newState);
-
         // Update tracked state
         const oldState = agentStates.get(agentId);
+        console.log('[DEBUG] agentStates lookup:', {
+            agentId: agentId,
+            agentIdType: typeof agentId,
+            oldState: oldState,
+            mapSize: agentStates.size,
+            mapKeys: Array.from(agentStates.keys()).map(k => `${k} (${typeof k})`),
+        });
         agentStates.set(agentId, newState);
 
-        // Update agent card
+        // Update agent card and recommended panel
         updateAgentCardState(agentId, newState);
+        updateRecommendedPanel(agentId, newState);
 
         // Recalculate and update header counts
         updateStatusCounts();
@@ -138,7 +158,7 @@
         // Update project traffic light
         const projectId = data.project_id;
         if (projectId) {
-            updateProjectTrafficLight(projectId);
+            updateProjectStateDots(projectId);
         }
 
         // Trigger recommended next update (full page would need data from server)
@@ -152,27 +172,45 @@
      * Update an agent card's state display
      */
     function updateAgentCardState(agentId, state) {
-        const card = document.querySelector(`[data-agent-id="${agentId}"]`);
-        if (!card) return;
+        // Use article selector to avoid matching the recommended-next panel's div
+        const selector = `article[data-agent-id="${agentId}"]`;
+        const card = document.querySelector(selector);
+
+        console.log('[DEBUG] updateAgentCardState:', {
+            agentId: agentId,
+            agentIdType: typeof agentId,
+            selector: selector,
+            cardFound: !!card,
+        });
+
+        if (!card) {
+            console.warn('[DEBUG] Card NOT FOUND for selector:', selector);
+            return;
+        }
 
         const stateInfo = STATE_INFO[state] || STATE_INFO['IDLE'];
 
         // Update state bar
         const stateBar = card.querySelector('.state-bar');
+        console.log('[DEBUG] stateBar found:', !!stateBar, 'className before:', stateBar ? stateBar.className : 'N/A');
         if (stateBar) {
             // Remove old bg classes
             stateBar.className = stateBar.className.replace(/bg-\w+/g, '');
             stateBar.classList.add(stateInfo.bg_class);
+            console.log('[DEBUG] stateBar className after:', stateBar.className);
         }
 
         // Update state label
         const stateLabel = card.querySelector('.state-label');
+        console.log('[DEBUG] stateLabel found:', !!stateLabel, 'text before:', stateLabel ? stateLabel.textContent : 'N/A');
         if (stateLabel) {
             stateLabel.textContent = stateInfo.label;
+            console.log('[DEBUG] stateLabel text after:', stateLabel.textContent);
         }
 
         // Update data attribute
         card.setAttribute('data-state', state);
+        console.log('[DEBUG] Card data-state set to:', state);
     }
 
     /**
@@ -186,8 +224,8 @@
 
         console.log('Turn created:', agentId);
 
-        // Update task summary
-        const card = document.querySelector(`[data-agent-id="${agentId}"]`);
+        // Update task summary (scope to article to avoid recommended panel)
+        const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
         if (!card) return;
 
         const taskSummary = card.querySelector('.task-summary');
@@ -212,8 +250,8 @@
 
         console.log('Agent activity:', agentId, 'active:', isActive);
 
-        // Update status badge
-        const card = document.querySelector(`[data-agent-id="${agentId}"]`);
+        // Update status badge (scope to article to avoid recommended panel)
+        const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
         if (!card) return;
 
         const statusBadge = card.querySelector('.status-badge');
@@ -269,7 +307,9 @@
         let working = 0;
         let idle = 0;
 
-        agentStates.forEach(function(state) {
+        console.log('[DEBUG] updateStatusCounts: agentStates dump:');
+        agentStates.forEach(function(state, key) {
+            console.log('[DEBUG]   key:', key, '(' + typeof key + ') -> state:', state);
             if (state === 'AWAITING_INPUT') {
                 inputNeeded++;
             } else if (state === 'COMMANDED' || state === 'PROCESSING') {
@@ -278,6 +318,8 @@
                 idle++;
             }
         });
+
+        console.log('[DEBUG] updateStatusCounts result:', { inputNeeded, working, idle });
 
         // Update header badges
         const inputBadge = document.querySelector('#status-input-needed .status-count');
@@ -290,38 +332,29 @@
     }
 
     /**
-     * Update a project's traffic light
+     * Update a project's state indicator dots
      */
-    function updateProjectTrafficLight(projectId) {
-        const projectGroup = document.querySelector(`[data-project-id="${projectId}"]`);
-        if (!projectGroup) return;
+    function updateProjectStateDots(projectId) {
+        var projectEl = document.querySelector('[data-project-id="' + projectId + '"]');
+        if (!projectEl) return;
 
-        const trafficLight = projectGroup.querySelector('.traffic-light');
-        if (!trafficLight) return;
+        var dots = projectEl.querySelectorAll('.state-dot');
+        if (dots.length < 3) return;
 
-        // Find all agent cards in this project and check their states
-        const agentCards = projectGroup.querySelectorAll('[data-agent-id]');
-        let hasAwaitingInput = false;
-        let hasWorking = false;
+        var agentCards = projectEl.querySelectorAll('[data-agent-id]');
+        var hasInput = false, hasWorking = false, hasIdle = false;
 
         agentCards.forEach(function(card) {
-            const state = card.getAttribute('data-state');
-            if (state === 'AWAITING_INPUT') {
-                hasAwaitingInput = true;
-            } else if (state === 'COMMANDED' || state === 'PROCESSING') {
-                hasWorking = true;
-            }
+            var state = card.getAttribute('data-state');
+            if (state === 'AWAITING_INPUT') hasInput = true;
+            else if (state === 'COMMANDED' || state === 'PROCESSING') hasWorking = true;
+            else hasIdle = true;
         });
 
-        // Update traffic light color
-        trafficLight.className = trafficLight.className.replace(/bg-\w+/g, '');
-        if (hasAwaitingInput) {
-            trafficLight.classList.add('bg-red');
-        } else if (hasWorking) {
-            trafficLight.classList.add('bg-amber');
-        } else {
-            trafficLight.classList.add('bg-green');
-        }
+        // dots[0] = amber (input needed), dots[1] = blue (working), dots[2] = green (idle)
+        dots[0].classList.toggle('opacity-25', !hasInput);
+        dots[1].classList.toggle('opacity-25', !hasWorking);
+        dots[2].classList.toggle('opacity-25', !hasIdle);
     }
 
     /**
@@ -348,8 +381,8 @@
 
         if (!highlightId) return;
 
-        // Find the agent card
-        const card = document.querySelector(`[data-agent-id="${highlightId}"]`);
+        // Find the agent card (scope to article to avoid recommended panel)
+        const card = document.querySelector(`article[data-agent-id="${highlightId}"]`);
         if (!card) {
             console.warn('Agent card not found for highlight:', highlightId);
             return;
@@ -381,14 +414,53 @@
      * Initialize agent states from the DOM on page load
      */
     function initAgentStates() {
-        const agentCards = document.querySelectorAll('[data-agent-id][data-state]');
+        // Scope to article elements to avoid the recommended-next panel div
+        const agentCards = document.querySelectorAll('article[data-agent-id][data-state]');
+        console.log('[DEBUG] initAgentStates: found', agentCards.length, 'agent cards');
         agentCards.forEach(function(card) {
             const agentId = card.getAttribute('data-agent-id');
             const state = card.getAttribute('data-state');
+            console.log('[DEBUG] initAgentStates card:', {
+                rawAgentId: agentId,
+                parsedAgentId: parseInt(agentId),
+                state: state,
+            });
             if (agentId && state) {
                 agentStates.set(parseInt(agentId), state);
             }
         });
+        console.log('[DEBUG] initAgentStates complete. Map keys:', Array.from(agentStates.keys()).map(k => `${k} (${typeof k})`));
+    }
+
+    /**
+     * Update the recommended-next panel's state display
+     */
+    function updateRecommendedPanel(agentId, state) {
+        var panel = document.getElementById('recommended-next-panel');
+        if (!panel) return;
+
+        var panelDiv = panel.querySelector('[data-agent-id="' + agentId + '"]');
+        if (!panelDiv) return;
+
+        var stateInfo = STATE_INFO[state] || STATE_INFO['IDLE'];
+
+        // Update the state bar fill
+        var barFill = panelDiv.querySelector('.bg-deep > div');
+        if (barFill) {
+            barFill.className = barFill.className.replace(/bg-\w+/g, '');
+            barFill.classList.add('h-full', stateInfo.bg_class);
+        }
+
+        // Update the state label text next to the bar
+        var labelSpan = panelDiv.querySelector('.bg-deep');
+        if (labelSpan && labelSpan.nextElementSibling) {
+            var textEl = labelSpan.nextElementSibling;
+            textEl.textContent = stateInfo.label;
+            // Update text color for AWAITING_INPUT
+            textEl.className = textEl.className.replace(/text-\w+/g, '');
+            textEl.classList.add('text-xs', 'whitespace-nowrap');
+            textEl.classList.add(state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary');
+        }
     }
 
     // Export
@@ -400,8 +472,8 @@
         },
         updateConnectionIndicator: updateConnectionIndicator,
         highlightAgent: function(agentId) {
-            // Allow programmatic highlighting
-            const card = document.querySelector(`[data-agent-id="${agentId}"]`);
+            // Allow programmatic highlighting (scope to article to avoid recommended panel)
+            const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
             if (card) {
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 card.classList.add('ring-2', 'ring-cyan', 'ring-opacity-75', 'animate-pulse');

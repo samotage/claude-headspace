@@ -268,6 +268,7 @@ def process_session_end(
 def process_user_prompt_submit(
     agent: Agent,
     claude_session_id: str,
+    prompt_text: str | None = None,
 ) -> HookEventResult:
     """
     Process a user prompt submit hook event.
@@ -278,6 +279,7 @@ def process_user_prompt_submit(
     Args:
         agent: The correlated agent
         claude_session_id: The Claude session ID
+        prompt_text: The user's prompt text (from Claude Code hook stdin)
 
     Returns:
         HookEventResult with processing outcome
@@ -291,7 +293,7 @@ def process_user_prompt_submit(
 
         # Use lifecycle bridge for proper state management and event logging
         bridge = get_hook_bridge()
-        result = bridge.process_user_prompt_submit(agent, claude_session_id)
+        result = bridge.process_user_prompt_submit(agent, claude_session_id, prompt_text=prompt_text)
 
         db.session.commit()
 
@@ -300,6 +302,23 @@ def process_user_prompt_submit(
 
         # Broadcast state change to SSE clients
         _broadcast_state_change(agent, "user_prompt_submit", new_state)
+
+        # Broadcast turn_created so dashboard updates task summary with the command
+        if prompt_text:
+            try:
+                from .broadcaster import get_broadcaster
+                broadcaster = get_broadcaster()
+                broadcaster.broadcast("turn_created", {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "text": prompt_text,
+                    "actor": "user",
+                    "intent": "command",
+                    "task_id": result.task.id if result.task else None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as e:
+                logger.debug(f"turn_created broadcast failed (non-fatal): {e}")
 
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "

@@ -1381,7 +1381,8 @@ body::after {
     transition: border-color 0.3s, box-shadow 0.3s;
 }
 [data-state="IDLE"] {
-    border-color: var(--border);
+    border-color: rgba(115,224,160,0.2);
+    box-shadow: 0 0 4px rgba(115,224,160,0.08);
     transition: border-color 0.3s, box-shadow 0.3s;
 }
 
@@ -1437,8 +1438,8 @@ body::after {
 }
 
 [data-state="IDLE"] .state-strip {
-    background: rgba(106,106,120,0.15);
-    color: var(--text-muted);
+    background: rgba(115,224,160,0.15);
+    color: var(--green);
 }
 [data-state="COMMANDED"] .state-strip {
     background: rgba(224,176,115,0.15);
@@ -1455,6 +1456,16 @@ body::after {
 [data-state="COMPLETE"] .state-strip {
     background: rgba(115,224,160,0.15);
     color: var(--green);
+}
+.state-strip.clickable {
+    cursor: pointer;
+}
+.state-strip.clickable:hover {
+    filter: brightness(1.4);
+}
+.state-strip.clickable:focus-visible {
+    outline: 1px solid var(--cyan);
+    outline-offset: 1px;
 }
 .hover\:border-border-bright:hover {
   --tw-border-opacity: 1;

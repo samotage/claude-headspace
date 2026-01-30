@@ -13,9 +13,9 @@ from src.claude_headspace.routes.dashboard import (
     count_active_agents,
     dashboard_bp,
     format_uptime,
+    get_project_state_flags,
     get_state_info,
     get_task_summary,
-    get_traffic_light_color,
     is_agent_active,
 )
 
@@ -111,57 +111,64 @@ class TestCalculateStatusCounts:
         assert result == {"input_needed": 1, "working": 2, "idle": 2}
 
 
-class TestGetTrafficLightColor:
-    """Tests for get_traffic_light_color function."""
+class TestGetProjectStateFlags:
+    """Tests for get_project_state_flags function."""
 
-    def test_empty_agents_returns_green(self):
-        """Test that no agents returns green."""
-        result = get_traffic_light_color([])
-        assert result == "green"
+    def test_empty_agents_all_false(self):
+        """Test that no agents returns all flags false."""
+        result = get_project_state_flags([])
+        assert result == {"has_input_needed": False, "has_working": False, "has_idle": False}
 
-    def test_awaiting_input_returns_red(self):
-        """Test that any agent awaiting input returns red."""
+    def test_awaiting_input_flag(self):
+        """Test that agent awaiting input sets has_input_needed."""
         agents = [
-            create_mock_agent(state=TaskState.IDLE),
             create_mock_agent(state=TaskState.AWAITING_INPUT),
         ]
-        result = get_traffic_light_color(agents)
-        assert result == "red"
+        result = get_project_state_flags(agents)
+        assert result["has_input_needed"] is True
+        assert result["has_working"] is False
+        assert result["has_idle"] is False
 
-    def test_working_returns_yellow(self):
-        """Test that working agents without input needed returns yellow."""
+    def test_working_flag(self):
+        """Test that working agents set has_working."""
         agents = [
             create_mock_agent(state=TaskState.PROCESSING),
-            create_mock_agent(state=TaskState.IDLE),
-        ]
-        result = get_traffic_light_color(agents)
-        assert result == "yellow"
-
-    def test_commanded_returns_yellow(self):
-        """Test that COMMANDED state returns yellow."""
-        agents = [
             create_mock_agent(state=TaskState.COMMANDED),
         ]
-        result = get_traffic_light_color(agents)
-        assert result == "yellow"
+        result = get_project_state_flags(agents)
+        assert result["has_input_needed"] is False
+        assert result["has_working"] is True
+        assert result["has_idle"] is False
 
-    def test_all_idle_returns_green(self):
-        """Test that all idle agents returns green."""
+    def test_idle_flag(self):
+        """Test that idle agents set has_idle."""
         agents = [
             create_mock_agent(state=TaskState.IDLE),
+        ]
+        result = get_project_state_flags(agents)
+        assert result["has_input_needed"] is False
+        assert result["has_working"] is False
+        assert result["has_idle"] is True
+
+    def test_complete_counts_as_idle(self):
+        """Test that COMPLETE state sets has_idle."""
+        agents = [
             create_mock_agent(state=TaskState.COMPLETE),
         ]
-        result = get_traffic_light_color(agents)
-        assert result == "green"
+        result = get_project_state_flags(agents)
+        assert result["has_idle"] is True
 
-    def test_red_takes_priority(self):
-        """Test that red (awaiting input) takes priority over yellow."""
+    def test_mixed_states(self):
+        """Test that mixed states set multiple flags."""
         agents = [
-            create_mock_agent(state=TaskState.PROCESSING),
             create_mock_agent(state=TaskState.AWAITING_INPUT),
+            create_mock_agent(state=TaskState.PROCESSING),
+            create_mock_agent(state=TaskState.IDLE),
         ]
-        result = get_traffic_light_color(agents)
-        assert result == "red"
+        result = get_project_state_flags(agents)
+        assert result["has_input_needed"] is True
+        assert result["has_working"] is True
+        assert result["has_idle"] is True
 
 
 class TestIsAgentActive:
@@ -254,8 +261,8 @@ class TestGetStateInfo:
     def test_idle_state(self):
         """Test IDLE state info."""
         result = get_state_info(TaskState.IDLE)
-        assert result["color"] == "gray"
-        assert result["bg_class"] == "bg-muted"
+        assert result["color"] == "green"
+        assert result["bg_class"] == "bg-green"
         assert "Idle" in result["label"]
 
     def test_commanded_state(self):
@@ -426,8 +433,8 @@ class TestDashboardWithData:
         response = client.get("/")
         assert response.status_code == 200
 
-    def test_traffic_light_displayed(self, client, mock_db_session):
-        """Test that traffic light indicators are shown."""
+    def test_state_dots_displayed(self, client, mock_db_session):
+        """Test that state indicator dots are shown."""
         mock_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
 
         mock_project = MagicMock()
@@ -443,7 +450,8 @@ class TestDashboardWithData:
 
         response = client.get("/")
         html = response.data.decode("utf-8")
-        # Traffic light should show red for awaiting input
+        # State dots should be present
+        assert "state-dot" in html
         assert response.status_code == 200
 
 

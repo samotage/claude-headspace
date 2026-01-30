@@ -40,11 +40,6 @@
                                   <span class="text-muted text-sm">{{ agent.project_name }}</span>
                                   <span class="uptime text-muted text-xs">up {{ agent.uptime }}</span>
                                 </div>
-                                <button class="headspace-btn px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                                        onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }})"
-                                        title="Focus on this agent's iTerm window">
-                                    Headspace
-                                </button>
                               </div>
                             </div>
                             <!-- 02: spacer -->
@@ -52,11 +47,16 @@
                               <span class="line-num">02</span>
                               <div class="line-content"></div>
                             </div>
-                            <!-- 03: State strip -->
-                            <div class="card-line" role="status" aria-label="Agent state: {{ agent.state_info.label }}">
+                            <!-- 03: State strip (clickable - focuses iTerm) -->
+                            <div class="card-line">
                               <span class="line-num">03</span>
                               <div class="line-content">
-                                <div class="state-bar state-strip">
+                                <div class="state-bar state-strip clickable"
+                                     role="button" tabindex="0"
+                                     aria-label="Focus iTerm: {{ agent.state_info.label }}"
+                                     title="Click to focus this agent's iTerm window"
+                                     onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }})"
+                                     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }});}">
                                   <span class="state-label">{{ agent.state_info.label }}</span>
                                 </div>
                               </div>
@@ -116,9 +116,9 @@
 
 {% block scripts %}
 <!-- SSE client (from Sprint 7) -->
-<script src="{{ url_for('static', filename='js/sse-client.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sse-client.js') }}?v={{ cache_bust }}"></script>
 <!-- Dashboard SSE integration -->
-<script src="{{ url_for('static', filename='js/dashboard-sse.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard-sse.js') }}?v={{ cache_bust }}"></script>
 <!-- Focus API client -->
-<script src="{{ url_for('static', filename='js/focus-api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/focus-api.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

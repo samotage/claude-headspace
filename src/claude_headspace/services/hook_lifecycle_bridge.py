@@ -54,6 +54,7 @@ class HookLifecycleBridge:
         self,
         agent: Agent,
         claude_session_id: str,
+        prompt_text: str | None = None,
     ) -> TurnProcessingResult:
         """
         Process a user_prompt_submit hook as a user command.
@@ -64,6 +65,7 @@ class HookLifecycleBridge:
         Args:
             agent: The agent receiving the hook event
             claude_session_id: The Claude session identifier
+            prompt_text: The user's prompt text (from Claude Code hook stdin)
 
         Returns:
             TurnProcessingResult with the outcome
@@ -74,7 +76,7 @@ class HookLifecycleBridge:
         result = lifecycle.process_turn(
             agent=agent,
             actor=TurnActor.USER,
-            text=None,  # Hook doesn't provide text
+            text=prompt_text,
         )
 
         # After user command, immediately transition to processing

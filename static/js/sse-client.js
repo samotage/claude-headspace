@@ -157,6 +157,12 @@
     _dispatchEvent(eventType, data) {
       // Call type-specific handlers
       const typeHandlers = this.handlers.get(eventType);
+      console.log('[DEBUG] _dispatchEvent:', {
+        eventType: eventType,
+        hasTypeHandlers: !!typeHandlers,
+        handlerCount: typeHandlers ? typeHandlers.size : 0,
+        registeredTypes: Array.from(this.handlers.keys()),
+      });
       if (typeHandlers) {
         typeHandlers.forEach((handler) => {
           try {
@@ -237,6 +243,7 @@
         "state_changed",
         "state_transition",
         "turn_detected",
+        "turn_created",
         "session_started",
         "session_created",
         "session_ended",

@@ -138,28 +138,27 @@ def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
     }
 
 
-def get_traffic_light_color(agents: list[Agent]) -> str:
+def get_project_state_flags(agents: list[Agent]) -> dict[str, bool]:
     """
-    Determine traffic light color based on agent states.
+    Determine which agent states are present in a project.
 
     Args:
         agents: List of agents in the project
 
     Returns:
-        Color string: 'red', 'yellow', or 'green'
+        Dictionary with has_input_needed, has_working, has_idle flags
     """
-    if not agents:
-        return "green"
+    flags = {"has_input_needed": False, "has_working": False, "has_idle": False}
 
     for agent in agents:
         if agent.state == TaskState.AWAITING_INPUT:
-            return "red"
+            flags["has_input_needed"] = True
+        elif agent.state in (TaskState.COMMANDED, TaskState.PROCESSING):
+            flags["has_working"] = True
+        else:
+            flags["has_idle"] = True
 
-    for agent in agents:
-        if agent.state in (TaskState.COMMANDED, TaskState.PROCESSING):
-            return "yellow"
-
-    return "green"
+    return flags
 
 
 def is_agent_active(agent: Agent) -> bool:
@@ -242,8 +241,8 @@ def get_state_info(state: TaskState) -> dict:
     """
     state_map = {
         TaskState.IDLE: {
-            "color": "gray",
-            "bg_class": "bg-muted",
+            "color": "green",
+            "bg_class": "bg-green",
             "label": "Idle - ready for task",
         },
         TaskState.COMMANDED: {
@@ -354,7 +353,7 @@ def dashboard():
             {
                 "id": project.id,
                 "name": project.name,
-                "traffic_light": get_traffic_light_color(live_agents),
+                "state_flags": get_project_state_flags(live_agents),
                 "active_count": count_active_agents(live_agents),
                 "agents": agents_data,
                 "waypoint": None,  # Waypoint will be added in Sprint 9

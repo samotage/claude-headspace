@@ -13,20 +13,18 @@
          onkeypress="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}">
 
         <div class="flex items-center gap-3">
-            <!-- Traffic light -->
-            {% if project.traffic_light == 'red' %}
-                <span class="traffic-light w-3 h-3 rounded-full bg-red"
-                      role="status"
-                      aria-label="Needs attention - agent awaiting input"></span>
-            {% elif project.traffic_light == 'yellow' %}
-                <span class="traffic-light w-3 h-3 rounded-full bg-amber"
-                      role="status"
-                      aria-label="Working - agents processing"></span>
-            {% else %}
-                <span class="traffic-light w-3 h-3 rounded-full bg-green"
-                      role="status"
-                      aria-label="All good - agents idle or complete"></span>
-            {% endif %}
+            <!-- State indicator dots -->
+            <div class="flex items-center gap-1.5">
+                <span class="state-dot w-3 h-3 rounded-full bg-amber
+                    {% if not project.state_flags.has_input_needed %}opacity-25{% endif %}"
+                    role="status" aria-label="Input needed"></span>
+                <span class="state-dot w-3 h-3 rounded-full bg-blue
+                    {% if not project.state_flags.has_working %}opacity-25{% endif %}"
+                    role="status" aria-label="Working"></span>
+                <span class="state-dot w-3 h-3 rounded-full bg-green
+                    {% if not project.state_flags.has_idle %}opacity-25{% endif %}"
+                    role="status" aria-label="Idle"></span>
+            </div>
 
             <!-- Project name -->
             <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium">
