@@ -19,7 +19,8 @@ def logging_page():
     Returns:
         Rendered logging template
     """
-    return render_template("logging.html")
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+    return render_template("logging.html", status_counts=status_counts)
 
 
 @logging_bp.route("/api/events", methods=["GET"])

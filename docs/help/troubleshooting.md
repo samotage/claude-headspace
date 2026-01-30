@@ -2,6 +2,54 @@
 
 Common issues and how to resolve them.
 
+## Session Registration Issues
+
+### Session not appearing on dashboard
+
+**Symptoms:** You started Claude Code but no agent card appears on the dashboard.
+
+**Cause:** Sessions do NOT auto-detect. They must be registered through either the wrapper script or hooks.
+
+**Solutions:**
+
+1. **Use the wrapper script** (recommended):
+   ```bash
+   claude-headspace start
+   ```
+   This registers the session automatically. See [Getting Started](getting-started) for details.
+
+2. **Install hooks** if using `claude` directly:
+   ```bash
+   ./bin/install-hooks.sh
+   ```
+   Then start a **new** `claude` session (existing sessions won't pick up new hooks).
+
+3. **Check the server port** - the hook script must target the correct port. Verify `config.yaml` shows the right port (default: 5055) and that `notify-headspace.sh` matches. If you changed the port, set `HEADSPACE_URL`:
+   ```bash
+   export HEADSPACE_URL=http://localhost:5055
+   ```
+
+4. **Verify hooks are installed** by checking:
+   ```bash
+   cat ~/.claude/settings.json | grep notify-headspace
+   ```
+   You should see entries for `session-start`, `session-end`, `user-prompt-submit`, `stop`, and `notification`.
+
+5. **Test the hook endpoint** directly:
+   ```bash
+   curl http://localhost:5055/hook/status
+   ```
+   If this fails, the server is not reachable.
+
+### Session registered but state not updating
+
+**Symptoms:** Agent card appears but stays stuck on one state.
+
+**Solutions:**
+1. Check that all five hook events are installed (not just `session-start`)
+2. Verify the hook script is executable: `chmod +x ~/.claude/hooks/notify-headspace.sh`
+3. Check server logs for hook processing errors
+
 ## Dashboard Issues
 
 ### No agents appearing
@@ -9,7 +57,7 @@ Common issues and how to resolve them.
 **Symptoms:** Dashboard shows "No agents found" even with active sessions.
 
 **Solutions:**
-1. Ensure Claude Code hooks are installed in `~/.claude/settings.json`
+1. Follow the "Session not appearing on dashboard" steps above
 2. Check that the server is running on the expected port
 3. Verify project paths in `config.yaml` match your actual paths
 

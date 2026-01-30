@@ -4,34 +4,9 @@
 
 {% block content %}
 <div class="min-h-screen">
-    <!-- Simple header for objective page -->
-    <header class="bg-deep border-b border-border sticky top-0 z-50" role="banner">
-        <div class="container mx-auto px-4">
-            <div class="flex items-center justify-between py-4">
-                <h1 class="text-xl font-bold text-primary">
-                    <span class="text-cyan">CLAUDE</span> <span class="text-muted">&gt;_</span>headspace
-                </h1>
+    {% include "partials/_header.html" %}
 
-                <nav class="flex gap-4" role="navigation" aria-label="Main navigation">
-                    <a href="{{ url_for('dashboard.dashboard') }}"
-                       class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
-                        dashboard
-                    </a>
-                    <a href="{{ url_for('objective.objective_page') }}"
-                       class="px-4 py-2 rounded bg-surface text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center"
-                       aria-current="page">
-                        objective
-                    </a>
-                    <a href="{{ url_for('logging.logging_page') }}"
-                       class="px-4 py-2 rounded text-secondary hover:text-primary hover:bg-hover transition-colors min-h-[44px] flex items-center">
-                        logging
-                    </a>
-                </nav>
-            </div>
-        </div>
-    </header>
-
-    <main class="container mx-auto px-4 py-6" role="main">
+    <main class="page-content container mx-auto px-4 py-6" role="main">
         <!-- Objective Form Section -->
         <section class="mb-8" aria-labelledby="objective-form-heading">
             <div class="bg-elevated rounded-lg border border-border p-6">

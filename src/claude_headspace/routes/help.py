@@ -1,10 +1,10 @@
-"""Help API routes for serving documentation content."""
+"""Help page and API routes for serving documentation content."""
 
 import logging
 import re
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, render_template
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,28 @@ def extract_title(content: str, default: str) -> str:
     if match:
         return match.group(1).strip()
     return default
+
+
+@help_bp.route("/help", methods=["GET"])
+@help_bp.route("/help/<slug>", methods=["GET"])
+def help_page(slug: str = "index"):
+    """
+    Render the help documentation page.
+
+    Args:
+        slug: Topic slug to display initially (default: index)
+    """
+    # Validate slug
+    if not re.match(r"^[a-z0-9-]+$", slug):
+        slug = "index"
+
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+
+    return render_template(
+        "help.html",
+        initial_topic=slug,
+        status_counts=status_counts,
+    )
 
 
 @help_bp.route("/api/help/topics", methods=["GET"])
