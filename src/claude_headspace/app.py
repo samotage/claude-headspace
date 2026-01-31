@@ -10,7 +10,7 @@ from flask import Flask, render_template
 
 from . import __version__
 from .config import load_config, get_value, get_database_url
-from .database import init_database
+from .database import db, init_database
 
 
 def setup_logging(config: dict, app_root: Path) -> None:
@@ -120,6 +120,18 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["broadcaster"] = broadcaster
     logger.info("SSE broadcaster initialized")
 
+    # Initialize inference service
+    from .services.inference_service import InferenceService
+    inference_service = InferenceService(
+        config=config,
+        db_session_factory=lambda: db.session if db_connected else None,
+    )
+    app.extensions["inference_service"] = inference_service
+    if inference_service.is_available:
+        logger.info("Inference service initialized (OpenRouter configured)")
+    else:
+        logger.warning("Inference service initialized in degraded mode (no API key)")
+
     # Initialize file watcher (only in non-testing environments)
     if not app.config.get("TESTING"):
         from .services.file_watcher import init_file_watcher
@@ -181,6 +193,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.health import health_bp
     from .routes.help import help_bp
     from .routes.hooks import hooks_bp
+    from .routes.inference import inference_bp
     from .routes.logging import logging_bp
     from .routes.notifications import notifications_bp
     from .routes.objective import objective_bp
@@ -194,6 +207,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(health_bp)
     app.register_blueprint(help_bp)
     app.register_blueprint(hooks_bp)
+    app.register_blueprint(inference_bp)
     app.register_blueprint(logging_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(objective_bp)
