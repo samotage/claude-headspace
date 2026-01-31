@@ -20,8 +20,8 @@
         </div>
       </div>
     </div>
-    <!-- 02: spacer -->
-    <div class="card-line">
+    <!-- 02: spacer (hidden on mobile/tablet) -->
+    <div class="card-line hidden lg:flex">
       <span class="line-num">02</span>
       <div class="line-content"></div>
     </div>
@@ -39,8 +39,8 @@
         </div>
       </div>
     </div>
-    <!-- 04: spacer -->
-    <div class="card-line">
+    <!-- 04: spacer (hidden on mobile/tablet) -->
+    <div class="card-line hidden lg:flex">
       <span class="line-num">04</span>
       <div class="line-content"></div>
     </div>
@@ -48,7 +48,11 @@
     <div class="card-line">
       <span class="line-num">05</span>
       <div class="line-content">
-        <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+        {% if agent.get('summarising') %}
+          <p class="task-summary text-muted text-sm italic">Summarising...</p>
+        {% else %}
+          <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+        {% endif %}
       </div>
     </div>
   </div>

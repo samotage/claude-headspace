@@ -231,11 +231,14 @@ def get_task_summary(agent: Agent) -> str:
     """
     Get task summary for an agent.
 
+    Prefers AI-generated summaries when available, falls back to
+    raw turn text truncated to 100 chars.
+
     Args:
         agent: The agent
 
     Returns:
-        First 100 chars of most recent turn text, or "No active task"
+        Summary text, truncated turn text, or "No active task"
     """
     current_task = agent.get_current_task()
     if current_task is None:
@@ -243,13 +246,17 @@ def get_task_summary(agent: Agent) -> str:
 
     # Get most recent turn
     if current_task.turns:
-        # Turns are ordered by timestamp, get the last one
         recent_turn = current_task.turns[-1] if current_task.turns else None
-        if recent_turn and recent_turn.text:
-            text = recent_turn.text
-            if len(text) > 100:
-                return text[:100] + "..."
-            return text
+        if recent_turn:
+            # Prefer AI-generated summary
+            if recent_turn.summary:
+                return recent_turn.summary
+            # Fall back to raw text
+            if recent_turn.text:
+                text = recent_turn.text
+                if len(text) > 100:
+                    return text[:100] + "..."
+                return text
 
     return "No active task"
 

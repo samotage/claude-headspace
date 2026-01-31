@@ -34,13 +34,17 @@ def mock_agent():
 @pytest.fixture
 def fresh_state():
     """Reset receiver state before each test."""
+    from claude_headspace.services.hook_receiver import _agent_display_overrides
+
     state = get_receiver_state()
     state.enabled = True
     state.last_event_at = None
     state.last_event_type = None
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
+    _agent_display_overrides.clear()
     yield state
+    _agent_display_overrides.clear()
 
 
 class TestHookEventType:
@@ -274,20 +278,24 @@ class TestProcessNotification:
 
     @patch("claude_headspace.services.hook_receiver.db")
     def test_successful_notification(self, mock_db, mock_agent, fresh_state):
-        """Test successful notification processing."""
+        """Test successful notification triggers immediate AWAITING_INPUT."""
         result = process_notification(mock_agent, "session-123")
 
         assert result.success is True
-        assert result.state_changed is False
+        assert result.state_changed is True
+        assert result.new_state == "AWAITING_INPUT"
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_updates_timestamp_only(
+    def test_notification_updates_timestamp_and_sets_override(
         self, mock_db, mock_agent, fresh_state
     ):
-        """Notification should only update timestamp."""
+        """Notification should update timestamp and set display override."""
+        from claude_headspace.services.hook_receiver import get_agent_display_state
+
         process_notification(mock_agent, "session-123")
 
         mock_db.session.commit.assert_called_once()
+        assert get_agent_display_state(mock_agent.id) == "AWAITING_INPUT"
 
 
 class TestHookEventResult:
