@@ -7,11 +7,35 @@ from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models import Agent, Project, Task, TaskState
+from ..services.hook_receiver import get_agent_display_state
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 # Constants
 ACTIVE_TIMEOUT_MINUTES = 5  # Agent is ACTIVE if last_seen_at within this time
+
+
+def get_effective_state(agent: Agent) -> TaskState:
+    """
+    Get the effective display state for an agent.
+
+    Checks for a display override (set by debounced AWAITING_INPUT or notification)
+    before falling back to the model state. This ensures server-side rendering
+    is consistent with what SSE clients see.
+
+    Args:
+        agent: The agent to check
+
+    Returns:
+        TaskState for display purposes
+    """
+    override = get_agent_display_state(agent.id)
+    if override is not None:
+        try:
+            return TaskState(override.lower())
+        except ValueError:
+            pass
+    return agent.state
 
 
 def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
@@ -32,8 +56,8 @@ def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
     if not all_agents:
         return None
 
-    # Filter to agents awaiting input
-    awaiting_input = [a for a in all_agents if a.state == TaskState.AWAITING_INPUT]
+    # Filter to agents awaiting input (using effective display state)
+    awaiting_input = [a for a in all_agents if get_effective_state(a) == TaskState.AWAITING_INPUT]
 
     if awaiting_input:
         # Sort by last_seen_at ascending (oldest waiting first)
@@ -123,7 +147,7 @@ def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
     idle = 0
 
     for agent in agents:
-        state = agent.state
+        state = get_effective_state(agent)
         if state == TaskState.AWAITING_INPUT:
             input_needed += 1
         elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
@@ -151,9 +175,10 @@ def get_project_state_flags(agents: list[Agent]) -> dict[str, bool]:
     flags = {"has_input_needed": False, "has_working": False, "has_idle": False}
 
     for agent in agents:
-        if agent.state == TaskState.AWAITING_INPUT:
+        state = get_effective_state(agent)
+        if state == TaskState.AWAITING_INPUT:
             flags["has_input_needed"] = True
-        elif agent.state in (TaskState.COMMANDED, TaskState.PROCESSING):
+        elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
             flags["has_working"] = True
         else:
             flags["has_idle"] = True
@@ -332,13 +357,14 @@ def dashboard():
         live_agents = [a for a in project.agents if a.ended_at is None]
         agents_data = []
         for agent in live_agents:
+            effective_state = get_effective_state(agent)
             agent_dict = {
                 "id": agent.id,
                 "session_uuid": str(agent.session_uuid)[:8],
                 "is_active": is_agent_active(agent),
                 "uptime": format_uptime(agent.started_at),
-                "state": agent.state,
-                "state_info": get_state_info(agent.state),
+                "state": effective_state,
+                "state_info": get_state_info(effective_state),
                 "task_summary": get_task_summary(agent),
                 "priority": 50,  # Default priority for Epic 1
                 "project_name": project.name,

@@ -63,6 +63,39 @@ DEFAULTS = {
         "rate_limit_seconds": 5,
         "dashboard_url": "http://localhost:5050",
     },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "timeout": 30,
+        "models": {
+            "turn": "anthropic/claude-3-5-haiku-20241022",
+            "task": "anthropic/claude-3-5-haiku-20241022",
+            "project": "anthropic/claude-3-5-sonnet-20241022",
+            "objective": "anthropic/claude-3-5-sonnet-20241022",
+        },
+        "rate_limits": {
+            "calls_per_minute": 30,
+            "tokens_per_minute": 50000,
+        },
+        "cache": {
+            "enabled": True,
+            "ttl_seconds": 300,
+        },
+        "retry": {
+            "max_attempts": 3,
+            "base_delay_seconds": 1.0,
+            "max_delay_seconds": 30.0,
+        },
+        "pricing": {
+            "anthropic/claude-3-5-haiku-20241022": {
+                "input_per_million": 1.0,
+                "output_per_million": 5.0,
+            },
+            "anthropic/claude-3-5-sonnet-20241022": {
+                "input_per_million": 3.0,
+                "output_per_million": 15.0,
+            },
+        },
+    },
 }
 
 # Environment variable mappings
@@ -97,6 +130,10 @@ ENV_MAPPINGS = {
     "NOTIFICATIONS_ENABLED": ("notifications", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
     "NOTIFICATIONS_SOUND": ("notifications", "sound", lambda x: x.lower() in ("true", "1", "yes")),
     "NOTIFICATIONS_RATE_LIMIT_SECONDS": ("notifications", "rate_limit_seconds", int),
+    "OPENROUTER_BASE_URL": ("openrouter", "base_url", str),
+    "OPENROUTER_TIMEOUT": ("openrouter", "timeout", int),
+    "OPENROUTER_CALLS_PER_MINUTE": ("openrouter", "calls_per_minute", int),
+    "OPENROUTER_TOKENS_PER_MINUTE": ("openrouter", "tokens_per_minute", int),
 }
 
 

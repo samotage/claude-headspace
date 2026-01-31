@@ -197,6 +197,9 @@ def _fire_awaiting_input(agent_id: int, project_id: int) -> None:
     with _timers_lock:
         _awaiting_input_timers.pop(agent_id, None)
 
+    # Set display override so server-side rendering is consistent with SSE
+    _set_display_override(agent_id, "AWAITING_INPUT")
+
     try:
         from .broadcaster import get_broadcaster
         broadcaster = get_broadcaster()
@@ -210,6 +213,38 @@ def _fire_awaiting_input(agent_id: int, project_id: int) -> None:
         logger.info(f"Debounced AWAITING_INPUT broadcast for agent_id={agent_id}")
     except Exception as e:
         logger.debug(f"Debounced AWAITING_INPUT broadcast failed: {e}")
+
+
+# --- Display state overrides ---
+# The model state (task.state) reflects lifecycle truth (e.g. COMPLETE after stop).
+# But the *display* state may differ: after a debounce or notification, we want
+# the dashboard to show AWAITING_INPUT even though the model says COMPLETE/IDLE.
+# These overrides are checked by the dashboard route for server-side rendering
+# consistency with SSE broadcasts.
+
+_agent_display_overrides: dict[int, str] = {}
+_overrides_lock = threading.Lock()
+
+
+def get_agent_display_state(agent_id: int) -> str | None:
+    """Get the display state override for an agent, or None if no override."""
+    with _overrides_lock:
+        return _agent_display_overrides.get(agent_id)
+
+
+def _set_display_override(agent_id: int, state: str) -> None:
+    """Set a display state override for an agent."""
+    with _overrides_lock:
+        _agent_display_overrides[agent_id] = state
+    logger.debug(f"Display override set: agent_id={agent_id}, state={state}")
+
+
+def _clear_display_override(agent_id: int) -> None:
+    """Clear the display state override for an agent."""
+    with _overrides_lock:
+        removed = _agent_display_overrides.pop(agent_id, None)
+    if removed:
+        logger.debug(f"Display override cleared: agent_id={agent_id}")
 
 
 def process_session_start(
@@ -276,6 +311,9 @@ def process_session_end(
     try:
         # Cancel any pending AWAITING_INPUT timer
         _cancel_awaiting_input(agent.id)
+
+        # Clear display override - session is ending
+        _clear_display_override(agent.id)
 
         # Update agent timestamp and mark as ended
         now = datetime.now(timezone.utc)
@@ -351,6 +389,9 @@ def process_user_prompt_submit(
         # Cancel any pending AWAITING_INPUT timer - user is sending input,
         # so the previous stop was a mid-turn pause, not end-of-turn
         _cancel_awaiting_input(agent.id)
+
+        # Clear display override - agent is now processing, not awaiting input
+        _clear_display_override(agent.id)
 
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
@@ -435,10 +476,10 @@ def process_stop(
 
         db.session.commit()
 
-        # Broadcast immediate IDLE, then schedule debounced AWAITING_INPUT.
-        # If user_prompt_submit arrives within the delay, the timer is cancelled
-        # (it was a mid-turn stop between tool calls, not a genuine end-of-turn).
-        _broadcast_state_change(agent, "stop", TaskState.IDLE.value)
+        # Don't broadcast on stop - it fires between tool calls (mid-turn),
+        # not just at end-of-turn. Broadcasting IDLE here causes false flicker.
+        # Instead, schedule debounced AWAITING_INPUT. If user_prompt_submit
+        # arrives within the delay, the timer is cancelled (mid-turn stop).
         _schedule_awaiting_input(agent.id, agent.project_id)
 
         logger.info(
@@ -469,7 +510,9 @@ def process_notification(
     """
     Process a notification hook event.
 
-    Updates timestamp only, no state change.
+    Notifications fire when Claude needs user attention (e.g. AskUserQuestion).
+    This signals AWAITING_INPUT immediately - no debounce needed since
+    notifications are a strong signal that the agent is blocked on user input.
 
     Args:
         agent: The correlated agent
@@ -482,20 +525,27 @@ def process_notification(
     state.record_event(HookEventType.NOTIFICATION)
 
     try:
-        # Update agent timestamp only
+        # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
 
-        logger.debug(
+        # Cancel any pending debounce timer - notification is a stronger signal
+        _cancel_awaiting_input(agent.id)
+
+        # Set display override and broadcast AWAITING_INPUT immediately
+        _set_display_override(agent.id, "AWAITING_INPUT")
+        _broadcast_state_change(agent, "notification", "AWAITING_INPUT")
+
+        logger.info(
             f"hook_event: type=notification, agent_id={agent.id}, "
-            f"session_id={claude_session_id}"
+            f"session_id={claude_session_id}, immediate AWAITING_INPUT"
         )
 
         return HookEventResult(
             success=True,
             agent_id=agent.id,
-            state_changed=False,
-            new_state=agent.state.value,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
         )
     except Exception as e:
         logger.exception(f"Error processing notification: {e}")
