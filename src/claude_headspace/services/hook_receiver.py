@@ -204,14 +204,16 @@ def _fire_awaiting_input(agent_id: int, project_id: int, app=None) -> None:
     """Fire the AWAITING_INPUT broadcast after the debounce period expires.
 
     Also persists the AWAITING_INPUT state to the DB so it survives server restarts.
+    Only broadcasts if the agent has an active PROCESSING task — otherwise the
+    stop was on an IDLE agent and should be ignored.
     """
     with _timers_lock:
         _awaiting_input_timers.pop(agent_id, None)
 
-    # Set display override so server-side rendering is consistent with SSE
-    _set_display_override(agent_id, "AWAITING_INPUT")
-
-    # Persist to DB so the state survives server restarts
+    # Persist to DB so the state survives server restarts.
+    # Also check if the agent actually has a PROCESSING task — if not,
+    # skip the broadcast (stop on an IDLE agent is a no-op).
+    should_broadcast = False
     if app is not None:
         try:
             with app.app_context():
@@ -221,12 +223,27 @@ def _fire_awaiting_input(agent_id: int, project_id: int, app=None) -> None:
                     if task and task.state == TaskState.PROCESSING:
                         task.state = TaskState.AWAITING_INPUT
                         db.session.commit()
+                        should_broadcast = True
                         logger.info(
                             f"Persisted AWAITING_INPUT to DB: agent_id={agent_id}, "
                             f"task_id={task.id}"
                         )
+                    else:
+                        logger.debug(
+                            f"Skipping AWAITING_INPUT for agent_id={agent_id}: "
+                            f"no PROCESSING task"
+                        )
         except Exception as e:
             logger.debug(f"DB persist for AWAITING_INPUT failed (non-fatal): {e}")
+    else:
+        # No app context (shouldn't happen in production) — broadcast anyway
+        should_broadcast = True
+
+    if not should_broadcast:
+        return
+
+    # Set display override so server-side rendering is consistent with SSE
+    _set_display_override(agent_id, "AWAITING_INPUT")
 
     try:
         from .broadcaster import get_broadcaster

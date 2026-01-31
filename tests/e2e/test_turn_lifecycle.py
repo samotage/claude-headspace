@@ -25,12 +25,12 @@ class TestSingleAgentTurnLifecycle:
         agent_id = result["agent_id"]
 
         # session_created SSE event triggers page reload
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         # Wait a moment for the reload to complete
         page.wait_for_timeout(500)
         # Re-navigate after reload to ensure we're on the fresh page
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
 
         dashboard.assert_agent_card_exists(agent_id)
@@ -48,7 +48,7 @@ class TestSingleAgentTurnLifecycle:
 
         # Navigate to pick up the new agent card
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -69,7 +69,7 @@ class TestSingleAgentTurnLifecycle:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -92,7 +92,7 @@ class TestSingleAgentTurnLifecycle:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -115,7 +115,7 @@ class TestSingleAgentTurnLifecycle:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -126,7 +126,7 @@ class TestSingleAgentTurnLifecycle:
         hook_client.session_end()
         page.wait_for_timeout(500)
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
 
         dashboard.assert_agent_card_gone(agent_id)
         dashboard.capture("session_ended")
@@ -139,7 +139,7 @@ class TestSingleAgentTurnLifecycle:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
         dashboard.assert_agent_state(agent_id, "IDLE")
@@ -164,6 +164,6 @@ class TestSingleAgentTurnLifecycle:
         hook_client.session_end()
         page.wait_for_timeout(500)
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_agent_card_gone(agent_id)
         dashboard.capture("lifecycle_05_ended")

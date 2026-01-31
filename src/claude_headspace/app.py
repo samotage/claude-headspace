@@ -159,6 +159,18 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["progress_summary_service"] = progress_summary_service
     logger.info("Progress summary service initialized")
 
+    # Initialize brain reboot service
+    from .services.brain_reboot import BrainRebootService
+    brain_reboot_service = BrainRebootService(app=app)
+    app.extensions["brain_reboot_service"] = brain_reboot_service
+    logger.info("Brain reboot service initialized")
+
+    # Initialize staleness service
+    from .services.staleness import StalenessService
+    staleness_service = StalenessService(app=app)
+    app.extensions["staleness_service"] = staleness_service
+    logger.info("Staleness service initialized")
+
     # Initialize file watcher (only in non-testing environments)
     if not app.config.get("TESTING"):
         from .services.file_watcher import init_file_watcher
@@ -214,6 +226,7 @@ def register_error_handlers(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
+    from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
     from .routes.focus import focus_bp
@@ -231,6 +244,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.summarisation import summarisation_bp
     from .routes.waypoint import waypoint_bp
 
+    app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(focus_bp)

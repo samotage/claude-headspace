@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request
 from sqlalchemy.orm import selectinload
 
 from ..database import db
@@ -387,6 +387,12 @@ def dashboard():
     # Calculate header status counts
     status_counts = calculate_status_counts(all_agents)
 
+    # Compute staleness for all projects
+    staleness_map = {}
+    staleness_service = current_app.extensions.get("staleness_service")
+    if staleness_service:
+        staleness_map = staleness_service.classify_projects(projects)
+
     # Prepare project data with computed values
     project_data = []
     for project in projects:
@@ -413,6 +419,15 @@ def dashboard():
             agent_data_map[agent.id] = agent_dict
             all_agents_data.append(agent_dict)
 
+        # Get staleness classification for this project
+        staleness_info = staleness_map.get(project.id)
+        staleness_dict = None
+        if staleness_info:
+            staleness_dict = {
+                "tier": staleness_info["tier"].value if hasattr(staleness_info["tier"], "value") else staleness_info["tier"],
+                "days_since_activity": staleness_info["days_since_activity"],
+            }
+
         project_data.append(
             {
                 "id": project.id,
@@ -421,6 +436,7 @@ def dashboard():
                 "active_count": count_active_agents(live_agents),
                 "agents": agents_data,
                 "waypoint": None,  # Waypoint will be added in Sprint 9
+                "staleness": staleness_dict,
             }
         )
 

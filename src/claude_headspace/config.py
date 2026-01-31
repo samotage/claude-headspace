@@ -102,6 +102,11 @@ DEFAULTS = {
         "time_based_days": 7,
         "max_commits": 200,
     },
+    "brain_reboot": {
+        "staleness_threshold_days": 7,
+        "aging_threshold_days": 4,
+        "export_filename": "brain_reboot.md",
+    },
 }
 
 # Environment variable mappings

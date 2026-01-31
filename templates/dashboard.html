@@ -112,6 +112,9 @@
 
 <!-- Waypoint Editor Modal -->
 {% include "partials/_waypoint_editor.html" %}
+
+<!-- Brain Reboot Modal -->
+{% include "partials/_brain_reboot_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -123,4 +126,6 @@
 <script src="{{ url_for('static', filename='js/focus-api.js') }}?v={{ cache_bust }}"></script>
 <!-- Progress Summary -->
 <script src="{{ url_for('static', filename='js/progress-summary.js') }}?v={{ cache_bust }}"></script>
+<!-- Brain Reboot -->
+<script src="{{ url_for('static', filename='js/brain-reboot.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}
