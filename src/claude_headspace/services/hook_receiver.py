@@ -275,6 +275,26 @@ def _clear_display_override(agent_id: int) -> None:
         logger.debug(f"Display override cleared: agent_id={agent_id}")
 
 
+def reset_receiver_state() -> None:
+    """Reset the global receiver state. Used in testing."""
+    global _receiver_state
+    _receiver_state = HookReceiverState()
+
+
+def cancel_all_timers() -> None:
+    """Cancel all pending AWAITING_INPUT timers. Used in testing."""
+    with _timers_lock:
+        for timer in _awaiting_input_timers.values():
+            timer.cancel()
+        _awaiting_input_timers.clear()
+
+
+def clear_display_overrides() -> None:
+    """Clear all display state overrides. Used in testing."""
+    with _overrides_lock:
+        _agent_display_overrides.clear()
+
+
 def process_session_start(
     agent: Agent,
     claude_session_id: str,

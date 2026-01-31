@@ -26,12 +26,30 @@
             <span class="text-xs font-mono text-cyan">{{ project.active_count }} active</span>
         </div>
 
-        <!-- Headspace: brain reboot (not yet implemented) -->
-        <button class="headspace-btn px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan/50 cursor-default"
-                disabled
-                title="Headspace (coming soon)">
+        <!-- Progress Summary -->
+        <button class="progress-summary-btn px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                onclick="toggleProgressSummary({{ project.id }})"
+                data-project-id="{{ project.id }}"
+                title="Generate or view progress summary">
             Headspace
         </button>
+    </div>
+
+    <!-- Progress Summary panel (hidden by default) -->
+    <div id="progress-summary-{{ project.id }}" class="progress-summary-panel hidden border-b border-border bg-deep">
+        <div class="px-4 py-3">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-secondary text-sm font-medium">Progress Summary</span>
+                <button class="generate-summary-btn px-2 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick="generateProgressSummary({{ project.id }})"
+                        data-project-id="{{ project.id }}">
+                    Generate
+                </button>
+            </div>
+            <div class="progress-summary-content text-secondary text-sm" data-project-id="{{ project.id }}">
+                <p class="text-muted italic">Click Generate to create a progress summary from git history.</p>
+            </div>
+        </div>
     </div>
 
     <!-- Waypoint preview (if available) -->

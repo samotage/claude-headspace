@@ -96,6 +96,12 @@ DEFAULTS = {
             },
         },
     },
+    "progress_summary": {
+        "default_scope": "since_last",
+        "last_n_count": 50,
+        "time_based_days": 7,
+        "max_commits": 200,
+    },
 }
 
 # Environment variable mappings
