@@ -274,16 +274,11 @@ def hook_stop():
         _log_hook_event("stop", session_id, latency_ms)
 
         if result.success:
-            # Send notification for task completion
-            try:
-                notification_service = get_notification_service()
-                notification_service.notify_task_complete(
-                    agent_id=str(result.agent_id),
-                    agent_name=correlation.agent.name or f"Agent {result.agent_id}",
-                    project=correlation.agent.project.name if correlation.agent.project else None,
-                )
-            except Exception as notif_err:
-                logger.debug(f"Notification send failed (non-fatal): {notif_err}")
+            # Note: Don't send notify_task_complete here - the stop hook fires
+            # between tool calls (mid-turn), not just at end-of-turn. The
+            # debounce timer in hook_receiver handles the actual "agent is done"
+            # signal. Desktop notifications for completion should be triggered
+            # by the debounce callback, not on every stop event.
 
             return jsonify({
                 "status": "ok",

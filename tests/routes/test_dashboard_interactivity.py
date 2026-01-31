@@ -22,6 +22,8 @@ def create_mock_agent(
     last_seen_minutes_ago: int = 0,
     started_hours_ago: int = 1,
     task_text: str | None = None,
+    priority_score: int | None = None,
+    priority_reason: str | None = None,
 ):
     """Create a mock agent with specified properties."""
     agent = MagicMock()
@@ -31,6 +33,8 @@ def create_mock_agent(
     agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
     agent.ended_at = None
+    agent.priority_score = priority_score
+    agent.priority_reason = priority_reason
 
     # Mock get_current_task
     if task_text:

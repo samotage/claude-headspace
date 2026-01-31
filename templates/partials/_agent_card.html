@@ -59,6 +59,6 @@
   <!-- Priority footer -->
   <div class="flex items-center gap-3 px-3 py-2 border-t border-border">
     <span class="px-2 py-0.5 text-xs font-mono rounded border border-border text-secondary">{{ agent.priority }}</span>
-    <span class="text-muted text-xs italic">// {{ agent.task_summary[:50] if agent.task_summary else 'Priority score' }}</span>
+    <span class="text-muted text-xs italic">// {{ agent.priority_reason[:60] if agent.priority_reason else (agent.task_summary[:50] if agent.task_summary else 'Priority score') }}</span>
   </div>
 </article>

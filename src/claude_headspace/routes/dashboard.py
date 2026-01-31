@@ -13,15 +13,17 @@ dashboard_bp = Blueprint("dashboard", __name__)
 
 # Constants
 ACTIVE_TIMEOUT_MINUTES = 5  # Agent is ACTIVE if last_seen_at within this time
+STALE_PROCESSING_SECONDS = 30  # If PROCESSING for this long without activity, treat as AWAITING_INPUT
 
 
 def get_effective_state(agent: Agent) -> TaskState:
     """
     Get the effective display state for an agent.
 
-    Checks for a display override (set by debounced AWAITING_INPUT or notification)
-    before falling back to the model state. This ensures server-side rendering
-    is consistent with what SSE clients see.
+    Priority:
+    1. In-memory display override (set by debounced AWAITING_INPUT or notification)
+    2. Stale PROCESSING detection (safety net for lost commits/server restarts)
+    3. Model state from the database
 
     Args:
         agent: The agent to check
@@ -29,13 +31,25 @@ def get_effective_state(agent: Agent) -> TaskState:
     Returns:
         TaskState for display purposes
     """
+    # Check in-memory display override first
     override = get_agent_display_state(agent.id)
     if override is not None:
         try:
             return TaskState(override.lower())
         except ValueError:
             pass
-    return agent.state
+
+    model_state = agent.state
+
+    # Safety net: if task is PROCESSING but agent hasn't been heard from
+    # in a while, the stop hook's DB transition was likely lost (e.g. server
+    # restart killed the request mid-flight). Treat as AWAITING_INPUT.
+    if model_state == TaskState.PROCESSING and agent.ended_at is None:
+        elapsed = (datetime.now(timezone.utc) - agent.last_seen_at).total_seconds()
+        if elapsed > STALE_PROCESSING_SECONDS:
+            return TaskState.AWAITING_INPUT
+
+    return model_state
 
 
 def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
@@ -82,17 +96,29 @@ def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
                 "rationale": rationale,
             }
 
-    # No agents awaiting input - get most recently active
+    # No agents awaiting input - recommend by highest priority score
     active_agents = [a for a in all_agents if is_agent_active(a)]
     if active_agents:
-        # Sort by last_seen_at descending (most recent first)
-        active_agents.sort(key=lambda a: a.last_seen_at, reverse=True)
+        # Sort by priority_score descending, then last_seen_at descending
+        active_agents.sort(
+            key=lambda a: (
+                a.priority_score if a.priority_score is not None else -1,
+                a.last_seen_at,
+            ),
+            reverse=True,
+        )
         agent = active_agents[0]
         agent_data = agent_data_map.get(agent.id)
         if agent_data:
+            score = agent.priority_score
+            reason = agent.priority_reason
+            if score is not None and reason:
+                rationale = f"Priority: {score} — {reason}"
+            else:
+                rationale = "Most recently active"
             return {
                 **agent_data,
-                "rationale": "Most recently active",
+                "rationale": rationale,
             }
 
     return None
@@ -103,9 +129,9 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
     Sort agents by priority for the By Priority view.
 
     Order:
-    1. AWAITING_INPUT (by last_seen_at descending)
-    2. COMMANDED/PROCESSING (by last_seen_at descending)
-    3. IDLE/COMPLETE (by last_seen_at descending)
+    1. Priority score descending (highest first)
+    2. State group (AWAITING_INPUT > COMMANDED/PROCESSING > IDLE/COMPLETE)
+    3. Last seen descending (most recent first)
 
     Args:
         all_agents_data: List of agent data dictionaries
@@ -115,8 +141,13 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
     """
 
     def priority_key(agent_data):
+        # Primary: priority score descending (negate for ascending sort)
+        score = agent_data.get("priority", 50)
+        if score is None:
+            score = 50
+
         state = agent_data.get("state")
-        # Lower number = higher priority
+        # Secondary: state group (lower = higher priority)
         if state == TaskState.AWAITING_INPUT:
             priority_group = 0
         elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
@@ -124,10 +155,9 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
         else:
             priority_group = 2
 
-        # Within group, sort by last_seen_at descending (most recent first)
-        # We use negative timestamp for descending order
+        # Tertiary: last_seen_at descending
         last_seen = agent_data.get("last_seen_at", datetime.min.replace(tzinfo=timezone.utc))
-        return (priority_group, -last_seen.timestamp())
+        return (-score, priority_group, -last_seen.timestamp())
 
     return sorted(all_agents_data, key=priority_key)
 
@@ -373,7 +403,8 @@ def dashboard():
                 "state": effective_state,
                 "state_info": get_state_info(effective_state),
                 "task_summary": get_task_summary(agent),
-                "priority": 50,  # Default priority for Epic 1
+                "priority": agent.priority_score if agent.priority_score is not None else 50,
+                "priority_reason": agent.priority_reason,
                 "project_name": project.name,
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,

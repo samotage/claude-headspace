@@ -141,6 +141,15 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["summarisation_service"] = summarisation_service
     logger.info("Summarisation service initialized")
 
+    # Initialize priority scoring service
+    from .services.priority_scoring import PriorityScoringService
+    priority_scoring_service = PriorityScoringService(
+        inference_service=inference_service,
+        app=app,
+    )
+    app.extensions["priority_scoring_service"] = priority_scoring_service
+    logger.info("Priority scoring service initialized")
+
     # Initialize file watcher (only in non-testing environments)
     if not app.config.get("TESTING"):
         from .services.file_watcher import init_file_watcher
@@ -206,6 +215,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.logging import logging_bp
     from .routes.notifications import notifications_bp
     from .routes.objective import objective_bp
+    from .routes.priority import priority_bp
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
@@ -221,6 +231,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(logging_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(objective_bp)
+    app.register_blueprint(priority_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)

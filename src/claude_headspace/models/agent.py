@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +44,17 @@ class Agent(db.Model):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    # Priority scoring fields
+    priority_score: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    priority_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    priority_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 

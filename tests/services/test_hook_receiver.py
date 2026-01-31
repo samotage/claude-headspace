@@ -34,7 +34,10 @@ def mock_agent():
 @pytest.fixture
 def fresh_state():
     """Reset receiver state before each test."""
-    from claude_headspace.services.hook_receiver import _agent_display_overrides
+    from claude_headspace.services.hook_receiver import (
+        _agent_display_overrides,
+        _awaiting_input_timers,
+    )
 
     state = get_receiver_state()
     state.enabled = True
@@ -43,8 +46,15 @@ def fresh_state():
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
     _agent_display_overrides.clear()
+    # Cancel and clear any pending timers
+    for timer in _awaiting_input_timers.values():
+        timer.cancel()
+    _awaiting_input_timers.clear()
     yield state
     _agent_display_overrides.clear()
+    for timer in _awaiting_input_timers.values():
+        timer.cancel()
+    _awaiting_input_timers.clear()
 
 
 class TestHookEventType:
@@ -250,27 +260,28 @@ class TestProcessUserPromptSubmit:
 class TestProcessStop:
     """Tests for process_stop function."""
 
-    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_stop(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
-        """Test successful stop processing via bridge."""
-        from claude_headspace.services.task_lifecycle import TurnProcessingResult
-
-        # Mock the bridge
-        mock_bridge = MagicMock()
-        mock_get_bridge.return_value = mock_bridge
-
-        mock_task = MagicMock()
-        mock_bridge.process_stop.return_value = TurnProcessingResult(
-            success=True,
-            task=mock_task,
-        )
-
+    def test_successful_stop(self, mock_db, mock_agent, fresh_state):
+        """Test stop does not change model state (relies on debounce)."""
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
-        assert result.state_changed is True
-        mock_bridge.process_stop.assert_called_once()
+        # stop no longer changes model state - debounce handles it
+        assert result.state_changed is False
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_stop_schedules_debounce(self, mock_db, mock_agent, fresh_state):
+        """Test stop schedules a debounced AWAITING_INPUT."""
+        from claude_headspace.services.hook_receiver import _awaiting_input_timers
+
+        process_stop(mock_agent, "session-123")
+
+        # Timer should be scheduled for this agent
+        assert mock_agent.id in _awaiting_input_timers
+        # Clean up
+        timer = _awaiting_input_timers.pop(mock_agent.id, None)
+        if timer:
+            timer.cancel()
 
 
 class TestProcessNotification:
