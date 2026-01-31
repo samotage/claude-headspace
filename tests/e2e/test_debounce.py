@@ -24,7 +24,7 @@ class TestDebounce:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -49,7 +49,7 @@ class TestDebounce:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
@@ -78,7 +78,7 @@ class TestDebounce:
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
         dashboard.assert_agent_state(agent_id, "IDLE")

@@ -14,10 +14,6 @@ import pytest
 from sqlalchemy import create_engine, text
 from werkzeug.serving import make_server
 
-from claude_headspace.app import create_app
-from claude_headspace.config import load_config, get_database_url
-from claude_headspace.database import db
-
 from .helpers.dashboard_assertions import DashboardAssertions
 from .helpers.hook_simulator import HookSimulator
 
@@ -35,6 +31,7 @@ def _get_test_database_url() -> str:
     if test_url:
         return test_url
 
+    from claude_headspace.config import load_config
     config = load_config(str(PROJECT_ROOT / "config.yaml"))
     db_config = config.get("database", {})
     host = db_config.get("host", "localhost")
@@ -102,31 +99,38 @@ def e2e_app(e2e_test_db):
     """Create a Flask app configured for E2E testing."""
     test_url = e2e_test_db
 
-    # Monkeypatch the debounce delay before importing hook_receiver
+    # Set DATABASE_URL env var BEFORE create_app so init_database picks it up
+    original_db_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = test_url
+
+    # Monkeypatch the debounce delay before the app processes hooks
     import claude_headspace.services.hook_receiver as hr
     hr._AWAITING_INPUT_DELAY = 0.5
 
+    from claude_headspace.app import create_app
+    from claude_headspace.database import db
+
     app = create_app(config_path=str(PROJECT_ROOT / "config.yaml"))
     app.config["TESTING"] = True
-    app.config["SQLALCHEMY_DATABASE_URI"] = test_url
 
-    # Reconfigure the engine with the test database URL
+    # Create tables in the test database
     with app.app_context():
-        # Re-bind to the test database
-        db.engine.dispose()
-        db.session.remove()
-
-        # Create tables
         from claude_headspace import models  # noqa: F401
         db.create_all()
 
-    return app
+    yield app
+
+    # Restore original DATABASE_URL
+    if original_db_url is not None:
+        os.environ["DATABASE_URL"] = original_db_url
+    else:
+        os.environ.pop("DATABASE_URL", None)
 
 
 @pytest.fixture(scope="session")
 def e2e_server(e2e_app):
     """Start Flask in a background thread, yield the base URL."""
-    server = make_server("127.0.0.1", 0, e2e_app)
+    server = make_server("127.0.0.1", 0, e2e_app, threaded=True)
     port = server.server_address[1]
     base_url = f"http://127.0.0.1:{port}"
 
@@ -167,6 +171,8 @@ def browser_context_args():
 def clean_db(e2e_app):
     """Truncate all tables and reset global state between tests."""
     yield  # Run the test first
+
+    from claude_headspace.database import db
 
     with e2e_app.app_context():
         # Truncate tables in dependency order
@@ -226,8 +232,7 @@ def make_hook_client(e2e_server):
 def dashboard(page, e2e_server):
     """Navigate to dashboard and wait for SSE connection."""
     page.goto(e2e_server)
-    page.wait_for_load_state("networkidle")
-    # Wait for SSE to connect
+    page.wait_for_load_state("domcontentloaded")
     da = DashboardAssertions(
         page,
         Path(__file__).parent / "screenshots",
@@ -240,5 +245,5 @@ def dashboard(page, e2e_server):
 def dashboard_page(page, e2e_server):
     """Navigate to dashboard, return raw page (for tests that manage their own assertions)."""
     page.goto(e2e_server)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("domcontentloaded")
     return page

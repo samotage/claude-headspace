@@ -1,0 +1,54 @@
+<!-- Brain Reboot Modal -->
+<div id="brain-reboot-modal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="brain-reboot-title">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" onclick="closeBrainReboot()"></div>
+
+    <!-- Modal content -->
+    <div class="fixed inset-4 md:inset-8 lg:inset-16 bg-surface border border-border rounded-lg flex flex-col overflow-hidden"
+         style="z-index: 51;">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-4 border-b border-border bg-elevated">
+            <div>
+                <h2 id="brain-reboot-title" class="text-primary font-display text-lg">Brain Reboot</h2>
+                <p id="brain-reboot-subtitle" class="text-muted text-sm mt-0.5"></p>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- Copy to Clipboard -->
+                <button id="brain-reboot-copy-btn"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick="copyBrainReboot()">
+                    Copy to Clipboard
+                </button>
+                <!-- Export -->
+                <button id="brain-reboot-export-btn"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-green/30 text-green hover:bg-green/10 transition-colors"
+                        onclick="exportBrainReboot()">
+                    Export
+                </button>
+                <!-- Close -->
+                <button class="text-muted hover:text-primary p-1 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        onclick="closeBrainReboot()"
+                        aria-label="Close brain reboot modal">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Content area -->
+        <div class="flex-1 overflow-y-auto p-6">
+            <div id="brain-reboot-content" class="prose prose-invert max-w-none">
+                <p class="text-muted italic">Loading...</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-between p-3 border-t border-border bg-elevated">
+            <div id="brain-reboot-status" class="text-muted text-xs"></div>
+            <div class="flex items-center gap-2">
+                <span id="brain-reboot-artifacts" class="text-muted text-xs"></span>
+            </div>
+        </div>
+    </div>
+</div>
