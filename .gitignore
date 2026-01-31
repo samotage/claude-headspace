@@ -47,3 +47,6 @@ data/headspace.yaml
 data/session_state.yaml
 data/state.yaml
 .coverage
+
+# E2E test screenshots
+tests/e2e/screenshots/
