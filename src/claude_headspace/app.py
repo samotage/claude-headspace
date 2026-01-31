@@ -132,6 +132,15 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     else:
         logger.warning("Inference service initialized in degraded mode (no API key)")
 
+    # Initialize summarisation service
+    from .services.summarisation_service import SummarisationService
+    summarisation_service = SummarisationService(
+        inference_service=inference_service,
+        app=app,
+    )
+    app.extensions["summarisation_service"] = summarisation_service
+    logger.info("Summarisation service initialized")
+
     # Initialize file watcher (only in non-testing environments)
     if not app.config.get("TESTING"):
         from .services.file_watcher import init_file_watcher
@@ -199,6 +208,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.objective import objective_bp
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
+    from .routes.summarisation import summarisation_bp
     from .routes.waypoint import waypoint_bp
 
     app.register_blueprint(config_bp)
@@ -213,4 +223,5 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(objective_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
+    app.register_blueprint(summarisation_bp)
     app.register_blueprint(waypoint_bp)

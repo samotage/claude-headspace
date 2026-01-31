@@ -44,6 +44,7 @@ class TaskLifecycleManager:
         session: Session,
         event_writer: Optional[EventWriter] = None,
         state_machine: Optional[StateMachine] = None,
+        summarisation_service: Optional[Any] = None,
     ) -> None:
         """
         Initialize the task lifecycle manager.
@@ -52,10 +53,12 @@ class TaskLifecycleManager:
             session: SQLAlchemy session for database operations
             event_writer: Optional EventWriter for logging state transitions
             state_machine: Optional StateMachine instance (created if not provided)
+            summarisation_service: Optional SummarisationService for generating summaries
         """
         self._session = session
         self._event_writer = event_writer
         self._state_machine = state_machine or StateMachine()
+        self._summarisation_service = summarisation_service
 
     def create_task(self, agent: Agent, initial_state: TaskState = TaskState.COMMANDED) -> Task:
         """
@@ -271,6 +274,9 @@ class TaskLifecycleManager:
                 self._session.add(turn)
                 self._session.flush()
 
+                # Trigger async turn summarisation
+                self._trigger_turn_summarisation(turn.id)
+
                 return TurnProcessingResult(
                     success=True,
                     task=new_task,
@@ -326,6 +332,13 @@ class TaskLifecycleManager:
             self._session.add(turn)
             self._session.flush()
 
+            # Trigger async turn summarisation
+            self._trigger_turn_summarisation(turn.id)
+
+        # Trigger async task summarisation on completion
+        if transition_result.to_state == TaskState.COMPLETE:
+            self._trigger_task_summarisation(current_task.id)
+
         return TurnProcessingResult(
             success=True,
             task=current_task,
@@ -378,3 +391,19 @@ class TaskLifecycleManager:
             logger.error(f"Failed to write state_transition event: {result.error}")
 
         return result
+
+    def _trigger_turn_summarisation(self, turn_id: int) -> None:
+        """Trigger async turn summarisation if service is available."""
+        if self._summarisation_service:
+            try:
+                self._summarisation_service.summarise_turn_async(turn_id)
+            except Exception as e:
+                logger.debug(f"Turn summarisation trigger failed (non-fatal): {e}")
+
+    def _trigger_task_summarisation(self, task_id: int) -> None:
+        """Trigger async task summarisation if service is available."""
+        if self._summarisation_service:
+            try:
+                self._summarisation_service.summarise_task_async(task_id)
+            except Exception as e:
+                logger.debug(f"Task summarisation trigger failed (non-fatal): {e}")

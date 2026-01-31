@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -43,6 +43,10 @@ class Task(db.Model):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     agent: Mapped["Agent"] = relationship("Agent", back_populates="tasks")

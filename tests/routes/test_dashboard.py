@@ -42,6 +42,7 @@ def create_mock_agent(
     if task_text:
         mock_turn = MagicMock()
         mock_turn.text = task_text
+        mock_turn.summary = None
         mock_task = MagicMock()
         mock_task.turns = [mock_turn]
         agent.get_current_task.return_value = mock_task
