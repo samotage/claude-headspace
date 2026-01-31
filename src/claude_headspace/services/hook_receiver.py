@@ -167,6 +167,14 @@ _timers_lock = threading.Lock()
 
 def _schedule_awaiting_input(agent_id: int, project_id: int) -> None:
     """Schedule a delayed AWAITING_INPUT broadcast for an agent."""
+    # Capture Flask app for DB access in the timer thread
+    app = None
+    try:
+        from flask import current_app
+        app = current_app._get_current_object()
+    except RuntimeError:
+        logger.debug("No Flask app context for debounce DB persist")
+
     with _timers_lock:
         # Cancel any existing timer for this agent
         existing = _awaiting_input_timers.pop(agent_id, None)
@@ -176,7 +184,7 @@ def _schedule_awaiting_input(agent_id: int, project_id: int) -> None:
         timer = threading.Timer(
             _AWAITING_INPUT_DELAY,
             _fire_awaiting_input,
-            args=[agent_id, project_id],
+            args=[agent_id, project_id, app],
         )
         timer.daemon = True
         timer.start()
@@ -192,13 +200,33 @@ def _cancel_awaiting_input(agent_id: int) -> None:
             logger.debug(f"Cancelled pending AWAITING_INPUT for agent_id={agent_id}")
 
 
-def _fire_awaiting_input(agent_id: int, project_id: int) -> None:
-    """Fire the AWAITING_INPUT broadcast after the debounce period expires."""
+def _fire_awaiting_input(agent_id: int, project_id: int, app=None) -> None:
+    """Fire the AWAITING_INPUT broadcast after the debounce period expires.
+
+    Also persists the AWAITING_INPUT state to the DB so it survives server restarts.
+    """
     with _timers_lock:
         _awaiting_input_timers.pop(agent_id, None)
 
     # Set display override so server-side rendering is consistent with SSE
     _set_display_override(agent_id, "AWAITING_INPUT")
+
+    # Persist to DB so the state survives server restarts
+    if app is not None:
+        try:
+            with app.app_context():
+                agent = db.session.get(Agent, agent_id)
+                if agent:
+                    task = agent.get_current_task()
+                    if task and task.state == TaskState.PROCESSING:
+                        task.state = TaskState.AWAITING_INPUT
+                        db.session.commit()
+                        logger.info(
+                            f"Persisted AWAITING_INPUT to DB: agent_id={agent_id}, "
+                            f"task_id={task.id}"
+                        )
+        except Exception as e:
+            logger.debug(f"DB persist for AWAITING_INPUT failed (non-fatal): {e}")
 
     try:
         from .broadcaster import get_broadcaster
@@ -216,11 +244,11 @@ def _fire_awaiting_input(agent_id: int, project_id: int) -> None:
 
 
 # --- Display state overrides ---
-# The model state (task.state) reflects lifecycle truth (e.g. COMPLETE after stop).
-# But the *display* state may differ: after a debounce or notification, we want
-# the dashboard to show AWAITING_INPUT even though the model says COMPLETE/IDLE.
-# These overrides are checked by the dashboard route for server-side rendering
-# consistency with SSE broadcasts.
+# In-memory overrides for server-side rendering consistency with SSE broadcasts.
+# The debounce timer and notification handler both persist AWAITING_INPUT to the DB,
+# so these overrides mainly serve as a fast cache to avoid an extra DB query on the
+# dashboard route. They also cover the brief window between SSE broadcast and the
+# next page load.
 
 _agent_display_overrides: dict[int, str] = {}
 _overrides_lock = threading.Lock()
@@ -453,8 +481,12 @@ def process_stop(
     """
     Process a stop (turn complete) hook event.
 
-    Uses HookLifecycleBridge for proper state machine validation and event logging.
-    Transitions: PROCESSING -> COMPLETE (agent returns to IDLE for next task)
+    The stop hook fires between tool calls (mid-turn) AND at end-of-turn.
+    We can't distinguish these, so we don't change model state here.
+    Instead, we schedule a debounced AWAITING_INPUT transition. If
+    user_prompt_submit arrives within the delay, the timer is cancelled
+    (it was a mid-turn stop). If the timer expires, the task transitions
+    to AWAITING_INPUT in the DB.
 
     Args:
         agent: The correlated agent
@@ -467,32 +499,25 @@ def process_stop(
     state.record_event(HookEventType.STOP)
 
     try:
-        # Update agent timestamp
+        # Update agent timestamp only - don't change task state
         agent.last_seen_at = datetime.now(timezone.utc)
-
-        # Use lifecycle bridge for proper state management and event logging
-        bridge = get_hook_bridge()
-        result = bridge.process_stop(agent, claude_session_id)
-
         db.session.commit()
 
-        # Don't broadcast on stop - it fires between tool calls (mid-turn),
-        # not just at end-of-turn. Broadcasting IDLE here causes false flicker.
-        # Instead, schedule debounced AWAITING_INPUT. If user_prompt_submit
-        # arrives within the delay, the timer is cancelled (mid-turn stop).
+        # Schedule debounced AWAITING_INPUT. If user_prompt_submit arrives
+        # within the delay, the timer is cancelled (mid-turn stop).
+        # If the timer expires, _fire_awaiting_input transitions the DB task.
         _schedule_awaiting_input(agent.id, agent.project_id)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
-            f"session_id={claude_session_id}, new_state=idle (awaiting_input scheduled)"
+            f"session_id={claude_session_id} (awaiting_input debounce scheduled)"
         )
 
         return HookEventResult(
-            success=result.success,
+            success=True,
             agent_id=agent.id,
-            state_changed=True,
-            new_state=TaskState.IDLE.value,
-            error_message=result.error,
+            state_changed=False,
+            new_state=agent.state.value,
         )
     except Exception as e:
         logger.exception(f"Error processing stop: {e}")
@@ -527,10 +552,22 @@ def process_notification(
     try:
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
-        db.session.commit()
 
         # Cancel any pending debounce timer - notification is a stronger signal
         _cancel_awaiting_input(agent.id)
+
+        # Transition DB task to AWAITING_INPUT if currently PROCESSING.
+        # This uses the valid state machine transition:
+        # PROCESSING + AGENT + QUESTION → AWAITING_INPUT
+        current_task = agent.get_current_task()
+        if current_task and current_task.state == TaskState.PROCESSING:
+            current_task.state = TaskState.AWAITING_INPUT
+            logger.info(
+                f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
+                f"task_id={current_task.id}"
+            )
+
+        db.session.commit()
 
         # Set display override and broadcast AWAITING_INPUT immediately
         _set_display_override(agent.id, "AWAITING_INPUT")

@@ -258,9 +258,15 @@ class TaskLifecycleManager:
             f"(confidence={intent_result.confidence})"
         )
 
-        # Special case: User command while awaiting_input or no active task
+        # Special case: User command starts a new task.
+        # This handles IDLE (no active task), AWAITING_INPUT (agent asked a question),
+        # and PROCESSING (stop hook didn't complete the task - it uses debounce instead).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
-            if current_state == TaskState.IDLE or current_state == TaskState.AWAITING_INPUT:
+            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING):
+                # Complete any existing task before creating a new one
+                if current_task and current_task.state != TaskState.COMPLETE:
+                    self.complete_task(current_task, trigger="user:new_command")
+
                 # Create new task
                 new_task = self.create_task(agent, TaskState.COMMANDED)
 

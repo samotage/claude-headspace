@@ -50,6 +50,19 @@ class HookLifecycleBridge:
             event_writer=self._event_writer,
         )
 
+    @staticmethod
+    def _trigger_priority_scoring() -> None:
+        """Trigger rate-limited priority scoring after state transitions."""
+        try:
+            from flask import current_app
+            service = current_app.extensions.get("priority_scoring_service")
+            if service:
+                service.trigger_scoring()
+        except RuntimeError:
+            logger.debug("No Flask app context for priority scoring trigger")
+        except Exception as e:
+            logger.debug(f"Priority scoring trigger failed (non-fatal): {e}")
+
     def process_user_prompt_submit(
         self,
         agent: Agent,
@@ -91,6 +104,10 @@ class HookLifecycleBridge:
                     trigger="hook:user_prompt_submit",
                     confidence=1.0,
                 )
+
+        # Trigger priority scoring on state change
+        if result.success:
+            self._trigger_priority_scoring()
 
         logger.debug(
             f"HookLifecycleBridge.process_user_prompt_submit: "
@@ -140,6 +157,9 @@ class HookLifecycleBridge:
             task=current_task,
             trigger="hook:stop",
         )
+
+        # Trigger priority scoring on state change
+        self._trigger_priority_scoring()
 
         logger.debug(
             f"HookLifecycleBridge.process_stop: "
