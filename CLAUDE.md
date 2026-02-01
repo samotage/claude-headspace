@@ -63,8 +63,10 @@ Flask application factory (`app.py`) with:
 python run.py                        # Start the server
 ./restart_server.sh                  # Restart running server
 flask db upgrade                     # Run pending migrations
-pytest                               # Run all tests (~960 tests)
-pytest --cov=src                     # Tests with coverage report
+pytest tests/services/test_foo.py    # Run targeted tests (preferred)
+pytest tests/routes/ tests/services/ # Run relevant directories
+pytest                               # Full suite (~960 tests) — only when asked
+pytest --cov=src                     # Full suite with coverage — only when asked
 pip install -e ".[dev]"              # Install with dev dependencies
 ```
 
@@ -322,7 +324,7 @@ Notifications can be enabled/disabled via:
 
 ### Development Tips
 
-- **Run tests often:** `pytest` runs ~960 tests, `pytest --cov=src` for coverage
+- **Run targeted tests:** Run only the tests relevant to your change (e.g., `pytest tests/services/test_hook_receiver.py tests/routes/test_hooks.py`). Do NOT run the full suite (~960 tests) unless explicitly asked by the user or preparing a commit/PR. Use `-k` to narrow further when useful.
 - **Use run.py:** Recommended entry point — `python run.py`
 - **Debug mode:** Set `debug: true` in config.yaml for Flask debug mode
 - **Service injection:** Access services via `app.extensions["service_name"]`
@@ -346,13 +348,16 @@ Testing must not pollute, corrupt, or delete any user data in production or deve
 #### Commands
 
 ```bash
+# Targeted testing (default — run what's relevant to the change)
+pytest tests/services/test_hook_receiver.py          # Specific service test
+pytest tests/routes/test_hooks.py                    # Specific route test
+pytest tests/services/ tests/routes/                 # Relevant directories
+pytest -k "test_state_machine"                       # Pattern match
+pytest tests/integration/test_persistence_flow.py    # Specific integration test
+
+# Full suite (only when explicitly requested or before commit/PR)
 pytest                                    # All tests (~960 tests, always uses _test DB)
 pytest --cov=src                          # With coverage report
-pytest tests/services/                    # Service unit tests
-pytest tests/routes/                      # Route/endpoint tests
-pytest tests/integration/                 # Integration tests (real PostgreSQL _test DB)
-pytest -k "test_state_machine"            # Run tests matching pattern
-pytest tests/integration/test_persistence_flow.py  # Specific file
 ```
 
 #### Test Architecture (3-Tier)

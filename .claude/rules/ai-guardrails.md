@@ -73,10 +73,25 @@ ALWAYS ask confirmation before:
 
 **Database safety is non-negotiable.** See "Database Protection" section above.
 
-ALWAYS report testing status:
-- "Tests run: X passed, Y failed" (good)
+### Targeted Testing (Default)
+
+**Do NOT run the full test suite on every change.** The suite has ~960 tests and takes minutes to complete. Instead:
+
+1. **Run only tests relevant to the change** — e.g., if you edited `hook_receiver.py`, run `pytest tests/services/test_hook_receiver.py tests/routes/test_hooks.py`
+2. **Use `-k` to narrow further** when only a specific behavior changed
+3. **Run the full suite only when:**
+   - The user explicitly asks for it
+   - Preparing a commit or PR (final verification)
+   - Changes are broad/cross-cutting (e.g., model changes, conftest changes)
+
+### Test Status Reporting
+
+Report what you ran and the result:
+- "Ran 12 targeted tests (test_hook_receiver, test_hooks) — all passed" (good)
 - "Tests not run yet" (good)
-- No mention of tests (bad)
+- No mention of tests (acceptable for exploratory/research work)
+
+### New Test Files
 
 **New test files MUST:**
 - Use the existing fixture system (`app`, `client`, `db_session` from conftest.py)
@@ -84,10 +99,12 @@ ALWAYS report testing status:
 - NEVER hardcode database connection strings
 - Verify that `_force_test_database` fixture is active (it's autouse, session-scoped)
 
-Run tests with:
+### Test Commands
 ```bash
-pytest                    # All tests (always uses _test database)
-pytest --cov=.            # With coverage
+pytest tests/services/test_foo.py    # Targeted (preferred)
+pytest tests/routes/test_bar.py -k "test_specific_case"  # Narrow
+pytest                               # Full suite — only when asked
+pytest --cov=src                     # Full suite + coverage — only when asked
 ```
 
 ## No Unverified Claims
