@@ -168,7 +168,7 @@ class TaskLifecycleManager:
                     project=task.agent.project.name if task.agent.project else None,
                 )
             except Exception as notif_err:
-                logger.debug(f"Notification send failed (non-fatal): {notif_err}")
+                logger.warning(f"Notification send failed (non-fatal): {notif_err}")
 
         # Write state transition event
         if self._event_writer:
@@ -188,6 +188,7 @@ class TaskLifecycleManager:
         task: Task,
         trigger: str = "agent:completion",
         agent_text: str = "",
+        intent: TurnIntent = TurnIntent.COMPLETION,
     ) -> bool:
         """
         Mark a task as complete.
@@ -198,6 +199,7 @@ class TaskLifecycleManager:
             task: The task to complete
             trigger: The trigger that caused completion
             agent_text: Optional agent response text extracted from transcript
+            intent: The turn intent for the completion record (COMPLETION or END_OF_TASK)
 
         Returns:
             True if the task was completed successfully
@@ -210,13 +212,25 @@ class TaskLifecycleManager:
         turn = Turn(
             task_id=task.id,
             actor=TurnActor.AGENT,
-            intent=TurnIntent.COMPLETION,
+            intent=intent,
             text=agent_text or "",
         )
         self._session.add(turn)
         self._session.flush()
 
         logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
+
+        # Send OS notification for task completion
+        try:
+            from .notification_service import get_notification_service
+            svc = get_notification_service()
+            svc.notify_task_complete(
+                agent_id=str(task.agent_id),
+                agent_name=task.agent.name or f"Agent {task.agent_id}",
+                project=task.agent.project.name if task.agent.project else None,
+            )
+        except Exception as e:
+            logger.warning(f"Notification send failed (non-fatal): {e}")
 
         # Write state transition event
         if self._event_writer:
@@ -228,6 +242,10 @@ class TaskLifecycleManager:
                 trigger=trigger,
                 confidence=1.0,
             )
+
+        # Trigger async summarisation for the completion turn and task
+        self._trigger_turn_summarisation(turn.id)
+        self._trigger_task_summarisation(task.id)
 
         return True
 

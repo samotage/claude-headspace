@@ -138,6 +138,34 @@ CONFIG_SCHEMA = [
             FieldSchema("rate_limit_seconds", "integer", "Minimum seconds between notifications per agent", min_value=0, max_value=60, default=5),
         ],
     ),
+    SectionSchema(
+        name="openrouter",
+        title="Inference",
+        fields=[
+            FieldSchema("base_url", "string", "OpenRouter API base URL",
+                         default="https://openrouter.ai/api/v1"),
+            FieldSchema("timeout", "integer", "Request timeout (seconds)",
+                         min_value=1, max_value=300, default=30),
+            FieldSchema("models.turn", "string", "Model for turn summaries",
+                         default="anthropic/claude-3-haiku"),
+            FieldSchema("models.task", "string", "Model for task summaries",
+                         default="anthropic/claude-3-haiku"),
+            FieldSchema("models.project", "string", "Model for project analysis",
+                         default="anthropic/claude-3.5-sonnet"),
+            FieldSchema("models.objective", "string", "Model for priority scoring",
+                         default="anthropic/claude-3.5-sonnet"),
+            FieldSchema("rate_limits.calls_per_minute", "integer", "Max API calls per minute",
+                         min_value=1, max_value=1000, default=30),
+            FieldSchema("rate_limits.tokens_per_minute", "integer", "Max tokens per minute",
+                         min_value=1, max_value=1000000, default=50000),
+            FieldSchema("cache.enabled", "boolean", "Enable inference result caching",
+                         default=True),
+            FieldSchema("cache.ttl_seconds", "integer", "Cache TTL (seconds)",
+                         min_value=1, max_value=3600, default=300),
+            FieldSchema("retry.max_attempts", "integer", "Max retry attempts",
+                         min_value=1, max_value=10, default=3),
+        ],
+    ),
 ]
 
 
@@ -343,6 +371,67 @@ def save_config_file(
         error_msg = f"Failed to save configuration: {type(e).__name__}"
         logger.error(error_msg)
         return False, error_msg
+
+
+def flatten_openrouter(config: dict) -> dict:
+    """
+    Flatten nested openrouter config keys into dot-notation.
+
+    Converts e.g. config['openrouter']['models']['turn'] to
+    config['openrouter']['models.turn'] so the flat section[field]
+    editor can handle it.
+
+    Args:
+        config: Configuration dictionary (modified in-place and returned)
+
+    Returns:
+        The config dict with openrouter section flattened
+    """
+    section = config.get("openrouter")
+    if not isinstance(section, dict):
+        return config
+
+    flat = {}
+    for key, value in list(section.items()):
+        if isinstance(value, dict):
+            for subkey, subvalue in value.items():
+                flat[f"{key}.{subkey}"] = subvalue
+        else:
+            flat[key] = value
+
+    config["openrouter"] = flat
+    return config
+
+
+def unflatten_openrouter(config: dict) -> dict:
+    """
+    Unflatten dot-notation openrouter keys back to nested dicts.
+
+    Converts e.g. config['openrouter']['models.turn'] to
+    config['openrouter']['models']['turn'] for YAML serialisation.
+
+    Args:
+        config: Configuration dictionary (modified in-place and returned)
+
+    Returns:
+        The config dict with openrouter section unflattened
+    """
+    section = config.get("openrouter")
+    if not isinstance(section, dict):
+        return config
+
+    nested = {}
+    for key, value in section.items():
+        if "." in key:
+            parent, child = key.split(".", 1)
+            if parent not in nested:
+                nested[parent] = {}
+            nested[parent][child] = value
+        else:
+            nested[key] = value
+
+    config["openrouter"] = nested
+    return config
 
 
 def merge_with_defaults(config: dict) -> dict:

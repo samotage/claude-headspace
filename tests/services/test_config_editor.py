@@ -14,10 +14,12 @@ from claude_headspace.services.config_editor import (
     SectionSchema,
     ValidationError,
     ValidationResult,
+    flatten_openrouter,
     get_config_schema,
     load_config_file,
     merge_with_defaults,
     save_config_file,
+    unflatten_openrouter,
     validate_config,
 )
 
@@ -28,7 +30,7 @@ class TestConfigSchema:
     def test_schema_has_all_sections(self):
         """Schema should have all expected sections."""
         section_names = [s.name for s in CONFIG_SCHEMA]
-        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "notifications"]
+        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "notifications", "openrouter"]
         assert section_names == expected
 
     def test_each_section_has_title(self):
@@ -310,3 +312,153 @@ class TestPasswordSecurity:
             for arg in call.args:
                 if isinstance(arg, str):
                     assert "secret123" not in arg
+
+
+class TestFlattenUnflatten:
+    """Tests for flatten_openrouter and unflatten_openrouter."""
+
+    def test_flatten_nested_to_dot_notation(self):
+        """Should convert nested dicts to dot-notation keys."""
+        config = {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "timeout": 30,
+                "models": {
+                    "turn": "haiku",
+                    "task": "haiku",
+                },
+                "cache": {
+                    "enabled": True,
+                    "ttl_seconds": 300,
+                },
+            }
+        }
+        result = flatten_openrouter(config)
+
+        assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
+        assert result["openrouter"]["timeout"] == 30
+        assert result["openrouter"]["models.turn"] == "haiku"
+        assert result["openrouter"]["models.task"] == "haiku"
+        assert result["openrouter"]["cache.enabled"] is True
+        assert result["openrouter"]["cache.ttl_seconds"] == 300
+        # Nested dicts should be gone
+        assert "models" not in result["openrouter"]
+        assert "cache" not in result["openrouter"]
+
+    def test_unflatten_dot_notation_to_nested(self):
+        """Should convert dot-notation keys back to nested dicts."""
+        config = {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "timeout": 30,
+                "models.turn": "haiku",
+                "models.task": "haiku",
+                "cache.enabled": True,
+                "cache.ttl_seconds": 300,
+            }
+        }
+        result = unflatten_openrouter(config)
+
+        assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
+        assert result["openrouter"]["timeout"] == 30
+        assert result["openrouter"]["models"]["turn"] == "haiku"
+        assert result["openrouter"]["models"]["task"] == "haiku"
+        assert result["openrouter"]["cache"]["enabled"] is True
+        assert result["openrouter"]["cache"]["ttl_seconds"] == 300
+
+    def test_roundtrip_consistency(self):
+        """Flatten then unflatten should produce the original structure."""
+        original = {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "timeout": 30,
+                "models": {
+                    "turn": "haiku",
+                    "task": "haiku",
+                    "project": "sonnet",
+                    "objective": "sonnet",
+                },
+                "rate_limits": {
+                    "calls_per_minute": 30,
+                    "tokens_per_minute": 50000,
+                },
+                "cache": {
+                    "enabled": True,
+                    "ttl_seconds": 300,
+                },
+                "retry": {
+                    "max_attempts": 3,
+                },
+            }
+        }
+        import copy
+        expected = copy.deepcopy(original)
+
+        flatten_openrouter(original)
+        unflatten_openrouter(original)
+
+        assert original == expected
+
+    def test_flatten_no_openrouter_section(self):
+        """Should handle missing openrouter section gracefully."""
+        config = {"server": {"port": 5050}}
+        result = flatten_openrouter(config)
+        assert result == {"server": {"port": 5050}}
+
+    def test_unflatten_no_openrouter_section(self):
+        """Should handle missing openrouter section gracefully."""
+        config = {"server": {"port": 5050}}
+        result = unflatten_openrouter(config)
+        assert result == {"server": {"port": 5050}}
+
+    def test_flatten_modifies_in_place(self):
+        """Flatten should modify the dict in place and return it."""
+        config = {"openrouter": {"models": {"turn": "haiku"}}}
+        result = flatten_openrouter(config)
+        assert result is config
+
+    def test_unflatten_modifies_in_place(self):
+        """Unflatten should modify the dict in place and return it."""
+        config = {"openrouter": {"models.turn": "haiku"}}
+        result = unflatten_openrouter(config)
+        assert result is config
+
+
+class TestOpenrouterValidation:
+    """Tests for openrouter section validation with dot-notation fields."""
+
+    def test_valid_openrouter_config_passes(self):
+        """Valid flattened openrouter config should pass validation."""
+        config = {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "timeout": 30,
+                "models.turn": "anthropic/claude-3-haiku",
+                "models.task": "anthropic/claude-3-haiku",
+                "models.project": "anthropic/claude-3.5-sonnet",
+                "models.objective": "anthropic/claude-3.5-sonnet",
+                "rate_limits.calls_per_minute": 30,
+                "rate_limits.tokens_per_minute": 50000,
+                "cache.enabled": True,
+                "cache.ttl_seconds": 300,
+                "retry.max_attempts": 3,
+            }
+        }
+        result = validate_config(config)
+        assert result.valid
+
+    def test_invalid_timeout_type(self):
+        """Non-integer timeout should fail validation."""
+        config = {"openrouter": {"timeout": "fast"}}
+        result = validate_config(config)
+        assert not result.valid
+        error = next(e for e in result.errors if e.field == "timeout" and e.section == "openrouter")
+        assert "integer" in error.message
+
+    def test_calls_per_minute_below_minimum(self):
+        """calls_per_minute below 1 should fail validation."""
+        config = {"openrouter": {"rate_limits.calls_per_minute": 0}}
+        result = validate_config(config)
+        assert not result.valid
+        error = next(e for e in result.errors if e.field == "rate_limits.calls_per_minute")
+        assert "at least 1" in error.message

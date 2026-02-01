@@ -105,7 +105,7 @@ class TestValidateTransition:
 
     def test_agent_action_from_idle_invalid(self):
         """Agent actions from IDLE should be invalid."""
-        for intent in [TurnIntent.PROGRESS, TurnIntent.QUESTION, TurnIntent.COMPLETION]:
+        for intent in [TurnIntent.PROGRESS, TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK]:
             result = validate_transition(TaskState.IDLE, TurnActor.AGENT, intent)
             assert result.valid is False
 
@@ -172,7 +172,7 @@ class TestGetValidTransitionsFrom:
     def test_get_from_commanded(self):
         """Get valid transitions from COMMANDED state."""
         transitions = get_valid_transitions_from(TaskState.COMMANDED)
-        assert len(transitions) == 3
+        assert len(transitions) == 4
         # All should be agent actions
         for actor, intent, to_state in transitions:
             assert actor == TurnActor.AGENT
@@ -180,7 +180,7 @@ class TestGetValidTransitionsFrom:
     def test_get_from_processing(self):
         """Get valid transitions from PROCESSING state."""
         transitions = get_valid_transitions_from(TaskState.PROCESSING)
-        assert len(transitions) == 3
+        assert len(transitions) == 4
 
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
@@ -281,3 +281,60 @@ class TestStateMachineStateless:
             assert result.valid == results[0].valid
             assert result.to_state == results[0].to_state
             assert result.reason == results[0].reason
+
+
+class TestEndOfTaskTransitions:
+    """Tests for END_OF_TASK transitions."""
+
+    def test_end_of_task_from_commanded(self):
+        """Agent END_OF_TASK from COMMANDED should transition to COMPLETE."""
+        key = (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_TASK)
+        assert key in VALID_TRANSITIONS
+        assert VALID_TRANSITIONS[key] == TaskState.COMPLETE
+
+    def test_end_of_task_from_processing(self):
+        """Agent END_OF_TASK from PROCESSING should transition to COMPLETE."""
+        key = (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_TASK)
+        assert key in VALID_TRANSITIONS
+        assert VALID_TRANSITIONS[key] == TaskState.COMPLETE
+
+    def test_end_of_task_validate_from_commanded(self):
+        """validate_transition should accept END_OF_TASK from COMMANDED."""
+        result = validate_transition(
+            TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_TASK
+        )
+        assert result.valid is True
+        assert result.to_state == TaskState.COMPLETE
+        assert result.trigger == "agent:end_of_task"
+
+    def test_end_of_task_validate_from_processing(self):
+        """validate_transition should accept END_OF_TASK from PROCESSING."""
+        result = validate_transition(
+            TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_TASK
+        )
+        assert result.valid is True
+        assert result.to_state == TaskState.COMPLETE
+
+    def test_end_of_task_invalid_from_idle(self):
+        """END_OF_TASK from IDLE should be invalid."""
+        result = validate_transition(
+            TaskState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_TASK
+        )
+        assert result.valid is False
+
+    def test_end_of_task_invalid_from_complete(self):
+        """END_OF_TASK from COMPLETE should be invalid."""
+        result = validate_transition(
+            TaskState.COMPLETE, TurnActor.AGENT, TurnIntent.END_OF_TASK
+        )
+        assert result.valid is False
+
+    def test_commanded_now_has_four_transitions(self):
+        """COMMANDED should now have 4 valid agent transitions (PROGRESS, QUESTION, COMPLETION, END_OF_TASK)."""
+        transitions = get_valid_transitions_from(TaskState.COMMANDED)
+        assert len(transitions) == 4
+
+    def test_processing_now_has_four_transitions(self):
+        """PROCESSING should now have 4 valid agent transitions (PROGRESS, QUESTION, COMPLETION, END_OF_TASK)."""
+        transitions = get_valid_transitions_from(TaskState.PROCESSING)
+        assert len(transitions) == 4

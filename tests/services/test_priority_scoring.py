@@ -258,7 +258,7 @@ class TestScoreAllAgents:
             ]),
             input_tokens=200,
             output_tokens=50,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=500,
         )
 

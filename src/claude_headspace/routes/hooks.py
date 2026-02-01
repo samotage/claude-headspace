@@ -477,11 +477,12 @@ def hook_pre_tool_use():
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
     tool_name = data.get("tool_name")
+    tool_input = data.get("tool_input")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id)
         result = process_pre_tool_use(
-            correlation.agent, session_id, tool_name=tool_name
+            correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
         )
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -540,10 +541,14 @@ def hook_permission_request():
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
+    tool_name = data.get("tool_name")
+    tool_input = data.get("tool_input")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id)
-        result = process_permission_request(correlation.agent, session_id)
+        result = process_permission_request(
+            correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
+        )
 
         latency_ms = int((time.time() - start_time) * 1000)
         _log_hook_event("permission_request", session_id, latency_ms)

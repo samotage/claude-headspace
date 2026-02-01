@@ -53,6 +53,7 @@ NOTIFICATION_MESSAGE=""
 NOTIFICATION_TITLE=""
 NOTIFICATION_TYPE=""
 TOOL_NAME=""
+TOOL_INPUT=""
 if [ -n "$STDIN_DATA" ] && command -v jq &>/dev/null; then
     SESSION_ID=$(echo "$STDIN_DATA" | jq -r '.session_id // empty' 2>/dev/null) || true
     WORKING_DIR=$(echo "$STDIN_DATA" | jq -r '.cwd // empty' 2>/dev/null) || true
@@ -62,6 +63,11 @@ if [ -n "$STDIN_DATA" ] && command -v jq &>/dev/null; then
     NOTIFICATION_TITLE=$(echo "$STDIN_DATA" | jq -r '.title // empty' 2>/dev/null) || true
     NOTIFICATION_TYPE=$(echo "$STDIN_DATA" | jq -r '.notification_type // empty' 2>/dev/null) || true
     TOOL_NAME=$(echo "$STDIN_DATA" | jq -r '.tool_name // empty' 2>/dev/null) || true
+    TOOL_INPUT=$(echo "$STDIN_DATA" | jq -c '.tool_input // empty' 2>/dev/null) || true
+    # jq -c outputs "null" or "" for missing keys; normalise to empty string
+    if [ "$TOOL_INPUT" = "null" ] || [ "$TOOL_INPUT" = '""' ]; then
+        TOOL_INPUT=""
+    fi
 fi
 
 # Fall back to environment variables for session ID only
@@ -94,6 +100,7 @@ PAYLOAD=$(jq -n \
     --arg title "$NOTIFICATION_TITLE" \
     --arg ntype "$NOTIFICATION_TYPE" \
     --arg tname "$TOOL_NAME" \
+    --argjson tinput "${TOOL_INPUT:-null}" \
     '{session_id: $sid}
      + (if $wd != "" then {working_directory: $wd} else {} end)
      + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
@@ -102,7 +109,8 @@ PAYLOAD=$(jq -n \
      + (if $msg != "" then {message: $msg} else {} end)
      + (if $title != "" then {title: $title} else {} end)
      + (if $ntype != "" then {notification_type: $ntype} else {} end)
-     + (if $tname != "" then {tool_name: $tname} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
+     + (if $tname != "" then {tool_name: $tname} else {} end)
+     + (if $tinput != null then {tool_input: $tinput} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
 CURL_RESULT=$(curl -s -w "\n%{http_code}" \

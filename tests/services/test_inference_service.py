@@ -21,10 +21,10 @@ def config():
             "base_url": "https://openrouter.ai/api/v1",
             "timeout": 10,
             "models": {
-                "turn": "anthropic/claude-3-5-haiku-20241022",
-                "task": "anthropic/claude-3-5-haiku-20241022",
-                "project": "anthropic/claude-3-5-sonnet-20241022",
-                "objective": "anthropic/claude-3-5-sonnet-20241022",
+                "turn": "anthropic/claude-3-haiku",
+                "task": "anthropic/claude-3-haiku",
+                "project": "anthropic/claude-3.5-sonnet",
+                "objective": "anthropic/claude-3.5-sonnet",
             },
             "rate_limits": {
                 "calls_per_minute": 30,
@@ -40,11 +40,11 @@ def config():
                 "max_delay_seconds": 0.01,
             },
             "pricing": {
-                "anthropic/claude-3-5-haiku-20241022": {
-                    "input_per_million": 1.0,
-                    "output_per_million": 5.0,
+                "anthropic/claude-3-haiku": {
+                    "input_per_million": 0.25,
+                    "output_per_million": 1.25,
                 },
-                "anthropic/claude-3-5-sonnet-20241022": {
+                "anthropic/claude-3.5-sonnet": {
                     "input_per_million": 3.0,
                     "output_per_million": 15.0,
                 },
@@ -71,16 +71,16 @@ def service_no_key(config):
 class TestModelSelection:
 
     def test_turn_uses_haiku(self, service):
-        assert service.get_model_for_level("turn") == "anthropic/claude-3-5-haiku-20241022"
+        assert service.get_model_for_level("turn") == "anthropic/claude-3-haiku"
 
     def test_task_uses_haiku(self, service):
-        assert service.get_model_for_level("task") == "anthropic/claude-3-5-haiku-20241022"
+        assert service.get_model_for_level("task") == "anthropic/claude-3-haiku"
 
     def test_project_uses_sonnet(self, service):
-        assert service.get_model_for_level("project") == "anthropic/claude-3-5-sonnet-20241022"
+        assert service.get_model_for_level("project") == "anthropic/claude-3.5-sonnet"
 
     def test_objective_uses_sonnet(self, service):
-        assert service.get_model_for_level("objective") == "anthropic/claude-3-5-sonnet-20241022"
+        assert service.get_model_for_level("objective") == "anthropic/claude-3.5-sonnet"
 
     def test_unknown_level_raises(self, service):
         with pytest.raises(InferenceServiceError, match="No model configured"):
@@ -107,7 +107,7 @@ class TestInference:
             text="Summary text",
             input_tokens=100,
             output_tokens=50,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=250,
         )
 
@@ -124,7 +124,7 @@ class TestInference:
             text="Fresh result",
             input_tokens=100,
             output_tokens=50,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=250,
         )
 
@@ -162,17 +162,17 @@ class TestCostCalculation:
 
     def test_haiku_cost(self, service):
         cost = service._calculate_cost(
-            "anthropic/claude-3-5-haiku-20241022",
+            "anthropic/claude-3-haiku",
             input_tokens=1000,
             output_tokens=500,
         )
-        # input: 1000 * 1.0 / 1M = 0.001, output: 500 * 5.0 / 1M = 0.0025
-        expected = 0.001 + 0.0025
+        # input: 1000 * 0.25 / 1M = 0.00025, output: 500 * 1.25 / 1M = 0.000625
+        expected = 0.00025 + 0.000625
         assert abs(cost - expected) < 1e-10
 
     def test_sonnet_cost(self, service):
         cost = service._calculate_cost(
-            "anthropic/claude-3-5-sonnet-20241022",
+            "anthropic/claude-3.5-sonnet",
             input_tokens=1000,
             output_tokens=500,
         )
@@ -224,7 +224,7 @@ class TestLogging:
             text="result",
             input_tokens=100,
             output_tokens=50,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=200,
         )
 
@@ -239,7 +239,7 @@ class TestLogging:
             text="result",
             input_tokens=100,
             output_tokens=50,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=200,
         )
 
@@ -247,3 +247,121 @@ class TestLogging:
             # Should not raise even without db_session_factory
             result = service.infer(level="turn", purpose="test", input_text="hello")
             assert result.text == "result"
+
+    def test_database_url_creates_independent_engine(self, config):
+        """database_url should create an independent engine and sessionmaker."""
+        mock_engine = MagicMock()
+        mock_sessionmaker = MagicMock()
+
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
+            with patch(
+                "sqlalchemy.create_engine",
+                return_value=mock_engine,
+            ) as mock_create_engine, patch(
+                "sqlalchemy.orm.sessionmaker",
+                return_value=mock_sessionmaker,
+            ):
+                service = InferenceService(
+                    config=config,
+                    database_url="postgresql://test@localhost/test_db",
+                )
+
+                mock_create_engine.assert_called_once_with(
+                    "postgresql://test@localhost/test_db",
+                    pool_size=2,
+                    pool_pre_ping=True,
+                )
+                assert service._independent_engine is mock_engine
+                assert service._log_session_factory is mock_sessionmaker
+
+    def test_independent_session_closed_after_log(self, config):
+        """Independent session should be closed after logging, even on error."""
+        mock_session = MagicMock()
+        mock_engine = MagicMock()
+        mock_sessionmaker_cls = MagicMock(return_value=mock_session)
+
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
+            with patch(
+                "sqlalchemy.create_engine",
+                return_value=mock_engine,
+            ), patch(
+                "sqlalchemy.orm.sessionmaker",
+                return_value=mock_sessionmaker_cls,
+            ):
+                service = InferenceService(
+                    config=config,
+                    database_url="postgresql://test@localhost/test_db",
+                )
+
+        mock_result = InferenceResult(
+            text="result",
+            input_tokens=100,
+            output_tokens=50,
+            model="anthropic/claude-3-haiku",
+            latency_ms=200,
+        )
+
+        with patch.object(service.client, "chat_completion", return_value=mock_result):
+            service.infer(level="turn", purpose="test", input_text="hello")
+
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_called_once()
+        mock_session.close.assert_called_once()
+
+    def test_independent_session_closed_on_error(self, config):
+        """Independent session should be closed even when commit fails."""
+        mock_session = MagicMock()
+        mock_session.commit.side_effect = Exception("DB error")
+        mock_engine = MagicMock()
+        mock_sessionmaker_cls = MagicMock(return_value=mock_session)
+
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
+            with patch(
+                "sqlalchemy.create_engine",
+                return_value=mock_engine,
+            ), patch(
+                "sqlalchemy.orm.sessionmaker",
+                return_value=mock_sessionmaker_cls,
+            ):
+                service = InferenceService(
+                    config=config,
+                    database_url="postgresql://test@localhost/test_db",
+                )
+
+        mock_result = InferenceResult(
+            text="result",
+            input_tokens=100,
+            output_tokens=50,
+            model="anthropic/claude-3-haiku",
+            latency_ms=200,
+        )
+
+        with patch.object(service.client, "chat_completion", return_value=mock_result):
+            # Should not raise — error is caught internally
+            service.infer(level="turn", purpose="test", input_text="hello")
+
+        mock_session.close.assert_called_once()
+
+    def test_database_url_preferred_over_session_factory(self, config):
+        """database_url should take precedence over db_session_factory."""
+        mock_engine = MagicMock()
+        mock_sessionmaker = MagicMock()
+        mock_factory = MagicMock()
+
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
+            with patch(
+                "sqlalchemy.create_engine",
+                return_value=mock_engine,
+            ), patch(
+                "sqlalchemy.orm.sessionmaker",
+                return_value=mock_sessionmaker,
+            ):
+                service = InferenceService(
+                    config=config,
+                    db_session_factory=mock_factory,
+                    database_url="postgresql://test@localhost/test_db",
+                )
+
+        # Should use independent engine, not the factory
+        assert service._independent_engine is mock_engine
+        assert service._log_session_factory is mock_sessionmaker

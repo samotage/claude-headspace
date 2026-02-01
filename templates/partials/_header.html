@@ -16,8 +16,8 @@
            class="tab-link {% if request.endpoint == 'objective.objective_page' %}active{% endif %}"
            {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>objective</a>
         <a href="{{ url_for('logging.logging_page') }}"
-           class="tab-link {% if request.endpoint == 'logging.logging_page' %}active{% endif %}"
-           {% if request.endpoint == 'logging.logging_page' %}aria-current="page"{% endif %}>logging</a>
+           class="tab-link {% if request.endpoint and request.endpoint.startswith('logging.') %}active{% endif %}"
+           {% if request.endpoint and request.endpoint.startswith('logging.') %}aria-current="page"{% endif %}>logging</a>
         <a href="{{ url_for('config.config_page') }}"
            class="tab-link {% if request.endpoint == 'config.config_page' %}active{% endif %}"
            {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>config</a>
@@ -52,7 +52,7 @@
             <span>objective</span>
         </a>
         <a href="{{ url_for('logging.logging_page') }}"
-           class="mobile-menu-item {% if request.endpoint == 'logging.logging_page' %}active{% endif %}">
+           class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('logging.') %}active{% endif %}">
             <span class="mobile-menu-icon">&#9998;</span>
             <span>logging</span>
         </a>

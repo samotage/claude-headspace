@@ -193,7 +193,9 @@ body::after {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
-    z-index: 149;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    z-index: 200;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -213,7 +215,7 @@ body::after {
     max-width: 90vw;
     background: var(--bg-surface);
     border-left: 1px solid var(--border);
-    z-index: 150;
+    z-index: 201;
     transform: translateX(100%);
     transition: transform 0.3s ease;
     display: flex;
@@ -226,14 +228,13 @@ body::after {
 
 /* Modal shared styles */
 .modal-backdrop {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
-    z-index: 149;
 }
 
 .modal-content {
-    position: fixed;
+    position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -243,7 +244,6 @@ body::after {
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    z-index: 150;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -285,6 +285,71 @@ body::after {
     color: var(--text-primary);
     background: var(--bg-hover);
     border-color: var(--border-bright);
+}
+
+/* Logging sub-tab navigation — segmented terminal control */
+.logging-subtabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    width: fit-content;
+}
+
+.logging-subtab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    border-right: 1px solid var(--border);
+}
+
+.logging-subtab:last-child {
+    border-right: none;
+}
+
+.logging-subtab .subtab-icon {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+}
+
+.logging-subtab:hover {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.logging-subtab:hover .subtab-icon {
+    opacity: 0.7;
+}
+
+.logging-subtab.active {
+    background: var(--bg-surface);
+    color: var(--cyan);
+    box-shadow: inset 0 -2px 0 var(--cyan);
+}
+
+.logging-subtab.active .subtab-icon {
+    opacity: 1;
+    color: var(--cyan);
+    text-shadow: 0 0 6px rgba(86, 212, 221, 0.4);
+}
+
+.logging-subtab.active .subtab-label {
+    text-shadow: 0 0 8px rgba(86, 212, 221, 0.2);
 }
 
 /* iOS smooth scrolling for overflow containers */

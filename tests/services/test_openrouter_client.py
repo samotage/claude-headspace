@@ -78,12 +78,12 @@ class TestChatCompletion:
         mock_response.json.return_value = {
             "choices": [{"message": {"content": "Hello world"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
-            "model": "anthropic/claude-3-5-haiku-20241022",
+            "model": "anthropic/claude-3-haiku",
         }
 
         with patch("requests.post", return_value=mock_response):
             result = client_with_key.chat_completion(
-                model="anthropic/claude-3-5-haiku-20241022",
+                model="anthropic/claude-3-haiku",
                 messages=[{"role": "user", "content": "Hi"}],
             )
 

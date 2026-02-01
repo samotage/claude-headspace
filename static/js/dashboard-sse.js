@@ -32,28 +32,19 @@
     let agentStates = new Map();
 
     /**
-     * Initialize the dashboard SSE client
+     * Initialize the dashboard SSE client.
+     * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
      */
     function initDashboardSSE() {
-        if (typeof SSEClient === 'undefined') {
-            console.error('SSEClient not loaded');
-            updateConnectionIndicator('disconnected');
+        var client = window.headerSSEClient;
+        if (!client) {
+            console.error('Shared SSE client not available (headerSSEClient)');
             return null;
         }
 
-        // Create SSE client
-        const client = new SSEClient({
-            url: '/api/events/stream',
-            reconnectBaseDelay: 1000,
-            reconnectMaxDelay: 30000
-        });
-
-        // Handle connection state changes
+        // Reload page on reconnect to catch up on missed events
         client.onStateChange(function(newState, oldState) {
             console.log('SSE state:', oldState, '->', newState);
-            updateConnectionIndicator(newState);
-
-            // Reload page on reconnect to catch up on missed events
             if (newState === 'connected' && oldState === 'reconnecting') {
                 console.log('SSE reconnected after drop — reloading to sync state');
                 window.location.reload();
@@ -79,48 +70,16 @@
         // Handle session lifecycle changes that require page refresh
         client.on('session_created', handleSessionCreated);
 
+        // Handle summary updates
+        client.on('task_summary', handleTaskSummary);
+        client.on('turn_summary', handleTurnSummary);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
         });
 
-        // Connect
-        client.connect();
-
         return client;
-    }
-
-    /**
-     * Update the connection status indicator in the header
-     */
-    function updateConnectionIndicator(state) {
-        const indicator = document.getElementById('connection-indicator');
-        if (!indicator) return;
-
-        const dot = indicator.querySelector('.connection-dot');
-        const text = indicator.querySelector('.connection-text');
-
-        if (!dot || !text) return;
-
-        switch (state) {
-            case 'connected':
-                dot.className = 'connection-dot w-2 h-2 rounded-full bg-green animate-pulse';
-                text.textContent = 'SSE live';
-                text.className = 'connection-text text-green';
-                break;
-            case 'connecting':
-            case 'reconnecting':
-                dot.className = 'connection-dot w-2 h-2 rounded-full bg-muted';
-                text.textContent = 'Reconnecting...';
-                text.className = 'connection-text text-muted';
-                break;
-            case 'disconnected':
-            default:
-                dot.className = 'connection-dot w-2 h-2 rounded-full bg-red';
-                text.textContent = 'Offline';
-                text.className = 'connection-text text-red';
-                break;
-        }
     }
 
     /**
@@ -279,6 +238,14 @@
                 uptimeEl.textContent = data.uptime;
             }
         }
+
+        // Update last seen if provided
+        if (data.last_seen) {
+            const lastSeenEl = card.querySelector('.last-seen');
+            if (lastSeenEl) {
+                lastSeenEl.textContent = data.last_seen;
+            }
+        }
     }
 
     /**
@@ -304,6 +271,51 @@
         agentStates.delete(agentId);
 
         window.location.reload();
+    }
+
+    /**
+     * Handle task summary events (AI-generated task-level summary)
+     */
+    function handleTaskSummary(data, eventType) {
+        const agentId = data.agent_id;
+        const summary = data.summary || data.text;
+
+        if (!agentId || !summary) return;
+
+        console.log('Task summary:', agentId);
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        if (!card) return;
+
+        var taskSummary = card.querySelector('.task-summary');
+        if (taskSummary) {
+            taskSummary.textContent = summary;
+        }
+    }
+
+    /**
+     * Handle turn summary events (AI-generated turn-level summary).
+     * Only updates if current text is a placeholder to avoid overwriting
+     * a task-level summary with a less informative turn summary.
+     */
+    function handleTurnSummary(data, eventType) {
+        const agentId = data.agent_id;
+        const summary = data.summary || data.text;
+
+        if (!agentId || !summary) return;
+
+        console.log('Turn summary:', agentId);
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        if (!card) return;
+
+        var taskSummary = card.querySelector('.task-summary');
+        if (taskSummary) {
+            var current = taskSummary.textContent.trim();
+            if (current === 'Summarising...' || current === 'No active task') {
+                taskSummary.textContent = summary;
+            }
+        }
     }
 
     /**
@@ -482,7 +494,6 @@
             handleHighlightParam();
             return initDashboardSSE();
         },
-        updateConnectionIndicator: updateConnectionIndicator,
         highlightAgent: function(agentId) {
             // Allow programmatic highlighting (scope to article to avoid recommended panel)
             const card = document.querySelector(`article[data-agent-id="${agentId}"]`);

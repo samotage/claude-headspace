@@ -5,10 +5,12 @@ import logging
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..services.config_editor import (
+    flatten_openrouter,
     get_config_schema,
     load_config_file,
     merge_with_defaults,
     save_config_file,
+    unflatten_openrouter,
     validate_config,
 )
 
@@ -22,10 +24,15 @@ def config_page():
     """Render the configuration editing page."""
     # Load current config from file (not env vars)
     config = load_config_file()
+    # Flatten nested openrouter keys for the flat section[field] editor
+    flatten_openrouter(config)
     config = merge_with_defaults(config)
 
     # Get schema for form generation
     schema = get_config_schema()
+
+    # Check if inference service is available (API key configured)
+    inference_available = current_app.extensions.get("inference_service") is not None
 
     # Provide status_counts for header partial (defaults for non-dashboard pages)
     status_counts = {"input_needed": 0, "working": 0, "idle": 0}
@@ -34,6 +41,7 @@ def config_page():
         "config.html",
         config=config,
         schema=schema,
+        inference_available=inference_available,
         status_counts=status_counts,
     )
 
@@ -51,6 +59,8 @@ def get_config():
     try:
         # Load from file only (no env vars)
         config = load_config_file()
+        # Flatten nested openrouter keys for the flat section[field] editor
+        flatten_openrouter(config)
         config = merge_with_defaults(config)
 
         # Get schema for field metadata
@@ -124,6 +134,28 @@ def save_config():
 
     # Merge with defaults to ensure complete config
     config = merge_with_defaults(config)
+
+    # Unflatten dot-notation openrouter keys back to nested dicts for YAML
+    unflatten_openrouter(config)
+
+    # Preserve non-schema sections and fields from the original file
+    original = load_config_file()
+    # Preserve top-level sections not in CONFIG_SCHEMA (e.g. dashboard, reaper)
+    schema_sections = {s["name"] for s in get_config_schema()}
+    for key, value in original.items():
+        if key not in schema_sections:
+            config[key] = value
+    # Deep-merge openrouter to preserve non-schema sub-keys (e.g. pricing, retry.base_delay_seconds)
+    original_or = original.get("openrouter", {})
+    config_or = config.get("openrouter", {})
+    for key, value in original_or.items():
+        if isinstance(value, dict) and key in config_or and isinstance(config_or[key], dict):
+            # Merge: schema fields already present, add non-schema ones
+            for subkey, subvalue in value.items():
+                if subkey not in config_or[key]:
+                    config_or[key][subkey] = subvalue
+        elif key not in config_or:
+            config_or[key] = value
 
     # Save configuration atomically
     success, error_message = save_config_file(config)

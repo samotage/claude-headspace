@@ -141,20 +141,76 @@ def configure_receiver(
             state.fallback_timeout = fallback_timeout
 
 
-def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> None:
-    """Broadcast state change to SSE clients."""
+def _broadcast_state_change(
+    agent: Agent,
+    event_type: str,
+    new_state: str,
+    message: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    """Broadcast state change to SSE clients.
+
+    Args:
+        agent: The agent whose state changed
+        event_type: Hook event type (e.g. "stop", "notification")
+        new_state: The resulting task state
+        message: Human-readable message for the logging page
+        payload: Additional payload data for the logging page
+    """
     try:
         from .broadcaster import get_broadcaster
         broadcaster = get_broadcaster()
         broadcaster.broadcast("state_changed", {
             "agent_id": agent.id,
             "project_id": agent.project_id,
+            "project_name": agent.project.name if agent.project else None,
+            "agent_session": str(agent.session_uuid),
             "event_type": event_type,
             "new_state": new_state.upper(),
+            "message": message,
+            "payload": payload,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.debug(f"Broadcast failed (non-fatal): {e}")
+
+
+def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
+    """Broadcast turn_created SSE event so the dashboard updates the task summary."""
+    try:
+        from .broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast("turn_created", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "text": text,
+            "actor": "agent",
+            "intent": "question",
+            "task_id": task.id if task else None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.debug(f"turn_created broadcast failed (non-fatal): {e}")
+
+
+def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> str:
+    """
+    Extract human-readable question text from tool_input.
+
+    Handles the AskUserQuestion structure where the question is at
+    tool_input.questions[0].question. Falls back to a generic message.
+    """
+    if tool_input and isinstance(tool_input, dict):
+        # AskUserQuestion: questions[0].question
+        questions = tool_input.get("questions")
+        if questions and isinstance(questions, list) and len(questions) > 0:
+            q = questions[0]
+            if isinstance(q, dict) and q.get("question"):
+                return q["question"]
+
+    if tool_name:
+        return f"Permission needed: {tool_name}"
+    return "Awaiting input"
 
 
 def reset_receiver_state() -> None:
@@ -247,7 +303,10 @@ def process_session_end(
         db.session.commit()
 
         # Broadcast state change to SSE clients
-        _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value)
+        _broadcast_state_change(
+            agent, "session_end", TaskState.COMPLETE.value,
+            message="Session ended",
+        )
 
         # Broadcast session_ended as a top-level event so dashboard removes the card
         try:
@@ -319,7 +378,10 @@ def process_user_prompt_submit(
         new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
 
         # Broadcast state change to SSE clients
-        _broadcast_state_change(agent, "user_prompt_submit", new_state)
+        _broadcast_state_change(
+            agent, "user_prompt_submit", new_state,
+            message=prompt_text,
+        )
 
         # Broadcast turn_created so dashboard updates task summary with the command
         if prompt_text:
@@ -392,7 +454,19 @@ def process_stop(
         # Only broadcast if there was actually a task to transition
         if result.task:
             actual_state = result.task.state.value
-            _broadcast_state_change(agent, "stop", actual_state)
+            _broadcast_state_change(
+                agent, "stop", actual_state,
+                message=f"\u2192 {actual_state.upper()}",
+            )
+
+            # If stop resulted in AWAITING_INPUT, broadcast the most recent
+            # AGENT QUESTION turn so the dashboard shows the question text
+            if result.task.state == TaskState.AWAITING_INPUT and result.task.turns:
+                from ..models.turn import TurnActor, TurnIntent
+                for t in reversed(result.task.turns):
+                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                        _broadcast_turn_created(agent, t.text, result.task)
+                        break
         else:
             actual_state = None
 
@@ -457,22 +531,50 @@ def process_notification(
             current_task.state = TaskState.AWAITING_INPUT
             did_transition = True
 
-            # Store notification context as a turn if message is provided
+            # Send OS notification
+            try:
+                from .notification_service import get_notification_service
+                svc = get_notification_service()
+                svc.notify_awaiting_input(
+                    agent_id=str(agent.id),
+                    agent_name=agent.name or f"Agent {agent.id}",
+                    project=agent.project.name if agent.project else None,
+                )
+            except Exception as e:
+                logger.warning(f"Notification send failed (non-fatal): {e}")
+
+            # Store notification context as a turn if message is provided,
+            # but skip if a recent AGENT QUESTION turn already exists (dedup
+            # against PRE_TOOL_USE which may have fired just before this)
+            notification_text = None
             if message or title:
                 from ..models.turn import Turn, TurnActor, TurnIntent
-                notification_text = ""
-                if title:
-                    notification_text = f"[{title}] "
-                if message:
-                    notification_text += message
-                if notification_text:
-                    turn = Turn(
-                        task_id=current_task.id,
-                        actor=TurnActor.AGENT,
-                        intent=TurnIntent.QUESTION,
-                        text=notification_text.strip(),
-                    )
-                    db.session.add(turn)
+
+                # Dedup: check if a recent AGENT QUESTION turn exists (within 10s)
+                has_recent_question = False
+                if current_task.turns:
+                    for t in reversed(current_task.turns):
+                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                            age = (datetime.now(timezone.utc) - t.timestamp).total_seconds()
+                            if age < 10:
+                                has_recent_question = True
+                            break
+
+                if not has_recent_question:
+                    notification_text = ""
+                    if title:
+                        notification_text = f"[{title}] "
+                    if message:
+                        notification_text += message
+                    notification_text = notification_text.strip()
+                    if notification_text:
+                        turn = Turn(
+                            task_id=current_task.id,
+                            actor=TurnActor.AGENT,
+                            intent=TurnIntent.QUESTION,
+                            text=notification_text,
+                        )
+                        db.session.add(turn)
 
             logger.info(
                 f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
@@ -482,7 +584,21 @@ def process_notification(
         db.session.commit()
 
         if did_transition:
-            _broadcast_state_change(agent, "notification", "AWAITING_INPUT")
+            notif_msg = title or message or "Notification"
+            _broadcast_state_change(
+                agent, "notification", "AWAITING_INPUT",
+                message=notif_msg,
+            )
+            # Broadcast the turn text so dashboard updates in real-time
+            if notification_text:
+                _broadcast_turn_created(agent, notification_text, current_task)
+            elif current_task and current_task.turns:
+                # A recent turn from PRE_TOOL_USE already exists; broadcast it
+                from ..models.turn import TurnActor, TurnIntent
+                for t in reversed(current_task.turns):
+                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                        _broadcast_turn_created(agent, t.text, current_task)
+                        break
 
         logger.info(
             f"hook_event: type=notification, agent_id={agent.id}, "
@@ -545,7 +661,10 @@ def process_post_tool_use(
             new_state = result.task.state.value
 
         if result.success and new_state == TaskState.PROCESSING.value:
-            _broadcast_state_change(agent, "post_tool_use", TaskState.PROCESSING.value)
+            _broadcast_state_change(
+                agent, "post_tool_use", TaskState.PROCESSING.value,
+                message=f"Tool: {tool_name}" if tool_name else None,
+            )
 
         logger.info(
             f"hook_event: type=post_tool_use, agent_id={agent.id}, "
@@ -573,6 +692,7 @@ def process_pre_tool_use(
     agent: Agent,
     claude_session_id: str,
     tool_name: str | None = None,
+    tool_input: dict | None = None,
 ) -> HookEventResult:
     """
     Process a PreToolUse hook event.
@@ -584,6 +704,7 @@ def process_pre_tool_use(
         agent: The correlated agent
         claude_session_id: The Claude session ID
         tool_name: Name of the tool about to be used (e.g. "AskUserQuestion")
+        tool_input: The tool's input parameters (contains question text for AskUserQuestion)
 
     Returns:
         HookEventResult with processing outcome
@@ -598,9 +719,33 @@ def process_pre_tool_use(
         # Transition DB task to AWAITING_INPUT if currently PROCESSING or COMMANDED
         current_task = agent.get_current_task()
         did_transition = False
+        question_text = None
         if current_task and current_task.state in (TaskState.PROCESSING, TaskState.COMMANDED):
             current_task.state = TaskState.AWAITING_INPUT
             did_transition = True
+
+            # Create AGENT QUESTION turn with extracted question text
+            question_text = _extract_question_text(tool_name, tool_input)
+            from ..models.turn import Turn, TurnActor, TurnIntent
+            turn = Turn(
+                task_id=current_task.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.QUESTION,
+                text=question_text,
+            )
+            db.session.add(turn)
+
+            # Send OS notification
+            try:
+                from .notification_service import get_notification_service
+                svc = get_notification_service()
+                svc.notify_awaiting_input(
+                    agent_id=str(agent.id),
+                    agent_name=agent.name or f"Agent {agent.id}",
+                    project=agent.project.name if agent.project else None,
+                )
+            except Exception as e:
+                logger.warning(f"Notification send failed (non-fatal): {e}")
 
             logger.info(
                 f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
@@ -610,7 +755,12 @@ def process_pre_tool_use(
         db.session.commit()
 
         if did_transition:
-            _broadcast_state_change(agent, "pre_tool_use", "AWAITING_INPUT")
+            _broadcast_state_change(
+                agent, "pre_tool_use", "AWAITING_INPUT",
+                message=f"Tool: {tool_name}" if tool_name else None,
+            )
+            if question_text:
+                _broadcast_turn_created(agent, question_text, current_task)
 
         logger.info(
             f"hook_event: type=pre_tool_use, agent_id={agent.id}, "
@@ -636,6 +786,8 @@ def process_pre_tool_use(
 def process_permission_request(
     agent: Agent,
     claude_session_id: str,
+    tool_name: str | None = None,
+    tool_input: dict | None = None,
 ) -> HookEventResult:
     """
     Process a PermissionRequest hook event.
@@ -646,6 +798,8 @@ def process_permission_request(
     Args:
         agent: The correlated agent
         claude_session_id: The Claude session ID
+        tool_name: Name of the tool requesting permission
+        tool_input: The tool's input parameters
 
     Returns:
         HookEventResult with processing outcome
@@ -660,19 +814,48 @@ def process_permission_request(
         # Transition DB task to AWAITING_INPUT if currently PROCESSING or COMMANDED
         current_task = agent.get_current_task()
         did_transition = False
+        question_text = None
         if current_task and current_task.state in (TaskState.PROCESSING, TaskState.COMMANDED):
             current_task.state = TaskState.AWAITING_INPUT
             did_transition = True
 
+            # Create AGENT QUESTION turn with extracted question text
+            question_text = _extract_question_text(tool_name, tool_input)
+            from ..models.turn import Turn, TurnActor, TurnIntent
+            turn = Turn(
+                task_id=current_task.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.QUESTION,
+                text=question_text,
+            )
+            db.session.add(turn)
+
+            # Send OS notification
+            try:
+                from .notification_service import get_notification_service
+                svc = get_notification_service()
+                svc.notify_awaiting_input(
+                    agent_id=str(agent.id),
+                    agent_name=agent.name or f"Agent {agent.id}",
+                    project=agent.project.name if agent.project else None,
+                )
+            except Exception as e:
+                logger.warning(f"Notification send failed (non-fatal): {e}")
+
             logger.info(
                 f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
-                f"task_id={current_task.id}, source=permission_request"
+                f"task_id={current_task.id}, source=permission_request, tool_name={tool_name}"
             )
 
         db.session.commit()
 
         if did_transition:
-            _broadcast_state_change(agent, "permission_request", "AWAITING_INPUT")
+            _broadcast_state_change(
+                agent, "permission_request", "AWAITING_INPUT",
+                message="Permission requested",
+            )
+            if question_text:
+                _broadcast_turn_created(agent, question_text, current_task)
 
         logger.info(
             f"hook_event: type=permission_request, agent_id={agent.id}, "

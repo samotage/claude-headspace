@@ -10,6 +10,7 @@ from flask import Flask
 from src.claude_headspace.models import TaskState
 from src.claude_headspace.routes.dashboard import (
     TIMED_OUT,
+    _get_completed_task_summary,
     calculate_status_counts,
     count_active_agents,
     dashboard_bp,
@@ -273,6 +274,258 @@ class TestGetTaskSummary:
         result = get_task_summary(agent)
         assert result == text
         assert len(result) == 100
+
+    def test_awaiting_input_prefers_agent_question_turn(self):
+        """When AWAITING_INPUT, should show agent's question not user's command."""
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        agent = MagicMock()
+        agent.id = 1
+
+        # User command turn
+        user_turn = MagicMock()
+        user_turn.actor = TurnActor.USER
+        user_turn.intent = TurnIntent.COMMAND
+        user_turn.text = "Fix the login bug"
+        user_turn.summary = None
+
+        # Agent question turn
+        agent_turn = MagicMock()
+        agent_turn.actor = TurnActor.AGENT
+        agent_turn.intent = TurnIntent.QUESTION
+        agent_turn.text = "Which database should we use?"
+        agent_turn.summary = None
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [user_turn, agent_turn]
+        agent.get_current_task.return_value = mock_task
+
+        result = get_task_summary(agent)
+        assert result == "Which database should we use?"
+
+    def test_awaiting_input_prefers_agent_question_summary(self):
+        """When AWAITING_INPUT, should prefer AI summary of agent question."""
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        agent = MagicMock()
+        agent.id = 1
+
+        agent_turn = MagicMock()
+        agent_turn.actor = TurnActor.AGENT
+        agent_turn.intent = TurnIntent.QUESTION
+        agent_turn.text = "Which database should we use for the new feature?"
+        agent_turn.summary = "Asking about database choice"
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [agent_turn]
+        agent.get_current_task.return_value = mock_task
+
+        result = get_task_summary(agent)
+        assert result == "Asking about database choice"
+
+    def test_awaiting_input_falls_back_without_question_turn(self):
+        """When AWAITING_INPUT with no AGENT QUESTION turn, should fall back to most recent."""
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        agent = MagicMock()
+        agent.id = 1
+
+        user_turn = MagicMock()
+        user_turn.actor = TurnActor.USER
+        user_turn.intent = TurnIntent.COMMAND
+        user_turn.text = "Fix the login bug"
+        user_turn.summary = None
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [user_turn]
+        agent.get_current_task.return_value = mock_task
+
+        result = get_task_summary(agent)
+        assert result == "Fix the login bug"
+
+    def test_awaiting_input_truncates_long_question(self):
+        """When AWAITING_INPUT, long agent question text should be truncated."""
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        agent = MagicMock()
+        agent.id = 1
+
+        agent_turn = MagicMock()
+        agent_turn.actor = TurnActor.AGENT
+        agent_turn.intent = TurnIntent.QUESTION
+        agent_turn.text = "Q" * 150
+        agent_turn.summary = None
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [agent_turn]
+        agent.get_current_task.return_value = mock_task
+
+        result = get_task_summary(agent)
+        assert len(result) == 103  # 100 chars + "..."
+        assert result.endswith("...")
+
+
+class TestGetCompletedTaskSummary:
+    """Tests for _get_completed_task_summary helper."""
+
+    def test_returns_task_summary_when_set(self):
+        """Completed task with task.summary returns that summary."""
+        mock_task = MagicMock()
+        mock_task.summary = "Refactored authentication module"
+        mock_task.turns = []
+        result = _get_completed_task_summary(mock_task)
+        assert result == "Refactored authentication module"
+
+    def test_falls_back_to_last_turn_summary(self):
+        """Completed task without task.summary uses last turn's summary."""
+        mock_turn = MagicMock()
+        mock_turn.summary = "Fixed login bug"
+        mock_turn.text = "Raw turn text here"
+
+        mock_task = MagicMock()
+        mock_task.summary = None
+        mock_task.turns = [mock_turn]
+        result = _get_completed_task_summary(mock_task)
+        assert result == "Fixed login bug"
+
+    def test_falls_back_to_last_turn_text(self):
+        """Completed task without summaries uses last turn's raw text."""
+        mock_turn = MagicMock()
+        mock_turn.summary = None
+        mock_turn.text = "Implemented the feature"
+
+        mock_task = MagicMock()
+        mock_task.summary = None
+        mock_task.turns = [mock_turn]
+        result = _get_completed_task_summary(mock_task)
+        assert result == "Implemented the feature"
+
+    def test_truncates_long_turn_text(self):
+        """Long last turn text is truncated to 100 chars."""
+        mock_turn = MagicMock()
+        mock_turn.summary = None
+        mock_turn.text = "A" * 150
+
+        mock_task = MagicMock()
+        mock_task.summary = None
+        mock_task.turns = [mock_turn]
+        result = _get_completed_task_summary(mock_task)
+        assert len(result) == 103  # 100 + "..."
+        assert result.endswith("...")
+
+    def test_no_turns_returns_summarising(self):
+        """Completed task with no turns returns 'Summarising...'."""
+        mock_task = MagicMock()
+        mock_task.summary = None
+        mock_task.turns = []
+        result = _get_completed_task_summary(mock_task)
+        assert result == "Summarising..."
+
+    def test_prefers_task_summary_over_turn_summary(self):
+        """task.summary takes priority over turn summary."""
+        mock_turn = MagicMock()
+        mock_turn.summary = "Turn-level summary"
+        mock_turn.text = "Raw text"
+
+        mock_task = MagicMock()
+        mock_task.summary = "Task-level summary"
+        mock_task.turns = [mock_turn]
+        result = _get_completed_task_summary(mock_task)
+        assert result == "Task-level summary"
+
+
+class TestGetTaskSummaryCompletedFallback:
+    """Tests for get_task_summary() completed task fallback path."""
+
+    def test_completed_task_with_summary(self):
+        """When no active task but most recent is COMPLETE with summary, shows it."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.summary = "Deployed new API endpoint"
+        completed_task.turns = []
+        agent.tasks = [completed_task]
+
+        result = get_task_summary(agent)
+        assert result == "Deployed new API endpoint"
+
+    def test_completed_task_falls_back_to_turn_text(self):
+        """Completed task without summary falls back to turn text."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        mock_turn = MagicMock()
+        mock_turn.summary = None
+        mock_turn.text = "Done with the refactor"
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.summary = None
+        completed_task.turns = [mock_turn]
+        agent.tasks = [completed_task]
+
+        result = get_task_summary(agent)
+        assert result == "Done with the refactor"
+
+    def test_completed_task_prefers_turn_summary_over_text(self):
+        """Completed task prefers turn summary over raw text."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        mock_turn = MagicMock()
+        mock_turn.summary = "Completed authentication refactor"
+        mock_turn.text = "Raw text that should not be used"
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.summary = None
+        completed_task.turns = [mock_turn]
+        agent.tasks = [completed_task]
+
+        result = get_task_summary(agent)
+        assert result == "Completed authentication refactor"
+
+    def test_completed_task_no_summary_no_turns(self):
+        """Completed task with no summary and no turns shows 'Summarising...'."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.summary = None
+        completed_task.turns = []
+        agent.tasks = [completed_task]
+
+        result = get_task_summary(agent)
+        assert result == "Summarising..."
+
+    def test_no_tasks_shows_no_active_task(self):
+        """Agent with no tasks at all shows 'No active task'."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+        agent.tasks = []
+
+        result = get_task_summary(agent)
+        assert result == "No active task"
+
+    def test_most_recent_task_not_complete_shows_no_active_task(self):
+        """When most recent task is not COMPLETE, shows 'No active task'."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        idle_task = MagicMock()
+        idle_task.state = TaskState.IDLE
+        idle_task.summary = "Some old task"
+        agent.tasks = [idle_task]
+
+        result = get_task_summary(agent)
+        assert result == "No active task"
 
 
 class TestGetStateInfo:

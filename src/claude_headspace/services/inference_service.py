@@ -24,15 +24,23 @@ class InferenceServiceError(Exception):
 class InferenceService:
     """Orchestrates inference calls with caching, rate limiting, and logging."""
 
-    def __init__(self, config: dict, db_session_factory=None):
+    def __init__(self, config: dict, db_session_factory=None, database_url: str | None = None):
         """Initialize the inference service.
 
         Args:
             config: Application configuration dictionary
-            db_session_factory: Callable that returns a database session (for logging)
+            db_session_factory: Callable that returns a database session (for logging, backward compat)
+            database_url: Database URL for independent logging session (preferred over db_session_factory)
         """
         self.config = config
-        self._db_session_factory = db_session_factory
+        self._log_session_factory = None
+        self._independent_engine = None
+
+        if database_url:
+            self._init_independent_engine(database_url)
+        elif db_session_factory:
+            self._log_session_factory = db_session_factory
+
         self.client = OpenRouterClient(config)
         self.cache = InferenceCache(config)
         self.rate_limiter = InferenceRateLimiter(config)
@@ -40,6 +48,22 @@ class InferenceService:
         or_config = config.get("openrouter", {})
         self.models = or_config.get("models", {})
         self.pricing = or_config.get("pricing", {})
+
+    def _init_independent_engine(self, database_url: str) -> None:
+        """Create an independent engine and sessionmaker for logging.
+
+        This ensures InferenceCall records are committed in their own
+        transaction, isolated from the caller's session lifecycle.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        self._independent_engine = create_engine(
+            database_url,
+            pool_size=2,
+            pool_pre_ping=True,
+        )
+        self._log_session_factory = sessionmaker(bind=self._independent_engine)
 
     @property
     def is_available(self) -> bool:
@@ -69,29 +93,38 @@ class InferenceService:
         result: InferenceResult | None,
         error_message: str | None = None,
         cached: bool = False,
+        input_text: str | None = None,
         project_id: int | None = None,
         agent_id: int | None = None,
         task_id: int | None = None,
         turn_id: int | None = None,
     ) -> None:
-        """Log an inference call to the database."""
-        if not self._db_session_factory:
+        """Log an inference call to the database.
+
+        When using an independent engine (production), the session is fully
+        isolated from the caller's transaction — commit/rollback here cannot
+        affect the caller's session.
+        """
+        if not self._log_session_factory:
             return
 
+        session = None
         try:
-            session = self._db_session_factory()
+            session = self._log_session_factory()
             cost = None
             if result and result.input_tokens and result.output_tokens:
                 cost = self._calculate_cost(model, result.input_tokens, result.output_tokens)
 
+            now = datetime.now(timezone.utc)
             record = InferenceCall(
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now,
                 level=level,
                 purpose=purpose,
                 model=model,
                 input_tokens=result.input_tokens if result else None,
                 output_tokens=result.output_tokens if result else None,
                 input_hash=input_hash,
+                input_text=input_text,
                 result_text=result.text if result else None,
                 latency_ms=result.latency_ms if result else None,
                 cost=cost,
@@ -104,8 +137,66 @@ class InferenceService:
             )
             session.add(record)
             session.commit()
+
+            self._broadcast_inference_call(
+                record_id=record.id,
+                timestamp=now,
+                level=level,
+                purpose=purpose,
+                model=model,
+                input_tokens=result.input_tokens if result else None,
+                output_tokens=result.output_tokens if result else None,
+                latency_ms=result.latency_ms if result else None,
+                cost=cost,
+                error_message=error_message,
+                cached=cached,
+                project_id=project_id,
+                agent_id=agent_id,
+            )
         except Exception as e:
             logger.error(f"Failed to log inference call: {e}")
+        finally:
+            if session and self._independent_engine:
+                session.close()
+
+    def _broadcast_inference_call(
+        self,
+        record_id: int,
+        timestamp: datetime,
+        level: str,
+        purpose: str,
+        model: str,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        latency_ms: int | None,
+        cost: float | None,
+        error_message: str | None,
+        cached: bool,
+        project_id: int | None,
+        agent_id: int | None,
+    ) -> None:
+        """Broadcast an inference call event via SSE."""
+        try:
+            from .broadcaster import get_broadcaster
+
+            broadcaster = get_broadcaster()
+            broadcaster.broadcast("inference_call", {
+                "id": record_id,
+                "timestamp": timestamp.isoformat(),
+                "level": level,
+                "purpose": purpose,
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "latency_ms": latency_ms,
+                "cost": cost,
+                "error_message": error_message,
+                "cached": cached,
+                "project_id": project_id,
+                "agent_id": agent_id,
+            })
+        except Exception as e:
+            logger.debug(f"Failed to broadcast inference call (non-fatal): {e}")
 
     def infer(
         self,
@@ -159,6 +250,7 @@ class InferenceService:
                 input_hash=input_hash,
                 result=result,
                 cached=True,
+                input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -177,6 +269,7 @@ class InferenceService:
                 input_hash=input_hash,
                 result=None,
                 error_message=rate_check.reason,
+                input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -214,6 +307,7 @@ class InferenceService:
                 model=model,
                 input_hash=input_hash,
                 result=result,
+                input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -231,6 +325,7 @@ class InferenceService:
                 input_hash=input_hash,
                 result=None,
                 error_message=str(e),
+                input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -262,8 +357,8 @@ class InferenceService:
             Dictionary with usage statistics
         """
         if not db_session:
-            if self._db_session_factory:
-                db_session = self._db_session_factory()
+            if self._log_session_factory:
+                db_session = self._log_session_factory()
             else:
                 return {"error": "No database session available"}
 

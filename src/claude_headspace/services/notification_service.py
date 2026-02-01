@@ -22,6 +22,7 @@ class NotificationPreferences:
         "awaiting_input": True,
     })
     rate_limit_seconds: int = 5
+    dashboard_url: str = "http://localhost:5055"
 
 
 class NotificationService:
@@ -144,7 +145,7 @@ class NotificationService:
         agent_name: str,
         event_type: str,
         project: str | None = None,
-        dashboard_url: str = "http://localhost:5050",
+        dashboard_url: str | None = None,
     ) -> bool:
         """
         Send a macOS notification for an agent event.
@@ -203,7 +204,8 @@ class NotificationService:
             message = f"Event: {event_type}"
 
         # Build click-to-navigate URL
-        url = f"{dashboard_url}?highlight={agent_id}"
+        base_url = dashboard_url or self.preferences.dashboard_url
+        url = f"{base_url}?highlight={agent_id}"
 
         # Build and execute command
         cmd = self._build_notification_command(title, subtitle, message, url)

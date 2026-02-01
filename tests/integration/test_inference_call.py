@@ -22,7 +22,7 @@ class TestInferenceCallPersistence:
             timestamp=datetime.now(timezone.utc),
             level=InferenceLevel.TURN.value,
             purpose="Turn summarisation",
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             input_tokens=150,
             output_tokens=50,
             input_hash="abc123def456" * 4 + "abcdef1234567890",
@@ -37,7 +37,7 @@ class TestInferenceCallPersistence:
         fetched = db_session.query(InferenceCall).filter_by(id=call.id).one()
         assert fetched.level == "turn"
         assert fetched.purpose == "Turn summarisation"
-        assert fetched.model == "anthropic/claude-3-5-haiku-20241022"
+        assert fetched.model == "anthropic/claude-3-haiku"
         assert fetched.input_tokens == 150
         assert fetched.output_tokens == 50
         assert fetched.result_text == "This turn covers..."
@@ -50,7 +50,7 @@ class TestInferenceCallPersistence:
             timestamp=datetime.now(timezone.utc),
             level=InferenceLevel.PROJECT.value,
             purpose="Project analysis",
-            model="anthropic/claude-3-5-sonnet-20241022",
+            model="anthropic/claude-3.5-sonnet",
             input_hash="aaa111bbb222" * 4 + "abcdef1234567890",
             error_message="API error 429: Rate limited",
             cached=False,
@@ -69,7 +69,7 @@ class TestInferenceCallPersistence:
             timestamp=datetime.now(timezone.utc),
             level=InferenceLevel.TASK.value,
             purpose="Task summarisation",
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             input_tokens=100,
             output_tokens=40,
             input_hash="cache111222" * 4 + "abcdef12345678901234",
@@ -92,7 +92,7 @@ class TestInferenceCallPersistence:
                 timestamp=datetime.now(timezone.utc),
                 level=level.value,
                 purpose=f"Test {level.value}",
-                model="anthropic/claude-3-5-haiku-20241022",
+                model="anthropic/claude-3-haiku",
                 cached=False,
             )
             db_session.add(call)

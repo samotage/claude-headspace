@@ -64,7 +64,7 @@ class TestTurnSummarisation:
             text="Agent refactored authentication middleware.",
             input_tokens=50,
             output_tokens=10,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=200,
         )
 
@@ -139,7 +139,7 @@ class TestTaskSummarisation:
             text="Completed auth refactoring with 12 tests passing.",
             input_tokens=80,
             output_tokens=15,
-            model="anthropic/claude-3-5-haiku-20241022",
+            model="anthropic/claude-3-haiku",
             latency_ms=300,
         )
 

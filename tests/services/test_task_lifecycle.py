@@ -192,6 +192,99 @@ class TestTaskLifecycleManagerUnit:
         assert turn.intent == TurnIntent.COMPLETION
         assert turn.task_id == mock_task.id
 
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    def test_complete_task_sends_notification(self, mock_get_notif, mock_session, mock_event_writer):
+        """complete_task should send a task_complete OS notification."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.agent_id = mock_agent.id
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        manager.complete_task(mock_task)
+
+        mock_svc.notify_task_complete.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    def test_update_task_state_sends_awaiting_input_notification(self, mock_get_notif, mock_session, mock_event_writer):
+        """update_task_state should send awaiting_input notification when transitioning to AWAITING_INPUT."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.agent_id = mock_agent.id
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        manager.update_task_state(
+            task=mock_task,
+            to_state=TaskState.AWAITING_INPUT,
+            trigger="agent:question",
+        )
+
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    def test_update_task_state_does_not_notify_for_non_awaiting_states(self, mock_get_notif, mock_session, mock_event_writer):
+        """update_task_state should NOT send notification for non-AWAITING_INPUT transitions."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.agent_id = mock_agent.id
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.COMMANDED
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        manager.update_task_state(
+            task=mock_task,
+            to_state=TaskState.PROCESSING,
+            trigger="agent:progress",
+        )
+
+        mock_svc.notify_awaiting_input.assert_not_called()
+
     def test_process_turn_user_command_idle(self, mock_session, mock_event_writer, mock_agent):
         """User command from IDLE should create new task."""
         manager = TaskLifecycleManager(
@@ -538,6 +631,96 @@ class TestTaskLifecycleSessionPassThrough:
 
         call_kwargs = mock_event_writer.write_event.call_args[1]
         assert call_kwargs["session"] is mock_session
+
+
+class TestCompleteTaskSummarisation:
+    """Tests for summarisation triggering in complete_task.
+
+    Note: Uses MagicMock() without spec=Agent/spec=Task to avoid
+    Flask app context issues (see TestTaskLifecycleSessionPassThrough).
+    """
+
+    def test_complete_task_triggers_summarisation(self):
+        """complete_task should trigger turn and task summarisation."""
+        mock_session = MagicMock(spec=Session)
+        mock_event_writer = MagicMock(spec=EventWriter)
+        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_summarisation = MagicMock()
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test"
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+            summarisation_service=mock_summarisation,
+        )
+
+        manager.complete_task(mock_task)
+
+        # Verify task summarisation was triggered
+        mock_summarisation.summarise_task_async.assert_called_once_with(10)
+        # Verify turn summarisation was triggered for the completion turn
+        mock_summarisation.summarise_turn_async.assert_called_once()
+
+    def test_complete_task_no_summarisation_without_service(self):
+        """complete_task should not fail when no summarisation service."""
+        mock_session = MagicMock(spec=Session)
+        mock_event_writer = MagicMock(spec=EventWriter)
+        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test"
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        result = manager.complete_task(mock_task)
+        assert result is True
+
+    def test_complete_task_summarisation_error_non_fatal(self):
+        """Summarisation error in complete_task should not prevent completion."""
+        mock_session = MagicMock(spec=Session)
+        mock_summarisation = MagicMock()
+        mock_summarisation.summarise_turn_async.side_effect = Exception("LLM error")
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test"
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            summarisation_service=mock_summarisation,
+        )
+
+        result = manager.complete_task(mock_task)
+        assert result is True
+        assert mock_task.state == TaskState.COMPLETE
 
 
 class TestTurnProcessingResultDataclass:

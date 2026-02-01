@@ -45,10 +45,18 @@ class HookLifecycleBridge:
         self._event_writer = event_writer
 
     def _get_lifecycle_manager(self) -> TaskLifecycleManager:
-        """Create a TaskLifecycleManager with the current event writer."""
+        """Create a TaskLifecycleManager with event writer and summarisation service."""
+        summarisation_service = None
+        try:
+            from flask import current_app
+            summarisation_service = current_app.extensions.get("summarisation_service")
+        except RuntimeError:
+            logger.debug("No Flask app context for summarisation service lookup")
+
         return TaskLifecycleManager(
             session=db.session,
             event_writer=self._event_writer,
+            summarisation_service=summarisation_service,
         )
 
     @staticmethod
@@ -156,8 +164,14 @@ class HookLifecycleBridge:
         # Extract agent response text from transcript before completing
         agent_text = self._extract_transcript_content(agent)
 
-        # Check if the agent's last response contains a question
-        intent_result = detect_agent_intent(agent_text)
+        # Check if the agent's last response contains a question or end-of-task
+        try:
+            from flask import current_app
+            inference_service = current_app.extensions.get("inference_service")
+        except RuntimeError:
+            inference_service = None
+
+        intent_result = detect_agent_intent(agent_text, inference_service=inference_service)
 
         if intent_result.intent == TurnIntent.QUESTION:
             # Agent asked a question — transition to AWAITING_INPUT, not COMPLETE
@@ -181,8 +195,23 @@ class HookLifecycleBridge:
                 f"task_id={current_task.id}, question detected -> AWAITING_INPUT, "
                 f"pattern={intent_result.matched_pattern}"
             )
+        elif intent_result.intent == TurnIntent.END_OF_TASK:
+            # Agent delivered final summary — COMPLETE with END_OF_TASK intent
+            lifecycle.complete_task(
+                task=current_task,
+                trigger="hook:stop:end_of_task",
+                agent_text=agent_text,
+                intent=TurnIntent.END_OF_TASK,
+            )
+
+            logger.debug(
+                f"HookLifecycleBridge.process_stop: "
+                f"agent_id={agent.id}, session_id={claude_session_id}, "
+                f"task_id={current_task.id}, end_of_task detected -> COMPLETE, "
+                f"pattern={intent_result.matched_pattern}"
+            )
         else:
-            # Normal completion
+            # Normal completion (COMPLETION or PROGRESS)
             lifecycle.complete_task(
                 task=current_task,
                 trigger="hook:stop",

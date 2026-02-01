@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Logging - Claude Headspace{% endblock %}
+{% block title %}Inference Log - Claude Headspace{% endblock %}
 
 {% block content %}
 <div class="min-h-screen">
@@ -13,7 +13,27 @@
         <section class="mb-6" aria-labelledby="filter-heading">
             <div class="bg-elevated rounded-lg border border-border p-4">
                 <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                    <h2 id="filter-heading" class="sr-only">Event Filters</h2>
+                    <h2 id="filter-heading" class="sr-only">Inference Filters</h2>
+
+                    <!-- Level Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-level" class="text-sm text-secondary whitespace-nowrap">Level:</label>
+                        <select id="filter-level"
+                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                aria-label="Filter by level">
+                            <option value="">All Levels</option>
+                        </select>
+                    </div>
+
+                    <!-- Model Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-model" class="text-sm text-secondary whitespace-nowrap">Model:</label>
+                        <select id="filter-model"
+                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                aria-label="Filter by model">
+                            <option value="">All Models</option>
+                        </select>
+                    </div>
 
                     <!-- Project Filter -->
                     <div class="flex items-center gap-2 w-full sm:w-auto">
@@ -35,13 +55,15 @@
                         </select>
                     </div>
 
-                    <!-- Event Type Filter -->
+                    <!-- Cached Filter -->
                     <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <label for="filter-event-type" class="text-sm text-secondary whitespace-nowrap">Type:</label>
-                        <select id="filter-event-type"
+                        <label for="filter-cached" class="text-sm text-secondary whitespace-nowrap">Cached:</label>
+                        <select id="filter-cached"
                                 class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
-                                aria-label="Filter by event type">
-                            <option value="">All Types</option>
+                                aria-label="Filter by cached status">
+                            <option value="">All</option>
+                            <option value="true">Cached</option>
+                            <option value="false">Not Cached</option>
                         </select>
                     </div>
 
@@ -56,14 +78,14 @@
                     <div id="clear-logs-group" class="flex items-center gap-2 w-full sm:w-auto">
                         <button id="clear-logs-btn"
                                 class="w-full sm:w-auto px-4 py-2 bg-red/10 border border-red/30 rounded text-red hover:bg-red/20 hover:border-red transition-colors min-h-[44px]"
-                                aria-label="Clear all logs">
+                                aria-label="Clear all inference logs">
                             Clear All Logs
                         </button>
                         <div id="clear-logs-confirm" class="hidden flex items-center gap-2">
                             <span class="text-sm text-secondary whitespace-nowrap">Delete all?</span>
                             <button id="clear-logs-yes"
                                     class="px-3 py-2 bg-red border border-red rounded text-white hover:bg-red/80 transition-colors min-h-[44px] text-sm font-medium"
-                                    aria-label="Confirm delete all logs">
+                                    aria-label="Confirm delete all inference logs">
                                 Yes, delete
                             </button>
                             <button id="clear-logs-cancel"
@@ -78,51 +100,54 @@
             </div>
         </section>
 
-        <!-- Event Table Section -->
-        <section aria-labelledby="events-heading">
+        <!-- Inference Calls Table Section -->
+        <section aria-labelledby="inference-heading">
             <div class="bg-elevated rounded-lg border border-border">
-                <h2 id="events-heading" class="sr-only">System Events</h2>
+                <h2 id="inference-heading" class="sr-only">Inference Calls</h2>
 
-                <!-- Event Table -->
+                <!-- Inference Table -->
                 <div class="overflow-x-auto">
-                    <table class="w-full" aria-describedby="events-heading">
+                    <table class="w-full" aria-describedby="inference-heading">
                         <thead class="bg-surface border-b border-border">
                             <tr>
                                 <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Timestamp</th>
-                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Project</th>
                                 <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Agent</th>
-                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Event Type</th>
-                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Message</th>
-                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Details</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Level</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Model</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Purpose</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Tokens</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Latency</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Cost</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Status</th>
                             </tr>
                         </thead>
-                        <tbody id="events-table-body" class="divide-y divide-border">
-                            <!-- Events will be rendered by JavaScript -->
+                        <tbody id="inference-table-body" class="divide-y divide-border">
+                            <!-- Inference calls will be rendered by JavaScript -->
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Empty State -->
                 <div id="empty-state" class="hidden text-center py-12">
-                    <p class="text-secondary">No events recorded yet.</p>
-                    <p class="text-muted text-sm mt-1">Events will appear here as they occur.</p>
+                    <p class="text-secondary">No inference calls recorded yet.</p>
+                    <p class="text-muted text-sm mt-1">Inference calls will appear here as they occur.</p>
                 </div>
 
                 <!-- No Results State -->
                 <div id="no-results-state" class="hidden text-center py-12">
-                    <p class="text-secondary">No events match the current filters.</p>
+                    <p class="text-secondary">No inference calls match the current filters.</p>
                     <p class="text-muted text-sm mt-1">Try adjusting your filter criteria.</p>
                 </div>
 
                 <!-- Error State -->
                 <div id="error-state" class="hidden text-center py-12">
-                    <p class="text-red">Failed to load events.</p>
+                    <p class="text-red">Failed to load inference calls.</p>
                     <p class="text-muted text-sm mt-1">Please try refreshing the page.</p>
                 </div>
 
                 <!-- Loading State -->
                 <div id="loading-state" class="text-center py-12">
-                    <p class="text-secondary">Loading events...</p>
+                    <p class="text-secondary">Loading inference calls...</p>
                 </div>
 
                 <!-- Pagination Controls -->
@@ -152,5 +177,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/logging.js') }}"></script>
+<script src="{{ url_for('static', filename='js/logging-inference.js') }}"></script>
 {% endblock %}

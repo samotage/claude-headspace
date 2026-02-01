@@ -17,7 +17,7 @@
   const LoggingPage = {
     currentPage: 1,
     totalPages: 0,
-    expandedEventId: null,
+    expandedEventIds: new Set(),
     sseClient: null,
     filters: {
       project_id: null,
@@ -43,7 +43,6 @@
       this.prevPageBtn = document.getElementById("prev-page-btn");
       this.nextPageBtn = document.getElementById("next-page-btn");
       this.pageIndicator = document.getElementById("page-indicator");
-      this.connectionIndicator = document.getElementById("connection-indicator");
       this.clearLogsBtn = document.getElementById("clear-logs-btn");
       this.clearLogsConfirm = document.getElementById("clear-logs-confirm");
       this.clearLogsYes = document.getElementById("clear-logs-yes");
@@ -101,64 +100,22 @@
     },
 
     /**
-     * Initialize SSE client for real-time updates
+     * Initialize SSE client for real-time updates.
+     * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
      */
     _initSSE: function () {
-      if (typeof SSEClient === "undefined") {
-        console.warn("SSEClient not available");
+      var client = window.headerSSEClient;
+      if (!client) {
+        console.warn("Shared SSE client not available (headerSSEClient)");
         return;
       }
 
-      this.sseClient = new SSEClient({
-        url: "/api/events/stream",
-      });
+      this.sseClient = client;
 
-      // Handle connection state changes
-      this.sseClient.onStateChange((newState) => {
-        this._updateConnectionIndicator(newState);
-      });
-
-      // Handle new events
-      this.sseClient.on("*", (data, eventType) => {
+      // Handle new events (client-side filtering via _eventMatchesFilters)
+      client.on("*", (data, eventType) => {
         this._handleSSEEvent(data, eventType);
       });
-
-      this.sseClient.connect();
-    },
-
-    /**
-     * Update connection indicator based on SSE state
-     */
-    _updateConnectionIndicator: function (state) {
-      if (!this.connectionIndicator) return;
-
-      const dot = this.connectionIndicator.querySelector(".connection-dot");
-      const text = this.connectionIndicator.querySelector(".connection-text");
-
-      switch (state) {
-        case "connected":
-          if (dot) dot.className = "connection-dot w-2 h-2 rounded-full bg-green";
-          if (text) {
-            text.textContent = "Live";
-            text.className = "connection-text text-green text-sm";
-          }
-          break;
-        case "connecting":
-        case "reconnecting":
-          if (dot) dot.className = "connection-dot w-2 h-2 rounded-full bg-amber";
-          if (text) {
-            text.textContent = state === "reconnecting" ? "Reconnecting..." : "Connecting...";
-            text.className = "connection-text text-amber text-sm";
-          }
-          break;
-        case "disconnected":
-          if (dot) dot.className = "connection-dot w-2 h-2 rounded-full bg-muted";
-          if (text) {
-            text.textContent = "Disconnected";
-            text.className = "connection-text text-muted text-sm";
-          }
-          break;
-      }
     },
 
     /**
@@ -268,7 +225,8 @@
         data.agents.forEach((agent) => {
           const option = document.createElement("option");
           option.value = agent.id;
-          option.textContent = "#" + agent.session_uuid.substring(0, 4) + "...";
+          const prefix = agent.is_active ? "\u25CF " : "";
+          option.textContent = prefix + "#" + agent.session_uuid.substring(0, 8);
           this.agentFilter.appendChild(option);
         });
         this.agentFilter.value = currentValue;
@@ -453,7 +411,7 @@
       const agentCell = document.createElement("td");
       agentCell.className = "px-4 py-3 text-sm text-secondary font-mono";
       agentCell.textContent = event.agent_session
-        ? "#" + event.agent_session.substring(0, 4) + "..."
+        ? "#" + event.agent_session.substring(0, 8)
         : "-";
       row.appendChild(agentCell);
 
@@ -465,6 +423,18 @@
       typeBadge.textContent = event.event_type;
       typeCell.appendChild(typeBadge);
       row.appendChild(typeCell);
+
+      // Message (from turn data)
+      const messageCell = document.createElement("td");
+      messageCell.className = "px-4 py-3 text-sm text-secondary truncate max-w-xs";
+      if (event.message) {
+        const actorLabel = event.message_actor === "user" ? "USER" : event.message_actor === "agent" ? "AGENT" : "";
+        const truncated = event.message.length > 80 ? event.message.substring(0, 80) + "..." : event.message;
+        messageCell.textContent = actorLabel ? actorLabel + ": " + truncated : truncated;
+      } else {
+        messageCell.textContent = "-";
+      }
+      row.appendChild(messageCell);
 
       // Details (preview)
       const detailsCell = document.createElement("td");
@@ -487,16 +457,23 @@
       const baseClass = "px-2 py-1 rounded text-xs font-medium";
       switch (eventType) {
         case "state_transition":
+        case "post_tool_use":
           return baseClass + " bg-blue/20 text-blue";
+        case "stop":
+        case "objective_changed":
+          return baseClass + " bg-green/20 text-green";
+        case "pre_tool_use":
+        case "notification":
+        case "permission_request":
+        case "hook_received":
+          return baseClass + " bg-amber/20 text-amber";
+        case "user_prompt_submit":
+        case "session_end":
         case "session_discovered":
         case "session_ended":
           return baseClass + " bg-cyan/20 text-cyan";
         case "turn_detected":
           return baseClass + " bg-purple/20 text-purple";
-        case "hook_received":
-          return baseClass + " bg-amber/20 text-amber";
-        case "objective_changed":
-          return baseClass + " bg-green/20 text-green";
         default:
           return baseClass + " bg-surface text-secondary";
       }
@@ -520,36 +497,26 @@
     _toggleEventDetails: function (event, row) {
       const eventId = event.id;
 
-      // Remove any existing detail rows
-      const existingDetailRow = document.querySelector(".event-detail-row");
-      if (existingDetailRow) {
-        existingDetailRow.remove();
-      }
-
-      // If clicking the same event, just collapse
-      if (this.expandedEventId === eventId) {
-        this.expandedEventId = null;
+      // If already expanded, collapse it
+      if (this.expandedEventIds.has(eventId)) {
+        this.expandedEventIds.delete(eventId);
         row.classList.remove("bg-surface");
+        const existingDetailRow = row.nextElementSibling;
+        if (existingDetailRow && existingDetailRow.classList.contains("event-detail-row")) {
+          existingDetailRow.remove();
+        }
         return;
       }
 
-      // Collapse previously expanded row
-      const prevExpandedRow = document.querySelector(
-        `tr[data-event-id="${this.expandedEventId}"]`
-      );
-      if (prevExpandedRow) {
-        prevExpandedRow.classList.remove("bg-surface");
-      }
-
       // Expand this row
-      this.expandedEventId = eventId;
+      this.expandedEventIds.add(eventId);
       row.classList.add("bg-surface");
 
       // Create detail row
       const detailRow = document.createElement("tr");
       detailRow.className = "event-detail-row";
       const detailCell = document.createElement("td");
-      detailCell.colSpan = 5;
+      detailCell.colSpan = 6;
       detailCell.className = "px-4 py-4 bg-deep border-t border-b border-border";
 
       // Format JSON payload

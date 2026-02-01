@@ -500,11 +500,12 @@ class FileWatcher:
 
         try:
             result = inference_service.infer(
-                prompt=prompt,
                 level="turn",
+                purpose="question_classification",
+                input_text=prompt,
             )
-            if result and result.get("content"):
-                answer = result["content"].strip().lower()
+            if result and result.text:
+                answer = result.text.strip().lower()
                 return answer.startswith("yes")
         except Exception as e:
             logger.warning(f"Inference question classification error: {e}")

@@ -1,89 +1,73 @@
-# Claude Headspace Configuration
-# Environment variables override these values (e.g., FLASK_SERVER_PORT=8080)
-
 server:
-  host: "0.0.0.0"
+  host: 0.0.0.0
   port: 5055
   debug: true
-
 logging:
-  level: "INFO"
-  file: "logs/app.log"
-
-# Database Configuration
-# DATABASE_URL env var takes precedence if set
-# Individual fields can be overridden with DATABASE_HOST, DATABASE_PORT, etc.
+  level: INFO
+  file: logs/app.log
 database:
-  host: "localhost"
+  host: localhost
   port: 5432
-  name: "claude_headspace"
-  user: "samotage"
-  password: ""
+  name: claude_headspace
+  user: samotage
+  password: ''
   pool_size: 10
   pool_timeout: 30
-
-# Claude Code integration
 claude:
-  projects_path: "~/.claude/projects"
-
-# File watcher for monitoring Claude Code session files
+  projects_path: ~/.claude/projects
 file_watcher:
-  polling_interval: 2  # seconds (fallback mode)
-  reconciliation_interval: 60  # seconds (hooks-active mode)
-  inactivity_timeout: 5400  # 90 minutes in seconds
-  debounce_interval: 0.5  # seconds
-  awaiting_input_timeout: 10  # seconds before inference check on stalled transcript
-
-# Event system for persisting events to Postgres
+  polling_interval: 2
+  reconciliation_interval: 60
+  inactivity_timeout: 5400
+  debounce_interval: 0.5
 event_system:
   write_retry_attempts: 3
   write_retry_delay_ms: 100
   max_restarts_per_minute: 5
   shutdown_timeout_seconds: 2
-
-# Server-Sent Events (SSE) for real-time updates
 sse:
   heartbeat_interval_seconds: 30
   max_connections: 100
   connection_timeout_seconds: 60
   retry_after_seconds: 5
-
-# OpenRouter LLM inference configuration
-# OPENROUTER_API_KEY env var required for authentication
+hooks:
+  enabled: true
+  polling_interval_with_hooks: 60
+  fallback_timeout: 300
+notifications:
+  enabled: true
+  sound: true
+  rate_limit_seconds: 5
 openrouter:
-  base_url: "https://openrouter.ai/api/v1"
+  base_url: https://openrouter.ai/api/v1
   timeout: 30
   models:
-    turn: "anthropic/claude-3-5-haiku-20241022"
-    task: "anthropic/claude-3-5-haiku-20241022"
-    project: "anthropic/claude-3-5-sonnet-20241022"
-    objective: "anthropic/claude-3-5-sonnet-20241022"
+    turn: anthropic/claude-3-haiku
+    task: anthropic/claude-3-haiku
+    project: anthropic/claude-3.5-sonnet
+    objective: anthropic/claude-3.5-sonnet
   rate_limits:
     calls_per_minute: 30
     tokens_per_minute: 50000
   cache:
     enabled: true
-    ttl_seconds: 300  # 5 minutes
+    ttl_seconds: 300
   retry:
     max_attempts: 3
     base_delay_seconds: 1.0
     max_delay_seconds: 30.0
   pricing:
-    "anthropic/claude-3-5-haiku-20241022":
-      input_per_million: 1.0
-      output_per_million: 5.0
-    "anthropic/claude-3-5-sonnet-20241022":
+    anthropic/claude-3-haiku:
+      input_per_million: 0.25
+      output_per_million: 1.25
+    anthropic/claude-3.5-sonnet:
       input_per_million: 3.0
       output_per_million: 15.0
-
-# Dashboard display settings
 dashboard:
-  stale_processing_seconds: 600  # Agents PROCESSING longer than this shown as "Timed out"
-  active_timeout_minutes: 60      # Agent considered active if seen within this window
-
-# Agent reaper — cleans up dead agents that missed their session-end hook
+  stale_processing_seconds: 600
+  active_timeout_minutes: 60
 reaper:
   enabled: true
-  interval_seconds: 60            # How often the reaper checks for dead agents
-  inactivity_timeout_seconds: 300  # Mark ended if no hooks received for this long (fallback)
-  grace_period_seconds: 300        # Don't reap agents younger than this
+  interval_seconds: 60
+  inactivity_timeout_seconds: 300
+  grace_period_seconds: 300

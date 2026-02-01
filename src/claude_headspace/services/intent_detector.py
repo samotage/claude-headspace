@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from ..models.task import TaskState
 from ..models.turn import TurnActor, TurnIntent
@@ -79,6 +79,38 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:here'?s a summary of what was done)",
 ]
 
+# End-of-task: summary openers
+END_OF_TASK_SUMMARY_PATTERNS = [
+    r"(?i)(?:here'?s a summary of (?:what|the changes|everything))",
+    r"(?i)(?:here are the (?:changes|updates|modifications) I (?:made|implemented))",
+    r"(?i)(?:to (?:summarise|summarize|recap)|in summary)",
+    r"(?i)(?:the following files were (?:modified|created|updated|changed):)",
+]
+
+# End-of-task: soft-close offers (open-ended, work is done)
+END_OF_TASK_SOFT_CLOSE_PATTERNS = [
+    r"(?i)(?:let me know if you'?d like any (?:adjustments|changes|modifications))",
+    r"(?i)(?:let me know if there'?s anything else)",
+    r"(?i)(?:let me know if you (?:need|want) (?:anything|any) (?:else|other|further))",
+    r"(?i)(?:feel free to (?:test|try|review|check))",
+    r"(?i)(?:is there anything else you'?d like me to)",
+]
+
+# End-of-task: capability handoff
+END_OF_TASK_HANDOFF_PATTERNS = [
+    r"(?i)(?:you (?:can|should) now (?:be able to )?)",
+    r"(?i)(?:everything (?:should be|is) (?:working|in place|ready|set up))",
+]
+
+# Continuation patterns (NEGATIVE guard -- vetoes end-of-task)
+CONTINUATION_PATTERNS = [
+    r"(?i)(?:next I'?ll|now I (?:need to|will|'ll)|moving on to|let me also)",
+    r"(?i)(?:I still need to|remaining (?:work|tasks|steps)|TODO)",
+    r"(?i)(?:should I (?:proceed|continue|go ahead)|want me to continue)",
+    r"(?i)(?:before I can (?:finish|complete)|there'?s (?:one|another) more)",
+    r"(?i)(?:working on|starting|beginning|in progress)",
+]
+
 
 @dataclass
 class IntentResult:
@@ -106,7 +138,77 @@ def _match_patterns(text: str, patterns: list[str]) -> Optional[str]:
     return None
 
 
-def detect_agent_intent(text: Optional[str]) -> IntentResult:
+def _detect_end_of_task(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+    """
+    Detect end-of-task in the tail using multi-signal scoring.
+
+    Returns IntentResult with END_OF_TASK intent, or None if not detected.
+    Confidence levels:
+      - Summary + soft-close: 0.95
+      - Summary + handoff: 0.95
+      - Soft-close alone: 0.7
+      - Summary alone: 0.7
+      - Handoff alone: 0.7
+
+    Returns None if continuation patterns were found (has_continuation=True).
+    """
+    if has_continuation:
+        return None
+
+    has_summary = _match_patterns(tail, END_OF_TASK_SUMMARY_PATTERNS)
+    has_soft_close = _match_patterns(tail, END_OF_TASK_SOFT_CLOSE_PATTERNS)
+    has_handoff = _match_patterns(tail, END_OF_TASK_HANDOFF_PATTERNS)
+
+    if has_summary and (has_soft_close or has_handoff):
+        return IntentResult(TurnIntent.END_OF_TASK, 0.95, matched_pattern=has_summary)
+    elif has_soft_close:
+        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_soft_close)
+    elif has_summary:
+        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_summary)
+    elif has_handoff:
+        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_handoff)
+
+    return None
+
+
+def _infer_completion_classification(
+    tail: str, inference_service: Any
+) -> Optional[IntentResult]:
+    """LLM fallback for ambiguous agent output classification."""
+    prompt = (
+        "Classify this agent output. Is the agent:\n"
+        "A) FINISHED - delivering a final summary with no remaining work\n"
+        "B) CONTINUING - still working, will produce more output\n"
+        "C) ASKING - waiting for user input before proceeding\n"
+        "D) BLOCKED - encountered an error requiring user intervention\n"
+        "\n"
+        "Agent output (last 15 lines):\n"
+        f"{tail}\n"
+        "\n"
+        "Respond with only the letter."
+    )
+
+    try:
+        result = inference_service.infer(
+            level="turn",
+            purpose="completion_classification",
+            input_text=prompt,
+        )
+        letter = result.text.strip().upper()[:1]
+        mapping = {
+            "A": IntentResult(TurnIntent.END_OF_TASK, 0.85),
+            "B": IntentResult(TurnIntent.PROGRESS, 0.85),
+            "C": IntentResult(TurnIntent.QUESTION, 0.85),
+            "D": IntentResult(TurnIntent.QUESTION, 0.85),
+        }
+        return mapping.get(letter)
+    except Exception:
+        return None
+
+
+def detect_agent_intent(
+    text: Optional[str], inference_service: Any = None
+) -> IntentResult:
     """
     Detect the intent of an agent turn using regex pattern matching.
 
@@ -114,12 +216,17 @@ def detect_agent_intent(text: Optional[str]) -> IntentResult:
     1. Return PROGRESS(0.5) for empty/None text
     2. Strip code blocks from text
     3. Extract tail (last 15 non-empty lines)
-    4. Match tail against: QUESTION → BLOCKED → COMPLETION (confidence=1.0)
-    5. If no tail match, match full cleaned text (confidence=0.8)
-    6. Default: PROGRESS (confidence=0.5)
+    4. Check continuation guard
+    5. Tail: END_OF_TASK detection (before QUESTION to catch soft-close offers)
+    6. Tail: QUESTION -> BLOCKED -> COMPLETION (confidence=1.0)
+    7. Full text: END_OF_TASK detection (lower confidence)
+    8. Full text: QUESTION -> BLOCKED -> COMPLETION (confidence=0.8)
+    9. Optional inference fallback for ambiguous cases
+    10. Default: PROGRESS (confidence=0.5)
 
     Args:
         text: The text content of the agent's turn. May be None or empty.
+        inference_service: Optional inference service for LLM fallback.
 
     Returns:
         IntentResult with detected intent and confidence
@@ -137,6 +244,17 @@ def detect_agent_intent(text: Optional[str]) -> IntentResult:
     cleaned = _strip_code_blocks(text.strip())
     tail = _extract_tail(cleaned)
 
+    # Check continuation guard once
+    has_continuation = bool(_match_patterns(tail, CONTINUATION_PATTERNS))
+
+    # Phase 0: End-of-task detection on tail (before QUESTION — catches soft-close offers)
+    eot_result = _detect_end_of_task(tail, has_continuation)
+    if eot_result:
+        logger.debug(
+            f"Detected END_OF_TASK intent in tail: pattern={eot_result.matched_pattern}"
+        )
+        return eot_result
+
     # Phase 1: Match against tail (high confidence)
     for patterns, intent in [
         (QUESTION_PATTERNS, TurnIntent.QUESTION),
@@ -152,7 +270,17 @@ def detect_agent_intent(text: Optional[str]) -> IntentResult:
                 matched_pattern=matched,
             )
 
-    # Phase 2: Match against full cleaned text (contextual confidence)
+    # Phase 2: End-of-task on full text (lower confidence)
+    full_tail = _extract_tail(cleaned, max_lines=30)
+    eot_full = _detect_end_of_task(full_tail, has_continuation)
+    if eot_full:
+        eot_full.confidence = max(0.6, eot_full.confidence - 0.2)
+        logger.debug(
+            f"Detected END_OF_TASK intent in full text: pattern={eot_full.matched_pattern}"
+        )
+        return eot_full
+
+    # Phase 3: Match against full cleaned text (contextual confidence)
     for patterns, intent in [
         (QUESTION_PATTERNS, TurnIntent.QUESTION),
         (BLOCKED_PATTERNS, TurnIntent.QUESTION),
@@ -168,6 +296,15 @@ def detect_agent_intent(text: Optional[str]) -> IntentResult:
                 confidence=0.8,
                 matched_pattern=matched,
             )
+
+    # Phase 4: Optional inference fallback for ambiguous cases
+    if inference_service and getattr(inference_service, "is_available", False):
+        inferred = _infer_completion_classification(tail, inference_service)
+        if inferred:
+            logger.debug(
+                f"Inference fallback classified as {inferred.intent.value}"
+            )
+            return inferred
 
     # Default to progress with lower confidence since no pattern matched
     logger.debug("No pattern matched, defaulting to PROGRESS")

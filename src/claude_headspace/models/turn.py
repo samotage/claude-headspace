@@ -24,6 +24,7 @@ class TurnIntent(enum.Enum):
     QUESTION = "question"
     COMPLETION = "completion"
     PROGRESS = "progress"
+    END_OF_TASK = "end_of_task"
 
 
 class Turn(db.Model):

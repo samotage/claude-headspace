@@ -67,7 +67,7 @@ class OpenRouterClient:
         """Send a chat completion request with retries.
 
         Args:
-            model: The model identifier (e.g., "anthropic/claude-3-5-haiku-20241022")
+            model: The model identifier (e.g., "anthropic/claude-3-haiku")
             messages: List of message dicts with "role" and "content"
             **kwargs: Additional parameters passed to the API
 

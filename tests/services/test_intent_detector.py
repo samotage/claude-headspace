@@ -4,12 +4,20 @@ import pytest
 
 from claude_headspace.models.task import TaskState
 from claude_headspace.models.turn import TurnActor, TurnIntent
+from unittest.mock import MagicMock
+
 from claude_headspace.services.intent_detector import (
     BLOCKED_PATTERNS,
     COMPLETION_PATTERNS,
+    CONTINUATION_PATTERNS,
+    END_OF_TASK_HANDOFF_PATTERNS,
+    END_OF_TASK_SOFT_CLOSE_PATTERNS,
+    END_OF_TASK_SUMMARY_PATTERNS,
     QUESTION_PATTERNS,
     IntentResult,
+    _detect_end_of_task,
     _extract_tail,
+    _infer_completion_classification,
     _strip_code_blocks,
     detect_agent_intent,
     detect_intent,
@@ -543,7 +551,8 @@ class TestExpandedCompletionPatterns:
 
     def test_summary_of_what_was_done(self):
         result = detect_agent_intent("Here's a summary of what was done:\n- Item 1\n- Item 2")
-        assert result.intent == TurnIntent.COMPLETION
+        # Now detected as END_OF_TASK (structured summary) rather than COMPLETION
+        assert result.intent == TurnIntent.END_OF_TASK
 
 
 class TestCompletionFalsePositiveFix:
@@ -573,3 +582,353 @@ class TestCompletionFalsePositiveFix:
         """'everything is set' should be completion."""
         result = detect_agent_intent("Everything is set.")
         assert result.intent == TurnIntent.COMPLETION
+
+
+class TestEndOfTaskDetection:
+    """Tests for end-of-task detection."""
+
+    def test_summary_with_soft_close(self):
+        """Multi-paragraph summary + soft close -> END_OF_TASK with high confidence."""
+        text = (
+            "Here's a summary of the changes I made:\n"
+            "- Updated the config module\n"
+            "- Fixed the login bug\n"
+            "- Added new tests\n\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.95
+
+    def test_summary_with_handoff(self):
+        """Summary + handoff -> END_OF_TASK with high confidence."""
+        text = (
+            "Here's a summary of everything:\n"
+            "- Refactored the service layer\n"
+            "- Updated database schema\n\n"
+            "Everything should be working now."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.95
+
+    def test_summary_with_continuation_downgrades(self):
+        """Summary + 'Next I'll update tests' -> not END_OF_TASK (continuation guard)."""
+        text = (
+            "Here's a summary of the changes I made:\n"
+            "- Updated the config module\n"
+            "- Fixed the login bug\n\n"
+            "Next I'll update the tests to match."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_soft_close_alone(self):
+        """'Let me know if you'd like any changes' alone -> END_OF_TASK."""
+        text = (
+            "I've updated the configuration as requested.\n"
+            "Let me know if you'd like any changes."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.7
+
+    def test_specific_question_not_end_of_task(self):
+        """'Should I proceed with the database migration?' -> QUESTION, not END_OF_TASK."""
+        result = detect_agent_intent("Should I proceed with the database migration?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_open_ended_offer(self):
+        """'Let me know if there's anything else' -> END_OF_TASK."""
+        text = (
+            "The feature is implemented.\n"
+            "Let me know if there's anything else."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_summary_in_code_block_ignored(self):
+        """Code block with 'here's a summary' should not trigger end-of-task."""
+        text = (
+            "Here's the updated code:\n"
+            '```python\n# here\'s a summary of the changes\ndef foo(): pass\n```\n'
+            "I'm still working on the remaining pieces."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_short_done_is_completion_not_eot(self):
+        """Short 'Done.' -> COMPLETION, not END_OF_TASK."""
+        result = detect_agent_intent("Done.")
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_feel_free_to_test(self):
+        """'Feel free to test' -> END_OF_TASK."""
+        text = (
+            "I've implemented the changes.\n"
+            "Feel free to test it out."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_handoff_alone(self):
+        """'You can now use the new API' -> END_OF_TASK."""
+        text = (
+            "The migration is complete.\n"
+            "You can now use the new endpoint."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.7
+
+    def test_real_world_structured_summary(self):
+        """Real-world Claude Code output with structured summary -> END_OF_TASK."""
+        text = (
+            "I've implemented the end-of-task detection feature. Here's a summary of the changes:\n\n"
+            "**Files modified:**\n"
+            "- `src/services/intent_detector.py` - Added END_OF_TASK patterns and detection\n"
+            "- `src/models/turn.py` - Added END_OF_TASK enum value\n"
+            "- `src/services/state_machine.py` - Added transitions\n\n"
+            "**Test results:**\n"
+            "All 47 targeted tests pass.\n\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence >= 0.7
+
+    def test_everything_is_in_place(self):
+        """'Everything is in place' -> END_OF_TASK via handoff pattern."""
+        text = (
+            "I've applied all the changes.\n"
+            "Everything is in place and ready to go."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_to_recap(self):
+        """'To recap' summary -> END_OF_TASK."""
+        text = (
+            "To recap, I made the following changes:\n"
+            "- Fixed the login flow\n"
+            "- Updated the tests"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_files_were_modified(self):
+        """'The following files were modified:' -> END_OF_TASK."""
+        text = (
+            "The following files were modified:\n"
+            "- src/app.py\n"
+            "- src/config.py\n"
+            "- tests/test_app.py"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+
+class TestContinuationPatterns:
+    """Tests for the continuation guard."""
+
+    def test_next_ill(self):
+        """'Next I'll' should trigger continuation guard."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the bug\n"
+            "Next I'll add tests."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_now_i_need_to(self):
+        """'Now I need to' should trigger continuation guard."""
+        text = (
+            "Here are the changes I made:\n"
+            "- Updated config\n"
+            "Now I need to update the tests."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_i_still_need_to(self):
+        """'I still need to' should trigger continuation guard."""
+        text = (
+            "Here's a summary of what I've done so far:\n"
+            "- Fixed the login\n"
+            "I still need to update the documentation."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_should_i_proceed(self):
+        """'Should I proceed' should trigger continuation guard and be QUESTION."""
+        text = "I've made the initial changes. Should I proceed with the rest?"
+        result = detect_agent_intent(text)
+        # This should be QUESTION (from QUESTION_PATTERNS), not END_OF_TASK
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_moving_on_to(self):
+        """'Moving on to' should trigger continuation guard."""
+        text = (
+            "Here are the changes I implemented:\n"
+            "- Updated the API\n"
+            "Moving on to the frontend next."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_working_on(self):
+        """'Working on' should trigger continuation guard."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the database layer\n"
+            "Working on the service layer now."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+
+class TestDetectEndOfTaskUnit:
+    """Unit tests for _detect_end_of_task function."""
+
+    def test_returns_none_with_continuation(self):
+        """Should return None when has_continuation is True."""
+        result = _detect_end_of_task(
+            "Here's a summary of the changes:\nLet me know if you'd like any adjustments.",
+            has_continuation=True,
+        )
+        assert result is None
+
+    def test_summary_plus_soft_close_high_confidence(self):
+        """Summary + soft close -> 0.95 confidence."""
+        tail = (
+            "Here's a summary of the changes:\n"
+            "- Fixed bugs\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = _detect_end_of_task(tail, has_continuation=False)
+        assert result is not None
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.95
+
+    def test_soft_close_alone_lower_confidence(self):
+        """Soft close alone -> 0.7 confidence."""
+        tail = "Let me know if there's anything else."
+        result = _detect_end_of_task(tail, has_continuation=False)
+        assert result is not None
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.7
+
+    def test_no_patterns_returns_none(self):
+        """Should return None when no patterns match."""
+        result = _detect_end_of_task(
+            "I'm still working on the implementation.",
+            has_continuation=False,
+        )
+        assert result is None
+
+
+class TestInferenceClassificationFallback:
+    """Tests for _infer_completion_classification."""
+
+    def test_finished_classification(self):
+        """LLM returning 'A' should map to END_OF_TASK."""
+        mock_service = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = "A"
+        mock_service.infer.return_value = mock_result
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is not None
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.85
+
+    def test_continuing_classification(self):
+        """LLM returning 'B' should map to PROGRESS."""
+        mock_service = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = "B"
+        mock_service.infer.return_value = mock_result
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is not None
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_asking_classification(self):
+        """LLM returning 'C' should map to QUESTION."""
+        mock_service = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = "C"
+        mock_service.infer.return_value = mock_result
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is not None
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_blocked_classification(self):
+        """LLM returning 'D' should map to QUESTION."""
+        mock_service = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = "D"
+        mock_service.infer.return_value = mock_result
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is not None
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_exception_returns_none(self):
+        """Exception from inference should return None (graceful degradation)."""
+        mock_service = MagicMock()
+        mock_service.infer.side_effect = Exception("API error")
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is None
+
+    def test_invalid_letter_returns_none(self):
+        """Invalid letter from LLM should return None."""
+        mock_service = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = "Z"
+        mock_service.infer.return_value = mock_result
+
+        result = _infer_completion_classification("Some tail text", mock_service)
+        assert result is None
+
+    def test_inference_fallback_in_detect_agent_intent(self):
+        """Inference fallback should be called when no patterns match and service available."""
+        mock_service = MagicMock()
+        mock_service.is_available = True
+        mock_result = MagicMock()
+        mock_result.text = "A"
+        mock_service.infer.return_value = mock_result
+
+        # Use text that matches no patterns
+        result = detect_agent_intent(
+            "The error occurs because the database connection times out after 30 seconds.",
+            inference_service=mock_service,
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.confidence == 0.85
+
+    def test_inference_not_called_when_pattern_matches(self):
+        """Inference should NOT be called when a pattern already matched."""
+        mock_service = MagicMock()
+        mock_service.is_available = True
+
+        result = detect_agent_intent("Done.", inference_service=mock_service)
+        assert result.intent == TurnIntent.COMPLETION
+        mock_service.infer.assert_not_called()
+
+    def test_inference_not_called_when_service_unavailable(self):
+        """Inference should NOT be called when service is not available."""
+        mock_service = MagicMock()
+        mock_service.is_available = False
+
+        result = detect_agent_intent(
+            "Some ambiguous text that matches nothing.",
+            inference_service=mock_service,
+        )
+        assert result.intent == TurnIntent.PROGRESS
+        mock_service.infer.assert_not_called()

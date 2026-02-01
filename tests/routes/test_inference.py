@@ -29,8 +29,8 @@ def mock_service():
         "available": True,
         "openrouter_connected": True,
         "models": {
-            "turn": "anthropic/claude-3-5-haiku-20241022",
-            "project": "anthropic/claude-3-5-sonnet-20241022",
+            "turn": "anthropic/claude-3-haiku",
+            "project": "anthropic/claude-3.5-sonnet",
         },
         "rate_limits": {
             "calls_per_minute": {"current": 5, "limit": 30},
@@ -49,15 +49,15 @@ def mock_service():
         "total_calls": 100,
         "calls_by_level": {"turn": 70, "project": 30},
         "calls_by_model": {
-            "anthropic/claude-3-5-haiku-20241022": 70,
-            "anthropic/claude-3-5-sonnet-20241022": 30,
+            "anthropic/claude-3-haiku": 70,
+            "anthropic/claude-3.5-sonnet": 30,
         },
         "total_input_tokens": 15000,
         "total_output_tokens": 5000,
         "total_cost": 0.095,
         "cost_by_model": {
-            "anthropic/claude-3-5-haiku-20241022": 0.04,
-            "anthropic/claude-3-5-sonnet-20241022": 0.055,
+            "anthropic/claude-3-haiku": 0.04,
+            "anthropic/claude-3.5-sonnet": 0.055,
         },
     }
     return service

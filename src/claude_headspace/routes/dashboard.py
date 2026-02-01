@@ -269,6 +269,34 @@ def is_agent_active(agent: Agent) -> bool:
     return agent.last_seen_at >= cutoff
 
 
+def format_last_seen(last_seen_at: datetime) -> str:
+    """
+    Format last_seen_at as time ago in words.
+
+    Args:
+        last_seen_at: When the agent was last seen
+
+    Returns:
+        String like "2m ago", "1h 5m ago", "<1m ago"
+    """
+    now = datetime.now(timezone.utc)
+    delta = now - last_seen_at
+
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 0:
+        total_seconds = 0
+
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m ago"
+    elif minutes > 0:
+        return f"{minutes}m ago"
+    else:
+        return "<1m ago"
+
+
 def format_uptime(started_at: datetime) -> str:
     """
     Format uptime as human-readable duration.
@@ -294,12 +322,50 @@ def format_uptime(started_at: datetime) -> str:
         return "up <1m"
 
 
+def _get_completed_task_summary(task: Task) -> str:
+    """
+    Get summary text for a completed task.
+
+    Priority:
+    1. task.summary (AI-generated task summary)
+    2. Last turn's summary
+    3. Last turn's text (truncated to 100 chars)
+    4. "Summarising..." (async summary in progress)
+
+    Args:
+        task: A completed Task
+
+    Returns:
+        Summary text for the completed task
+    """
+    if task.summary:
+        return task.summary
+
+    if task.turns:
+        last_turn = task.turns[-1]
+        if last_turn.summary:
+            return last_turn.summary
+        if last_turn.text:
+            text = last_turn.text
+            if len(text) > 100:
+                return text[:100] + "..."
+            return text
+
+    return "Summarising..."
+
+
 def get_task_summary(agent: Agent) -> str:
     """
     Get task summary for an agent.
 
-    Prefers AI-generated summaries when available, falls back to
+    When the task is AWAITING_INPUT, prefers the most recent AGENT QUESTION
+    turn (the agent's question to the user) over the user's previous command.
+
+    Otherwise prefers AI-generated summaries when available, falls back to
     raw turn text truncated to 100 chars.
+
+    When no active task exists, checks if the most recent task is COMPLETE
+    and shows its summary (with fallbacks).
 
     Args:
         agent: The agent
@@ -307,11 +373,29 @@ def get_task_summary(agent: Agent) -> str:
     Returns:
         Summary text, truncated turn text, or "No active task"
     """
+    from ..models.turn import TurnActor, TurnIntent
+
     current_task = agent.get_current_task()
     if current_task is None:
+        # Check if most recent task is COMPLETE (eager-loaded, ordered by started_at desc)
+        if agent.tasks and agent.tasks[0].state == TaskState.COMPLETE:
+            return _get_completed_task_summary(agent.tasks[0])
         return "No active task"
 
-    # Get most recent turn
+    # When AWAITING_INPUT, find the most recent AGENT QUESTION turn
+    if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
+        for turn in reversed(current_task.turns):
+            if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+                if turn.summary:
+                    return turn.summary
+                if turn.text:
+                    text = turn.text
+                    if len(text) > 100:
+                        return text[:100] + "..."
+                    return text
+                break
+
+    # Default: get most recent turn
     if current_task.turns:
         recent_turn = current_task.turns[-1] if current_task.turns else None
         if recent_turn:
@@ -453,6 +537,7 @@ def dashboard():
                 "session_uuid": str(agent.session_uuid)[:8],
                 "is_active": is_agent_active(agent),
                 "uptime": format_uptime(agent.started_at),
+                "last_seen": format_last_seen(agent.last_seen_at),
                 "state": effective_state,
                 "state_name": state_name,
                 "state_info": get_state_info(effective_state),

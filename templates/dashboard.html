@@ -118,9 +118,7 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- SSE client (from Sprint 7) -->
-<script src="{{ url_for('static', filename='js/sse-client.js') }}?v={{ cache_bust }}"></script>
-<!-- Dashboard SSE integration -->
+<!-- Dashboard SSE integration (uses shared SSE client from base.html) -->
 <script src="{{ url_for('static', filename='js/dashboard-sse.js') }}?v={{ cache_bust }}"></script>
 <!-- Focus API client -->
 <script src="{{ url_for('static', filename='js/focus-api.js') }}?v={{ cache_bust }}"></script>

@@ -249,6 +249,9 @@
         "session_ended",
         "agent_created",
         "agent_updated",
+        "inference_call",
+        "task_summary",
+        "turn_summary",
         "error",
       ];
 

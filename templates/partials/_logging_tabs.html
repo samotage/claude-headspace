@@ -1,0 +1,17 @@
+<!-- Logging Sub-Tab Navigation -->
+<nav class="logging-subtabs" role="tablist" aria-label="Logging views">
+    <a href="{{ url_for('logging.logging_page') }}"
+       role="tab"
+       class="logging-subtab {% if request.endpoint == 'logging.logging_page' %}active{% endif %}"
+       {% if request.endpoint == 'logging.logging_page' %}aria-selected="true" aria-current="page"{% else %}aria-selected="false"{% endif %}>
+        <span class="subtab-icon">&gt;_</span>
+        <span class="subtab-label">Events</span>
+    </a>
+    <a href="{{ url_for('logging.inference_log_page') }}"
+       role="tab"
+       class="logging-subtab {% if request.endpoint == 'logging.inference_log_page' %}active{% endif %}"
+       {% if request.endpoint == 'logging.inference_log_page' %}aria-selected="true" aria-current="page"{% else %}aria-selected="false"{% endif %}>
+        <span class="subtab-icon">&loz;</span>
+        <span class="subtab-label">Inference</span>
+    </a>
+</nav>

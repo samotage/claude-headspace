@@ -279,6 +279,39 @@ class TestProcessStop(TestHookLifecycleBridge):
                 assert added_turn.intent == TurnIntent.QUESTION
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_end_of_task_detected_completes_with_eot_intent(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """Stop hook should complete with END_OF_TASK intent when end-of-task is detected."""
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            eot_text = (
+                "Here's a summary of the changes I made:\n"
+                "- Updated the config module\n"
+                "- Fixed the login bug\n\n"
+                "Let me know if you'd like any adjustments."
+            )
+            with patch.object(
+                bridge, '_extract_transcript_content',
+                return_value=eot_text,
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
+
+                assert result.success is True
+                mock_lifecycle.complete_task.assert_called_once_with(
+                    task=mock_task,
+                    trigger="hook:stop:end_of_task",
+                    agent_text=eot_text,
+                    intent=TurnIntent.END_OF_TASK,
+                )
+                mock_lifecycle.update_task_state.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
     def test_completion_text_completes_normally(
         self, mock_db, bridge, mock_agent, mock_task
     ):
@@ -567,6 +600,57 @@ class TestEventWriterIntegration(TestHookLifecycleBridge):
         lifecycle = bridge._get_lifecycle_manager()
 
         assert lifecycle._event_writer is None
+
+
+class TestSummarisationServiceInjection(TestHookLifecycleBridge):
+    """Tests for summarisation service injection into lifecycle manager."""
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_lifecycle_manager_receives_summarisation_service(
+        self, mock_db, mock_event_writer
+    ):
+        """Lifecycle manager should receive summarisation_service when available."""
+        from flask import Flask
+
+        mock_summarisation = MagicMock()
+        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
+
+        test_app = Flask(__name__)
+        test_app.extensions["summarisation_service"] = mock_summarisation
+
+        with test_app.app_context():
+            lifecycle = bridge._get_lifecycle_manager()
+
+            assert lifecycle._summarisation_service is mock_summarisation
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_lifecycle_manager_none_when_no_app_context(
+        self, mock_db, mock_event_writer
+    ):
+        """Lifecycle manager should have None summarisation_service outside app context."""
+        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
+
+        # Outside any app context, RuntimeError is caught internally
+        lifecycle = bridge._get_lifecycle_manager()
+
+        assert lifecycle._summarisation_service is None
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_lifecycle_manager_none_when_service_not_registered(
+        self, mock_db, mock_event_writer
+    ):
+        """Lifecycle manager should have None when summarisation_service not in extensions."""
+        from flask import Flask
+
+        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
+
+        test_app = Flask(__name__)
+        # Don't register summarisation_service
+
+        with test_app.app_context():
+            lifecycle = bridge._get_lifecycle_manager()
+
+            assert lifecycle._summarisation_service is None
 
 
 class TestStateMachineValidation(TestHookLifecycleBridge):

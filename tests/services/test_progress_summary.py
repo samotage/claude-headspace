@@ -312,7 +312,7 @@ class TestGenerate:
             text="The team made great progress this week.",
             input_tokens=500,
             output_tokens=100,
-            model="anthropic/claude-3-5-sonnet-20241022",
+            model="anthropic/claude-3.5-sonnet",
             latency_ms=2000,
         )
 

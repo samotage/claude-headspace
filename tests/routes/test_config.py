@@ -47,6 +47,43 @@ class TestConfigPage:
             assert response.status_code == 200
             mock_render.assert_called_once()
 
+    @patch("src.claude_headspace.routes.config.load_config_file")
+    @patch("src.claude_headspace.routes.config.merge_with_defaults")
+    @patch("src.claude_headspace.routes.config.get_config_schema")
+    @patch("src.claude_headspace.routes.config.render_template")
+    def test_config_page_passes_inference_available_true(self, mock_render, mock_schema, mock_merge, mock_load, client, app):
+        """Config page should pass inference_available=True when inference service is registered."""
+        mock_load.return_value = {}
+        mock_merge.return_value = {"server": {"port": 5050}}
+        mock_schema.return_value = [{"name": "server", "title": "Server", "fields": []}]
+        mock_render.return_value = "<html>Config Page</html>"
+
+        with app.app_context():
+            app.extensions["inference_service"] = MagicMock()
+            response = client.get("/config")
+            assert response.status_code == 200
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs.get("inference_available") is True
+
+    @patch("src.claude_headspace.routes.config.load_config_file")
+    @patch("src.claude_headspace.routes.config.merge_with_defaults")
+    @patch("src.claude_headspace.routes.config.get_config_schema")
+    @patch("src.claude_headspace.routes.config.render_template")
+    def test_config_page_passes_inference_available_false(self, mock_render, mock_schema, mock_merge, mock_load, client, app):
+        """Config page should pass inference_available=False when inference service is not registered."""
+        mock_load.return_value = {}
+        mock_merge.return_value = {"server": {"port": 5050}}
+        mock_schema.return_value = [{"name": "server", "title": "Server", "fields": []}]
+        mock_render.return_value = "<html>Config Page</html>"
+
+        with app.app_context():
+            # Ensure no inference service
+            app.extensions.pop("inference_service", None)
+            response = client.get("/config")
+            assert response.status_code == 200
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs.get("inference_available") is False
+
 
 class TestGetConfigAPI:
     """Tests for GET /api/config."""

@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Flask, render_template
 
 from . import __version__
-from .config import load_config, get_value, get_database_url
+from .config import load_config, get_value, get_database_url, get_notifications_config
 from .database import db, init_database
 
 
@@ -124,7 +124,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services.inference_service import InferenceService
     inference_service = InferenceService(
         config=config,
-        db_session_factory=lambda: db.session if db_connected else None,
+        database_url=get_database_url(config) if db_connected else None,
     )
     app.extensions["inference_service"] = inference_service
     if inference_service.is_available:
@@ -149,6 +149,30 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     )
     app.extensions["priority_scoring_service"] = priority_scoring_service
     logger.info("Priority scoring service initialized")
+
+    # Initialize notification service from config
+    from .services.notification_service import (
+        NotificationPreferences, configure_notification_service, get_notification_service,
+    )
+    notif_config = get_notifications_config(config)
+    # Derive dashboard_url from server config if not explicitly set in notifications
+    server_host = get_value(config, "server", "host", default="127.0.0.1")
+    server_port = get_value(config, "server", "port", default=5055)
+    # Use 127.0.0.1 for browser access when host is 0.0.0.0
+    browser_host = "127.0.0.1" if server_host == "0.0.0.0" else server_host
+    dashboard_url = notif_config.get("dashboard_url") or f"http://{browser_host}:{server_port}"
+    configure_notification_service(NotificationPreferences(
+        enabled=notif_config.get("enabled", True),
+        sound=notif_config.get("sound", True),
+        events=notif_config.get("events", {"task_complete": True, "awaiting_input": True}),
+        rate_limit_seconds=notif_config.get("rate_limit_seconds", 5),
+        dashboard_url=dashboard_url,
+    ))
+    notification_service = get_notification_service()
+    app.extensions["notification_service"] = notification_service
+    # Eagerly check terminal-notifier availability for startup diagnostics
+    notification_service.is_available()
+    logger.info(f"Notification service initialized (dashboard_url={dashboard_url})")
 
     # Initialize progress summary service
     from .services.progress_summary import ProgressSummaryService

@@ -1,7 +1,7 @@
 """Tests for hook receiver service."""
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -10,6 +10,7 @@ from claude_headspace.services.hook_receiver import (
     HookEventType,
     HookMode,
     HookReceiverState,
+    _extract_question_text,
     configure_receiver,
     get_receiver_state,
     process_notification,
@@ -390,6 +391,49 @@ class TestProcessNotification:
 
         mock_db.session.commit.assert_called_once()
 
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_sends_os_notification_on_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """Notification should send OS notification when transitioning to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_notification(mock_agent, "session-123")
+
+        assert result.state_changed is True
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_does_not_send_os_notification_without_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """Notification should not send OS notification when no transition occurs."""
+        mock_agent.get_current_task.return_value = None
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_notification(mock_agent, "session-123")
+
+        assert result.state_changed is False
+        mock_svc.notify_awaiting_input.assert_not_called()
+
 
 class TestHookEventResult:
     """Tests for HookEventResult named tuple."""
@@ -479,6 +523,49 @@ class TestProcessPreToolUse:
         assert fresh_state.last_event_type == HookEventType.PRE_TOOL_USE
         assert fresh_state.events_received == 1
 
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_sends_os_notification_on_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """PreToolUse should send OS notification when transitioning to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.state_changed is True
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_does_not_send_os_notification_without_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """PreToolUse should not send OS notification when no transition occurs."""
+        mock_agent.get_current_task.return_value = None
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.state_changed is False
+        mock_svc.notify_awaiting_input.assert_not_called()
+
 
 class TestProcessPermissionRequest:
     """Tests for process_permission_request function."""
@@ -539,3 +626,349 @@ class TestProcessPermissionRequest:
 
         assert fresh_state.last_event_type == HookEventType.PERMISSION_REQUEST
         assert fresh_state.events_received == 1
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_sends_os_notification_on_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """PermissionRequest should send OS notification when transitioning to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_permission_request(mock_agent, "session-123")
+
+        assert result.state_changed is True
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_does_not_send_os_notification_without_transition(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """PermissionRequest should not send OS notification when no transition occurs."""
+        mock_agent.get_current_task.return_value = None
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_permission_request(mock_agent, "session-123")
+
+        assert result.state_changed is False
+        mock_svc.notify_awaiting_input.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_creates_agent_question_turn_with_tool_input(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest should create an AGENT QUESTION turn with extracted text."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash",
+            tool_input={"command": "rm -rf /tmp/test"},
+        )
+
+        assert result.success is True
+        assert result.state_changed is True
+        # Verify a Turn was added to db.session
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.text == "Permission needed: Bash"
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_broadcasts_turn_created_on_transition(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
+        """PermissionRequest should broadcast turn_created when transitioning."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash",
+        )
+
+        assert result.state_changed is True
+        mock_broadcast_turn.assert_called_once()
+        call_args = mock_broadcast_turn.call_args[0]
+        assert call_args[0] == mock_agent
+        assert call_args[1] == "Permission needed: Bash"
+
+
+class TestExtractQuestionText:
+    """Tests for _extract_question_text helper."""
+
+    def test_ask_user_question_structure(self):
+        """Should extract question from AskUserQuestion tool_input."""
+        tool_input = {
+            "questions": [
+                {
+                    "question": "Which database should we use?",
+                    "header": "Database",
+                    "options": [
+                        {"label": "PostgreSQL", "description": "Relational DB"},
+                        {"label": "MongoDB", "description": "Document DB"},
+                    ],
+                    "multiSelect": False,
+                }
+            ]
+        }
+        result = _extract_question_text("AskUserQuestion", tool_input)
+        assert result == "Which database should we use?"
+
+    def test_fallback_to_tool_name(self):
+        """Should fall back to 'Permission needed: <tool_name>' when no question found."""
+        result = _extract_question_text("Bash", {"command": "ls"})
+        assert result == "Permission needed: Bash"
+
+    def test_fallback_no_tool_name(self):
+        """Should return generic text when no tool_name or question."""
+        result = _extract_question_text(None, None)
+        assert result == "Awaiting input"
+
+    def test_empty_questions_list(self):
+        """Should fall back when questions list is empty."""
+        result = _extract_question_text("AskUserQuestion", {"questions": []})
+        assert result == "Permission needed: AskUserQuestion"
+
+    def test_none_tool_input(self):
+        """Should handle None tool_input gracefully."""
+        result = _extract_question_text("Bash", None)
+        assert result == "Permission needed: Bash"
+
+    def test_non_dict_tool_input(self):
+        """Should handle non-dict tool_input gracefully."""
+        result = _extract_question_text("Bash", "string_value")
+        assert result == "Permission needed: Bash"
+
+
+class TestPreToolUseTurnCreation:
+    """Tests for turn creation and broadcasting in process_pre_tool_use."""
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_creates_agent_question_turn_with_ask_user_question(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse should create AGENT QUESTION turn with extracted question text."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        tool_input = {
+            "questions": [{"question": "Which approach do you prefer?", "header": "Approach", "options": [], "multiSelect": False}]
+        }
+
+        result = process_pre_tool_use(
+            mock_agent, "session-123",
+            tool_name="AskUserQuestion",
+            tool_input=tool_input,
+        )
+
+        assert result.success is True
+        assert result.state_changed is True
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.text == "Which approach do you prefer?"
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_broadcasts_turn_created(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+        """PreToolUse should broadcast turn_created when creating a turn."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_pre_tool_use(
+            mock_agent, "session-123",
+            tool_name="AskUserQuestion",
+        )
+
+        assert result.state_changed is True
+        mock_broadcast_turn.assert_called_once()
+        call_args = mock_broadcast_turn.call_args[0]
+        assert call_args[0] == mock_agent
+        assert call_args[1] == "Permission needed: AskUserQuestion"
+        assert call_args[2] == mock_task
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_no_broadcast_without_transition(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+        """PreToolUse should not broadcast when no transition occurs."""
+        mock_agent.get_current_task.return_value = None
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.state_changed is False
+        mock_broadcast_turn.assert_not_called()
+
+
+class TestNotificationTurnDedup:
+    """Tests for notification turn dedup logic."""
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_skips_turn_creation_when_recent_question_exists(self, mock_db, mock_agent, fresh_state):
+        """Notification should skip turn creation if a recent AGENT QUESTION turn exists."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+
+        # Simulate a recent AGENT QUESTION turn (from pre_tool_use)
+        recent_turn = MagicMock()
+        recent_turn.actor = TurnActor.AGENT
+        recent_turn.intent = TurnIntent.QUESTION
+        recent_turn.text = "Which approach do you prefer?"
+        recent_turn.timestamp = datetime.now(timezone.utc) - timedelta(seconds=2)
+        mock_task.turns = [recent_turn]
+
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Input needed",
+            title="Question",
+        )
+
+        assert result.success is True
+        assert result.state_changed is True
+        # Should NOT have added a new turn (dedup)
+        mock_db.session.add.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_creates_turn_when_no_recent_question(self, mock_db, mock_agent, fresh_state):
+        """Notification should create turn when no recent AGENT QUESTION exists."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_task.turns = []  # No existing turns
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Need your input",
+            title="Question",
+        )
+
+        assert result.success is True
+        assert result.state_changed is True
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.text == "[Question] Need your input"
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_broadcasts_turn_created_on_transition(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
+        """Notification should broadcast turn_created when transitioning."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_task.turns = []
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Need your input",
+        )
+
+        assert result.state_changed is True
+        mock_broadcast_turn.assert_called_once()
+        call_args = mock_broadcast_turn.call_args[0]
+        assert call_args[1] == "Need your input"
+
+
+class TestStopTurnBroadcast:
+    """Tests for turn broadcasting in process_stop."""
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_broadcasts_turn_when_awaiting_input(
+        self, mock_db, mock_get_bridge, mock_broadcast_turn, mock_agent, fresh_state
+    ):
+        """Stop should broadcast turn_created when result is AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        # Set up a mock turn on the task
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.text = "Do you want to proceed?"
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [mock_turn]
+
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
+
+        result = process_stop(mock_agent, "session-123")
+
+        assert result.success is True
+        mock_broadcast_turn.assert_called_once_with(mock_agent, "Do you want to proceed?", mock_task)
+
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_no_turn_broadcast_when_complete(
+        self, mock_db, mock_get_bridge, mock_broadcast_turn, mock_agent, fresh_state
+    ):
+        """Stop should not broadcast turn_created when result is COMPLETE."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.COMPLETE
+        mock_task.turns = []
+
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
+
+        result = process_stop(mock_agent, "session-123")
+
+        assert result.success is True
+        mock_broadcast_turn.assert_not_called()

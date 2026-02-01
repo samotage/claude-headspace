@@ -399,6 +399,33 @@ class TestHookPreToolUse:
         assert response.status_code == 400
         assert "session_id" in response.get_json()["message"]
 
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_pre_tool_use")
+    def test_passes_tool_input_to_service(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that tool_input is extracted from payload and passed to service."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=True, new_state="AWAITING_INPUT",
+        )
+
+        tool_input = {"questions": [{"question": "Which one?"}]}
+        response = client.post(
+            "/hook/pre-tool-use",
+            json={
+                "session_id": "test-session",
+                "tool_name": "AskUserQuestion",
+                "tool_input": tool_input,
+            },
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["tool_name"] == "AskUserQuestion"
+        assert call_kwargs[1]["tool_input"] == tool_input
+
 
 class TestHookPermissionRequest:
     """Tests for POST /hook/permission-request."""
@@ -437,3 +464,30 @@ class TestHookPermissionRequest:
         )
         assert response.status_code == 400
         assert "session_id" in response.get_json()["message"]
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_permission_request")
+    def test_passes_tool_name_and_tool_input_to_service(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that tool_name and tool_input are extracted and passed to service."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=True, new_state="AWAITING_INPUT",
+        )
+
+        tool_input = {"command": "npm install"}
+        response = client.post(
+            "/hook/permission-request",
+            json={
+                "session_id": "test-session",
+                "tool_name": "Bash",
+                "tool_input": tool_input,
+            },
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["tool_name"] == "Bash"
+        assert call_kwargs[1]["tool_input"] == tool_input

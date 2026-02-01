@@ -1,11 +1,11 @@
 <!-- Document Viewer Modal -->
 <div id="doc-viewer-modal"
-     class="fixed inset-0 z-50 hidden"
+     class="fixed inset-0 z-[200] hidden"
      role="dialog"
      aria-labelledby="doc-viewer-title"
      aria-modal="true">
     <!-- Backdrop -->
-    <div class="modal-backdrop" onclick="closeDocViewer()"></div>
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeDocViewer()"></div>
 
     <!-- Modal content -->
     <div class="modal-content">

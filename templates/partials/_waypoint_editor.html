@@ -1,11 +1,11 @@
 <!-- Waypoint Editor Modal -->
 <div id="waypoint-editor-modal"
-     class="fixed inset-0 z-50 hidden"
+     class="fixed inset-0 z-[200] hidden"
      role="dialog"
      aria-labelledby="waypoint-editor-title"
      aria-modal="true">
     <!-- Backdrop -->
-    <div class="modal-backdrop" onclick="closeWaypointEditor()"></div>
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWaypointEditor()"></div>
 
     <!-- Modal content -->
     <div class="modal-content" style="max-width: 1100px;">
@@ -90,7 +90,7 @@
 
 <!-- Conflict Resolution Dialog -->
 <div id="waypoint-conflict-dialog"
-     class="fixed inset-0 z-60 hidden"
+     class="fixed inset-0 z-[210] hidden"
      role="alertdialog"
      aria-labelledby="conflict-dialog-title"
      aria-describedby="conflict-dialog-desc"

@@ -62,16 +62,16 @@ DEFAULTS = {
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
-        "dashboard_url": "http://localhost:5050",
+        "dashboard_url": "http://localhost:5055",
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "timeout": 30,
         "models": {
-            "turn": "anthropic/claude-3-5-haiku-20241022",
-            "task": "anthropic/claude-3-5-haiku-20241022",
-            "project": "anthropic/claude-3-5-sonnet-20241022",
-            "objective": "anthropic/claude-3-5-sonnet-20241022",
+            "turn": "anthropic/claude-3-haiku",
+            "task": "anthropic/claude-3-haiku",
+            "project": "anthropic/claude-3.5-sonnet",
+            "objective": "anthropic/claude-3.5-sonnet",
         },
         "rate_limits": {
             "calls_per_minute": 30,
@@ -87,11 +87,11 @@ DEFAULTS = {
             "max_delay_seconds": 30.0,
         },
         "pricing": {
-            "anthropic/claude-3-5-haiku-20241022": {
-                "input_per_million": 1.0,
-                "output_per_million": 5.0,
+            "anthropic/claude-3-haiku": {
+                "input_per_million": 0.25,
+                "output_per_million": 1.25,
             },
-            "anthropic/claude-3-5-sonnet-20241022": {
+            "anthropic/claude-3.5-sonnet": {
                 "input_per_million": 3.0,
                 "output_per_million": 15.0,
             },
