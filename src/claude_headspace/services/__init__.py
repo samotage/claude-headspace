@@ -22,6 +22,7 @@ from .intent_detector import (
     detect_intent,
     QUESTION_PATTERNS,
     COMPLETION_PATTERNS,
+    BLOCKED_PATTERNS,
 )
 from .state_machine import (
     StateMachine,
@@ -79,6 +80,7 @@ __all__ = [
     "detect_intent",
     "QUESTION_PATTERNS",
     "COMPLETION_PATTERNS",
+    "BLOCKED_PATTERNS",
     # State machine
     "StateMachine",
     "TransitionResult",

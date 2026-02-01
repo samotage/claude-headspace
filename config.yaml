@@ -80,3 +80,10 @@ openrouter:
 dashboard:
   stale_processing_seconds: 600  # Agents PROCESSING longer than this shown as "Timed out"
   active_timeout_minutes: 60      # Agent considered active if seen within this window
+
+# Agent reaper — cleans up dead agents that missed their session-end hook
+reaper:
+  enabled: true
+  interval_seconds: 60            # How often the reaper checks for dead agents
+  inactivity_timeout_seconds: 300  # Mark ended if no hooks received for this long (fallback)
+  grace_period_seconds: 300        # Don't reap agents younger than this

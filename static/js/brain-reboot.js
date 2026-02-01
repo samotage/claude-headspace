@@ -16,8 +16,9 @@ function openBrainReboot(projectId, projectName) {
     brainRebootState.content = null;
     brainRebootState.isOpen = true;
 
-    var modal = document.getElementById('brain-reboot-modal');
-    if (!modal) return;
+    var backdrop = document.getElementById('brain-reboot-backdrop');
+    var slider = document.getElementById('brain-reboot-slider');
+    if (!slider) return;
 
     // Update header
     var subtitle = document.getElementById('brain-reboot-subtitle');
@@ -25,8 +26,10 @@ function openBrainReboot(projectId, projectName) {
         subtitle.textContent = projectName || '';
     }
 
-    // Show modal
-    modal.classList.remove('hidden');
+    // Show slider
+    if (backdrop) backdrop.classList.add('active');
+    slider.classList.add('active');
+    document.body.style.overflow = 'hidden';
 
     // Show loading state
     var contentEl = document.getElementById('brain-reboot-content');
@@ -85,10 +88,11 @@ function openBrainReboot(projectId, projectName) {
 }
 
 function closeBrainReboot() {
-    var modal = document.getElementById('brain-reboot-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-    }
+    var backdrop = document.getElementById('brain-reboot-backdrop');
+    var slider = document.getElementById('brain-reboot-slider');
+    if (backdrop) backdrop.classList.remove('active');
+    if (slider) slider.classList.remove('active');
+    document.body.style.overflow = '';
     brainRebootState.isOpen = false;
     document.removeEventListener('keydown', brainRebootKeyHandler);
 }

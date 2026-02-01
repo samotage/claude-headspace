@@ -112,6 +112,12 @@ DEFAULTS = {
         "stale_processing_seconds": 600,
         "active_timeout_minutes": 5,
     },
+    "reaper": {
+        "enabled": True,
+        "interval_seconds": 60,
+        "inactivity_timeout_seconds": 300,
+        "grace_period_seconds": 300,
+    },
 }
 
 # Environment variable mappings

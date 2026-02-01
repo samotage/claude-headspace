@@ -54,6 +54,14 @@ class HookSimulator:
         """POST /hook/notification"""
         return self._post("/hook/notification")
 
+    def pre_tool_use(self, tool_name: str = "AskUserQuestion") -> dict:
+        """POST /hook/pre-tool-use"""
+        return self._post("/hook/pre-tool-use", {"tool_name": tool_name})
+
+    def permission_request(self) -> dict:
+        """POST /hook/permission-request"""
+        return self._post("/hook/permission-request")
+
     def session_end(self) -> dict:
         """POST /hook/session-end"""
         return self._post("/hook/session-end")

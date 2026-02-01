@@ -16,8 +16,9 @@ from typing import Optional
 from ..database import db
 from ..models.agent import Agent
 from ..models.task import Task, TaskState
-from ..models.turn import TurnActor, TurnIntent
+from ..models.turn import Turn, TurnActor, TurnIntent
 from .event_writer import EventWriter
+from .intent_detector import detect_agent_intent
 from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult
 
 logger = logging.getLogger(__name__)
@@ -155,22 +156,48 @@ class HookLifecycleBridge:
         # Extract agent response text from transcript before completing
         agent_text = self._extract_transcript_content(agent)
 
-        # Complete the task (creates the completion turn)
-        lifecycle.complete_task(
-            task=current_task,
-            trigger="hook:stop",
-            agent_text=agent_text,
-        )
+        # Check if the agent's last response contains a question
+        intent_result = detect_agent_intent(agent_text)
+
+        if intent_result.intent == TurnIntent.QUESTION:
+            # Agent asked a question — transition to AWAITING_INPUT, not COMPLETE
+            turn = Turn(
+                task_id=current_task.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.QUESTION,
+                text=agent_text or "",
+            )
+            db.session.add(turn)
+            lifecycle.update_task_state(
+                task=current_task,
+                to_state=TaskState.AWAITING_INPUT,
+                trigger="hook:stop:question_detected",
+                confidence=intent_result.confidence,
+            )
+
+            logger.debug(
+                f"HookLifecycleBridge.process_stop: "
+                f"agent_id={agent.id}, session_id={claude_session_id}, "
+                f"task_id={current_task.id}, question detected -> AWAITING_INPUT, "
+                f"pattern={intent_result.matched_pattern}"
+            )
+        else:
+            # Normal completion
+            lifecycle.complete_task(
+                task=current_task,
+                trigger="hook:stop",
+                agent_text=agent_text,
+            )
+
+            logger.debug(
+                f"HookLifecycleBridge.process_stop: "
+                f"agent_id={agent.id}, session_id={claude_session_id}, "
+                f"task_id={current_task.id}, completed, "
+                f"transcript_text={'yes' if agent_text else 'no'}"
+            )
 
         # Trigger priority scoring on state change
         self._trigger_priority_scoring()
-
-        logger.debug(
-            f"HookLifecycleBridge.process_stop: "
-            f"agent_id={agent.id}, session_id={claude_session_id}, "
-            f"task_id={current_task.id}, completed, "
-            f"transcript_text={'yes' if agent_text else 'no'}"
-        )
 
         return TurnProcessingResult(
             success=True,
@@ -216,13 +243,11 @@ class HookLifecycleBridge:
         """
         Process a PostToolUse hook event.
 
-        When the agent is in AWAITING_INPUT, PostToolUse signals that
-        the user answered and the agent is resuming work.
-
-        Maps to: USER + ANSWER intent (when AWAITING_INPUT)
-        Expected transition: AWAITING_INPUT -> PROCESSING
-
-        If not in AWAITING_INPUT, this is a no-op (tool use during normal processing).
+        Handles three cases:
+        1. No active task: tool use is evidence of activity, so create a
+           PROCESSING task (handles session resume / missing user_prompt_submit).
+        2. AWAITING_INPUT: user answered, resume to PROCESSING.
+        3. Already PROCESSING/COMMANDED: no-op (already tracked).
 
         Args:
             agent: The agent receiving the hook event
@@ -235,22 +260,32 @@ class HookLifecycleBridge:
 
         current_task = lifecycle.get_current_task(agent)
         if not current_task:
-            logger.debug(
+            # Tool use with no active task — agent is working but we missed
+            # the user_prompt_submit (e.g. session resume, sub-agent, /continue).
+            # Create a PROCESSING task to reflect reality.
+            new_task = lifecycle.create_task(agent, TaskState.COMMANDED)
+            lifecycle.update_task_state(
+                task=new_task,
+                to_state=TaskState.PROCESSING,
+                trigger="hook:post_tool_use:inferred",
+                confidence=0.9,
+            )
+
+            self._trigger_priority_scoring()
+
+            logger.info(
                 f"HookLifecycleBridge.process_post_tool_use: "
-                f"No active task for agent_id={agent.id}"
+                f"agent_id={agent.id}, session_id={claude_session_id}, "
+                f"created inferred PROCESSING task_id={new_task.id}"
             )
             return TurnProcessingResult(
                 success=True,
-                error="No active task",
+                task=new_task,
+                new_task_created=True,
             )
 
         if current_task.state != TaskState.AWAITING_INPUT:
-            # Not awaiting input — PostToolUse during normal processing is a no-op
-            logger.debug(
-                f"HookLifecycleBridge.process_post_tool_use: "
-                f"agent_id={agent.id}, task not AWAITING_INPUT "
-                f"(state={current_task.state.value}), ignoring"
-            )
+            # Already processing or commanded — no-op
             return TurnProcessingResult(
                 success=True,
                 task=current_task,

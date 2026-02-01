@@ -10,7 +10,9 @@ from ..services.hook_receiver import (
     HookMode,
     get_receiver_state,
     process_notification,
+    process_permission_request,
     process_post_tool_use,
+    process_pre_tool_use,
     process_session_end,
     process_session_start,
     process_stop,
@@ -439,6 +441,132 @@ def hook_post_tool_use():
 
     except Exception as e:
         logger.exception(f"Error handling post_tool_use hook: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@hooks_bp.route("/hook/pre-tool-use", methods=["POST"])
+def hook_pre_tool_use():
+    """
+    Handle Claude Code PreToolUse hook.
+
+    Fires before a tool executes. When the tool is AskUserQuestion, this
+    signals AWAITING_INPUT immediately (faster than the Notification hook).
+
+    Expected payload:
+    {
+        "session_id": "claude-session-id",
+        "tool_name": "AskUserQuestion"  // optional
+    }
+
+    Returns:
+        200: Event processed successfully
+        400: Invalid payload
+        500: Processing error
+    """
+    start_time = time.time()
+
+    state = get_receiver_state()
+    if not state.enabled:
+        return jsonify({"status": "ignored", "reason": "hooks_disabled"}), 200
+
+    data, error = _validate_hook_payload(["session_id"])
+    if error:
+        return jsonify({"status": "error", "message": error}), 400
+
+    session_id = data["session_id"]
+    working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
+    tool_name = data.get("tool_name")
+
+    try:
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        result = process_pre_tool_use(
+            correlation.agent, session_id, tool_name=tool_name
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        _log_hook_event("pre_tool_use", session_id, latency_ms)
+
+        if result.success:
+            return jsonify({
+                "status": "ok",
+                "agent_id": result.agent_id,
+                "state_changed": result.state_changed,
+                "new_state": result.new_state,
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": result.error_message,
+            }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for pre_tool_use: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
+
+    except Exception as e:
+        logger.exception(f"Error handling pre_tool_use hook: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@hooks_bp.route("/hook/permission-request", methods=["POST"])
+def hook_permission_request():
+    """
+    Handle Claude Code PermissionRequest hook.
+
+    Fires when a permission dialog is shown to the user. Signals
+    AWAITING_INPUT immediately (faster than the Notification hook).
+
+    Expected payload:
+    {
+        "session_id": "claude-session-id"
+    }
+
+    Returns:
+        200: Event processed successfully
+        400: Invalid payload
+        500: Processing error
+    """
+    start_time = time.time()
+
+    state = get_receiver_state()
+    if not state.enabled:
+        return jsonify({"status": "ignored", "reason": "hooks_disabled"}), 200
+
+    data, error = _validate_hook_payload(["session_id"])
+    if error:
+        return jsonify({"status": "error", "message": error}), 400
+
+    session_id = data["session_id"]
+    working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
+
+    try:
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        result = process_permission_request(correlation.agent, session_id)
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        _log_hook_event("permission_request", session_id, latency_ms)
+
+        if result.success:
+            return jsonify({
+                "status": "ok",
+                "agent_id": result.agent_id,
+                "state_changed": result.state_changed,
+                "new_state": result.new_state,
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": result.error_message,
+            }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for permission_request: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
+
+    except Exception as e:
+        logger.exception(f"Error handling permission_request hook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

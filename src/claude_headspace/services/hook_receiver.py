@@ -33,6 +33,8 @@ class HookEventType(str, Enum):
     STOP = "stop"  # Turn complete
     NOTIFICATION = "notification"
     POST_TOOL_USE = "post_tool_use"
+    PRE_TOOL_USE = "pre_tool_use"
+    PERMISSION_REQUEST = "permission_request"
 
 
 class HookMode(str, Enum):
@@ -381,25 +383,29 @@ def process_stop(
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Use lifecycle bridge to transition task to COMPLETE
+        # Use lifecycle bridge to transition task (may be COMPLETE or AWAITING_INPUT)
         bridge = get_hook_bridge()
         result = bridge.process_stop(agent, claude_session_id)
 
         db.session.commit()
 
-        # Broadcast state change to SSE clients
-        _broadcast_state_change(agent, "stop", TaskState.COMPLETE.value)
+        # Only broadcast if there was actually a task to transition
+        if result.task:
+            actual_state = result.task.state.value
+            _broadcast_state_change(agent, "stop", actual_state)
+        else:
+            actual_state = None
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
-            f"session_id={claude_session_id}, task completed"
+            f"session_id={claude_session_id}, new_state={actual_state}"
         )
 
         return HookEventResult(
             success=result.success,
             agent_id=agent.id,
-            state_changed=True,
-            new_state=TaskState.COMPLETE.value,
+            state_changed=result.task is not None,
+            new_state=actual_state,
             error_message=result.error,
         )
     except Exception as e:
@@ -556,6 +562,132 @@ def process_post_tool_use(
         )
     except Exception as e:
         logger.exception(f"Error processing post_tool_use: {e}")
+        db.session.rollback()
+        return HookEventResult(
+            success=False,
+            error_message=str(e),
+        )
+
+
+def process_pre_tool_use(
+    agent: Agent,
+    claude_session_id: str,
+    tool_name: str | None = None,
+) -> HookEventResult:
+    """
+    Process a PreToolUse hook event.
+
+    PreToolUse fires before a tool executes. When the tool is AskUserQuestion,
+    this signals AWAITING_INPUT immediately (faster than the Notification hook).
+
+    Args:
+        agent: The correlated agent
+        claude_session_id: The Claude session ID
+        tool_name: Name of the tool about to be used (e.g. "AskUserQuestion")
+
+    Returns:
+        HookEventResult with processing outcome
+    """
+    state = get_receiver_state()
+    state.record_event(HookEventType.PRE_TOOL_USE)
+
+    try:
+        # Update agent timestamp
+        agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Transition DB task to AWAITING_INPUT if currently PROCESSING or COMMANDED
+        current_task = agent.get_current_task()
+        did_transition = False
+        if current_task and current_task.state in (TaskState.PROCESSING, TaskState.COMMANDED):
+            current_task.state = TaskState.AWAITING_INPUT
+            did_transition = True
+
+            logger.info(
+                f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
+                f"task_id={current_task.id}, tool_name={tool_name}"
+            )
+
+        db.session.commit()
+
+        if did_transition:
+            _broadcast_state_change(agent, "pre_tool_use", "AWAITING_INPUT")
+
+        logger.info(
+            f"hook_event: type=pre_tool_use, agent_id={agent.id}, "
+            f"session_id={claude_session_id}, tool_name={tool_name}, "
+            f"{'immediate AWAITING_INPUT' if did_transition else 'ignored (no active processing task)'}"
+        )
+
+        return HookEventResult(
+            success=True,
+            agent_id=agent.id,
+            state_changed=did_transition,
+            new_state="AWAITING_INPUT" if did_transition else None,
+        )
+    except Exception as e:
+        logger.exception(f"Error processing pre_tool_use: {e}")
+        db.session.rollback()
+        return HookEventResult(
+            success=False,
+            error_message=str(e),
+        )
+
+
+def process_permission_request(
+    agent: Agent,
+    claude_session_id: str,
+) -> HookEventResult:
+    """
+    Process a PermissionRequest hook event.
+
+    PermissionRequest fires when a permission dialog is shown to the user.
+    This signals AWAITING_INPUT immediately (faster than the Notification hook).
+
+    Args:
+        agent: The correlated agent
+        claude_session_id: The Claude session ID
+
+    Returns:
+        HookEventResult with processing outcome
+    """
+    state = get_receiver_state()
+    state.record_event(HookEventType.PERMISSION_REQUEST)
+
+    try:
+        # Update agent timestamp
+        agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Transition DB task to AWAITING_INPUT if currently PROCESSING or COMMANDED
+        current_task = agent.get_current_task()
+        did_transition = False
+        if current_task and current_task.state in (TaskState.PROCESSING, TaskState.COMMANDED):
+            current_task.state = TaskState.AWAITING_INPUT
+            did_transition = True
+
+            logger.info(
+                f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
+                f"task_id={current_task.id}, source=permission_request"
+            )
+
+        db.session.commit()
+
+        if did_transition:
+            _broadcast_state_change(agent, "permission_request", "AWAITING_INPUT")
+
+        logger.info(
+            f"hook_event: type=permission_request, agent_id={agent.id}, "
+            f"session_id={claude_session_id}, "
+            f"{'immediate AWAITING_INPUT' if did_transition else 'ignored (no active processing task)'}"
+        )
+
+        return HookEventResult(
+            success=True,
+            agent_id=agent.id,
+            state_changed=did_transition,
+            new_state="AWAITING_INPUT" if did_transition else None,
+        )
+    except Exception as e:
+        logger.exception(f"Error processing permission_request: {e}")
         db.session.rollback()
         return HookEventResult(
             success=False,

@@ -44,16 +44,10 @@
 
         <!-- Active agent count + actions -->
         <div class="flex items-center gap-2">
-            <button class="px-2 py-0.5 text-xs font-medium rounded border border-purple/30 text-purple hover:bg-purple/10 transition-colors"
+            <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
                     onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, '{{ project.name }}')"
                     title="Generate brain reboot context document">
                 Brain Reboot
-            </button>
-            <button class="progress-summary-btn px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="event.stopPropagation(); toggleProgressSummary({{ project.id }})"
-                    data-project-id="{{ project.id }}"
-                    title="Generate or view progress summary">
-                Headspace
             </button>
             <span class="text-secondary text-sm">
                 [{{ project.active_count }} active]
@@ -70,23 +64,6 @@
 
     <!-- Project content (collapsible) -->
     <div id="project-{{ project.id }}-content" class="project-content">
-        <!-- Progress Summary panel (hidden by default) -->
-        <div id="progress-summary-{{ project.id }}" class="progress-summary-panel hidden border-t border-border bg-deep">
-            <div class="px-4 py-3">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-secondary text-sm font-medium">Progress Summary</span>
-                    <button class="generate-summary-btn px-2 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                            onclick="event.stopPropagation(); generateProgressSummary({{ project.id }})"
-                            data-project-id="{{ project.id }}">
-                        Generate
-                    </button>
-                </div>
-                <div class="progress-summary-content text-secondary text-sm" data-project-id="{{ project.id }}">
-                    <p class="text-muted italic">Click Generate to create a progress summary from git history.</p>
-                </div>
-            </div>
-        </div>
-
         <!-- Waypoint preview (if available) -->
         {% if project.waypoint %}
         <div class="px-4 py-2 border-t border-border bg-deep flex items-center gap-2">

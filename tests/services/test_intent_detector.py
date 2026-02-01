@@ -5,9 +5,12 @@ import pytest
 from claude_headspace.models.task import TaskState
 from claude_headspace.models.turn import TurnActor, TurnIntent
 from claude_headspace.services.intent_detector import (
+    BLOCKED_PATTERNS,
     COMPLETION_PATTERNS,
     QUESTION_PATTERNS,
     IntentResult,
+    _extract_tail,
+    _strip_code_blocks,
     detect_agent_intent,
     detect_intent,
     detect_user_intent,
@@ -237,6 +240,12 @@ class TestPatternAccuracy:
         ("Shall I run the tests now?", True),
         ("May I delete the old file?", True),
         ("Let me know if you have questions?", True),
+        # New expanded patterns
+        ("How would you like me to handle this?", True),
+        ("Which approach would you prefer?", True),
+        ("Before I proceed, should I back up?", True),
+        ("I need your confirmation on this.", True),
+        ("I don't have permission to access that.", True),  # Blocked → QUESTION
         # False positives we want to avoid
         ("The query uses SELECT * WHERE id=?", False),  # Code
         ('pattern = r"foo?"', False),  # Regex in code
@@ -253,9 +262,14 @@ class TestPatternAccuracy:
         ("Changes have been applied.", True),
         ("Implementation is complete.", True),
         ("Feature is ready.", True),
+        # New expanded patterns
+        ("All tests are passing.", True),
+        ("The PR is ready for review.", True),
+        ("Here's a summary of what was done:\n- Fixed bug", True),
         # False positives we want to avoid
         ("The task is not done yet.", False),  # Negative
         ("I'm working on completing it.", False),  # In progress
+        ("All changes will be applied after review.", False),  # Future tense
     ]
 
     def test_question_pattern_accuracy(self):
@@ -285,3 +299,277 @@ class TestPatternAccuracy:
 
         accuracy = correct / total
         assert accuracy >= 0.9, f"Completion accuracy {accuracy:.1%} < 90%"
+
+
+class TestStripCodeBlocks:
+    """Tests for _strip_code_blocks preprocessing."""
+
+    def test_removes_fenced_code_block(self):
+        """Fenced code blocks should be stripped."""
+        text = "Here's the code:\n```python\ndef foo():\n    return 42\n```\nDone."
+        result = _strip_code_blocks(text)
+        assert "def foo" not in result
+        assert "Done." in result
+
+    def test_removes_multiple_code_blocks(self):
+        """Multiple code blocks should all be stripped."""
+        text = "Block 1:\n```js\nconst x = 1;\n```\nBlock 2:\n```py\ny = 2\n```\nEnd."
+        result = _strip_code_blocks(text)
+        assert "const x" not in result
+        assert "y = 2" not in result
+        assert "End." in result
+
+    def test_preserves_inline_backticks(self):
+        """Inline backticks (`code`) should not be stripped."""
+        text = "Use `foo()` to call it."
+        result = _strip_code_blocks(text)
+        assert result == text
+
+    def test_preserves_text_without_code_blocks(self):
+        """Text with no code blocks should pass through unchanged."""
+        text = "Just a normal sentence."
+        result = _strip_code_blocks(text)
+        assert result == text
+
+    def test_empty_string(self):
+        """Empty string should return empty string."""
+        assert _strip_code_blocks("") == ""
+
+
+class TestExtractTail:
+    """Tests for _extract_tail preprocessing."""
+
+    def test_extracts_last_n_lines(self):
+        """Should return last N non-empty lines."""
+        lines = "\n".join(f"line {i}" for i in range(30))
+        result = _extract_tail(lines, max_lines=5)
+        assert "line 25" in result
+        assert "line 29" in result
+        assert "line 10" not in result
+
+    def test_skips_empty_lines(self):
+        """Empty lines should not count toward the limit."""
+        text = "first\n\n\nsecond\n\n\nthird"
+        result = _extract_tail(text, max_lines=2)
+        assert "second" in result
+        assert "third" in result
+        assert "first" not in result
+
+    def test_short_text_returns_all(self):
+        """Text shorter than max_lines returns all non-empty lines."""
+        text = "one\ntwo\nthree"
+        result = _extract_tail(text, max_lines=15)
+        assert "one" in result
+        assert "three" in result
+
+    def test_empty_text(self):
+        """Empty text returns empty string."""
+        assert _extract_tail("") == ""
+
+
+class TestCodeBlockFalsePositives:
+    """Tests that code block content doesn't trigger false positives."""
+
+    def test_question_mark_in_code_block(self):
+        """Ternary ? in code block should not trigger QUESTION."""
+        text = "Here's the fix:\n```js\nconst x = y ? 1 : 0;\n```\nI've applied the change."
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_should_i_in_code_comment(self):
+        """'Should I' inside a code block comment should not trigger QUESTION."""
+        text = "Updated the code:\n```python\n# Should I refactor this later?\ndef foo(): pass\n```\nChanges applied."
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_done_in_code_block(self):
+        """'done' inside a code block should not trigger COMPLETION by itself."""
+        text = "Here's the output:\n```\ndone\nprocessing complete\n```\nI'm still working on the next part."
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_please_confirm_in_code_block(self):
+        """'please confirm' in a code block should not trigger QUESTION."""
+        text = 'Updated:\n```yaml\nmessage: "please confirm your email"\n```\nApplied the config.'
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+
+class TestTailExtractionIntegration:
+    """Tests for tail extraction affecting detection confidence."""
+
+    def test_question_in_tail_gets_high_confidence(self):
+        """Question at end of long output should get confidence=1.0."""
+        # Build long text with question at end
+        lines = ["Working on the implementation..."] * 20
+        lines.append("Would you like me to continue?")
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.QUESTION
+        assert result.confidence == 1.0
+
+    def test_question_outside_tail_gets_lower_confidence(self):
+        """Question buried early in long output should get confidence=0.8."""
+        lines = ["Should I refactor this?"]  # Question at top
+        lines.extend(["Processing line..."] * 20)  # 20 progress lines after
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        # "Should I" at position 0 won't be in tail (last 15 of 21 lines)
+        # But it WILL match in full-text scan at 0.8
+        assert result.intent == TurnIntent.QUESTION
+        assert result.confidence == 0.8
+
+
+class TestBlockedErrorPatterns:
+    """Tests for blocked/error pattern detection (mapped to QUESTION)."""
+
+    def test_permission_denied(self):
+        """Permission denied should map to QUESTION."""
+        result = detect_agent_intent("I don't have permission to access that file.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_cant_access(self):
+        """Can't access should map to QUESTION."""
+        result = detect_agent_intent("I can't access the repository.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_requires_authentication(self):
+        """Requires authentication should map to QUESTION."""
+        result = detect_agent_intent("This requires authentication to proceed.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_error_prefix(self):
+        """Error: prefix should map to QUESTION."""
+        result = detect_agent_intent("Error: Unable to connect to the database.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_failed_to(self):
+        """Failed to should map to QUESTION."""
+        result = detect_agent_intent("Failed to install the dependency.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_unable_to(self):
+        """I'm unable to should map to QUESTION."""
+        result = detect_agent_intent("I'm unable to find the file you mentioned.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_couldnt(self):
+        """I couldn't should map to QUESTION."""
+        result = detect_agent_intent("I couldn't locate the configuration file.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_was_unable_to(self):
+        """I was unable to should map to QUESTION."""
+        result = detect_agent_intent("I was unable to parse the JSON response.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_error_in_code_block_not_detected(self):
+        """Error pattern inside a code block should not trigger QUESTION."""
+        text = "Here's the log:\n```\nError: something failed\n```\nI've fixed the issue and applied the changes."
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+
+class TestExpandedQuestionPatterns:
+    """Tests for newly added question patterns."""
+
+    def test_want_me_to(self):
+        result = detect_agent_intent("Do you want me to refactor this module?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_how_would_you_like(self):
+        result = detect_agent_intent("How would you like me to handle the error case?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_whats_your_preference(self):
+        result = detect_agent_intent("What's your preference for the naming convention?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_which_approach_prefer(self):
+        result = detect_agent_intent("Which approach would you prefer for the caching layer?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_before_i_proceed(self):
+        result = detect_agent_intent("Before I proceed, I wanted to check something.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_i_need_your_input(self):
+        result = detect_agent_intent("I need your input on the database schema.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_i_need_your_confirmation(self):
+        result = detect_agent_intent("I need your confirmation before making changes.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_do_you_have_a_preference(self):
+        result = detect_agent_intent("Do you have a preference between Redis and Memcached?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_here_are_options(self):
+        result = detect_agent_intent("Here are a few options:\n1. Option A\n2. Option B")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_there_are_two_approaches(self):
+        result = detect_agent_intent("There are two approaches:\n- Approach A\n- Approach B")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_i_have_a_few_questions(self):
+        result = detect_agent_intent("I have a few questions:\n1. What's the target?\n2. Which DB?")
+        assert result.intent == TurnIntent.QUESTION
+
+
+class TestExpandedCompletionPatterns:
+    """Tests for newly added completion patterns."""
+
+    def test_made_following_changes(self):
+        result = detect_agent_intent("I've made the following changes:\n- Updated config\n- Fixed bug")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_tests_passing(self):
+        result = detect_agent_intent("All tests are passing.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_pr_ready_for_review(self):
+        result = detect_agent_intent("The PR is ready for review.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_committed_to_branch(self):
+        result = detect_agent_intent("Committed to branch feature/new-feature.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_changes_have_been_pushed(self):
+        result = detect_agent_intent("Changes have been pushed to the remote.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_summary_of_what_was_done(self):
+        result = detect_agent_intent("Here's a summary of what was done:\n- Item 1\n- Item 2")
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestCompletionFalsePositiveFix:
+    """Tests that the tightened completion pattern rejects mid-sentence matches."""
+
+    def test_all_changes_will_be_applied_is_progress(self):
+        """Future tense 'all changes will be applied' should NOT be completion."""
+        result = detect_agent_intent("All changes will be applied after review.")
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_all_changes_have_been_applied_is_completion(self):
+        """Past tense 'all changes have been applied' should be completion."""
+        result = detect_agent_intent("All changes have been applied.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ready_to_start_is_progress(self):
+        """'ready to start' should NOT be completion (was previously matched)."""
+        result = detect_agent_intent("I'm ready to start working on the feature.")
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_ready_for_deployment_is_progress(self):
+        """'ready for deployment' alone should NOT be completion."""
+        result = detect_agent_intent("The system is ready for deployment review.")
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_everything_is_set_is_completion(self):
+        """'everything is set' should be completion."""
+        result = detect_agent_intent("Everything is set.")
+        assert result.intent == TurnIntent.COMPLETION

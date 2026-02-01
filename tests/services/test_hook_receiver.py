@@ -13,6 +13,8 @@ from claude_headspace.services.hook_receiver import (
     configure_receiver,
     get_receiver_state,
     process_notification,
+    process_permission_request,
+    process_pre_tool_use,
     process_session_end,
     process_session_start,
     process_stop,
@@ -53,6 +55,8 @@ class TestHookEventType:
         assert HookEventType.USER_PROMPT_SUBMIT == "user_prompt_submit"
         assert HookEventType.STOP == "stop"
         assert HookEventType.NOTIFICATION == "notification"
+        assert HookEventType.PRE_TOOL_USE == "pre_tool_use"
+        assert HookEventType.PERMISSION_REQUEST == "permission_request"
 
 
 class TestHookMode:
@@ -250,6 +254,57 @@ class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver.db")
     def test_successful_stop(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
         """Test stop transitions task to COMPLETE via bridge."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.COMPLETE
+
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
+
+        result = process_stop(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is True
+        assert result.new_state == "complete"
+        mock_bridge.process_stop.assert_called_once_with(mock_agent, "session-123")
+
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_stop_with_question_detected_returns_awaiting_input(
+        self, mock_db, mock_get_bridge, mock_agent, fresh_state
+    ):
+        """Test stop returns AWAITING_INPUT when bridge detects a question."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=mock_task,
+        )
+
+        result = process_stop(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is True
+        assert result.new_state == "awaiting_input"
+
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_stop_with_no_task_is_noop(
+        self, mock_db, mock_get_bridge, mock_agent, fresh_state
+    ):
+        """Test stop is a no-op when bridge returns no task (no broadcast)."""
         from claude_headspace.services.task_lifecycle import TurnProcessingResult
 
         mock_bridge = MagicMock()
@@ -262,9 +317,8 @@ class TestProcessStop:
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
-        assert result.state_changed is True
-        assert result.new_state == "complete"
-        mock_bridge.process_stop.assert_called_once_with(mock_agent, "session-123")
+        assert result.state_changed is False
+        assert result.new_state is None
 
 
 class TestProcessNotification:
@@ -363,3 +417,125 @@ class TestHookEventResult:
 
         assert result.success is False
         assert result.error_message == "Something went wrong"
+
+
+class TestProcessPreToolUse:
+    """Tests for process_pre_tool_use function."""
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_processing_task_transitions_to_awaiting_input(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse with a PROCESSING task should transition to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.success is True
+        assert result.state_changed is True
+        assert result.new_state == "AWAITING_INPUT"
+        assert mock_task.state == TaskState.AWAITING_INPUT
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_no_active_task_is_noop(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse with no active task should not transition."""
+        mock_agent.get_current_task.return_value = None
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_already_awaiting_input_is_noop(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse when task is already AWAITING_INPUT should not re-transition."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert mock_task.state == TaskState.AWAITING_INPUT
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_updates_timestamp_and_commits(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse should update timestamp and commit DB state."""
+        process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        mock_db.session.commit.assert_called_once()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_records_event(self, mock_db, mock_agent, fresh_state):
+        """PreToolUse should record the event in receiver state."""
+        process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+
+        assert fresh_state.last_event_type == HookEventType.PRE_TOOL_USE
+        assert fresh_state.events_received == 1
+
+
+class TestProcessPermissionRequest:
+    """Tests for process_permission_request function."""
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_processing_task_transitions_to_awaiting_input(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest with a PROCESSING task should transition to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_permission_request(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is True
+        assert result.new_state == "AWAITING_INPUT"
+        assert mock_task.state == TaskState.AWAITING_INPUT
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_no_active_task_is_noop(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest with no active task should not transition."""
+        mock_agent.get_current_task.return_value = None
+
+        result = process_permission_request(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_already_awaiting_input_is_noop(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest when task is already AWAITING_INPUT should not re-transition."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_permission_request(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert mock_task.state == TaskState.AWAITING_INPUT
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_updates_timestamp_and_commits(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest should update timestamp and commit DB state."""
+        process_permission_request(mock_agent, "session-123")
+
+        mock_db.session.commit.assert_called_once()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_records_event(self, mock_db, mock_agent, fresh_state):
+        """PermissionRequest should record the event in receiver state."""
+        process_permission_request(mock_agent, "session-123")
+
+        assert fresh_state.last_event_type == HookEventType.PERMISSION_REQUEST
+        assert fresh_state.events_received == 1

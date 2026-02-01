@@ -44,6 +44,10 @@
       this.nextPageBtn = document.getElementById("next-page-btn");
       this.pageIndicator = document.getElementById("page-indicator");
       this.connectionIndicator = document.getElementById("connection-indicator");
+      this.clearLogsBtn = document.getElementById("clear-logs-btn");
+      this.clearLogsConfirm = document.getElementById("clear-logs-confirm");
+      this.clearLogsYes = document.getElementById("clear-logs-yes");
+      this.clearLogsCancel = document.getElementById("clear-logs-cancel");
 
       // Event listeners
       if (this.projectFilter) {
@@ -64,6 +68,21 @@
       if (this.clearFiltersBtn) {
         this.clearFiltersBtn.addEventListener("click", () =>
           this._clearFilters()
+        );
+      }
+      if (this.clearLogsBtn) {
+        this.clearLogsBtn.addEventListener("click", () =>
+          this._showClearConfirm()
+        );
+      }
+      if (this.clearLogsYes) {
+        this.clearLogsYes.addEventListener("click", () =>
+          this._clearAllLogs()
+        );
+      }
+      if (this.clearLogsCancel) {
+        this.clearLogsCancel.addEventListener("click", () =>
+          this._hideClearConfirm()
         );
       }
       if (this.prevPageBtn) {
@@ -283,6 +302,43 @@
 
       // Reload events
       this._loadEvents();
+    },
+
+    /**
+     * Show inline confirmation for clearing logs
+     */
+    _showClearConfirm: function () {
+      if (this.clearLogsBtn) this.clearLogsBtn.classList.add("hidden");
+      if (this.clearLogsConfirm) this.clearLogsConfirm.classList.remove("hidden");
+    },
+
+    /**
+     * Hide inline confirmation for clearing logs
+     */
+    _hideClearConfirm: function () {
+      if (this.clearLogsBtn) this.clearLogsBtn.classList.remove("hidden");
+      if (this.clearLogsConfirm) this.clearLogsConfirm.classList.add("hidden");
+    },
+
+    /**
+     * Clear all logs
+     */
+    _clearAllLogs: async function () {
+      this._hideClearConfirm();
+
+      try {
+        const response = await fetch(EVENTS_API, { method: "DELETE" });
+        if (response.ok) {
+          this.currentPage = 1;
+          this._loadFilters();
+          this._loadEvents();
+        } else {
+          this._showError();
+        }
+      } catch (error) {
+        console.error("Failed to clear logs:", error);
+        this._showError();
+      }
     },
 
     /**

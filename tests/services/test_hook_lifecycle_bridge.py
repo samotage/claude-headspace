@@ -167,7 +167,7 @@ class TestProcessStop(TestHookLifecycleBridge):
     def test_completes_active_task(
         self, mock_db, bridge, mock_agent, mock_task
     ):
-        """Stop hook should complete the active task."""
+        """Stop hook should complete the active task when no question detected."""
         with patch.object(
             bridge, '_get_lifecycle_manager'
         ) as mock_get_lifecycle:
@@ -175,13 +175,18 @@ class TestProcessStop(TestHookLifecycleBridge):
             mock_get_lifecycle.return_value = mock_lifecycle
             mock_lifecycle.get_current_task.return_value = mock_task
 
-            result = bridge.process_stop(mock_agent, "session-123")
+            # Mock _extract_transcript_content to return completion text
+            with patch.object(
+                bridge, '_extract_transcript_content', return_value="Done. Changes applied."
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
 
-            assert result.success is True
-            mock_lifecycle.complete_task.assert_called_once_with(
-                task=mock_task,
-                trigger="hook:stop",
-            )
+                assert result.success is True
+                mock_lifecycle.complete_task.assert_called_once_with(
+                    task=mock_task,
+                    trigger="hook:stop",
+                    agent_text="Done. Changes applied.",
+                )
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
     def test_handles_no_active_task(
@@ -213,9 +218,12 @@ class TestProcessStop(TestHookLifecycleBridge):
             mock_get_lifecycle.return_value = mock_lifecycle
             mock_lifecycle.get_current_task.return_value = mock_task
 
-            result = bridge.process_stop(mock_agent, "session-123")
+            with patch.object(
+                bridge, '_extract_transcript_content', return_value=""
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
 
-            assert result.event_written is True
+                assert result.event_written is True
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
     def test_no_event_when_writer_unavailable(
@@ -229,9 +237,218 @@ class TestProcessStop(TestHookLifecycleBridge):
             mock_get_lifecycle.return_value = mock_lifecycle
             mock_lifecycle.get_current_task.return_value = mock_task
 
-            result = bridge_no_writer.process_stop(mock_agent, "session-123")
+            with patch.object(
+                bridge_no_writer, '_extract_transcript_content', return_value=""
+            ):
+                result = bridge_no_writer.process_stop(mock_agent, "session-123")
 
-            assert result.event_written is False
+                assert result.event_written is False
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_question_detected_transitions_to_awaiting_input(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """Stop hook should transition to AWAITING_INPUT when question is detected."""
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            with patch.object(
+                bridge, '_extract_transcript_content',
+                return_value="Would you like me to proceed with the changes?"
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
+
+                assert result.success is True
+                assert result.task is mock_task
+                # Should NOT have called complete_task
+                mock_lifecycle.complete_task.assert_not_called()
+                # Should have called update_task_state with AWAITING_INPUT
+                mock_lifecycle.update_task_state.assert_called_once()
+                call_kwargs = mock_lifecycle.update_task_state.call_args
+                assert call_kwargs.kwargs["task"] is mock_task
+                assert call_kwargs.kwargs["to_state"] == TaskState.AWAITING_INPUT
+                assert call_kwargs.kwargs["trigger"] == "hook:stop:question_detected"
+                # Should have added a QUESTION turn
+                mock_db.session.add.assert_called_once()
+                added_turn = mock_db.session.add.call_args[0][0]
+                assert added_turn.actor == TurnActor.AGENT
+                assert added_turn.intent == TurnIntent.QUESTION
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_completion_text_completes_normally(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """Stop hook should complete normally when text is a completion, not a question."""
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            with patch.object(
+                bridge, '_extract_transcript_content',
+                return_value="I've finished implementing the changes."
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
+
+                assert result.success is True
+                mock_lifecycle.complete_task.assert_called_once_with(
+                    task=mock_task,
+                    trigger="hook:stop",
+                    agent_text="I've finished implementing the changes.",
+                )
+                mock_lifecycle.update_task_state.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_empty_transcript_completes_normally(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """Stop hook should complete normally when transcript is empty."""
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            with patch.object(
+                bridge, '_extract_transcript_content', return_value=""
+            ):
+                result = bridge.process_stop(mock_agent, "session-123")
+
+                assert result.success is True
+                mock_lifecycle.complete_task.assert_called_once()
+                mock_lifecycle.update_task_state.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_no_transcript_path_completes_normally(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """Stop hook should complete normally when agent has no transcript path."""
+        mock_agent.transcript_path = None
+
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            # _extract_transcript_content will return "" since no transcript_path
+            result = bridge.process_stop(mock_agent, "session-123")
+
+            assert result.success is True
+            mock_lifecycle.complete_task.assert_called_once()
+            mock_lifecycle.update_task_state.assert_not_called()
+
+
+class TestProcessPostToolUse(TestHookLifecycleBridge):
+    """Tests for process_post_tool_use method."""
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_creates_task_when_no_active_task(
+        self, mock_db, bridge, mock_agent
+    ):
+        """PostToolUse should create a PROCESSING task when agent has no active task."""
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = None
+
+            new_task = MagicMock()
+            new_task.id = 10
+            new_task.state = TaskState.PROCESSING
+            mock_lifecycle.create_task.return_value = new_task
+
+            result = bridge.process_post_tool_use(mock_agent, "session-123")
+
+            assert result.success is True
+            assert result.new_task_created is True
+            assert result.task is new_task
+            mock_lifecycle.create_task.assert_called_once_with(
+                mock_agent, TaskState.COMMANDED
+            )
+            mock_lifecycle.update_task_state.assert_called_once_with(
+                task=new_task,
+                to_state=TaskState.PROCESSING,
+                trigger="hook:post_tool_use:inferred",
+                confidence=0.9,
+            )
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_noop_when_already_processing(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """PostToolUse should be a no-op when task is already PROCESSING."""
+        mock_task.state = TaskState.PROCESSING
+
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            result = bridge.process_post_tool_use(mock_agent, "session-123")
+
+            assert result.success is True
+            assert result.task is mock_task
+            mock_lifecycle.create_task.assert_not_called()
+            mock_lifecycle.process_turn.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_resumes_from_awaiting_input(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """PostToolUse should resume from AWAITING_INPUT to PROCESSING."""
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+            mock_lifecycle.process_turn.return_value = TurnProcessingResult(
+                success=True,
+                task=mock_task,
+            )
+
+            result = bridge.process_post_tool_use(mock_agent, "session-123")
+
+            assert result.success is True
+            mock_lifecycle.process_turn.assert_called_once_with(
+                agent=mock_agent,
+                actor=TurnActor.USER,
+                text=None,
+            )
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_noop_when_commanded(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """PostToolUse should be a no-op when task is COMMANDED."""
+        mock_task.state = TaskState.COMMANDED
+
+        with patch.object(
+            bridge, '_get_lifecycle_manager'
+        ) as mock_get_lifecycle:
+            mock_lifecycle = MagicMock()
+            mock_get_lifecycle.return_value = mock_lifecycle
+            mock_lifecycle.get_current_task.return_value = mock_task
+
+            result = bridge.process_post_tool_use(mock_agent, "session-123")
+
+            assert result.success is True
+            assert result.task is mock_task
+            mock_lifecycle.create_task.assert_not_called()
 
 
 class TestProcessSessionEnd(TestHookLifecycleBridge):

@@ -61,10 +61,10 @@ class TestEdgeCases:
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
-        # Get to AWAITING_INPUT
+        # Get to AWAITING_INPUT via notification (the canonical path)
         hook_client.user_prompt_submit(prompt="Do work")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        hook_client.stop()
+        hook_client.notification()
         dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=5000)
 
         # End session during AWAITING_INPUT

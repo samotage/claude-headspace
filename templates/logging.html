@@ -50,6 +50,28 @@
                         Clear Filters
                     </button>
 
+                    <!-- Clear All Logs Button with inline confirm -->
+                    <div id="clear-logs-group" class="flex items-center gap-2 w-full sm:w-auto">
+                        <button id="clear-logs-btn"
+                                class="w-full sm:w-auto px-4 py-2 bg-red/10 border border-red/30 rounded text-red hover:bg-red/20 hover:border-red transition-colors min-h-[44px]"
+                                aria-label="Clear all logs">
+                            Clear All Logs
+                        </button>
+                        <div id="clear-logs-confirm" class="hidden flex items-center gap-2">
+                            <span class="text-sm text-secondary whitespace-nowrap">Delete all?</span>
+                            <button id="clear-logs-yes"
+                                    class="px-3 py-2 bg-red border border-red rounded text-white hover:bg-red/80 transition-colors min-h-[44px] text-sm font-medium"
+                                    aria-label="Confirm delete all logs">
+                                Yes, delete
+                            </button>
+                            <button id="clear-logs-cancel"
+                                    class="px-3 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] text-sm"
+                                    aria-label="Cancel delete">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- SSE Connection indicator -->
                     <div id="connection-indicator"
                          class="sm:ml-auto flex items-center gap-2"

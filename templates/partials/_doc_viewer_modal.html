@@ -5,16 +5,16 @@
      aria-labelledby="doc-viewer-title"
      aria-modal="true">
     <!-- Backdrop -->
-    <div class="absolute inset-0 bg-void/80" onclick="closeDocViewer()"></div>
+    <div class="modal-backdrop" onclick="closeDocViewer()"></div>
 
     <!-- Modal content -->
-    <div class="absolute inset-4 md:inset-8 lg:inset-16 bg-deep border border-border rounded-lg flex flex-col overflow-hidden">
+    <div class="modal-content">
         <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 bg-elevated border-b border-border">
+        <div class="modal-header">
             <h2 id="doc-viewer-title" class="text-lg font-semibold text-primary">Document</h2>
             <button type="button"
                     onclick="closeDocViewer()"
-                    class="p-2 text-muted hover:text-primary transition-colors"
+                    class="modal-close-btn"
                     aria-label="Close document viewer">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -28,8 +28,8 @@
         </div>
 
         <!-- Footer -->
-        <div class="px-4 py-2 bg-surface border-t border-border text-xs text-muted">
-            <span>Press <kbd class="px-1.5 py-0.5 bg-deep rounded">Esc</kbd> to close</span>
+        <div class="modal-footer">
+            <span class="text-xs text-muted">Press <kbd class="px-1.5 py-0.5 bg-deep rounded text-secondary">Esc</kbd> to close</span>
         </div>
     </div>
 </div>

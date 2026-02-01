@@ -257,7 +257,7 @@ If it exists, confirm the current user has read permission on it and its content
 
 ## Step 7: Verify the Headspace server (OPTIONAL)
 
-Tell the user: "Checking whether the Headspace server is running on localhost:5055. If it is, sending a test event to confirm end-to-end connectivity. This step is optional — hooks work fine even when the server is offline."
+Tell the user: "Checking whether the Headspace server is running on localhost:5055. This step is optional — hooks work fine even when the server is offline."
 
 Check if the server is running:
 ```bash
@@ -269,15 +269,11 @@ If the server is not running, report:
   cd $REPO_DIR && python run.py
 This step is optional — hooks will queue silently when the server is offline."
 
-If the server IS running, send a test event and check the HTTP response:
-```bash
-curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:5055/hook/session-start \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": "setup-test-'$(date +%s)'", "working_directory": "'$(pwd)'"}'
-```
+If the server IS running, report that the health check passed.
 
-A 200 response confirms the server accepted the event. Any other status code means
-the test event failed — report the status code but do not STOP (this step is optional).
+Do NOT send a test hook event (e.g. to `/hook/session-start`). Test events create
+phantom agents on the dashboard that never receive a session-end and persist forever.
+Connectivity is sufficiently verified by the health check above.
 
 ## Step 8: Report results
 
@@ -293,7 +289,7 @@ Claude Headspace Setup Results
 [PASS/FAIL/MANUAL] PATH configured (bin directory in PATH or shell config updated)
 [PASS/FAIL] ~/.claude/projects/ accessible
 [PASS/SKIP] terminal-notifier installed (optional)
-[PASS/SKIP] Headspace server reachable and test event received (optional)
+[PASS/SKIP] Headspace server reachable (health check, optional)
 ```
 
 If all REQUIRED items passed:

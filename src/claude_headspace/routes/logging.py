@@ -134,6 +134,24 @@ def get_events():
         return jsonify({"error": "Failed to fetch events"}), 500
 
 
+@logging_bp.route("/api/events", methods=["DELETE"])
+def clear_events():
+    """
+    Delete all events.
+
+    Returns:
+        JSON with count of deleted events
+    """
+    try:
+        count = db.session.query(Event).count()
+        db.session.query(Event).delete()
+        db.session.commit()
+        return jsonify({"deleted": count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Failed to clear events"}), 500
+
+
 @logging_bp.route("/api/events/filters", methods=["GET"])
 def get_event_filters():
     """

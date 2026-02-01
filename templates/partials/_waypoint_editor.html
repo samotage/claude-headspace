@@ -5,12 +5,12 @@
      aria-labelledby="waypoint-editor-title"
      aria-modal="true">
     <!-- Backdrop -->
-    <div class="absolute inset-0 bg-void/80" onclick="closeWaypointEditor()"></div>
+    <div class="modal-backdrop" onclick="closeWaypointEditor()"></div>
 
     <!-- Modal content -->
-    <div class="absolute inset-4 md:inset-8 lg:inset-16 bg-deep border border-border rounded-lg flex flex-col overflow-hidden">
+    <div class="modal-content" style="max-width: 1100px;">
         <!-- Header -->
-        <div class="flex flex-col gap-2 px-4 py-3 bg-elevated border-b border-border sm:flex-row sm:items-center sm:justify-between">
+        <div class="modal-header">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
                 <h2 id="waypoint-editor-title" class="text-lg font-semibold text-primary">Waypoint Editor</h2>
 
@@ -40,16 +40,18 @@
                         </svg>
                     </span>
                 </button>
-                <button type="button"
+                <button class="modal-close-btn"
                         onclick="closeWaypointEditor()"
-                        class="px-4 py-1.5 bg-surface text-secondary font-medium rounded hover:bg-hover transition-colors">
-                    Cancel
+                        aria-label="Close waypoint editor">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
                 </button>
             </div>
         </div>
 
         <!-- Mode toggle -->
-        <div class="flex items-center gap-2 px-4 py-2 bg-surface border-b border-border">
+        <div class="flex items-center gap-2 px-5 py-2 bg-surface border-b border-border">
             <button type="button"
                     id="waypoint-edit-tab"
                     onclick="setWaypointMode('edit')"
@@ -79,7 +81,7 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-between px-4 py-2 bg-surface border-t border-border text-xs text-muted">
+        <div class="modal-footer text-xs text-muted">
             <span id="waypoint-path"></span>
             <span id="waypoint-modified"></span>
         </div>

@@ -52,6 +52,12 @@
         client.onStateChange(function(newState, oldState) {
             console.log('SSE state:', oldState, '->', newState);
             updateConnectionIndicator(newState);
+
+            // Reload page on reconnect to catch up on missed events
+            if (newState === 'connected' && oldState === 'reconnecting') {
+                console.log('SSE reconnected after drop — reloading to sync state');
+                window.location.reload();
+            }
         });
 
         // Handle agent state changes
@@ -326,12 +332,10 @@
         console.log('[DEBUG] updateStatusCounts result:', { timedOut, inputNeeded, working, idle });
 
         // Update header badges
-        const timedOutBadge = document.querySelector('#status-timed-out .status-count');
         const inputBadge = document.querySelector('#status-input-needed .status-count');
         const workingBadge = document.querySelector('#status-working .status-count');
         const idleBadge = document.querySelector('#status-idle .status-count');
 
-        if (timedOutBadge) timedOutBadge.textContent = '[' + timedOut + ']';
         if (inputBadge) inputBadge.textContent = '[' + inputNeeded + ']';
         if (workingBadge) workingBadge.textContent = '[' + working + ']';
         if (idleBadge) idleBadge.textContent = '[' + idle + ']';

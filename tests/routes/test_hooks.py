@@ -187,7 +187,7 @@ class TestHookStop:
             success=True,
             agent_id=1,
             state_changed=True,
-            new_state="idle",
+            new_state="complete",
         )
 
         response = client.post(
@@ -198,7 +198,32 @@ class TestHookStop:
         assert response.status_code == 200
         data = response.get_json()
         assert data["status"] == "ok"
-        assert data["state"] == "idle"
+        assert data["state"] == "complete"
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_stop")
+    def test_stop_with_question_returns_awaiting_input(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test stop returns AWAITING_INPUT when question detected."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True,
+            agent_id=1,
+            state_changed=True,
+            new_state="awaiting_input",
+        )
+
+        response = client.post(
+            "/hook/stop",
+            json={"session_id": "test-session"},
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["state"] == "awaiting_input"
+        assert data["state_changed"] is True
 
 
 class TestHookNotification:
@@ -334,3 +359,81 @@ class TestErrorHandling:
 
         assert response.status_code == 500
         assert response.get_json()["message"] == "Processing failed"
+
+
+class TestHookPreToolUse:
+    """Tests for POST /hook/pre-tool-use."""
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_pre_tool_use")
+    def test_successful_pre_tool_use(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test successful pre-tool-use hook."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True,
+            agent_id=1,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
+        )
+
+        response = client.post(
+            "/hook/pre-tool-use",
+            json={"session_id": "test-session", "tool_name": "AskUserQuestion"},
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["agent_id"] == 1
+        assert data["state_changed"] is True
+        assert data["new_state"] == "AWAITING_INPUT"
+
+    def test_missing_session_id(self, client, mock_receiver_state):
+        """Test error when session_id is missing."""
+        response = client.post(
+            "/hook/pre-tool-use",
+            json={"tool_name": "AskUserQuestion"},
+        )
+        assert response.status_code == 400
+        assert "session_id" in response.get_json()["message"]
+
+
+class TestHookPermissionRequest:
+    """Tests for POST /hook/permission-request."""
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_permission_request")
+    def test_successful_permission_request(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test successful permission-request hook."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True,
+            agent_id=1,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
+        )
+
+        response = client.post(
+            "/hook/permission-request",
+            json={"session_id": "test-session"},
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["agent_id"] == 1
+        assert data["state_changed"] is True
+        assert data["new_state"] == "AWAITING_INPUT"
+
+    def test_missing_session_id(self, client, mock_receiver_state):
+        """Test error when session_id is missing."""
+        response = client.post(
+            "/hook/permission-request",
+            json={},
+        )
+        assert response.status_code == 400
+        assert "session_id" in response.get_json()["message"]

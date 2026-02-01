@@ -9,8 +9,11 @@ from claude_headspace.services.iterm_focus import (
     APPLESCRIPT_TIMEOUT,
     FocusErrorType,
     FocusResult,
+    PaneStatus,
     _build_applescript,
+    _build_check_applescript,
     _parse_applescript_error,
+    check_pane_exists,
     focus_iterm_pane,
 )
 
@@ -270,3 +273,94 @@ class TestFocusItermPane:
         assert args[1]["timeout"] == APPLESCRIPT_TIMEOUT
         assert args[1]["capture_output"] is True
         assert args[1]["text"] is True
+
+
+class TestPaneStatus:
+    """Tests for PaneStatus enum."""
+
+    def test_pane_status_values(self):
+        assert PaneStatus.FOUND == "found"
+        assert PaneStatus.NOT_FOUND == "not_found"
+        assert PaneStatus.ITERM_NOT_RUNNING == "iterm_not_running"
+        assert PaneStatus.ERROR == "error"
+
+
+class TestBuildCheckApplescript:
+    """Tests for _build_check_applescript function."""
+
+    def test_contains_pane_id(self):
+        script = _build_check_applescript("pty-99999")
+        assert "pty-99999" in script
+
+    def test_does_not_activate_iterm(self):
+        """Check script does NOT focus or activate windows."""
+        script = _build_check_applescript("test-pane")
+        assert "activate" not in script
+        assert "select t" not in script
+        assert "select s" not in script
+        assert "miniaturized" not in script
+
+    def test_checks_system_events_for_iterm(self):
+        script = _build_check_applescript("test-pane")
+        assert 'tell application "System Events"' in script
+        assert 'exists process "iTerm2"' in script
+
+    def test_returns_found_not_found_strings(self):
+        script = _build_check_applescript("test-pane")
+        assert 'return "FOUND"' in script
+        assert 'return "NOT_FOUND"' in script
+        assert 'return "ITERM_NOT_RUNNING"' in script
+
+
+class TestCheckPaneExists:
+    """Tests for check_pane_exists function."""
+
+    def test_empty_pane_id(self):
+        assert check_pane_exists("") == PaneStatus.NOT_FOUND
+
+    def test_none_pane_id(self):
+        assert check_pane_exists(None) == PaneStatus.NOT_FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_pane_found(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="FOUND\n", stderr="")
+        assert check_pane_exists("pty-123") == PaneStatus.FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_pane_not_found(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="NOT_FOUND\n", stderr="")
+        assert check_pane_exists("pty-123") == PaneStatus.NOT_FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_iterm_not_running_via_stdout(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="ITERM_NOT_RUNNING\n", stderr="")
+        assert check_pane_exists("pty-123") == PaneStatus.ITERM_NOT_RUNNING
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_iterm_not_running_via_stderr(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="Application isn't running."
+        )
+        assert check_pane_exists("pty-123") == PaneStatus.ITERM_NOT_RUNNING
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_unknown_error_returns_error(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="something weird"
+        )
+        assert check_pane_exists("pty-123") == PaneStatus.ERROR
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_timeout_returns_error(self, mock_run):
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="osascript", timeout=2)
+        assert check_pane_exists("pty-123") == PaneStatus.ERROR
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_file_not_found_returns_error(self, mock_run):
+        mock_run.side_effect = FileNotFoundError("osascript not found")
+        assert check_pane_exists("pty-123") == PaneStatus.ERROR
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_unexpected_exception_returns_error(self, mock_run):
+        mock_run.side_effect = Exception("boom")
+        assert check_pane_exists("pty-123") == PaneStatus.ERROR

@@ -1,7 +1,8 @@
 """
-iTerm2 focus service using AppleScript.
+iTerm2 focus and pane existence service using AppleScript.
 
-Provides functionality to focus a specific iTerm2 pane by its session ID.
+Provides functionality to focus a specific iTerm2 pane by its session ID,
+and to silently check whether a pane still exists (for reaper use).
 Uses osascript subprocess with timeout to prevent blocking.
 """
 
@@ -224,3 +225,110 @@ def focus_iterm_pane(pane_id: str) -> FocusResult:
             error_message=f"Unexpected error: {str(e)}",
             latency_ms=latency_ms,
         )
+
+
+# --- Pane existence check (silent, no focus) ---
+
+
+class PaneStatus(str, Enum):
+    """Result of a pane existence check."""
+
+    FOUND = "found"
+    NOT_FOUND = "not_found"
+    ITERM_NOT_RUNNING = "iterm_not_running"
+    ERROR = "error"
+
+
+def _build_check_applescript(pane_id: str) -> str:
+    """
+    Build AppleScript to silently check if an iTerm2 pane exists.
+
+    Unlike the focus script, this does NOT activate iTerm or change
+    window/tab selection. It only reads session properties.
+
+    Args:
+        pane_id: The iTerm2 pane/session identifier
+
+    Returns:
+        AppleScript code as string
+    """
+    return f'''
+tell application "System Events"
+    if not (exists process "iTerm2") then
+        return "ITERM_NOT_RUNNING"
+    end if
+end tell
+tell application "iTerm"
+    set targetPaneId to "{pane_id}"
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                try
+                    set sessionTty to tty of s
+                    set sessionId to unique ID of s
+                    if sessionTty contains targetPaneId or sessionId contains targetPaneId or targetPaneId contains sessionTty or targetPaneId contains sessionId then
+                        return "FOUND"
+                    end if
+                end try
+            end repeat
+        end repeat
+    end repeat
+    return "NOT_FOUND"
+end tell
+'''
+
+
+def check_pane_exists(pane_id: str) -> PaneStatus:
+    """
+    Silently check if an iTerm2 pane still exists.
+
+    Does NOT activate iTerm2 or focus any windows. Safe to call
+    from background threads (e.g., the agent reaper).
+
+    Args:
+        pane_id: The iTerm2 session identifier
+
+    Returns:
+        PaneStatus indicating whether the pane was found
+    """
+    if not pane_id:
+        return PaneStatus.NOT_FOUND
+
+    script = _build_check_applescript(pane_id)
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=APPLESCRIPT_TIMEOUT,
+        )
+
+        if result.returncode == 0:
+            stdout = result.stdout.strip()
+            if stdout == "FOUND":
+                return PaneStatus.FOUND
+            elif stdout == "ITERM_NOT_RUNNING":
+                return PaneStatus.ITERM_NOT_RUNNING
+            else:
+                return PaneStatus.NOT_FOUND
+
+        # Parse error output
+        stderr_lower = result.stderr.lower()
+        if "application isn't running" in stderr_lower or "can't get application" in stderr_lower:
+            return PaneStatus.ITERM_NOT_RUNNING
+
+        logger.warning(f"Pane check failed for {pane_id}: {result.stderr.strip()}")
+        return PaneStatus.ERROR
+
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Pane check timed out for {pane_id}")
+        return PaneStatus.ERROR
+
+    except FileNotFoundError:
+        logger.debug("osascript not found - not running on macOS")
+        return PaneStatus.ERROR
+
+    except Exception as e:
+        logger.warning(f"Pane check error for {pane_id}: {e}")
+        return PaneStatus.ERROR

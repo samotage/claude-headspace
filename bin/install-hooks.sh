@@ -201,6 +201,28 @@ if ! command -v jq &> /dev/null; then
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT permission-request"
+          }
+        ]
+      }
     ]
   }
 }
@@ -239,8 +261,16 @@ NOTIFICATION_HOOKS=$(jq -n \
     --argjson elicitation "$(build_matched_hook_entry 'notification' 'elicitation_dialog')" \
     --argjson permission "$(build_matched_hook_entry 'notification' 'permission_prompt')" \
     --argjson idle "$(build_matched_hook_entry 'notification' 'idle_prompt')" \
-    --argjson catchall "$(build_hook_entry 'notification')" \
+    --argjson catchall "$(build_matched_hook_entry 'notification' '')" \
     '[$elicitation, $permission, $idle, $catchall]')
+
+PRE_TOOL_USE_HOOKS=$(jq -n \
+    --argjson ask "$(build_matched_hook_entry 'pre-tool-use' 'AskUserQuestion')" \
+    '[$ask]')
+
+PERMISSION_REQUEST_HOOKS=$(jq -n \
+    --argjson catchall "$(build_matched_hook_entry 'permission-request' '')" \
+    '[$catchall]')
 
 HOOKS_OBJ=$(jq -n \
     --argjson session_start "$(build_hook_entry 'session-start')" \
@@ -249,13 +279,17 @@ HOOKS_OBJ=$(jq -n \
     --argjson notification "$NOTIFICATION_HOOKS" \
     --argjson user_prompt "$(build_hook_entry 'user-prompt-submit')" \
     --argjson post_tool_use "$(build_hook_entry 'post-tool-use')" \
+    --argjson pre_tool_use "$PRE_TOOL_USE_HOOKS" \
+    --argjson permission_request "$PERMISSION_REQUEST_HOOKS" \
     '{
         "SessionStart": $session_start,
         "SessionEnd": $session_end,
         "Stop": $stop,
         "Notification": $notification,
         "UserPromptSubmit": $user_prompt,
-        "PostToolUse": $post_tool_use
+        "PostToolUse": $post_tool_use,
+        "PreToolUse": $pre_tool_use,
+        "PermissionRequest": $permission_request
     }')
 
 # Update settings.json

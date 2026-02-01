@@ -423,7 +423,51 @@ class TestDashboardRoute:
 
 
 class TestDashboardWithData:
-    """Tests for dashboard with mocked database data."""
+    """Tests for dashboard with mocked database data.
+
+    Uses a standalone Flask app with only the dashboard blueprint,
+    avoiding any dependency on the test database.
+    """
+
+    @pytest.fixture
+    def standalone_app(self):
+        """Create a standalone Flask app with dashboard blueprint (no DB needed).
+
+        Registers the minimal set of blueprints needed for template
+        rendering (navigation links use url_for to other blueprints).
+        """
+        from pathlib import Path
+        from src.claude_headspace.routes.config import config_bp
+        from src.claude_headspace.routes.help import help_bp
+        from src.claude_headspace.routes.logging import logging_bp
+        from src.claude_headspace.routes.objective import objective_bp
+
+        project_root = Path(__file__).parent.parent.parent
+        app = Flask(
+            __name__,
+            template_folder=str(project_root / "templates"),
+            static_folder=str(project_root / "static"),
+        )
+        app.register_blueprint(dashboard_bp)
+        app.register_blueprint(config_bp)
+        app.register_blueprint(help_bp)
+        app.register_blueprint(logging_bp)
+        app.register_blueprint(objective_bp)
+        app.config["TESTING"] = True
+        app.config["APP_CONFIG"] = {
+            "dashboard": {
+                "stale_processing_seconds": 600,
+                "active_timeout_minutes": 5,
+            },
+        }
+        # Provide extensions so service lookups don't fail
+        app.extensions["staleness_service"] = None
+        return app
+
+    @pytest.fixture
+    def standalone_client(self, standalone_app):
+        """Test client for standalone app."""
+        return standalone_app.test_client()
 
     @pytest.fixture
     def mock_db_session(self):
@@ -431,7 +475,7 @@ class TestDashboardWithData:
         with patch("src.claude_headspace.routes.dashboard.db") as mock_db:
             yield mock_db
 
-    def test_projects_displayed(self, client, mock_db_session):
+    def test_projects_displayed(self, standalone_client, mock_db_session):
         """Test that projects are displayed when data exists."""
         # Create mock project with agents
         mock_agent = create_mock_agent(
@@ -451,10 +495,10 @@ class TestDashboardWithData:
         mock_query.all.return_value = [mock_project]
         mock_db_session.session.query.return_value = mock_query
 
-        response = client.get("/")
+        response = standalone_client.get("/")
         assert response.status_code == 200
 
-    def test_state_dots_displayed(self, client, mock_db_session):
+    def test_state_dots_displayed(self, standalone_client, mock_db_session):
         """Test that state indicator dots are shown."""
         mock_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
 
@@ -469,7 +513,7 @@ class TestDashboardWithData:
         mock_query.all.return_value = [mock_project]
         mock_db_session.session.query.return_value = mock_query
 
-        response = client.get("/")
+        response = standalone_client.get("/")
         html = response.data.decode("utf-8")
         # State dots should be present
         assert "state-dot" in html

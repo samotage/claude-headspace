@@ -177,6 +177,13 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         init_file_watcher(app, config)
         logger.info("File watcher initialized")
 
+    # Initialize agent reaper (only in non-testing environments)
+    if not app.config.get("TESTING"):
+        from .services.agent_reaper import AgentReaper
+        reaper = AgentReaper(app=app, config=config)
+        reaper.start()
+        app.extensions["agent_reaper"] = reaper
+
     # Register shutdown cleanup
     import atexit
 
@@ -185,6 +192,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         # Wrap in try-except as logging may be shut down during atexit
         try:
             shutdown_broadcaster()
+            if "agent_reaper" in app.extensions:
+                app.extensions["agent_reaper"].stop()
             if "file_watcher" in app.extensions:
                 app.extensions["file_watcher"].stop()
             # Stop event writer to close database connections
