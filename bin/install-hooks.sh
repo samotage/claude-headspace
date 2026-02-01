@@ -214,20 +214,48 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     log_info "Created settings file: $SETTINGS_FILE"
 fi
 
+# Build a hook entry with a specific matcher
+# Usage: build_matched_hook_entry "event-type" "matcher-value"
+build_matched_hook_entry() {
+    local event_arg="$1"
+    local matcher="$2"
+    cat <<MENTRY
+{
+    "matcher": "$matcher",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "$NOTIFY_SCRIPT $event_arg"
+      }
+    ]
+}
+MENTRY
+}
+
 # Build the hooks configuration using the nested PascalCase format
 # Each event type maps to an array of hook groups
+# Notification hooks use matchers for specific notification types
+NOTIFICATION_HOOKS=$(jq -n \
+    --argjson elicitation "$(build_matched_hook_entry 'notification' 'elicitation_dialog')" \
+    --argjson permission "$(build_matched_hook_entry 'notification' 'permission_prompt')" \
+    --argjson idle "$(build_matched_hook_entry 'notification' 'idle_prompt')" \
+    --argjson catchall "$(build_hook_entry 'notification')" \
+    '[$elicitation, $permission, $idle, $catchall]')
+
 HOOKS_OBJ=$(jq -n \
     --argjson session_start "$(build_hook_entry 'session-start')" \
     --argjson session_end "$(build_hook_entry 'session-end')" \
     --argjson stop "$(build_hook_entry 'stop')" \
-    --argjson notification "$(build_hook_entry 'notification')" \
+    --argjson notification "$NOTIFICATION_HOOKS" \
     --argjson user_prompt "$(build_hook_entry 'user-prompt-submit')" \
+    --argjson post_tool_use "$(build_hook_entry 'post-tool-use')" \
     '{
         "SessionStart": $session_start,
         "SessionEnd": $session_end,
         "Stop": $stop,
         "Notification": $notification,
-        "UserPromptSubmit": $user_prompt
+        "UserPromptSubmit": $user_prompt,
+        "PostToolUse": $post_tool_use
     }')
 
 # Update settings.json

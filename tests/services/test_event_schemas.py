@@ -35,19 +35,22 @@ class TestEventType:
 
     def test_all_types_list(self):
         """Test that ALL_TYPES contains all event types."""
-        # Core types + hook_received + 5 specific hook types = 10
-        assert len(EventType.ALL_TYPES) == 10
+        # Core types + hook_received + 6 specific hook types + question_detected = 12
+        assert len(EventType.ALL_TYPES) == 12
         assert EventType.SESSION_REGISTERED in EventType.ALL_TYPES
         assert EventType.SESSION_ENDED in EventType.ALL_TYPES
         assert EventType.TURN_DETECTED in EventType.ALL_TYPES
         assert EventType.STATE_TRANSITION in EventType.ALL_TYPES
         assert EventType.HOOK_RECEIVED in EventType.ALL_TYPES
-        # New hook types
+        # Hook types
         assert EventType.HOOK_SESSION_START in EventType.ALL_TYPES
         assert EventType.HOOK_SESSION_END in EventType.ALL_TYPES
         assert EventType.HOOK_USER_PROMPT in EventType.ALL_TYPES
         assert EventType.HOOK_STOP in EventType.ALL_TYPES
         assert EventType.HOOK_NOTIFICATION in EventType.ALL_TYPES
+        assert EventType.HOOK_POST_TOOL_USE in EventType.ALL_TYPES
+        # Content pipeline events
+        assert EventType.QUESTION_DETECTED in EventType.ALL_TYPES
 
 
 class TestPayloadSchemas:

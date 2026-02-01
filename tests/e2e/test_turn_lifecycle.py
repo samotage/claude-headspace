@@ -4,8 +4,6 @@ Verifies the full session lifecycle via the dashboard:
 session-start → command → processing → awaiting input → answer → session-end
 """
 
-import time
-
 import pytest
 from playwright.sync_api import expect
 
@@ -61,10 +59,10 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_status_counts(input_needed=0, working=1, idle=0)
         dashboard.capture("processing")
 
-    def test_stop_debounce_to_awaiting_input(
+    def test_stop_completes_task(
         self, page, e2e_server, hook_client, dashboard
     ):
-        """stop hook triggers debounced transition to AWAITING_INPUT."""
+        """stop hook immediately transitions task to COMPLETE."""
         # Setup: session-start → user-prompt-submit → PROCESSING
         result = hook_client.session_start()
         agent_id = result["agent_id"]
@@ -73,22 +71,21 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_sse_connected()
         dashboard.assert_agent_card_exists(agent_id)
 
-        hook_client.user_prompt_submit(prompt="Test debounce")
+        hook_client.user_prompt_submit(prompt="Test stop")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
 
-        # Fire stop hook - starts debounce timer (0.5s in test mode)
+        # Fire stop hook — immediate transition to COMPLETE
         hook_client.stop()
 
-        # Wait for debounce to fire
-        dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=5000)
-        dashboard.assert_status_counts(input_needed=1, working=0, idle=0)
-        dashboard.capture("awaiting_input")
+        dashboard.assert_agent_state(agent_id, "COMPLETE", timeout=3000)
+        dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
+        dashboard.capture("task_complete")
 
     def test_answer_returns_to_processing(
         self, page, e2e_server, hook_client, dashboard
     ):
         """user-prompt-submit from AWAITING_INPUT returns to PROCESSING."""
-        # Setup: get to AWAITING_INPUT
+        # Setup: get to AWAITING_INPUT via notification
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)
@@ -98,8 +95,8 @@ class TestSingleAgentTurnLifecycle:
 
         hook_client.user_prompt_submit(prompt="Initial command")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        hook_client.stop()
-        dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=5000)
+        hook_client.notification()
+        dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=3000)
 
         # Fire answer
         hook_client.user_prompt_submit(prompt="Yes, proceed")
@@ -150,9 +147,9 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_agent_state(agent_id, "PROCESSING")
         dashboard.capture("lifecycle_02_processing")
 
-        # 3. Stop → debounce → AWAITING_INPUT
-        hook_client.stop()
-        dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=5000)
+        # 3. Notification → AWAITING_INPUT
+        hook_client.notification()
+        dashboard.assert_agent_state(agent_id, "AWAITING_INPUT", timeout=3000)
         dashboard.capture("lifecycle_03_awaiting")
 
         # 4. Answer → PROCESSING again

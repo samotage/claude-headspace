@@ -55,12 +55,12 @@ class TestMultiAgent:
         dashboard.assert_status_counts(input_needed=0, working=2, idle=0)
         dashboard.capture("multi_03_both_processing")
 
-        # Agent A stops → debounce → AWAITING_INPUT
+        # Agent A stops → immediate COMPLETE
         client_a.stop()
-        dashboard.assert_agent_state(agent_a, "AWAITING_INPUT", timeout=5000)
+        dashboard.assert_agent_state(agent_a, "COMPLETE", timeout=3000)
         dashboard.assert_agent_state(agent_b, "PROCESSING")
-        dashboard.assert_status_counts(input_needed=1, working=1, idle=0)
-        dashboard.capture("multi_04_a_awaiting")
+        dashboard.assert_status_counts(input_needed=0, working=1, idle=1)
+        dashboard.capture("multi_04_a_complete")
 
     def test_end_one_agent_preserves_other(
         self, page, e2e_server, make_hook_client, dashboard

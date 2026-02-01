@@ -167,6 +167,97 @@ class TestEventWriter:
         mock_eng.dispose.assert_called_once()
 
 
+class TestEventWriterSessionPassThrough:
+    """Test EventWriter session pass-through mode."""
+
+    @pytest.fixture
+    def mock_engine(self):
+        """Create a mock SQLAlchemy engine."""
+        with patch("claude_headspace.services.event_writer.create_engine") as mock:
+            yield mock
+
+    @pytest.fixture
+    def mock_sessionmaker(self):
+        """Create a mock sessionmaker."""
+        with patch("claude_headspace.services.event_writer.sessionmaker") as mock:
+            yield mock
+
+    def test_write_event_with_session_adds_and_flushes(self, mock_engine, mock_sessionmaker):
+        """When a session is passed, event should be added and flushed but not committed."""
+        writer = EventWriter(database_url="postgresql://test@localhost/test")
+        caller_session = MagicMock()
+
+        # Mock flush to set the event ID
+        def set_id_on_flush():
+            for call in caller_session.add.call_args_list:
+                obj = call[0][0]
+                if hasattr(obj, 'id'):
+                    obj.id = 99
+
+        caller_session.flush.side_effect = set_id_on_flush
+
+        result = writer.write_event(
+            event_type="session_ended",
+            payload={"session_uuid": "abc", "reason": "timeout"},
+            session=caller_session,
+        )
+
+        assert result.success is True
+        assert result.event_id == 99
+        caller_session.add.assert_called_once()
+        caller_session.flush.assert_called_once()
+        caller_session.commit.assert_not_called()
+
+    def test_write_event_with_session_records_metrics(self, mock_engine, mock_sessionmaker):
+        """Session pass-through should record success metrics."""
+        writer = EventWriter(database_url="postgresql://test@localhost/test")
+        caller_session = MagicMock()
+
+        writer.write_event(
+            event_type="session_ended",
+            payload={"session_uuid": "abc", "reason": "timeout"},
+            session=caller_session,
+        )
+
+        stats = writer.metrics.get_stats()
+        assert stats["successful_writes"] == 1
+        assert stats["failed_writes"] == 0
+
+    def test_write_event_with_session_handles_db_error(self, mock_engine, mock_sessionmaker):
+        """Session pass-through should handle SQLAlchemy errors gracefully."""
+        from sqlalchemy.exc import IntegrityError
+
+        writer = EventWriter(database_url="postgresql://test@localhost/test")
+        caller_session = MagicMock()
+        caller_session.flush.side_effect = IntegrityError("", {}, Exception("FK violation"))
+
+        result = writer.write_event(
+            event_type="session_ended",
+            payload={"session_uuid": "abc", "reason": "timeout"},
+            session=caller_session,
+        )
+
+        assert result.success is False
+        assert result.error is not None
+        stats = writer.metrics.get_stats()
+        assert stats["failed_writes"] == 1
+
+    def test_write_event_without_session_uses_own_factory(self, mock_engine, mock_sessionmaker):
+        """Without a session, should use own session factory (existing behavior)."""
+        own_session = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=own_session)
+
+        writer = EventWriter(database_url="postgresql://test@localhost/test")
+
+        result = writer.write_event(
+            event_type="session_ended",
+            payload={"session_uuid": "abc", "reason": "timeout"},
+        )
+
+        # The own session factory should be used (commit is called)
+        own_session.commit.assert_called_once()
+
+
 class TestCreateEventWriter:
     """Test create_event_writer factory function."""
 

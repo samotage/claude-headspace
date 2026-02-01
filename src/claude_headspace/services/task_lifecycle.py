@@ -183,7 +183,12 @@ class TaskLifecycleManager:
 
         return True
 
-    def complete_task(self, task: Task, trigger: str = "agent:completion") -> bool:
+    def complete_task(
+        self,
+        task: Task,
+        trigger: str = "agent:completion",
+        agent_text: str = "",
+    ) -> bool:
         """
         Mark a task as complete.
 
@@ -192,6 +197,7 @@ class TaskLifecycleManager:
         Args:
             task: The task to complete
             trigger: The trigger that caused completion
+            agent_text: Optional agent response text extracted from transcript
 
         Returns:
             True if the task was completed successfully
@@ -200,12 +206,12 @@ class TaskLifecycleManager:
         task.state = TaskState.COMPLETE
         task.completed_at = datetime.now(timezone.utc)
 
-        # Create completion turn record
+        # Create completion turn record with agent text if available
         turn = Turn(
             task_id=task.id,
             actor=TurnActor.AGENT,
             intent=TurnIntent.COMPLETION,
-            text="",
+            text=agent_text or "",
         )
         self._session.add(turn)
         self._session.flush()
@@ -260,7 +266,7 @@ class TaskLifecycleManager:
 
         # Special case: User command starts a new task.
         # This handles IDLE (no active task), AWAITING_INPUT (agent asked a question),
-        # and PROCESSING (stop hook didn't complete the task - it uses debounce instead).
+        # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
             if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING):
                 # Complete any existing task before creating a new one
@@ -391,6 +397,7 @@ class TaskLifecycleManager:
             payload=payload,
             agent_id=agent.id,
             task_id=task.id,
+            session=self._session,
         )
 
         if not result.success:

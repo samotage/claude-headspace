@@ -27,6 +27,10 @@ class EventType:
     HOOK_USER_PROMPT = "hook_user_prompt"
     HOOK_STOP = "hook_stop"
     HOOK_NOTIFICATION = "hook_notification"
+    HOOK_POST_TOOL_USE = "hook_post_tool_use"
+
+    # Content pipeline events
+    QUESTION_DETECTED = "question_detected"
 
     # List of all valid event types
     ALL_TYPES = [
@@ -40,6 +44,8 @@ class EventType:
         HOOK_USER_PROMPT,
         HOOK_STOP,
         HOOK_NOTIFICATION,
+        HOOK_POST_TOOL_USE,
+        QUESTION_DETECTED,
     ]
 
 
@@ -97,7 +103,15 @@ PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
     ),
     EventType.HOOK_NOTIFICATION: PayloadSchema(
         required_fields=["claude_session_id"],
-        optional_fields=["working_directory", "title", "message"],
+        optional_fields=["working_directory", "title", "message", "notification_type"],
+    ),
+    EventType.HOOK_POST_TOOL_USE: PayloadSchema(
+        required_fields=["claude_session_id"],
+        optional_fields=["working_directory", "tool_name"],
+    ),
+    EventType.QUESTION_DETECTED: PayloadSchema(
+        required_fields=["agent_id", "source"],
+        optional_fields=["content"],
     ),
 }
 
