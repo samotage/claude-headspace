@@ -14,8 +14,7 @@ dashboard_bp = Blueprint("dashboard", __name__)
 # Display-only state for stale PROCESSING agents (not in TaskState enum, never persisted)
 TIMED_OUT = "TIMED_OUT"
 
-# Default fallbacks (used when no app context is available, e.g. unit tests)
-_DEFAULT_STALE_PROCESSING_SECONDS = 600
+# Default fallback for active timeout (used when no app context is available)
 _DEFAULT_ACTIVE_TIMEOUT_MINUTES = 5
 
 
@@ -59,9 +58,12 @@ def get_effective_state(agent: Agent) -> TaskState | str:
     # of AWAITING_INPUT (amber) to distinguish genuine input requests.
     if model_state == TaskState.PROCESSING and agent.ended_at is None:
         dashboard_config = _get_dashboard_config()
-        threshold = dashboard_config.get(
-            "stale_processing_seconds", _DEFAULT_STALE_PROCESSING_SECONDS
-        )
+        threshold = dashboard_config.get("stale_processing_seconds")
+        if threshold is None:
+            raise RuntimeError(
+                "Missing required config: dashboard.stale_processing_seconds. "
+                "Set it in config.yaml or via DASHBOARD_STALE_PROCESSING_SECONDS env var."
+            )
         elapsed = (datetime.now(timezone.utc) - agent.last_seen_at).total_seconds()
         if elapsed > threshold:
             return TIMED_OUT

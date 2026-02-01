@@ -114,56 +114,123 @@ class TestDatabaseEnvMappings:
 
 
 class TestDatabaseURL:
-    """Test DATABASE_URL support."""
+    """Test DATABASE_URL support.
+
+    All tests use claude_headspace_test as the database name, matching
+    the real project convention. Tests that need to bypass the env var
+    (to test config-based URL building) temporarily unset DATABASE_URL.
+    """
 
     def test_get_database_url_from_config(self):
         """Test building database URL from config fields."""
-        config = {
-            "database": {
-                "host": "localhost",
-                "port": 5432,
-                "name": "testdb",
-                "user": "testuser",
-                "password": "",
-            }
-        }
-        url = get_database_url(config)
-        assert url == "postgresql://testuser@localhost:5432/testdb"
-
-    def test_get_database_url_with_password(self):
-        """Test building database URL with password."""
-        config = {
-            "database": {
-                "host": "localhost",
-                "port": 5432,
-                "name": "testdb",
-                "user": "testuser",
-                "password": "secret123",
-            }
-        }
-        url = get_database_url(config)
-        assert url == "postgresql://testuser:secret123@localhost:5432/testdb"
-
-    def test_database_url_env_takes_precedence(self):
-        """Test DATABASE_URL env var takes precedence over config fields."""
-        original = os.environ.get("DATABASE_URL")
-        os.environ["DATABASE_URL"] = "postgresql://envuser@envhost:5555/envdb"
+        original = os.environ.pop("DATABASE_URL", None)
         try:
             config = {
                 "database": {
-                    "host": "confighost",
+                    "host": "localhost",
                     "port": 5432,
-                    "name": "configdb",
-                    "user": "configuser",
+                    "name": "claude_headspace_test",
+                    "user": "samotage",
                     "password": "",
                 }
             }
             url = get_database_url(config)
-            assert url == "postgresql://envuser@envhost:5555/envdb"
+            assert url == "postgresql://samotage@localhost:5432/claude_headspace_test"
+        finally:
+            if original is not None:
+                os.environ["DATABASE_URL"] = original
+
+    def test_get_database_url_with_password(self):
+        """Test building database URL with password."""
+        original = os.environ.pop("DATABASE_URL", None)
+        try:
+            config = {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "claude_headspace_test",
+                    "user": "samotage",
+                    "password": "secret123",
+                }
+            }
+            url = get_database_url(config)
+            assert url == "postgresql://samotage:secret123@localhost:5432/claude_headspace_test"
+        finally:
+            if original is not None:
+                os.environ["DATABASE_URL"] = original
+
+    def test_database_url_env_takes_precedence(self):
+        """Test DATABASE_URL env var takes precedence over config fields."""
+        original = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = "postgresql://samotage@otherhost:5555/claude_headspace_test"
+        try:
+            config = {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "claude_headspace_test",
+                    "user": "samotage",
+                    "password": "",
+                }
+            }
+            url = get_database_url(config)
+            assert url == "postgresql://samotage@otherhost:5555/claude_headspace_test"
         finally:
             if original is None:
                 del os.environ["DATABASE_URL"]
             else:
+                os.environ["DATABASE_URL"] = original
+
+    def test_guard_blocks_production_db(self):
+        """Test that the safety guard prevents connecting to production DB."""
+        original = os.environ.pop("DATABASE_URL", None)
+        try:
+            config = {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "claude_headspace",
+                    "user": "samotage",
+                    "password": "",
+                }
+            }
+            with pytest.raises(RuntimeError, match="SAFETY GUARD"):
+                get_database_url(config)
+        finally:
+            if original is not None:
+                os.environ["DATABASE_URL"] = original
+
+    def test_guard_blocks_production_db_via_env(self):
+        """Test that DATABASE_URL pointing to production is also blocked."""
+        original = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = "postgresql://samotage@localhost:5432/claude_headspace"
+        try:
+            config = {"database": {"name": "claude_headspace"}}
+            with pytest.raises(RuntimeError, match="SAFETY GUARD"):
+                get_database_url(config)
+        finally:
+            if original is None:
+                del os.environ["DATABASE_URL"]
+            else:
+                os.environ["DATABASE_URL"] = original
+
+    def test_guard_allows_test_db(self):
+        """Test that claude_headspace_test is allowed."""
+        original = os.environ.pop("DATABASE_URL", None)
+        try:
+            config = {
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "claude_headspace_test",
+                    "user": "samotage",
+                    "password": "",
+                }
+            }
+            url = get_database_url(config)
+            assert url == "postgresql://samotage@localhost:5432/claude_headspace_test"
+        finally:
+            if original is not None:
                 os.environ["DATABASE_URL"] = original
 
 

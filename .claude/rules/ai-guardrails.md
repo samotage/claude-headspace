@@ -2,13 +2,49 @@
 
 **CRITICAL:** Rules to prevent destructive operations and ensure human oversight.
 
+## Follow Instructions Literally
+
+**When instructions are explicit, follow them exactly.**
+
+- Do NOT reinterpret, add conditions, or substitute your own judgment
+- Do NOT add "safety" checks on top of already-granted permissions
+- Do NOT ask for confirmation when settings.json already allows the action
+- "Explicit" means "do this" — not "consider doing this"
+- If CLAUDE.md, settings.json, guardrails, or the user says X, do X. No hedging, no second-guessing.
+- If permissions are granted in settings.json, they are GRANTED. Do not re-ask.
+
 ## Permissions Hierarchy
 
 **BEFORE applying rules below, check `.claude/settings.json` first.**
 
 1. Check `permissions.allow` list
-2. If command matches a pre-approved pattern → Execute without asking
+2. If command matches a pre-approved pattern → Execute without asking. Do NOT prompt.
 3. If NOT pre-approved → Apply rules below
+4. A blanket permission (e.g., `"Read"`) covers ALL paths — never prompt for specific paths when a blanket permission exists
+
+## Database Protection
+
+**CRITICAL: Tests must NEVER touch production or development databases.**
+
+**Protected databases:** Any database that does NOT end in `_test`. This includes `claude_headspace`, `ot_monitor`, and all other non-test databases on the system.
+
+**Test database rule:**
+- ALL pytest tests MUST connect to `claude_headspace_test` (or the appropriate `_test`-suffixed database)
+- The `_force_test_database` fixture in `tests/conftest.py` enforces this — it is a session-scoped autouse fixture that sets `DATABASE_URL` to the test database before any test runs
+- NEVER remove, bypass, weaken, or modify the `_force_test_database` fixture without explicit user approval
+- NEVER set `DATABASE_URL` to a non-test database in test code
+- All new test files MUST use the existing fixture system (`app`, `client`, `db_session`). No ad-hoc database connections (e.g., raw `create_engine()` or `psql` calls targeting production) are permitted in tests
+
+**Direct database commands:**
+- NEVER run destructive SQL (`DROP DATABASE`, `DROP TABLE`, `TRUNCATE`, `DELETE FROM`) against any non-test database without explicit user approval
+- NEVER run `flask db downgrade` against a non-test database without explicit user approval
+- `flask db upgrade` on the development database is permitted (it's additive), but ALWAYS confirm the target database first
+- When running `psql` commands, ALWAYS verify the target database name before executing
+
+**Verification before any database operation:**
+1. Check which database will be affected
+2. If the database name does NOT end in `_test`, STOP and ask the user
+3. Exception: read-only queries (`SELECT`, `\d`, `\dt`, `\l`) are safe on any database
 
 ## Protected Operations
 
@@ -35,14 +71,22 @@ ALWAYS ask confirmation before:
 
 ## Testing
 
+**Database safety is non-negotiable.** See "Database Protection" section above.
+
 ALWAYS report testing status:
 - "Tests run: X passed, Y failed" (good)
 - "Tests not run yet" (good)
 - No mention of tests (bad)
 
+**New test files MUST:**
+- Use the existing fixture system (`app`, `client`, `db_session` from conftest.py)
+- NEVER create ad-hoc database connections (no raw `create_engine()`, no direct `psql` in tests)
+- NEVER hardcode database connection strings
+- Verify that `_force_test_database` fixture is active (it's autouse, session-scoped)
+
 Run tests with:
 ```bash
-pytest                    # All tests
+pytest                    # All tests (always uses _test database)
 pytest --cov=.            # With coverage
 ```
 
@@ -147,6 +191,7 @@ This project uses osascript for iTerm integration:
 
 Before executing commands:
 - [ ] Pre-approved in settings.json? → Execute
+- [ ] **Database operation?** → Is target a `_test` database? If not, STOP
 - [ ] Destructive? → Get approval
 - [ ] Config change? → Show diff first
 - [ ] Pip install/uninstall? → Explicit approval

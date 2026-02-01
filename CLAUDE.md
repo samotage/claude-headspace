@@ -333,14 +333,24 @@ Notifications can be enabled/disabled via:
 
 ### Testing
 
+#### CRITICAL: Test Database Safety
+
+**Tests MUST NEVER connect to production or development databases.** All databases that do not end in `_test` are protected. This rule is enforced at multiple levels:
+
+1. **Fixture enforcement:** `tests/conftest.py` contains a session-scoped autouse fixture `_force_test_database` that sets `DATABASE_URL` to `claude_headspace_test` before any test runs. This fixture must NEVER be removed, bypassed, or weakened.
+2. **New test requirement:** All new test files MUST use the existing fixture system (`app`, `client`, `db_session`). No ad-hoc database connections are allowed.
+3. **AI guardrail:** See `.claude/rules/ai-guardrails.md` — Database Protection section.
+
+Testing must not pollute, corrupt, or delete any user data in production or development databases.
+
 #### Commands
 
 ```bash
-pytest                                    # All tests (~960 tests)
+pytest                                    # All tests (~960 tests, always uses _test DB)
 pytest --cov=src                          # With coverage report
 pytest tests/services/                    # Service unit tests
 pytest tests/routes/                      # Route/endpoint tests
-pytest tests/integration/                 # Integration tests (real PostgreSQL)
+pytest tests/integration/                 # Integration tests (real PostgreSQL _test DB)
 pytest -k "test_state_machine"            # Run tests matching pattern
 pytest tests/integration/test_persistence_flow.py  # Specific file
 ```
@@ -349,7 +359,7 @@ pytest tests/integration/test_persistence_flow.py  # Specific file
 
 - **Unit tests** (`tests/services/`) — mock dependencies, validate pure service logic in isolation
 - **Route tests** (`tests/routes/`) — Flask test client with mocked services, validate HTTP contracts and response codes
-- **Integration tests** (`tests/integration/`) — real PostgreSQL database, factory-boy data creation, verify actual persistence and constraints
+- **Integration tests** (`tests/integration/`) — real PostgreSQL `_test` database, factory-boy data creation, verify actual persistence and constraints
 
 #### Integration Testing Framework
 

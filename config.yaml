@@ -78,4 +78,4 @@ openrouter:
 # Dashboard display settings
 dashboard:
   stale_processing_seconds: 600  # Agents PROCESSING longer than this shown as "Timed out"
-  active_timeout_minutes: 5      # Agent considered active if seen within this window
+  active_timeout_minutes: 60      # Agent considered active if seen within this window
