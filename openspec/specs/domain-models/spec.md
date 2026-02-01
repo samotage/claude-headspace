@@ -54,17 +54,26 @@ The system SHALL persist Agents with id, session_uuid (UUID), project_id FK, ite
 
 ### Requirement: Task Model
 
-The system SHALL persist Tasks with id, agent_id FK, state (5-value enum), started_at, and completed_at (nullable).
+The Task model SHALL include fields for instruction tracking and renamed completion summary.
 
-#### Scenario: Valid Task State
-- **WHEN** a Task is created with state = "processing"
-- **THEN** the task is persisted with the valid enum value
+#### Scenario: Task instruction field
 
-#### Scenario: Invalid Task State
-- **WHEN** a Task is created with state = "invalid_state"
-- **THEN** a validation error is raised
+- **WHEN** the migration is applied
+- **THEN** the tasks table SHALL have a nullable `instruction` text field
+- **AND** a nullable `instruction_generated_at` timestamp field
 
----
+#### Scenario: Task completion summary field rename
+
+- **WHEN** the migration is applied
+- **THEN** the tasks table `summary` column SHALL be renamed to `completion_summary`
+- **AND** the `summary_generated_at` column SHALL be renamed to `completion_summary_generated_at`
+- **AND** existing data SHALL be preserved during the rename
+
+#### Scenario: Backward compatibility with existing tasks
+
+- **WHEN** a task exists from before this change with NULL `completion_summary` and NULL `instruction`
+- **THEN** the task SHALL display without errors in the dashboard
+- **AND** the agent card SHALL show appropriate fallback text
 
 ### Requirement: TaskState Enum
 

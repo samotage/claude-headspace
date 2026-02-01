@@ -44,6 +44,19 @@ Turn and task summarisation SHALL be skipped when text content is unavailable.
 
 ---
 
+### Requirement: Reference Rename
+
+All codebase references to `task.summary` SHALL be updated to `task.completion_summary`.
+
+#### Scenario: Field references updated across codebase
+
+- **WHEN** the change is applied
+- **THEN** all references to `task.summary` SHALL be updated to `task.completion_summary`
+- **AND** all references to `task.summary_generated_at` SHALL be updated to `task.completion_summary_generated_at`
+- **AND** this SHALL include models, services, routes, templates, static JS, and all test files
+
+---
+
 ## MODIFIED Requirements
 
 ### Requirement: Task Summarisation
@@ -105,15 +118,3 @@ Turn summarisation prompts SHALL use intent-specific templates with task instruc
 - **WHEN** a turn is summarised and the parent task has a non-NULL instruction
 - **THEN** the task instruction SHALL be included in the summarisation prompt as context
 
----
-
-### Requirement: Reference Rename
-
-All codebase references to `task.summary` SHALL be updated to `task.completion_summary`.
-
-#### Scenario: Field references updated across codebase
-
-- **WHEN** the change is applied
-- **THEN** all references to `task.summary` SHALL be updated to `task.completion_summary`
-- **AND** all references to `task.summary_generated_at` SHALL be updated to `task.completion_summary_generated_at`
-- **AND** this SHALL include models, services, routes, templates, static JS, and all test files

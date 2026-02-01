@@ -73,11 +73,11 @@ def summarise_task(task_id):
         return jsonify({"error": "Task not found"}), 404
 
     # Return existing summary without re-generating
-    if task.summary:
+    if task.completion_summary:
         return jsonify({
             "task_id": task_id,
-            "summary": task.summary,
-            "generated_at": task.summary_generated_at.isoformat() if task.summary_generated_at else None,
+            "summary": task.completion_summary,
+            "generated_at": task.completion_summary_generated_at.isoformat() if task.completion_summary_generated_at else None,
             "cached": True,
         })
 
@@ -93,6 +93,6 @@ def summarise_task(task_id):
     return jsonify({
         "task_id": task_id,
         "summary": summary,
-        "generated_at": task.summary_generated_at.isoformat() if task.summary_generated_at else None,
+        "generated_at": task.completion_summary_generated_at.isoformat() if task.completion_summary_generated_at else None,
         "cached": False,
     })

@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Task Data Model
+### Requirement: Task Model
 
 The Task model SHALL include fields for instruction tracking and renamed completion summary.
 

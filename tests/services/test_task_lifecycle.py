@@ -194,7 +194,7 @@ class TestTaskLifecycleManagerUnit:
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
     def test_complete_task_sends_notification(self, mock_get_notif, mock_session, mock_event_writer):
-        """complete_task should send a task_complete OS notification."""
+        """complete_task should send a task_complete OS notification with context."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_agent.name = "test-agent"
@@ -206,6 +206,7 @@ class TestTaskLifecycleManagerUnit:
         mock_task.agent = mock_agent
         mock_task.state = TaskState.PROCESSING
         mock_task.completed_at = None
+        mock_task.instruction = "Fix notification port mismatch"
 
         manager = TaskLifecycleManager(
             session=mock_session,
@@ -215,27 +216,38 @@ class TestTaskLifecycleManagerUnit:
         mock_svc = MagicMock()
         mock_get_notif.return_value = mock_svc
 
-        manager.complete_task(mock_task)
+        manager.complete_task(mock_task, agent_text="Updated config defaults")
 
         mock_svc.notify_task_complete.assert_called_once_with(
             agent_id=str(mock_agent.id),
             agent_name="test-agent",
             project="test-project",
+            task_instruction="Fix notification port mismatch",
+            turn_text="Updated config defaults",
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
     def test_update_task_state_sends_awaiting_input_notification(self, mock_get_notif, mock_session, mock_event_writer):
-        """update_task_state should send awaiting_input notification when transitioning to AWAITING_INPUT."""
+        """update_task_state should send awaiting_input notification with context when transitioning to AWAITING_INPUT."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
+
+        # Create a mock AGENT QUESTION turn
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.text = "Which CSS framework?"
+        mock_turn.summary = None
 
         mock_task = MagicMock()
         mock_task.id = 1
         mock_task.agent_id = mock_agent.id
         mock_task.agent = mock_agent
         mock_task.state = TaskState.PROCESSING
+        mock_task.instruction = "Implement dark mode"
+        mock_task.turns = [mock_turn]
 
         manager = TaskLifecycleManager(
             session=mock_session,
@@ -255,6 +267,99 @@ class TestTaskLifecycleManagerUnit:
             agent_id=str(mock_agent.id),
             agent_name="test-agent",
             project="test-project",
+            task_instruction="Implement dark mode",
+            turn_text="Which CSS framework?",
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    def test_complete_task_notification_falls_back_to_command_text(self, mock_get_notif, mock_session, mock_event_writer):
+        """complete_task notification should fall back to first USER COMMAND turn text when instruction is None."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        # USER COMMAND turn — the fallback source for instruction
+        mock_command_turn = MagicMock()
+        mock_command_turn.actor = TurnActor.USER
+        mock_command_turn.intent = TurnIntent.COMMAND
+        mock_command_turn.text = "Fix the login page CSS alignment issue"
+
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.agent_id = mock_agent.id
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+        mock_task.instruction = None  # Not yet summarised
+        mock_task.completion_summary = None
+        mock_task.turns = [mock_command_turn]
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        manager.complete_task(mock_task)
+
+        mock_svc.notify_task_complete.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+            task_instruction="Fix the login page CSS alignment issue",
+            turn_text=None,
+        )
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    def test_update_task_state_notification_falls_back_to_command_text(self, mock_get_notif, mock_session, mock_event_writer):
+        """update_task_state notification should fall back to first USER COMMAND turn text when instruction is None."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_command_turn = MagicMock()
+        mock_command_turn.actor = TurnActor.USER
+        mock_command_turn.intent = TurnIntent.COMMAND
+        mock_command_turn.text = "Add dark mode toggle"
+
+        mock_question_turn = MagicMock()
+        mock_question_turn.actor = TurnActor.AGENT
+        mock_question_turn.intent = TurnIntent.QUESTION
+        mock_question_turn.text = "Which theme library?"
+        mock_question_turn.summary = None
+
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.agent_id = mock_agent.id
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.instruction = None  # Not yet summarised
+        mock_task.turns = [mock_command_turn, mock_question_turn]
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        manager.update_task_state(
+            task=mock_task,
+            to_state=TaskState.AWAITING_INPUT,
+            trigger="agent:question",
+        )
+
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+            task_instruction="Add dark mode toggle",
+            turn_text="Which theme library?",
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")

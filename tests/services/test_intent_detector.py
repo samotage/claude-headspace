@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 from claude_headspace.services.intent_detector import (
     BLOCKED_PATTERNS,
+    COMPLETION_OPENER_PATTERNS,
     COMPLETION_PATTERNS,
     CONTINUATION_PATTERNS,
     END_OF_TASK_HANDOFF_PATTERNS,
@@ -15,6 +16,7 @@ from claude_headspace.services.intent_detector import (
     END_OF_TASK_SUMMARY_PATTERNS,
     QUESTION_PATTERNS,
     IntentResult,
+    _detect_completion_opener,
     _detect_end_of_task,
     _extract_tail,
     _infer_completion_classification,
@@ -274,6 +276,11 @@ class TestPatternAccuracy:
         ("All tests are passing.", True),
         ("The PR is ready for review.", True),
         ("Here's a summary of what was done:\n- Fixed bug", True),
+        # Completion opener cases
+        ("Done. All files now consistently use anthropic/claude-3-haiku.", True),
+        ("Complete. The feature is ready for review.", True),
+        ("Finished. Here's what changed in the codebase.", True),
+        ("All done! The tests pass and coverage is at 95%.", True),
         # False positives we want to avoid
         ("The task is not done yet.", False),  # Negative
         ("I'm working on completing it.", False),  # In progress
@@ -932,3 +939,156 @@ class TestInferenceClassificationFallback:
         )
         assert result.intent == TurnIntent.PROGRESS
         mock_service.infer.assert_not_called()
+
+
+class TestCompletionOpenerDetection:
+    """Integration tests for completion opener detection via detect_agent_intent."""
+
+    def test_done_with_detail(self):
+        """'Done. All files updated...' should detect as COMPLETION."""
+        result = detect_agent_intent(
+            "Done. All files now consistently use anthropic/claude-3-haiku."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.confidence == 0.75
+
+    def test_complete_with_detail(self):
+        """'Complete. The feature is ready.' should detect as COMPLETION."""
+        result = detect_agent_intent("Complete. The feature is ready for review.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_finished_with_detail(self):
+        """'Finished. Here's what changed...' should detect as COMPLETION."""
+        result = detect_agent_intent("Finished. Here's what changed in the codebase.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_done_with_detail(self):
+        """'All done! The tests pass.' should detect as COMPLETION."""
+        result = detect_agent_intent("All done! The tests pass and coverage is at 95%.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_done_with_soft_close_boosted(self):
+        """'Done. Let me know if you'd like changes.' should get boosted confidence."""
+        result = detect_agent_intent(
+            "Done. Let me know if you'd like any changes."
+        )
+        # Soft-close boosts opener to 0.9
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.confidence >= 0.7
+
+    def test_done_standalone_still_works(self):
+        """'Done.' alone should still detect as COMPLETION via existing pattern."""
+        result = detect_agent_intent("Done.")
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.confidence == 1.0  # Existing pattern, Phase 1
+
+    def test_done_with_continuation_is_not_completion(self):
+        """'Done. ... Now I need to...' should NOT be COMPLETION (continuation guard)."""
+        result = detect_agent_intent(
+            "Done. Fixed the login bug.\nNow I need to work on the tests."
+        )
+        assert result.intent != TurnIntent.COMPLETION
+
+    def test_question_takes_priority_over_opener(self):
+        """'I'm done. Should I continue?' -> QUESTION (question fires before opener)."""
+        result = detect_agent_intent("I'm done. Should I continue?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_mid_sentence_done_no_match(self):
+        """'The task is done already.' should NOT match opener (no punctuation after done)."""
+        result = detect_agent_intent("The task is done already.")
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_lowercase_done_at_start(self):
+        """'done. everything is updated.' should match (case insensitive)."""
+        result = detect_agent_intent("done. everything is updated and tests pass.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_set_with_detail(self):
+        """'All set! The configuration has been updated.' should detect as COMPLETION."""
+        result = detect_agent_intent("All set! The configuration has been updated.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_finished_with_detail(self):
+        """'All finished. Three files were modified.' should detect as COMPLETION."""
+        result = detect_agent_intent("All finished. Three files were modified.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_real_world_done_buried_in_response(self):
+        """Real-world case: 'Done.' mid-response after tool output lines."""
+        text = (
+            "Updated the pluralization logic in the template.\n"
+            "Updated the CSS for button alignment.\n"
+            "\n"
+            "Done. Two changes:\n"
+            "\n"
+            '  - The text now reads "4 active agents" '
+            '(pluralized — shows "1 active agent" for singular)\n'
+            "  - Brain Reboot button is aligned on the same row "
+            "as the project name heading"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_opener_not_at_start_of_tail(self):
+        """Opener on a later line (not first) in tail should still match."""
+        lines = ["Processing file..."] * 5
+        lines.append("Done. All files now consistently use anthropic/claude-3-haiku.")
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestCompletionOpenerUnit:
+    """Unit tests for _detect_completion_opener function."""
+
+    def test_returns_none_with_continuation(self):
+        """Should return None when has_continuation is True."""
+        result = _detect_completion_opener(
+            "Done. All files updated.", has_continuation=True
+        )
+        assert result is None
+
+    def test_plain_opener_returns_completion(self):
+        """Plain opener should return COMPLETION with 0.75 confidence."""
+        result = _detect_completion_opener(
+            "Done. All files updated.", has_continuation=False
+        )
+        assert result is not None
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.confidence == 0.75
+
+    def test_opener_with_soft_close_boosted(self):
+        """Opener + soft-close should return COMPLETION with 0.9 confidence."""
+        result = _detect_completion_opener(
+            "Done. Let me know if you'd like any adjustments.",
+            has_continuation=False,
+        )
+        assert result is not None
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.confidence == 0.9
+
+    def test_no_opener_returns_none(self):
+        """Should return None when no opener patterns match."""
+        result = _detect_completion_opener(
+            "I'm still working on the implementation.", has_continuation=False
+        )
+        assert result is None
+
+    def test_done_without_punctuation_returns_none(self):
+        """'done with' (no punctuation after 'done') should return None."""
+        result = _detect_completion_opener(
+            "done with the first part of the task", has_continuation=False
+        )
+        assert result is None
+
+    def test_opener_on_later_line_in_multiline_tail(self):
+        """Opener on a non-first line should still match (multiline ^)."""
+        tail = (
+            "Updated the CSS for button alignment.\n"
+            "Done. Two changes made to the codebase."
+        )
+        result = _detect_completion_opener(tail, has_continuation=False)
+        assert result is not None
+        assert result.intent == TurnIntent.COMPLETION
+        assert result.confidence == 0.75

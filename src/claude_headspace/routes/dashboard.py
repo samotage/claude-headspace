@@ -327,7 +327,7 @@ def _get_completed_task_summary(task: Task) -> str:
     Get summary text for a completed task.
 
     Priority:
-    1. task.summary (AI-generated task summary)
+    1. task.completion_summary (AI-generated task summary)
     2. Last turn's summary
     3. Last turn's text (truncated to 100 chars)
     4. "Summarising..." (async summary in progress)
@@ -338,8 +338,8 @@ def _get_completed_task_summary(task: Task) -> str:
     Returns:
         Summary text for the completed task
     """
-    if task.summary:
-        return task.summary
+    if task.completion_summary:
+        return task.completion_summary
 
     if task.turns:
         last_turn = task.turns[-1]
@@ -410,6 +410,28 @@ def get_task_summary(agent: Agent) -> str:
                 return text
 
     return "No active task"
+
+
+def get_task_instruction(agent: Agent) -> str | None:
+    """
+    Get the task instruction for an agent's current or most recent task.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Instruction text, or None if no instruction is available
+    """
+    current_task = agent.get_current_task()
+    if current_task and current_task.instruction:
+        return current_task.instruction
+
+    # Check most recent completed task
+    if agent.tasks and agent.tasks[0].state == TaskState.COMPLETE:
+        if agent.tasks[0].instruction:
+            return agent.tasks[0].instruction
+
+    return None
 
 
 def get_state_info(state: TaskState | str) -> dict:
@@ -542,6 +564,7 @@ def dashboard():
                 "state_name": state_name,
                 "state_info": get_state_info(effective_state),
                 "task_summary": get_task_summary(agent),
+                "task_instruction": get_task_instruction(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
                 "project_name": project.name,

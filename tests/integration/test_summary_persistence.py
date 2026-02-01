@@ -141,8 +141,8 @@ class TestTaskSummaryPersistence:
         db_session.flush()
 
         fetched = db_session.get(Task, task.id)
-        assert fetched.summary is None
-        assert fetched.summary_generated_at is None
+        assert fetched.completion_summary is None
+        assert fetched.completion_summary_generated_at is None
 
     def test_task_summary_persisted(self, db_session):
         """Task summary and timestamp can be set and persisted."""
@@ -169,13 +169,13 @@ class TestTaskSummaryPersistence:
 
         # Set summary
         now = datetime.now(timezone.utc)
-        task.summary = "Implemented JWT auth with refresh tokens. All tests passing."
-        task.summary_generated_at = now
+        task.completion_summary = "Implemented JWT auth with refresh tokens. All tests passing."
+        task.completion_summary_generated_at = now
         db_session.flush()
 
         fetched = db_session.get(Task, task.id)
-        assert fetched.summary == "Implemented JWT auth with refresh tokens. All tests passing."
-        assert fetched.summary_generated_at is not None
+        assert fetched.completion_summary == "Implemented JWT auth with refresh tokens. All tests passing."
+        assert fetched.completion_summary_generated_at is not None
 
     def test_task_summary_with_turns(self, db_session):
         """Task with turns can have summary persisted independently."""
@@ -196,8 +196,8 @@ class TestTaskSummaryPersistence:
             agent_id=agent.id,
             state=TaskState.COMPLETE,
             completed_at=datetime.now(timezone.utc),
-            summary="Task outcome summary",
-            summary_generated_at=datetime.now(timezone.utc),
+            completion_summary="Task outcome summary",
+            completion_summary_generated_at=datetime.now(timezone.utc),
         )
         db_session.add(task)
         db_session.flush()
@@ -223,7 +223,7 @@ class TestTaskSummaryPersistence:
         db_session.flush()
 
         fetched_task = db_session.get(Task, task.id)
-        assert fetched_task.summary == "Task outcome summary"
+        assert fetched_task.completion_summary == "Task outcome summary"
         assert len(fetched_task.turns) == 2
         assert fetched_task.turns[0].summary == "User requested a login bug fix."
         assert fetched_task.turns[1].summary == "Agent fixed and tested the login bug."

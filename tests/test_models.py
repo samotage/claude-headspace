@@ -83,15 +83,16 @@ class TestEnumDefinitions:
         assert TurnActor.USER.value == "user"
         assert TurnActor.AGENT.value == "agent"
 
-    def test_turnintent_has_five_values(self):
-        """Test TurnIntent enum has exactly 5 values."""
+    def test_turnintent_has_six_values(self):
+        """Test TurnIntent enum has exactly 6 values."""
         values = list(TurnIntent)
-        assert len(values) == 5
+        assert len(values) == 6
         assert TurnIntent.COMMAND in values
         assert TurnIntent.ANSWER in values
         assert TurnIntent.QUESTION in values
         assert TurnIntent.COMPLETION in values
         assert TurnIntent.PROGRESS in values
+        assert TurnIntent.END_OF_TASK in values
 
     def test_turnintent_values(self):
         """Test TurnIntent enum values."""
@@ -287,6 +288,45 @@ class TestAgentStateDerivedProperty:
         agent = Agent(session_uuid=uuid4(), project_id=1)
         assert hasattr(agent, 'get_current_task')
         assert callable(agent.get_current_task)
+
+
+class TestTaskInstructionAndCompletionFields:
+    """Test Task model new fields: instruction, instruction_generated_at,
+    completion_summary, completion_summary_generated_at."""
+
+    def test_task_has_instruction_field(self):
+        """Test Task has instruction field defaulting to None."""
+        task = Task(agent_id=1)
+        assert hasattr(task, 'instruction')
+        assert task.instruction is None
+
+    def test_task_has_instruction_generated_at_field(self):
+        """Test Task has instruction_generated_at field defaulting to None."""
+        task = Task(agent_id=1)
+        assert hasattr(task, 'instruction_generated_at')
+        assert task.instruction_generated_at is None
+
+    def test_task_has_completion_summary_field(self):
+        """Test Task has completion_summary field defaulting to None."""
+        task = Task(agent_id=1)
+        assert hasattr(task, 'completion_summary')
+        assert task.completion_summary is None
+
+    def test_task_has_completion_summary_generated_at_field(self):
+        """Test Task has completion_summary_generated_at field defaulting to None."""
+        task = Task(agent_id=1)
+        assert hasattr(task, 'completion_summary_generated_at')
+        assert task.completion_summary_generated_at is None
+
+    def test_task_instruction_accepts_text(self):
+        """Test Task instruction field can store text."""
+        task = Task(agent_id=1, instruction="Refactor the auth module")
+        assert task.instruction == "Refactor the auth module"
+
+    def test_task_completion_summary_accepts_text(self):
+        """Test Task completion_summary field can store text."""
+        task = Task(agent_id=1, completion_summary="Auth module refactored successfully")
+        assert task.completion_summary == "Auth module refactored successfully"
 
 
 class TestTaskQueryMethods:

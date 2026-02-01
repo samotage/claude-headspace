@@ -3,46 +3,44 @@
          style="max-height: calc(100vh - 280px);"
          aria-labelledby="project-{{ project.id }}-heading">
     <!-- Column header -->
-    <div class="flex items-center justify-between p-4 bg-elevated border-b border-cyan/20"
+    <div class="p-4 bg-elevated border-b border-cyan/20"
          style="box-shadow: 0 1px 8px rgba(86,212,221,0.08);">
-        <div class="flex items-center gap-3">
-            <!-- State indicator dots -->
-            <div class="flex items-center gap-1.5">
-                <span class="state-dot w-3 h-3 rounded-full bg-red
-                    {% if not project.state_flags.has_timed_out %}opacity-25{% endif %}"
-                    role="status" aria-label="Timed out"></span>
-                <span class="state-dot w-3 h-3 rounded-full bg-amber
-                    {% if not project.state_flags.has_input_needed %}opacity-25{% endif %}"
-                    role="status" aria-label="Input needed"></span>
-                <span class="state-dot w-3 h-3 rounded-full bg-blue
-                    {% if not project.state_flags.has_working %}opacity-25{% endif %}"
-                    role="status" aria-label="Working"></span>
-                <span class="state-dot w-3 h-3 rounded-full bg-green
-                    {% if not project.state_flags.has_idle %}opacity-25{% endif %}"
-                    role="status" aria-label="Idle"></span>
+        <!-- Heading row: dots + project name + brain reboot -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <!-- State indicator dots -->
+                <div class="flex items-center gap-1.5">
+                    <span class="state-dot w-3 h-3 rounded-full bg-amber
+                        {% if not project.state_flags.has_input_needed %}opacity-25{% endif %}"
+                        role="status" aria-label="Input needed"></span>
+                    <span class="state-dot w-3 h-3 rounded-full bg-blue
+                        {% if not project.state_flags.has_working %}opacity-25{% endif %}"
+                        role="status" aria-label="Working"></span>
+                    <span class="state-dot w-3 h-3 rounded-full bg-green
+                        {% if not project.state_flags.has_idle %}opacity-25{% endif %}"
+                        role="status" aria-label="Idle"></span>
+                </div>
+
+                <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium font-display">
+                    {{ project.name }}
+                </h2>
+                {% if project.staleness and project.staleness.tier == 'stale' %}
+                    <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
+                {% elif project.staleness and project.staleness.tier == 'aging' %}
+                    <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-amber/20 text-amber">Aging</span>
+                {% endif %}
             </div>
 
-            <!-- Project name + active count -->
-            <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium font-display">
-                {{ project.name }}
-            </h2>
-            {% if project.staleness and project.staleness.tier == 'stale' %}
-                <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
-            {% elif project.staleness and project.staleness.tier == 'aging' %}
-                <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-amber/20 text-amber">Aging</span>
-            {% elif project.staleness and project.staleness.tier == 'fresh' %}
-                <span class="w-2 h-2 rounded-full bg-green inline-block" title="Fresh"></span>
-            {% endif %}
-            <span class="text-xs font-mono text-cyan">{{ project.active_count }} active</span>
-        </div>
-
-        <!-- Brain Reboot -->
-        <div class="flex items-center gap-1">
+            <!-- Brain Reboot -->
             <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
                     onclick="openBrainReboot({{ project.id }}, '{{ project.name }}')"
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>
+        </div>
+        <!-- Active count -->
+        <div class="mt-1 ml-[42px]">
+            <span class="text-xs font-mono text-cyan">{{ project.active_count }} active agent{{ 's' if project.active_count != 1 else '' }}</span>
         </div>
     </div>
 

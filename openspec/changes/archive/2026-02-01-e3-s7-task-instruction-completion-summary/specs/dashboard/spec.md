@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Agent Card Display
+### Requirement: Agent Cards
 
 The agent card SHALL display task context as a two-line layout with instruction and turn summary.
 

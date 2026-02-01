@@ -396,12 +396,13 @@ class TestProcessNotification:
     def test_notification_sends_os_notification_on_transition(
         self, mock_db, mock_get_notif, mock_agent, fresh_state
     ):
-        """Notification should send OS notification when transitioning to AWAITING_INPUT."""
+        """Notification should send OS notification with context when transitioning to AWAITING_INPUT."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
+        mock_task.instruction = "Fix auth bug"
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
@@ -409,13 +410,19 @@ class TestProcessNotification:
         mock_svc = MagicMock()
         mock_get_notif.return_value = mock_svc
 
-        result = process_notification(mock_agent, "session-123")
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Need your input",
+            title="Question",
+        )
 
         assert result.state_changed is True
         mock_svc.notify_awaiting_input.assert_called_once_with(
             agent_id=str(mock_agent.id),
             agent_name="test-agent",
             project="test-project",
+            task_instruction="Fix auth bug",
+            turn_text="Need your input",
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
@@ -433,6 +440,46 @@ class TestProcessNotification:
 
         assert result.state_changed is False
         mock_svc.notify_awaiting_input.assert_not_called()
+
+    @patch("claude_headspace.services.notification_service.get_notification_service")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_falls_back_to_command_turn_for_instruction(
+        self, mock_db, mock_get_notif, mock_agent, fresh_state
+    ):
+        """Notification should fall back to first USER COMMAND turn text when instruction is None."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        mock_command_turn = MagicMock()
+        mock_command_turn.actor = TurnActor.USER
+        mock_command_turn.intent = TurnIntent.COMMAND
+        mock_command_turn.text = "Fix the login bug"
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_task.instruction = None  # Not yet summarised
+        mock_task.turns = [mock_command_turn]
+        mock_agent.get_current_task.return_value = mock_task
+        mock_agent.name = "test-agent"
+        mock_agent.project.name = "test-project"
+
+        mock_svc = MagicMock()
+        mock_get_notif.return_value = mock_svc
+
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Need input",
+        )
+
+        assert result.state_changed is True
+        mock_svc.notify_awaiting_input.assert_called_once_with(
+            agent_id=str(mock_agent.id),
+            agent_name="test-agent",
+            project="test-project",
+            task_instruction="Fix the login bug",
+            turn_text="Need input",
+        )
 
 
 class TestHookEventResult:
@@ -528,12 +575,13 @@ class TestProcessPreToolUse:
     def test_sends_os_notification_on_transition(
         self, mock_db, mock_get_notif, mock_agent, fresh_state
     ):
-        """PreToolUse should send OS notification when transitioning to AWAITING_INPUT."""
+        """PreToolUse should send OS notification with context when transitioning to AWAITING_INPUT."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
+        mock_task.instruction = "Implement dark mode"
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
@@ -541,13 +589,22 @@ class TestProcessPreToolUse:
         mock_svc = MagicMock()
         mock_get_notif.return_value = mock_svc
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        tool_input = {
+            "questions": [{"question": "Which approach do you prefer?", "header": "Approach", "options": [], "multiSelect": False}]
+        }
+        result = process_pre_tool_use(
+            mock_agent, "session-123",
+            tool_name="AskUserQuestion",
+            tool_input=tool_input,
+        )
 
         assert result.state_changed is True
         mock_svc.notify_awaiting_input.assert_called_once_with(
             agent_id=str(mock_agent.id),
             agent_name="test-agent",
             project="test-project",
+            task_instruction="Implement dark mode",
+            turn_text="Which approach do you prefer?",
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
@@ -632,12 +689,13 @@ class TestProcessPermissionRequest:
     def test_sends_os_notification_on_transition(
         self, mock_db, mock_get_notif, mock_agent, fresh_state
     ):
-        """PermissionRequest should send OS notification when transitioning to AWAITING_INPUT."""
+        """PermissionRequest should send OS notification with context when transitioning to AWAITING_INPUT."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
+        mock_task.instruction = "Add user auth"
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
@@ -645,13 +703,19 @@ class TestProcessPermissionRequest:
         mock_svc = MagicMock()
         mock_get_notif.return_value = mock_svc
 
-        result = process_permission_request(mock_agent, "session-123")
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash",
+            tool_input={"command": "npm install"},
+        )
 
         assert result.state_changed is True
         mock_svc.notify_awaiting_input.assert_called_once_with(
             agent_id=str(mock_agent.id),
             agent_name="test-agent",
             project="test-project",
+            task_instruction="Add user auth",
+            turn_text="Permission needed: Bash",
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")

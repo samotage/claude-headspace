@@ -119,12 +119,12 @@ class TestTaskSummarisationEndpoint:
         app.extensions["inference_service"] = mock_inference
 
         mock_task = MagicMock()
-        mock_task.summary = None
-        mock_task.summary_generated_at = None
+        mock_task.completion_summary = None
+        mock_task.completion_summary_generated_at = None
         def set_summary(task, db_session=None):
-            task.summary = "Task summary"
+            task.completion_summary = "Task summary"
             from datetime import datetime, timezone
-            task.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+            task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
             return "Task summary"
         mock_service.summarise_task.side_effect = set_summary
 
@@ -141,9 +141,9 @@ class TestTaskSummarisationEndpoint:
         app.extensions["summarisation_service"] = mock_service
 
         mock_task = MagicMock()
-        mock_task.summary = "Already done"
+        mock_task.completion_summary = "Already done"
         from datetime import datetime, timezone
-        mock_task.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+        mock_task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_task
@@ -176,7 +176,7 @@ class TestTaskSummarisationEndpoint:
         app.extensions["inference_service"] = mock_inference
 
         mock_task = MagicMock()
-        mock_task.summary = None
+        mock_task.completion_summary = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_task
