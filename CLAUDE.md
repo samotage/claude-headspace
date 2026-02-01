@@ -310,6 +310,20 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 
 ## Notes for AI Assistants
 
+### Auto-Commit After Plan Execution
+
+After finishing execution of a plan (e.g., implementing tasks from `/opsx:apply`, completing a unit of work from orchestration, or finishing any multi-step implementation), automatically run `/commit-push` to stage, commit, and push all changes to the current branch. Do not ask for confirmation — the skill handles everything including meaningful commit messages derived from the actual diff.
+
+This applies when:
+- You finish implementing all tasks from a plan or spec
+- You complete a significant unit of work (feature, fix, refactor)
+- Orchestration phases complete (build, test passing, etc.)
+
+This does **not** apply when:
+- You are only doing research, exploration, or answering questions
+- The user explicitly says not to commit
+- You are in the middle of multi-step work that isn't yet complete
+
 ### Notifications
 
 Notifications require `terminal-notifier` installed via Homebrew:

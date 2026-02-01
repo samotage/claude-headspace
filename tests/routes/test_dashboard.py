@@ -8,6 +8,7 @@ import pytest
 from flask import Flask
 
 from src.claude_headspace.models import TaskState
+from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.dashboard import (
     TIMED_OUT,
     _get_completed_task_summary,
@@ -18,6 +19,7 @@ from src.claude_headspace.routes.dashboard import (
     get_effective_state,
     get_project_state_flags,
     get_state_info,
+    get_task_completion_summary,
     get_task_instruction,
     get_task_summary,
     is_agent_active,
@@ -915,8 +917,8 @@ class TestGetTaskInstruction:
 
         assert result == "Refactor auth module"
 
-    def test_no_fallback_if_most_recent_not_complete(self):
-        """Test no fallback when most recent task is not complete."""
+    def test_falls_back_to_most_recent_task_instruction_any_state(self):
+        """Test falls back to most recent task instruction regardless of state."""
         agent = MagicMock()
         agent.get_current_task.return_value = None
 
@@ -927,18 +929,148 @@ class TestGetTaskInstruction:
 
         result = get_task_instruction(agent)
 
-        assert result is None
+        assert result == "Some instruction"
 
-    def test_completed_task_without_instruction_returns_none(self):
-        """Test completed task without instruction returns None."""
+    def test_falls_back_to_raw_command_text(self):
+        """Test falls back to first USER COMMAND turn's raw text when no instruction."""
         agent = MagicMock()
         agent.get_current_task.return_value = None
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.instruction = None
-        agent.tasks = [completed_task]
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.intent = TurnIntent.COMMAND
+        turn.text = "Fix the login page bug"
+
+        task = MagicMock()
+        task.instruction = None
+        task.state = TaskState.COMPLETE
+        task.turns = [turn]
+        agent.tasks = [task]
+
+        result = get_task_instruction(agent)
+
+        assert result == "Fix the login page bug"
+
+    def test_raw_command_text_truncated_at_80_chars(self):
+        """Test raw command text is truncated to 80 chars."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.intent = TurnIntent.COMMAND
+        turn.text = "x" * 100
+
+        task = MagicMock()
+        task.instruction = None
+        task.state = TaskState.COMPLETE
+        task.turns = [turn]
+        agent.tasks = [task]
+
+        result = get_task_instruction(agent)
+
+        assert result == "x" * 77 + "..."
+        assert len(result) == 80
+
+    def test_task_without_instruction_or_turns_returns_none(self):
+        """Test task with no instruction and no turns returns None."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        task = MagicMock()
+        task.instruction = None
+        task.state = TaskState.COMPLETE
+        task.turns = []
+        agent.tasks = [task]
 
         result = get_task_instruction(agent)
 
         assert result is None
+
+
+class TestGetTaskCompletionSummary:
+    """Tests for get_task_completion_summary() helper."""
+
+    def test_returns_completion_summary(self):
+        """Test returns completion_summary from completed task."""
+        agent = MagicMock()
+        task = MagicMock()
+        task.state = TaskState.COMPLETE
+        task.completion_summary = "Auth module refactored successfully"
+        agent.tasks = [task]
+
+        result = get_task_completion_summary(agent)
+
+        assert result == "Auth module refactored successfully"
+
+    def test_falls_back_to_last_turn_summary(self):
+        """Test falls back to last turn's summary when no completion_summary."""
+        agent = MagicMock()
+
+        turn = MagicMock()
+        turn.summary = "Finished refactoring the auth module"
+
+        task = MagicMock()
+        task.state = TaskState.COMPLETE
+        task.completion_summary = None
+        task.turns = [turn]
+        agent.tasks = [task]
+
+        result = get_task_completion_summary(agent)
+
+        assert result == "Finished refactoring the auth module"
+
+    def test_returns_none_when_no_real_summary(self):
+        """Test returns None when no summaries available."""
+        agent = MagicMock()
+
+        turn = MagicMock()
+        turn.summary = None
+
+        task = MagicMock()
+        task.state = TaskState.COMPLETE
+        task.completion_summary = None
+        task.turns = [turn]
+        agent.tasks = [task]
+
+        result = get_task_completion_summary(agent)
+
+        assert result is None
+
+    def test_returns_none_when_no_completed_task(self):
+        """Test returns None when only active tasks exist."""
+        agent = MagicMock()
+
+        task = MagicMock()
+        task.state = TaskState.PROCESSING
+        agent.tasks = [task]
+
+        result = get_task_completion_summary(agent)
+
+        assert result is None
+
+    def test_returns_none_when_no_tasks(self):
+        """Test returns None when agent has no tasks."""
+        agent = MagicMock()
+        agent.tasks = []
+
+        result = get_task_completion_summary(agent)
+
+        assert result is None
+
+    def test_skips_non_complete_finds_complete(self):
+        """Test skips non-complete tasks to find the first complete one."""
+        agent = MagicMock()
+
+        active_task = MagicMock()
+        active_task.state = TaskState.PROCESSING
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.completion_summary = "Done"
+
+        agent.tasks = [active_task, completed_task]
+
+        result = get_task_completion_summary(agent)
+
+        assert result == "Done"

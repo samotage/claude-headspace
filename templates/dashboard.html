@@ -56,16 +56,30 @@
                                 </div>
                               </div>
                             </div>
-                            <!-- 03: spacer (hidden on mobile/tablet) -->
-                            <div class="card-line hidden lg:flex">
+                            <!-- 03: Task instruction (primary line) -->
+                            <div class="card-line">
                               <span class="line-num">03</span>
-                              <div class="line-content"></div>
+                              <div class="line-content">
+                                {% if agent.task_instruction %}
+                                  <p class="task-instruction text-primary text-sm font-medium truncate">{{ agent.task_instruction }}</p>
+                                {% else %}
+                                  <p class="task-instruction text-muted text-sm italic">No active task</p>
+                                {% endif %}
+                              </div>
                             </div>
-                            <!-- 04: Task summary -->
+                            <!-- 04: Turn summary (active task) or completion summary (complete task) -->
                             <div class="card-line">
                               <span class="line-num">04</span>
                               <div class="line-content">
-                                <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+                                {% if agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE' %}
+                                  {% if agent.task_completion_summary %}
+                                    <p class="task-summary text-green text-sm italic truncate">{{ agent.task_completion_summary }}</p>
+                                  {% else %}
+                                    <p class="task-summary text-secondary text-sm italic truncate">{{ agent.task_summary }}</p>
+                                  {% endif %}
+                                {% else %}
+                                  <p class="task-summary text-secondary text-sm italic truncate">{{ agent.task_summary }}</p>
+                                {% endif %}
                               </div>
                             </div>
                           </div>

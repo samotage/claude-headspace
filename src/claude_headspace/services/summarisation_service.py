@@ -335,6 +335,7 @@ class SummarisationService:
                         summary=summary,
                         agent_id=task.agent_id,
                         project_id=task.agent.project_id if task.agent else None,
+                        extra={"is_completion": True},
                     )
 
         except Exception as e:
@@ -376,6 +377,7 @@ class SummarisationService:
         summary: str,
         agent_id: int | None = None,
         project_id: int | None = None,
+        extra: dict | None = None,
     ) -> None:
         """Broadcast a summary update via SSE."""
         try:
@@ -390,6 +392,8 @@ class SummarisationService:
                 data["agent_id"] = agent_id
             if project_id:
                 data["project_id"] = project_id
+            if extra:
+                data.update(extra)
 
             broadcaster.broadcast(event_type, data)
             logger.debug(f"Broadcast {event_type} for entity {entity_id}")

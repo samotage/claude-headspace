@@ -75,6 +75,9 @@
         client.on('turn_summary', handleTurnSummary);
         client.on('instruction_summary', handleInstructionSummary);
 
+        // Handle priority score updates
+        client.on('priority_update', handlePriorityUpdate);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
@@ -299,6 +302,7 @@
     /**
      * Handle task summary events (AI-generated task-level completion summary).
      * Updates the secondary line (.task-summary).
+     * When is_completion is true, applies completion styling (green text).
      */
     function handleTaskSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -306,7 +310,7 @@
 
         if (!agentId || !summary) return;
 
-        console.log('Task summary:', agentId);
+        console.log('Task summary:', agentId, 'is_completion:', data.is_completion);
 
         var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
         if (!card) return;
@@ -314,6 +318,10 @@
         var taskSummary = card.querySelector('.task-summary');
         if (taskSummary) {
             taskSummary.textContent = summary;
+            if (data.is_completion) {
+                taskSummary.classList.remove('text-secondary');
+                taskSummary.classList.add('text-green');
+            }
         }
     }
 
@@ -321,6 +329,7 @@
      * Handle turn summary events (AI-generated turn-level summary).
      * Updates the secondary line (.task-summary).
      * Always updates to show latest turn context.
+     * Resets to secondary styling (active task, not completion).
      */
     function handleTurnSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -333,10 +342,49 @@
         var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
         if (!card) return;
 
+        // Don't overwrite completion summary when task is COMPLETE
+        if (card.getAttribute('data-state') === 'COMPLETE') return;
+
         var taskSummary = card.querySelector('.task-summary');
         if (taskSummary) {
             taskSummary.textContent = summary;
+            taskSummary.classList.remove('text-green');
+            taskSummary.classList.add('text-secondary');
         }
+    }
+
+    /**
+     * Handle priority update events (AI-generated priority scores).
+     * Updates the priority footer on each agent card.
+     */
+    function handlePriorityUpdate(data, eventType) {
+        var agents = data.agents;
+        if (!agents || !Array.isArray(agents)) return;
+
+        console.log('Priority update:', agents.length, 'agents');
+
+        agents.forEach(function(agentData) {
+            var agentId = agentData.agent_id;
+            var score = agentData.score;
+            var reason = agentData.reason;
+
+            if (!agentId) return;
+
+            var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+            if (!card) return;
+
+            // Update priority score badge
+            var scoreBadge = card.querySelector('.border-t .font-mono');
+            if (scoreBadge) {
+                scoreBadge.textContent = score != null ? score : 50;
+            }
+
+            // Update priority reason
+            var reasonEl = card.querySelector('.border-t .italic');
+            if (reasonEl && reason) {
+                reasonEl.textContent = '// ' + reason.substring(0, 60);
+            }
+        });
     }
 
     /**

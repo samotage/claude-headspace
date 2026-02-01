@@ -416,20 +416,66 @@ def get_task_instruction(agent: Agent) -> str | None:
     """
     Get the task instruction for an agent's current or most recent task.
 
+    Falls back to the first USER COMMAND turn's raw text (truncated to 80 chars)
+    when the AI-generated instruction summary isn't available yet.
+
     Args:
         agent: The agent
 
     Returns:
         Instruction text, or None if no instruction is available
     """
+    from ..models.turn import TurnActor, TurnIntent
+
     current_task = agent.get_current_task()
     if current_task and current_task.instruction:
         return current_task.instruction
 
-    # Check most recent completed task
-    if agent.tasks and agent.tasks[0].state == TaskState.COMPLETE:
-        if agent.tasks[0].instruction:
-            return agent.tasks[0].instruction
+    # Check most recent task (any state) for instruction
+    if agent.tasks and agent.tasks[0].instruction:
+        return agent.tasks[0].instruction
+
+    # Fall back to first USER COMMAND turn's raw text
+    task = current_task or (agent.tasks[0] if agent.tasks else None)
+    if task and hasattr(task, "turns") and task.turns:
+        for t in task.turns:
+            if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
+                text = (t.text or "").strip()
+                if text:
+                    if len(text) > 80:
+                        return text[:77] + "..."
+                    return text
+
+    return None
+
+
+def get_task_completion_summary(agent: Agent) -> str | None:
+    """
+    Get the completion summary for an agent's most recent completed task.
+
+    Iterates agent.tasks (eager-loaded, ordered by started_at desc) to find
+    the first COMPLETE task. Returns completion_summary if available, else
+    falls back to the last turn's summary field.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Completion summary text, or None if not available
+    """
+    if not agent.tasks:
+        return None
+
+    for task in agent.tasks:
+        if task.state == TaskState.COMPLETE:
+            if task.completion_summary:
+                return task.completion_summary
+            # Fall back to last turn's summary
+            if hasattr(task, "turns") and task.turns:
+                last_turn = task.turns[-1]
+                if last_turn.summary:
+                    return last_turn.summary
+            return None
 
     return None
 
@@ -565,6 +611,7 @@ def dashboard():
                 "state_info": get_state_info(effective_state),
                 "task_summary": get_task_summary(agent),
                 "task_instruction": get_task_instruction(agent),
+                "task_completion_summary": get_task_completion_summary(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
                 "project_name": project.name,
