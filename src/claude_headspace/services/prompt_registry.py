@@ -8,7 +8,7 @@ instead of assembling strings inline.
 _PROMPT_TEMPLATES: dict[str, str] = {
     # --- Summarisation: turn prompts (per-intent) ---
     "turn_command": (
-        "Prepare a very short and concise summary of this instruction in one short sentence around 18 tokens long:\n"
+        "Summarise a very short and concise sentence around 18 tokens long the following command as in instruction:\n\n"
         "{instruction_context}"
         "User command: {text}"
     ),
@@ -54,9 +54,17 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Agent's final message: {final_turn_text}"
     ),
 
+    # Task completion when no final agent message available — uses turn activity
+    "task_completion_from_activity": (
+        "Summarise what was accomplished in this completed task in 2-3 sentences. "
+        "Describe the outcome relative to what was originally asked.\n\n"
+        "Original instruction: {instruction}\n\n"
+        "Activity during this task:\n{turn_activity}"
+    ),
+
     # --- Summarisation: instruction ---
     "instruction": (
-        "Summarise what the user is instructing the agent to do in 1-2 concise sentences. "
+        "Summarise a very short and concise sentence around 18 tokens long the following command as in instruction:\n\n"
         "Focus on the core task or goal.\n\n"
         "User command: {command_text}"
     ),

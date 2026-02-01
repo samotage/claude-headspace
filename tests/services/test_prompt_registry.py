@@ -22,6 +22,7 @@ class TestBuildPrompt:
             "turn_end_of_task",
             "turn_default",
             "task_completion",
+            "task_completion_from_activity",
             "instruction",
             "priority_scoring",
             "progress_summary",
@@ -41,7 +42,7 @@ class TestTurnPrompts:
             instruction_context="Task instruction: Do X\n\n",
             text="Fix the login page",
         )
-        assert "what the user is asking" in result
+        assert "command" in result.lower()
         assert "Fix the login page" in result
         assert "Task instruction: Do X" in result
 
@@ -118,12 +119,23 @@ class TestTaskPrompts:
         assert "All 12 tests passing" in result
         assert "Original instruction" in result
 
+    def test_task_completion_from_activity(self):
+        result = build_prompt(
+            "task_completion_from_activity",
+            instruction="Refactor auth middleware",
+            turn_activity="- [AGENT/progress] Working on middleware\n- [AGENT/question] Which pattern?",
+        )
+        assert "2-3 sentences" in result
+        assert "Refactor auth middleware" in result
+        assert "Activity during this task" in result
+        assert "Working on middleware" in result
+
     def test_instruction(self):
         result = build_prompt(
             "instruction",
             command_text="Fix the login page CSS",
         )
-        assert "1-2 concise sentences" in result
+        assert "core task or goal" in result
         assert "Fix the login page CSS" in result
 
 

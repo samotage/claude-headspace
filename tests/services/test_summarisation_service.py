@@ -311,7 +311,7 @@ class TestInstructionSummarisation:
 
         call_kwargs = mock_inference.infer.call_args[1]
         assert "Fix the login page CSS styling" in call_kwargs["input_text"]
-        assert "1-2 concise sentences" in call_kwargs["input_text"]
+        assert "core task or goal" in call_kwargs["input_text"]
 
 
 class TestExecutePending:
@@ -480,7 +480,7 @@ class TestResolveTaskPrompt:
 
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert "No final message recorded" in prompt
+        assert "No agent response recorded" in prompt
 
 
 class TestResolveTurnPrompt:
@@ -495,7 +495,7 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "what the user is asking" in prompt
+        assert "command" in prompt.lower()
         assert "Fix the login page" in prompt
 
     def test_question_intent_uses_question_template(self, service):
@@ -628,35 +628,70 @@ class TestTurnEmptyTextGuard:
         mock_inference.infer.assert_not_called()
 
 
-class TestTaskEmptyTextGuard:
-    """Tests for empty text guard in summarise_task() — skips when final turn text is empty."""
+class TestTaskEmptyFinalTurnFallback:
+    """Tests for fallback when final turn text is empty — uses turn activity or instruction-only."""
 
-    def test_empty_final_turn_text_returns_none(self, service, mock_inference, mock_task):
+    def test_empty_final_turn_falls_back_to_activity(self, service, mock_inference, mock_task):
+        """When final turn text is empty but earlier turns have text, use activity fallback."""
         mock_task.completion_summary = None
         mock_task.turns[-1].text = ""
+        mock_inference.infer.return_value = InferenceResult(
+            text="Task completed successfully.", input_tokens=50,
+            output_tokens=10, model="model", latency_ms=200,
+        )
 
         result = service.summarise_task(mock_task)
 
-        assert result is None
-        mock_inference.infer.assert_not_called()
+        assert result == "Task completed successfully."
+        mock_inference.infer.assert_called_once()
+        call_kwargs = mock_inference.infer.call_args[1]
+        assert call_kwargs["purpose"] == "summarise_task"
 
-    def test_none_final_turn_text_returns_none(self, service, mock_inference, mock_task):
+    def test_none_final_turn_falls_back_to_activity(self, service, mock_inference, mock_task):
+        """When final turn text is None but earlier turns have text, use activity fallback."""
         mock_task.completion_summary = None
         mock_task.turns[-1].text = None
+        mock_inference.infer.return_value = InferenceResult(
+            text="Task completed successfully.", input_tokens=50,
+            output_tokens=10, model="model", latency_ms=200,
+        )
 
         result = service.summarise_task(mock_task)
 
-        assert result is None
-        mock_inference.infer.assert_not_called()
+        assert result == "Task completed successfully."
+        mock_inference.infer.assert_called_once()
 
-    def test_whitespace_final_turn_text_returns_none(self, service, mock_inference, mock_task):
+    def test_whitespace_final_turn_falls_back_to_activity(self, service, mock_inference, mock_task):
+        """When final turn text is whitespace-only, use activity fallback."""
         mock_task.completion_summary = None
         mock_task.turns[-1].text = "   "
+        mock_inference.infer.return_value = InferenceResult(
+            text="Task completed successfully.", input_tokens=50,
+            output_tokens=10, model="model", latency_ms=200,
+        )
 
         result = service.summarise_task(mock_task)
 
-        assert result is None
-        mock_inference.infer.assert_not_called()
+        assert result == "Task completed successfully."
+        mock_inference.infer.assert_called_once()
+
+    def test_all_turns_empty_uses_instruction_only(self, service, mock_inference, mock_task):
+        """When all turns have empty text, still calls inference with instruction-only prompt."""
+        mock_task.completion_summary = None
+        for t in mock_task.turns:
+            t.text = ""
+            t.summary = None
+        mock_inference.infer.return_value = InferenceResult(
+            text="Task completed.", input_tokens=30,
+            output_tokens=8, model="model", latency_ms=150,
+        )
+
+        result = service.summarise_task(mock_task)
+
+        assert result == "Task completed."
+        mock_inference.infer.assert_called_once()
+        call_kwargs = mock_inference.infer.call_args[1]
+        assert "No agent response recorded" in call_kwargs["input_text"]
 
 
 class TestSSEBroadcast:

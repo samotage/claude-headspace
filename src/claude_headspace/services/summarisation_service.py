@@ -106,14 +106,6 @@ class SummarisationService:
             logger.debug("Inference service unavailable, skipping task summarisation")
             return None
 
-        # Empty text guard: skip if final turn text is not available
-        turns = task.turns if hasattr(task, "turns") and task.turns else []
-        if turns:
-            final_turn_text = turns[-1].text
-            if not final_turn_text or not final_turn_text.strip():
-                logger.debug(f"Skipping task summarisation for task {task.id}: final turn text empty")
-                return None
-
         # Build prompt
         input_text = self._resolve_task_prompt(task)
 
@@ -331,15 +323,46 @@ class SummarisationService:
         """Build the completion summary prompt for a task.
 
         Primary inputs are the task instruction and the agent's final message.
-        Does not include timestamps or turn counts.
+        When the final turn text is empty, falls back to a summary of
+        non-command turn activity to give the LLM context about what happened.
         """
         instruction = getattr(task, "instruction", None) or "No instruction recorded"
 
         turns = task.turns if hasattr(task, "turns") and task.turns else []
-        final_turn_text = turns[-1].text if turns else "No final message recorded"
+        final_turn_text = turns[-1].text.strip() if turns and turns[-1].text else ""
 
+        if final_turn_text:
+            return build_prompt(
+                "task_completion",
+                instruction=instruction,
+                final_turn_text=final_turn_text,
+            )
+
+        # Final turn text is empty — build activity from non-command turns
+        from ..models.turn import TurnIntent
+        activity_lines = []
+        for t in turns:
+            intent_val = t.intent.value if hasattr(t.intent, "value") else str(t.intent)
+            # Skip the initial command turn and turns with no text
+            if intent_val == TurnIntent.COMMAND.value:
+                continue
+            text = (t.summary or t.text or "").strip()
+            if not text:
+                continue
+            actor_val = t.actor.value if hasattr(t.actor, "value") else str(t.actor)
+            activity_lines.append(f"- [{actor_val}/{intent_val}] {text[:200]}")
+
+        if activity_lines:
+            turn_activity = "\n".join(activity_lines)
+            return build_prompt(
+                "task_completion_from_activity",
+                instruction=instruction,
+                turn_activity=turn_activity,
+            )
+
+        # No turn activity at all — still attempt with instruction only
         return build_prompt(
             "task_completion",
             instruction=instruction,
-            final_turn_text=final_turn_text,
+            final_turn_text="No agent response recorded",
         )

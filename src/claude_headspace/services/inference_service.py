@@ -232,6 +232,11 @@ class InferenceService:
         model = self.get_model_for_level(level)
         input_hash = OpenRouterClient.compute_input_hash(input_text)
 
+        logger.debug(
+            f"Inference request: level={level}, purpose={purpose}, model={model}, "
+            f"input_len={len(input_text)}"
+        )
+
         # Check cache
         cached_entry = self.cache.get(input_hash)
         if cached_entry:
@@ -287,6 +292,12 @@ class InferenceService:
         try:
             result = self.client.chat_completion(model=model, messages=messages)
 
+            logger.debug(
+                f"Inference response: level={level}, purpose={purpose}, model={model}, "
+                f"input_tokens={result.input_tokens}, output_tokens={result.output_tokens}, "
+                f"latency_ms={result.latency_ms}"
+            )
+
             # Record rate limit usage
             total_tokens = (result.input_tokens or 0) + (result.output_tokens or 0)
             self.rate_limiter.record(total_tokens)
@@ -317,6 +328,10 @@ class InferenceService:
             return result
 
         except OpenRouterClientError as e:
+            logger.debug(
+                f"Inference failed: level={level}, purpose={purpose}, model={model}, "
+                f"error={e}"
+            )
             # Log failure
             self._log_call(
                 level=level,
