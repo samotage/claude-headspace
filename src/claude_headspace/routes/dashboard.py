@@ -11,12 +11,24 @@ from ..services.hook_receiver import get_agent_display_state
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
-# Constants
-ACTIVE_TIMEOUT_MINUTES = 5  # Agent is ACTIVE if last_seen_at within this time
-STALE_PROCESSING_SECONDS = 30  # If PROCESSING for this long without activity, treat as AWAITING_INPUT
+# Display-only state for stale PROCESSING agents (not in TaskState enum, never persisted)
+TIMED_OUT = "TIMED_OUT"
+
+# Default fallbacks (used when no app context is available, e.g. unit tests)
+_DEFAULT_STALE_PROCESSING_SECONDS = 600
+_DEFAULT_ACTIVE_TIMEOUT_MINUTES = 5
 
 
-def get_effective_state(agent: Agent) -> TaskState:
+def _get_dashboard_config() -> dict:
+    """Get dashboard config from the Flask app, with safe fallback for no-context."""
+    try:
+        config = current_app.config.get("APP_CONFIG", {})
+        return config.get("dashboard", {})
+    except RuntimeError:
+        return {}  # No app context (unit tests without mocking)
+
+
+def get_effective_state(agent: Agent) -> TaskState | str:
     """
     Get the effective display state for an agent.
 
@@ -29,7 +41,7 @@ def get_effective_state(agent: Agent) -> TaskState:
         agent: The agent to check
 
     Returns:
-        TaskState for display purposes
+        TaskState for display purposes, or TIMED_OUT string for stale processing
     """
     # Check in-memory display override first
     override = get_agent_display_state(agent.id)
@@ -43,11 +55,16 @@ def get_effective_state(agent: Agent) -> TaskState:
 
     # Safety net: if task is PROCESSING but agent hasn't been heard from
     # in a while, the stop hook's DB transition was likely lost (e.g. server
-    # restart killed the request mid-flight). Treat as AWAITING_INPUT.
+    # restart killed the request mid-flight). Show as TIMED_OUT (red) instead
+    # of AWAITING_INPUT (amber) to distinguish genuine input requests.
     if model_state == TaskState.PROCESSING and agent.ended_at is None:
+        dashboard_config = _get_dashboard_config()
+        threshold = dashboard_config.get(
+            "stale_processing_seconds", _DEFAULT_STALE_PROCESSING_SECONDS
+        )
         elapsed = (datetime.now(timezone.utc) - agent.last_seen_at).total_seconds()
-        if elapsed > STALE_PROCESSING_SECONDS:
-            return TaskState.AWAITING_INPUT
+        if elapsed > threshold:
+            return TIMED_OUT
 
     return model_state
 
@@ -70,24 +87,37 @@ def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
     if not all_agents:
         return None
 
-    # Filter to agents awaiting input (using effective display state)
-    awaiting_input = [a for a in all_agents if get_effective_state(a) == TaskState.AWAITING_INPUT]
+    # Filter to agents needing attention (AWAITING_INPUT or TIMED_OUT)
+    needs_attention = [
+        a for a in all_agents
+        if get_effective_state(a) in (TaskState.AWAITING_INPUT, TIMED_OUT)
+    ]
 
-    if awaiting_input:
+    if needs_attention:
         # Sort by last_seen_at ascending (oldest waiting first)
-        awaiting_input.sort(key=lambda a: a.last_seen_at)
-        agent = awaiting_input[0]
+        needs_attention.sort(key=lambda a: a.last_seen_at)
+        agent = needs_attention[0]
+        effective = get_effective_state(agent)
 
         # Calculate wait time
         wait_delta = datetime.now(timezone.utc) - agent.last_seen_at
         wait_minutes = int(wait_delta.total_seconds() // 60)
-        if wait_minutes >= 60:
-            wait_hours = wait_minutes // 60
-            rationale = f"Awaiting input for {wait_hours}h {wait_minutes % 60}m"
-        elif wait_minutes > 0:
-            rationale = f"Awaiting input for {wait_minutes}m"
+        if effective == TIMED_OUT:
+            if wait_minutes >= 60:
+                wait_hours = wait_minutes // 60
+                rationale = f"Timed out for {wait_hours}h {wait_minutes % 60}m"
+            elif wait_minutes > 0:
+                rationale = f"Timed out for {wait_minutes}m"
+            else:
+                rationale = "Timed out"
         else:
-            rationale = "Awaiting input"
+            if wait_minutes >= 60:
+                wait_hours = wait_minutes // 60
+                rationale = f"Awaiting input for {wait_hours}h {wait_minutes % 60}m"
+            elif wait_minutes > 0:
+                rationale = f"Awaiting input for {wait_minutes}m"
+            else:
+                rationale = "Awaiting input"
 
         agent_data = agent_data_map.get(agent.id)
         if agent_data:
@@ -148,7 +178,7 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
 
         state = agent_data.get("state")
         # Secondary: state group (lower = higher priority)
-        if state == TaskState.AWAITING_INPUT:
+        if state in (TaskState.AWAITING_INPUT, TIMED_OUT):
             priority_group = 0
         elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
             priority_group = 1
@@ -170,15 +200,18 @@ def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
         agents: List of agents to count
 
     Returns:
-        Dictionary with input_needed, working, and idle counts
+        Dictionary with timed_out, input_needed, working, and idle counts
     """
+    timed_out = 0
     input_needed = 0
     working = 0
     idle = 0
 
     for agent in agents:
         state = get_effective_state(agent)
-        if state == TaskState.AWAITING_INPUT:
+        if state == TIMED_OUT:
+            timed_out += 1
+        elif state == TaskState.AWAITING_INPUT:
             input_needed += 1
         elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
             working += 1
@@ -186,6 +219,7 @@ def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
             idle += 1
 
     return {
+        "timed_out": timed_out,
         "input_needed": input_needed,
         "working": working,
         "idle": idle,
@@ -200,13 +234,20 @@ def get_project_state_flags(agents: list[Agent]) -> dict[str, bool]:
         agents: List of agents in the project
 
     Returns:
-        Dictionary with has_input_needed, has_working, has_idle flags
+        Dictionary with has_timed_out, has_input_needed, has_working, has_idle flags
     """
-    flags = {"has_input_needed": False, "has_working": False, "has_idle": False}
+    flags = {
+        "has_timed_out": False,
+        "has_input_needed": False,
+        "has_working": False,
+        "has_idle": False,
+    }
 
     for agent in agents:
         state = get_effective_state(agent)
-        if state == TaskState.AWAITING_INPUT:
+        if state == TIMED_OUT:
+            flags["has_timed_out"] = True
+        elif state == TaskState.AWAITING_INPUT:
             flags["has_input_needed"] = True
         elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
             flags["has_working"] = True
@@ -228,7 +269,11 @@ def is_agent_active(agent: Agent) -> bool:
     """
     if agent.ended_at is not None:
         return False
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=ACTIVE_TIMEOUT_MINUTES)
+    dashboard_config = _get_dashboard_config()
+    timeout_minutes = dashboard_config.get(
+        "active_timeout_minutes", _DEFAULT_ACTIVE_TIMEOUT_MINUTES
+    )
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
     return agent.last_seen_at >= cutoff
 
 
@@ -291,16 +336,24 @@ def get_task_summary(agent: Agent) -> str:
     return "No active task"
 
 
-def get_state_info(state: TaskState) -> dict:
+def get_state_info(state: TaskState | str) -> dict:
     """
     Get display info for a task state.
 
     Args:
-        state: The TaskState enum value
+        state: The TaskState enum value or TIMED_OUT string
 
     Returns:
         Dictionary with color and label
     """
+    # Handle TIMED_OUT display-only state
+    if state == TIMED_OUT:
+        return {
+            "color": "red",
+            "bg_class": "bg-red",
+            "label": "Timed out",
+        }
+
     state_map = {
         TaskState.IDLE: {
             "color": "green",
@@ -401,12 +454,15 @@ def dashboard():
         agents_data = []
         for agent in live_agents:
             effective_state = get_effective_state(agent)
+            # state_name: string for templates (handles both TaskState enum and TIMED_OUT string)
+            state_name = effective_state if isinstance(effective_state, str) else effective_state.name
             agent_dict = {
                 "id": agent.id,
                 "session_uuid": str(agent.session_uuid)[:8],
                 "is_active": is_agent_active(agent),
                 "uptime": format_uptime(agent.started_at),
                 "state": effective_state,
+                "state_name": state_name,
                 "state_info": get_state_info(effective_state),
                 "task_summary": get_task_summary(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,

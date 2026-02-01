@@ -90,6 +90,11 @@ body::after {
     border-color: var(--border);
     transition: border-color 0.3s, box-shadow 0.3s;
 }
+[data-state="TIMED_OUT"] {
+    border-color: rgba(224,115,115,0.4);
+    box-shadow: 0 0 8px rgba(224,115,115,0.15), 0 0 20px rgba(224,115,115,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
 
 /* Neon text glow utility */
 .text-glow-cyan {
@@ -159,6 +164,10 @@ body::after {
 [data-state="COMPLETE"] .state-strip {
     background: rgba(115,224,160,0.15);
     color: var(--green);
+}
+[data-state="TIMED_OUT"] .state-strip {
+    background: rgba(224,115,115,0.15);
+    color: var(--red);
 }
 
 /* Mobile responsive: agent cards */

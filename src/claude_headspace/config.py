@@ -107,6 +107,10 @@ DEFAULTS = {
         "aging_threshold_days": 4,
         "export_filename": "brain_reboot.md",
     },
+    "dashboard": {
+        "stale_processing_seconds": 600,
+        "active_timeout_minutes": 5,
+    },
 }
 
 # Environment variable mappings
@@ -145,6 +149,8 @@ ENV_MAPPINGS = {
     "OPENROUTER_TIMEOUT": ("openrouter", "timeout", int),
     "OPENROUTER_CALLS_PER_MINUTE": ("openrouter", "calls_per_minute", int),
     "OPENROUTER_TOKENS_PER_MINUTE": ("openrouter", "tokens_per_minute", int),
+    "DASHBOARD_STALE_PROCESSING_SECONDS": ("dashboard", "stale_processing_seconds", int),
+    "DASHBOARD_ACTIVE_TIMEOUT_MINUTES": ("dashboard", "active_timeout_minutes", int),
 }
 
 
@@ -233,11 +239,26 @@ def get_value(config: dict, *keys: str, default: Any = None) -> Any:
     return result
 
 
+def _extract_db_name(url: str) -> str:
+    """Extract the database name from a PostgreSQL URL, stripping query params."""
+    # URL format: postgresql://user[:password]@host:port/dbname[?params]
+    if "/" not in url:
+        return ""
+    name = url.rsplit("/", 1)[-1]
+    # Strip query parameters
+    if "?" in name:
+        name = name.split("?", 1)[0]
+    return name
+
+
 def get_database_url(config: dict) -> str:
     """
     Build the database URL from configuration.
 
     DATABASE_URL environment variable takes precedence over individual config fields.
+
+    Raises RuntimeError if called during a pytest run and the resolved URL
+    points to the production database (missing '_test' suffix).
 
     Args:
         config: Configuration dictionary
@@ -248,6 +269,7 @@ def get_database_url(config: dict) -> str:
     # DATABASE_URL takes precedence
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
+        _guard_production_db(database_url, config)
         return database_url
 
     # Build URL from individual config fields
@@ -259,8 +281,36 @@ def get_database_url(config: dict) -> str:
     password = db.get("password", "")
 
     if password:
-        return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-    return f"postgresql://{user}@{host}:{port}/{name}"
+        url = f"postgresql://{user}:{password}@{host}:{port}/{name}"
+    else:
+        url = f"postgresql://{user}@{host}:{port}/{name}"
+
+    _guard_production_db(url, config)
+    return url
+
+
+def _guard_production_db(database_url: str, config: dict) -> None:
+    """Raise RuntimeError if tests are trying to connect to a non-test database.
+
+    Convention: test databases MUST have a name ending with '_test'.
+    This mirrors the Rails convention and prevents any test from accidentally
+    connecting to development or production databases.
+    """
+    import sys
+    if "_pytest" not in sys.modules and "pytest" not in sys.modules:
+        return  # Not running under pytest — allow anything
+
+    db_name = _extract_db_name(database_url)
+    if not db_name:
+        return  # Can't determine name — allow (may be in-memory or custom)
+
+    if not db_name.endswith("_test"):
+        raise RuntimeError(
+            f"SAFETY GUARD: Refusing to connect to database '{db_name}' "
+            f"during test run. Test databases MUST have names ending with "
+            f"'_test' (e.g. '{db_name}_test'). Set the DATABASE_URL "
+            f"environment variable to a test database URL."
+        )
 
 
 def mask_database_url(url: str) -> str:

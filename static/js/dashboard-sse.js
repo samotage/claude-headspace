@@ -24,7 +24,8 @@
         'COMMANDED': { color: 'yellow', bg_class: 'bg-amber', label: 'Command received' },
         'PROCESSING': { color: 'blue', bg_class: 'bg-blue', label: 'Processing...' },
         'AWAITING_INPUT': { color: 'orange', bg_class: 'bg-amber', label: 'Input needed' },
-        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Task complete' }
+        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Task complete' },
+        'TIMED_OUT': { color: 'red', bg_class: 'bg-red', label: 'Timed out' }
     };
 
     // Track agent states for recalculating counts
@@ -162,8 +163,8 @@
         }
 
         // Trigger recommended next update (full page would need data from server)
-        // For now, just highlight if state changed to AWAITING_INPUT
-        if (newState === 'AWAITING_INPUT') {
+        // For now, just highlight if state changed to AWAITING_INPUT or TIMED_OUT
+        if (newState === 'AWAITING_INPUT' || newState === 'TIMED_OUT') {
             highlightRecommendedUpdate();
         }
     }
@@ -303,6 +304,7 @@
      * Recalculate and update header status counts
      */
     function updateStatusCounts() {
+        let timedOut = 0;
         let inputNeeded = 0;
         let working = 0;
         let idle = 0;
@@ -310,7 +312,9 @@
         console.log('[DEBUG] updateStatusCounts: agentStates dump:');
         agentStates.forEach(function(state, key) {
             console.log('[DEBUG]   key:', key, '(' + typeof key + ') -> state:', state);
-            if (state === 'AWAITING_INPUT') {
+            if (state === 'TIMED_OUT') {
+                timedOut++;
+            } else if (state === 'AWAITING_INPUT') {
                 inputNeeded++;
             } else if (state === 'COMMANDED' || state === 'PROCESSING') {
                 working++;
@@ -319,13 +323,15 @@
             }
         });
 
-        console.log('[DEBUG] updateStatusCounts result:', { inputNeeded, working, idle });
+        console.log('[DEBUG] updateStatusCounts result:', { timedOut, inputNeeded, working, idle });
 
         // Update header badges
+        const timedOutBadge = document.querySelector('#status-timed-out .status-count');
         const inputBadge = document.querySelector('#status-input-needed .status-count');
         const workingBadge = document.querySelector('#status-working .status-count');
         const idleBadge = document.querySelector('#status-idle .status-count');
 
+        if (timedOutBadge) timedOutBadge.textContent = '[' + timedOut + ']';
         if (inputBadge) inputBadge.textContent = '[' + inputNeeded + ']';
         if (workingBadge) workingBadge.textContent = '[' + working + ']';
         if (idleBadge) idleBadge.textContent = '[' + idle + ']';
@@ -339,22 +345,24 @@
         if (!projectEl) return;
 
         var dots = projectEl.querySelectorAll('.state-dot');
-        if (dots.length < 3) return;
+        if (dots.length < 4) return;
 
         var agentCards = projectEl.querySelectorAll('[data-agent-id]');
-        var hasInput = false, hasWorking = false, hasIdle = false;
+        var hasTimedOut = false, hasInput = false, hasWorking = false, hasIdle = false;
 
         agentCards.forEach(function(card) {
             var state = card.getAttribute('data-state');
-            if (state === 'AWAITING_INPUT') hasInput = true;
+            if (state === 'TIMED_OUT') hasTimedOut = true;
+            else if (state === 'AWAITING_INPUT') hasInput = true;
             else if (state === 'COMMANDED' || state === 'PROCESSING') hasWorking = true;
             else hasIdle = true;
         });
 
-        // dots[0] = amber (input needed), dots[1] = blue (working), dots[2] = green (idle)
-        dots[0].classList.toggle('opacity-25', !hasInput);
-        dots[1].classList.toggle('opacity-25', !hasWorking);
-        dots[2].classList.toggle('opacity-25', !hasIdle);
+        // dots[0] = red (timed out), dots[1] = amber (input needed), dots[2] = blue (working), dots[3] = green (idle)
+        dots[0].classList.toggle('opacity-25', !hasTimedOut);
+        dots[1].classList.toggle('opacity-25', !hasInput);
+        dots[2].classList.toggle('opacity-25', !hasWorking);
+        dots[3].classList.toggle('opacity-25', !hasIdle);
     }
 
     /**
@@ -459,7 +467,7 @@
             // Update text color for AWAITING_INPUT
             textEl.className = textEl.className.replace(/text-\w+/g, '');
             textEl.classList.add('text-xs', 'whitespace-nowrap');
-            textEl.classList.add(state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary');
+            textEl.classList.add(state === 'TIMED_OUT' ? 'text-red' : (state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary'));
         }
     }
 

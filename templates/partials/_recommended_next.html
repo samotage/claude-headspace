@@ -34,7 +34,7 @@
                          style="width: 100%;"
                          aria-hidden="true"></div>
                 </div>
-                <span class="text-xs {{ 'text-amber' if recommended_next.state.name == 'AWAITING_INPUT' else 'text-secondary' }} whitespace-nowrap">
+                <span class="text-xs {{ 'text-red' if recommended_next.state_name == 'TIMED_OUT' else ('text-amber' if recommended_next.state_name == 'AWAITING_INPUT' else 'text-secondary') }} whitespace-nowrap">
                     {{ recommended_next.state_info.label }}
                 </span>
             </div>

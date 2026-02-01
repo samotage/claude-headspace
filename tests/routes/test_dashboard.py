@@ -9,10 +9,12 @@ from flask import Flask
 
 from src.claude_headspace.models import TaskState
 from src.claude_headspace.routes.dashboard import (
+    TIMED_OUT,
     calculate_status_counts,
     count_active_agents,
     dashboard_bp,
     format_uptime,
+    get_effective_state,
     get_project_state_flags,
     get_state_info,
     get_task_summary,
@@ -61,7 +63,7 @@ class TestCalculateStatusCounts:
     def test_empty_agents_list(self):
         """Test with no agents."""
         result = calculate_status_counts([])
-        assert result == {"input_needed": 0, "working": 0, "idle": 0}
+        assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 0}
 
     def test_all_idle(self):
         """Test with all idle agents."""
@@ -70,7 +72,7 @@ class TestCalculateStatusCounts:
             create_mock_agent(state=TaskState.IDLE),
         ]
         result = calculate_status_counts(agents)
-        assert result == {"input_needed": 0, "working": 0, "idle": 2}
+        assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 2}
 
     def test_awaiting_input(self):
         """Test agents awaiting input."""
@@ -79,7 +81,7 @@ class TestCalculateStatusCounts:
             create_mock_agent(state=TaskState.IDLE),
         ]
         result = calculate_status_counts(agents)
-        assert result == {"input_needed": 1, "working": 0, "idle": 1}
+        assert result == {"timed_out": 0, "input_needed": 1, "working": 0, "idle": 1}
 
     def test_working_states(self):
         """Test agents in working states (COMMANDED and PROCESSING)."""
@@ -89,7 +91,7 @@ class TestCalculateStatusCounts:
             create_mock_agent(state=TaskState.IDLE),
         ]
         result = calculate_status_counts(agents)
-        assert result == {"input_needed": 0, "working": 2, "idle": 1}
+        assert result == {"timed_out": 0, "input_needed": 0, "working": 2, "idle": 1}
 
     def test_complete_counts_as_idle(self):
         """Test that COMPLETE state counts as idle."""
@@ -97,7 +99,7 @@ class TestCalculateStatusCounts:
             create_mock_agent(state=TaskState.COMPLETE),
         ]
         result = calculate_status_counts(agents)
-        assert result == {"input_needed": 0, "working": 0, "idle": 1}
+        assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 1}
 
     def test_mixed_states(self):
         """Test with all different states."""
@@ -109,7 +111,7 @@ class TestCalculateStatusCounts:
             create_mock_agent(state=TaskState.COMPLETE),
         ]
         result = calculate_status_counts(agents)
-        assert result == {"input_needed": 1, "working": 2, "idle": 2}
+        assert result == {"timed_out": 0, "input_needed": 1, "working": 2, "idle": 2}
 
 
 class TestGetProjectStateFlags:
@@ -118,7 +120,12 @@ class TestGetProjectStateFlags:
     def test_empty_agents_all_false(self):
         """Test that no agents returns all flags false."""
         result = get_project_state_flags([])
-        assert result == {"has_input_needed": False, "has_working": False, "has_idle": False}
+        assert result == {
+            "has_timed_out": False,
+            "has_input_needed": False,
+            "has_working": False,
+            "has_idle": False,
+        }
 
     def test_awaiting_input_flag(self):
         """Test that agent awaiting input sets has_input_needed."""
@@ -126,6 +133,7 @@ class TestGetProjectStateFlags:
             create_mock_agent(state=TaskState.AWAITING_INPUT),
         ]
         result = get_project_state_flags(agents)
+        assert result["has_timed_out"] is False
         assert result["has_input_needed"] is True
         assert result["has_working"] is False
         assert result["has_idle"] is False
@@ -137,6 +145,7 @@ class TestGetProjectStateFlags:
             create_mock_agent(state=TaskState.COMMANDED),
         ]
         result = get_project_state_flags(agents)
+        assert result["has_timed_out"] is False
         assert result["has_input_needed"] is False
         assert result["has_working"] is True
         assert result["has_idle"] is False
@@ -147,6 +156,7 @@ class TestGetProjectStateFlags:
             create_mock_agent(state=TaskState.IDLE),
         ]
         result = get_project_state_flags(agents)
+        assert result["has_timed_out"] is False
         assert result["has_input_needed"] is False
         assert result["has_working"] is False
         assert result["has_idle"] is True
@@ -167,6 +177,7 @@ class TestGetProjectStateFlags:
             create_mock_agent(state=TaskState.IDLE),
         ]
         result = get_project_state_flags(agents)
+        assert result["has_timed_out"] is False
         assert result["has_input_needed"] is True
         assert result["has_working"] is True
         assert result["has_idle"] is True
@@ -375,6 +386,7 @@ class TestDashboardRoute:
         """Test that status badges are rendered."""
         response = client.get("/")
         html = response.data.decode("utf-8")
+        assert "TIMED OUT" in html
         assert "INPUT NEEDED" in html
         assert "WORKING" in html
         assert "IDLE" in html
@@ -482,3 +494,67 @@ class TestDashboardAccessibility:
         response = client.get("/")
         html = response.data.decode("utf-8")
         assert "aria-label" in html
+
+
+class TestTimedOutState:
+    """Tests for the TIMED_OUT display-only state."""
+
+    def test_timed_out_state_info(self):
+        """Test that get_state_info returns correct info for TIMED_OUT."""
+        result = get_state_info(TIMED_OUT)
+        assert result["color"] == "red"
+        assert result["bg_class"] == "bg-red"
+        assert "Timed out" in result["label"]
+
+    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
+    def test_stale_processing_returns_timed_out(self, mock_display_state):
+        """Test that PROCESSING agent past threshold returns TIMED_OUT."""
+        mock_display_state.return_value = None
+
+        # Agent has been PROCESSING for 700 seconds (> 600s default)
+        agent = create_mock_agent(state=TaskState.PROCESSING)
+        agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
+
+        result = get_effective_state(agent)
+        assert result == TIMED_OUT
+
+    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
+    def test_recent_processing_stays_processing(self, mock_display_state):
+        """Test that PROCESSING agent within threshold stays PROCESSING."""
+        mock_display_state.return_value = None
+
+        # Agent has been PROCESSING for 30 seconds (< 600s default)
+        agent = create_mock_agent(state=TaskState.PROCESSING)
+        agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=30)
+
+        result = get_effective_state(agent)
+        assert result == TaskState.PROCESSING
+
+    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
+    def test_timed_out_counted_separately(self, mock_display_state):
+        """Test that TIMED_OUT agents are counted in timed_out, not input_needed."""
+        mock_display_state.return_value = None
+
+        # One TIMED_OUT, one AWAITING_INPUT, one IDLE
+        stale_agent = create_mock_agent(state=TaskState.PROCESSING)
+        stale_agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
+
+        waiting_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
+        idle_agent = create_mock_agent(state=TaskState.IDLE)
+
+        result = calculate_status_counts([stale_agent, waiting_agent, idle_agent])
+        assert result["timed_out"] == 1
+        assert result["input_needed"] == 1
+        assert result["idle"] == 1
+
+    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
+    def test_timed_out_project_state_flag(self, mock_display_state):
+        """Test that TIMED_OUT agents set has_timed_out flag."""
+        mock_display_state.return_value = None
+
+        stale_agent = create_mock_agent(state=TaskState.PROCESSING)
+        stale_agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
+
+        result = get_project_state_flags([stale_agent])
+        assert result["has_timed_out"] is True
+        assert result["has_input_needed"] is False

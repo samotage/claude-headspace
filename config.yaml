@@ -74,3 +74,8 @@ openrouter:
     "anthropic/claude-3-5-sonnet-20241022":
       input_per_million: 3.0
       output_per_million: 15.0
+
+# Dashboard display settings
+dashboard:
+  stale_processing_seconds: 600  # Agents PROCESSING longer than this shown as "Timed out"
+  active_timeout_minutes: 5      # Agent considered active if seen within this window
