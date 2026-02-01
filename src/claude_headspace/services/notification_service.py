@@ -129,6 +129,7 @@ class NotificationService:
             "-title", title,
             "-subtitle", subtitle,
             "-message", message,
+            "-sender", "com.googlecode.iterm2",
         ]
 
         if self.preferences.sound:
@@ -139,6 +140,49 @@ class NotificationService:
 
         return cmd
 
+    def _build_contextual_message(
+        self,
+        event_type: str,
+        task_instruction: str | None = None,
+        turn_text: str | None = None,
+    ) -> str:
+        """
+        Build a contextual notification message from task/turn data.
+
+        Falls back to generic messages when no context is available.
+
+        Args:
+            event_type: Event type (task_complete, awaiting_input)
+            task_instruction: Optional task instruction summary
+            turn_text: Optional triggering turn text/summary
+
+        Returns:
+            Formatted message string
+        """
+        parts = []
+
+        if task_instruction:
+            parts.append(task_instruction)
+
+        if turn_text:
+            if event_type == "task_complete":
+                parts.append(f"\u2713 {turn_text}")
+            elif event_type == "awaiting_input":
+                parts.append(f"? {turn_text}")
+            else:
+                parts.append(turn_text)
+
+        if parts:
+            return "\n".join(parts)
+
+        # Fallback to generic messages
+        if event_type == "task_complete":
+            return "Task completed - agent is now idle"
+        elif event_type == "awaiting_input":
+            return "Input needed - agent is waiting for your response"
+        else:
+            return f"Event: {event_type}"
+
     def send_notification(
         self,
         agent_id: str,
@@ -146,6 +190,8 @@ class NotificationService:
         event_type: str,
         project: str | None = None,
         dashboard_url: str | None = None,
+        task_instruction: str | None = None,
+        turn_text: str | None = None,
     ) -> bool:
         """
         Send a macOS notification for an agent event.
@@ -156,6 +202,8 @@ class NotificationService:
             event_type: Event type (task_complete, awaiting_input)
             project: Optional project name
             dashboard_url: Base URL for the dashboard
+            task_instruction: Optional task instruction summary for context
+            turn_text: Optional triggering turn text/summary for context
 
         Returns:
             True if notification was sent (or skipped due to settings)
@@ -189,19 +237,21 @@ class NotificationService:
             return True
 
         # Build notification content
-        title = "Claude Headspace"
+        if event_type == "task_complete":
+            title = "Task Complete"
+        elif event_type == "awaiting_input":
+            title = "Input Needed"
+        else:
+            title = "Claude Headspace"
 
         if project:
-            subtitle = f"Agent: {agent_name} ({project})"
+            subtitle = f"{project} ({agent_name})"
         else:
-            subtitle = f"Agent: {agent_name}"
+            subtitle = agent_name
 
-        if event_type == "task_complete":
-            message = "Task completed - agent is now idle"
-        elif event_type == "awaiting_input":
-            message = "Input needed - agent is waiting for your response"
-        else:
-            message = f"Event: {event_type}"
+        message = self._build_contextual_message(
+            event_type, task_instruction, turn_text,
+        )
 
         # Build click-to-navigate URL
         base_url = dashboard_url or self.preferences.dashboard_url
@@ -215,7 +265,7 @@ class NotificationService:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=0.5,  # 500ms timeout for NFR1
+                timeout=5,
             )
 
             if result.returncode != 0:
@@ -245,6 +295,8 @@ class NotificationService:
         agent_id: str,
         agent_name: str,
         project: str | None = None,
+        task_instruction: str | None = None,
+        turn_text: str | None = None,
     ) -> bool:
         """
         Send notification for task completion.
@@ -253,6 +305,8 @@ class NotificationService:
             agent_id: The agent identifier
             agent_name: Human-readable agent name
             project: Optional project name
+            task_instruction: Optional task instruction summary
+            turn_text: Optional completion turn text/summary
 
         Returns:
             True if notification was sent successfully
@@ -262,6 +316,8 @@ class NotificationService:
             agent_name=agent_name,
             event_type="task_complete",
             project=project,
+            task_instruction=task_instruction,
+            turn_text=turn_text,
         )
 
     def notify_awaiting_input(
@@ -269,6 +325,8 @@ class NotificationService:
         agent_id: str,
         agent_name: str,
         project: str | None = None,
+        task_instruction: str | None = None,
+        turn_text: str | None = None,
     ) -> bool:
         """
         Send notification when agent is awaiting input.
@@ -277,6 +335,8 @@ class NotificationService:
             agent_id: The agent identifier
             agent_name: Human-readable agent name
             project: Optional project name
+            task_instruction: Optional task instruction summary
+            turn_text: Optional question/turn text
 
         Returns:
             True if notification was sent successfully
@@ -286,6 +346,8 @@ class NotificationService:
             agent_name=agent_name,
             event_type="awaiting_input",
             project=project,
+            task_instruction=task_instruction,
+            turn_text=turn_text,
         )
 
     def get_preferences(self) -> dict[str, Any]:

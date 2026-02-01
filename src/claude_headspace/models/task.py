@@ -43,8 +43,12 @@ class Task(db.Model):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary_generated_at: Mapped[datetime | None] = mapped_column(
+    completion_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completion_summary_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instruction_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

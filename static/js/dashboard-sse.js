@@ -73,6 +73,7 @@
         // Handle summary updates
         client.on('task_summary', handleTaskSummary);
         client.on('turn_summary', handleTurnSummary);
+        client.on('instruction_summary', handleInstructionSummary);
 
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
@@ -274,7 +275,30 @@
     }
 
     /**
-     * Handle task summary events (AI-generated task-level summary)
+     * Handle instruction summary events (AI-generated task instruction)
+     */
+    function handleInstructionSummary(data, eventType) {
+        const agentId = data.agent_id;
+        const instruction = data.summary || data.text;
+
+        if (!agentId || !instruction) return;
+
+        console.log('Instruction summary:', agentId);
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        if (!card) return;
+
+        var instructionEl = card.querySelector('.task-instruction');
+        if (instructionEl) {
+            instructionEl.textContent = instruction;
+            instructionEl.classList.remove('text-muted', 'italic');
+            instructionEl.classList.add('text-primary', 'font-medium');
+        }
+    }
+
+    /**
+     * Handle task summary events (AI-generated task-level completion summary).
+     * Updates the secondary line (.task-summary).
      */
     function handleTaskSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -295,8 +319,8 @@
 
     /**
      * Handle turn summary events (AI-generated turn-level summary).
-     * Only updates if current text is a placeholder to avoid overwriting
-     * a task-level summary with a less informative turn summary.
+     * Updates the secondary line (.task-summary).
+     * Always updates to show latest turn context.
      */
     function handleTurnSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -311,10 +335,7 @@
 
         var taskSummary = card.querySelector('.task-summary');
         if (taskSummary) {
-            var current = taskSummary.textContent.trim();
-            if (current === 'Summarising...' || current === 'No active task') {
-                taskSummary.textContent = summary;
-            }
+            taskSummary.textContent = summary;
         }
     }
 

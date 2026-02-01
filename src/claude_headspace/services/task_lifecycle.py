@@ -162,10 +162,25 @@ class TaskLifecycleManager:
                 # Lazy import to avoid circular imports and test context issues
                 from .notification_service import get_notification_service
                 notification_service = get_notification_service()
+
+                instruction = self._get_instruction_for_notification(task)
+
+                # Find the most recent AGENT QUESTION turn for context
+                question_text = None
+                try:
+                    for t in reversed(task.turns):
+                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                            question_text = t.summary or t.text
+                            break
+                except Exception:
+                    pass
+
                 notification_service.notify_awaiting_input(
                     agent_id=str(task.agent_id),
                     agent_name=task.agent.name or f"Agent {task.agent_id}",
                     project=task.agent.project.name if task.agent.project else None,
+                    task_instruction=instruction,
+                    turn_text=question_text,
                 )
             except Exception as notif_err:
                 logger.warning(f"Notification send failed (non-fatal): {notif_err}")
@@ -224,10 +239,17 @@ class TaskLifecycleManager:
         try:
             from .notification_service import get_notification_service
             svc = get_notification_service()
+
+            instruction = self._get_instruction_for_notification(task)
+            # Completion context: transcript text → completion_summary → None
+            completion_text = agent_text or task.completion_summary or None
+
             svc.notify_task_complete(
                 agent_id=str(task.agent_id),
                 agent_name=task.agent.name or f"Agent {task.agent_id}",
                 project=task.agent.project.name if task.agent.project else None,
+                task_instruction=instruction,
+                turn_text=completion_text,
             )
         except Exception as e:
             logger.warning(f"Notification send failed (non-fatal): {e}")
@@ -306,6 +328,9 @@ class TaskLifecycleManager:
 
                 # Trigger async turn summarisation
                 self._trigger_turn_summarisation(turn.id)
+
+                # Trigger async instruction summarisation for the new task
+                self._trigger_instruction_summarisation(new_task.id, text)
 
                 return TurnProcessingResult(
                     success=True,
@@ -423,6 +448,39 @@ class TaskLifecycleManager:
 
         return result
 
+    @staticmethod
+    def _get_instruction_for_notification(task: Task, max_length: int = 120) -> str | None:
+        """
+        Get task instruction for notification display.
+
+        Falls back to the first USER COMMAND turn's raw text (truncated)
+        when the AI-generated instruction summary isn't available yet.
+
+        Args:
+            task: The task to get instruction for
+            max_length: Max characters for fallback text truncation
+
+        Returns:
+            Instruction text or None if unavailable
+        """
+        # Prefer AI-generated instruction summary
+        if task.instruction:
+            return task.instruction
+
+        # Fall back to the first USER COMMAND turn's raw text
+        try:
+            for t in task.turns:
+                if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
+                    text = (t.text or "").strip()
+                    if text:
+                        if len(text) > max_length:
+                            return text[:max_length - 3] + "..."
+                        return text
+        except Exception:
+            pass
+
+        return None
+
     def _trigger_turn_summarisation(self, turn_id: int) -> None:
         """Trigger async turn summarisation if service is available."""
         if self._summarisation_service:
@@ -438,3 +496,11 @@ class TaskLifecycleManager:
                 self._summarisation_service.summarise_task_async(task_id)
             except Exception as e:
                 logger.debug(f"Task summarisation trigger failed (non-fatal): {e}")
+
+    def _trigger_instruction_summarisation(self, task_id: int, command_text: str | None) -> None:
+        """Trigger async instruction summarisation if service is available."""
+        if self._summarisation_service and command_text:
+            try:
+                self._summarisation_service.summarise_instruction_async(task_id, command_text)
+            except Exception as e:
+                logger.debug(f"Instruction summarisation trigger failed (non-fatal): {e}")

@@ -79,6 +79,13 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:here'?s a summary of what was done)",
 ]
 
+# Completion opener patterns — "Done." / "Complete." etc. at start of a line, followed by detail
+# Uses (?m) so ^ matches at each line boundary (not just start of string),
+# because the tail contains multiple lines and "Done." may not be the first.
+COMPLETION_OPENER_PATTERNS = [
+    r"(?im)^(?:done|complete|finished|all (?:done|set|finished))[\.!]\s+\S",
+]
+
 # End-of-task: summary openers
 END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?i)(?:here'?s a summary of (?:what|the changes|everything))",
@@ -171,6 +178,47 @@ def _detect_end_of_task(tail: str, has_continuation: bool) -> Optional[IntentRes
     return None
 
 
+def _detect_completion_opener(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+    """
+    Detect completion opener at the start of the tail.
+
+    Recognises "Done.", "Complete.", "Finished.", etc. at the **start** of a
+    message even when followed by additional detail text.  This catches the
+    common real-world pattern where Claude Code says "Done. All files now ..."
+    which the standalone COMPLETION_PATTERNS miss because they require the
+    word to be the entire text.
+
+    Returns IntentResult with COMPLETION intent, or None if not detected.
+    Confidence levels:
+      - Opener alone: 0.75
+      - Opener + soft-close / summary / handoff signal: 0.9
+
+    Returns None if continuation patterns were found (has_continuation=True).
+    """
+    if has_continuation:
+        return None
+
+    matched = _match_patterns(tail, COMPLETION_OPENER_PATTERNS)
+    if not matched:
+        return None
+
+    # Check for additional completion signals to boost confidence
+    has_soft_close = _match_patterns(tail, END_OF_TASK_SOFT_CLOSE_PATTERNS)
+    has_summary = _match_patterns(tail, END_OF_TASK_SUMMARY_PATTERNS)
+    has_handoff = _match_patterns(tail, END_OF_TASK_HANDOFF_PATTERNS)
+
+    if has_soft_close or has_summary or has_handoff:
+        confidence = 0.9
+    else:
+        confidence = 0.75
+
+    return IntentResult(
+        intent=TurnIntent.COMPLETION,
+        confidence=confidence,
+        matched_pattern=matched,
+    )
+
+
 def _infer_completion_classification(
     tail: str, inference_service: Any
 ) -> Optional[IntentResult]:
@@ -219,6 +267,7 @@ def detect_agent_intent(
     4. Check continuation guard
     5. Tail: END_OF_TASK detection (before QUESTION to catch soft-close offers)
     6. Tail: QUESTION -> BLOCKED -> COMPLETION (confidence=1.0)
+    6.5. Tail: COMPLETION OPENER detection (e.g. "Done. All files...")
     7. Full text: END_OF_TASK detection (lower confidence)
     8. Full text: QUESTION -> BLOCKED -> COMPLETION (confidence=0.8)
     9. Optional inference fallback for ambiguous cases
@@ -269,6 +318,14 @@ def detect_agent_intent(
                 confidence=1.0,
                 matched_pattern=matched,
             )
+
+    # Phase 1.5: Completion opener on tail (e.g. "Done. All files updated...")
+    opener_result = _detect_completion_opener(tail, has_continuation)
+    if opener_result:
+        logger.debug(
+            f"Detected COMPLETION opener in tail: pattern={opener_result.matched_pattern}"
+        )
+        return opener_result
 
     # Phase 2: End-of-task on full text (lower confidence)
     full_tail = _extract_tail(cleaned, max_lines=30)

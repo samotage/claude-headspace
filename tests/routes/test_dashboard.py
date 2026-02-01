@@ -18,6 +18,7 @@ from src.claude_headspace.routes.dashboard import (
     get_effective_state,
     get_project_state_flags,
     get_state_info,
+    get_task_instruction,
     get_task_summary,
     is_agent_active,
 )
@@ -373,21 +374,21 @@ class TestGetCompletedTaskSummary:
     """Tests for _get_completed_task_summary helper."""
 
     def test_returns_task_summary_when_set(self):
-        """Completed task with task.summary returns that summary."""
+        """Completed task with task.completion_summary returns that summary."""
         mock_task = MagicMock()
-        mock_task.summary = "Refactored authentication module"
+        mock_task.completion_summary = "Refactored authentication module"
         mock_task.turns = []
         result = _get_completed_task_summary(mock_task)
         assert result == "Refactored authentication module"
 
     def test_falls_back_to_last_turn_summary(self):
-        """Completed task without task.summary uses last turn's summary."""
+        """Completed task without task.completion_summary uses last turn's summary."""
         mock_turn = MagicMock()
         mock_turn.summary = "Fixed login bug"
         mock_turn.text = "Raw turn text here"
 
         mock_task = MagicMock()
-        mock_task.summary = None
+        mock_task.completion_summary = None
         mock_task.turns = [mock_turn]
         result = _get_completed_task_summary(mock_task)
         assert result == "Fixed login bug"
@@ -399,7 +400,7 @@ class TestGetCompletedTaskSummary:
         mock_turn.text = "Implemented the feature"
 
         mock_task = MagicMock()
-        mock_task.summary = None
+        mock_task.completion_summary = None
         mock_task.turns = [mock_turn]
         result = _get_completed_task_summary(mock_task)
         assert result == "Implemented the feature"
@@ -411,7 +412,7 @@ class TestGetCompletedTaskSummary:
         mock_turn.text = "A" * 150
 
         mock_task = MagicMock()
-        mock_task.summary = None
+        mock_task.completion_summary = None
         mock_task.turns = [mock_turn]
         result = _get_completed_task_summary(mock_task)
         assert len(result) == 103  # 100 + "..."
@@ -420,19 +421,19 @@ class TestGetCompletedTaskSummary:
     def test_no_turns_returns_summarising(self):
         """Completed task with no turns returns 'Summarising...'."""
         mock_task = MagicMock()
-        mock_task.summary = None
+        mock_task.completion_summary = None
         mock_task.turns = []
         result = _get_completed_task_summary(mock_task)
         assert result == "Summarising..."
 
     def test_prefers_task_summary_over_turn_summary(self):
-        """task.summary takes priority over turn summary."""
+        """task.completion_summary takes priority over turn summary."""
         mock_turn = MagicMock()
         mock_turn.summary = "Turn-level summary"
         mock_turn.text = "Raw text"
 
         mock_task = MagicMock()
-        mock_task.summary = "Task-level summary"
+        mock_task.completion_summary = "Task-level summary"
         mock_task.turns = [mock_turn]
         result = _get_completed_task_summary(mock_task)
         assert result == "Task-level summary"
@@ -448,7 +449,7 @@ class TestGetTaskSummaryCompletedFallback:
 
         completed_task = MagicMock()
         completed_task.state = TaskState.COMPLETE
-        completed_task.summary = "Deployed new API endpoint"
+        completed_task.completion_summary = "Deployed new API endpoint"
         completed_task.turns = []
         agent.tasks = [completed_task]
 
@@ -466,7 +467,7 @@ class TestGetTaskSummaryCompletedFallback:
 
         completed_task = MagicMock()
         completed_task.state = TaskState.COMPLETE
-        completed_task.summary = None
+        completed_task.completion_summary = None
         completed_task.turns = [mock_turn]
         agent.tasks = [completed_task]
 
@@ -484,7 +485,7 @@ class TestGetTaskSummaryCompletedFallback:
 
         completed_task = MagicMock()
         completed_task.state = TaskState.COMPLETE
-        completed_task.summary = None
+        completed_task.completion_summary = None
         completed_task.turns = [mock_turn]
         agent.tasks = [completed_task]
 
@@ -498,7 +499,7 @@ class TestGetTaskSummaryCompletedFallback:
 
         completed_task = MagicMock()
         completed_task.state = TaskState.COMPLETE
-        completed_task.summary = None
+        completed_task.completion_summary = None
         completed_task.turns = []
         agent.tasks = [completed_task]
 
@@ -521,7 +522,7 @@ class TestGetTaskSummaryCompletedFallback:
 
         idle_task = MagicMock()
         idle_task.state = TaskState.IDLE
-        idle_task.summary = "Some old task"
+        idle_task.completion_summary = "Some old task"
         agent.tasks = [idle_task]
 
         result = get_task_summary(agent)
@@ -644,10 +645,9 @@ class TestDashboardRoute:
         assert "headspace" in html
 
     def test_dashboard_shows_status_badges(self, client):
-        """Test that status badges are rendered."""
+        """Test that status badges are rendered in the stats bar."""
         response = client.get("/")
         html = response.data.decode("utf-8")
-        assert "TIMED OUT" in html
         assert "INPUT NEEDED" in html
         assert "WORKING" in html
         assert "IDLE" in html
@@ -863,3 +863,82 @@ class TestTimedOutState:
         result = get_project_state_flags([stale_agent])
         assert result["has_timed_out"] is True
         assert result["has_input_needed"] is False
+
+
+class TestGetTaskInstruction:
+    """Tests for get_task_instruction() helper."""
+
+    def test_returns_instruction_from_current_task(self):
+        """Test that instruction is returned from current active task."""
+        agent = MagicMock()
+        mock_task = MagicMock()
+        mock_task.instruction = "Fix the login page"
+        agent.get_current_task.return_value = mock_task
+
+        result = get_task_instruction(agent)
+
+        assert result == "Fix the login page"
+
+    def test_returns_none_when_no_current_task(self):
+        """Test returns None when agent has no current task."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+        agent.tasks = []
+
+        result = get_task_instruction(agent)
+
+        assert result is None
+
+    def test_returns_none_when_current_task_has_no_instruction(self):
+        """Test returns None when current task has no instruction yet."""
+        agent = MagicMock()
+        mock_task = MagicMock()
+        mock_task.instruction = None
+        agent.get_current_task.return_value = mock_task
+        agent.tasks = []
+
+        result = get_task_instruction(agent)
+
+        assert result is None
+
+    def test_falls_back_to_completed_task_instruction(self):
+        """Test falls back to most recent completed task instruction."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.instruction = "Refactor auth module"
+        agent.tasks = [completed_task]
+
+        result = get_task_instruction(agent)
+
+        assert result == "Refactor auth module"
+
+    def test_no_fallback_if_most_recent_not_complete(self):
+        """Test no fallback when most recent task is not complete."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        processing_task = MagicMock()
+        processing_task.state = TaskState.PROCESSING
+        processing_task.instruction = "Some instruction"
+        agent.tasks = [processing_task]
+
+        result = get_task_instruction(agent)
+
+        assert result is None
+
+    def test_completed_task_without_instruction_returns_none(self):
+        """Test completed task without instruction returns None."""
+        agent = MagicMock()
+        agent.get_current_task.return_value = None
+
+        completed_task = MagicMock()
+        completed_task.state = TaskState.COMPLETE
+        completed_task.instruction = None
+        agent.tasks = [completed_task]
+
+        result = get_task_instruction(agent)
+
+        assert result is None

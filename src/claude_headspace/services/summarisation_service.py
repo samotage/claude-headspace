@@ -8,6 +8,50 @@ from .inference_service import InferenceService, InferenceServiceError
 
 logger = logging.getLogger(__name__)
 
+# Intent-aware turn prompt templates
+_TURN_PROMPT_TEMPLATES = {
+    "command": (
+        "Summarise what the user is asking the agent to do in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "User command: {text}"
+    ),
+    "question": (
+        "Summarise what the agent is asking the user in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "Agent question: {text}"
+    ),
+    "completion": (
+        "Summarise what the agent accomplished in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "Agent completion message: {text}"
+    ),
+    "progress": (
+        "Summarise what progress the agent has made in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "Agent progress update: {text}"
+    ),
+    "answer": (
+        "Summarise what information the user provided in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "User answer: {text}"
+    ),
+    "end_of_task": (
+        "Summarise the final outcome of this task in 1-2 concise sentences.\n\n"
+        "{instruction_context}"
+        "Final message: {text}"
+    ),
+}
+
+# Fallback template for unknown intents
+_TURN_PROMPT_DEFAULT = (
+    "Summarise this turn in 1-2 concise sentences focusing on "
+    "what action was taken or requested.\n\n"
+    "{instruction_context}"
+    "Turn: {text}\n"
+    "Actor: {actor}\n"
+    "Intent: {intent}"
+)
+
 
 class SummarisationService:
     """Generates AI summaries for turns and tasks using the inference service."""
@@ -26,18 +70,24 @@ class SummarisationService:
         """Generate a summary for a turn.
 
         If the turn already has a summary, returns the existing summary.
-        Uses the inference service at "turn" level.
+        Skips summarisation when turn text is None or empty.
+        Uses intent-aware prompts with task instruction context.
 
         Args:
             turn: Turn model instance with text, actor, intent
             db_session: Database session for persisting the summary
 
         Returns:
-            The summary text, or None if generation failed
+            The summary text, or None if generation failed or skipped
         """
         # Return existing summary if present (permanent caching via DB)
         if turn.summary:
             return turn.summary
+
+        # Empty text guard: skip summarisation when text is None/empty
+        if not turn.text or not turn.text.strip():
+            logger.debug(f"Skipping turn summarisation for turn {turn.id}: empty text")
+            return None
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping turn summarisation")
@@ -81,25 +131,34 @@ class SummarisationService:
             return None
 
     def summarise_task(self, task, db_session=None) -> str | None:
-        """Generate a summary for a completed task.
+        """Generate a completion summary for a completed task.
 
-        If the task already has a summary, returns the existing summary.
-        Uses the inference service at "task" level.
+        If the task already has a completion_summary, returns it.
+        Skips summarisation if the final turn text is empty.
+        Uses task instruction + final agent message as primary inputs.
 
         Args:
-            task: Task model instance with turns, started_at, completed_at
+            task: Task model instance with turns, instruction
             db_session: Database session for persisting the summary
 
         Returns:
-            The summary text, or None if generation failed
+            The summary text, or None if generation failed or skipped
         """
         # Return existing summary if present (permanent caching via DB)
-        if task.summary:
-            return task.summary
+        if task.completion_summary:
+            return task.completion_summary
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping task summarisation")
             return None
+
+        # Empty text guard: skip if final turn text is not available
+        turns = task.turns if hasattr(task, "turns") and task.turns else []
+        if turns:
+            final_turn_text = turns[-1].text
+            if not final_turn_text or not final_turn_text.strip():
+                logger.debug(f"Skipping task summarisation for task {task.id}: final turn text empty")
+                return None
 
         # Build prompt
         input_text = self._build_task_prompt(task)
@@ -121,8 +180,8 @@ class SummarisationService:
             )
 
             # Persist summary to task model
-            task.summary = result.text
-            task.summary_generated_at = datetime.now(timezone.utc)
+            task.completion_summary = result.text
+            task.completion_summary_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(task)
@@ -132,6 +191,66 @@ class SummarisationService:
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Task summarisation failed for task {task.id}: {e}")
+            return None
+
+    def summarise_instruction(self, task, command_text: str, db_session=None) -> str | None:
+        """Generate an instruction summary from the user's command text.
+
+        Produces a 1-2 sentence summary of what the user instructed.
+
+        Args:
+            task: Task model instance to persist the instruction to
+            command_text: The full text of the user's command
+            db_session: Database session for persisting
+
+        Returns:
+            The instruction text, or None if generation failed or skipped
+        """
+        # Return existing instruction if present
+        if task.instruction:
+            return task.instruction
+
+        # Empty text guard
+        if not command_text or not command_text.strip():
+            logger.debug(f"Skipping instruction summarisation for task {task.id}: empty command text")
+            return None
+
+        if not self._inference.is_available:
+            logger.debug("Inference service unavailable, skipping instruction summarisation")
+            return None
+
+        input_text = (
+            "Summarise what the user is instructing the agent to do in 1-2 concise sentences. "
+            "Focus on the core task or goal.\n\n"
+            f"User command: {command_text}"
+        )
+
+        agent_id = task.agent_id if hasattr(task, "agent_id") else None
+        project_id = None
+        if hasattr(task, "agent") and task.agent:
+            project_id = task.agent.project_id if hasattr(task.agent, "project_id") else None
+
+        try:
+            result = self._inference.infer(
+                level="turn",
+                purpose="summarise_instruction",
+                input_text=input_text,
+                project_id=project_id,
+                agent_id=agent_id,
+                task_id=task.id,
+            )
+
+            task.instruction = result.text
+            task.instruction_generated_at = datetime.now(timezone.utc)
+
+            if db_session:
+                db_session.add(task)
+                db_session.commit()
+
+            return result.text
+
+        except (InferenceServiceError, Exception) as e:
+            logger.error(f"Instruction summarisation failed for task {task.id}: {e}")
             return None
 
     def summarise_turn_async(self, turn_id: int) -> None:
@@ -182,6 +301,34 @@ class SummarisationService:
         )
         thread.start()
 
+    def summarise_instruction_async(self, task_id: int, command_text: str) -> None:
+        """Trigger instruction summarisation asynchronously.
+
+        Runs in a background thread with Flask app context.
+        Broadcasts SSE event on completion.
+
+        Args:
+            task_id: ID of the task to generate instruction for
+            command_text: The user's command text
+        """
+        if not self._inference.is_available:
+            return
+
+        if not self._app:
+            logger.warning("No Flask app available for async summarisation")
+            return
+
+        if not command_text or not command_text.strip():
+            return
+
+        thread = threading.Thread(
+            target=self._async_summarise_instruction,
+            args=(task_id, command_text),
+            daemon=True,
+            name=f"summarise-instruction-{task_id}",
+        )
+        thread.start()
+
     def _async_summarise_turn(self, turn_id: int) -> None:
         """Background thread handler for turn summarisation."""
         try:
@@ -223,7 +370,7 @@ class SummarisationService:
                     logger.warning(f"Task {task_id} not found for async summarisation")
                     return
 
-                if task.summary:
+                if task.completion_summary:
                     return  # Already summarised
 
                 summary = self.summarise_task(task, db_session=flask_db.session)
@@ -239,6 +386,35 @@ class SummarisationService:
 
         except Exception as e:
             logger.error(f"Async task summarisation failed for task {task_id}: {e}")
+
+    def _async_summarise_instruction(self, task_id: int, command_text: str) -> None:
+        """Background thread handler for instruction summarisation."""
+        try:
+            with self._app.app_context():
+                from ..database import db as flask_db
+                from ..models.task import Task
+
+                task = flask_db.session.get(Task, task_id)
+                if not task:
+                    logger.warning(f"Task {task_id} not found for async instruction summarisation")
+                    return
+
+                if task.instruction:
+                    return  # Already has instruction
+
+                instruction = self.summarise_instruction(task, command_text, db_session=flask_db.session)
+
+                if instruction:
+                    self._broadcast_summary_update(
+                        event_type="instruction_summary",
+                        entity_id=task_id,
+                        summary=instruction,
+                        agent_id=task.agent_id,
+                        project_id=task.agent.project_id if task.agent else None,
+                    )
+
+        except Exception as e:
+            logger.error(f"Async instruction summarisation failed for task {task_id}: {e}")
 
     def _broadcast_summary_update(
         self,
@@ -269,33 +445,46 @@ class SummarisationService:
 
     @staticmethod
     def _build_turn_prompt(turn) -> str:
-        """Build the summarisation prompt for a turn."""
-        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
-        intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
+        """Build an intent-aware summarisation prompt for a turn.
 
-        return (
-            f"Summarise this turn in 1-2 concise sentences focusing on "
-            f"what action was taken or requested:\n\n"
-            f"Turn: {turn.text}\n"
-            f"Actor: {actor_value}\n"
-            f"Intent: {intent_value}"
+        Uses different prompt templates based on the turn's intent,
+        and includes the task instruction as context when available.
+        """
+        intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
+        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+
+        # Get task instruction context if available
+        instruction_context = ""
+        if hasattr(turn, "task") and turn.task:
+            instruction = getattr(turn.task, "instruction", None)
+            if instruction:
+                instruction_context = f"Task instruction: {instruction}\n\n"
+
+        # Select intent-specific template
+        template = _TURN_PROMPT_TEMPLATES.get(intent_value, _TURN_PROMPT_DEFAULT)
+
+        return template.format(
+            text=turn.text,
+            actor=actor_value,
+            intent=intent_value,
+            instruction_context=instruction_context,
         )
 
     @staticmethod
     def _build_task_prompt(task) -> str:
-        """Build the summarisation prompt for a task."""
-        started = task.started_at.isoformat() if task.started_at else "unknown"
-        completed = task.completed_at.isoformat() if task.completed_at else "unknown"
+        """Build the completion summary prompt for a task.
 
-        # Count turns and get final turn text
+        Primary inputs are the task instruction and the agent's final message.
+        Does not include timestamps or turn counts.
+        """
+        instruction = getattr(task, "instruction", None) or "No instruction recorded"
+
         turns = task.turns if hasattr(task, "turns") and task.turns else []
-        turn_count = len(turns)
-        final_turn_text = turns[-1].text if turns else "No turns recorded"
+        final_turn_text = turns[-1].text if turns else "No final message recorded"
 
         return (
-            f"Summarise the outcome of this completed task in 2-3 sentences:\n\n"
-            f"Task started: {started}\n"
-            f"Task completed: {completed}\n"
-            f"Turns: {turn_count}\n"
-            f"Final outcome: {final_turn_text}"
+            "Summarise what was accomplished in this completed task in 2-3 sentences. "
+            "Describe the outcome relative to what was originally asked.\n\n"
+            f"Original instruction: {instruction}\n"
+            f"Agent's final message: {final_turn_text}"
         )

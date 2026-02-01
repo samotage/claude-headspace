@@ -193,6 +193,31 @@ def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
         logger.debug(f"turn_created broadcast failed (non-fatal): {e}")
 
 
+def _get_instruction_for_notification(task, max_length: int = 120) -> str | None:
+    """
+    Get task instruction for notification display.
+
+    Falls back to the first USER COMMAND turn's raw text (truncated)
+    when the AI-generated instruction summary isn't available yet.
+    """
+    if task.instruction:
+        return task.instruction
+
+    try:
+        from ..models.turn import TurnActor, TurnIntent
+        for t in task.turns:
+            if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
+                text = (t.text or "").strip()
+                if text:
+                    if len(text) > max_length:
+                        return text[:max_length - 3] + "..."
+                    return text
+    except Exception:
+        pass
+
+    return None
+
+
 def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> str:
     """
     Extract human-readable question text from tool_input.
@@ -539,6 +564,8 @@ def process_notification(
                     agent_id=str(agent.id),
                     agent_name=agent.name or f"Agent {agent.id}",
                     project=agent.project.name if agent.project else None,
+                    task_instruction=_get_instruction_for_notification(current_task),
+                    turn_text=message or title,
                 )
             except Exception as e:
                 logger.warning(f"Notification send failed (non-fatal): {e}")
@@ -743,6 +770,8 @@ def process_pre_tool_use(
                     agent_id=str(agent.id),
                     agent_name=agent.name or f"Agent {agent.id}",
                     project=agent.project.name if agent.project else None,
+                    task_instruction=_get_instruction_for_notification(current_task),
+                    turn_text=question_text,
                 )
             except Exception as e:
                 logger.warning(f"Notification send failed (non-fatal): {e}")
@@ -838,6 +867,8 @@ def process_permission_request(
                     agent_id=str(agent.id),
                     agent_name=agent.name or f"Agent {agent.id}",
                     project=agent.project.name if agent.project else None,
+                    task_instruction=_get_instruction_for_notification(current_task),
+                    turn_text=question_text,
                 )
             except Exception as e:
                 logger.warning(f"Notification send failed (non-fatal): {e}")
