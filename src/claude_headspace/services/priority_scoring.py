@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timezone
 
 from .inference_service import InferenceService, InferenceServiceError
+from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -270,19 +271,10 @@ class PriorityScoringService:
 
         agents_text = "\n".join(agent_lines)
 
-        return (
-            f"You are prioritising agents working across multiple projects.\n\n"
-            f"{context_section}\n\n"
-            f"Agents to score:\n{agents_text}\n\n"
-            f"Score each agent 0-100 based on priority for user attention.\n"
-            f"Higher scores = needs attention sooner.\n\n"
-            f"Scoring factors (in order of importance):\n"
-            f"1. Objective/waypoint alignment (40%) - How well does the agent's current work align?\n"
-            f"2. Agent state (25%) - awaiting_input (highest) > processing > idle (lowest)\n"
-            f"3. Task duration (15%) - Longer running tasks may need attention\n"
-            f"4. Project context (10%) - Project waypoint priorities\n"
-            f"5. Recent activity (10%) - Recently active vs stale\n\n"
-            f'Return ONLY a JSON array: [{{"agent_id": N, "score": N, "reason": "..."}}]'
+        return build_prompt(
+            "priority_scoring",
+            context_section=context_section,
+            agents_text=agents_text,
         )
 
     @staticmethod

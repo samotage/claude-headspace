@@ -113,6 +113,10 @@ body::after {
     min-height: 28px;
 }
 
+.card-line:first-child {
+    min-height: 36px;
+}
+
 .card-line + .card-line {
     border-top: 1px solid rgba(37, 37, 48, 0.5);
 }

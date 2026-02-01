@@ -20,6 +20,7 @@ from watchdog.observers import Observer
 from .git_metadata import GitMetadata
 from .jsonl_parser import JSONLParser
 from .project_decoder import encode_project_path, locate_jsonl_file
+from .prompt_registry import build_prompt
 from .session_registry import RegisteredSession, SessionRegistry
 
 logger = logging.getLogger(__name__)
@@ -490,13 +491,7 @@ class FileWatcher:
         Returns:
             True if the content is classified as a question needing user input
         """
-        prompt = (
-            "You are classifying Claude Code agent output. "
-            "Determine if the agent is asking the user a question or waiting for input.\n\n"
-            f"Agent output:\n{content[:2000]}\n\n"
-            "Is the agent asking the user a question or waiting for user input? "
-            "Answer only 'yes' or 'no'."
-        )
+        prompt = build_prompt("question_classification", content=content[:2000])
 
         try:
             result = inference_service.infer(

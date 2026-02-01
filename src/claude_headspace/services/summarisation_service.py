@@ -5,52 +5,9 @@ import threading
 from datetime import datetime, timezone
 
 from .inference_service import InferenceService, InferenceServiceError
+from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
-
-# Intent-aware turn prompt templates
-_TURN_PROMPT_TEMPLATES = {
-    "command": (
-        "Summarise what the user is asking the agent to do in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "User command: {text}"
-    ),
-    "question": (
-        "Summarise what the agent is asking the user in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "Agent question: {text}"
-    ),
-    "completion": (
-        "Summarise what the agent accomplished in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "Agent completion message: {text}"
-    ),
-    "progress": (
-        "Summarise what progress the agent has made in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "Agent progress update: {text}"
-    ),
-    "answer": (
-        "Summarise what information the user provided in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "User answer: {text}"
-    ),
-    "end_of_task": (
-        "Summarise the final outcome of this task in 1-2 concise sentences.\n\n"
-        "{instruction_context}"
-        "Final message: {text}"
-    ),
-}
-
-# Fallback template for unknown intents
-_TURN_PROMPT_DEFAULT = (
-    "Summarise this turn in 1-2 concise sentences focusing on "
-    "what action was taken or requested.\n\n"
-    "{instruction_context}"
-    "Turn: {text}\n"
-    "Actor: {actor}\n"
-    "Intent: {intent}"
-)
 
 
 class SummarisationService:
@@ -94,7 +51,7 @@ class SummarisationService:
             return None
 
         # Build prompt
-        input_text = self._build_turn_prompt(turn)
+        input_text = self._resolve_turn_prompt(turn)
 
         # Get entity associations for InferenceCall logging
         task_id = turn.task_id if turn.task_id else None
@@ -161,7 +118,7 @@ class SummarisationService:
                 return None
 
         # Build prompt
-        input_text = self._build_task_prompt(task)
+        input_text = self._resolve_task_prompt(task)
 
         # Get entity associations for InferenceCall logging
         agent_id = task.agent_id if hasattr(task, "agent_id") else None
@@ -219,11 +176,7 @@ class SummarisationService:
             logger.debug("Inference service unavailable, skipping instruction summarisation")
             return None
 
-        input_text = (
-            "Summarise what the user is instructing the agent to do in 1-2 concise sentences. "
-            "Focus on the core task or goal.\n\n"
-            f"User command: {command_text}"
-        )
+        input_text = build_prompt("instruction", command_text=command_text)
 
         agent_id = task.agent_id if hasattr(task, "agent_id") else None
         project_id = None
@@ -444,7 +397,7 @@ class SummarisationService:
             logger.debug(f"Failed to broadcast summary update (non-fatal): {e}")
 
     @staticmethod
-    def _build_turn_prompt(turn) -> str:
+    def _resolve_turn_prompt(turn) -> str:
         """Build an intent-aware summarisation prompt for a turn.
 
         Uses different prompt templates based on the turn's intent,
@@ -460,18 +413,27 @@ class SummarisationService:
             if instruction:
                 instruction_context = f"Task instruction: {instruction}\n\n"
 
-        # Select intent-specific template
-        template = _TURN_PROMPT_TEMPLATES.get(intent_value, _TURN_PROMPT_DEFAULT)
-
-        return template.format(
-            text=turn.text,
-            actor=actor_value,
-            intent=intent_value,
-            instruction_context=instruction_context,
-        )
+        # Select intent-specific template key
+        prompt_type = f"turn_{intent_value}"
+        try:
+            return build_prompt(
+                prompt_type,
+                text=turn.text,
+                actor=actor_value,
+                intent=intent_value,
+                instruction_context=instruction_context,
+            )
+        except KeyError:
+            return build_prompt(
+                "turn_default",
+                text=turn.text,
+                actor=actor_value,
+                intent=intent_value,
+                instruction_context=instruction_context,
+            )
 
     @staticmethod
-    def _build_task_prompt(task) -> str:
+    def _resolve_task_prompt(task) -> str:
         """Build the completion summary prompt for a task.
 
         Primary inputs are the task instruction and the agent's final message.
@@ -482,9 +444,8 @@ class SummarisationService:
         turns = task.turns if hasattr(task, "turns") and task.turns else []
         final_turn_text = turns[-1].text if turns else "No final message recorded"
 
-        return (
-            "Summarise what was accomplished in this completed task in 2-3 sentences. "
-            "Describe the outcome relative to what was originally asked.\n\n"
-            f"Original instruction: {instruction}\n"
-            f"Agent's final message: {final_turn_text}"
+        return build_prompt(
+            "task_completion",
+            instruction=instruction,
+            final_turn_text=final_turn_text,
         )

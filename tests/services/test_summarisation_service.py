@@ -126,7 +126,7 @@ class TestTurnSummarisation:
         mock_session.commit.assert_called_once()
 
     def test_turn_prompt_includes_context(self, service, mock_turn):
-        prompt = service._build_turn_prompt(mock_turn)
+        prompt = service._resolve_turn_prompt(mock_turn)
 
         assert "Refactoring the authentication middleware" in prompt
         assert "agent" in prompt
@@ -182,7 +182,7 @@ class TestTaskSummarisation:
         assert mock_task.completion_summary is None
 
     def test_task_prompt_includes_context(self, service, mock_task):
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "2-3 sentences" in prompt
         assert "All 12 tests passing" in prompt
@@ -364,24 +364,24 @@ class TestInstructionAsyncSummarisation:
             mock_thread.start.assert_called_once()
 
 
-class TestRebuiltTaskPrompt:
-    """Tests for rebuilt _build_task_prompt() — correct inputs, no timestamps/turn counts."""
+class TestResolveTaskPrompt:
+    """Tests for _resolve_task_prompt() — correct inputs, no timestamps/turn counts."""
 
     def test_task_prompt_uses_instruction_and_final_turn(self, service, mock_task):
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "Refactor the authentication middleware" in prompt
         assert "All 12 tests passing" in prompt
 
     def test_task_prompt_does_not_include_timestamps(self, service, mock_task):
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "2026" not in prompt
         assert "started_at" not in prompt
         assert "completed_at" not in prompt
 
     def test_task_prompt_does_not_include_turn_counts(self, service, mock_task):
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "Turns:" not in prompt
         assert "turns:" not in prompt
@@ -389,20 +389,20 @@ class TestRebuiltTaskPrompt:
     def test_task_prompt_with_no_instruction(self, service, mock_task):
         mock_task.instruction = None
 
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "No instruction recorded" in prompt
 
     def test_task_prompt_with_no_turns(self, service, mock_task):
         mock_task.turns = []
 
-        prompt = service._build_task_prompt(mock_task)
+        prompt = service._resolve_task_prompt(mock_task)
 
         assert "No final message recorded" in prompt
 
 
-class TestRebuiltTurnPrompt:
-    """Tests for rebuilt _build_turn_prompt() — intent-aware templates, task instruction context, empty text guard."""
+class TestResolveTurnPrompt:
+    """Tests for _resolve_turn_prompt() — intent-aware templates, task instruction context, empty text guard."""
 
     def test_command_intent_uses_command_template(self, service):
         turn = MagicMock()
@@ -411,7 +411,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "command"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "what the user is asking" in prompt
         assert "Fix the login page" in prompt
@@ -423,7 +423,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "question"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "what the agent is asking" in prompt
         assert "Which database should I use?" in prompt
@@ -435,7 +435,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "completion"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "what the agent accomplished" in prompt
         assert "All tests are now passing" in prompt
@@ -447,7 +447,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "progress"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "progress" in prompt
         assert "Refactoring the auth middleware" in prompt
@@ -459,7 +459,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "answer"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "information the user provided" in prompt
         assert "Use PostgreSQL" in prompt
@@ -471,7 +471,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "end_of_task"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "final outcome" in prompt
         assert "Task complete" in prompt
@@ -483,7 +483,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "unknown_intent"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "1-2 concise sentences" in prompt
         assert "Some text" in prompt
@@ -496,7 +496,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "progress"
         turn.task.instruction = "Refactor the authentication module"
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "Task instruction: Refactor the authentication module" in prompt
 
@@ -507,7 +507,7 @@ class TestRebuiltTurnPrompt:
         turn.intent.value = "progress"
         turn.task.instruction = None
 
-        prompt = service._build_turn_prompt(turn)
+        prompt = service._resolve_turn_prompt(turn)
 
         assert "Task instruction:" not in prompt
 

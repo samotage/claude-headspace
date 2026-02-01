@@ -9,6 +9,7 @@ from pathlib import Path
 from ..config import get_value
 from .git_analyzer import GitAnalyzer, GitAnalysisResult, GitAnalyzerError
 from .inference_service import InferenceService, InferenceServiceError
+from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -198,17 +199,18 @@ class ProgressSummaryService:
         commits_text = "\n".join(commit_details)
         files_text = "\n".join(f"- {f}" for f in analysis.unique_files_changed[:50])
 
-        return (
-            f"You are summarising recent development progress for the project '{project_name}'.\n\n"
+        analysis_text = (
             f"Date range: {date_range}\n"
             f"Total commits: {analysis.total_commit_count}\n"
             f"Authors: {', '.join(analysis.unique_authors)}\n\n"
             f"Commit history:\n{commits_text}\n\n"
-            f"Key files changed:\n{files_text}\n\n"
-            f"Write a 3-5 paragraph narrative progress summary in past tense.\n"
-            f"Focus on accomplishments, patterns, and themes — not individual commits.\n"
-            f"Group related work into coherent paragraphs.\n"
-            f"Use a professional tone suitable for a development journal."
+            f"Key files changed:\n{files_text}"
+        )
+
+        return build_prompt(
+            "progress_summary",
+            project_name=project_name,
+            analysis_text=analysis_text,
         )
 
     def _write_summary(self, project_path: str, content: str, metadata: dict) -> None:

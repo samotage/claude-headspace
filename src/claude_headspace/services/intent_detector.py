@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from ..models.task import TaskState
 from ..models.turn import TurnActor, TurnIntent
+from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -223,18 +224,7 @@ def _infer_completion_classification(
     tail: str, inference_service: Any
 ) -> Optional[IntentResult]:
     """LLM fallback for ambiguous agent output classification."""
-    prompt = (
-        "Classify this agent output. Is the agent:\n"
-        "A) FINISHED - delivering a final summary with no remaining work\n"
-        "B) CONTINUING - still working, will produce more output\n"
-        "C) ASKING - waiting for user input before proceeding\n"
-        "D) BLOCKED - encountered an error requiring user intervention\n"
-        "\n"
-        "Agent output (last 15 lines):\n"
-        f"{tail}\n"
-        "\n"
-        "Respond with only the letter."
-    )
+    prompt = build_prompt("completion_classification", tail=tail)
 
     try:
         result = inference_service.infer(
