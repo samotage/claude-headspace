@@ -1,7 +1,6 @@
 """Summarisation service for generating turn and task summaries via the inference layer."""
 
 import logging
-import threading
 from datetime import datetime, timezone
 
 from .inference_service import InferenceService, InferenceServiceError
@@ -13,15 +12,13 @@ logger = logging.getLogger(__name__)
 class SummarisationService:
     """Generates AI summaries for turns and tasks using the inference service."""
 
-    def __init__(self, inference_service: InferenceService, app=None):
+    def __init__(self, inference_service: InferenceService):
         """Initialize the summarisation service.
 
         Args:
             inference_service: The E3-S1 inference service for LLM calls
-            app: Flask app instance for app context in async threads
         """
         self._inference = inference_service
-        self._app = app
 
     def summarise_turn(self, turn, db_session=None) -> str | None:
         """Generate a summary for a turn.
@@ -206,169 +203,62 @@ class SummarisationService:
             logger.error(f"Instruction summarisation failed for task {task.id}: {e}")
             return None
 
-    def summarise_turn_async(self, turn_id: int) -> None:
-        """Trigger turn summarisation asynchronously.
+    def execute_pending(self, requests, db_session) -> None:
+        """Execute pending summarisation requests synchronously with SSE broadcasting.
 
-        Runs in a background thread with Flask app context.
-        Broadcasts SSE event on completion.
-
-        Args:
-            turn_id: ID of the turn to summarise
-        """
-        if not self._inference.is_available:
-            return
-
-        if not self._app:
-            logger.warning("No Flask app available for async summarisation")
-            return
-
-        thread = threading.Thread(
-            target=self._async_summarise_turn,
-            args=(turn_id,),
-            daemon=True,
-            name=f"summarise-turn-{turn_id}",
-        )
-        thread.start()
-
-    def summarise_task_async(self, task_id: int) -> None:
-        """Trigger task summarisation asynchronously.
-
-        Runs in a background thread with Flask app context.
-        Broadcasts SSE event on completion.
+        Called after db.session.commit() in the hook receiver to avoid the race
+        condition where async threads can't find newly-created rows.
 
         Args:
-            task_id: ID of the task to summarise
+            requests: List of SummarisationRequest objects
+            db_session: Database session for persisting summaries
         """
-        if not self._inference.is_available:
-            return
+        for req in requests:
+            try:
+                if req.type == "turn" and req.turn:
+                    summary = self.summarise_turn(req.turn, db_session=db_session)
+                    if summary:
+                        agent_id = req.turn.task.agent_id if req.turn.task else None
+                        project_id = req.turn.task.agent.project_id if req.turn.task and req.turn.task.agent else None
+                        self._broadcast_summary_update(
+                            event_type="turn_summary",
+                            entity_id=req.turn.id,
+                            summary=summary,
+                            agent_id=agent_id,
+                            project_id=project_id,
+                        )
 
-        if not self._app:
-            logger.warning("No Flask app available for async summarisation")
-            return
-
-        thread = threading.Thread(
-            target=self._async_summarise_task,
-            args=(task_id,),
-            daemon=True,
-            name=f"summarise-task-{task_id}",
-        )
-        thread.start()
-
-    def summarise_instruction_async(self, task_id: int, command_text: str) -> None:
-        """Trigger instruction summarisation asynchronously.
-
-        Runs in a background thread with Flask app context.
-        Broadcasts SSE event on completion.
-
-        Args:
-            task_id: ID of the task to generate instruction for
-            command_text: The user's command text
-        """
-        if not self._inference.is_available:
-            return
-
-        if not self._app:
-            logger.warning("No Flask app available for async summarisation")
-            return
-
-        if not command_text or not command_text.strip():
-            return
-
-        thread = threading.Thread(
-            target=self._async_summarise_instruction,
-            args=(task_id, command_text),
-            daemon=True,
-            name=f"summarise-instruction-{task_id}",
-        )
-        thread.start()
-
-    def _async_summarise_turn(self, turn_id: int) -> None:
-        """Background thread handler for turn summarisation."""
-        try:
-            with self._app.app_context():
-                from ..database import db as flask_db
-                from ..models.turn import Turn
-
-                turn = flask_db.session.get(Turn, turn_id)
-                if not turn:
-                    logger.warning(f"Turn {turn_id} not found for async summarisation")
-                    return
-
-                if turn.summary:
-                    return  # Already summarised
-
-                summary = self.summarise_turn(turn, db_session=flask_db.session)
-
-                if summary:
-                    self._broadcast_summary_update(
-                        event_type="turn_summary",
-                        entity_id=turn_id,
-                        summary=summary,
-                        agent_id=turn.task.agent_id if turn.task else None,
-                        project_id=turn.task.agent.project_id if turn.task and turn.task.agent else None,
+                elif req.type == "instruction" and req.task:
+                    instruction = self.summarise_instruction(
+                        req.task, req.command_text, db_session=db_session
                     )
+                    if instruction:
+                        agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None
+                        project_id = req.task.agent.project_id if hasattr(req.task, "agent") and req.task.agent else None
+                        self._broadcast_summary_update(
+                            event_type="instruction_summary",
+                            entity_id=req.task.id,
+                            summary=instruction,
+                            agent_id=agent_id,
+                            project_id=project_id,
+                        )
 
-        except Exception as e:
-            logger.error(f"Async turn summarisation failed for turn {turn_id}: {e}")
+                elif req.type == "task_completion" and req.task:
+                    completion = self.summarise_task(req.task, db_session=db_session)
+                    if completion:
+                        agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None
+                        project_id = req.task.agent.project_id if hasattr(req.task, "agent") and req.task.agent else None
+                        self._broadcast_summary_update(
+                            event_type="task_summary",
+                            entity_id=req.task.id,
+                            summary=completion,
+                            agent_id=agent_id,
+                            project_id=project_id,
+                            extra={"is_completion": True},
+                        )
 
-    def _async_summarise_task(self, task_id: int) -> None:
-        """Background thread handler for task summarisation."""
-        try:
-            with self._app.app_context():
-                from ..database import db as flask_db
-                from ..models.task import Task
-
-                task = flask_db.session.get(Task, task_id)
-                if not task:
-                    logger.warning(f"Task {task_id} not found for async summarisation")
-                    return
-
-                if task.completion_summary:
-                    return  # Already summarised
-
-                summary = self.summarise_task(task, db_session=flask_db.session)
-
-                if summary:
-                    self._broadcast_summary_update(
-                        event_type="task_summary",
-                        entity_id=task_id,
-                        summary=summary,
-                        agent_id=task.agent_id,
-                        project_id=task.agent.project_id if task.agent else None,
-                        extra={"is_completion": True},
-                    )
-
-        except Exception as e:
-            logger.error(f"Async task summarisation failed for task {task_id}: {e}")
-
-    def _async_summarise_instruction(self, task_id: int, command_text: str) -> None:
-        """Background thread handler for instruction summarisation."""
-        try:
-            with self._app.app_context():
-                from ..database import db as flask_db
-                from ..models.task import Task
-
-                task = flask_db.session.get(Task, task_id)
-                if not task:
-                    logger.warning(f"Task {task_id} not found for async instruction summarisation")
-                    return
-
-                if task.instruction:
-                    return  # Already has instruction
-
-                instruction = self.summarise_instruction(task, command_text, db_session=flask_db.session)
-
-                if instruction:
-                    self._broadcast_summary_update(
-                        event_type="instruction_summary",
-                        entity_id=task_id,
-                        summary=instruction,
-                        agent_id=task.agent_id,
-                        project_id=task.agent.project_id if task.agent else None,
-                    )
-
-        except Exception as e:
-            logger.error(f"Async instruction summarisation failed for task {task_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Pending summarisation failed for {req.type} (non-fatal): {e}")
 
     def _broadcast_summary_update(
         self,

@@ -136,7 +136,6 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services.summarisation_service import SummarisationService
     summarisation_service = SummarisationService(
         inference_service=inference_service,
-        app=app,
     )
     app.extensions["summarisation_service"] = summarisation_service
     logger.info("Summarisation service initialized")

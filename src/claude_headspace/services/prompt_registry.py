@@ -8,7 +8,7 @@ instead of assembling strings inline.
 _PROMPT_TEMPLATES: dict[str, str] = {
     # --- Summarisation: turn prompts (per-intent) ---
     "turn_command": (
-        "Summarise what the user is asking the agent to do in 1-2 concise sentences.\n\n"
+        "Prepare a very short and concise summary of this instruction in one short sentence around 18 tokens long:\n"
         "{instruction_context}"
         "User command: {text}"
     ),

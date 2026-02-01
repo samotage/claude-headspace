@@ -232,6 +232,7 @@ class HookLifecycleBridge:
             success=True,
             task=current_task,
             event_written=self._event_writer is not None,
+            pending_summarisations=lifecycle.get_pending_summarisations(),
         )
 
     @staticmethod
@@ -311,6 +312,7 @@ class HookLifecycleBridge:
                 success=True,
                 task=new_task,
                 new_task_created=True,
+                pending_summarisations=lifecycle.get_pending_summarisations(),
             )
 
         if current_task.state != TaskState.AWAITING_INPUT:
@@ -318,6 +320,7 @@ class HookLifecycleBridge:
             return TurnProcessingResult(
                 success=True,
                 task=current_task,
+                pending_summarisations=lifecycle.get_pending_summarisations(),
             )
 
         # Resume: AWAITING_INPUT → PROCESSING via USER + ANSWER
@@ -378,6 +381,7 @@ class HookLifecycleBridge:
             success=True,
             task=current_task,
             event_written=self._event_writer is not None,
+            pending_summarisations=lifecycle.get_pending_summarisations(),
         )
 
 

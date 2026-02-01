@@ -314,54 +314,136 @@ class TestInstructionSummarisation:
         assert "1-2 concise sentences" in call_kwargs["input_text"]
 
 
-class TestInstructionAsyncSummarisation:
-    """Tests for summarise_instruction_async() — async execution, SSE broadcast."""
+class TestExecutePending:
+    """Tests for execute_pending() — synchronous post-commit summarisation."""
 
-    def test_async_instruction_skipped_when_unavailable(self, mock_inference):
-        mock_inference.is_available = False
-        service = SummarisationService(inference_service=mock_inference)
+    def test_execute_pending_turn(self, service, mock_inference):
+        """execute_pending should call summarise_turn for turn requests."""
+        from src.claude_headspace.services.task_lifecycle import SummarisationRequest
 
-        # Should not raise or start a thread
-        service.summarise_instruction_async(1, "Some command")
+        mock_turn = MagicMock()
+        mock_turn.id = 1
+        mock_turn.text = "Working on fix"
+        mock_turn.summary = None
+        mock_turn.task.agent_id = 5
+        mock_turn.task.agent.project_id = 3
 
-    def test_async_instruction_skipped_without_app(self, mock_inference):
-        service = SummarisationService(inference_service=mock_inference, app=None)
+        mock_inference.infer.return_value = InferenceResult(
+            text="Turn summary", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        mock_session = MagicMock()
+        requests = [SummarisationRequest(type="turn", turn=mock_turn)]
+
+        with patch.object(service, "_broadcast_summary_update") as mock_broadcast:
+            service.execute_pending(requests, mock_session)
+
+            assert mock_turn.summary == "Turn summary"
+            mock_broadcast.assert_called_once()
+            call_kwargs = mock_broadcast.call_args[1]
+            assert call_kwargs["event_type"] == "turn_summary"
+            assert call_kwargs["entity_id"] == 1
+
+    def test_execute_pending_instruction(self, service, mock_inference):
+        """execute_pending should call summarise_instruction for instruction requests."""
+        from src.claude_headspace.services.task_lifecycle import SummarisationRequest
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.instruction = None
+        mock_task.agent_id = 5
+        mock_task.agent.project_id = 3
+
+        mock_inference.infer.return_value = InferenceResult(
+            text="Instruction summary", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        mock_session = MagicMock()
+        requests = [SummarisationRequest(type="instruction", task=mock_task, command_text="Fix the bug")]
+
+        with patch.object(service, "_broadcast_summary_update") as mock_broadcast:
+            service.execute_pending(requests, mock_session)
+
+            assert mock_task.instruction == "Instruction summary"
+            mock_broadcast.assert_called_once()
+            call_kwargs = mock_broadcast.call_args[1]
+            assert call_kwargs["event_type"] == "instruction_summary"
+            assert call_kwargs["entity_id"] == 10
+
+    def test_execute_pending_task_completion(self, service, mock_inference):
+        """execute_pending should call summarise_task for task_completion requests."""
+        from src.claude_headspace.services.task_lifecycle import SummarisationRequest
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.completion_summary = None
+        mock_task.instruction = "Fix the bug"
+        mock_task.agent_id = 5
+        mock_task.agent.project_id = 3
+        mock_turn = MagicMock()
+        mock_turn.text = "All done"
+        mock_task.turns = [mock_turn]
+
+        mock_inference.infer.return_value = InferenceResult(
+            text="Task completion summary", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        mock_session = MagicMock()
+        requests = [SummarisationRequest(type="task_completion", task=mock_task)]
+
+        with patch.object(service, "_broadcast_summary_update") as mock_broadcast:
+            service.execute_pending(requests, mock_session)
+
+            assert mock_task.completion_summary == "Task completion summary"
+            mock_broadcast.assert_called_once()
+            call_kwargs = mock_broadcast.call_args[1]
+            assert call_kwargs["event_type"] == "task_summary"
+            assert call_kwargs["extra"] == {"is_completion": True}
+
+    def test_execute_pending_error_non_fatal(self, service, mock_inference):
+        """execute_pending should continue processing after an error."""
+        from src.claude_headspace.services.task_lifecycle import SummarisationRequest
+
+        mock_turn_1 = MagicMock()
+        mock_turn_1.id = 1
+        mock_turn_1.text = "First"
+        mock_turn_1.summary = None
+        mock_turn_1.task.agent_id = 5
+        mock_turn_1.task.agent.project_id = 3
+
+        mock_turn_2 = MagicMock()
+        mock_turn_2.id = 2
+        mock_turn_2.text = "Second"
+        mock_turn_2.summary = None
+        mock_turn_2.task.agent_id = 5
+        mock_turn_2.task.agent.project_id = 3
+
+        # First call fails, second succeeds
+        mock_inference.infer.side_effect = [
+            Exception("API error"),
+            InferenceResult(text="Summary 2", input_tokens=10, output_tokens=5, model="model", latency_ms=100),
+        ]
+
+        mock_session = MagicMock()
+        requests = [
+            SummarisationRequest(type="turn", turn=mock_turn_1),
+            SummarisationRequest(type="turn", turn=mock_turn_2),
+        ]
 
         # Should not raise
-        service.summarise_instruction_async(1, "Some command")
+        service.execute_pending(requests, mock_session)
 
-    def test_async_instruction_skipped_with_empty_text(self, mock_inference):
-        mock_app = MagicMock()
-        service = SummarisationService(inference_service=mock_inference, app=mock_app)
+        # Second turn should still be processed
+        assert mock_turn_2.summary == "Summary 2"
 
-        # Should not start a thread for empty text
-        with patch("threading.Thread") as mock_thread:
-            service.summarise_instruction_async(1, "")
-            mock_thread.assert_not_called()
-
-    def test_async_instruction_skipped_with_whitespace_text(self, mock_inference):
-        mock_app = MagicMock()
-        service = SummarisationService(inference_service=mock_inference, app=mock_app)
-
-        with patch("threading.Thread") as mock_thread:
-            service.summarise_instruction_async(1, "   ")
-            mock_thread.assert_not_called()
-
-    def test_async_instruction_starts_thread(self, mock_inference):
-        mock_app = MagicMock()
-        service = SummarisationService(inference_service=mock_inference, app=mock_app)
-
-        with patch("threading.Thread") as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread_class.return_value = mock_thread
-
-            service.summarise_instruction_async(1, "Fix the login page")
-
-            mock_thread_class.assert_called_once()
-            call_kwargs = mock_thread_class.call_args[1]
-            assert call_kwargs["daemon"] is True
-            assert "summarise-instruction-1" == call_kwargs["name"]
-            mock_thread.start.assert_called_once()
+    def test_execute_pending_empty_list(self, service):
+        """execute_pending should handle empty list gracefully."""
+        mock_session = MagicMock()
+        # Should not raise
+        service.execute_pending([], mock_session)
 
 
 class TestResolveTaskPrompt:
@@ -575,33 +657,6 @@ class TestTaskEmptyTextGuard:
 
         assert result is None
         mock_inference.infer.assert_not_called()
-
-
-class TestAsyncSummarisation:
-
-    def test_async_turn_skipped_when_unavailable(self, mock_inference):
-        mock_inference.is_available = False
-        service = SummarisationService(inference_service=mock_inference)
-
-        # Should not raise or start a thread
-        service.summarise_turn_async(1)
-
-    def test_async_turn_skipped_without_app(self, mock_inference):
-        service = SummarisationService(inference_service=mock_inference, app=None)
-
-        # Should not raise
-        service.summarise_turn_async(1)
-
-    def test_async_task_skipped_when_unavailable(self, mock_inference):
-        mock_inference.is_available = False
-        service = SummarisationService(inference_service=mock_inference)
-
-        service.summarise_task_async(1)
-
-    def test_async_task_skipped_without_app(self, mock_inference):
-        service = SummarisationService(inference_service=mock_inference, app=None)
-
-        service.summarise_task_async(1)
 
 
 class TestSSEBroadcast:

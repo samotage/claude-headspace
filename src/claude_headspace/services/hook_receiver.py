@@ -244,6 +244,19 @@ def reset_receiver_state() -> None:
     _receiver_state = HookReceiverState()
 
 
+def _execute_pending_summarisations(pending_summarisations: list) -> None:
+    """Execute pending summarisations synchronously after commit."""
+    if not pending_summarisations:
+        return
+    try:
+        from flask import current_app
+        service = current_app.extensions.get("summarisation_service")
+        if service:
+            service.execute_pending(pending_summarisations, db.session)
+    except Exception as e:
+        logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
+
+
 def process_session_start(
     agent: Agent,
     claude_session_id: str,
@@ -326,6 +339,7 @@ def process_session_end(
         result = bridge.process_session_end(agent, claude_session_id)
 
         db.session.commit()
+        _execute_pending_summarisations(result.pending_summarisations)
 
         # Broadcast state change to SSE clients
         _broadcast_state_change(
@@ -398,6 +412,7 @@ def process_user_prompt_submit(
         result = bridge.process_user_prompt_submit(agent, claude_session_id, prompt_text=prompt_text)
 
         db.session.commit()
+        _execute_pending_summarisations(result.pending_summarisations)
 
         # Determine new state for response
         new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
@@ -475,6 +490,7 @@ def process_stop(
         result = bridge.process_stop(agent, claude_session_id)
 
         db.session.commit()
+        _execute_pending_summarisations(result.pending_summarisations)
 
         # Only broadcast if there was actually a task to transition
         if result.task:
@@ -682,6 +698,7 @@ def process_post_tool_use(
         result = bridge.process_post_tool_use(agent, claude_session_id)
 
         db.session.commit()
+        _execute_pending_summarisations(result.pending_summarisations)
 
         new_state = None
         if result.task:

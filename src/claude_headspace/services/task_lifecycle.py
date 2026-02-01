@@ -1,7 +1,7 @@
 """Task lifecycle manager for creating and managing tasks."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class SummarisationRequest:
+    """A pending summarisation request to be executed after db commit."""
+
+    type: str  # "turn", "instruction", "task_completion"
+    turn: Optional[Turn] = None
+    task: Optional[Task] = None
+    command_text: Optional[str] = None
+
+
+@dataclass
 class TurnProcessingResult:
     """Result of processing a turn event."""
 
@@ -29,6 +39,7 @@ class TurnProcessingResult:
     event_written: bool = False
     error: Optional[str] = None
     new_task_created: bool = False
+    pending_summarisations: list = field(default_factory=list)
 
 
 class TaskLifecycleManager:
@@ -59,6 +70,13 @@ class TaskLifecycleManager:
         self._event_writer = event_writer
         self._state_machine = state_machine or StateMachine()
         self._summarisation_service = summarisation_service
+        self._pending_summarisations: list[SummarisationRequest] = []
+
+    def get_pending_summarisations(self) -> list[SummarisationRequest]:
+        """Return and clear pending summarisation requests."""
+        pending = self._pending_summarisations
+        self._pending_summarisations = []
+        return pending
 
     def create_task(self, agent: Agent, initial_state: TaskState = TaskState.COMMANDED) -> Task:
         """
@@ -265,9 +283,13 @@ class TaskLifecycleManager:
                 confidence=1.0,
             )
 
-        # Trigger async summarisation for the completion turn and task
-        self._trigger_turn_summarisation(turn.id)
-        self._trigger_task_summarisation(task.id)
+        # Queue summarisation requests (executed post-commit by caller)
+        self._pending_summarisations.append(
+            SummarisationRequest(type="turn", turn=turn)
+        )
+        self._pending_summarisations.append(
+            SummarisationRequest(type="task_completion", task=task)
+        )
 
         return True
 
@@ -326,11 +348,14 @@ class TaskLifecycleManager:
                 self._session.add(turn)
                 self._session.flush()
 
-                # Trigger async turn summarisation
-                self._trigger_turn_summarisation(turn.id)
-
-                # Trigger async instruction summarisation for the new task
-                self._trigger_instruction_summarisation(new_task.id, text)
+                # Queue summarisation requests (executed post-commit by caller)
+                self._pending_summarisations.append(
+                    SummarisationRequest(type="turn", turn=turn)
+                )
+                if text:
+                    self._pending_summarisations.append(
+                        SummarisationRequest(type="instruction", task=new_task, command_text=text)
+                    )
 
                 return TurnProcessingResult(
                     success=True,
@@ -338,6 +363,7 @@ class TaskLifecycleManager:
                     intent=intent_result,
                     event_written=self._event_writer is not None,
                     new_task_created=True,
+                    pending_summarisations=self._pending_summarisations,
                 )
 
         # No active task and not a user command - nothing to do
@@ -387,12 +413,10 @@ class TaskLifecycleManager:
             self._session.add(turn)
             self._session.flush()
 
-            # Trigger async turn summarisation
-            self._trigger_turn_summarisation(turn.id)
-
-        # Trigger async task summarisation on completion
-        if transition_result.to_state == TaskState.COMPLETE:
-            self._trigger_task_summarisation(current_task.id)
+            # Queue turn summarisation (executed post-commit by caller)
+            self._pending_summarisations.append(
+                SummarisationRequest(type="turn", turn=turn)
+            )
 
         return TurnProcessingResult(
             success=True,
@@ -400,6 +424,7 @@ class TaskLifecycleManager:
             transition=transition_result,
             intent=intent_result,
             event_written=self._event_writer is not None,
+            pending_summarisations=self._pending_summarisations,
         )
 
     def _write_transition_event(
@@ -481,26 +506,3 @@ class TaskLifecycleManager:
 
         return None
 
-    def _trigger_turn_summarisation(self, turn_id: int) -> None:
-        """Trigger async turn summarisation if service is available."""
-        if self._summarisation_service:
-            try:
-                self._summarisation_service.summarise_turn_async(turn_id)
-            except Exception as e:
-                logger.debug(f"Turn summarisation trigger failed (non-fatal): {e}")
-
-    def _trigger_task_summarisation(self, task_id: int) -> None:
-        """Trigger async task summarisation if service is available."""
-        if self._summarisation_service:
-            try:
-                self._summarisation_service.summarise_task_async(task_id)
-            except Exception as e:
-                logger.debug(f"Task summarisation trigger failed (non-fatal): {e}")
-
-    def _trigger_instruction_summarisation(self, task_id: int, command_text: str | None) -> None:
-        """Trigger async instruction summarisation if service is available."""
-        if self._summarisation_service and command_text:
-            try:
-                self._summarisation_service.summarise_instruction_async(task_id, command_text)
-            except Exception as e:
-                logger.debug(f"Instruction summarisation trigger failed (non-fatal): {e}")

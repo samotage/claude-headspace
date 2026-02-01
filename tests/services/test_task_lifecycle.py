@@ -14,7 +14,7 @@ from claude_headspace.models.task import Task, TaskState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.event_writer import EventWriter, WriteResult
 from claude_headspace.services.state_machine import StateMachine, TransitionResult
-from claude_headspace.services.task_lifecycle import TaskLifecycleManager, TurnProcessingResult
+from claude_headspace.services.task_lifecycle import TaskLifecycleManager, TurnProcessingResult, SummarisationRequest
 
 
 class TestTaskLifecycleManagerUnit:
@@ -739,18 +739,17 @@ class TestTaskLifecycleSessionPassThrough:
 
 
 class TestCompleteTaskSummarisation:
-    """Tests for summarisation triggering in complete_task.
+    """Tests for summarisation request queuing in complete_task.
 
     Note: Uses MagicMock() without spec=Agent/spec=Task to avoid
     Flask app context issues (see TestTaskLifecycleSessionPassThrough).
     """
 
-    def test_complete_task_triggers_summarisation(self):
-        """complete_task should trigger turn and task summarisation."""
+    def test_complete_task_queues_summarisation_requests(self):
+        """complete_task should queue turn and task_completion summarisation requests."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
         mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
-        mock_summarisation = MagicMock()
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -766,15 +765,16 @@ class TestCompleteTaskSummarisation:
         manager = TaskLifecycleManager(
             session=mock_session,
             event_writer=mock_event_writer,
-            summarisation_service=mock_summarisation,
         )
 
         manager.complete_task(mock_task)
 
-        # Verify task summarisation was triggered
-        mock_summarisation.summarise_task_async.assert_called_once_with(10)
-        # Verify turn summarisation was triggered for the completion turn
-        mock_summarisation.summarise_turn_async.assert_called_once()
+        pending = manager.get_pending_summarisations()
+        assert len(pending) == 2
+        assert pending[0].type == "turn"
+        assert pending[0].turn is not None
+        assert pending[1].type == "task_completion"
+        assert pending[1].task is mock_task
 
     def test_complete_task_no_summarisation_without_service(self):
         """complete_task should not fail when no summarisation service."""
@@ -801,11 +801,9 @@ class TestCompleteTaskSummarisation:
         result = manager.complete_task(mock_task)
         assert result is True
 
-    def test_complete_task_summarisation_error_non_fatal(self):
-        """Summarisation error in complete_task should not prevent completion."""
+    def test_complete_task_always_succeeds(self):
+        """complete_task should always succeed (summarisation is deferred)."""
         mock_session = MagicMock(spec=Session)
-        mock_summarisation = MagicMock()
-        mock_summarisation.summarise_turn_async.side_effect = Exception("LLM error")
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -818,10 +816,7 @@ class TestCompleteTaskSummarisation:
         mock_task.state = TaskState.PROCESSING
         mock_task.completed_at = None
 
-        manager = TaskLifecycleManager(
-            session=mock_session,
-            summarisation_service=mock_summarisation,
-        )
+        manager = TaskLifecycleManager(session=mock_session)
 
         result = manager.complete_task(mock_task)
         assert result is True
