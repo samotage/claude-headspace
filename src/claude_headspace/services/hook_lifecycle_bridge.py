@@ -128,9 +128,9 @@ class HookLifecycleBridge:
         Maps to: AGENT + COMPLETION intent
         Expected transition: PROCESSING -> COMPLETE
 
-        Note: The stop hook fires between tool calls too, not just at
-        end-of-turn. The hook_receiver uses a debounce timer to delay
-        the AWAITING_INPUT transition so that mid-turn stops are ignored.
+        The stop hook fires at end-of-turn only, so we transition
+        the task to COMPLETE immediately. Also reads the transcript
+        file to extract the agent's last response text.
 
         Args:
             agent: The agent receiving the hook event
@@ -152,10 +152,14 @@ class HookLifecycleBridge:
                 error="No active task to complete",
             )
 
-        # Complete the task
+        # Extract agent response text from transcript before completing
+        agent_text = self._extract_transcript_content(agent)
+
+        # Complete the task (creates the completion turn)
         lifecycle.complete_task(
             task=current_task,
             trigger="hook:stop",
+            agent_text=agent_text,
         )
 
         # Trigger priority scoring on state change
@@ -164,7 +168,8 @@ class HookLifecycleBridge:
         logger.debug(
             f"HookLifecycleBridge.process_stop: "
             f"agent_id={agent.id}, session_id={claude_session_id}, "
-            f"task_id={current_task.id}, completed"
+            f"task_id={current_task.id}, completed, "
+            f"transcript_text={'yes' if agent_text else 'no'}"
         )
 
         return TurnProcessingResult(
@@ -172,6 +177,103 @@ class HookLifecycleBridge:
             task=current_task,
             event_written=self._event_writer is not None,
         )
+
+    @staticmethod
+    def _extract_transcript_content(agent: Agent) -> str:
+        """
+        Extract the last agent response from the transcript file.
+
+        Args:
+            agent: The agent whose transcript to read
+
+        Returns:
+            The extracted text, or empty string if unavailable
+        """
+        if not agent.transcript_path:
+            return ""
+
+        try:
+            from .transcript_reader import read_transcript_file
+            result = read_transcript_file(agent.transcript_path)
+            if result.success and result.text:
+                return result.text
+            if not result.success:
+                logger.warning(
+                    f"Transcript read failed for agent_id={agent.id}: {result.error}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Error extracting transcript for agent_id={agent.id}: {e}"
+            )
+
+        return ""
+
+    def process_post_tool_use(
+        self,
+        agent: Agent,
+        claude_session_id: str,
+    ) -> TurnProcessingResult:
+        """
+        Process a PostToolUse hook event.
+
+        When the agent is in AWAITING_INPUT, PostToolUse signals that
+        the user answered and the agent is resuming work.
+
+        Maps to: USER + ANSWER intent (when AWAITING_INPUT)
+        Expected transition: AWAITING_INPUT -> PROCESSING
+
+        If not in AWAITING_INPUT, this is a no-op (tool use during normal processing).
+
+        Args:
+            agent: The agent receiving the hook event
+            claude_session_id: The Claude session identifier
+
+        Returns:
+            TurnProcessingResult with the outcome
+        """
+        lifecycle = self._get_lifecycle_manager()
+
+        current_task = lifecycle.get_current_task(agent)
+        if not current_task:
+            logger.debug(
+                f"HookLifecycleBridge.process_post_tool_use: "
+                f"No active task for agent_id={agent.id}"
+            )
+            return TurnProcessingResult(
+                success=True,
+                error="No active task",
+            )
+
+        if current_task.state != TaskState.AWAITING_INPUT:
+            # Not awaiting input — PostToolUse during normal processing is a no-op
+            logger.debug(
+                f"HookLifecycleBridge.process_post_tool_use: "
+                f"agent_id={agent.id}, task not AWAITING_INPUT "
+                f"(state={current_task.state.value}), ignoring"
+            )
+            return TurnProcessingResult(
+                success=True,
+                task=current_task,
+            )
+
+        # Resume: AWAITING_INPUT → PROCESSING via USER + ANSWER
+        result = lifecycle.process_turn(
+            agent=agent,
+            actor=TurnActor.USER,
+            text=None,  # PostToolUse doesn't carry user text
+        )
+
+        # Trigger priority scoring on state change
+        if result.success:
+            self._trigger_priority_scoring()
+
+        logger.debug(
+            f"HookLifecycleBridge.process_post_tool_use: "
+            f"agent_id={agent.id}, session_id={claude_session_id}, "
+            f"success={result.success}, resumed from AWAITING_INPUT"
+        )
+
+        return result
 
     def process_session_end(
         self,

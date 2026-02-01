@@ -127,6 +127,7 @@ class EventWriter:
         agent_id: Optional[int] = None,
         task_id: Optional[int] = None,
         turn_id: Optional[int] = None,
+        session: Optional[Session] = None,
     ) -> WriteResult:
         """
         Write an event to the database with validation and retry logic.
@@ -139,6 +140,10 @@ class EventWriter:
             agent_id: Optional agent foreign key
             task_id: Optional task foreign key
             turn_id: Optional turn foreign key
+            session: Optional SQLAlchemy session to use (joins caller's transaction).
+                     If provided, the event is added and flushed but NOT committed —
+                     the caller is responsible for committing. If not provided,
+                     uses the EventWriter's own session factory with full commit.
 
         Returns:
             WriteResult indicating success/failure
@@ -162,7 +167,12 @@ class EventWriter:
             logger.warning(f"Event validation failed: {error}")
             return WriteResult(success=False, error=error)
 
-        # Attempt write with retries
+        # If a caller session is provided, write directly into it (no retries needed
+        # since the caller controls the transaction)
+        if session is not None:
+            return self._write_to_session(validated, session)
+
+        # Attempt write with retries using own session factory
         return self._write_with_retry(validated)
 
     def _write_with_retry(self, event: ValidatedEvent) -> WriteResult:
@@ -257,6 +267,46 @@ class EventWriter:
             raise
         finally:
             session.close()
+
+    def _write_to_session(self, event: ValidatedEvent, session: Session) -> WriteResult:
+        """
+        Write event into a caller-provided session (no commit).
+
+        The event is added and flushed so it gets an ID, but the caller
+        is responsible for committing the transaction. This allows events
+        to participate in the same transaction as related entities (e.g.,
+        tasks), avoiding foreign-key violations from separate sessions.
+
+        Args:
+            event: Validated event to write
+            session: Caller's SQLAlchemy session
+
+        Returns:
+            WriteResult indicating success/failure
+        """
+        from ..models.event import Event
+
+        try:
+            db_event = Event(
+                timestamp=event.timestamp,
+                event_type=event.event_type,
+                payload=event.payload,
+                project_id=event.project_id,
+                agent_id=event.agent_id,
+                task_id=event.task_id,
+                turn_id=event.turn_id,
+            )
+            session.add(db_event)
+            session.flush()
+            self._metrics.record_success()
+            logger.debug(
+                f"Event written to caller session: id={db_event.id}, type={event.event_type}"
+            )
+            return WriteResult(success=True, event_id=db_event.id)
+        except SQLAlchemyError as e:
+            self._metrics.record_failure(str(e))
+            logger.error(f"Failed to write event to caller session: {e}")
+            return WriteResult(success=False, error=str(e))
 
     def stop(self) -> None:
         """Stop the event writer and close connections."""

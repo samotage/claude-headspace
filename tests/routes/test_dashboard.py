@@ -515,10 +515,8 @@ class TestTimedOutState:
         assert "Timed out" in result["label"]
 
     @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
-    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
-    def test_stale_processing_returns_timed_out(self, mock_display_state, mock_config):
+    def test_stale_processing_returns_timed_out(self, mock_config):
         """Test that PROCESSING agent past threshold returns TIMED_OUT."""
-        mock_display_state.return_value = None
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # Agent has been PROCESSING for 700 seconds (> 600s config value)
@@ -529,10 +527,8 @@ class TestTimedOutState:
         assert result == TIMED_OUT
 
     @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
-    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
-    def test_recent_processing_stays_processing(self, mock_display_state, mock_config):
+    def test_recent_processing_stays_processing(self, mock_config):
         """Test that PROCESSING agent within threshold stays PROCESSING."""
-        mock_display_state.return_value = None
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # Agent has been PROCESSING for 30 seconds (< 600s config value)
@@ -543,10 +539,8 @@ class TestTimedOutState:
         assert result == TaskState.PROCESSING
 
     @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
-    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
-    def test_timed_out_counted_separately(self, mock_display_state, mock_config):
+    def test_timed_out_counted_separately(self, mock_config):
         """Test that TIMED_OUT agents are counted in timed_out, not input_needed."""
-        mock_display_state.return_value = None
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # One TIMED_OUT, one AWAITING_INPUT, one IDLE
@@ -562,10 +556,8 @@ class TestTimedOutState:
         assert result["idle"] == 1
 
     @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
-    @patch("src.claude_headspace.routes.dashboard.get_agent_display_state")
-    def test_timed_out_project_state_flag(self, mock_display_state, mock_config):
+    def test_timed_out_project_state_flag(self, mock_config):
         """Test that TIMED_OUT agents set has_timed_out flag."""
-        mock_display_state.return_value = None
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         stale_agent = create_mock_agent(state=TaskState.PROCESSING)

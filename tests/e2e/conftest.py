@@ -103,10 +103,6 @@ def e2e_app(e2e_test_db):
     original_db_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = test_url
 
-    # Monkeypatch the debounce delay before the app processes hooks
-    import claude_headspace.services.hook_receiver as hr
-    hr._AWAITING_INPUT_DELAY = 0.5
-
     from claude_headspace.app import create_app
     from claude_headspace.database import db
 
@@ -183,14 +179,8 @@ def clean_db(e2e_app):
     # Reset global state
     from claude_headspace.services.session_correlator import clear_session_cache
     from claude_headspace.services.hook_lifecycle_bridge import reset_hook_bridge
-    from claude_headspace.services.hook_receiver import (
-        reset_receiver_state,
-        cancel_all_timers,
-        clear_display_overrides,
-    )
+    from claude_headspace.services.hook_receiver import reset_receiver_state
 
-    cancel_all_timers()
-    clear_display_overrides()
     reset_receiver_state()
     reset_hook_bridge()
     clear_session_cache()

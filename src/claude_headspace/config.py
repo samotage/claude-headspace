@@ -35,6 +35,7 @@ DEFAULTS = {
         "reconciliation_interval": 60,
         "inactivity_timeout": 5400,
         "debounce_interval": 0.5,
+        "awaiting_input_timeout": 10,
     },
     "event_system": {
         "write_retry_attempts": 3,
@@ -364,6 +365,9 @@ def get_file_watcher_config(config: dict) -> dict:
         ),
         "debounce_interval": get_value(
             config, "file_watcher", "debounce_interval", default=0.5
+        ),
+        "awaiting_input_timeout": get_value(
+            config, "file_watcher", "awaiting_input_timeout", default=10
         ),
     }
 

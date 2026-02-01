@@ -34,27 +34,13 @@ def mock_agent():
 @pytest.fixture
 def fresh_state():
     """Reset receiver state before each test."""
-    from claude_headspace.services.hook_receiver import (
-        _agent_display_overrides,
-        _awaiting_input_timers,
-    )
-
     state = get_receiver_state()
     state.enabled = True
     state.last_event_at = None
     state.last_event_type = None
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
-    _agent_display_overrides.clear()
-    # Cancel and clear any pending timers
-    for timer in _awaiting_input_timers.values():
-        timer.cancel()
-    _awaiting_input_timers.clear()
     yield state
-    _agent_display_overrides.clear()
-    for timer in _awaiting_input_timers.values():
-        timer.cancel()
-    _awaiting_input_timers.clear()
 
 
 class TestHookEventType:
@@ -260,53 +246,95 @@ class TestProcessUserPromptSubmit:
 class TestProcessStop:
     """Tests for process_stop function."""
 
+    @patch("claude_headspace.services.hook_receiver.get_hook_bridge")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_stop(self, mock_db, mock_agent, fresh_state):
-        """Test stop does not change model state (relies on debounce)."""
+    def test_successful_stop(self, mock_db, mock_get_bridge, mock_agent, fresh_state):
+        """Test stop transitions task to COMPLETE via bridge."""
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_bridge = MagicMock()
+        mock_get_bridge.return_value = mock_bridge
+        mock_bridge.process_stop.return_value = TurnProcessingResult(
+            success=True,
+            task=None,
+        )
+
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
-        # stop no longer changes model state - debounce handles it
-        assert result.state_changed is False
-
-    @patch("claude_headspace.services.hook_receiver.db")
-    def test_stop_schedules_debounce(self, mock_db, mock_agent, fresh_state):
-        """Test stop schedules a debounced AWAITING_INPUT."""
-        from claude_headspace.services.hook_receiver import _awaiting_input_timers
-
-        process_stop(mock_agent, "session-123")
-
-        # Timer should be scheduled for this agent
-        assert mock_agent.id in _awaiting_input_timers
-        # Clean up
-        timer = _awaiting_input_timers.pop(mock_agent.id, None)
-        if timer:
-            timer.cancel()
+        assert result.state_changed is True
+        assert result.new_state == "complete"
+        mock_bridge.process_stop.assert_called_once_with(mock_agent, "session-123")
 
 
 class TestProcessNotification:
     """Tests for process_notification function."""
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_notification(self, mock_db, mock_agent, fresh_state):
-        """Test successful notification triggers immediate AWAITING_INPUT."""
+    def test_notification_with_processing_task_transitions(self, mock_db, mock_agent, fresh_state):
+        """Notification with a PROCESSING task should transition to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_agent.get_current_task.return_value = mock_task
+
         result = process_notification(mock_agent, "session-123")
 
         assert result.success is True
         assert result.state_changed is True
         assert result.new_state == "AWAITING_INPUT"
+        assert mock_task.state == TaskState.AWAITING_INPUT
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_updates_timestamp_and_sets_override(
+    def test_notification_without_active_task_does_not_broadcast(self, mock_db, mock_agent, fresh_state):
+        """Notification with no active task should not broadcast AWAITING_INPUT."""
+        mock_agent.get_current_task.return_value = None
+
+        result = process_notification(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_after_task_complete_does_not_override(self, mock_db, mock_agent, fresh_state):
+        """Notification arriving after stop (task COMPLETE) should not override to AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        # Agent has no current (incomplete) task — get_current_task returns None after completion
+        mock_agent.get_current_task.return_value = None
+
+        result = process_notification(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_with_awaiting_input_task_is_noop(self, mock_db, mock_agent, fresh_state):
+        """Notification when task is already AWAITING_INPUT should not re-transition."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_notification(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        # Task state should remain AWAITING_INPUT (not re-set)
+        assert mock_task.state == TaskState.AWAITING_INPUT
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_updates_timestamp_and_commits(
         self, mock_db, mock_agent, fresh_state
     ):
-        """Notification should update timestamp and set display override."""
-        from claude_headspace.services.hook_receiver import get_agent_display_state
-
+        """Notification should update timestamp and commit DB state."""
         process_notification(mock_agent, "session-123")
 
         mock_db.session.commit.assert_called_once()
-        assert get_agent_display_state(mock_agent.id) == "AWAITING_INPUT"
 
 
 class TestHookEventResult:

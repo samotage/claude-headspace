@@ -1,7 +1,7 @@
 """Tests for dashboard interactivity features (Sprint 8b)."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -84,8 +84,11 @@ class TestGetRecommendedNext:
         result = get_recommended_next([], {})
         assert result is None
 
-    def test_awaiting_input_has_priority(self):
+    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    def test_awaiting_input_has_priority(self, mock_config):
         """Test that AWAITING_INPUT agent is recommended over others."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+
         # Create agents
         agent_idle = create_mock_agent(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=1)
         agent_awaiting = create_mock_agent(

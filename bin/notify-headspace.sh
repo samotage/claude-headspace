@@ -48,10 +48,20 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') STDIN tty_test=$([[ -t 0 ]] && echo 'is_tty' 
 SESSION_ID=""
 WORKING_DIR=""
 PROMPT_TEXT=""
+TRANSCRIPT_PATH=""
+NOTIFICATION_MESSAGE=""
+NOTIFICATION_TITLE=""
+NOTIFICATION_TYPE=""
+TOOL_NAME=""
 if [ -n "$STDIN_DATA" ] && command -v jq &>/dev/null; then
     SESSION_ID=$(echo "$STDIN_DATA" | jq -r '.session_id // empty' 2>/dev/null) || true
     WORKING_DIR=$(echo "$STDIN_DATA" | jq -r '.cwd // empty' 2>/dev/null) || true
     PROMPT_TEXT=$(echo "$STDIN_DATA" | jq -r '.prompt // empty' 2>/dev/null) || true
+    TRANSCRIPT_PATH=$(echo "$STDIN_DATA" | jq -r '.transcript_path // empty' 2>/dev/null) || true
+    NOTIFICATION_MESSAGE=$(echo "$STDIN_DATA" | jq -r '.message // empty' 2>/dev/null) || true
+    NOTIFICATION_TITLE=$(echo "$STDIN_DATA" | jq -r '.title // empty' 2>/dev/null) || true
+    NOTIFICATION_TYPE=$(echo "$STDIN_DATA" | jq -r '.notification_type // empty' 2>/dev/null) || true
+    TOOL_NAME=$(echo "$STDIN_DATA" | jq -r '.tool_name // empty' 2>/dev/null) || true
 fi
 
 # Fall back to environment variables for session ID only
@@ -79,10 +89,20 @@ PAYLOAD=$(jq -n \
     --arg wd "$WORKING_DIR" \
     --arg hsid "$HEADSPACE_SESSION_ID" \
     --arg prompt "$PROMPT_TEXT" \
+    --arg tp "$TRANSCRIPT_PATH" \
+    --arg msg "$NOTIFICATION_MESSAGE" \
+    --arg title "$NOTIFICATION_TITLE" \
+    --arg ntype "$NOTIFICATION_TYPE" \
+    --arg tname "$TOOL_NAME" \
     '{session_id: $sid}
      + (if $wd != "" then {working_directory: $wd} else {} end)
      + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
-     + (if $prompt != "" then {prompt: $prompt} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
+     + (if $prompt != "" then {prompt: $prompt} else {} end)
+     + (if $tp != "" then {transcript_path: $tp} else {} end)
+     + (if $msg != "" then {message: $msg} else {} end)
+     + (if $title != "" then {title: $title} else {} end)
+     + (if $ntype != "" then {notification_type: $ntype} else {} end)
+     + (if $tname != "" then {tool_name: $tname} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
 CURL_RESULT=$(curl -s -w "\n%{http_code}" \

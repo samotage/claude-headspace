@@ -448,6 +448,98 @@ class TestTaskLifecycleManagerUnit:
         assert "No active task" in result.error
 
 
+class TestTaskLifecycleSessionPassThrough:
+    """Tests that TaskLifecycleManager passes its session to EventWriter.
+
+    Note: Uses MagicMock() without spec=Agent/spec=Task to avoid
+    Flask app context issues (MagicMock introspects all attrs on spec classes,
+    triggering db.session access on Flask-SQLAlchemy models).
+    """
+
+    def test_write_transition_event_passes_session(self):
+        """_write_transition_event should pass self._session to event_writer.write_event."""
+        mock_session = MagicMock(spec=Session)
+        mock_event_writer = MagicMock(spec=EventWriter)
+        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+
+        mock_task = MagicMock()
+        mock_task.id = 2
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.COMMANDED
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        manager._write_transition_event(
+            agent=mock_agent,
+            task=mock_task,
+            from_state=TaskState.IDLE,
+            to_state=TaskState.COMMANDED,
+            trigger="user:command",
+            confidence=1.0,
+        )
+
+        call_kwargs = mock_event_writer.write_event.call_args[1]
+        assert call_kwargs["session"] is mock_session
+
+    def test_create_task_event_uses_same_session(self):
+        """create_task should write event using the same session as task creation."""
+        mock_session = MagicMock(spec=Session)
+        mock_event_writer = MagicMock(spec=EventWriter)
+        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+
+        mock_session.add.side_effect = lambda obj: setattr(obj, 'id', 42)
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        manager.create_task(mock_agent)
+
+        # Verify session was passed to write_event
+        call_kwargs = mock_event_writer.write_event.call_args[1]
+        assert call_kwargs["session"] is mock_session
+
+    def test_update_task_state_event_uses_same_session(self):
+        """update_task_state should write event using the same session."""
+        mock_session = MagicMock(spec=Session)
+        mock_event_writer = MagicMock(spec=EventWriter)
+        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+
+        mock_task = MagicMock()
+        mock_task.id = 2
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.COMMANDED
+
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        manager.update_task_state(
+            task=mock_task,
+            to_state=TaskState.PROCESSING,
+            trigger="agent:progress",
+        )
+
+        call_kwargs = mock_event_writer.write_event.call_args[1]
+        assert call_kwargs["session"] is mock_session
+
+
 class TestTurnProcessingResultDataclass:
     """Tests for TurnProcessingResult dataclass."""
 
@@ -473,7 +565,11 @@ class TestTurnProcessingResultDataclass:
 
 
 class TestStateTransitionEventPayload:
-    """Tests for state_transition event payload format."""
+    """Tests for state_transition event payload format.
+
+    Note: Uses MagicMock() without spec=Agent/spec=Task to avoid
+    Flask app context issues (see TestTaskLifecycleSessionPassThrough).
+    """
 
     def test_event_payload_format(self):
         """State transition event should have correct payload fields."""
@@ -481,10 +577,10 @@ class TestStateTransitionEventPayload:
         mock_event_writer = MagicMock(spec=EventWriter)
         mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
 
-        mock_agent = MagicMock(spec=Agent)
+        mock_agent = MagicMock()
         mock_agent.id = 1
 
-        mock_task = MagicMock(spec=Task)
+        mock_task = MagicMock()
         mock_task.id = 2
         mock_task.agent_id = 1
         mock_task.agent = mock_agent

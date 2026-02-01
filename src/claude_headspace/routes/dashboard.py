@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models import Agent, Project, Task, TaskState
-from ..services.hook_receiver import get_agent_display_state
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -32,9 +31,8 @@ def get_effective_state(agent: Agent) -> TaskState | str:
     Get the effective display state for an agent.
 
     Priority:
-    1. In-memory display override (set by debounced AWAITING_INPUT or notification)
-    2. Stale PROCESSING detection (safety net for lost commits/server restarts)
-    3. Model state from the database
+    1. Stale PROCESSING detection (safety net for lost commits/server restarts)
+    2. Model state from the database
 
     Args:
         agent: The agent to check
@@ -42,14 +40,6 @@ def get_effective_state(agent: Agent) -> TaskState | str:
     Returns:
         TaskState for display purposes, or TIMED_OUT string for stale processing
     """
-    # Check in-memory display override first
-    override = get_agent_display_state(agent.id)
-    if override is not None:
-        try:
-            return TaskState(override.lower())
-        except ValueError:
-            pass
-
     model_state = agent.state
 
     # Safety net: if task is PROCESSING but agent hasn't been heard from

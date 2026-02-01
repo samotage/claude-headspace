@@ -32,6 +32,7 @@ file_watcher:
   reconciliation_interval: 60  # seconds (hooks-active mode)
   inactivity_timeout: 5400  # 90 minutes in seconds
   debounce_interval: 0.5  # seconds
+  awaiting_input_timeout: 10  # seconds before inference check on stalled transcript
 
 # Event system for persisting events to Postgres
 event_system:

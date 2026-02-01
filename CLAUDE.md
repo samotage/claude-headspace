@@ -228,7 +228,7 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 
 ### Hook & State Management
 
-- **HookReceiver** (`hook_receiver.py`) — processes Claude Code lifecycle hooks (session-start, stop, user-prompt-submit, etc.), manages debounced AWAITING_INPUT state, in-memory display overrides
+- **HookReceiver** (`hook_receiver.py`) — processes Claude Code lifecycle hooks (session-start, stop, user-prompt-submit, notification, etc.), manages state transitions and in-memory display overrides
 - **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) — translates hook events into validated state machine transitions, creates USER/AGENT turns with proper intents
 - **TaskLifecycle** (`task_lifecycle.py`) — manages task state transitions, processes turns, triggers async summarisation on completion
 - **StateMachine** (`state_machine.py`) — pure stateless validation of `(from_state, actor, intent) → to_state` transitions

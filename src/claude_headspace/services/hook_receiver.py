@@ -11,7 +11,6 @@ Remediation Notes (Issue 3 & 9):
 
 import logging
 import threading
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -19,7 +18,7 @@ from typing import NamedTuple
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.task import Task, TaskState
+from ..models.task import TaskState
 from .hook_lifecycle_bridge import get_hook_bridge
 
 logger = logging.getLogger(__name__)
@@ -33,6 +32,7 @@ class HookEventType(str, Enum):
     USER_PROMPT_SUBMIT = "user_prompt_submit"
     STOP = "stop"  # Turn complete
     NOTIFICATION = "notification"
+    POST_TOOL_USE = "post_tool_use"
 
 
 class HookMode(str, Enum):
@@ -155,166 +155,16 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str) -> No
         logger.debug(f"Broadcast failed (non-fatal): {e}")
 
 
-# --- Debounced AWAITING_INPUT ---
-# The `stop` hook fires between tool calls (mid-turn), not just at end-of-turn.
-# To avoid false "input needed" flashes, we debounce: schedule AWAITING_INPUT
-# after a delay, and cancel it if user_prompt_submit arrives first.
-
-_AWAITING_INPUT_DELAY = 5.0  # seconds before showing "input needed"
-_awaiting_input_timers: dict[int, threading.Timer] = {}
-_timers_lock = threading.Lock()
-
-
-def _schedule_awaiting_input(agent_id: int, project_id: int) -> None:
-    """Schedule a delayed AWAITING_INPUT broadcast for an agent."""
-    # Capture Flask app for DB access in the timer thread
-    app = None
-    try:
-        from flask import current_app
-        app = current_app._get_current_object()
-    except RuntimeError:
-        logger.debug("No Flask app context for debounce DB persist")
-
-    with _timers_lock:
-        # Cancel any existing timer for this agent
-        existing = _awaiting_input_timers.pop(agent_id, None)
-        if existing:
-            existing.cancel()
-
-        timer = threading.Timer(
-            _AWAITING_INPUT_DELAY,
-            _fire_awaiting_input,
-            args=[agent_id, project_id, app],
-        )
-        timer.daemon = True
-        timer.start()
-        _awaiting_input_timers[agent_id] = timer
-
-
-def _cancel_awaiting_input(agent_id: int) -> None:
-    """Cancel a pending AWAITING_INPUT broadcast for an agent."""
-    with _timers_lock:
-        timer = _awaiting_input_timers.pop(agent_id, None)
-        if timer:
-            timer.cancel()
-            logger.debug(f"Cancelled pending AWAITING_INPUT for agent_id={agent_id}")
-
-
-def _fire_awaiting_input(agent_id: int, project_id: int, app=None) -> None:
-    """Fire the AWAITING_INPUT broadcast after the debounce period expires.
-
-    Also persists the AWAITING_INPUT state to the DB so it survives server restarts.
-    Only broadcasts if the agent has an active PROCESSING task — otherwise the
-    stop was on an IDLE agent and should be ignored.
-    """
-    with _timers_lock:
-        _awaiting_input_timers.pop(agent_id, None)
-
-    # Persist to DB so the state survives server restarts.
-    # Also check if the agent actually has a PROCESSING task — if not,
-    # skip the broadcast (stop on an IDLE agent is a no-op).
-    should_broadcast = False
-    if app is not None:
-        try:
-            with app.app_context():
-                agent = db.session.get(Agent, agent_id)
-                if agent:
-                    task = agent.get_current_task()
-                    if task and task.state == TaskState.PROCESSING:
-                        task.state = TaskState.AWAITING_INPUT
-                        db.session.commit()
-                        should_broadcast = True
-                        logger.info(
-                            f"Persisted AWAITING_INPUT to DB: agent_id={agent_id}, "
-                            f"task_id={task.id}"
-                        )
-                    else:
-                        logger.debug(
-                            f"Skipping AWAITING_INPUT for agent_id={agent_id}: "
-                            f"no PROCESSING task"
-                        )
-        except Exception as e:
-            logger.debug(f"DB persist for AWAITING_INPUT failed (non-fatal): {e}")
-    else:
-        # No app context (shouldn't happen in production) — broadcast anyway
-        should_broadcast = True
-
-    if not should_broadcast:
-        return
-
-    # Set display override so server-side rendering is consistent with SSE
-    _set_display_override(agent_id, "AWAITING_INPUT")
-
-    try:
-        from .broadcaster import get_broadcaster
-        broadcaster = get_broadcaster()
-        broadcaster.broadcast("state_changed", {
-            "agent_id": agent_id,
-            "project_id": project_id,
-            "event_type": "stop_debounced",
-            "new_state": "AWAITING_INPUT",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-        logger.info(f"Debounced AWAITING_INPUT broadcast for agent_id={agent_id}")
-    except Exception as e:
-        logger.debug(f"Debounced AWAITING_INPUT broadcast failed: {e}")
-
-
-# --- Display state overrides ---
-# In-memory overrides for server-side rendering consistency with SSE broadcasts.
-# The debounce timer and notification handler both persist AWAITING_INPUT to the DB,
-# so these overrides mainly serve as a fast cache to avoid an extra DB query on the
-# dashboard route. They also cover the brief window between SSE broadcast and the
-# next page load.
-
-_agent_display_overrides: dict[int, str] = {}
-_overrides_lock = threading.Lock()
-
-
-def get_agent_display_state(agent_id: int) -> str | None:
-    """Get the display state override for an agent, or None if no override."""
-    with _overrides_lock:
-        return _agent_display_overrides.get(agent_id)
-
-
-def _set_display_override(agent_id: int, state: str) -> None:
-    """Set a display state override for an agent."""
-    with _overrides_lock:
-        _agent_display_overrides[agent_id] = state
-    logger.debug(f"Display override set: agent_id={agent_id}, state={state}")
-
-
-def _clear_display_override(agent_id: int) -> None:
-    """Clear the display state override for an agent."""
-    with _overrides_lock:
-        removed = _agent_display_overrides.pop(agent_id, None)
-    if removed:
-        logger.debug(f"Display override cleared: agent_id={agent_id}")
-
-
 def reset_receiver_state() -> None:
     """Reset the global receiver state. Used in testing."""
     global _receiver_state
     _receiver_state = HookReceiverState()
 
 
-def cancel_all_timers() -> None:
-    """Cancel all pending AWAITING_INPUT timers. Used in testing."""
-    with _timers_lock:
-        for timer in _awaiting_input_timers.values():
-            timer.cancel()
-        _awaiting_input_timers.clear()
-
-
-def clear_display_overrides() -> None:
-    """Clear all display state overrides. Used in testing."""
-    with _overrides_lock:
-        _agent_display_overrides.clear()
-
-
 def process_session_start(
     agent: Agent,
     claude_session_id: str,
+    transcript_path: str | None = None,
 ) -> HookEventResult:
     """
     Process a session start hook event.
@@ -322,6 +172,7 @@ def process_session_start(
     Args:
         agent: The correlated agent
         claude_session_id: The Claude session ID
+        transcript_path: Path to the transcript .jsonl file (from hook payload)
 
     Returns:
         HookEventResult with processing outcome
@@ -332,6 +183,14 @@ def process_session_start(
     try:
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Capture transcript path if provided
+        if transcript_path and not agent.transcript_path:
+            agent.transcript_path = transcript_path
+            logger.info(
+                f"Captured transcript_path for agent_id={agent.id}: {transcript_path}"
+            )
+
         db.session.commit()
 
         logger.info(
@@ -374,12 +233,6 @@ def process_session_end(
     state.record_event(HookEventType.SESSION_END)
 
     try:
-        # Cancel any pending AWAITING_INPUT timer
-        _cancel_awaiting_input(agent.id)
-
-        # Clear display override - session is ending
-        _clear_display_override(agent.id)
-
         # Update agent timestamp and mark as ended
         now = datetime.now(timezone.utc)
         agent.last_seen_at = now
@@ -451,13 +304,6 @@ def process_user_prompt_submit(
     state.record_event(HookEventType.USER_PROMPT_SUBMIT)
 
     try:
-        # Cancel any pending AWAITING_INPUT timer - user is sending input,
-        # so the previous stop was a mid-turn pause, not end-of-turn
-        _cancel_awaiting_input(agent.id)
-
-        # Clear display override - agent is now processing, not awaiting input
-        _clear_display_override(agent.id)
-
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
@@ -518,12 +364,8 @@ def process_stop(
     """
     Process a stop (turn complete) hook event.
 
-    The stop hook fires between tool calls (mid-turn) AND at end-of-turn.
-    We can't distinguish these, so we don't change model state here.
-    Instead, we schedule a debounced AWAITING_INPUT transition. If
-    user_prompt_submit arrives within the delay, the timer is cancelled
-    (it was a mid-turn stop). If the timer expires, the task transitions
-    to AWAITING_INPUT in the DB.
+    The stop hook fires at end-of-turn only (not mid-turn between tool calls).
+    We transition the current task to COMPLETE immediately.
 
     Args:
         agent: The correlated agent
@@ -536,25 +378,29 @@ def process_stop(
     state.record_event(HookEventType.STOP)
 
     try:
-        # Update agent timestamp only - don't change task state
+        # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Use lifecycle bridge to transition task to COMPLETE
+        bridge = get_hook_bridge()
+        result = bridge.process_stop(agent, claude_session_id)
+
         db.session.commit()
 
-        # Schedule debounced AWAITING_INPUT. If user_prompt_submit arrives
-        # within the delay, the timer is cancelled (mid-turn stop).
-        # If the timer expires, _fire_awaiting_input transitions the DB task.
-        _schedule_awaiting_input(agent.id, agent.project_id)
+        # Broadcast state change to SSE clients
+        _broadcast_state_change(agent, "stop", TaskState.COMPLETE.value)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
-            f"session_id={claude_session_id} (awaiting_input debounce scheduled)"
+            f"session_id={claude_session_id}, task completed"
         )
 
         return HookEventResult(
-            success=True,
+            success=result.success,
             agent_id=agent.id,
-            state_changed=False,
-            new_state=agent.state.value,
+            state_changed=True,
+            new_state=TaskState.COMPLETE.value,
+            error_message=result.error,
         )
     except Exception as e:
         logger.exception(f"Error processing stop: {e}")
@@ -568,17 +414,22 @@ def process_stop(
 def process_notification(
     agent: Agent,
     claude_session_id: str,
+    message: str | None = None,
+    title: str | None = None,
+    notification_type: str | None = None,
 ) -> HookEventResult:
     """
     Process a notification hook event.
 
-    Notifications fire when Claude needs user attention (e.g. AskUserQuestion).
-    This signals AWAITING_INPUT immediately - no debounce needed since
-    notifications are a strong signal that the agent is blocked on user input.
+    Notifications fire when Claude needs user attention (e.g. AskUserQuestion,
+    permission dialogs, idle prompts). This signals AWAITING_INPUT immediately.
 
     Args:
         agent: The correlated agent
         claude_session_id: The Claude session ID
+        message: Notification message text from the hook payload
+        title: Notification title from the hook payload
+        notification_type: Type of notification (elicitation_dialog, permission_prompt, idle_prompt)
 
     Returns:
         HookEventResult with processing outcome
@@ -590,39 +441,121 @@ def process_notification(
         # Update agent timestamp
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Cancel any pending debounce timer - notification is a stronger signal
-        _cancel_awaiting_input(agent.id)
+        # Backfill transcript_path if available on the agent but not yet set
+        # (notifications also carry transcript_path in the payload)
 
-        # Transition DB task to AWAITING_INPUT if currently PROCESSING.
-        # This uses the valid state machine transition:
-        # PROCESSING + AGENT + QUESTION → AWAITING_INPUT
+        # Transition DB task to AWAITING_INPUT if currently PROCESSING or COMMANDED.
         current_task = agent.get_current_task()
-        if current_task and current_task.state == TaskState.PROCESSING:
+        did_transition = False
+        if current_task and current_task.state in (TaskState.PROCESSING, TaskState.COMMANDED):
             current_task.state = TaskState.AWAITING_INPUT
+            did_transition = True
+
+            # Store notification context as a turn if message is provided
+            if message or title:
+                from ..models.turn import Turn, TurnActor, TurnIntent
+                notification_text = ""
+                if title:
+                    notification_text = f"[{title}] "
+                if message:
+                    notification_text += message
+                if notification_text:
+                    turn = Turn(
+                        task_id=current_task.id,
+                        actor=TurnActor.AGENT,
+                        intent=TurnIntent.QUESTION,
+                        text=notification_text.strip(),
+                    )
+                    db.session.add(turn)
+
             logger.info(
                 f"DB task transitioned to AWAITING_INPUT: agent_id={agent.id}, "
-                f"task_id={current_task.id}"
+                f"task_id={current_task.id}, notification_type={notification_type}"
             )
 
         db.session.commit()
 
-        # Set display override and broadcast AWAITING_INPUT immediately
-        _set_display_override(agent.id, "AWAITING_INPUT")
-        _broadcast_state_change(agent, "notification", "AWAITING_INPUT")
+        if did_transition:
+            _broadcast_state_change(agent, "notification", "AWAITING_INPUT")
 
         logger.info(
             f"hook_event: type=notification, agent_id={agent.id}, "
-            f"session_id={claude_session_id}, immediate AWAITING_INPUT"
+            f"session_id={claude_session_id}, notification_type={notification_type}, "
+            f"{'immediate AWAITING_INPUT' if did_transition else 'ignored (no active processing task)'}"
         )
 
         return HookEventResult(
             success=True,
             agent_id=agent.id,
-            state_changed=True,
-            new_state="AWAITING_INPUT",
+            state_changed=did_transition,
+            new_state="AWAITING_INPUT" if did_transition else None,
         )
     except Exception as e:
         logger.exception(f"Error processing notification: {e}")
+        db.session.rollback()
+        return HookEventResult(
+            success=False,
+            error_message=str(e),
+        )
+
+
+def process_post_tool_use(
+    agent: Agent,
+    claude_session_id: str,
+    tool_name: str | None = None,
+) -> HookEventResult:
+    """
+    Process a PostToolUse hook event.
+
+    PostToolUse fires after a tool completes. When the agent is in AWAITING_INPUT
+    state, this signals that the user has responded and the agent is resuming work.
+
+    Args:
+        agent: The correlated agent
+        claude_session_id: The Claude session ID
+        tool_name: Name of the tool that was used
+
+    Returns:
+        HookEventResult with processing outcome
+    """
+    state = get_receiver_state()
+    state.record_event(HookEventType.POST_TOOL_USE)
+
+    try:
+        # Update agent timestamp
+        agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Backfill transcript_path if not yet set
+        # (PostToolUse payloads include transcript_path)
+
+        # Resume from AWAITING_INPUT → PROCESSING
+        bridge = get_hook_bridge()
+        result = bridge.process_post_tool_use(agent, claude_session_id)
+
+        db.session.commit()
+
+        new_state = None
+        if result.task:
+            new_state = result.task.state.value
+
+        if result.success and new_state == TaskState.PROCESSING.value:
+            _broadcast_state_change(agent, "post_tool_use", TaskState.PROCESSING.value)
+
+        logger.info(
+            f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+            f"session_id={claude_session_id}, tool_name={tool_name}, "
+            f"state_changed={new_state == TaskState.PROCESSING.value if new_state else False}"
+        )
+
+        return HookEventResult(
+            success=result.success,
+            agent_id=agent.id,
+            state_changed=new_state == TaskState.PROCESSING.value if new_state else False,
+            new_state=new_state,
+            error_message=result.error,
+        )
+    except Exception as e:
+        logger.exception(f"Error processing post_tool_use: {e}")
         db.session.rollback()
         return HookEventResult(
             success=False,

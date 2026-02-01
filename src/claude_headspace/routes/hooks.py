@@ -10,6 +10,7 @@ from ..services.hook_receiver import (
     HookMode,
     get_receiver_state,
     process_notification,
+    process_post_tool_use,
     process_session_end,
     process_session_start,
     process_stop,
@@ -86,13 +87,16 @@ def hook_session_start():
     session_id = data["session_id"]
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
+    transcript_path = data.get("transcript_path")
 
     try:
         # Correlate session to agent
         correlation = correlate_session(session_id, working_directory, headspace_session_id)
 
         # Process the event
-        result = process_session_start(correlation.agent, session_id)
+        result = process_session_start(
+            correlation.agent, session_id, transcript_path=transcript_path
+        )
 
         latency_ms = int((time.time() - start_time) * 1000)
         _log_hook_event("session_start", session_id, latency_ms)
@@ -274,11 +278,8 @@ def hook_stop():
         _log_hook_event("stop", session_id, latency_ms)
 
         if result.success:
-            # Note: Don't send notify_task_complete here - the stop hook fires
-            # between tool calls (mid-turn), not just at end-of-turn. The
-            # debounce timer in hook_receiver handles the actual "agent is done"
-            # signal. Desktop notifications for completion should be triggered
-            # by the debounce callback, not on every stop event.
+            # The stop hook fires at end-of-turn only, so this indicates
+            # the agent has finished its current turn and the task is complete.
 
             return jsonify({
                 "status": "ok",
@@ -330,9 +331,19 @@ def hook_notification():
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
 
+    message = data.get("message")
+    title = data.get("title")
+    notification_type = data.get("notification_type")
+
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id)
-        result = process_notification(correlation.agent, session_id)
+        result = process_notification(
+            correlation.agent,
+            session_id,
+            message=message,
+            title=title,
+            notification_type=notification_type,
+        )
 
         latency_ms = int((time.time() - start_time) * 1000)
         _log_hook_event("notification", session_id, latency_ms)
@@ -341,6 +352,8 @@ def hook_notification():
             return jsonify({
                 "status": "ok",
                 "agent_id": result.agent_id,
+                "state_changed": result.state_changed,
+                "new_state": result.new_state,
             }), 200
         else:
             return jsonify({
@@ -354,6 +367,78 @@ def hook_notification():
 
     except Exception as e:
         logger.exception(f"Error handling notification hook: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@hooks_bp.route("/hook/post-tool-use", methods=["POST"])
+def hook_post_tool_use():
+    """
+    Handle Claude Code PostToolUse hook.
+
+    Fires after a tool completes. When the agent is in AWAITING_INPUT state,
+    this signals that the user has responded and the agent is resuming.
+
+    Expected payload:
+    {
+        "session_id": "claude-session-id",
+        "tool_name": "tool-name",         // optional
+        "transcript_path": "/path/to/transcript.jsonl"  // optional
+    }
+
+    Returns:
+        200: Event processed successfully
+        400: Invalid payload
+        500: Processing error
+    """
+    start_time = time.time()
+
+    state = get_receiver_state()
+    if not state.enabled:
+        return jsonify({"status": "ignored", "reason": "hooks_disabled"}), 200
+
+    data, error = _validate_hook_payload(["session_id"])
+    if error:
+        return jsonify({"status": "error", "message": error}), 400
+
+    session_id = data["session_id"]
+    working_directory = data.get("working_directory")
+    headspace_session_id = data.get("headspace_session_id")
+    tool_name = data.get("tool_name")
+
+    try:
+        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+
+        # Backfill transcript_path if provided and not yet set
+        transcript_path = data.get("transcript_path")
+        if transcript_path and not correlation.agent.transcript_path:
+            correlation.agent.transcript_path = transcript_path
+
+        result = process_post_tool_use(
+            correlation.agent, session_id, tool_name=tool_name
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        _log_hook_event("post_tool_use", session_id, latency_ms)
+
+        if result.success:
+            return jsonify({
+                "status": "ok",
+                "agent_id": result.agent_id,
+                "state_changed": result.state_changed,
+                "new_state": result.new_state,
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": result.error_message,
+            }), 500
+
+    except ValueError as e:
+        logger.warning(f"Session correlation failed for post_tool_use: {e}")
+        return jsonify({"status": "dropped", "message": str(e)}), 404
+
+    except Exception as e:
+        logger.exception(f"Error handling post_tool_use hook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

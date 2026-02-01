@@ -1,4 +1,10 @@
-"""File watcher service for monitoring Claude Code session files."""
+"""File watcher service for monitoring Claude Code session files.
+
+Provides two modes of operation:
+1. Legacy session file monitoring via Watchdog + polling
+2. Content pipeline: transcript monitoring, regex question detection,
+   and timeout-gated inference for AWAITING_INPUT detection
+"""
 
 import logging
 import os
@@ -18,13 +24,17 @@ from .session_registry import RegisteredSession, SessionRegistry
 
 logger = logging.getLogger(__name__)
 
+# Default timeout before triggering inference for stalled agent output
+DEFAULT_AWAITING_INPUT_TIMEOUT = 10  # seconds
+
 
 class FileWatcher:
     """
     Service for watching Claude Code session jsonl files.
 
     Monitors registered sessions' jsonl files and emits events when
-    new turns are detected.
+    new turns are detected. Also monitors transcript files for content
+    pipeline processing (question detection and inference classification).
     """
 
     def __init__(
@@ -33,6 +43,7 @@ class FileWatcher:
         polling_interval: float = 2.0,
         inactivity_timeout: int = 5400,
         debounce_interval: float = 0.5,
+        awaiting_input_timeout: float = DEFAULT_AWAITING_INPUT_TIMEOUT,
     ) -> None:
         """
         Initialize the file watcher.
@@ -42,11 +53,13 @@ class FileWatcher:
             polling_interval: Polling interval in seconds (fallback mode)
             inactivity_timeout: Session inactivity timeout in seconds
             debounce_interval: Debounce interval for rapid file changes
+            awaiting_input_timeout: Seconds before inference check on stalled transcript
         """
         self._projects_path = os.path.expanduser(projects_path)
         self._polling_interval = polling_interval
         self._inactivity_timeout = inactivity_timeout
         self._debounce_interval = debounce_interval
+        self._awaiting_input_timeout = awaiting_input_timeout
 
         self._registry = SessionRegistry()
         self._git_metadata = GitMetadata()
@@ -60,10 +73,16 @@ class FileWatcher:
         # Event callbacks
         self._on_turn_detected: Optional[Callable[[dict], None]] = None
         self._on_session_ended: Optional[Callable[[dict], None]] = None
+        self._on_question_detected: Optional[Callable[[dict], None]] = None
 
         # Debouncing state
         self._pending_files: dict[str, float] = {}
         self._debounce_lock = threading.Lock()
+
+        # Content pipeline: transcript monitoring
+        self._transcript_positions: dict[int, int] = {}  # agent_id -> file byte position
+        self._pending_inference_timers: dict[int, threading.Timer] = {}  # agent_id -> timer
+        self._timer_lock = threading.Lock()
 
     @property
     def registry(self) -> SessionRegistry:
@@ -82,6 +101,10 @@ class FileWatcher:
     def set_on_session_ended(self, callback: Callable[[dict], None]) -> None:
         """Set callback for session_ended events."""
         self._on_session_ended = callback
+
+    def set_on_question_detected(self, callback: Callable[[dict], None]) -> None:
+        """Set callback for question_detected events from content pipeline."""
+        self._on_question_detected = callback
 
     def start(self) -> None:
         """Start the file watcher background threads."""
@@ -297,6 +320,217 @@ class FileWatcher:
                 self._process_session_file(session_uuid)
                 break
 
+    # --- Content Pipeline Methods ---
+
+    def register_transcript(self, agent_id: int, transcript_path: str) -> None:
+        """
+        Register a transcript file for content pipeline monitoring.
+
+        Args:
+            agent_id: The agent ID to associate with this transcript
+            transcript_path: Absolute path to the .jsonl transcript file
+        """
+        if not transcript_path or not os.path.exists(transcript_path):
+            logger.debug(
+                f"Transcript not registered for agent_id={agent_id}: "
+                f"path={'missing' if not transcript_path else 'not found'}"
+            )
+            return
+
+        # Set initial position to end of file (don't process existing content)
+        try:
+            file_size = os.path.getsize(transcript_path)
+            self._transcript_positions[agent_id] = file_size
+            logger.info(
+                f"Transcript registered for agent_id={agent_id}: "
+                f"{transcript_path} (position={file_size})"
+            )
+        except OSError as e:
+            logger.warning(f"Error registering transcript for agent_id={agent_id}: {e}")
+
+    def unregister_transcript(self, agent_id: int) -> None:
+        """Unregister a transcript from content pipeline monitoring."""
+        self._transcript_positions.pop(agent_id, None)
+        self.cancel_inference_timer(agent_id)
+
+    def check_transcript_for_questions(
+        self,
+        agent_id: int,
+        transcript_path: str,
+    ) -> bool:
+        """
+        Check a transcript file for new agent content and detect questions.
+
+        Uses incremental reading from last known position. If new agent
+        content is detected, runs regex-based question detection immediately.
+
+        Args:
+            agent_id: The agent ID
+            transcript_path: Path to the transcript file
+
+        Returns:
+            True if a question was detected (regex), False otherwise
+        """
+        from .transcript_reader import read_new_entries_from_position
+
+        position = self._transcript_positions.get(agent_id, 0)
+        entries, new_position = read_new_entries_from_position(
+            transcript_path, position
+        )
+        self._transcript_positions[agent_id] = new_position
+
+        if not entries:
+            return False
+
+        # Look for new assistant content
+        agent_entries = [
+            e for e in entries
+            if e.role == "assistant" and e.content
+        ]
+
+        if not agent_entries:
+            return False
+
+        # Check the latest agent content for question patterns
+        latest_content = agent_entries[-1].content
+        if not latest_content:
+            return False
+
+        from .intent_detector import detect_agent_intent
+        from ..models.turn import TurnIntent
+
+        intent_result = detect_agent_intent(latest_content)
+        if intent_result.intent == TurnIntent.QUESTION:
+            logger.info(
+                f"Content pipeline: regex detected question for agent_id={agent_id}, "
+                f"pattern={intent_result.matched_pattern}"
+            )
+            self._emit_question_detected(agent_id, latest_content, "regex")
+            return True
+
+        # No question detected by regex — start timeout timer for inference
+        self._start_inference_timer(agent_id, latest_content)
+        return False
+
+    def cancel_inference_timer(self, agent_id: int) -> None:
+        """
+        Cancel any pending inference timer for an agent.
+
+        Called when PostToolUse or Stop events arrive, indicating the agent
+        is still active (no need for inference classification).
+
+        Args:
+            agent_id: The agent ID whose timer to cancel
+        """
+        with self._timer_lock:
+            timer = self._pending_inference_timers.pop(agent_id, None)
+            if timer:
+                timer.cancel()
+                logger.debug(f"Inference timer cancelled for agent_id={agent_id}")
+
+    def _start_inference_timer(self, agent_id: int, content: str) -> None:
+        """Start a timeout timer for inference-based question classification."""
+        # Cancel any existing timer first
+        self.cancel_inference_timer(agent_id)
+
+        with self._timer_lock:
+            timer = threading.Timer(
+                self._awaiting_input_timeout,
+                self._on_inference_timeout,
+                args=(agent_id, content),
+            )
+            timer.daemon = True
+            timer.start()
+            self._pending_inference_timers[agent_id] = timer
+            logger.debug(
+                f"Inference timer started for agent_id={agent_id}, "
+                f"timeout={self._awaiting_input_timeout}s"
+            )
+
+    def _on_inference_timeout(self, agent_id: int, content: str) -> None:
+        """Called when inference timeout expires — classify content via LLM."""
+        with self._timer_lock:
+            self._pending_inference_timers.pop(agent_id, None)
+
+        logger.info(
+            f"Content pipeline: inference timeout for agent_id={agent_id}, "
+            f"sending to inference"
+        )
+
+        try:
+            from flask import current_app
+            inference_service = current_app.extensions.get("inference_service")
+            if not inference_service:
+                logger.debug("No inference service available for question classification")
+                return
+
+            is_question = self._classify_question_via_inference(
+                inference_service, content
+            )
+            if is_question:
+                logger.info(
+                    f"Content pipeline: inference classified as question "
+                    f"for agent_id={agent_id}"
+                )
+                self._emit_question_detected(agent_id, content, "inference")
+        except RuntimeError:
+            logger.debug("No Flask app context for inference classification")
+        except Exception as e:
+            logger.warning(f"Inference classification failed for agent_id={agent_id}: {e}")
+
+    @staticmethod
+    def _classify_question_via_inference(inference_service: Any, content: str) -> bool:
+        """
+        Use inference service to classify if content is a question needing user input.
+
+        Args:
+            inference_service: The inference service instance
+            content: The agent output text to classify
+
+        Returns:
+            True if the content is classified as a question needing user input
+        """
+        prompt = (
+            "You are classifying Claude Code agent output. "
+            "Determine if the agent is asking the user a question or waiting for input.\n\n"
+            f"Agent output:\n{content[:2000]}\n\n"
+            "Is the agent asking the user a question or waiting for user input? "
+            "Answer only 'yes' or 'no'."
+        )
+
+        try:
+            result = inference_service.infer(
+                prompt=prompt,
+                level="turn",
+            )
+            if result and result.get("content"):
+                answer = result["content"].strip().lower()
+                return answer.startswith("yes")
+        except Exception as e:
+            logger.warning(f"Inference question classification error: {e}")
+
+        return False
+
+    def _emit_question_detected(
+        self, agent_id: int, content: str, source: str
+    ) -> None:
+        """Emit a question_detected event from the content pipeline."""
+        event = {
+            "event_type": "question_detected",
+            "agent_id": agent_id,
+            "content": content[:500],  # Truncate for the event
+            "source": source,  # "regex" or "inference"
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if self._on_question_detected:
+            try:
+                self._on_question_detected(event)
+            except Exception as e:
+                logger.error(f"Error in question_detected callback: {e}")
+
+    # --- Legacy Event Emission Methods ---
+
     def _emit_turn_detected(self, session: RegisteredSession, turn: Any) -> None:
         """Emit a turn_detected event."""
         event = {
@@ -376,6 +610,9 @@ def init_file_watcher(app: Any, config: dict) -> FileWatcher:
         polling_interval=fw_config["polling_interval"],
         inactivity_timeout=fw_config["inactivity_timeout"],
         debounce_interval=fw_config["debounce_interval"],
+        awaiting_input_timeout=fw_config.get(
+            "awaiting_input_timeout", DEFAULT_AWAITING_INPUT_TIMEOUT
+        ),
     )
 
     app.extensions["file_watcher"] = watcher
