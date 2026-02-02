@@ -23,8 +23,19 @@ def mock_app():
 
 
 @pytest.fixture
-def service(mock_app):
-    return BrainRebootService(app=mock_app)
+def mock_archive():
+    archive = MagicMock()
+    archive.archive_cascade.return_value = {
+        "waypoint": "archive/waypoint_2026-01-29_16-05-00.md",
+        "progress_summary": "archive/progress_summary_2026-01-29_16-05-00.md",
+        "brain_reboot": "archive/brain_reboot_2026-01-29_16-05-00.md",
+    }
+    return archive
+
+
+@pytest.fixture
+def service(mock_app, mock_archive):
+    return BrainRebootService(app=mock_app, archive_service=mock_archive)
 
 
 def _make_project(tmp_path, project_id=1, name="Test Project"):
@@ -249,6 +260,38 @@ class TestExport:
             assert "Permission denied" in result["error"]
         finally:
             os.chmod(str(br_dir), 0o755)
+
+    def test_export_triggers_cascade_archive(self, service, mock_archive, tmp_path):
+        """Should call archive_cascade before writing."""
+        project = _make_project(tmp_path)
+
+        result = service.export(project, "# Brain Reboot")
+
+        mock_archive.archive_cascade.assert_called_once_with(str(tmp_path))
+        assert result["success"] is True
+        assert result["archived"]["waypoint"] is not None
+        assert result["archived"]["progress_summary"] is not None
+        assert result["archived"]["brain_reboot"] is not None
+
+    def test_export_cascade_failure_non_blocking(self, service, mock_archive, tmp_path):
+        """Should continue export even if cascade archive fails."""
+        project = _make_project(tmp_path)
+        mock_archive.archive_cascade.side_effect = OSError("disk full")
+
+        result = service.export(project, "# Brain Reboot")
+
+        assert result["success"] is True
+        exported = (tmp_path / "docs" / "brain_reboot" / "brain_reboot.md").read_text()
+        assert exported == "# Brain Reboot"
+
+    def test_export_without_archive_service(self, mock_app, tmp_path):
+        """Should work without archive service (no archiving)."""
+        svc = BrainRebootService(app=mock_app)
+        project = _make_project(tmp_path)
+
+        result = svc.export(project, "content")
+        assert result["success"] is True
+        assert result["archived"] == {}
 
     def test_custom_export_filename(self, tmp_path):
         app = MagicMock()

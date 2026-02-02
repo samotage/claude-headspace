@@ -48,8 +48,9 @@ def generate_summary(project_id):
 
     # Get optional scope override
     scope = None
-    if request.is_json and request.json:
-        scope = request.json.get("scope")
+    body = request.get_json(silent=True)
+    if body:
+        scope = body.get("scope")
 
     result = service.generate(project, scope=scope)
 

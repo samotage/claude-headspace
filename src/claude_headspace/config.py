@@ -121,6 +121,14 @@ DEFAULTS = {
         "inactivity_timeout_seconds": 300,
         "grace_period_seconds": 300,
     },
+    "archive": {
+        "enabled": True,
+        "retention": {
+            "policy": "keep_all",
+            "keep_last_n": 10,
+            "days": 90,
+        },
+    },
 }
 
 # Environment variable mappings

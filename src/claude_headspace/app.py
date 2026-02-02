@@ -174,18 +174,28 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     notification_service.is_available()
     logger.info(f"Notification service initialized (dashboard_url={dashboard_url})")
 
+    # Initialize archive service
+    from .services.archive_service import ArchiveService
+    archive_service = ArchiveService(config=config)
+    app.extensions["archive_service"] = archive_service
+    logger.info("Archive service initialized")
+
     # Initialize progress summary service
     from .services.progress_summary import ProgressSummaryService
     progress_summary_service = ProgressSummaryService(
         inference_service=inference_service,
         app=app,
+        archive_service=archive_service,
     )
     app.extensions["progress_summary_service"] = progress_summary_service
     logger.info("Progress summary service initialized")
 
     # Initialize brain reboot service
     from .services.brain_reboot import BrainRebootService
-    brain_reboot_service = BrainRebootService(app=app)
+    brain_reboot_service = BrainRebootService(
+        app=app,
+        archive_service=archive_service,
+    )
     app.extensions["brain_reboot_service"] = brain_reboot_service
     logger.info("Brain reboot service initialized")
 
@@ -259,6 +269,7 @@ def register_error_handlers(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
+    from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
@@ -277,6 +288,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.summarisation import summarisation_bp
     from .routes.waypoint import waypoint_bp
 
+    app.register_blueprint(archive_bp)
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)

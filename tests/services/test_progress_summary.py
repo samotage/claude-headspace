@@ -13,7 +13,6 @@ from src.claude_headspace.services.git_analyzer import (
 )
 from src.claude_headspace.services.openrouter_client import InferenceResult
 from src.claude_headspace.services.progress_summary import (
-    ARCHIVE_DIR,
     SUMMARY_DIR,
     SUMMARY_FILENAME,
     ProgressSummaryService,
@@ -44,10 +43,18 @@ def mock_app(mock_inference):
 
 
 @pytest.fixture
-def service(mock_inference, mock_app):
+def mock_archive():
+    archive = MagicMock()
+    archive.archive_artifact.return_value = "archive/progress_summary_2026-01-31_10-00-00.md"
+    return archive
+
+
+@pytest.fixture
+def service(mock_inference, mock_app, mock_archive):
     return ProgressSummaryService(
         inference_service=mock_inference,
         app=mock_app,
+        archive_service=mock_archive,
     )
 
 
@@ -148,12 +155,11 @@ class TestWriteSummary:
         service._write_summary(str(tmp_path), "Content", {"scope": "last_n"})
 
         assert (tmp_path / SUMMARY_DIR).is_dir()
-        assert (tmp_path / SUMMARY_DIR / ARCHIVE_DIR).is_dir()
 
-    def test_archives_existing_before_overwrite(self, service, tmp_path):
+    def test_delegates_archiving_to_service(self, service, mock_archive, tmp_path):
+        """Should delegate archiving to the centralized archive service."""
         base_dir = tmp_path / SUMMARY_DIR
         base_dir.mkdir(parents=True)
-        (base_dir / ARCHIVE_DIR).mkdir()
 
         # Write initial summary
         initial = "---\ngenerated_at: old\n---\n\nOld content"
@@ -162,72 +168,26 @@ class TestWriteSummary:
         # Write new summary
         service._write_summary(str(tmp_path), "New content", {"scope": "last_n"})
 
-        # Verify archive exists
-        archive_files = list((base_dir / ARCHIVE_DIR).glob("progress_summary_*.md"))
-        assert len(archive_files) == 1
-        assert "Old content" in archive_files[0].read_text()
+        # Verify archive service was called
+        mock_archive.archive_artifact.assert_called_once_with(
+            str(tmp_path), "progress_summary"
+        )
 
         # Verify new summary
         assert "New content" in (base_dir / SUMMARY_FILENAME).read_text()
 
-
-class TestArchiveExisting:
-
-    def test_basic_archive(self, service, tmp_path):
+    def test_archive_failure_non_blocking(self, service, mock_archive, tmp_path):
+        """Should continue writing even if archive fails."""
         base_dir = tmp_path / SUMMARY_DIR
         base_dir.mkdir(parents=True)
-        archive_dir = base_dir / ARCHIVE_DIR
-        archive_dir.mkdir()
+        (base_dir / SUMMARY_FILENAME).write_text("Old content")
 
-        summary_path = base_dir / SUMMARY_FILENAME
-        summary_path.write_text("Original content")
+        mock_archive.archive_artifact.side_effect = OSError("disk full")
 
-        service._archive_existing(base_dir, summary_path)
+        service._write_summary(str(tmp_path), "New content", {"scope": "last_n"})
 
-        archive_files = list(archive_dir.glob("progress_summary_*.md"))
-        assert len(archive_files) == 1
-        assert "Original content" in archive_files[0].read_text()
-
-    def test_same_day_suffix(self, service, tmp_path):
-        base_dir = tmp_path / SUMMARY_DIR
-        base_dir.mkdir(parents=True)
-        archive_dir = base_dir / ARCHIVE_DIR
-        archive_dir.mkdir()
-
-        summary_path = base_dir / SUMMARY_FILENAME
-
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-        # Create existing archive for today
-        (archive_dir / f"progress_summary_{today}.md").write_text("First archive")
-
-        # Archive again
-        summary_path.write_text("Second version")
-        service._archive_existing(base_dir, summary_path)
-
-        archive_2 = archive_dir / f"progress_summary_{today}_2.md"
-        assert archive_2.exists()
-        assert "Second version" in archive_2.read_text()
-
-    def test_multiple_same_day_suffixes(self, service, tmp_path):
-        base_dir = tmp_path / SUMMARY_DIR
-        base_dir.mkdir(parents=True)
-        archive_dir = base_dir / ARCHIVE_DIR
-        archive_dir.mkdir()
-
-        summary_path = base_dir / SUMMARY_FILENAME
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-        # Create first two archives
-        (archive_dir / f"progress_summary_{today}.md").write_text("v1")
-        (archive_dir / f"progress_summary_{today}_2.md").write_text("v2")
-
-        # Archive third
-        summary_path.write_text("v3")
-        service._archive_existing(base_dir, summary_path)
-
-        archive_3 = archive_dir / f"progress_summary_{today}_3.md"
-        assert archive_3.exists()
+        # Should still write new content
+        assert "New content" in (base_dir / SUMMARY_FILENAME).read_text()
 
 
 class TestGetCurrentSummary:
