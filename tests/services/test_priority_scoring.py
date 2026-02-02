@@ -233,10 +233,10 @@ class TestPriorityDisabledGuard:
         """No objective means not disabled — scoring should proceed (existing fallback)."""
         mock_session = MagicMock()
         # First query (Objective) returns None
-        # Second query (Agent filter) returns agents
+        # Second query (Agent join/filter) returns agents
         # Third query (Objective order_by) for context also returns None
         mock_session.query.return_value.first.return_value = None
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
         mock_session.query.return_value.order_by.return_value.first.return_value = None
 
         wp_result = MagicMock()
@@ -254,7 +254,7 @@ class TestScoreAllAgents:
 
     def test_no_agents_returns_empty(self, service):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = []
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = []
 
         result = service.score_all_agents(mock_session)
 
@@ -264,7 +264,7 @@ class TestScoreAllAgents:
 
     def test_default_context_assigns_50(self, service, mock_agent):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
         # No objective
         mock_session.query.return_value.order_by.return_value.first.return_value = None
 
@@ -281,7 +281,7 @@ class TestScoreAllAgents:
 
     def test_successful_scoring_persists(self, service, mock_inference, mock_agent, mock_agent_2):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_2]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_2]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Ship auth"
@@ -309,7 +309,7 @@ class TestScoreAllAgents:
 
     def test_inference_error_preserves_scores(self, service, mock_inference, mock_agent):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Test"

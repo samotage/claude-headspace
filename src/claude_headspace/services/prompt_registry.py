@@ -99,9 +99,9 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     "progress_summary": (
         "You are summarising recent development progress for the project '{project_name}'.\n\n"
         "{analysis_text}\n\n"
-        "Write a 3-5 paragraph narrative progress summary in past tense.\n"
+        "Write a short and concise progress summary in past tense.\n"
         "Focus on accomplishments, patterns, and themes — not individual commits.\n"
-        "Group related work into coherent paragraphs.\n"
+        "Bullet point list of work with a short one sentence summary of each item.\n"
         "Use a professional tone suitable for a development journal."
     ),
 

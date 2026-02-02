@@ -35,16 +35,19 @@ class PriorityScoringService:
         """
         from ..models.agent import Agent
         from ..models.objective import Objective
+        from ..models.project import Project
 
         # Check if priority scoring is disabled
         objective = db_session.query(Objective).first()
         if objective and not objective.priority_enabled:
             return {"scored": 0, "agents": [], "context_type": "disabled"}
 
-        # Gather active agents (not ended)
+        # Gather active agents (not ended), excluding agents from paused projects
         agents = (
             db_session.query(Agent)
+            .join(Agent.project)
             .filter(Agent.ended_at.is_(None))
+            .filter(Project.inference_paused == False)  # noqa: E712
             .all()
         )
 

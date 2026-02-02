@@ -187,22 +187,22 @@ class BrainRebootService:
                 "",
             ])
         else:
-            # Progress summary first (FR8)
-            lines.append("## Progress Summary")
-            lines.append("")
-            if has_summary:
-                lines.append(summary_content)
-            else:
-                lines.append("*Progress summary is not yet available. Click \"Generate Progress Summary\" below to create one from git history.*")
-            lines.append("")
-
-            # Waypoint second
+            # Waypoint first (path ahead context before progress)
             lines.append("## Waypoint (Path Ahead)")
             lines.append("")
             if has_waypoint:
                 lines.append(waypoint_content)
             else:
                 lines.append("*Waypoint is not yet available. Use the waypoint editor to define your project's path ahead.*")
+            lines.append("")
+
+            # Progress summary second
+            lines.append("## Progress Summary")
+            lines.append("")
+            if has_summary:
+                lines.append(summary_content)
+            else:
+                lines.append("*Progress summary is not yet available. Click \"Generate Progress Summary\" below to create one from git history.*")
             lines.append("")
 
         lines.extend([

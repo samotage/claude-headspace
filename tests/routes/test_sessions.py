@@ -95,38 +95,27 @@ class TestCreateSession:
         assert response.status_code == 400
         assert "Invalid session_uuid" in response.get_json()["error"]
 
-    def test_creates_new_project_and_agent(self, client, mock_db):
-        """Test creating session with new project."""
+    def test_rejects_unregistered_project(self, client, mock_db):
+        """Test 404 returned when project path is not registered."""
         session_uuid = str(uuid.uuid4())
 
         with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
-            with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
-                MockProject.query.filter_by.return_value.first.return_value = None
+            MockProject.query.filter_by.return_value.first.return_value = None
 
-                mock_project = MagicMock()
-                mock_project.id = 1
-                mock_project.name = "test-project"
-                MockProject.return_value = mock_project
+            response = client.post(
+                "/api/sessions",
+                json={
+                    "session_uuid": session_uuid,
+                    "project_path": "/path/to/unregistered-project",
+                    "iterm_pane_id": "pane123",
+                },
+            )
 
-                mock_agent = MagicMock()
-                mock_agent.id = 1
-                MockAgent.return_value = mock_agent
-                MockAgent.query.filter_by.return_value.first.return_value = None
-
-                response = client.post(
-                    "/api/sessions",
-                    json={
-                        "session_uuid": session_uuid,
-                        "project_path": "/path/to/test-project",
-                        "iterm_pane_id": "pane123",
-                    },
-                )
-
-                assert response.status_code == 201
-                data = response.get_json()
-                assert data["status"] == "created"
-                assert data["session_uuid"] == session_uuid
-                assert data["project_name"] == "test-project"
+            assert response.status_code == 404
+            data = response.get_json()
+            assert "not registered" in data["error"]
+            assert "/path/to/unregistered-project" in data["error"]
+            assert "/projects" in data["error"]
 
     def test_uses_existing_project(self, client, mock_db, mock_project):
         """Test creating session with existing project."""

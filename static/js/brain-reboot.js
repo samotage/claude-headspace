@@ -238,18 +238,16 @@ function renderBrainRebootContent(contentEl, data) {
 
     contentEl.innerHTML = html;
 
-    // Add "Generate Progress Summary" button when no summary exists
-    if (!data.has_summary) {
-        var btnWrap = document.createElement('div');
-        btnWrap.className = 'mt-4 flex justify-end';
-        var btn = document.createElement('button');
-        btn.id = 'brain-reboot-generate-summary-btn';
-        btn.className = 'px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-        btn.textContent = 'Generate Progress Summary';
-        btn.onclick = function() { generateProgressSummary(btn); };
-        btnWrap.appendChild(btn);
-        contentEl.appendChild(btnWrap);
-    }
+    // Add "Generate/Regenerate Progress Summary" button
+    var btnWrap = document.createElement('div');
+    btnWrap.className = 'mt-4 flex items-center justify-end gap-3';
+    var btn = document.createElement('button');
+    btn.id = 'brain-reboot-generate-summary-btn';
+    btn.className = 'px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    btn.textContent = data.has_summary ? 'Regenerate Progress Summary' : 'Generate Progress Summary';
+    btn.onclick = function() { generateProgressSummary(btn); };
+    btnWrap.appendChild(btn);
+    contentEl.appendChild(btnWrap);
 }
 
 function generateProgressSummary(btn) {
@@ -257,6 +255,14 @@ function generateProgressSummary(btn) {
 
     btn.disabled = true;
     btn.textContent = 'Generating...';
+
+    // Show in-progress message next to the button
+    var btnWrap = btn.parentElement;
+    var statusMsg = document.createElement('span');
+    statusMsg.className = 'text-muted text-xs italic';
+    statusMsg.textContent = 'Generating progress summary from git history — this may take a moment...';
+    statusMsg.id = 'brain-reboot-summary-status';
+    if (btnWrap) btnWrap.insertBefore(statusMsg, btn);
 
     fetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
         method: 'POST',
@@ -274,11 +280,9 @@ function generateProgressSummary(btn) {
             return response.json();
         })
         .then(function() {
-            // Re-trigger brain reboot generation to refresh modal with new summary
-            var contentEl = document.getElementById('brain-reboot-content');
-            if (contentEl) {
-                contentEl.innerHTML = '<p class="text-muted italic">Refreshing brain reboot...</p>';
-            }
+            // Update status message while refreshing
+            if (statusMsg) statusMsg.textContent = 'Refreshing brain reboot...';
+
             return fetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -320,9 +324,11 @@ function generateProgressSummary(btn) {
         })
         .catch(function(err) {
             btn.disabled = false;
-            btn.textContent = 'Generate Progress Summary';
+            btn.textContent = 'Regenerate Progress Summary';
             btn.style.color = '#ef4444';
             btn.style.borderColor = '#ef4444';
+            // Remove status message and show error
+            if (statusMsg && statusMsg.parentElement) statusMsg.remove();
             var contentEl = document.getElementById('brain-reboot-content');
             var errorP = document.createElement('p');
             errorP.className = 'text-red text-sm mt-2';

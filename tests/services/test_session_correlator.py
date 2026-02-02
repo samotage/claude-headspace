@@ -8,6 +8,7 @@ import pytest
 
 from claude_headspace.services.session_correlator import (
     CorrelationResult,
+    _create_agent_for_session,
     _is_rejected_directory,
     _resolve_project_root,
     _resolve_working_directory,
@@ -453,3 +454,46 @@ class TestCorrelationResult:
         assert result.agent == agent
         assert result.is_new is True
         assert result.correlation_method == "created"
+
+
+class TestCreateAgentForSessionRejectsUnregistered:
+    """Tests for _create_agent_for_session rejecting unregistered projects."""
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_raises_valueerror_for_unregistered_project(self, mock_db):
+        """_create_agent_for_session raises ValueError when project path not registered."""
+        mock_db.session.query.return_value.filter.return_value.first.return_value = None
+
+        with pytest.raises(ValueError, match="Project not registered"):
+            _create_agent_for_session("session-123", "/unknown/project/path")
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_error_message_includes_path(self, mock_db):
+        """Error message includes the rejected path."""
+        mock_db.session.query.return_value.filter.return_value.first.return_value = None
+
+        with pytest.raises(ValueError, match="/unknown/project/path"):
+            _create_agent_for_session("session-123", "/unknown/project/path")
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_error_message_references_projects_page(self, mock_db):
+        """Error message references the /projects management page."""
+        mock_db.session.query.return_value.filter.return_value.first.return_value = None
+
+        with pytest.raises(ValueError, match="/projects"):
+            _create_agent_for_session("session-123", "/some/path")
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_creates_agent_for_registered_project(self, mock_db):
+        """_create_agent_for_session succeeds when project is registered."""
+        mock_project = MagicMock()
+        mock_project.id = 1
+        mock_project.name = "registered-project"
+
+        mock_db.session.query.return_value.filter.return_value.first.return_value = mock_project
+
+        agent, project = _create_agent_for_session("session-123", "/registered/path")
+
+        assert project == mock_project
+        mock_db.session.add.assert_called()
+        mock_db.session.commit.assert_called()
