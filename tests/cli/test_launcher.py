@@ -637,8 +637,8 @@ class TestMain:
 
         assert exit_code == EXIT_SUCCESS
 
-    def test_start_command_with_claudec(self, capsys):
-        """Test start command with claudec detected."""
+    def test_start_command_with_bridge_flag(self, capsys):
+        """Test start command with --bridge flag enables claudec."""
         with patch(
             "src.claude_headspace.cli.launcher.get_server_url",
             return_value="http://localhost:5055",
@@ -686,7 +686,7 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.launch_claude",
                                             return_value=0,
                                         ) as mock_launch:
-                                            exit_code = main(["start"])
+                                            exit_code = main(["start", "--bridge"])
 
         assert exit_code == EXIT_SUCCESS
         # Verify launch_claude received claudec_path
@@ -696,3 +696,60 @@ class TestMain:
         # Verify output mentions Input Bridge enabled
         captured = capsys.readouterr()
         assert "Input Bridge: enabled" in captured.out
+
+    def test_start_command_without_bridge_skips_claudec(self, capsys):
+        """Test that start without --bridge does not use claudec."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_server_url",
+            return_value="http://localhost:5055",
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.validate_prerequisites",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_project_info",
+                    return_value=ProjectInfo("test", "/test", "main"),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                        return_value="pane123",
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.register_session",
+                            return_value=(
+                                True,
+                                {"agent_id": 1, "project_name": "test"},
+                                None,
+                            ),
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.detect_claudec",
+                            ) as mock_detect:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.setup_environment",
+                                    return_value={"PATH": "/usr/bin"},
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.SessionManager"
+                                    ) as MockManager:
+                                        mock_manager = MagicMock()
+                                        MockManager.return_value.__enter__ = MagicMock(
+                                            return_value=mock_manager
+                                        )
+                                        MockManager.return_value.__exit__ = MagicMock(
+                                            return_value=False
+                                        )
+
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.launch_claude",
+                                            return_value=0,
+                                        ) as mock_launch:
+                                            exit_code = main(["start"])
+
+        assert exit_code == EXIT_SUCCESS
+        # detect_claudec should not be called without --bridge
+        mock_detect.assert_not_called()
+        # launch_claude should receive claudec_path=None
+        call_kwargs = mock_launch.call_args
+        assert call_kwargs[1]["claudec_path"] is None

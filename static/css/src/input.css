@@ -221,6 +221,40 @@ body::after {
     color: var(--red);
 }
 
+/* Card text truncation — 3-line clamp with ellipsis */
+.task-instruction,
+.task-summary {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.task-instruction.is-truncated,
+.task-summary.is-truncated {
+    cursor: pointer;
+}
+
+/* Card text tooltip — floating overlay for full text */
+.card-text-tooltip {
+    position: fixed;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    max-width: 480px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+    z-index: 500;
+    pointer-events: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* Mobile responsive: agent cards */
 @media (max-width: 640px) {
     .line-num {

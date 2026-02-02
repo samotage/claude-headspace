@@ -39,6 +39,7 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "turn_count": m.turn_count,
         "avg_turn_time_seconds": m.avg_turn_time_seconds,
         "active_agents": m.active_agents,
+        "total_frustration": m.total_frustration,
     }
 
 

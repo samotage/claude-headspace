@@ -97,6 +97,7 @@ class ActivityAggregator:
             project_turn_counts: dict[int, int] = {}
             project_turn_time_sums: dict[int, float] = {}
             project_turn_time_counts: dict[int, int] = {}
+            project_frustration: dict[int, int] = {}
 
             for agent in active_agents:
                 # Get turns for this agent in the current hour bucket
@@ -125,6 +126,14 @@ class ActivityAggregator:
                         deltas.append(delta)
                     avg_turn_time = sum(deltas) / len(deltas) if deltas else None
 
+                # Compute total frustration from USER turns
+                frustration_sum = sum(
+                    t.frustration_score
+                    for t in turns
+                    if t.actor == "USER" and t.frustration_score is not None
+                )
+                total_frustration = frustration_sum if frustration_sum > 0 else None
+
                 # Upsert agent metric
                 self._upsert_metric(
                     db.session,
@@ -135,6 +144,7 @@ class ActivityAggregator:
                     turn_count=turn_count,
                     avg_turn_time_seconds=avg_turn_time,
                     active_agents=None,
+                    total_frustration=total_frustration,
                 )
                 stats["agents"] += 1
 
@@ -145,18 +155,23 @@ class ActivityAggregator:
                 if avg_turn_time is not None:
                     project_turn_time_sums[pid] = project_turn_time_sums.get(pid, 0.0) + avg_turn_time * (turn_count - 1)
                     project_turn_time_counts[pid] = project_turn_time_counts.get(pid, 0) + (turn_count - 1)
+                if total_frustration is not None:
+                    project_frustration[pid] = project_frustration.get(pid, 0) + total_frustration
 
             # --- Project-level metrics ---
             total_turn_count = 0
             total_active_agents = 0
             total_turn_time_sum = 0.0
             total_turn_time_count = 0
+            total_frustration_sum = 0
 
             for pid, turn_count in project_turn_counts.items():
                 active_count = project_agent_counts.get(pid, 0)
                 avg_turn_time = None
                 if pid in project_turn_time_counts and project_turn_time_counts[pid] > 0:
                     avg_turn_time = project_turn_time_sums[pid] / project_turn_time_counts[pid]
+
+                pid_frustration = project_frustration.get(pid)
 
                 self._upsert_metric(
                     db.session,
@@ -167,6 +182,7 @@ class ActivityAggregator:
                     turn_count=turn_count,
                     avg_turn_time_seconds=avg_turn_time,
                     active_agents=active_count,
+                    total_frustration=pid_frustration,
                 )
                 stats["projects"] += 1
 
@@ -176,6 +192,8 @@ class ActivityAggregator:
                 if pid in project_turn_time_counts:
                     total_turn_time_sum += project_turn_time_sums.get(pid, 0.0)
                     total_turn_time_count += project_turn_time_counts.get(pid, 0)
+                if pid_frustration is not None:
+                    total_frustration_sum += pid_frustration
 
             # --- Overall-level metric ---
             if total_turn_count > 0:
@@ -192,6 +210,7 @@ class ActivityAggregator:
                     turn_count=total_turn_count,
                     avg_turn_time_seconds=overall_avg,
                     active_agents=total_active_agents,
+                    total_frustration=total_frustration_sum if total_frustration_sum > 0 else None,
                 )
                 stats["overall"] = 1
 
@@ -237,6 +256,7 @@ class ActivityAggregator:
         turn_count: int,
         avg_turn_time_seconds: float | None,
         active_agents: int | None,
+        total_frustration: int | None = None,
     ) -> None:
         """Upsert an ActivityMetric record (update if bucket exists, else create)."""
         # Build filter for finding existing record
@@ -261,6 +281,7 @@ class ActivityAggregator:
             existing.turn_count = turn_count
             existing.avg_turn_time_seconds = avg_turn_time_seconds
             existing.active_agents = active_agents
+            existing.total_frustration = total_frustration
         else:
             metric = ActivityMetric(
                 bucket_start=bucket_start,
@@ -270,5 +291,6 @@ class ActivityAggregator:
                 turn_count=turn_count,
                 avg_turn_time_seconds=avg_turn_time_seconds,
                 active_agents=active_agents,
+                total_frustration=total_frustration,
             )
             session.add(metric)

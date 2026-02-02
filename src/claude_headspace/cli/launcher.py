@@ -414,12 +414,14 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     print(f"Registered agent #{response_data['agent_id']}")
 
-    # Detect claudec for Input Bridge
-    claudec_path = detect_claudec()
-    if claudec_path:
-        print(f"Input Bridge: enabled (claudec detected)")
-    else:
-        print(f"Input Bridge: unavailable (claudec not found)")
+    # Detect claudec for Input Bridge (opt-in via --bridge)
+    claudec_path = None
+    if getattr(args, "bridge", False):
+        claudec_path = detect_claudec()
+        if claudec_path:
+            print("Input Bridge: enabled (claudec detected)")
+        else:
+            print("Input Bridge: unavailable (claudec not found)", file=sys.stderr)
 
     # Set up environment
     env = setup_environment(server_url, session_uuid)
@@ -445,6 +447,12 @@ def create_parser() -> argparse.ArgumentParser:
     start_parser = subparsers.add_parser(
         "start",
         help="Start a monitored Claude Code session",
+    )
+    start_parser.add_argument(
+        "--bridge",
+        action="store_true",
+        default=False,
+        help="Enable Input Bridge (wrap claude with claudec for dashboard responses)",
     )
     start_parser.add_argument(
         "claude_args",

@@ -50,6 +50,14 @@
                     document.getElementById('overall-active-agents').textContent =
                         data.current.active_agents || 0;
 
+                    // Sum total frustration across all history entries for window total
+                    var totalFrustration = 0;
+                    data.history.forEach(function(h) {
+                        if (h.total_frustration != null) totalFrustration += h.total_frustration;
+                    });
+                    document.getElementById('overall-frustration').textContent =
+                        totalFrustration > 0 ? totalFrustration : 0;
+
                     ActivityPage._renderChart(data.history);
                 })
                 .catch(function(err) {
@@ -127,6 +135,65 @@
                 });
         },
 
+        _fillHourlyGaps: function(history) {
+            if (history.length < 2) return history;
+            var bucketMap = {};
+            history.forEach(function(h) {
+                var d = new Date(h.bucket_start);
+                var key = d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0') + 'T' +
+                    String(d.getHours()).padStart(2, '0');
+                bucketMap[key] = h;
+            });
+            var first = new Date(history[0].bucket_start);
+            var last = new Date(history[history.length - 1].bucket_start);
+            // Round to hour boundaries
+            first.setMinutes(0, 0, 0);
+            last.setMinutes(0, 0, 0);
+            var result = [];
+            var cursor = new Date(first);
+            while (cursor <= last) {
+                var key = cursor.getFullYear() + '-' +
+                    String(cursor.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(cursor.getDate()).padStart(2, '0') + 'T' +
+                    String(cursor.getHours()).padStart(2, '0');
+                if (bucketMap[key]) {
+                    result.push(bucketMap[key]);
+                } else {
+                    result.push({
+                        bucket_start: cursor.toISOString(),
+                        turn_count: 0,
+                        avg_turn_time_seconds: null,
+                        active_agents: null,
+                        total_frustration: null
+                    });
+                }
+                cursor = new Date(cursor.getTime() + 3600000); // +1 hour
+            }
+            return result;
+        },
+
+        _aggregateByDay: function(history) {
+            var dayMap = {};
+            history.forEach(function(h) {
+                var d = new Date(h.bucket_start);
+                var key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+                if (!dayMap[key]) {
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, bucket_start: h.bucket_start };
+                }
+                dayMap[key].turn_count += h.turn_count;
+                if (h.total_frustration != null) {
+                    dayMap[key].total_frustration += h.total_frustration;
+                }
+            });
+            return Object.keys(dayMap).sort().map(function(k) {
+                var entry = dayMap[k];
+                if (entry.total_frustration === 0) entry.total_frustration = null;
+                return entry;
+            });
+        },
+
         _renderChart: function(history) {
             var canvas = document.getElementById('activity-chart');
             var chartEmpty = document.getElementById('chart-empty');
@@ -138,39 +205,109 @@
                 return;
             }
 
+            // Check if any turns exist at all
+            var hasAnyTurns = history.some(function(h) { return h.turn_count > 0; });
+            if (!hasAnyTurns) {
+                if (chart) { chart.destroy(); chart = null; }
+                canvas.style.display = 'none';
+                chartEmpty.classList.remove('hidden');
+                return;
+            }
+
+            // Aggregate by day for week/month views, fill hourly gaps for day view
+            var isAggregated = (currentWindow === 'week' || currentWindow === 'month');
+            if (isAggregated) {
+                // Filter zeros before aggregation for week/month (no timeline continuity needed)
+                history = history.filter(function(h) { return h.turn_count > 0; });
+                history = this._aggregateByDay(history);
+            } else {
+                // Day view: fill in missing hours so x-axis is continuous
+                history = this._fillHourlyGaps(history);
+            }
+
             canvas.style.display = 'block';
             chartEmpty.classList.add('hidden');
 
             var labels = history.map(function(h) {
                 var d = new Date(h.bucket_start);
                 if (currentWindow === 'day') {
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return d.getHours().toString().padStart(2, '0') + ':00';
                 } else if (currentWindow === 'week') {
-                    return d.toLocaleDateString([], { weekday: 'short', hour: '2-digit' });
+                    return d.toLocaleDateString([], { weekday: 'long' });
                 } else {
                     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
                 }
             });
 
-            var turnData = history.map(function(h) { return h.turn_count; });
+            // For day view, use null for zero-turn hours so bars don't render but axis stays continuous
+            var turnData = history.map(function(h) {
+                return h.turn_count > 0 ? h.turn_count : null;
+            });
+
+            // Frustration data for line overlay
+            var frustrationData = history.map(function(h) {
+                return h.total_frustration != null ? h.total_frustration : null;
+            });
+            var hasFrustration = frustrationData.some(function(v) { return v != null && v > 0; });
+
+            // Capture reference for tooltip closure
+            var chartHistory = history;
 
             if (chart) { chart.destroy(); }
 
+            var datasets = [{
+                label: 'Turns',
+                data: turnData,
+                backgroundColor: 'rgba(86, 212, 221, 0.7)',
+                borderColor: 'rgba(86, 212, 221, 1)',
+                borderWidth: 1,
+                borderRadius: 3,
+                yAxisID: 'y',
+            }];
+
+            if (hasFrustration) {
+                datasets.push({
+                    label: 'Frustration',
+                    type: 'line',
+                    data: frustrationData,
+                    borderColor: 'rgba(255, 85, 85, 1)',
+                    backgroundColor: 'rgba(255, 85, 85, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: 'rgba(255, 85, 85, 1)',
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: false,
+                    yAxisID: 'y1',
+                });
+            }
+
+            var scales = {
+                x: {
+                    ticks: { color: 'rgba(255,255,255,0.4)', maxTicksLimit: 12 },
+                    grid: { color: 'rgba(255,255,255,0.06)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: 'rgba(255,255,255,0.4)', precision: 0 },
+                    grid: { color: 'rgba(255,255,255,0.06)' }
+                }
+            };
+
+            if (hasFrustration) {
+                scales.y1 = {
+                    position: 'right',
+                    beginAtZero: true,
+                    ticks: { color: 'rgba(255, 85, 85, 0.6)', precision: 0 },
+                    grid: { drawOnChartArea: false }
+                };
+            }
+
             chart = new Chart(canvas, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Turns',
-                        data: turnData,
-                        borderColor: 'rgba(86, 212, 221, 1)',
-                        backgroundColor: 'rgba(86, 212, 221, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 3,
-                        pointHoverRadius: 6,
-                    }]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
@@ -185,19 +322,30 @@
                                 title: function(items) {
                                     if (!items.length) return '';
                                     var idx = items[0].dataIndex;
-                                    var h = history[idx];
+                                    var h = chartHistory[idx];
                                     var d = new Date(h.bucket_start);
+                                    if (isAggregated) {
+                                        return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+                                    }
                                     return d.toLocaleString();
                                 },
                                 label: function(item) {
-                                    var idx = item.dataIndex;
-                                    var h = history[idx];
-                                    var lines = ['Turns: ' + h.turn_count];
-                                    if (h.avg_turn_time_seconds != null) {
-                                        lines.push('Avg time: ' + h.avg_turn_time_seconds.toFixed(1) + 's');
+                                    if (item.dataset.label === 'Frustration') {
+                                        return item.raw != null ? 'Frustration: ' + item.raw : null;
                                     }
-                                    if (h.active_agents != null) {
-                                        lines.push('Active agents: ' + h.active_agents);
+                                    var idx = item.dataIndex;
+                                    var h = chartHistory[idx];
+                                    var lines = ['Turns: ' + h.turn_count];
+                                    if (!isAggregated) {
+                                        if (h.avg_turn_time_seconds != null) {
+                                            lines.push('Avg time: ' + h.avg_turn_time_seconds.toFixed(1) + 's');
+                                        }
+                                        if (h.active_agents != null) {
+                                            lines.push('Active agents: ' + h.active_agents);
+                                        }
+                                    }
+                                    if (h.total_frustration != null && !hasFrustration) {
+                                        lines.push('Frustration: ' + h.total_frustration);
                                     }
                                     return lines;
                                 }
@@ -207,17 +355,7 @@
                             labels: { color: 'rgba(255,255,255,0.6)' }
                         }
                     },
-                    scales: {
-                        x: {
-                            ticks: { color: 'rgba(255,255,255,0.4)', maxTicksLimit: 12 },
-                            grid: { color: 'rgba(255,255,255,0.06)' }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            ticks: { color: 'rgba(255,255,255,0.4)', precision: 0 },
-                            grid: { color: 'rgba(255,255,255,0.06)' }
-                        }
-                    }
+                    scales: scales
                 }
             });
         },

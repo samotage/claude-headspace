@@ -198,7 +198,8 @@ For Tailwind projects: **ALWAYS take a screenshot after any styling change.** Ne
 **Rules:**
 - ALL custom CSS (non-Tailwind-utility rules) MUST be added to `static/css/src/input.css`
 - NEVER edit `static/css/main.css` directly — it is a build artifact
-- After adding custom CSS to `input.css`, rebuild with: `npx @tailwindcss/cli -i static/css/src/input.css -o static/css/main.css`
+- After adding custom CSS to `input.css`, rebuild with: `npx tailwindcss -i static/css/src/input.css -o static/css/main.css`
+- **CRITICAL: Use `npx tailwindcss` (v3), NOT `npx @tailwindcss/cli` (v4).** This project uses Tailwind v3. The v4 CLI produces incompatible output that destroys all existing styles.
 - When running a Tailwind build as part of other work, verify that no custom styles were lost by checking that all CSS class selectors used in templates still exist in the compiled output
 
 **Verification after any CSS build:**

@@ -331,6 +331,7 @@
             instructionEl.textContent = instruction;
             instructionEl.classList.remove('text-muted', 'italic');
             instructionEl.classList.add('text-primary', 'font-medium');
+            if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
         }
     }
 
@@ -357,6 +358,7 @@
                 taskSummary.classList.remove('text-secondary');
                 taskSummary.classList.add('text-green');
             }
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
         }
     }
 
@@ -385,6 +387,7 @@
             taskSummary.textContent = summary;
             taskSummary.classList.remove('text-green');
             taskSummary.classList.add('text-secondary');
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
         }
     }
 
@@ -491,6 +494,7 @@
                 instructionEl.classList.remove('text-primary', 'font-medium');
                 instructionEl.classList.add('text-muted', 'italic');
             }
+            if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
         }
 
         // Line 04: task summary / completion summary
@@ -505,6 +509,7 @@
                 taskSummary.classList.remove('text-green');
                 taskSummary.classList.add('text-secondary');
             }
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
         }
 
         // Footer: priority score and reason

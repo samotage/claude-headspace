@@ -43,6 +43,9 @@ class ActivityMetric(db.Model):
     active_agents: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
     )
+    total_frustration: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,

@@ -79,7 +79,7 @@ Flask application factory (`app.py`) with:
 python run.py                        # Start the server
 ./restart_server.sh                  # Restart running server
 flask db upgrade                     # Run pending migrations
-npx @tailwindcss/cli -i static/css/src/input.css -o static/css/main.css --watch  # Tailwind dev
+npx tailwindcss -i static/css/src/input.css -o static/css/main.css --watch  # Tailwind dev (v3)
 pytest tests/services/test_foo.py    # Run targeted tests (preferred)
 pytest tests/routes/ tests/services/ # Run relevant directories
 pytest                               # Full suite (~77 test files) -- only when asked
