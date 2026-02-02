@@ -81,6 +81,9 @@ DEFAULTS = {
             "enabled": True,
             "ttl_seconds": 300,
         },
+        "priority_scoring": {
+            "debounce_seconds": 5.0,
+        },
         "retry": {
             "max_attempts": 3,
             "base_delay_seconds": 1.0,

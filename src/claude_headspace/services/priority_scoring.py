@@ -11,17 +11,18 @@ from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
-DEBOUNCE_SECONDS = 5.0
-
 
 class PriorityScoringService:
     """Scores all active agents 0-100 using LLM inference with objective/waypoint context."""
 
-    def __init__(self, inference_service: InferenceService, app=None):
+    def __init__(self, inference_service: InferenceService, app=None, config: dict | None = None):
         self._inference = inference_service
         self._app = app
         self._debounce_timer: threading.Timer | None = None
         self._debounce_lock = threading.Lock()
+
+        ps_config = (config or {}).get("openrouter", {}).get("priority_scoring", {})
+        self._debounce_seconds = ps_config.get("debounce_seconds", 5.0)
 
     def score_all_agents(self, db_session) -> dict:
         """Score all active agents in a single batch inference call.
@@ -137,7 +138,7 @@ class PriorityScoringService:
                 self._debounce_timer.cancel()
 
             self._debounce_timer = threading.Timer(
-                DEBOUNCE_SECONDS,
+                self._debounce_seconds,
                 self.score_all_agents_async,
             )
             self._debounce_timer.daemon = True

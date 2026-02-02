@@ -145,6 +145,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     priority_scoring_service = PriorityScoringService(
         inference_service=inference_service,
         app=app,
+        config=config,
     )
     app.extensions["priority_scoring_service"] = priority_scoring_service
     logger.info("Priority scoring service initialized")

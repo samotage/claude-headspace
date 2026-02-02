@@ -20,7 +20,7 @@ def mock_inference():
 
 @pytest.fixture
 def service(mock_inference):
-    return PriorityScoringService(inference_service=mock_inference)
+    return PriorityScoringService(inference_service=mock_inference, config={})
 
 
 @pytest.fixture
@@ -346,22 +346,48 @@ class TestDebounceTrigger:
 
     def test_trigger_skipped_when_unavailable(self, mock_inference):
         mock_inference.is_available = False
-        service = PriorityScoringService(inference_service=mock_inference)
+        service = PriorityScoringService(inference_service=mock_inference, config={})
 
         with patch.object(service, "score_all_agents_async") as mock_async:
             service.trigger_scoring()
             mock_async.assert_not_called()
 
 
+class TestDebounceConfig:
+
+    def test_default_debounce_when_no_config(self, mock_inference):
+        service = PriorityScoringService(inference_service=mock_inference)
+        assert service._debounce_seconds == 5.0
+
+    def test_default_debounce_when_empty_config(self, mock_inference):
+        service = PriorityScoringService(inference_service=mock_inference, config={})
+        assert service._debounce_seconds == 5.0
+
+    def test_custom_debounce_from_config(self, mock_inference):
+        config = {"openrouter": {"priority_scoring": {"debounce_seconds": 10.0}}}
+        service = PriorityScoringService(inference_service=mock_inference, config=config)
+        assert service._debounce_seconds == 10.0
+
+    def test_debounce_used_in_trigger(self, mock_inference):
+        config = {"openrouter": {"priority_scoring": {"debounce_seconds": 2.0}}}
+        service = PriorityScoringService(inference_service=mock_inference, config=config)
+
+        with patch.object(service, "score_all_agents_async"):
+            service.trigger_scoring()
+            assert service._debounce_timer is not None
+            assert service._debounce_timer.interval == 2.0
+            service._debounce_timer.cancel()
+
+
 class TestAsyncScoring:
 
     def test_async_skipped_when_unavailable(self, mock_inference):
         mock_inference.is_available = False
-        service = PriorityScoringService(inference_service=mock_inference)
+        service = PriorityScoringService(inference_service=mock_inference, config={})
         service.score_all_agents_async()  # Should not raise
 
     def test_async_skipped_without_app(self, mock_inference):
-        service = PriorityScoringService(inference_service=mock_inference, app=None)
+        service = PriorityScoringService(inference_service=mock_inference, app=None, config={})
         service.score_all_agents_async()  # Should not raise
 
 
