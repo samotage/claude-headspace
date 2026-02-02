@@ -132,6 +132,10 @@ END_OF_TASK_SOFT_CLOSE_PATTERNS = [
 END_OF_TASK_HANDOFF_PATTERNS = [
     r"(?i)(?:you (?:can|should) now (?:be able to )?)",
     r"(?i)(?:everything (?:should be|is|looks|appears|seems) (?:working|in place|ready|set up|good|healthy|fine|correct))",
+    # "The change is live", "Server is running", "The fix is deployed"
+    r"(?i)(?:the (?:change|update|fix|edit|server|patch) is (?:live|running|deployed|applied|done|complete))",
+    # "Refresh the dashboard to verify", "Refresh to see the changes"
+    r"(?i)(?:refresh (?:the )?(?:dashboard|page|browser|view|app) to (?:verify|see|check|confirm))",
 ]
 
 # Continuation patterns (NEGATIVE guard -- vetoes end-of-task)

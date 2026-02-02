@@ -335,6 +335,11 @@ def dashboard():
     # Get current objective
     objective = db.session.query(Objective).first()
 
+    # Sort agents within each project by priority when prioritisation is enabled
+    if objective and objective.priority_enabled:
+        for project in projects_with_agents:
+            project["agents"] = sort_agents_by_priority(project["agents"])
+
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,

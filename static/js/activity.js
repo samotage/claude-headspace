@@ -244,11 +244,10 @@
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
-            // Frustration data for line overlay
+            // Frustration data for line overlay (always present)
             var frustrationData = history.map(function(h) {
                 return h.total_frustration != null ? h.total_frustration : null;
             });
-            var hasFrustration = frustrationData.some(function(v) { return v != null && v > 0; });
 
             // Capture reference for tooltip closure
             var chartHistory = history;
@@ -263,24 +262,20 @@
                 borderWidth: 1,
                 borderRadius: 3,
                 yAxisID: 'y',
+            }, {
+                label: 'Frustration',
+                type: 'line',
+                data: frustrationData,
+                borderColor: 'rgba(255, 85, 85, 1)',
+                backgroundColor: 'rgba(255, 85, 85, 0.1)',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: 'rgba(255, 85, 85, 1)',
+                tension: 0.3,
+                fill: false,
+                spanGaps: false,
+                yAxisID: 'y1',
             }];
-
-            if (hasFrustration) {
-                datasets.push({
-                    label: 'Frustration',
-                    type: 'line',
-                    data: frustrationData,
-                    borderColor: 'rgba(255, 85, 85, 1)',
-                    backgroundColor: 'rgba(255, 85, 85, 0.1)',
-                    borderWidth: 2,
-                    pointRadius: 3,
-                    pointBackgroundColor: 'rgba(255, 85, 85, 1)',
-                    tension: 0.3,
-                    fill: false,
-                    spanGaps: false,
-                    yAxisID: 'y1',
-                });
-            }
 
             var scales = {
                 x: {
@@ -291,17 +286,14 @@
                     beginAtZero: true,
                     ticks: { color: 'rgba(255,255,255,0.4)', precision: 0 },
                     grid: { color: 'rgba(255,255,255,0.06)' }
-                }
-            };
-
-            if (hasFrustration) {
-                scales.y1 = {
+                },
+                y1: {
                     position: 'right',
                     beginAtZero: true,
                     ticks: { color: 'rgba(255, 85, 85, 0.6)', precision: 0 },
                     grid: { drawOnChartArea: false }
-                };
-            }
+                }
+            };
 
             chart = new Chart(canvas, {
                 type: 'bar',
@@ -344,7 +336,7 @@
                                             lines.push('Active agents: ' + h.active_agents);
                                         }
                                     }
-                                    if (h.total_frustration != null && !hasFrustration) {
+                                    if (h.total_frustration != null) {
                                         lines.push('Frustration: ' + h.total_frustration);
                                     }
                                     return lines;
@@ -400,7 +392,14 @@
                     ActivityPage._escapeHtml(r.project.name) + '</h3>';
 
                 if (current) {
-                    html += '<div class="grid grid-cols-3 gap-3 mb-3">' +
+                    // Sum frustration across project history for window total
+                    var projFrustration = 0;
+                    if (r.metrics.history) {
+                        r.metrics.history.forEach(function(h) {
+                            if (h.total_frustration != null) projFrustration += h.total_frustration;
+                        });
+                    }
+                    html += '<div class="grid grid-cols-4 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value text-cyan">' + (current.turn_count || 0) + '</div>' +
                         '<div class="metric-card-label">Turns</div></div>' +
@@ -410,7 +409,10 @@
                         '</div><div class="metric-card-label">Avg Time</div></div>' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value text-green">' + (current.active_agents || 0) + '</div>' +
-                        '<div class="metric-card-label">Agents</div></div></div>';
+                        '<div class="metric-card-label">Agents</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-red">' + projFrustration + '</div>' +
+                        '<div class="metric-card-label">Frustration</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
@@ -426,10 +428,20 @@
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
                         if (ac) {
+                            // Sum frustration across agent history for window total
+                            var agentFrustration = 0;
+                            if (ad.metrics.history) {
+                                ad.metrics.history.forEach(function(h) {
+                                    if (h.total_frustration != null) agentFrustration += h.total_frustration;
+                                });
+                            }
                             html += '<div class="agent-metric-stats">' +
                                 '<span><span class="stat-value">' + ac.turn_count + '</span><span class="stat-label">turns</span></span>';
                             if (ac.avg_turn_time_seconds != null) {
                                 html += '<span><span class="stat-value">' + ac.avg_turn_time_seconds.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
+                            }
+                            if (agentFrustration > 0) {
+                                html += '<span><span class="stat-value text-red">' + agentFrustration + '</span><span class="stat-label">frust</span></span>';
                             }
                             html += '</div>';
                         } else {
