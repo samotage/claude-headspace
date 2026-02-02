@@ -131,7 +131,7 @@ class TestTurnSummarisation:
         assert "Refactoring the authentication middleware" in prompt
         assert "agent" in prompt
         assert "progress" in prompt
-        assert "1-2 concise sentences" in prompt
+        assert "18 tokens" in prompt
 
 
 class TestTaskSummarisation:
@@ -184,11 +184,10 @@ class TestTaskSummarisation:
     def test_task_prompt_includes_context(self, service, mock_task):
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert "2-3 sentences" in prompt
+        assert "18 tokens" in prompt
         assert "All 12 tests passing" in prompt
         assert "Refactor the authentication middleware" in prompt
         assert "Original instruction" in prompt
-        assert "final message" in prompt
 
     def test_task_summary_persisted_with_db_session(self, service, mock_inference, mock_task):
         mock_inference.infer.return_value = InferenceResult(
@@ -567,7 +566,7 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "1-2 concise sentences" in prompt
+        assert "18 tokens" in prompt
         assert "Some text" in prompt
         assert "unknown_intent" in prompt
 

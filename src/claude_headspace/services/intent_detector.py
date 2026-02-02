@@ -78,6 +78,10 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:the PR is ready for review)",
     r"(?i)(?:committed to branch|changes have been pushed)",
     r"(?i)(?:here'?s a summary of what was done)",
+    # Test result summaries (e.g. "All 68 tests pass", "12 tests passed")
+    r"(?i)(?:all \d+ tests? pass(?:ed|ing|es)?)",
+    r"(?i)(?:\d+ tests? pass(?:ed|ing|es)?[,.]?\s*\d+ fail)",
+    r"(?i)(?:\d+ passed)",
 ]
 
 # Completion opener patterns — "Done." / "Complete." etc. at start of a line, followed by detail
@@ -93,6 +97,10 @@ END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?i)(?:here are the (?:changes|updates|modifications) I (?:made|implemented))",
     r"(?i)(?:to (?:summarise|summarize|recap)|in summary)",
     r"(?i)(?:the following files were (?:modified|created|updated|changed):)",
+    # Broader summary openers (e.g. "Here's what was changed:", "Here's what I did:")
+    r"(?i)(?:here'?s what (?:was|I) (?:changed|did|updated|implemented|fixed|added))",
+    # Numbered change summaries (e.g. "9 prompts updated", "3 files changed")
+    r"(?i)(?:\d+ (?:prompts?|files?|tests?|assertions?|functions?) (?:updated|changed|modified|added|removed|fixed|created))",
 ]
 
 # End-of-task: soft-close offers (open-ended, work is done)

@@ -561,6 +561,54 @@ class TestExpandedCompletionPatterns:
         # Now detected as END_OF_TASK (structured summary) rather than COMPLETION
         assert result.intent == TurnIntent.END_OF_TASK
 
+    def test_all_68_tests_pass(self):
+        """'All 68 tests pass' with a number should be COMPLETION."""
+        result = detect_agent_intent("All 68 tests pass.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_12_tests_passed(self):
+        """'All 12 tests passed' past tense with number should be COMPLETION."""
+        result = detect_agent_intent("All 12 tests passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_68_passed(self):
+        """'68 passed' should be COMPLETION."""
+        result = detect_agent_intent("68 passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_real_world_test_summary_with_changes(self):
+        """Real-world output: test results + summary of changes → END_OF_TASK."""
+        text = (
+            "All 68 tests pass. Here's a summary of what was changed:\n\n"
+            "prompt_registry.py — 9 prompts updated:\n"
+            "- turn_question changed from 1-2 sentences to 18 tokens\n"
+            "- task_completion changed from 2-3 sentences to 18 tokens\n\n"
+            "Tests updated in test_prompt_registry.py (3 assertions) to match."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_summary_of_what_was_changed(self):
+        """'Here's a summary of what was changed' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "Here's a summary of what was changed:\n- Item 1\n- Item 2"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_heres_what_i_did(self):
+        """'Here's what I did' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "Here's what I did:\n- Updated the config\n- Fixed tests"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_numbered_change_summary(self):
+        """'9 prompts updated' change count should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "9 prompts updated:\n- turn_question\n- turn_completion"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+
 
 class TestCompletionFalsePositiveFix:
     """Tests that the tightened completion pattern rejects mid-sentence matches."""

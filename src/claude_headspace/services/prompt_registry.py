@@ -13,33 +13,33 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "User command: {text}"
     ),
     "turn_question": (
-        "Summarise what the agent is asking the user in 1-2 concise sentences.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long what the agent is asking the user:\n\n"
         "{instruction_context}"
         "Agent question: {text}"
     ),
     "turn_completion": (
-        "Summarise what the agent accomplished in 1-2 concise sentences.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long what the agent accomplished:\n\n"
         "{instruction_context}"
         "Agent completion message: {text}"
     ),
     "turn_progress": (
-        "Summarise what progress the agent has made in 1-2 concise sentences.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long the current progress of the agent:\n\n"
         "{instruction_context}"
         "Agent progress update: {text}"
     ),
     "turn_answer": (
-        "Summarise what information the user provided in 1-2 concise sentences.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long what information the user provided:\n\n"
         "{instruction_context}"
         "User answer: {text}"
     ),
     "turn_end_of_task": (
-        "Summarise the final outcome of this task in 1-2 concise sentences.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long the final outcome of this task:\n\n"
         "{instruction_context}"
         "Final message: {text}"
     ),
     "turn_default": (
-        "Summarise this turn in 1-2 concise sentences focusing on "
-        "what action was taken or requested.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long "
+        "the action taken or requested:\n\n"
         "{instruction_context}"
         "Turn: {text}\n"
         "Actor: {actor}\n"
@@ -48,23 +48,21 @@ _PROMPT_TEMPLATES: dict[str, str] = {
 
     # --- Summarisation: task completion ---
     "task_completion": (
-        "Summarise what was accomplished in this completed task in 2-3 sentences. "
-        "Describe the outcome relative to what was originally asked.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long what was accomplished relative to the original instruction:\n\n"
         "Original instruction: {instruction}\n"
         "Agent's final message: {final_turn_text}"
     ),
 
     # Task completion when no final agent message available — uses turn activity
     "task_completion_from_activity": (
-        "Summarise what was accomplished in this completed task in 2-3 sentences. "
-        "Describe the outcome relative to what was originally asked.\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long what was accomplished relative to the original instruction:\n\n"
         "Original instruction: {instruction}\n\n"
         "Activity during this task:\n{turn_activity}"
     ),
 
     # --- Summarisation: instruction ---
     "instruction": (
-        "Summarise a very short and concise sentence around 18 tokens long the following command as in instruction:\n\n"
+        "Summarise in a very short and concise sentence around 18 tokens long the following command as an instruction:\n\n"
         "Focus on the core task or goal.\n\n"
         "User command: {command_text}"
     ),

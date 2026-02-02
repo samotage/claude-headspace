@@ -99,7 +99,7 @@ class TestTurnPrompts:
             actor="agent",
             intent="unknown",
         )
-        assert "1-2 concise sentences" in result
+        assert "18 tokens" in result
         assert "Some text" in result
         assert "agent" in result
         assert "unknown" in result
@@ -114,7 +114,7 @@ class TestTaskPrompts:
             instruction="Refactor auth middleware",
             final_turn_text="All 12 tests passing",
         )
-        assert "2-3 sentences" in result
+        assert "18 tokens" in result
         assert "Refactor auth middleware" in result
         assert "All 12 tests passing" in result
         assert "Original instruction" in result
@@ -125,7 +125,7 @@ class TestTaskPrompts:
             instruction="Refactor auth middleware",
             turn_activity="- [AGENT/progress] Working on middleware\n- [AGENT/question] Which pattern?",
         )
-        assert "2-3 sentences" in result
+        assert "18 tokens" in result
         assert "Refactor auth middleware" in result
         assert "Activity during this task" in result
         assert "Working on middleware" in result
