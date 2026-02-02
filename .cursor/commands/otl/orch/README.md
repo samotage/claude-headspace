@@ -164,8 +164,9 @@ Process multiple PRDs with minimal human intervention (for trusted PRDs):
      - Auto-approve proposal reviews
      - Auto-approve human reviews after tests pass
      - Auto-continue after Ralph loop test fixes
+     - **Auto-merge PRs** via squash merge (falls back to manual if merge fails)
      - Send Slack notifications at each auto-approved checkpoint
-     - STOP only for critical errors (PRD gaps, git issues, validation failures)
+     - STOP only for critical errors (PRD gaps, git issues, validation failures, auto-merge failure)
 
 3. **Monitor via Slack:**
    All checkpoints send Slack notifications, so you can monitor progress remotely
@@ -222,7 +223,7 @@ Check queue status or manually run specific phases:
 | 35      | `prd-build`           | Sub-agent: BUILD (reads proposal-summary.md)                    |
 | 40      | `prd-test`            | Sub-agent: TEST with Ralph loop and human review                |
 | 45      | `prd-validate-build`  | Sub-agent: VALIDATE spec compliance before commit               |
-| 50      | `prd-finalize`        | Sub-agent: Commit (with polling), PR creation, merge checkpoint |
+| 50      | `prd-finalize`        | Sub-agent: Commit (with polling), PR creation, merge (auto-squash in bulk mode) |
 | 60      | `prd-post-merge`      | Sub-agent: POST-MERGE cleanup, archive, queue advance           |
 
 ### Utility Commands (91-93)
@@ -429,7 +430,7 @@ Uses: `ruby orch/orchestrator.rb validate`
 
 ### 50: prd-finalize
 
-**Purpose:** FINALIZE phase - automatic commit with polling, PR creation, and merge checkpoint
+**Purpose:** FINALIZE phase - automatic commit with polling, PR creation, and merge (auto-squash in bulk mode)
 
 #### Inputs
 
@@ -438,6 +439,7 @@ Reads from state.yaml:
 - `change_name` - The change to finalize
 - `prd_path` - The PRD file path
 - `branch` - The feature branch
+- `bulk_mode` - Processing mode (true/false)
 
 #### What It Does
 
@@ -451,7 +453,9 @@ Reads from state.yaml:
 6. Verifies working tree is clean after commit
 7. Pushes and creates PR targeting development
 8. Opens PR in browser
-9. Awaits merge confirmation
+9. **Merge PR:**
+   - **Bulk Mode:** Auto-merges via `gh pr merge --squash`. If auto-merge fails (conflicts, not mergeable), falls back to manual checkpoint with notification
+   - **Default Mode:** Manual merge checkpoint (user merges on GitHub, then confirms)
 10. **Spawns `60: prd-post-merge`** when merged
 
 Uses: `ruby orch/orchestrator.rb finalize`
@@ -460,9 +464,9 @@ Uses: `ruby orch/orchestrator.rb finalize`
 
 #### Checkpoints
 
-1. **PR Merge** (after PR created - always requires user action)
-
-**Removed checkpoint:** Commit confirmation is no longer needed as the Ruby command handles the entire commit process automatically with comprehensive error handling.
+1. **PR Merge** (after PR created):
+   - **Default Mode:** Manual checkpoint - always requires user action
+   - **Bulk Mode:** Auto-merged via squash. Falls back to manual checkpoint if auto-merge fails (merge conflicts, GitHub API error). The fallback does NOT fail the run - user can resolve and continue.
 
 **Standalone Usage:** Can also be run independently to complete a build manually.
 
@@ -622,7 +626,7 @@ flowchart TB
     subgraph FinalizePhase["50: prd-finalize"]
         CommitChanges["Commit Changes"]
         CreatePR["Create PR"]
-        MergeCP["Merge Checkpoint"]
+        MergeCP["Merge PR\n(auto-squash in bulk mode\nmanual in default mode)"]
 
         CommitChanges --> CreatePR
         CreatePR --> MergeCP
@@ -678,13 +682,13 @@ flowchart TB
 | `awaiting_human_review`       | After tests pass                      | Approved, Needs fixes, Stop, Skip issues | **Auto-approved** in bulk mode             |
 | `awaiting_test_review`        | Ralph loop exhausted (2 failures)     | Fix manually, Skip tests, Abort          | **Auto-selects "Skip tests"** in bulk mode |
 | `spec_compliance_failed_review` | Compliance loop exhausted (2 failures) | Fix manually, Skip validation, Abort   | Same in both modes (ERROR)                 |
-| `awaiting_merge`              | After PR created                      | Merged, Abort                            | Same in both modes (requires user action)  |
+| `awaiting_merge`              | After PR created                      | Merged, Abort                            | **Auto-merged (squash)** in bulk mode; falls back to manual on failure |
 
 **Legend:**
 
 - **ERROR checkpoints** (always stop): `validation_failure`, `openspec_not_empty`, `awaiting_clarification`, `spec_compliance_failed_review`
 - **Review checkpoints** (auto-approved in bulk mode): `dirty_tree`, `wrong_branch`, `awaiting_proposal_approval`, `awaiting_human_review`, `awaiting_test_review`
-- **Action checkpoints** (always require user action): `awaiting_merge`
+- **Merge checkpoint** (auto-merged in bulk mode with fallback): `awaiting_merge` - auto-squash merges in bulk mode; falls back to manual checkpoint if merge fails
 
 ### Checkpoint Patterns
 
@@ -704,29 +708,35 @@ These can be auto-approved when bulk_mode is enabled:
 These ALWAYS require human interaction, regardless of bulk_mode:
 
 - **Clarification Needed** (Command 30) - ALWAYS stops
-- **PR Merge Confirmation** (Command 50) - ALWAYS stops
+- **Spec Compliance Failure** (Command 45) - ALWAYS stops
 - **Pattern:** No bulk_mode checks, always present to human
-- **Use case:** Critical safety gates, irreversible operations, error conditions
+- **Use case:** Critical safety gates, error conditions requiring human judgment
+
+#### 3. Auto-Execute with Fallback (Hybrid Pattern)
+
+These auto-execute in bulk mode but fall back to manual checkpoint on failure:
+
+- **PR Merge** (Command 50) - Auto-squash merges in bulk mode; falls back to manual if merge fails
+- **Pattern:** `IF bulk_mode is TRUE:` attempt auto-execute; on failure, fall back to manual checkpoint (does NOT fail the run)
+- **Use case:** Operations that are routine in the happy path but may need human intervention on failure
 
 #### Creating New Checkpoints
 
 When adding a new checkpoint, ask:
 
-1. **Is this a safety gate?** → MANDATORY checkpoint (ERROR pattern)
-2. **Is this irreversible?** → MANDATORY checkpoint (ERROR pattern)
-3. **Is this an error condition?** → MANDATORY checkpoint (ERROR pattern)
-4. **Is this a review/approval?** → CONDITIONAL checkpoint (bulk_mode aware)
+1. **Is this an error condition requiring judgment?** → MANDATORY checkpoint (ERROR pattern)
+2. **Is this a review/approval?** → CONDITIONAL checkpoint (bulk_mode aware)
+3. **Is this a routine action that can fail?** → AUTO-EXECUTE WITH FALLBACK (hybrid pattern)
+4. **Can it be safely retried by the user?** → Consider hybrid pattern with fallback
 
 **Example: PR Merge Checkpoint (Command 50)**
 
-The PR merge checkpoint is implemented as a MANDATORY checkpoint because:
+The PR merge checkpoint uses the **hybrid auto-execute with fallback** pattern:
 
-- It's a **safety gate** preventing auto-merge of broken PRs
-- It's **irreversible** - changes go to development branch
-- Requires **code review verification**
-- Must **never be bypassed** by automation
-
-See `orch/commands/finalize.rb` for implementation details including the `MERGE_CHECKPOINT_MANDATORY` constant and safeguards.
+- In **bulk mode**: Auto-merges via `gh pr merge --squash`, verifies merge succeeded
+- If auto-merge **fails** (conflicts, not mergeable): Falls back to manual checkpoint with error notification - user resolves on GitHub, merges manually, then continues
+- In **default mode**: Manual checkpoint - user merges on GitHub and confirms
+- The fallback does **NOT** fail the run - the user can fix the issue and continue
 
 ### Notification Types
 

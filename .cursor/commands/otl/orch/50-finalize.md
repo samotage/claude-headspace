@@ -32,6 +32,7 @@ Read the YAML to get:
 - `change_name` - The change being processed
 - `prd_path` - The PRD file path
 - `branch` - The feature branch
+- `bulk_mode` - Processing mode (true/false)
 
 ---
 
@@ -147,25 +148,64 @@ gh pr view --web
 
 ---
 
-## CRITICAL: Mandatory Merge Checkpoint
+## Merge Checkpoint (Bulk Mode Aware)
 
-**⚠️  This checkpoint ALWAYS stops in both Default and Bulk modes.**
+**This checkpoint behaves differently based on processing mode:**
 
-Unlike proposal review (Command 30) and human testing review (Command 40) which can be
-auto-approved in bulk_mode, the PR merge checkpoint requires explicit human confirmation
-in ALL modes because:
-
-- **Safety gate:** Prevents auto-merging of broken or incomplete PRs
-- **Code review enforcement:** Ensures the PR was reviewed before merge
-- **Quality control:** Human must verify the PR is actually ready to merge
-- **No rollback:** After merge, changes are in development branch - no undo
-
-This follows the ERROR checkpoint pattern from Command 30. It cannot and should not
-be bypassed by bulk_mode automation.
+- **Default Mode:** ALWAYS stops and requires manual merge confirmation (safety gate)
+- **Bulk Mode:** Auto-merges the PR using `gh pr merge --squash`, with fallback to manual checkpoint on failure
 
 ---
 
-### Step 5: Notify and Merge Checkpoint
+### Step 5: Merge PR
+
+**Check bulk_mode from state loaded in Step 0.**
+
+#### IF bulk_mode is TRUE: Auto-Merge
+
+**5.1 Send notification that auto-merge is starting:**
+
+```bash
+ruby orch/notifier.rb decision_needed --change-name "[change_name]" --message "BULK MODE: Auto-merging PR via squash merge" --checkpoint "auto_merge_starting" --action "No action needed - auto-merging"
+```
+
+**5.2 Verify PR is mergeable:**
+
+```bash
+gh pr view --json mergeable,mergeStateStatus
+```
+
+Check the output:
+- `mergeable` must be `MERGEABLE`
+- If NOT mergeable (conflicts, etc.) → **go to Step 5 FALLBACK below**
+
+**5.3 Auto-merge the PR with squash:**
+
+```bash
+gh pr merge --squash --body "Auto-merged by orchestration engine (bulk mode)"
+```
+
+**5.4 Verify merge succeeded:**
+
+```bash
+gh pr view --json state
+```
+
+Check that `state` is `MERGED`.
+
+- **If MERGED:** Display auto-merge confirmation and continue to SPAWN NEXT COMMAND
+
+```
+🤖 BULK MODE: Auto-merged PR for [change_name] via squash merge
+```
+
+```bash
+ruby orch/notifier.rb decision_needed --change-name "[change_name]" --message "BULK MODE: PR auto-merged successfully via squash" --checkpoint "auto_merge_complete" --action "No action needed - continuing to post-merge"
+```
+
+- **If NOT MERGED:** → **go to Step 5 FALLBACK below**
+
+#### IF bulk_mode is FALSE (Default Mode): Manual Merge Checkpoint
 
 ```bash
 ruby orch/notifier.rb decision_needed --change-name "[change_name]" --message "PR created and ready for merge" --checkpoint "awaiting_merge" --action "Review and merge the PR, then continue"
@@ -173,24 +213,56 @@ ruby orch/notifier.rb decision_needed --change-name "[change_name]" --message "P
 
 **MANDATORY CHECKPOINT: Use AskUserQuestion**
 
-**NOTE: This is an ERROR checkpoint - it ALWAYS stops in both Default and Bulk modes.**
-
 - Question: "PR opened in browser. After merging, select continue."
 - Options:
   - "Merged - continue to post-merge cleanup"
   - "Abort - stop processing this PRD"
 
-**No auto-approval is permitted - user must manually select an option.**
-
 **If "Merged":**
 
 - Update state to indicate merge complete
-- Proceed to return to coordinator
+- Proceed to SPAWN NEXT COMMAND
 
 **If "Abort":**
 
 ```bash
 ruby orch/orchestrator.rb queue fail --prd-path "[prd_path]" --reason "User aborted at merge"
+```
+
+- STOP and return to coordinator with abort status
+
+---
+
+#### Step 5 FALLBACK: Auto-Merge Failed (Bulk Mode Only)
+
+**This fallback activates when bulk_mode is TRUE but the auto-merge could not complete.**
+
+Possible causes: merge conflicts, PR not in mergeable state, GitHub API error.
+
+**5F.1 Notify of failure:**
+
+```bash
+ruby orch/notifier.rb error --change-name "[change_name]" --message "BULK MODE: Auto-merge failed - falling back to manual merge" --phase "finalize" --resolution "Review the PR on GitHub, resolve any issues, merge manually, then continue"
+```
+
+**5F.2 Fall back to manual checkpoint:**
+
+**CHECKPOINT: Use AskUserQuestion**
+
+- Question: "Auto-merge failed for [change_name]. The PR has been created but could not be automatically merged. Please resolve the issue on GitHub (conflicts, CI, etc.), merge the PR manually, then select continue."
+- Options:
+  - "Merged - continue to post-merge cleanup"
+  - "Abort - stop processing this PRD"
+
+**If "Merged":**
+
+- Update state to indicate merge complete
+- Proceed to SPAWN NEXT COMMAND
+
+**If "Abort":**
+
+```bash
+ruby orch/orchestrator.rb queue fail --prd-path "[prd_path]" --reason "User aborted at merge after auto-merge failure"
 ```
 
 - STOP and return to coordinator with abort status
@@ -220,7 +292,7 @@ Finalize Steps:
   ✓ PRD moved to done/
   ✓ All changes committed (with polling)
   ✓ PR created
-  ✓ PR merged
+  ✓ PR merged [auto-squash in bulk mode / manual in default mode]
 
 Spawning post-merge command...
 ═══════════════════════════════════════════
@@ -305,6 +377,13 @@ The finalize command includes comprehensive error handling:
    - Indicates files that weren't included in commit
    - Should not occur with polling approach
    - Investigate filesystem or git issues
+
+6. **auto_merge_failed** - PR could not be auto-merged in bulk mode
+   - PR may have merge conflicts
+   - PR may not be in a mergeable state
+   - GitHub API error
+   - Falls back to manual merge checkpoint (does NOT fail the run)
+   - User resolves the issue on GitHub, merges manually, then continues
 
 **On any error:**
 

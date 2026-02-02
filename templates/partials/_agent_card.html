@@ -1,0 +1,70 @@
+<article class="bg-elevated rounded-lg border border-border overflow-hidden focus-target transition-shadow duration-300"
+         data-agent-id="{{ agent.id }}"
+         data-state="{{ agent.state_name }}"
+         aria-labelledby="agent-{{ agent.id }}-heading">
+  <div class="card-editor">
+    <!-- 01: Header row -->
+    <div class="card-line">
+      <span class="line-num">01</span>
+      <div class="line-content flex items-center justify-between">
+        <div class="flex flex-wrap items-center gap-2">
+          {% if agent.is_active %}
+            <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
+                  role="status">ACTIVE</span>
+          {% else %}
+            <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
+                  role="status">IDLE</span>
+          {% endif %}
+          <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono truncate max-w-[140px] sm:max-w-none">#{{ agent.session_uuid }}</h3>
+          <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>
+        </div>
+        <span class="uptime text-muted text-xs hidden sm:inline whitespace-nowrap">up {{ agent.uptime }}</span>
+      </div>
+    </div>
+    <!-- 02: State strip (clickable - focuses iTerm) -->
+    <div class="card-line">
+      <span class="line-num">02</span>
+      <div class="line-content">
+        <div class="state-bar state-strip clickable"
+             role="button" tabindex="0"
+             aria-label="Focus iTerm: {{ agent.state_info.label }}"
+             title="Click to focus this agent's iTerm window"
+             onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }})"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }});}">
+          <span class="state-label">{{ agent.state_info.label }}</span>
+        </div>
+      </div>
+    </div>
+    <!-- 03: Task instruction (primary line) -->
+    <div class="card-line">
+      <span class="line-num">03</span>
+      <div class="line-content">
+        {% if agent.task_instruction %}
+          <p class="task-instruction text-primary text-sm font-medium">{{ agent.task_instruction }}</p>
+        {% else %}
+          <p class="task-instruction text-muted text-sm italic">No active task</p>
+        {% endif %}
+      </div>
+    </div>
+    <!-- 04: Turn summary (active task) or completion summary (complete task) -->
+    <div class="card-line">
+      <span class="line-num">04</span>
+      <div class="line-content">
+        {% if agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE' %}
+          {% if agent.task_completion_summary %}
+            <p class="task-summary text-green text-sm italic">{{ agent.task_completion_summary }}</p>
+          {% else %}
+            <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+          {% endif %}
+        {% else %}
+          <p class="task-summary text-secondary text-sm italic">{{ agent.task_summary }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <!-- Priority footer -->
+  <div class="flex items-center gap-3 px-3 py-2 border-t border-border">
+    <span class="px-2 py-0.5 text-xs font-mono rounded border border-border text-secondary">{{ agent.priority }}</span>
+    <span class="text-muted text-xs italic">// {{ agent.priority_reason[:60] if agent.priority_reason else (agent.task_summary[:50] if agent.task_summary else 'Priority score') }}</span>
+  </div>
+</article>

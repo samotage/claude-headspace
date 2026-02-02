@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+
+{% block title %}Config - Claude Headspace{% endblock %}
+
+{% block content %}
+<style>
+    .cfg-card {
+        padding: 0 20px 10px 20px;
+    }
+    .cfg-section {
+        padding: 16px 20px;
+    }
+    .cfg-rows {
+        display: flex;
+        flex-direction: column;
+    }
+    .cfg-rows > .field-group {
+        padding: 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 40px;
+    }
+    .cfg-rows .cfg-label {
+        width: 180px;
+        flex-shrink: 0;
+    }
+    .cfg-rows .cfg-input {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .cfg-toggle-strip {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+    }
+    .cfg-toggle-strip > .field-group {
+        padding: 0;
+    }
+    @media (max-width: 640px) {
+        .cfg-rows > .field-group {
+            flex-wrap: wrap;
+        }
+        .cfg-rows .cfg-label {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <div class="max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold text-primary mb-6">Configuration</h2>
+
+            <form id="config-form" class="space-y-8">
+                <!-- Top save bar -->
+                <div class="flex items-center justify-end gap-3">
+                    <button type="button"
+                            id="refresh-btn-top"
+                            class="hidden px-6 py-2 bg-amber text-void font-medium rounded hover:bg-amber/90 transition-colors min-h-[44px]"
+                            title="Restart server to apply changes">
+                        Apply Changes (Restart Required)
+                    </button>
+                    <button type="submit"
+                            class="save-btn px-6 py-2 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors min-h-[44px] flex items-center gap-2">
+                        <span class="save-text">Save Configuration</span>
+                        <span class="loading-spinner hidden">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
+
+                {% for section in schema %}
+                <fieldset class="cfg-card bg-elevated rounded-lg border border-border">
+                    {# ── Section header ── #}
+                    <div class="px-5 py-3 border-b border-border flex items-center justify-between">
+                        <legend class="text-sm font-semibold text-cyan uppercase tracking-wider">{{ section.title }}</legend>
+                        <span class="text-xs text-muted">{{ section.fields | length }} fields</span>
+                    </div>
+
+                    {# ── API key warning for Inference section ── #}
+                    {% if section.name == 'openrouter' and not inference_available %}
+                    <div class="px-5 py-3 border-b border-amber/30 bg-amber/10">
+                        <div class="flex items-start gap-3">
+                            <svg class="w-5 h-5 text-amber flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-amber">OpenRouter API Key Not Configured</p>
+                                <p class="text-xs text-muted mt-1">Set <code class="text-secondary">OPENROUTER_API_KEY</code> in your <code class="text-secondary">.env</code> file and restart the server to enable inference features.</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {# ── Separate booleans from other fields ── #}
+                    {% set bool_fields = section.fields | selectattr('type', 'equalto', 'boolean') | list %}
+                    {% set other_fields = section.fields | rejectattr('type', 'equalto', 'boolean') | list %}
+
+                    <div class="cfg-section">
+                        {# ── Boolean toggles as inline items ── #}
+                        {% if bool_fields %}
+                        <div class="cfg-toggle-strip {% if other_fields %}mb-4 pb-4{% endif %}" {% if other_fields %}style="border-bottom: 1px solid var(--border);"{% endif %}>
+                            {% for field in bool_fields %}
+                            <div class="field-group flex items-center gap-3" data-section="{{ section.name }}" data-field="{{ field.name }}">
+                                <label for="{{ section.name }}-{{ field.name }}"
+                                       class="text-sm text-secondary">
+                                    {{ field.name | replace("_", " ") }}
+                                    {% if field.required %}<span class="text-amber">*</span>{% endif %}
+                                </label>
+                                <button type="button"
+                                        id="{{ section.name }}-{{ field.name }}"
+                                        class="toggle-btn relative w-12 h-6 rounded-full transition-colors {% if config[section.name][field.name] %}bg-cyan{% else %}bg-surface border border-border{% endif %}"
+                                        data-value="{{ 'true' if config[section.name][field.name] else 'false' }}"
+                                        aria-pressed="{{ 'true' if config[section.name][field.name] else 'false' }}"
+                                        aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                    <span class="toggle-dot absolute top-1 w-4 h-4 rounded-full bg-primary transition-all {% if config[section.name][field.name] %}left-7{% else %}left-1{% endif %}"></span>
+                                </button>
+                                <span class="toggle-label text-xs text-muted">
+                                    {{ 'Enabled' if config[section.name][field.name] else 'Disabled' }}
+                                </span>
+                                <p id="{{ section.name }}-{{ field.name }}-hint" class="hidden">{{ field.description }}</p>
+                                <p class="field-error text-xs text-red hidden" role="alert"></p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        {# ── Non-boolean fields as horizontal label : input rows ── #}
+                        {% if other_fields %}
+                        <div class="cfg-rows">
+                            {% for field in other_fields %}
+                        <div class="field-group"
+                             data-section="{{ section.name }}" data-field="{{ field.name }}">
+
+                            <div class="cfg-label">
+                                <label for="{{ section.name }}-{{ field.name }}"
+                                       class="text-sm text-secondary">
+                                    {{ field.name | replace("_", " ") }}{% if field.required %}<span class="text-amber ml-1">*</span>{% endif %}
+                                </label>
+                            </div>
+
+                            <div class="cfg-input">
+                                {% if field.type == 'password' %}
+                                <div class="relative flex-1" style="max-width: 300px;">
+                                    <input type="password"
+                                           id="{{ section.name }}-{{ field.name }}"
+                                           name="{{ section.name }}.{{ field.name }}"
+                                           value="{{ config[section.name][field.name] or '' }}"
+                                           class="field-input w-full px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan pr-10"
+                                           aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                    <button type="button"
+                                            class="password-toggle absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
+                                            aria-label="Toggle password visibility">
+                                        <svg class="eye-icon w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        <svg class="eye-off-icon w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                {% elif field.type == 'integer' or field.type == 'float' %}
+                                <input type="number"
+                                       id="{{ section.name }}-{{ field.name }}"
+                                       name="{{ section.name }}.{{ field.name }}"
+                                       value="{{ config[section.name][field.name] }}"
+                                       {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+                                       {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+                                       {% if field.type == 'float' %}step="0.1"{% else %}step="1"{% endif %}
+                                       class="field-input px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan"
+                                       style="width: 100px;"
+                                       aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                {% if field.min is defined and field.max is defined %}
+                                <span class="text-xs text-muted">({{ field.min }}&ndash;{{ field.max }})</span>
+                                {% endif %}
+
+                                {% else %}
+                                <input type="text"
+                                       id="{{ section.name }}-{{ field.name }}"
+                                       name="{{ section.name }}.{{ field.name }}"
+                                       value="{{ config[section.name][field.name] or '' }}"
+                                       class="field-input flex-1 px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan"
+                                       aria-describedby="{{ section.name }}-{{ field.name }}-hint">
+                                {% endif %}
+
+                                <p id="{{ section.name }}-{{ field.name }}-hint" class="hidden">{{ field.description }}</p>
+                                <p class="field-error text-xs text-red hidden" role="alert"></p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </fieldset>
+                {% endfor %}
+
+                <!-- Bottom save bar -->
+                <div class="flex items-center justify-end gap-3">
+                    <button type="button"
+                            id="refresh-btn"
+                            class="hidden px-6 py-2 bg-amber text-void font-medium rounded hover:bg-amber/90 transition-colors min-h-[44px]"
+                            title="Restart server to apply changes">
+                        Apply Changes (Restart Required)
+                    </button>
+                    <button type="submit"
+                            id="save-btn"
+                            class="save-btn px-6 py-2 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors min-h-[44px] flex items-center gap-2">
+                        <span class="save-text">Save Configuration</span>
+                        <span class="loading-spinner hidden">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+
+<!-- Toast container -->
+{% include "partials/_toast.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const form = document.getElementById('config-form');
+    const saveBtns = document.querySelectorAll('.save-btn');
+    const refreshBtns = document.querySelectorAll('#refresh-btn, #refresh-btn-top');
+
+    // Toggle button handling
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const currentValue = this.getAttribute('data-value') === 'true';
+            const newValue = !currentValue;
+
+            this.setAttribute('data-value', newValue);
+            this.setAttribute('aria-pressed', newValue);
+
+            // Update visual state
+            const dot = this.querySelector('.toggle-dot');
+            const label = this.nextElementSibling;
+
+            if (newValue) {
+                this.classList.remove('bg-surface', 'border', 'border-border');
+                this.classList.add('bg-cyan');
+                dot.classList.remove('left-1');
+                dot.classList.add('left-7');
+                label.textContent = 'Enabled';
+            } else {
+                this.classList.remove('bg-cyan');
+                this.classList.add('bg-surface', 'border', 'border-border');
+                dot.classList.remove('left-7');
+                dot.classList.add('left-1');
+                label.textContent = 'Disabled';
+            }
+        });
+    });
+
+    // Password visibility toggle
+    document.querySelectorAll('.password-toggle').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const input = this.parentElement.querySelector('input');
+            const eyeIcon = this.querySelector('.eye-icon');
+            const eyeOffIcon = this.querySelector('.eye-off-icon');
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                eyeIcon.classList.add('hidden');
+                eyeOffIcon.classList.remove('hidden');
+            } else {
+                input.type = 'password';
+                eyeIcon.classList.remove('hidden');
+                eyeOffIcon.classList.add('hidden');
+            }
+        });
+    });
+
+    // Collect form data
+    function collectFormData() {
+        const data = {};
+
+        document.querySelectorAll('.field-group').forEach(group => {
+            const section = group.dataset.section;
+            const field = group.dataset.field;
+
+            if (!data[section]) {
+                data[section] = {};
+            }
+
+            // Check for toggle button
+            const toggleBtn = group.querySelector('.toggle-btn');
+            if (toggleBtn) {
+                data[section][field] = toggleBtn.getAttribute('data-value') === 'true';
+                return;
+            }
+
+            // Check for input
+            const input = group.querySelector('.field-input');
+            if (input) {
+                let value = input.value;
+
+                // Type conversion
+                if (input.type === 'number') {
+                    if (input.step === '0.1') {
+                        value = parseFloat(value);
+                    } else {
+                        value = parseInt(value, 10);
+                    }
+                }
+
+                data[section][field] = value;
+            }
+        });
+
+        return data;
+    }
+
+    // Clear all errors
+    function clearErrors() {
+        document.querySelectorAll('.field-error').forEach(el => {
+            el.classList.add('hidden');
+            el.textContent = '';
+        });
+        document.querySelectorAll('.field-input').forEach(el => {
+            el.classList.remove('border-red');
+        });
+    }
+
+    // Show field error
+    function showFieldError(section, field, message) {
+        const group = document.querySelector(`.field-group[data-section="${section}"][data-field="${field}"]`);
+        if (!group) return;
+
+        const errorEl = group.querySelector('.field-error');
+        const inputEl = group.querySelector('.field-input');
+
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        if (inputEl) {
+            inputEl.classList.add('border-red');
+        }
+    }
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+
+        const messageEl = toast.querySelector('.toast-message');
+        if (messageEl) {
+            messageEl.textContent = message;
+        }
+
+        // Set color based on type
+        toast.classList.remove('bg-green', 'bg-red', 'bg-amber');
+        if (type === 'success') {
+            toast.classList.add('bg-green');
+        } else if (type === 'error') {
+            toast.classList.add('bg-red');
+        } else {
+            toast.classList.add('bg-amber');
+        }
+
+        toast.classList.remove('hidden');
+        toast.classList.add('toast-visible');
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('toast-visible');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 300);
+        }, 3000);
+    }
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        clearErrors();
+
+        // Show loading state
+        saveBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.querySelector('.save-text').classList.add('hidden');
+            btn.querySelector('.loading-spinner').classList.remove('hidden');
+        });
+
+        try {
+            const data = collectFormData();
+
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.status === 'ok') {
+                showToast('Configuration saved successfully', 'success');
+                refreshBtns.forEach(btn => btn.classList.remove('hidden'));
+            } else if (result.errors) {
+                // Show validation errors
+                result.errors.forEach(err => {
+                    showFieldError(err.section, err.field, err.message);
+                });
+                showToast('Please fix the errors above before saving', 'error');
+            } else {
+                showToast(result.message || 'Failed to save configuration', 'error');
+            }
+        } catch (err) {
+            console.error('Save error:', err);
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            // Reset loading state
+            saveBtns.forEach(btn => {
+                btn.disabled = false;
+                btn.querySelector('.save-text').classList.remove('hidden');
+                btn.querySelector('.loading-spinner').classList.add('hidden');
+            });
+        }
+    });
+
+    // Refresh buttons
+    refreshBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (confirm('This will restart the server. Continue?')) {
+                window.location.reload();
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

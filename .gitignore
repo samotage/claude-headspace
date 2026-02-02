@@ -26,13 +26,14 @@ build/
 
 # Logs
 *.log
+logs/
 data/logs/
 
 # Claude Headspace state files (created at runtime)
 .claude-headspace-*.json
 
-# User config (use config.yaml.example as template)
-config.yaml
+# User config overrides (optional)
+config.local.yaml
 
 # Orchestration working files (runtime state)
 orch/working/
@@ -46,3 +47,6 @@ data/headspace.yaml
 data/session_state.yaml
 data/state.yaml
 .coverage
+
+# E2E test screenshots
+tests/e2e/screenshots/

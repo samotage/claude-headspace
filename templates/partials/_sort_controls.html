@@ -1,0 +1,99 @@
+<!-- Sort Controls -->
+<div id="sort-controls" class="mb-4" role="group" aria-label="Sort options">
+    <!-- Desktop: Toggle buttons -->
+    <div class="hidden md:flex items-center gap-2">
+        <span class="text-muted text-sm mr-2 font-display">SORT:</span>
+        <button id="sort-by-project"
+                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'project' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
+                data-sort="project"
+                aria-pressed="{{ 'true' if sort_mode == 'project' else 'false' }}"
+                onclick="window.SortControls && window.SortControls.setSort('project')">
+            By Project
+        </button>
+        <button id="sort-by-priority"
+                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'priority' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
+                data-sort="priority"
+                aria-pressed="{{ 'true' if sort_mode == 'priority' else 'false' }}"
+                onclick="window.SortControls && window.SortControls.setSort('priority')">
+            By Priority
+        </button>
+    </div>
+
+    <!-- Mobile: Dropdown -->
+    <div class="md:hidden">
+        <label for="sort-select" class="sr-only">Sort by</label>
+        <select id="sort-select"
+                class="w-full px-4 py-2 bg-surface border border-border rounded text-primary font-medium min-h-[44px]"
+                onchange="window.SortControls && window.SortControls.setSort(this.value)">
+            <option value="project" {{ 'selected' if sort_mode == 'project' }}>Sort: By Project</option>
+            <option value="priority" {{ 'selected' if sort_mode == 'priority' }}>Sort: By Priority</option>
+        </select>
+    </div>
+</div>
+
+<!-- Sort Controls JavaScript -->
+<script>
+(function() {
+    const STORAGE_KEY = 'claude_headspace_sort_mode';
+
+    window.SortControls = {
+        /**
+         * Set the sort mode and update the page
+         */
+        setSort: function(mode) {
+            if (mode !== 'project' && mode !== 'priority') {
+                mode = 'project';
+            }
+
+            // Save to localStorage
+            try {
+                localStorage.setItem(STORAGE_KEY, mode);
+            } catch (e) {
+                console.warn('Could not save sort preference:', e);
+            }
+
+            // Update URL and reload (or use HTMX for partial update)
+            const url = new URL(window.location.href);
+            url.searchParams.set('sort', mode);
+            window.location.href = url.toString();
+        },
+
+        /**
+         * Get the saved sort preference
+         */
+        getSavedSort: function() {
+            try {
+                return localStorage.getItem(STORAGE_KEY) || 'project';
+            } catch (e) {
+                return 'project';
+            }
+        },
+
+        /**
+         * Initialize sort controls - apply saved preference on load
+         */
+        init: function() {
+            const savedSort = this.getSavedSort();
+            const currentSort = new URLSearchParams(window.location.search).get('sort') || 'project';
+
+            // If saved preference differs from current, redirect to apply it
+            if (savedSort !== currentSort && !sessionStorage.getItem('sort_applied')) {
+                sessionStorage.setItem('sort_applied', 'true');
+                this.setSort(savedSort);
+            }
+
+            // Clear the flag after successful load
+            sessionStorage.removeItem('sort_applied');
+        }
+    };
+
+    // Initialize on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            window.SortControls.init();
+        });
+    } else {
+        window.SortControls.init();
+    }
+})();
+</script>

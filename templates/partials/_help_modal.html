@@ -1,0 +1,61 @@
+<!-- Help Modal -->
+<div id="help-modal"
+     class="fixed inset-0 z-50 hidden"
+     role="dialog"
+     aria-labelledby="help-modal-title"
+     aria-modal="true">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-void/80" onclick="closeHelpModal()"></div>
+
+    <!-- Modal content -->
+    <div class="absolute inset-4 md:inset-8 lg:inset-16 bg-deep border border-border rounded-lg flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-3 bg-elevated border-b border-border">
+            <h2 id="help-modal-title" class="text-lg font-semibold text-primary">Help</h2>
+            <button type="button"
+                    onclick="closeHelpModal()"
+                    class="p-2 text-muted hover:text-primary transition-colors"
+                    aria-label="Close help">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Search bar -->
+        <div class="px-4 py-3 bg-surface border-b border-border">
+            <input type="text"
+                   id="help-search-input"
+                   class="w-full px-4 py-2 bg-deep border border-border rounded text-primary placeholder-muted focus:outline-none focus:border-cyan"
+                   placeholder="Search documentation..."
+                   oninput="searchHelp(this.value)"
+                   aria-label="Search documentation">
+        </div>
+
+        <!-- Content area -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Table of Contents sidebar -->
+            <div class="w-48 flex-shrink-0 border-r border-border overflow-y-auto bg-surface">
+                <nav id="help-toc" class="p-2" aria-label="Help topics">
+                    <!-- Topics loaded dynamically -->
+                </nav>
+            </div>
+
+            <!-- Main content -->
+            <div id="help-content" class="flex-1 p-6 overflow-y-auto">
+                <!-- Content loaded dynamically -->
+                <div class="text-muted text-center py-8">
+                    Select a topic from the sidebar
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-2 bg-surface border-t border-border text-xs text-muted flex items-center justify-between">
+            <span>Press <kbd class="px-1.5 py-0.5 bg-deep rounded">?</kbd> to open help, <kbd class="px-1.5 py-0.5 bg-deep rounded">Esc</kbd> to close</span>
+            <span id="help-topic-path"></span>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/help.js') }}"></script>

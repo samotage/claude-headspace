@@ -36,14 +36,14 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 ## Epic Breakdown
 
-| Epic       | Name                                 | Sprints | Duration    | Goal                                                                         |
-| ---------- | ------------------------------------ | ------- | ----------- | ---------------------------------------------------------------------------- |
-| **Epic 1** | Core Foundation + Event-Driven Hooks | 11      | 11-13 weeks | Event-driven architecture, state machine, dashboard, hooks integration       |
-| **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | Config UI, waypoint editing, help system, macOS notifications                |
-| **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/task summarisation, priority scoring, git-based summaries, brain reboot |
-| **Epic 4** | Data Management                      | 3       | 2-3 weeks   | Progress archiving, project controls, performance optimisation               |
+| Epic       | Name                                 | Sprints | Duration    | Goal                                                                                      |
+| ---------- | ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
+| **Epic 1** | Core Foundation + Event-Driven Hooks | 11      | 11-13 weeks | Event-driven architecture, state machine, dashboard, hooks integration                    |
+| **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | Config UI, waypoint editing, help system, macOS notifications                             |
+| **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/task summarisation, priority scoring, git-based summaries, brain reboot              |
+| **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | Artifact archiving, project controls, activity monitoring, headspace/frustration tracking |
 
-**Total:** 23 sprints, ~21-27 weeks
+**Total:** 24 sprints, ~22-28 weeks
 
 ---
 
@@ -182,40 +182,64 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 
 ---
 
-## Epic 4: Data Management
+## Epic 4: Data Management & Wellness
 
-**Goal:** Add data lifecycle management, project controls, and performance optimisation.
+**Goal:** Add data lifecycle management, project controls, activity monitoring, and developer wellness tracking (headspace/frustration monitoring).
 
-**Duration:** 2-3 weeks  
-**Sprints:** 3  
-**Priority:** P2 (polish and scaling, not blocking MVP)
+**Duration:** 3-4 weeks  
+**Sprints:** 4  
+**Priority:** P2 (polish, scaling, and wellness — not blocking MVP)
 
 ### Key Features
 
-- Progress summary archiving (timestamped versions)
-- Project-level controls (pause/resume agents, archive projects)
-- Performance optimisation (database indexing, query tuning, SSE batching)
+- **Artifact archiving:** Waypoint, brain_reboot, and progress_summary archived when new versions created
+- **Project controls:** Pause/resume inference calls per project (cost/noise control)
+- **Activity monitoring:** Turn metrics (rate, avg time), rollups to project/overall, time-series visualization
+- **Headspace monitoring:** Frustration tracking, flow state detection, traffic light indicator, gentle playful alerts
 
 ### Acceptance Test
 
-- ✅ Archive old progress summaries with timestamps
-- ✅ Pause project, agents stop appearing in dashboard
-- ✅ Dashboard handles 20+ concurrent agents without lag
-- ✅ Database queries optimised with proper indexing
+- ✅ Create new waypoint → previous version archived with timestamp
+- ✅ Create new progress_summary → previous version archived
+- ✅ Pause project → inference calls stop, other activity continues
+- ✅ Activity metrics show turn rate/avg time per agent, project, overall
+- ✅ Frustration indicator (traffic light) visible at top of dashboard
+- ✅ High frustration triggers gentle alert ("Think of your cortisol")
+- ✅ Flow state detected and displayed ("You've been in the zone for 45 minutes")
 
 ### Deliverables
 
-- Archive system for progress_summary and waypoint
-- Project pause/resume controls
-- Project archiving (hide inactive projects)
-- Database indexes for performance
-- SSE event batching for high-traffic scenarios
-- Query optimisation for dashboard data
-- Monitoring/metrics endpoint
+- **Archive System (E4-S1):**
+  - Archive waypoint.md when new version created
+  - Archive brain_reboot.md when new version created
+  - Archive progress_summary.md when new version created
+  - Timestamped archive files in `archive/` subdirectory
+
+- **Project Controls (E4-S2):**
+  - Pause/resume inference toggle per project
+  - Project settings UI
+  - Pause state persisted to database
+
+- **Activity Monitoring (E4-S3):**
+  - Turn rate per agent (turns/hour)
+  - Average turn time per agent
+  - Rollups to project level and overall level
+  - Time-series data for productivity patterns
+  - Monitoring/metrics API endpoint
+
+- **Headspace Monitoring (E4-S4):**
+  - Frustration score extraction (enhance turn summarisation inference)
+  - Rolling frustration average (last 10 turns, last 30 minutes)
+  - Traffic light indicator (green/yellow/red) at top of dashboard
+  - Threshold detection (absolute, sustained, rising trend, time-based)
+  - Gentle playful alerts ("Who owns this, you or the robots?")
+  - Flow state detection (high throughput + low frustration)
+  - Positive signals ("You've been in the zone for 45 minutes")
+  - Configurable on/off in settings
 
 ### Dependencies
 
-- **Epic 3 complete** (progress summaries exist)
+- **Epic 3 complete** (turn summarisation, progress summaries exist)
 
 ---
 
@@ -249,8 +273,8 @@ Epic 1 (Foundation)
 | Epic 1    | 10 (S1-S10)  | 1 (S11 hooks)     | 11     |
 | Epic 2    | 4            | 0                 | 4      |
 | Epic 3    | 5            | 0                 | 5      |
-| Epic 4    | 3            | 0                 | 3      |
-| **Total** | **22**       | **1**             | **23** |
+| Epic 4    | 4            | 0                 | 4      |
+| **Total** | **23**       | **1**             | **24** |
 
 ---
 
@@ -594,10 +618,13 @@ def correlate_session(claude_session_id, cwd):
 
 ### Epic 4 Success Metrics
 
-- ✅ Archive old summaries with timestamps
-- ✅ Pause/resume projects
-- ✅ Dashboard handles 20+ agents smoothly
-- ✅ Query performance optimised
+- ✅ Artifact archiving works (waypoint, brain_reboot, progress_summary)
+- ✅ Pause/resume inference per project works
+- ✅ Activity metrics displayed (turn rate, avg time, rollups)
+- ✅ Frustration traffic light visible and responsive
+- ✅ Gentle alerts trigger on elevated frustration
+- ✅ Flow state detected and celebrated
+- ✅ Time-series productivity patterns viewable
 
 ---
 
@@ -653,21 +680,23 @@ Generate OpenSpec PRDs in this order to maintain logical dependencies:
 
 ---
 
-### Phase 5: Epic 4 Data Management (Weeks 23-27)
+### Phase 5: Epic 4 Data Management & Wellness (Weeks 23-28)
 
-21. Sprint 21: Progress Summary Archiving
-22. Sprint 22: Project-Level Controls
-23. Sprint 23: Performance Optimisation
+21. Sprint 21: Archive System (waypoint, brain_reboot, progress_summary)
+22. Sprint 22: Project Controls (pause/resume inference)
+23. Sprint 23: Activity Monitoring (turn metrics, rollups, time-series)
+24. Sprint 24: Headspace Monitoring (frustration tracking, flow state, traffic light alerts)
 
-**Checkpoint:** Production-ready, performant
+**Checkpoint:** Production-ready, wellness-aware, productivity insights available
 
 ---
 
 ## Document History
 
-| Version | Date       | Author          | Changes                                 |
-| ------- | ---------- | --------------- | --------------------------------------- |
-| 1.0     | 2026-01-28 | PM Agent (John) | Initial overarching roadmap for 4 epics |
+| Version | Date       | Author          | Changes                                                                                                                                  |
+| ------- | ---------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-01-28 | PM Agent (John) | Initial overarching roadmap for 4 epics                                                                                                  |
+| 1.1     | 2026-01-30 | PM Agent (John) | Updated Epic 4: expanded to 4 sprints, added headspace/frustration monitoring, activity metrics, renamed to "Data Management & Wellness" |
 
 ---
 

@@ -1,0 +1,497 @@
+<!-- Waypoint Editor Modal -->
+<div id="waypoint-editor-modal"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="waypoint-editor-title"
+     aria-modal="true">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWaypointEditor()"></div>
+
+    <!-- Modal content -->
+    <div class="modal-content" style="max-width: 1100px;">
+        <!-- Header -->
+        <div class="modal-header">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <h2 id="waypoint-editor-title" class="text-lg font-semibold text-primary">Waypoint Editor</h2>
+
+                <!-- Project selector -->
+                <select id="waypoint-project-select"
+                        class="px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan min-w-[200px]"
+                        onchange="loadWaypoint(this.value)"
+                        aria-label="Select project">
+                    <option value="">Select a project...</option>
+                </select>
+
+                <!-- Status indicator -->
+                <span id="waypoint-status" class="text-sm text-muted"></span>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button type="button"
+                        id="waypoint-save-btn"
+                        onclick="saveWaypoint()"
+                        disabled
+                        class="px-4 py-1.5 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                    <span class="save-text">Save</span>
+                    <span class="loading-spinner hidden">
+                        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
+                <button class="modal-close-btn"
+                        onclick="closeWaypointEditor()"
+                        aria-label="Close waypoint editor">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mode toggle -->
+        <div class="flex items-center gap-2 px-5 py-2 bg-surface border-b border-border">
+            <button type="button"
+                    id="waypoint-edit-tab"
+                    onclick="setWaypointMode('edit')"
+                    class="px-3 py-1 rounded text-sm font-medium bg-cyan text-void">
+                Edit
+            </button>
+            <button type="button"
+                    id="waypoint-preview-tab"
+                    onclick="setWaypointMode('preview')"
+                    class="px-3 py-1 rounded text-sm font-medium text-secondary hover:text-primary hover:bg-hover">
+                Preview
+            </button>
+        </div>
+
+        <!-- Editor area -->
+        <div class="flex-1 overflow-hidden">
+            <!-- Edit mode -->
+            <textarea id="waypoint-textarea"
+                      class="w-full h-full p-4 bg-deep text-primary font-mono text-sm resize-none focus:outline-none"
+                      placeholder="Enter waypoint content..."
+                      oninput="markWaypointDirty()"></textarea>
+
+            <!-- Preview mode -->
+            <div id="waypoint-preview"
+                 class="hidden w-full h-full p-4 overflow-auto prose prose-invert max-w-none">
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer text-xs text-muted">
+            <span id="waypoint-path"></span>
+            <span id="waypoint-modified"></span>
+        </div>
+    </div>
+</div>
+
+<!-- Conflict Resolution Dialog -->
+<div id="waypoint-conflict-dialog"
+     class="fixed inset-0 z-[210] hidden"
+     role="alertdialog"
+     aria-labelledby="conflict-dialog-title"
+     aria-describedby="conflict-dialog-desc"
+     aria-modal="true">
+    <div class="absolute inset-0 bg-void/90"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="bg-deep border border-border rounded-lg p-6 max-w-md w-full">
+            <h3 id="conflict-dialog-title" class="text-lg font-semibold text-primary mb-2">External Modification Detected</h3>
+            <p id="conflict-dialog-desc" class="text-secondary text-sm mb-4">
+                This waypoint was modified externally since you started editing.
+            </p>
+            <p id="conflict-mtime" class="text-muted text-xs mb-4"></p>
+            <div class="flex items-center justify-end gap-2">
+                <button type="button"
+                        onclick="reloadWaypoint()"
+                        class="px-4 py-2 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors">
+                    Reload
+                </button>
+                <button type="button"
+                        onclick="overwriteWaypoint()"
+                        class="px-4 py-2 bg-red text-primary font-medium rounded hover:bg-red/90 transition-colors">
+                    Overwrite
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // Waypoint editor state
+    let waypointState = {
+        projectId: null,
+        originalContent: '',
+        isDirty: false,
+        exists: false,
+        lastModified: null,
+        mode: 'edit',
+        pendingContent: null
+    };
+
+    // Make functions global
+    window.openWaypointEditor = openWaypointEditor;
+    window.closeWaypointEditor = closeWaypointEditor;
+    window.loadWaypoint = loadWaypoint;
+    window.saveWaypoint = saveWaypoint;
+    window.setWaypointMode = setWaypointMode;
+    window.markWaypointDirty = markWaypointDirty;
+    window.reloadWaypoint = reloadWaypoint;
+    window.overwriteWaypoint = overwriteWaypoint;
+
+    function openWaypointEditor(projectId) {
+        const modal = document.getElementById('waypoint-editor-modal');
+        modal.classList.remove('hidden');
+
+        // Load projects list
+        loadProjectsList().then(() => {
+            if (projectId) {
+                document.getElementById('waypoint-project-select').value = projectId;
+                loadWaypoint(projectId);
+            }
+        });
+
+        // Focus on project select
+        document.getElementById('waypoint-project-select').focus();
+
+        // Trap focus in modal
+        document.addEventListener('keydown', handleEscapeKey);
+    }
+
+    function closeWaypointEditor() {
+        if (waypointState.isDirty) {
+            if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+                return;
+            }
+        }
+
+        const modal = document.getElementById('waypoint-editor-modal');
+        modal.classList.add('hidden');
+
+        // Reset state
+        waypointState = {
+            projectId: null,
+            originalContent: '',
+            isDirty: false,
+            exists: false,
+            lastModified: null,
+            mode: 'edit',
+            pendingContent: null
+        };
+
+        // Clear UI
+        document.getElementById('waypoint-textarea').value = '';
+        document.getElementById('waypoint-preview').innerHTML = '';
+        document.getElementById('waypoint-status').textContent = '';
+        document.getElementById('waypoint-path').textContent = '';
+        document.getElementById('waypoint-modified').textContent = '';
+        document.getElementById('waypoint-save-btn').disabled = true;
+
+        document.removeEventListener('keydown', handleEscapeKey);
+    }
+
+    function handleEscapeKey(e) {
+        if (e.key === 'Escape') {
+            closeWaypointEditor();
+        }
+    }
+
+    async function loadProjectsList() {
+        try {
+            const response = await fetch('/api/projects');
+            const data = await response.json();
+
+            const select = document.getElementById('waypoint-project-select');
+            select.innerHTML = '<option value="">Select a project...</option>';
+
+            data.projects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.id;
+                option.textContent = project.name;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Failed to load projects:', error);
+            showToast('Failed to load projects list', 'error');
+        }
+    }
+
+    async function loadWaypoint(projectId) {
+        if (!projectId) {
+            document.getElementById('waypoint-textarea').value = '';
+            document.getElementById('waypoint-status').textContent = '';
+            document.getElementById('waypoint-path').textContent = '';
+            document.getElementById('waypoint-modified').textContent = '';
+            document.getElementById('waypoint-save-btn').disabled = true;
+            waypointState.projectId = null;
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/projects/${projectId}/waypoint`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                showToast(data.message || 'Failed to load waypoint', 'error');
+                return;
+            }
+
+            waypointState.projectId = projectId;
+            waypointState.originalContent = data.content;
+            waypointState.exists = data.exists;
+            waypointState.lastModified = data.last_modified || null;
+            waypointState.isDirty = false;
+
+            document.getElementById('waypoint-textarea').value = data.content;
+            document.getElementById('waypoint-path').textContent = data.path;
+            document.getElementById('waypoint-save-btn').disabled = false;
+
+            if (data.template) {
+                document.getElementById('waypoint-status').textContent = 'New waypoint (using template)';
+            } else {
+                document.getElementById('waypoint-status').textContent = 'Editing';
+            }
+
+            if (data.last_modified) {
+                const date = new Date(data.last_modified);
+                document.getElementById('waypoint-modified').textContent = `Last modified: ${date.toLocaleString()}`;
+            } else {
+                document.getElementById('waypoint-modified').textContent = '';
+            }
+
+            // Update preview if in preview mode
+            if (waypointState.mode === 'preview') {
+                updatePreview();
+            }
+
+        } catch (error) {
+            console.error('Failed to load waypoint:', error);
+            showToast('Failed to load waypoint', 'error');
+        }
+    }
+
+    async function saveWaypoint() {
+        if (!waypointState.projectId) return;
+
+        const saveBtn = document.getElementById('waypoint-save-btn');
+        const saveText = saveBtn.querySelector('.save-text');
+        const spinner = saveBtn.querySelector('.loading-spinner');
+
+        saveBtn.disabled = true;
+        saveText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+
+        try {
+            const content = document.getElementById('waypoint-textarea').value;
+            waypointState.pendingContent = content;
+
+            const payload = { content };
+            if (waypointState.lastModified) {
+                payload.expected_mtime = waypointState.lastModified;
+            }
+
+            const response = await fetch(`/api/projects/${waypointState.projectId}/waypoint`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (response.status === 409) {
+                // Conflict detected
+                showConflictDialog(data);
+                return;
+            }
+
+            if (!response.ok) {
+                showToast(data.message || 'Failed to save waypoint', 'error');
+                return;
+            }
+
+            waypointState.originalContent = content;
+            waypointState.isDirty = false;
+            waypointState.exists = true;
+            waypointState.lastModified = data.last_modified;
+            waypointState.pendingContent = null;
+
+            document.getElementById('waypoint-status').textContent = 'Saved';
+
+            if (data.last_modified) {
+                const date = new Date(data.last_modified);
+                document.getElementById('waypoint-modified').textContent = `Last modified: ${date.toLocaleString()}`;
+            }
+
+            let message = 'Waypoint saved successfully';
+            if (data.archived && data.archive_path) {
+                message += ` (archived to ${data.archive_path})`;
+            }
+            showToast(message, 'success');
+
+        } catch (error) {
+            console.error('Failed to save waypoint:', error);
+            showToast('Failed to save waypoint', 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function showConflictDialog(data) {
+        const dialog = document.getElementById('waypoint-conflict-dialog');
+        const mtimeEl = document.getElementById('conflict-mtime');
+
+        if (data.current_mtime) {
+            const date = new Date(data.current_mtime);
+            mtimeEl.textContent = `External modification time: ${date.toLocaleString()}`;
+        }
+
+        dialog.classList.remove('hidden');
+    }
+
+    function hideConflictDialog() {
+        document.getElementById('waypoint-conflict-dialog').classList.add('hidden');
+    }
+
+    function reloadWaypoint() {
+        hideConflictDialog();
+        waypointState.pendingContent = null;
+        loadWaypoint(waypointState.projectId);
+    }
+
+    async function overwriteWaypoint() {
+        hideConflictDialog();
+
+        // Save without expected_mtime to force overwrite
+        const content = waypointState.pendingContent || document.getElementById('waypoint-textarea').value;
+
+        try {
+            const response = await fetch(`/api/projects/${waypointState.projectId}/waypoint`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                showToast(data.message || 'Failed to save waypoint', 'error');
+                return;
+            }
+
+            waypointState.originalContent = content;
+            waypointState.isDirty = false;
+            waypointState.exists = true;
+            waypointState.lastModified = data.last_modified;
+            waypointState.pendingContent = null;
+
+            document.getElementById('waypoint-status').textContent = 'Saved (overwritten)';
+
+            if (data.last_modified) {
+                const date = new Date(data.last_modified);
+                document.getElementById('waypoint-modified').textContent = `Last modified: ${date.toLocaleString()}`;
+            }
+
+            showToast('Waypoint saved (overwrote external changes)', 'success');
+
+        } catch (error) {
+            console.error('Failed to save waypoint:', error);
+            showToast('Failed to save waypoint', 'error');
+        }
+    }
+
+    function setWaypointMode(mode) {
+        waypointState.mode = mode;
+
+        const editTab = document.getElementById('waypoint-edit-tab');
+        const previewTab = document.getElementById('waypoint-preview-tab');
+        const textarea = document.getElementById('waypoint-textarea');
+        const preview = document.getElementById('waypoint-preview');
+
+        if (mode === 'edit') {
+            editTab.classList.add('bg-cyan', 'text-void');
+            editTab.classList.remove('text-secondary', 'hover:text-primary', 'hover:bg-hover');
+            previewTab.classList.remove('bg-cyan', 'text-void');
+            previewTab.classList.add('text-secondary', 'hover:text-primary', 'hover:bg-hover');
+            textarea.classList.remove('hidden');
+            preview.classList.add('hidden');
+        } else {
+            previewTab.classList.add('bg-cyan', 'text-void');
+            previewTab.classList.remove('text-secondary', 'hover:text-primary', 'hover:bg-hover');
+            editTab.classList.remove('bg-cyan', 'text-void');
+            editTab.classList.add('text-secondary', 'hover:text-primary', 'hover:bg-hover');
+            textarea.classList.add('hidden');
+            preview.classList.remove('hidden');
+            updatePreview();
+        }
+    }
+
+    function updatePreview() {
+        const content = document.getElementById('waypoint-textarea').value;
+        const preview = document.getElementById('waypoint-preview');
+
+        // Simple markdown rendering (basic headers, lists, code)
+        let html = content
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-primary mt-4 mb-2">$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-primary mt-6 mb-2">$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-primary mt-6 mb-3">$1</h1>')
+            .replace(/^- (.+)$/gm, '<li class="ml-4 text-secondary">$1</li>')
+            .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 bg-surface rounded text-cyan text-sm">$1</code>')
+            .replace(/<!--(.+?)-->/g, '<span class="text-muted italic">$1</span>')
+            .replace(/\n\n/g, '</p><p class="my-2 text-secondary">')
+            .replace(/\n/g, '<br>');
+
+        preview.innerHTML = `<p class="my-2 text-secondary">${html}</p>`;
+    }
+
+    function markWaypointDirty() {
+        if (!waypointState.isDirty) {
+            waypointState.isDirty = true;
+            const statusEl = document.getElementById('waypoint-status');
+            const currentStatus = statusEl.textContent;
+            if (!currentStatus.includes('unsaved')) {
+                statusEl.textContent = currentStatus ? `${currentStatus} (unsaved changes)` : 'Unsaved changes';
+            }
+        }
+    }
+
+    // Show toast notification (reuse existing toast if available)
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        if (!toast) {
+            console.log(`Toast (${type}): ${message}`);
+            return;
+        }
+
+        const messageEl = toast.querySelector('.toast-message');
+        if (messageEl) {
+            messageEl.textContent = message;
+        }
+
+        toast.classList.remove('bg-green', 'bg-red', 'bg-amber', 'hidden');
+        if (type === 'success') {
+            toast.classList.add('bg-green');
+        } else if (type === 'error') {
+            toast.classList.add('bg-red');
+        } else {
+            toast.classList.add('bg-amber');
+        }
+
+        toast.classList.add('toast-visible');
+
+        setTimeout(() => {
+            toast.classList.remove('toast-visible');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 300);
+        }, 3000);
+    }
+})();
+</script>

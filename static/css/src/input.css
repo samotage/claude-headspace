@@ -1,0 +1,363 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties for theme colors */
+:root {
+    /* Backgrounds */
+    --bg-void: #08080a;
+    --bg-deep: #0c0c0e;
+    --bg-surface: #111114;
+    --bg-elevated: #18181c;
+    --bg-hover: #1e1e24;
+
+    /* Accent colors */
+    --cyan: #56d4dd;
+    --green: #73e0a0;
+    --amber: #e0b073;
+    --red: #e07373;
+    --blue: #7399e0;
+    --magenta: #d073e0;
+
+    /* Text */
+    --text-primary: #e8e8ed;
+    --text-secondary: #a0a0ab;
+    --text-muted: #6a6a78;
+
+    /* Borders */
+    --border: #252530;
+    --border-bright: #363644;
+
+    /* Font */
+    --font-mono: 'SF Mono', 'Monaco', 'Menlo', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* Base styles */
+@layer base {
+    body {
+        background: radial-gradient(ellipse at 50% 0%, rgba(86,212,221,0.03) 0%, transparent 60%), var(--bg-void);
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+    }
+
+    a {
+        color: var(--cyan);
+    }
+
+    a:hover {
+        color: var(--text-primary);
+    }
+}
+
+/* Scanline overlay */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+    );
+}
+
+/* State-dependent card glow borders */
+[data-state="AWAITING_INPUT"] {
+    border-color: rgba(224,176,115,0.4);
+    box-shadow: 0 0 8px rgba(224,176,115,0.15), 0 0 20px rgba(224,176,115,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="PROCESSING"] {
+    border-color: rgba(115,153,224,0.4);
+    box-shadow: 0 0 8px rgba(115,153,224,0.15), 0 0 20px rgba(115,153,224,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="COMMANDED"] {
+    border-color: rgba(224,176,115,0.3);
+    box-shadow: 0 0 6px rgba(224,176,115,0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="COMPLETE"] {
+    border-color: rgba(115,224,160,0.3);
+    box-shadow: 0 0 6px rgba(115,224,160,0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="IDLE"] {
+    border-color: var(--border);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+[data-state="TIMED_OUT"] {
+    border-color: rgba(224,115,115,0.4);
+    box-shadow: 0 0 8px rgba(224,115,115,0.15), 0 0 20px rgba(224,115,115,0.05);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+/* Neon text glow utility */
+.text-glow-cyan {
+    text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);
+}
+
+/* Card editor layout — code editor aesthetic */
+.card-editor {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-line {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+}
+
+.card-line:first-child {
+    min-height: 36px;
+}
+
+.card-line + .card-line {
+    border-top: 1px solid rgba(37, 37, 48, 0.5);
+}
+
+.line-num {
+    width: 40px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 12px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    user-select: none;
+    border-right: 1px solid var(--border);
+}
+
+.line-content {
+    flex: 1;
+    padding: 4px 12px;
+    min-height: 24px;
+}
+
+/* Full-width state strip — driven by parent [data-state] attribute */
+.state-strip {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+[data-state="IDLE"] .state-strip {
+    background: rgba(106,106,120,0.15);
+    color: var(--text-muted);
+}
+[data-state="COMMANDED"] .state-strip {
+    background: rgba(224,176,115,0.15);
+    color: var(--amber);
+}
+[data-state="PROCESSING"] .state-strip {
+    background: rgba(115,153,224,0.15);
+    color: var(--blue);
+}
+[data-state="AWAITING_INPUT"] .state-strip {
+    background: rgba(224,176,115,0.15);
+    color: var(--amber);
+}
+[data-state="COMPLETE"] .state-strip {
+    background: rgba(115,224,160,0.15);
+    color: var(--green);
+}
+[data-state="TIMED_OUT"] .state-strip {
+    background: rgba(224,115,115,0.15);
+    color: var(--red);
+}
+
+/* Mobile responsive: agent cards */
+@media (max-width: 640px) {
+    .line-num {
+        display: none;
+    }
+    .line-content {
+        padding-left: 12px;
+    }
+    .card-line {
+        min-height: 36px;
+    }
+    .state-strip {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* Slider pane — right-side drawer (Brain Reboot) */
+.slider-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.slider-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.slider-pane {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 600px;
+    max-width: 90vw;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    z-index: 201;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.slider-pane.active {
+    transform: translateX(0);
+}
+
+/* Modal shared styles */
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90vw;
+    max-width: 960px;
+    max-height: 85vh;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+}
+
+.modal-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.modal-close-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+}
+
+/* Logging sub-tab navigation — segmented terminal control */
+.logging-subtabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    width: fit-content;
+}
+
+.logging-subtab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    border-right: 1px solid var(--border);
+}
+
+.logging-subtab:last-child {
+    border-right: none;
+}
+
+.logging-subtab .subtab-icon {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+}
+
+.logging-subtab:hover {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.logging-subtab:hover .subtab-icon {
+    opacity: 0.7;
+}
+
+.logging-subtab.active {
+    background: var(--bg-surface);
+    color: var(--cyan);
+    box-shadow: inset 0 -2px 0 var(--cyan);
+}
+
+.logging-subtab.active .subtab-icon {
+    opacity: 1;
+    color: var(--cyan);
+    text-shadow: 0 0 6px rgba(86, 212, 221, 0.4);
+}
+
+.logging-subtab.active .subtab-label {
+    text-shadow: 0 0 8px rgba(86, 212, 221, 0.2);
+}
+
+/* iOS smooth scrolling for overflow containers */
+.overflow-x-auto,
+.overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+}

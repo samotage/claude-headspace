@@ -7,84 +7,188 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 **Purpose:**
 
 - Track active Claude Code agents across projects
-- Display agent status
+- Display agent status with AI-generated summaries
 - Click-to-focus: bring iTerm2 windows to foreground from the dashboard
 - Native macOS notifications when input is needed or tasks complete
 - Real-time updates via Server-Sent Events (SSE)
+- LLM-powered turn/task summarisation and cross-project priority scoring
 
 ## Architecture
 
-- TBD
+Flask application factory (`app.py`) with:
+
+- **Event-driven hooks:** Claude Code fires lifecycle hooks → Flask receives and processes state transitions
+- **Persistence:** PostgreSQL via Flask-SQLAlchemy with Alembic migrations
+- **Real-time broadcasting:** SSE pushes state changes, summaries, and scores to the dashboard
+- **Intelligence layer:** OpenRouter inference service powers summarisation and priority scoring
+- **File watcher fallback:** Monitors Claude Code `.jsonl` files when hooks are silent
+
+```
+┌──────────────────────────────────────────────────────────┐
+│           Claude Code (Terminal Sessions)                 │
+│   Hooks fire on lifecycle events ──────────┐             │
+└────────────────────────────────────────────┼─────────────┘
+                                              │
+                                              ▼
+┌──────────────────────────────────────────────────────────┐
+│           Claude Headspace (Flask)                        │
+│                                                          │
+│  Hook Receiver → Lifecycle Bridge → Task State Machine   │
+│                                                          │
+│  Inference Service (OpenRouter)                          │
+│    ├── Summarisation Service (turn/task summaries)       │
+│    └── Priority Scoring Service (agent ranking 0-100)    │
+│                                                          │
+│  Broadcaster → SSE → Dashboard (real-time updates)       │
+│  Event Writer → PostgreSQL (audit trail)                 │
+└──────────────────────────────────────────────────────────┘
+```
 
 ## Tech Stack
 
 - **Python:** 3.10+
-- **Framework:** Flask with blueprints
-- **Config:** PyYAML with migration
-- **Terminal:** iTerm2
-- **Notifications:** terminal-notifier
-- **LLM:** OpenRouter API
+- **Framework:** Flask 3.0+ with blueprints
+- **Database:** PostgreSQL via Flask-SQLAlchemy 3.1+ and Alembic (Flask-Migrate)
+- **Build:** Hatchling (pyproject.toml)
+- **Config:** PyYAML
+- **LLM:** OpenRouter API (Claude Haiku for turns/tasks, Sonnet for project/objective)
+- **Real-time:** Server-Sent Events (SSE)
+- **Terminal:** iTerm2 (AppleScript-based focus)
+- **Notifications:** terminal-notifier (macOS)
+- **Testing:** pytest + factory-boy + pytest-cov
 
 ## Common Commands
+
+```bash
+python run.py                        # Start the server
+./restart_server.sh                  # Restart running server
+flask db upgrade                     # Run pending migrations
+pytest tests/services/test_foo.py    # Run targeted tests (preferred)
+pytest tests/routes/ tests/services/ # Run relevant directories
+pytest                               # Full suite (~960 tests) — only when asked
+pytest --cov=src                     # Full suite with coverage — only when asked
+pip install -e ".[dev]"              # Install with dev dependencies
+```
 
 ## Directory Structure
 
 ```
 claude_headspace/
-├── .env                 # Environment variables (gitignored)
-├── .env.example         # Environment template
-├── requirements.txt     # Python dependencies
-├── bin/
-│   └── claude-headspace # Session wrapper script
-├── orch/                # PRD orchestration
-├── docs/                # Documentation
-├── .claude/             # Claude Code settings
-├── CLAUDE.md            # This file
-└── README.md            # User documentation
+├── run.py                           # Entry point
+├── config.yaml                      # Server/DB/OpenRouter config
+├── pyproject.toml                   # Build config & dependencies
+├── restart_server.sh                # Server restart script
+├── src/claude_headspace/
+│   ├── app.py                       # Flask app factory
+│   ├── config.py                    # Config loading
+│   ├── database.py                  # SQLAlchemy init
+│   ├── models/                      # Domain models
+│   │   ├── agent.py                 # Agent (Claude Code session)
+│   │   ├── project.py               # Project (monitored codebase)
+│   │   ├── task.py                  # Task (unit of work, 5-state)
+│   │   ├── turn.py                  # Turn (user/agent exchange)
+│   │   ├── event.py                 # Event (audit trail)
+│   │   ├── inference_call.py        # InferenceCall (LLM usage log)
+│   │   └── objective.py             # Objective + ObjectiveHistory
+│   ├── routes/                      # 15 Flask blueprints
+│   │   ├── dashboard.py             # Main dashboard view
+│   │   ├── hooks.py                 # Claude Code hook endpoints
+│   │   ├── sse.py                   # SSE streaming
+│   │   ├── sessions.py              # Session lifecycle
+│   │   ├── inference.py             # Inference status/usage
+│   │   ├── summarisation.py         # Turn/task summary API
+│   │   ├── priority.py              # Priority scoring API
+│   │   ├── objective.py             # Global objective CRUD
+│   │   ├── waypoint.py              # Waypoint editor
+│   │   ├── focus.py                 # iTerm2 focus control
+│   │   ├── config.py                # Config viewer
+│   │   ├── health.py                # Health check
+│   │   ├── help.py                  # Help page
+│   │   ├── logging.py               # Log viewer
+│   │   └── notifications.py         # Notification settings
+│   └── services/                    # Business logic
+│       ├── hook_receiver.py         # Processes Claude Code hooks
+│       ├── hook_lifecycle_bridge.py  # Hooks → state transitions
+│       ├── task_lifecycle.py        # Task state management
+│       ├── state_machine.py         # Transition validation
+│       ├── inference_service.py     # LLM orchestration
+│       ├── openrouter_client.py     # OpenRouter API client
+│       ├── inference_cache.py       # Content-based caching
+│       ├── inference_rate_limiter.py # Rate limiting
+│       ├── summarisation_service.py  # Turn/task summaries
+│       ├── priority_scoring.py      # Agent priority scoring
+│       ├── broadcaster.py           # SSE distribution
+│       ├── event_writer.py          # Async audit logging
+│       ├── session_correlator.py    # Session → Agent mapping
+│       ├── file_watcher.py          # .jsonl file monitoring
+│       ├── intent_detector.py       # Turn intent classification
+│       ├── notification_service.py  # macOS notifications
+│       └── iterm_focus.py           # AppleScript iTerm2 control
+├── tests/
+│   ├── conftest.py                  # Root fixtures (app, client)
+│   ├── test_app.py                  # App init tests
+│   ├── test_database.py             # DB config tests
+│   ├── test_models.py               # Model tests
+│   ├── services/                    # Service unit tests (~27 files)
+│   ├── routes/                      # Route tests (~15 files)
+│   ├── integration/                 # Real PostgreSQL tests
+│   │   ├── conftest.py              # DB lifecycle fixtures
+│   │   ├── factories.py             # Factory Boy factories
+│   │   ├── test_persistence_flow.py # End-to-end entity chains
+│   │   ├── test_model_constraints.py # DB constraints & cascades
+│   │   ├── test_factories.py        # Factory validation
+│   │   └── test_*_persistence.py    # Feature persistence tests
+│   └── cli/                         # CLI tests
+├── migrations/versions/             # Alembic migration scripts
+├── templates/                       # Jinja2 templates + partials
+├── static/                          # CSS/JS assets
+├── bin/                             # Scripts (hooks installer, etc.)
+├── docs/                            # Architecture docs, PRDs, guides
+├── orch/                            # PRD orchestration (Ruby)
+└── .claude/                         # Claude Code settings & commands
 ```
 
 ## Configuration
 
-Edit `config.yaml` to configure monitored projects:
+Edit `config.yaml` to configure the application. Key sections:
 
-## Terminal Backend Integration
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 5055
+  debug: true
 
-Terminal backends enable bidirectional control of Claude Code sessions:
+database:
+  host: localhost
+  port: 5432
+  name: claude_headspace
+  user: samotage
 
-- **Send text/commands** to sessions via the API
-- **Capture full output** watch/tail output from the claude code master jsonl files
-- Enable **voice bridge** and **remote control** features
+openrouter:
+  # Requires OPENROUTER_API_KEY env var (in .env)
+  models:
+    turn: "anthropic/claude-3-5-haiku-20241022"
+    task: "anthropic/claude-3-5-haiku-20241022"
+    project: "anthropic/claude-3-5-sonnet-20241022"
+    objective: "anthropic/claude-3-5-sonnet-20241022"
+  rate_limits:
+    calls_per_minute: 30
+    tokens_per_minute: 50000
+  cache:
+    enabled: true
+    ttl_seconds: 300
 
-### Available Backends
+file_watcher:
+  polling_interval: 2           # Seconds (fallback mode)
+  reconciliation_interval: 60   # Seconds (hooks-active mode)
 
-### Configuration
-
-Set the default backend in `config.yaml`:
-
-Or use command-line flags:
-
-````bash
-claude-monitor start             # Use configured for iTerm2
-
-
-### Session Control API for Claude Code Hooks
-
-Send text to a session:
-```bash
-curl -X POST http://localhost:5050/api/send/<session_id> \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello, Claude!", "enter": true}'
-````
-
-Capture session output:
-
-```bash
-curl http://localhost:5050/api/output/<session_id>?lines=100
+hooks:
+  enabled: true
 ```
 
-### Claude Code Hooks (Event-Driven)
+## Claude Code Hooks (Event-Driven)
 
-The monitor can receive lifecycle events directly from Claude Code via hooks:
+The monitor receives lifecycle events directly from Claude Code via hooks:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -96,7 +200,7 @@ The monitor can receive lifecycle events directly from Claude Code via hooks:
                                                     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Claude Headspace (Flask)                        │
-│              http://localhost:5050                           │
+│              http://localhost:5055                           │
 │                                                              │
 │  POST /hook/session-start      → Agent created, IDLE        │
 │  POST /hook/user-prompt-submit → Transition to PROCESSING   │
@@ -114,50 +218,111 @@ The monitor can receive lifecycle events directly from Claude Code via hooks:
 
 **Setup:**
 
-Ask Claude Code to install the hooks:
+Ask Claude Code to install the hooks, or run `bin/install-hooks.sh`.
 
 **Important:** Hook commands must use absolute paths (e.g., `/Users/yourname/.claude/hooks/...`).
 
 See `docs/architecture/claude-code-hooks.md` for detailed documentation.
 
-### Legacy Architecture (lib/)
+## Key Services
 
-2. **PID/TTY Matching:** Match process to terminal session
-3. **3-State Model:** processing/input_needed/idle
-4. **iTerm2:** AppleScript-based focus
+Services are registered in `app.extensions` and can be accessed via `app.extensions["service_name"]`.
 
-## Key Services (New Architecture)
+### Hook & State Management
 
-- TBD
+- **HookReceiver** (`hook_receiver.py`) — processes Claude Code lifecycle hooks (session-start, stop, user-prompt-submit, notification, etc.), manages state transitions and in-memory display overrides
+- **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) — translates hook events into validated state machine transitions, creates USER/AGENT turns with proper intents
+- **TaskLifecycle** (`task_lifecycle.py`) — manages task state transitions, processes turns, triggers async summarisation on completion
+- **StateMachine** (`state_machine.py`) — pure stateless validation of `(from_state, actor, intent) → to_state` transitions
 
-### Key Methods
+### Intelligence Layer
 
-- TBD
+- **InferenceService** (`inference_service.py`) — orchestrates LLM calls via OpenRouter with content-based caching (5-min TTL), rate limiting (30 calls/min, 50k tokens/min), cost tracking, and model selection by level
+- **SummarisationService** (`summarisation_service.py`) — generates AI summaries for turns (1-2 sentences) and tasks (2-3 sentences) asynchronously via thread pool
+- **PriorityScoringService** (`priority_scoring.py`) — batch scores all active agents 0-100 based on objective/waypoint alignment, agent state, and recency; debounced (5 seconds)
 
-### Legacy Functions (lib/)
+### Infrastructure
 
-- TBD
+- **Broadcaster** (`broadcaster.py`) — SSE event distribution with client filters (event_type, project_id, agent_id), queue-based delivery
+- **EventWriter** (`event_writer.py`) — async audit logging to PostgreSQL (session events, state transitions, hook receipts)
+- **SessionCorrelator** (`session_correlator.py`) — maps Claude Code sessions to Agent records by session_id, working_directory, or headspace_session_id
+- **FileWatcher** (`file_watcher.py`) — monitors Claude Code `.jsonl` files as fallback when hooks are silent
+
+## Data Models
+
+| Model | Purpose | Key Fields |
+|-------|---------|------------|
+| **Project** | Monitored codebase | name, path, github_repo, current_branch |
+| **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason |
+| **Task** | Unit of work (5-state lifecycle) | state, summary, started_at, completed_at |
+| **Turn** | Individual exchange | actor (USER/AGENT), intent, text, summary |
+| **Event** | Audit trail | event_type, payload, timestamps |
+| **InferenceCall** | LLM call log | model, tokens, cost, latency, level |
+| **Objective** | Global priority context | current_text, constraints |
+
+**Task States:** `IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE`
+
+**Turn Actors:** `USER`, `AGENT`
+
+**Turn Intents:** `COMMAND`, `ANSWER`, `QUESTION`, `COMPLETION`, `PROGRESS`
 
 ## API Endpoints
 
-- TBD
+### Dashboard & Real-Time
 
-### New Architecture Routes
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/` | GET | Main dashboard view |
+| `/sse` | GET | SSE stream (filters: `?types=...&project_id=...&agent_id=...`) |
 
-- TBD
+### Claude Code Hooks
 
-### Claude Code Hook Routes
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/hook/session-start` | POST | Claude Code session started |
+| `/hook/session-end` | POST | Claude Code session ended |
+| `/hook/stop` | POST | Claude finished turn (primary completion signal) |
+| `/hook/notification` | POST | Claude Code notification |
+| `/hook/user-prompt-submit` | POST | User submitted prompt |
+| `/hook/status` | GET | Hook receiver status and activity |
 
-| Route                      | Method | Description                                      |
-| -------------------------- | ------ | ------------------------------------------------ |
-| `/hook/session-start`      | POST   | Claude Code session started                      |
-| `/hook/session-end`        | POST   | Claude Code session ended                        |
-| `/hook/stop`               | POST   | Claude finished turn (primary completion signal) |
-| `/hook/notification`       | POST   | Claude Code notification                         |
-| `/hook/user-prompt-submit` | POST   | User submitted prompt                            |
-| `/hook/status`             | GET    | Hook receiver status and activity                |
+### Intelligence Layer
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/inference/status` | GET | Inference service health and config |
+| `/api/inference/usage` | GET | Usage statistics and cost breakdown |
+| `/api/summarise/turn/<id>` | POST | Generate or retrieve turn summary |
+| `/api/summarise/task/<id>` | POST | Generate or retrieve task summary |
+| `/api/priority/score` | POST | Trigger batch priority scoring |
+| `/api/priority/rankings` | GET | Get current priority rankings |
+
+### Other Endpoints
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/sessions/...` | Various | Session lifecycle management |
+| `/api/objective/...` | Various | Global objective CRUD |
+| `/api/waypoint/...` | Various | Waypoint editor |
+| `/api/focus/<agent_id>` | POST | iTerm2 focus control |
+| `/api/config` | GET | Configuration viewer |
+| `/health` | GET | Health check |
 
 ## Notes for AI Assistants
+
+### Auto-Commit After Plan Execution
+
+After finishing execution of a plan (e.g., implementing tasks from `/opsx:apply`, completing a unit of work from orchestration, or finishing any multi-step implementation), automatically run `/commit-push` to stage, commit, and push all changes to the current branch. Do not ask for confirmation — the skill handles everything including meaningful commit messages derived from the actual diff.
+
+This applies when:
+- You finish implementing all tasks from a plan or spec
+- You complete a significant unit of work (feature, fix, refactor)
+- Orchestration phases complete (build, test passing, etc.)
+
+This does **not** apply when:
+- You are only doing research, exploration, or answering questions
+- The user explicitly says not to commit
+- You are in the middle of multi-step work that isn't yet complete
 
 ### Notifications
 
@@ -173,21 +338,130 @@ Notifications can be enabled/disabled via:
 
 ### Development Tips
 
-- **Run tests often:** `pytest` runs 450+ tests, `pytest --cov=src` for coverage
-- **Use run.py:** Recommended entry point for the new architecture
+- **Run targeted tests:** Run only the tests relevant to your change (e.g., `pytest tests/services/test_hook_receiver.py tests/routes/test_hooks.py`). Do NOT run the full suite (~960 tests) unless explicitly asked by the user or preparing a commit/PR. Use `-k` to narrow further when useful.
+- **Use run.py:** Recommended entry point — `python run.py`
 - **Debug mode:** Set `debug: true` in config.yaml for Flask debug mode
 - **Service injection:** Access services via `app.extensions["service_name"]`
 - **State transitions:** Use `TaskStateMachine.transition()` for state changes
+- **Migrations:** Run `flask db upgrade` after model changes
+- **LLM features:** Set `OPENROUTER_API_KEY` in `.env` for inference/summarisation/priority
 - The HTML template uses vanilla JS with no external dependencies
 
 ### Testing
 
+#### CRITICAL: Test Database Safety
+
+**Tests MUST NEVER connect to production or development databases.** All databases that do not end in `_test` are protected. This rule is enforced at multiple levels:
+
+1. **Fixture enforcement:** `tests/conftest.py` contains a session-scoped autouse fixture `_force_test_database` that sets `DATABASE_URL` to `claude_headspace_test` before any test runs. This fixture must NEVER be removed, bypassed, or weakened.
+2. **New test requirement:** All new test files MUST use the existing fixture system (`app`, `client`, `db_session`). No ad-hoc database connections are allowed.
+3. **AI guardrail:** See `.claude/rules/ai-guardrails.md` — Database Protection section.
+
+Testing must not pollute, corrupt, or delete any user data in production or development databases.
+
+#### Commands
+
 ```bash
-pytest                           # Run all tests
-pytest --cov=src                 # With coverage report
-pytest tests/services/           # Run specific test directory
-pytest -k "test_agent"           # Run tests matching pattern
+# Targeted testing (default — run what's relevant to the change)
+pytest tests/services/test_hook_receiver.py          # Specific service test
+pytest tests/routes/test_hooks.py                    # Specific route test
+pytest tests/services/ tests/routes/                 # Relevant directories
+pytest -k "test_state_machine"                       # Pattern match
+pytest tests/integration/test_persistence_flow.py    # Specific integration test
+
+# Full suite (only when explicitly requested or before commit/PR)
+pytest                                    # All tests (~960 tests, always uses _test DB)
+pytest --cov=src                          # With coverage report
 ```
+
+#### Test Architecture (3-Tier)
+
+- **Unit tests** (`tests/services/`) — mock dependencies, validate pure service logic in isolation
+- **Route tests** (`tests/routes/`) — Flask test client with mocked services, validate HTTP contracts and response codes
+- **Integration tests** (`tests/integration/`) — real PostgreSQL `_test` database, factory-boy data creation, verify actual persistence and constraints
+
+#### Integration Testing Framework
+
+Real PostgreSQL integration tests with automatic database lifecycle management.
+
+**Prerequisites:**
+
+- PostgreSQL running locally
+- Database user with `CREATE DATABASE` privilege
+- Dev dependencies installed: `pip install -e ".[dev]"`
+
+**Database lifecycle (automatic):**
+
+1. **Session start:** creates `claude_headspace_test` database (drops first if exists)
+2. **Schema creation:** `db.metadata.create_all()` initialises all tables
+3. **Per-test isolation:** each test wrapped in a transaction, rolled back after
+4. **Session end:** drops the test database
+
+**Test database URL** is resolved in order:
+
+1. `TEST_DATABASE_URL` environment variable (if set)
+2. Auto-constructed from `config.yaml` database settings with `_test` suffix
+
+**Factory Boy factories** (`tests/integration/factories.py`):
+
+| Factory | Model | Auto-creates Parent |
+|---------|-------|---------------------|
+| `ProjectFactory` | Project | — |
+| `AgentFactory` | Agent | Project |
+| `TaskFactory` | Task | Agent → Project |
+| `TurnFactory` | Turn | Task → Agent → Project |
+| `EventFactory` | Event | — (refs optional) |
+| `ObjectiveFactory` | Objective | — |
+| `ObjectiveHistoryFactory` | ObjectiveHistory | Objective |
+
+**Key fixtures** (`tests/integration/conftest.py`):
+
+| Fixture | Scope | Description |
+|---------|-------|-------------|
+| `test_database_url` | session | Test database connection URL |
+| `test_db_engine` | session | Engine that manages create/drop of test DB |
+| `TestSessionFactory` | session | `sessionmaker` bound to test engine |
+| `db_session` | function | Per-test session with automatic rollback |
+
+**Writing new integration tests:**
+
+```python
+import pytest
+from sqlalchemy import select
+from claude_headspace.models import Project, Agent
+from .factories import ProjectFactory, AgentFactory
+
+@pytest.fixture(autouse=True)
+def _set_factory_session(db_session):
+    ProjectFactory._meta.sqlalchemy_session = db_session
+    AgentFactory._meta.sqlalchemy_session = db_session
+
+class TestMyFeature:
+    def test_something(self, db_session):
+        project = ProjectFactory(name="my-project")
+        db_session.flush()
+
+        result = db_session.execute(
+            select(Project).where(Project.id == project.id)
+        ).scalar_one()
+        assert result.name == "my-project"
+```
+
+See `docs/testing/integration-testing-guide.md` for the full guide.
+
+#### Test Configuration
+
+From `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v"
+```
+
+Dev dependencies: `pip install -e ".[dev]"` (pytest, pytest-cov, factory-boy)
 
 ### AppleScript (Legacy)
 
