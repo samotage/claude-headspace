@@ -21,6 +21,7 @@ from src.claude_headspace.cli.launcher import (
     SessionManager,
     cleanup_session,
     create_parser,
+    detect_claudec,
     get_iterm_pane_id,
     get_project_info,
     get_server_url,
@@ -177,6 +178,22 @@ class TestVerifyClaudeCli:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("which", 5)
             assert verify_claude_cli() is False
+
+
+class TestDetectClaudec:
+    """Tests for detect_claudec function."""
+
+    def test_claudec_found(self):
+        """Test when claudec is found in PATH."""
+        with patch("shutil.which", return_value="/usr/local/bin/claudec"):
+            result = detect_claudec()
+        assert result == "/usr/local/bin/claudec"
+
+    def test_claudec_not_found(self):
+        """Test when claudec is not in PATH."""
+        with patch("shutil.which", return_value=None):
+            result = detect_claudec()
+        assert result is None
 
 
 class TestValidatePrerequisites:
@@ -386,6 +403,47 @@ class TestLaunchClaude:
 
         assert exit_code == 1
 
+    def test_launch_with_claudec(self):
+        """Test launch wraps claude with claudec when path provided."""
+        with patch("subprocess.call") as mock_call:
+            mock_call.return_value = 0
+
+            exit_code = launch_claude(
+                ["--model", "opus"],
+                {"PATH": "/usr/bin"},
+                claudec_path="/usr/local/bin/claudec",
+            )
+
+        assert exit_code == 0
+        call_args = mock_call.call_args
+        assert call_args[0][0] == ["/usr/local/bin/claudec", "claude", "--model", "opus"]
+
+    def test_launch_with_claudec_no_extra_args(self):
+        """Test launch with claudec and no extra claude args."""
+        with patch("subprocess.call") as mock_call:
+            mock_call.return_value = 0
+
+            exit_code = launch_claude(
+                [], {"PATH": "/usr/bin"}, claudec_path="/usr/local/bin/claudec"
+            )
+
+        assert exit_code == 0
+        call_args = mock_call.call_args
+        assert call_args[0][0] == ["/usr/local/bin/claudec", "claude"]
+
+    def test_launch_claudec_none_falls_back(self):
+        """Test that claudec_path=None uses bare claude command."""
+        with patch("subprocess.call") as mock_call:
+            mock_call.return_value = 0
+
+            exit_code = launch_claude(
+                ["--model", "opus"], {"PATH": "/usr/bin"}, claudec_path=None
+            )
+
+        assert exit_code == 0
+        call_args = mock_call.call_args
+        assert call_args[0][0] == ["claude", "--model", "opus"]
+
 
 class TestSessionManager:
     """Tests for SessionManager class."""
@@ -553,24 +611,88 @@ class TestMain:
                             ),
                         ):
                             with patch(
-                                "src.claude_headspace.cli.launcher.setup_environment",
-                                return_value={"PATH": "/usr/bin"},
+                                "src.claude_headspace.cli.launcher.detect_claudec",
+                                return_value=None,
                             ):
                                 with patch(
-                                    "src.claude_headspace.cli.launcher.SessionManager"
-                                ) as MockManager:
-                                    mock_manager = MagicMock()
-                                    MockManager.return_value.__enter__ = MagicMock(
-                                        return_value=mock_manager
-                                    )
-                                    MockManager.return_value.__exit__ = MagicMock(
-                                        return_value=False
-                                    )
-
+                                    "src.claude_headspace.cli.launcher.setup_environment",
+                                    return_value={"PATH": "/usr/bin"},
+                                ):
                                     with patch(
-                                        "src.claude_headspace.cli.launcher.launch_claude",
-                                        return_value=0,
-                                    ):
-                                        exit_code = main(["start"])
+                                        "src.claude_headspace.cli.launcher.SessionManager"
+                                    ) as MockManager:
+                                        mock_manager = MagicMock()
+                                        MockManager.return_value.__enter__ = MagicMock(
+                                            return_value=mock_manager
+                                        )
+                                        MockManager.return_value.__exit__ = MagicMock(
+                                            return_value=False
+                                        )
+
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.launch_claude",
+                                            return_value=0,
+                                        ):
+                                            exit_code = main(["start"])
 
         assert exit_code == EXIT_SUCCESS
+
+    def test_start_command_with_claudec(self, capsys):
+        """Test start command with claudec detected."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_server_url",
+            return_value="http://localhost:5055",
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.validate_prerequisites",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_project_info",
+                    return_value=ProjectInfo("test", "/test", "main"),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                        return_value="pane123",
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.register_session",
+                            return_value=(
+                                True,
+                                {"agent_id": 1, "project_name": "test"},
+                                None,
+                            ),
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.detect_claudec",
+                                return_value="/usr/local/bin/claudec",
+                            ):
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.setup_environment",
+                                    return_value={"PATH": "/usr/bin"},
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.SessionManager"
+                                    ) as MockManager:
+                                        mock_manager = MagicMock()
+                                        MockManager.return_value.__enter__ = MagicMock(
+                                            return_value=mock_manager
+                                        )
+                                        MockManager.return_value.__exit__ = MagicMock(
+                                            return_value=False
+                                        )
+
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.launch_claude",
+                                            return_value=0,
+                                        ) as mock_launch:
+                                            exit_code = main(["start"])
+
+        assert exit_code == EXIT_SUCCESS
+        # Verify launch_claude received claudec_path
+        mock_launch.assert_called_once()
+        call_kwargs = mock_launch.call_args
+        assert call_kwargs[1]["claudec_path"] == "/usr/local/bin/claudec"
+        # Verify output mentions Input Bridge enabled
+        captured = capsys.readouterr()
+        assert "Input Bridge: enabled" in captured.out

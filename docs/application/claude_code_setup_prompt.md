@@ -345,7 +345,7 @@ If all REQUIRED items passed:
 
    To start the dashboard:  cd $REPO_DIR && python run.py
    To launch a monitored session:  claude-headspace start
-   To launch with Input Bridge:  claudec claude-headspace start
+   To launch with Input Bridge:  claude-headspace start  (auto-detects claudec)
    To view hook status:  curl http://localhost:5055/hook/status"
 
 If PATH was updated during setup, add this note:

@@ -47,27 +47,24 @@ claudec --version
 
 You should see the version number (v0.1.0 or later).
 
-## Launching Sessions with claudec
+## Launching Sessions
 
-To enable Input Bridge for a session, launch Claude Code through the `claudec` wrapper:
+`claude-headspace start` automatically detects `claudec` in your PATH and wraps Claude Code with it:
 
 ```bash
-claudec claude
+claude-headspace start
 ```
 
-This:
+When `claudec` is detected, the preamble shows `Input Bridge: enabled (claudec detected)`. Behind the scenes, `claude-headspace` launches `claudec claude` as the child process, which:
+
 1. Creates a PTY pair for the Claude Code process
 2. Opens a Unix socket at `/tmp/claudec-<session_id>.sock`
-3. Launches Claude Code as a child process inside the PTY
+3. Launches Claude Code inside the PTY
 4. Forwards all keyboard input to the PTY (transparent to the user)
 
 The session registers with Headspace via the normal hooks. The Input Bridge becomes available once the commander socket is detected.
 
-**Tip:** You can combine this with the Headspace wrapper:
-
-```bash
-claudec claude-headspace start
-```
+If `claudec` is not installed, `claude-headspace start` falls back to launching `claude` directly. Sessions work normally — you just won't have the respond widget on the dashboard.
 
 ## Using the Respond Widget
 
