@@ -235,7 +235,7 @@
                 container.innerHTML = '';
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
-                        '<h3 class="text-sm font-semibold text-primary mb-2">' +
+                        '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">' +
                         ActivityPage._escapeHtml(r.project.name) + '</h3>' +
                         '<p class="text-muted text-sm">No activity data yet.</p></div>';
                 });
@@ -246,50 +246,58 @@
             container.innerHTML = '';
             empty.classList.add('hidden');
 
+            // Sort: projects with data first, no-data projects at the end
+            results.sort(function(a, b) {
+                var aHasData = a.metrics.current != null || (a.agents && a.agents.length > 0) ? 1 : 0;
+                var bHasData = b.metrics.current != null || (b.agents && b.agents.length > 0) ? 1 : 0;
+                return bHasData - aHasData;
+            });
+
             results.forEach(function(r) {
                 var section = document.createElement('div');
-                section.className = 'border-b border-border py-4 last:border-0';
+                section.className = 'py-4 border-b border-border last:border-0';
 
                 var current = r.metrics.current;
-                var html = '<h3 class="text-sm font-semibold text-primary mb-3">' +
+                var html = '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">' +
                     ActivityPage._escapeHtml(r.project.name) + '</h3>';
 
                 if (current) {
-                    html += '<div class="grid grid-cols-3 gap-4 mb-3">' +
-                        '<div class="text-center">' +
-                        '<div class="text-lg font-bold text-cyan">' + (current.turn_count || 0) + '</div>' +
-                        '<div class="text-xs text-muted">Turns</div></div>' +
-                        '<div class="text-center">' +
-                        '<div class="text-lg font-bold text-cyan">' +
+                    html += '<div class="grid grid-cols-3 gap-3 mb-3">' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-cyan">' + (current.turn_count || 0) + '</div>' +
+                        '<div class="metric-card-label">Turns</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-amber">' +
                         (current.avg_turn_time_seconds != null ? current.avg_turn_time_seconds.toFixed(1) + 's' : '--') +
-                        '</div><div class="text-xs text-muted">Avg Time</div></div>' +
-                        '<div class="text-center">' +
-                        '<div class="text-lg font-bold text-cyan">' + (current.active_agents || 0) + '</div>' +
-                        '<div class="text-xs text-muted">Agents</div></div></div>';
+                        '</div><div class="metric-card-label">Avg Time</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-green">' + (current.active_agents || 0) + '</div>' +
+                        '<div class="metric-card-label">Agents</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
 
                 // Agent rows
                 if (r.agents && r.agents.length > 0) {
-                    html += '<div class="ml-4 space-y-2">';
+                    html += '<div class="space-y-2">';
                     r.agents.forEach(function(ad) {
                         var ac = ad.metrics.current;
                         var agentLabel = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
                             : 'Agent ' + ad.agent.id;
-                        html += '<div class="flex items-center justify-between text-sm py-1">' +
-                            '<span class="text-secondary font-mono">' + ActivityPage._escapeHtml(agentLabel) + '</span>' +
-                            '<span class="text-muted">';
+                        html += '<div class="agent-metric-row">' +
+                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
                         if (ac) {
-                            html += ac.turn_count + ' turns';
+                            html += '<div class="agent-metric-stats">' +
+                                '<span><span class="stat-value">' + ac.turn_count + '</span><span class="stat-label">turns</span></span>';
                             if (ac.avg_turn_time_seconds != null) {
-                                html += ' | ' + ac.avg_turn_time_seconds.toFixed(1) + 's avg';
+                                html += '<span><span class="stat-value">' + ac.avg_turn_time_seconds.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
+                            html += '</div>';
                         } else {
-                            html += 'No data';
+                            html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
                         }
-                        html += '</span></div>';
+                        html += '</div>';
                     });
                     html += '</div>';
                 }

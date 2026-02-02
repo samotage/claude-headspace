@@ -356,6 +356,91 @@ body::after {
     text-shadow: 0 0 8px rgba(86, 212, 221, 0.2);
 }
 
+/* Activity metric cards */
+.metric-card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+
+.metric-card-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.metric-card-value {
+    font-family: var(--font-mono);
+    font-size: 2.25rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+
+/* Project metric cards — smaller variant */
+.metric-card-sm {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+.metric-card-sm .metric-card-label {
+    font-size: 0.625rem;
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.metric-card-sm .metric-card-value {
+    font-size: 1.5rem;
+}
+
+/* Agent row in activity page */
+.agent-metric-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+}
+
+.agent-metric-row:hover {
+    border-color: var(--border-bright);
+}
+
+.agent-metric-tag {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    min-width: 72px;
+}
+
+.agent-metric-stats {
+    display: flex;
+    gap: 16px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+}
+
+.agent-metric-stats .stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.agent-metric-stats .stat-label {
+    color: var(--text-muted);
+    margin-left: 4px;
+    font-size: 0.6875rem;
+}
+
 /* iOS smooth scrolling for overflow containers */
 .overflow-x-auto,
 .overflow-y-auto {
