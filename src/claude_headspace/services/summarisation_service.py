@@ -1,5 +1,6 @@
 """Summarisation service for generating turn and task summaries via the inference layer."""
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -23,13 +24,16 @@ _PREAMBLE_RE = re.compile(
 class SummarisationService:
     """Generates AI summaries for turns and tasks using the inference service."""
 
-    def __init__(self, inference_service: InferenceService):
+    def __init__(self, inference_service: InferenceService, config: dict | None = None):
         """Initialize the summarisation service.
 
         Args:
             inference_service: The E3-S1 inference service for LLM calls
+            config: Application config dict (for headspace settings)
         """
         self._inference = inference_service
+        headspace_config = (config or {}).get("headspace", {})
+        self._headspace_enabled = headspace_config.get("enabled", True)
 
     @staticmethod
     def _clean_response(text: str) -> str:
@@ -78,8 +82,15 @@ class SummarisationService:
                     logger.debug("Skipping turn summarisation for turn %s: project %s inference paused", turn.id, project.id)
                     return None
 
+        # Determine if this is a USER turn eligible for frustration extraction
+        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        use_frustration_prompt = self._headspace_enabled and actor_value == "user"
+
         # Build prompt
-        input_text = self._resolve_turn_prompt(turn)
+        if use_frustration_prompt:
+            input_text = self._resolve_frustration_prompt(turn)
+        else:
+            input_text = self._resolve_turn_prompt(turn)
 
         # Get entity associations for InferenceCall logging
         task_id = turn.task_id if turn.task_id else None
@@ -101,20 +112,38 @@ class SummarisationService:
                 turn_id=turn.id,
             )
 
-            # Persist summary to turn model (strip LLM preamble)
-            summary = self._clean_response(result.text)
+            # Parse response: try JSON for frustration-aware prompts, fallback to plain text
+            summary = None
+            frustration_score = None
+
+            if use_frustration_prompt:
+                summary, frustration_score = self._parse_frustration_response(result.text)
+            else:
+                summary = self._clean_response(result.text)
+
+            # Persist summary to turn model
             turn.summary = summary
             turn.summary_generated_at = datetime.now(timezone.utc)
+            if frustration_score is not None:
+                turn.frustration_score = frustration_score
 
             if db_session:
                 db_session.add(turn)
                 db_session.commit()
 
-            return summary
-
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Turn summarisation failed for turn {turn.id}: {e}")
             return None
+
+        # Trigger headspace recalculation after successful summarisation (outside
+        # the main try block so failures here don't lose the summary result)
+        if frustration_score is not None:
+            try:
+                self._trigger_headspace_recalculation(turn)
+            except Exception as e:
+                logger.warning(f"Headspace recalculation trigger failed (non-fatal): {e}")
+
+        return summary
 
     def summarise_task(self, task, db_session=None) -> str | None:
         """Generate a completion summary for a completed task.
@@ -460,3 +489,49 @@ class SummarisationService:
 
         # No turn activity at all — nothing meaningful to summarise
         return None
+
+    @staticmethod
+    def _resolve_frustration_prompt(turn) -> str:
+        """Build the frustration-aware summarisation prompt for a user turn."""
+        instruction_context = ""
+        if hasattr(turn, "task") and turn.task:
+            instruction = getattr(turn.task, "instruction", None)
+            if instruction:
+                instruction_context = f"Task instruction: {instruction}\n\n"
+
+        return build_prompt(
+            "turn_frustration",
+            text=turn.text,
+            instruction_context=instruction_context,
+        )
+
+    @classmethod
+    def _parse_frustration_response(cls, text: str) -> tuple[str, int | None]:
+        """Parse a frustration-aware LLM response.
+
+        Attempts to parse JSON with summary and frustration_score.
+        Falls back to treating the entire response as a plain text summary.
+
+        Returns:
+            Tuple of (summary, frustration_score). frustration_score is None on parse failure.
+        """
+        try:
+            data = json.loads(text)
+            summary = cls._clean_response(str(data.get("summary", text)))
+            score = data.get("frustration_score")
+            if isinstance(score, (int, float)) and 0 <= score <= 10:
+                return summary, int(score)
+            return summary, None
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # Fallback: treat as plain text summary
+            return cls._clean_response(text), None
+
+    def _trigger_headspace_recalculation(self, turn) -> None:
+        """Trigger headspace monitor recalculation after frustration extraction."""
+        try:
+            from flask import current_app
+            monitor = current_app.extensions.get("headspace_monitor")
+            if monitor:
+                monitor.recalculate(turn)
+        except Exception as e:
+            logger.debug(f"Headspace recalculation failed (non-fatal): {e}")

@@ -73,6 +73,17 @@ reaper:
   interval_seconds: 60
   inactivity_timeout_seconds: 300
   grace_period_seconds: 300
+headspace:
+  enabled: true
+  thresholds:
+    yellow: 4
+    red: 7
+  alert_cooldown_minutes: 10
+  snapshot_retention_days: 7
+  flow_detection:
+    min_turn_rate: 6
+    max_frustration: 3
+    min_duration_minutes: 15
 archive:
   enabled: true
   retention:

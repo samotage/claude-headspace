@@ -136,9 +136,16 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services.summarisation_service import SummarisationService
     summarisation_service = SummarisationService(
         inference_service=inference_service,
+        config=config,
     )
     app.extensions["summarisation_service"] = summarisation_service
     logger.info("Summarisation service initialized")
+
+    # Initialize headspace monitor
+    from .services.headspace_monitor import HeadspaceMonitor
+    headspace_monitor = HeadspaceMonitor(app=app, config=config)
+    app.extensions["headspace_monitor"] = headspace_monitor
+    logger.info("Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled)
 
     # Initialize priority scoring service
     from .services.priority_scoring import PriorityScoringService
@@ -284,6 +291,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
     from .routes.focus import focus_bp
+    from .routes.headspace import headspace_bp
     from .routes.health import health_bp
     from .routes.help import help_bp
     from .routes.hooks import hooks_bp
@@ -305,6 +313,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(focus_bp)
+    app.register_blueprint(headspace_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(help_bp)
     app.register_blueprint(hooks_bp)

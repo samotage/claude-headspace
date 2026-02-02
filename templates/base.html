@@ -17,6 +17,7 @@
     <!-- Shared SSE connection (all pages) -->
     <script src="{{ url_for('static', filename='js/sse-client.js') }}?v={{ cache_bust }}"></script>
     <script src="{{ url_for('static', filename='js/header-sse.js') }}?v={{ cache_bust }}"></script>
+    <script src="{{ url_for('static', filename='js/headspace.js') }}?v={{ cache_bust }}"></script>
 
     {% block scripts %}{% endblock %}
 </body>

@@ -105,6 +105,22 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Use a professional tone suitable for a development journal."
     ),
 
+    # --- Headspace: frustration-aware turn summarisation ---
+    "turn_frustration": (
+        "{instruction_context}"
+        "User message: {text}\n\n"
+        "1. Summarise this user turn in 1-2 concise sentences (~18 tokens).\n"
+        "2. Rate the user's apparent frustration level 0-10:\n"
+        "   0-3: Calm, patient, constructive\n"
+        "   4-6: Showing some frustration (repetition, mild exasperation)\n"
+        "   7-10: Clearly frustrated (caps, punctuation, harsh language, repeated complaints)\n\n"
+        "Consider: tone and language intensity, punctuation patterns (!!!, ???, CAPS), "
+        "repetition of previous requests, explicit frustration signals "
+        '("again", "still not working", "why won\'t you"), '
+        "and patience indicators (clear instructions, positive framing).\n\n"
+        'Return ONLY valid JSON: {{"summary": "...", "frustration_score": N}}'
+    ),
+
     # --- Classification: completion ---
     "completion_classification": (
         "Classify this agent output. Is the agent:\n"
