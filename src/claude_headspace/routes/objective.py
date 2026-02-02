@@ -66,6 +66,7 @@ def get_objective():
             "id": objective.id,
             "current_text": objective.current_text,
             "constraints": objective.constraints,
+            "priority_enabled": objective.priority_enabled,
             "set_at": objective.set_at.isoformat() if objective.set_at else None,
         }
     )
@@ -252,3 +253,75 @@ def get_objective_history():
     except Exception:
         logger.exception("Failed to fetch objective history")
         return jsonify({"error": "Failed to fetch history"}), 500
+
+
+@objective_bp.route("/api/objective/priority", methods=["GET"])
+def get_priority_status():
+    """
+    Get current priority scoring enabled/disabled status.
+
+    Returns:
+        JSON with priority_enabled boolean.
+        Defaults to true if no objective exists.
+    """
+    objective = db.session.query(Objective).first()
+
+    if not objective:
+        return jsonify({"priority_enabled": True})
+
+    return jsonify({"priority_enabled": objective.priority_enabled})
+
+
+@objective_bp.route("/api/objective/priority", methods=["POST"])
+def toggle_priority():
+    """
+    Toggle priority scoring on or off.
+
+    Accepts JSON body with:
+        - enabled (required): Boolean to enable/disable priority scoring
+
+    Returns:
+        JSON with updated priority_enabled state, or error
+    """
+    data = request.get_json()
+
+    if not data or "enabled" not in data:
+        return jsonify({"error": "Missing 'enabled' field"}), 400
+
+    objective = db.session.query(Objective).first()
+
+    if not objective:
+        return jsonify({"error": "No objective set"}), 404
+
+    enabled = bool(data["enabled"])
+
+    try:
+        objective.priority_enabled = enabled
+        db.session.commit()
+
+        # Broadcast SSE event
+        try:
+            from ..services.broadcaster import get_broadcaster
+
+            broadcaster = get_broadcaster()
+            broadcaster.broadcast("priority_toggle", {"priority_enabled": enabled})
+        except Exception:
+            logger.debug("Failed to broadcast priority_toggle (non-fatal)")
+
+        # If re-enabled, trigger immediate scoring
+        if enabled:
+            try:
+                from flask import current_app
+
+                scoring_service = current_app.extensions.get("priority_scoring")
+                if scoring_service:
+                    scoring_service.trigger_scoring_immediate()
+            except Exception:
+                logger.debug("Failed to trigger immediate scoring (non-fatal)")
+
+        return jsonify({"priority_enabled": objective.priority_enabled})
+
+    except Exception:
+        logger.exception("Failed to toggle priority")
+        db.session.rollback()
+        return jsonify({"error": "Failed to toggle priority"}), 500

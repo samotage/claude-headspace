@@ -33,6 +33,12 @@ class PriorityScoringService:
             Dict with scored agents list, count, and context_type
         """
         from ..models.agent import Agent
+        from ..models.objective import Objective
+
+        # Check if priority scoring is disabled
+        objective = db_session.query(Objective).first()
+        if objective and not objective.priority_enabled:
+            return {"scored": 0, "agents": [], "context_type": "disabled"}
 
         # Gather active agents (not ended)
         agents = (

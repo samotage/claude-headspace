@@ -9,6 +9,7 @@
 
     const API_ENDPOINT = '/api/objective';
     const HISTORY_ENDPOINT = '/api/objective/history';
+    const PRIORITY_ENDPOINT = '/api/objective/priority';
     const PER_PAGE = 10;
 
     /**
@@ -30,7 +31,12 @@
             this.saveStatus = document.getElementById('save-status');
             this.loadMoreBtn = document.getElementById('load-more-btn');
             this.historyList = document.getElementById('history-list');
+            this.priorityToggle = document.getElementById('priority-toggle');
+            this.priorityLabel = document.getElementById('priority-toggle-label');
 
+            if (this.priorityToggle && !this.priorityToggle.disabled) {
+                this.priorityToggle.addEventListener('click', () => this._togglePriority());
+            }
             if (this.form) {
                 this.form.addEventListener('submit', (e) => {
                     e.preventDefault();
@@ -286,6 +292,70 @@
          */
         _formatDate: function(date) {
             return date.toISOString().slice(0, 16).replace('T', ' ');
+        },
+
+        /**
+         * Toggle priority scoring on/off
+         */
+        _togglePriority: async function() {
+            if (!this.priorityToggle || this.priorityToggle.disabled) return;
+
+            // Read current state from the dot position
+            var dot = this.priorityToggle.querySelector('.toggle-dot');
+            var currentlyEnabled = dot && dot.classList.contains('left-7');
+            var newEnabled = !currentlyEnabled;
+
+            // Optimistic UI update
+            this._updateToggleUI(newEnabled);
+
+            try {
+                var response = await fetch(PRIORITY_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: newEnabled })
+                });
+
+                if (!response.ok) {
+                    // Revert on failure
+                    this._updateToggleUI(currentlyEnabled);
+                }
+            } catch (error) {
+                console.error('ObjectivePage: Priority toggle failed', error);
+                this._updateToggleUI(currentlyEnabled);
+            }
+        },
+
+        /**
+         * Update toggle button UI
+         */
+        _updateToggleUI: function(enabled) {
+            if (!this.priorityToggle) return;
+
+            var dot = this.priorityToggle.querySelector('.toggle-dot');
+
+            if (enabled) {
+                this.priorityToggle.classList.add('bg-cyan');
+                this.priorityToggle.classList.remove('bg-surface', 'border', 'border-border');
+                if (dot) {
+                    dot.classList.add('left-7');
+                    dot.classList.remove('left-1');
+                }
+            } else {
+                this.priorityToggle.classList.remove('bg-cyan');
+                this.priorityToggle.classList.add('bg-surface', 'border', 'border-border');
+                if (dot) {
+                    dot.classList.remove('left-7');
+                    dot.classList.add('left-1');
+                }
+            }
+
+            if (this.priorityLabel) {
+                this.priorityLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+                this.priorityLabel.classList.toggle('text-green', enabled);
+                this.priorityLabel.classList.toggle('text-muted', !enabled);
+            }
+
+            this.priorityToggle.title = enabled ? 'Disable priority scoring' : 'Enable priority scoring';
         },
 
         /**

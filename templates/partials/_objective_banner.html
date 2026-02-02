@@ -8,6 +8,11 @@
         <div class="objective-banner-content">
             <div class="objective-banner-row">
                 <span class="objective-banner-text" id="objective-banner-heading">{{ objective.current_text }}</span>
+                <span id="priority-status-badge"
+                      class="objective-banner-priority-badge {{ 'priority-enabled' if objective.priority_enabled else 'priority-disabled' }}"
+                      title="Priority scoring is {{ 'enabled' if objective.priority_enabled else 'disabled' }}">
+                    prioritisation {{ 'enabled' if objective.priority_enabled else 'disabled' }}
+                </span>
                 <a href="{{ url_for('objective.objective_page') }}" class="objective-banner-edit" title="Edit objective">[edit]</a>
             </div>
             {% if objective.constraints %}

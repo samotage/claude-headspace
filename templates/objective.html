@@ -10,8 +10,20 @@
         <!-- Objective Form Section -->
         <section class="mb-8" aria-labelledby="objective-form-heading">
             <div class="bg-elevated rounded-lg border border-border p-6">
-                <div class="mb-4">
+                <div class="mb-4 flex items-center justify-between">
                     <h2 id="objective-form-heading" class="text-lg font-bold text-primary">Current Objective</h2>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-secondary font-mono">Priority Scoring</span>
+                        <button type="button" id="priority-toggle"
+                                class="relative w-12 h-6 rounded-full transition-colors {{ 'bg-cyan' if objective and objective.priority_enabled else 'bg-surface border border-border' if objective else 'bg-surface border border-border opacity-50 cursor-not-allowed' }}"
+                                {{ 'disabled' if not objective else '' }}
+                                title="{{ 'No objective set' if not objective else ('Disable priority scoring' if objective.priority_enabled else 'Enable priority scoring') }}">
+                            <span class="toggle-dot absolute top-1 w-4 h-4 rounded-full bg-primary transition-transform {{ 'left-7' if objective and objective.priority_enabled else 'left-1' }}"></span>
+                        </button>
+                        <span id="priority-toggle-label" class="text-xs font-mono {{ 'text-green' if objective and objective.priority_enabled else 'text-muted' }}">
+                            {{ 'Enabled' if objective and objective.priority_enabled else ('Disabled' if objective else 'Disabled') }}
+                        </span>
+                    </div>
                 </div>
 
                 <form id="objective-form" class="space-y-4">

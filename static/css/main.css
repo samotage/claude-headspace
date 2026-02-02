@@ -1851,6 +1851,28 @@ body::after {
     opacity: 0.5;
 }
 
+.objective-banner-priority-badge {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+.priority-enabled {
+    color: var(--green);
+    background: rgba(80, 250, 123, 0.1);
+    border-color: rgba(80, 250, 123, 0.3);
+}
+
+.priority-disabled {
+    color: var(--text-muted);
+    background: var(--surface);
+    border-color: var(--border);
+}
+
 /* Mobile: always show edit link */
 @media (max-width: 640px) {
     .objective-banner-edit {

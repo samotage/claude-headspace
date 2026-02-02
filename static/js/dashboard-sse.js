@@ -81,6 +81,9 @@
         // Handle full card refresh (authoritative state from server)
         client.on('card_refresh', handleCardRefresh);
 
+        // Handle priority toggle
+        client.on('priority_toggle', handlePriorityToggle);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
@@ -510,6 +513,21 @@
         if (state === 'AWAITING_INPUT' || state === 'TIMED_OUT') {
             highlightRecommendedUpdate();
         }
+    }
+
+    /**
+     * Handle priority toggle events — update the banner badge
+     */
+    function handlePriorityToggle(data, eventType) {
+        var badge = document.getElementById('priority-status-badge');
+        if (!badge) return;
+
+        var enabled = data.priority_enabled;
+        console.log('Priority toggle:', enabled);
+
+        badge.textContent = 'prioritisation ' + (enabled ? 'enabled' : 'disabled');
+        badge.className = 'objective-banner-priority-badge ' + (enabled ? 'priority-enabled' : 'priority-disabled');
+        badge.title = 'Priority scoring is ' + (enabled ? 'enabled' : 'disabled');
     }
 
     /**

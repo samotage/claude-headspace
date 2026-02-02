@@ -213,6 +213,43 @@ class TestParseResponse:
         assert results[0]["score"] == 50
 
 
+class TestPriorityDisabledGuard:
+
+    def test_scoring_skipped_when_disabled(self, service, mock_agent):
+        """Scoring returns early with context_type 'disabled' when priority_enabled is False."""
+        mock_session = MagicMock()
+
+        mock_objective = MagicMock()
+        mock_objective.priority_enabled = False
+        mock_session.query.return_value.first.return_value = mock_objective
+
+        result = service.score_all_agents(mock_session)
+
+        assert result["scored"] == 0
+        assert result["context_type"] == "disabled"
+        assert result["agents"] == []
+
+    def test_scoring_proceeds_when_no_objective(self, service, mock_agent):
+        """No objective means not disabled — scoring should proceed (existing fallback)."""
+        mock_session = MagicMock()
+        # First query (Objective) returns None
+        # Second query (Agent filter) returns agents
+        # Third query (Objective order_by) for context also returns None
+        mock_session.query.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.order_by.return_value.first.return_value = None
+
+        wp_result = MagicMock()
+        wp_result.exists = False
+
+        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+            result = service.score_all_agents(mock_session)
+
+        # Should not be "disabled" — it should proceed to default scoring
+        assert result["context_type"] == "default"
+        assert result["scored"] == 1
+
+
 class TestScoreAllAgents:
 
     def test_no_agents_returns_empty(self, service):
