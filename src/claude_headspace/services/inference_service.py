@@ -138,63 +138,57 @@ class InferenceService:
             session.add(record)
             session.commit()
 
-            self._broadcast_inference_call(
-                record_id=record.id,
-                timestamp=now,
-                level=level,
-                purpose=purpose,
-                model=model,
-                input_tokens=result.input_tokens if result else None,
-                output_tokens=result.output_tokens if result else None,
-                latency_ms=result.latency_ms if result else None,
-                cost=cost,
-                error_message=error_message,
-                cached=cached,
-                project_id=project_id,
-                agent_id=agent_id,
-            )
+            # Resolve display fields from related tables using the live session
+            agent_session = None
+            if record.agent_id:
+                from ..models.agent import Agent
+                agent_row = session.query(Agent.session_uuid).filter(
+                    Agent.id == record.agent_id
+                ).first()
+                if agent_row:
+                    agent_session = str(agent_row.session_uuid)
+
+            project_name = None
+            if record.project_id:
+                from ..models.project import Project
+                project_row = session.query(Project.name).filter(
+                    Project.id == record.project_id
+                ).first()
+                if project_row:
+                    project_name = project_row.name
+
+            self._broadcast_inference_call({
+                "id": record.id,
+                "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+                "level": record.level,
+                "purpose": record.purpose,
+                "model": record.model,
+                "input_tokens": record.input_tokens,
+                "output_tokens": record.output_tokens,
+                "latency_ms": record.latency_ms,
+                "cost": record.cost,
+                "error_message": record.error_message,
+                "cached": record.cached,
+                "project_id": record.project_id,
+                "project_name": project_name,
+                "agent_id": record.agent_id,
+                "agent_session": agent_session,
+                "input_text": record.input_text,
+                "result_text": record.result_text,
+            })
         except Exception as e:
             logger.error(f"Failed to log inference call: {e}")
         finally:
             if session and self._independent_engine:
                 session.close()
 
-    def _broadcast_inference_call(
-        self,
-        record_id: int,
-        timestamp: datetime,
-        level: str,
-        purpose: str,
-        model: str,
-        input_tokens: int | None,
-        output_tokens: int | None,
-        latency_ms: int | None,
-        cost: float | None,
-        error_message: str | None,
-        cached: bool,
-        project_id: int | None,
-        agent_id: int | None,
-    ) -> None:
+    def _broadcast_inference_call(self, payload: dict) -> None:
         """Broadcast an inference call event via SSE."""
         try:
             from .broadcaster import get_broadcaster
 
             broadcaster = get_broadcaster()
-            broadcaster.broadcast("inference_call", {
-                "id": record_id,
-                "timestamp": timestamp.isoformat(),
-                "level": level,
-                "purpose": purpose,
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "latency_ms": latency_ms,
-                "cost": cost,
-                "error_message": error_message,
-                "cached": cached,
-                "project_id": project_id,
-                "agent_id": agent_id,
-            })
+            broadcaster.broadcast("inference_call", payload)
         except Exception as e:
             logger.debug(f"Failed to broadcast inference call (non-fatal): {e}")
 

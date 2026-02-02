@@ -221,7 +221,10 @@ def _detect_completion_opener(tail: str, has_continuation: bool) -> Optional[Int
 
 
 def _infer_completion_classification(
-    tail: str, inference_service: Any
+    tail: str,
+    inference_service: Any,
+    project_id: int | None = None,
+    agent_id: int | None = None,
 ) -> Optional[IntentResult]:
     """LLM fallback for ambiguous agent output classification."""
     prompt = build_prompt("completion_classification", tail=tail)
@@ -231,6 +234,8 @@ def _infer_completion_classification(
             level="turn",
             purpose="completion_classification",
             input_text=prompt,
+            project_id=project_id,
+            agent_id=agent_id,
         )
         letter = result.text.strip().upper()[:1]
         mapping = {
@@ -245,7 +250,10 @@ def _infer_completion_classification(
 
 
 def detect_agent_intent(
-    text: Optional[str], inference_service: Any = None
+    text: Optional[str],
+    inference_service: Any = None,
+    project_id: int | None = None,
+    agent_id: int | None = None,
 ) -> IntentResult:
     """
     Detect the intent of an agent turn using regex pattern matching.
@@ -346,7 +354,9 @@ def detect_agent_intent(
 
     # Phase 4: Optional inference fallback for ambiguous cases
     if inference_service and getattr(inference_service, "is_available", False):
-        inferred = _infer_completion_classification(tail, inference_service)
+        inferred = _infer_completion_classification(
+            tail, inference_service, project_id=project_id, agent_id=agent_id
+        )
         if inferred:
             logger.debug(
                 f"Inference fallback classified as {inferred.intent.value}"

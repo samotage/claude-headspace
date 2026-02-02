@@ -171,7 +171,12 @@ class HookLifecycleBridge:
         except RuntimeError:
             inference_service = None
 
-        intent_result = detect_agent_intent(agent_text, inference_service=inference_service)
+        intent_result = detect_agent_intent(
+            agent_text,
+            inference_service=inference_service,
+            project_id=agent.project_id,
+            agent_id=agent.id,
+        )
 
         if intent_result.intent == TurnIntent.QUESTION:
             # Agent asked a question — transition to AWAITING_INPUT, not COMPLETE

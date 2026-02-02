@@ -475,12 +475,12 @@ class TestResolveTaskPrompt:
 
         assert "No instruction recorded" in prompt
 
-    def test_task_prompt_with_no_turns(self, service, mock_task):
+    def test_task_prompt_with_no_turns_returns_none(self, service, mock_task):
         mock_task.turns = []
 
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert "No agent response recorded" in prompt
+        assert prompt is None
 
 
 class TestResolveTurnPrompt:
@@ -675,23 +675,17 @@ class TestTaskEmptyFinalTurnFallback:
         assert result == "Task completed successfully."
         mock_inference.infer.assert_called_once()
 
-    def test_all_turns_empty_uses_instruction_only(self, service, mock_inference, mock_task):
-        """When all turns have empty text, still calls inference with instruction-only prompt."""
+    def test_all_turns_empty_skips_inference(self, service, mock_inference, mock_task):
+        """When all turns have empty text, skips inference entirely."""
         mock_task.completion_summary = None
         for t in mock_task.turns:
             t.text = ""
             t.summary = None
-        mock_inference.infer.return_value = InferenceResult(
-            text="Task completed.", input_tokens=30,
-            output_tokens=8, model="model", latency_ms=150,
-        )
 
         result = service.summarise_task(mock_task)
 
-        assert result == "Task completed."
-        mock_inference.infer.assert_called_once()
-        call_kwargs = mock_inference.infer.call_args[1]
-        assert "No agent response recorded" in call_kwargs["input_text"]
+        assert result is None
+        mock_inference.infer.assert_not_called()
 
 
 class TestSSEBroadcast:

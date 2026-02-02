@@ -106,8 +106,11 @@ class SummarisationService:
             logger.debug("Inference service unavailable, skipping task summarisation")
             return None
 
-        # Build prompt
+        # Build prompt — returns None when there's nothing to summarise
         input_text = self._resolve_task_prompt(task)
+        if input_text is None:
+            logger.debug("No content to summarise for task %s, skipping", task.id)
+            return None
 
         # Get entity associations for InferenceCall logging
         agent_id = task.agent_id if hasattr(task, "agent_id") else None
@@ -319,7 +322,7 @@ class SummarisationService:
             )
 
     @staticmethod
-    def _resolve_task_prompt(task) -> str:
+    def _resolve_task_prompt(task) -> str | None:
         """Build the completion summary prompt for a task.
 
         Primary inputs are the task instruction and the agent's final message.
@@ -360,9 +363,5 @@ class SummarisationService:
                 turn_activity=turn_activity,
             )
 
-        # No turn activity at all — still attempt with instruction only
-        return build_prompt(
-            "task_completion",
-            instruction=instruction,
-            final_turn_text="No agent response recorded",
-        )
+        # No turn activity at all — nothing meaningful to summarise
+        return None
