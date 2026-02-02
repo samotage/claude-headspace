@@ -178,11 +178,9 @@ def clean_db(e2e_app):
 
     # Reset global state
     from claude_headspace.services.session_correlator import clear_session_cache
-    from claude_headspace.services.hook_lifecycle_bridge import reset_hook_bridge
     from claude_headspace.services.hook_receiver import reset_receiver_state
 
     reset_receiver_state()
-    reset_hook_bridge()
     clear_session_cache()
 
 

@@ -33,7 +33,7 @@ sse:
 hooks:
   enabled: true
   polling_interval_with_hooks: 60
-  fallback_timeout: 300
+  fallback_timeout: 1200
 notifications:
   enabled: true
   sound: true

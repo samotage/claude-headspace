@@ -13,7 +13,7 @@ from claude_headspace.models.project import Project
 from claude_headspace.models.task import Task, TaskState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.event_writer import EventWriter, WriteResult
-from claude_headspace.services.state_machine import StateMachine, TransitionResult
+from claude_headspace.services.state_machine import TransitionResult
 from claude_headspace.services.task_lifecycle import TaskLifecycleManager, TurnProcessingResult, SummarisationRequest
 
 

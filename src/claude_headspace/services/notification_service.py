@@ -26,23 +26,9 @@ class NotificationPreferences:
 
 
 class NotificationService:
-    """
-    Service for sending macOS system notifications via terminal-notifier.
-
-    Features:
-    - Send notifications for agent state changes
-    - Rate limiting per agent to prevent spam
-    - Click-to-navigate with agent highlight
-    - Graceful degradation when terminal-notifier unavailable
-    """
+    """macOS system notifications via terminal-notifier with rate limiting."""
 
     def __init__(self, preferences: NotificationPreferences | None = None):
-        """
-        Initialize the notification service.
-
-        Args:
-            preferences: Notification preferences (uses defaults if None)
-        """
         self.preferences = preferences or NotificationPreferences()
         self._rate_limit_tracker: dict[str, float] = {}
         self._rate_limit_lock = threading.Lock()
@@ -51,79 +37,34 @@ class NotificationService:
         self._first_failure_logged = False
 
     def is_available(self) -> bool:
-        """
-        Check if terminal-notifier is available.
-
-        Returns:
-            True if terminal-notifier is installed and accessible
-        """
+        """Check if terminal-notifier is installed."""
         if not self._availability_checked:
             self._is_available = shutil.which("terminal-notifier") is not None
             self._availability_checked = True
             if self._is_available:
-                logger.info("terminal-notifier detected - notifications available")
+                logger.info("terminal-notifier detected")
             else:
-                logger.warning(
-                    "terminal-notifier not found - notifications unavailable. "
-                    "Install with: brew install terminal-notifier"
-                )
+                logger.warning("terminal-notifier not found - install with: brew install terminal-notifier")
         return self._is_available
 
     def refresh_availability(self) -> bool:
-        """
-        Re-check terminal-notifier availability.
-
-        Returns:
-            True if terminal-notifier is now available
-        """
+        """Re-check terminal-notifier availability."""
         self._availability_checked = False
         return self.is_available()
 
     def _is_rate_limited(self, agent_id: str) -> bool:
-        """
-        Check if notifications for this agent are rate-limited.
-
-        Args:
-            agent_id: The agent identifier
-
-        Returns:
-            True if notifications should be suppressed
-        """
         with self._rate_limit_lock:
             now = time.time()
-            last_notification = self._rate_limit_tracker.get(agent_id, 0)
-            elapsed = now - last_notification
-            return elapsed < self.preferences.rate_limit_seconds
+            last = self._rate_limit_tracker.get(agent_id, 0)
+            return (now - last) < self.preferences.rate_limit_seconds
 
     def _update_rate_limit(self, agent_id: str) -> None:
-        """
-        Record that a notification was sent for this agent.
-
-        Args:
-            agent_id: The agent identifier
-        """
         with self._rate_limit_lock:
             self._rate_limit_tracker[agent_id] = time.time()
 
     def _build_notification_command(
-        self,
-        title: str,
-        subtitle: str,
-        message: str,
-        url: str | None = None,
+        self, title: str, subtitle: str, message: str, url: str | None = None,
     ) -> list[str]:
-        """
-        Build the terminal-notifier command.
-
-        Args:
-            title: Notification title
-            subtitle: Notification subtitle
-            message: Notification body message
-            url: Optional URL to open on click
-
-        Returns:
-            Command as list of arguments
-        """
         cmd = [
             "terminal-notifier",
             "-title", title,
@@ -131,57 +72,28 @@ class NotificationService:
             "-message", message,
             "-sender", "com.googlecode.iterm2",
         ]
-
         if self.preferences.sound:
             cmd.extend(["-sound", "default"])
-
         if url:
             cmd.extend(["-open", url])
-
         return cmd
 
     def _build_contextual_message(
-        self,
-        event_type: str,
-        task_instruction: str | None = None,
-        turn_text: str | None = None,
+        self, event_type: str, task_instruction: str | None = None, turn_text: str | None = None,
     ) -> str:
-        """
-        Build a contextual notification message from task/turn data.
-
-        Falls back to generic messages when no context is available.
-
-        Args:
-            event_type: Event type (task_complete, awaiting_input)
-            task_instruction: Optional task instruction summary
-            turn_text: Optional triggering turn text/summary
-
-        Returns:
-            Formatted message string
-        """
         parts = []
-
         if task_instruction:
             parts.append(task_instruction)
-
         if turn_text:
-            if event_type == "task_complete":
-                parts.append(f"\u2713 {turn_text}")
-            elif event_type == "awaiting_input":
-                parts.append(f"? {turn_text}")
-            else:
-                parts.append(turn_text)
-
+            prefix = {"task_complete": "\u2713 ", "awaiting_input": "? "}.get(event_type, "")
+            parts.append(f"{prefix}{turn_text}")
         if parts:
             return "\n".join(parts)
-
-        # Fallback to generic messages
-        if event_type == "task_complete":
-            return "Task completed - agent is now idle"
-        elif event_type == "awaiting_input":
-            return "Input needed - agent is waiting for your response"
-        else:
-            return f"Event: {event_type}"
+        defaults = {
+            "task_complete": "Task completed - agent is now idle",
+            "awaiting_input": "Input needed - agent is waiting for your response",
+        }
+        return defaults.get(event_type, f"Event: {event_type}")
 
     def send_notification(
         self,
@@ -193,170 +105,51 @@ class NotificationService:
         task_instruction: str | None = None,
         turn_text: str | None = None,
     ) -> bool:
-        """
-        Send a macOS notification for an agent event.
-
-        Args:
-            agent_id: The agent identifier for rate limiting
-            agent_name: Human-readable agent name
-            event_type: Event type (task_complete, awaiting_input)
-            project: Optional project name
-            dashboard_url: Base URL for the dashboard
-            task_instruction: Optional task instruction summary for context
-            turn_text: Optional triggering turn text/summary for context
-
-        Returns:
-            True if notification was sent (or skipped due to settings)
-            False if sending failed
-        """
-        # Check if globally enabled
+        """Send a macOS notification for an agent event. Returns True if sent/skipped."""
         if not self.preferences.enabled:
-            logger.debug("Notifications disabled globally")
             return True
-
-        # Check if this event type is enabled
         if not self.preferences.events.get(event_type, False):
-            logger.debug(f"Notifications disabled for event type: {event_type}")
             return True
-
-        # Check availability
         if not self.is_available():
             if not self._first_failure_logged:
-                logger.warning(
-                    "Cannot send notification - terminal-notifier not available"
-                )
+                logger.warning("Cannot send notification - terminal-notifier not available")
                 self._first_failure_logged = True
             return False
-
-        # Check rate limiting
         if self._is_rate_limited(agent_id):
-            logger.debug(
-                f"Notification rate-limited for agent {agent_id} "
-                f"(cooldown: {self.preferences.rate_limit_seconds}s)"
-            )
             return True
 
-        # Build notification content
-        if event_type == "task_complete":
-            title = "Task Complete"
-        elif event_type == "awaiting_input":
-            title = "Input Needed"
-        else:
-            title = "Claude Headspace"
-
-        if project:
-            subtitle = f"{project} ({agent_name})"
-        else:
-            subtitle = agent_name
-
-        message = self._build_contextual_message(
-            event_type, task_instruction, turn_text,
-        )
-
-        # Build click-to-navigate URL
+        titles = {"task_complete": "Task Complete", "awaiting_input": "Input Needed"}
+        title = titles.get(event_type, "Claude Headspace")
+        subtitle = f"{project} ({agent_name})" if project else agent_name
+        message = self._build_contextual_message(event_type, task_instruction, turn_text)
         base_url = dashboard_url or self.preferences.dashboard_url
         url = f"{base_url}?highlight={agent_id}"
-
-        # Build and execute command
         cmd = self._build_notification_command(title, subtitle, message, url)
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
-                logger.warning(
-                    f"terminal-notifier returned non-zero: {result.returncode}, "
-                    f"stderr: {result.stderr}"
-                )
+                logger.warning(f"terminal-notifier returned {result.returncode}: {result.stderr}")
                 return False
-
-            # Update rate limit tracker
             self._update_rate_limit(agent_id)
-
-            logger.info(
-                f"Notification sent: agent={agent_name}, event={event_type}"
-            )
+            logger.info(f"Notification sent: agent={agent_name}, event={event_type}")
             return True
-
         except subprocess.TimeoutExpired:
-            logger.warning("Notification timed out (>500ms)")
+            logger.warning("Notification timed out")
             return False
         except Exception as e:
             logger.warning(f"Failed to send notification: {e}")
             return False
 
-    def notify_task_complete(
-        self,
-        agent_id: str,
-        agent_name: str,
-        project: str | None = None,
-        task_instruction: str | None = None,
-        turn_text: str | None = None,
-    ) -> bool:
-        """
-        Send notification for task completion.
+    def notify_task_complete(self, **kwargs) -> bool:
+        """Send notification for task completion."""
+        return self.send_notification(event_type="task_complete", **kwargs)
 
-        Args:
-            agent_id: The agent identifier
-            agent_name: Human-readable agent name
-            project: Optional project name
-            task_instruction: Optional task instruction summary
-            turn_text: Optional completion turn text/summary
-
-        Returns:
-            True if notification was sent successfully
-        """
-        return self.send_notification(
-            agent_id=agent_id,
-            agent_name=agent_name,
-            event_type="task_complete",
-            project=project,
-            task_instruction=task_instruction,
-            turn_text=turn_text,
-        )
-
-    def notify_awaiting_input(
-        self,
-        agent_id: str,
-        agent_name: str,
-        project: str | None = None,
-        task_instruction: str | None = None,
-        turn_text: str | None = None,
-    ) -> bool:
-        """
-        Send notification when agent is awaiting input.
-
-        Args:
-            agent_id: The agent identifier
-            agent_name: Human-readable agent name
-            project: Optional project name
-            task_instruction: Optional task instruction summary
-            turn_text: Optional question/turn text
-
-        Returns:
-            True if notification was sent successfully
-        """
-        return self.send_notification(
-            agent_id=agent_id,
-            agent_name=agent_name,
-            event_type="awaiting_input",
-            project=project,
-            task_instruction=task_instruction,
-            turn_text=turn_text,
-        )
+    def notify_awaiting_input(self, **kwargs) -> bool:
+        """Send notification when agent is awaiting input."""
+        return self.send_notification(event_type="awaiting_input", **kwargs)
 
     def get_preferences(self) -> dict[str, Any]:
-        """
-        Get current notification preferences as a dictionary.
-
-        Returns:
-            Dictionary of current preferences
-        """
         return {
             "enabled": self.preferences.enabled,
             "sound": self.preferences.sound,
@@ -371,15 +164,6 @@ class NotificationService:
         events: dict | None = None,
         rate_limit_seconds: int | None = None,
     ) -> None:
-        """
-        Update notification preferences.
-
-        Args:
-            enabled: Global enable/disable
-            sound: Sound enable/disable
-            events: Event type settings
-            rate_limit_seconds: Rate limit period
-        """
         if enabled is not None:
             self.preferences.enabled = enabled
         if sound is not None:
@@ -403,11 +187,6 @@ def get_notification_service() -> NotificationService:
 
 
 def configure_notification_service(preferences: NotificationPreferences) -> None:
-    """
-    Configure the global notification service.
-
-    Args:
-        preferences: Notification preferences to use
-    """
+    """Configure the global notification service."""
     global _notification_service
     _notification_service = NotificationService(preferences)

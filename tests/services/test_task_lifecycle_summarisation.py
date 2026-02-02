@@ -1,11 +1,12 @@
 """Unit tests for TaskLifecycleManager summarisation integration."""
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from src.claude_headspace.models.task import TaskState
 from src.claude_headspace.models.turn import TurnActor
+from src.claude_headspace.services.state_machine import TransitionResult
 from src.claude_headspace.services.task_lifecycle import TaskLifecycleManager, SummarisationRequest
 
 
@@ -93,20 +94,20 @@ class TestTurnSummarisationTrigger:
 
 class TestTaskSummarisationTrigger:
 
+    @pytest.fixture(autouse=True)
+    def _patch_validate(self):
+        with patch("src.claude_headspace.services.task_lifecycle.validate_transition") as self._mock_validate:
+            yield
+
     def test_summarisation_queued_on_task_completion(self, manager, mock_session, mock_agent):
         """When a task is completed via process_turn, task_completion summarisation should be queued."""
-        # Setup: active task in PROCESSING state, agent turn triggers completion
         mock_task = MagicMock()
         mock_task.id = 42
         mock_task.state = TaskState.PROCESSING
         mock_task.agent = mock_agent
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_task
 
-        # Simulate completion transition
-        from src.claude_headspace.services.state_machine import TransitionResult
-
-        manager._state_machine = MagicMock()
-        manager._state_machine.transition.return_value = TransitionResult(
+        self._mock_validate.return_value = TransitionResult(
             valid=True,
             from_state=TaskState.PROCESSING,
             to_state=TaskState.COMPLETE,
@@ -129,10 +130,7 @@ class TestTaskSummarisationTrigger:
         mock_task.agent = mock_agent
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_task
 
-        from src.claude_headspace.services.state_machine import TransitionResult
-
-        manager._state_machine = MagicMock()
-        manager._state_machine.transition.return_value = TransitionResult(
+        self._mock_validate.return_value = TransitionResult(
             valid=True,
             from_state=TaskState.COMMANDED,
             to_state=TaskState.PROCESSING,

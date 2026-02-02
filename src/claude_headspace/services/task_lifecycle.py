@@ -13,7 +13,7 @@ from ..models.task import Task, TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .event_writer import EventWriter, WriteResult
 from .intent_detector import IntentResult, detect_intent
-from .state_machine import StateMachine, TransitionResult
+from .state_machine import TransitionResult, validate_transition
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,25 @@ class TurnProcessingResult:
     pending_summarisations: list = field(default_factory=list)
 
 
+def get_instruction_for_notification(task, max_length: int = 120) -> str | None:
+    """Get task instruction for notification display.
+
+    Falls back to the first USER COMMAND turn's raw text (truncated)
+    when the AI-generated instruction summary isn't available yet.
+    """
+    if task.instruction:
+        return task.instruction
+    try:
+        for t in task.turns:
+            if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
+                text = (t.text or "").strip()
+                if text:
+                    return text[:max_length - 3] + "..." if len(text) > max_length else text
+    except Exception:
+        pass
+    return None
+
+
 class TaskLifecycleManager:
     """
     Manager for task lifecycle operations.
@@ -54,21 +73,10 @@ class TaskLifecycleManager:
         self,
         session: Session,
         event_writer: Optional[EventWriter] = None,
-        state_machine: Optional[StateMachine] = None,
         summarisation_service: Optional[Any] = None,
     ) -> None:
-        """
-        Initialize the task lifecycle manager.
-
-        Args:
-            session: SQLAlchemy session for database operations
-            event_writer: Optional EventWriter for logging state transitions
-            state_machine: Optional StateMachine instance (created if not provided)
-            summarisation_service: Optional SummarisationService for generating summaries
-        """
         self._session = session
         self._event_writer = event_writer
-        self._state_machine = state_machine or StateMachine()
         self._summarisation_service = summarisation_service
         self._pending_summarisations: list[SummarisationRequest] = []
 
@@ -376,7 +384,7 @@ class TaskLifecycleManager:
             )
 
         # Validate transition
-        transition_result = self._state_machine.transition(
+        transition_result = validate_transition(
             from_state=current_state,
             actor=actor,
             intent=intent_result.intent,
@@ -473,36 +481,6 @@ class TaskLifecycleManager:
 
         return result
 
-    @staticmethod
-    def _get_instruction_for_notification(task: Task, max_length: int = 120) -> str | None:
-        """
-        Get task instruction for notification display.
-
-        Falls back to the first USER COMMAND turn's raw text (truncated)
-        when the AI-generated instruction summary isn't available yet.
-
-        Args:
-            task: The task to get instruction for
-            max_length: Max characters for fallback text truncation
-
-        Returns:
-            Instruction text or None if unavailable
-        """
-        # Prefer AI-generated instruction summary
-        if task.instruction:
-            return task.instruction
-
-        # Fall back to the first USER COMMAND turn's raw text
-        try:
-            for t in task.turns:
-                if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
-                    text = (t.text or "").strip()
-                    if text:
-                        if len(text) > max_length:
-                            return text[:max_length - 3] + "..."
-                        return text
-        except Exception:
-            pass
-
-        return None
+    def _get_instruction_for_notification(self, task: Task, max_length: int = 120) -> str | None:
+        return get_instruction_for_notification(task, max_length)
 

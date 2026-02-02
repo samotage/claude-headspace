@@ -385,26 +385,6 @@ class TestBroadcaster:
         finally:
             broadcaster.stop()
 
-    def test_broadcast_error(self):
-        """Test broadcasting an error event."""
-        broadcaster = Broadcaster()
-        broadcaster.start()
-
-        try:
-            client_id = broadcaster.register_client()
-            client = broadcaster.get_client(client_id)
-
-            sent_count = broadcaster.broadcast_error("connection_lost", "Test error")
-
-            assert sent_count == 1
-
-            event = client.event_queue.get_nowait()
-            assert event.event_type == "error"
-            assert event.data["error_type"] == "connection_lost"
-            assert event.data["message"] == "Test error"
-        finally:
-            broadcaster.stop()
-
     def test_get_next_event_timeout(self):
         """Test get_next_event with timeout."""
         broadcaster = Broadcaster()

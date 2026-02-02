@@ -197,18 +197,7 @@ def apply_env_overrides(config: dict) -> dict:
 
 
 def load_config(config_path: str | Path = "config.yaml") -> dict:
-    """
-    Load configuration with the following precedence (highest to lowest):
-    1. Environment variables
-    2. config.yaml values
-    3. Default values
-
-    Args:
-        config_path: Path to the YAML configuration file
-
-    Returns:
-        Merged configuration dictionary
-    """
+    """Load config: env vars > config.yaml > DEFAULTS."""
     if isinstance(config_path, str):
         config_path = Path(config_path)
 
@@ -226,17 +215,7 @@ def load_config(config_path: str | Path = "config.yaml") -> dict:
 
 
 def get_value(config: dict, *keys: str, default: Any = None) -> Any:
-    """
-    Get a nested configuration value.
-
-    Args:
-        config: Configuration dictionary
-        keys: Sequence of keys to traverse
-        default: Default value if key not found
-
-    Returns:
-        Configuration value or default
-    """
+    """Get a nested configuration value by key path."""
     result = config
     for key in keys:
         if isinstance(result, dict) and key in result:
@@ -259,20 +238,7 @@ def _extract_db_name(url: str) -> str:
 
 
 def get_database_url(config: dict) -> str:
-    """
-    Build the database URL from configuration.
-
-    DATABASE_URL environment variable takes precedence over individual config fields.
-
-    Raises RuntimeError if called during a pytest run and the resolved URL
-    points to the production database (missing '_test' suffix).
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        PostgreSQL connection URL
-    """
+    """Build database URL. DATABASE_URL env var takes precedence over config fields."""
     # DATABASE_URL takes precedence
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
@@ -321,44 +287,20 @@ def _guard_production_db(database_url: str, config: dict) -> None:
 
 
 def mask_database_url(url: str) -> str:
-    """
-    Mask the password in a database URL for safe logging.
-
-    Args:
-        url: Database URL that may contain a password
-
-    Returns:
-        URL with password replaced by ***
-    """
+    """Mask the password in a database URL for safe logging."""
     import re
     # Match postgresql://user:password@host pattern
     return re.sub(r"(postgresql://[^:]+:)[^@]+(@)", r"\1***\2", url)
 
 
 def get_claude_projects_path(config: dict) -> str:
-    """
-    Get the expanded path to Claude Code projects directory.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        Absolute path to Claude projects directory
-    """
+    """Get the expanded path to Claude Code projects directory."""
     path = get_value(config, "claude", "projects_path", default="~/.claude/projects")
     return os.path.expanduser(path)
 
 
 def get_file_watcher_config(config: dict) -> dict:
-    """
-    Get file watcher configuration with defaults.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        File watcher configuration dictionary
-    """
+    """Get file watcher configuration with defaults."""
     return {
         "polling_interval": get_value(
             config, "file_watcher", "polling_interval", default=2
@@ -378,91 +320,8 @@ def get_file_watcher_config(config: dict) -> dict:
     }
 
 
-def get_event_system_config(config: dict) -> dict:
-    """
-    Get event system configuration with defaults.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        Event system configuration dictionary
-    """
-    return {
-        "write_retry_attempts": get_value(
-            config, "event_system", "write_retry_attempts", default=3
-        ),
-        "write_retry_delay_ms": get_value(
-            config, "event_system", "write_retry_delay_ms", default=100
-        ),
-        "max_restarts_per_minute": get_value(
-            config, "event_system", "max_restarts_per_minute", default=5
-        ),
-        "shutdown_timeout_seconds": get_value(
-            config, "event_system", "shutdown_timeout_seconds", default=2
-        ),
-    }
-
-
-def get_sse_config(config: dict) -> dict:
-    """
-    Get SSE (Server-Sent Events) configuration with defaults.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        SSE configuration dictionary
-    """
-    return {
-        "heartbeat_interval_seconds": get_value(
-            config, "sse", "heartbeat_interval_seconds", default=30
-        ),
-        "max_connections": get_value(
-            config, "sse", "max_connections", default=100
-        ),
-        "connection_timeout_seconds": get_value(
-            config, "sse", "connection_timeout_seconds", default=60
-        ),
-        "retry_after_seconds": get_value(
-            config, "sse", "retry_after_seconds", default=5
-        ),
-    }
-
-
-def get_hooks_config(config: dict) -> dict:
-    """
-    Get hooks configuration with defaults.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        Hooks configuration dictionary
-    """
-    return {
-        "enabled": get_value(
-            config, "hooks", "enabled", default=True
-        ),
-        "polling_interval_with_hooks": get_value(
-            config, "hooks", "polling_interval_with_hooks", default=60
-        ),
-        "fallback_timeout": get_value(
-            config, "hooks", "fallback_timeout", default=300
-        ),
-    }
-
-
 def get_notifications_config(config: dict) -> dict:
-    """
-    Get notifications configuration with defaults.
-
-    Args:
-        config: Configuration dictionary
-
-    Returns:
-        Notifications configuration dictionary
-    """
+    """Get notifications configuration with defaults."""
     events = config.get("notifications", {}).get("events", {})
     return {
         "enabled": get_value(

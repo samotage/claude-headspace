@@ -5,15 +5,17 @@ from .project_decoder import decode_project_path, encode_project_path, locate_js
 from .jsonl_parser import JSONLParser, ParsedTurn
 from .git_metadata import GitMetadata, GitInfo
 from .file_watcher import FileWatcher, init_file_watcher
-from .event_schemas import (
+from .event_writer import (
     EventType,
     PayloadSchema,
     ValidatedEvent,
     validate_event_type,
     validate_payload,
     create_validated_event,
+    EventWriter,
+    WriteResult,
+    create_event_writer,
 )
-from .event_writer import EventWriter, WriteResult, create_event_writer
 from .process_monitor import ProcessMonitor, WatcherStatus
 from .intent_detector import (
     IntentResult,
@@ -25,14 +27,13 @@ from .intent_detector import (
     BLOCKED_PATTERNS,
 )
 from .state_machine import (
-    StateMachine,
     TransitionResult,
     validate_transition,
     get_valid_transitions_from,
     is_terminal_state,
     VALID_TRANSITIONS,
 )
-from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult
+from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_instruction_for_notification
 from .broadcaster import (
     Broadcaster,
     SSEClient,
@@ -82,7 +83,6 @@ __all__ = [
     "COMPLETION_PATTERNS",
     "BLOCKED_PATTERNS",
     # State machine
-    "StateMachine",
     "TransitionResult",
     "validate_transition",
     "get_valid_transitions_from",
@@ -91,6 +91,7 @@ __all__ = [
     # Task lifecycle
     "TaskLifecycleManager",
     "TurnProcessingResult",
+    "get_instruction_for_notification",
     # Broadcaster
     "Broadcaster",
     "SSEClient",
