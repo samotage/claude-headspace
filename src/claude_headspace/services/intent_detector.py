@@ -69,7 +69,7 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:i'?(?:ve|m) (?:finished|completed|done)|task (?:complete|finished|done))",
     r"(?i)(?:successfully (?:completed|finished)|changes (?:have been )?(?:made|applied|committed))",
     # Summary completion phrases (tightened to avoid false positives)
-    r"(?i)(?:that'?s all (?:the changes|I (?:need|have))|all changes (?:have been|are) (?:made|applied|committed|complete)|everything is (?:set|done|ready|in place|complete))[\.!\s]*$",
+    r"(?i)(?:that'?s all (?:the changes|I (?:need|have))|all changes (?:have been|are) (?:made|applied|committed|complete)|everything (?:is |looks |appears |seems )?(?:set|done|ready|in place|complete|good|healthy|fine|correct))[\.!\s]*$",
     # Implementation complete phrases
     r"(?i)(?:implementation (?:is )?complete|feature (?:is )?(?:ready|done|complete))",
     # Detailed completion phrases
@@ -122,7 +122,7 @@ END_OF_TASK_SOFT_CLOSE_PATTERNS = [
 # End-of-task: capability handoff
 END_OF_TASK_HANDOFF_PATTERNS = [
     r"(?i)(?:you (?:can|should) now (?:be able to )?)",
-    r"(?i)(?:everything (?:should be|is) (?:working|in place|ready|set up))",
+    r"(?i)(?:everything (?:should be|is|looks|appears|seems) (?:working|in place|ready|set up|good|healthy|fine|correct))",
 ]
 
 # Continuation patterns (NEGATIVE guard -- vetoes end-of-task)

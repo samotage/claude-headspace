@@ -1308,3 +1308,52 @@ class TestCompletionOpenerUnit:
         assert result is not None
         assert result.intent == TurnIntent.COMPLETION
         assert result.confidence == 0.75
+
+
+class TestStatusReportCompletion:
+    """Tests for status-report style completion patterns (e.g. 'Everything looks healthy')."""
+
+    def test_everything_looks_healthy(self):
+        """'Everything looks healthy after the server restart.' should detect completion."""
+        result = detect_agent_intent("Everything looks healthy after the server restart.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_looks_good(self):
+        """'Everything looks good.' should detect completion."""
+        result = detect_agent_intent("Everything looks good.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_appears_correct(self):
+        """'Everything appears correct.' should detect completion."""
+        result = detect_agent_intent("Everything appears correct.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_seems_fine(self):
+        """'Everything seems fine.' should detect completion."""
+        result = detect_agent_intent("Everything seems fine.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_status_report_with_bullet_points(self):
+        """Full multi-line status report ending with 'everything looks healthy' -> completion."""
+        text = (
+            "The dashboard is running and showing this session. It shows:\n"
+            "- 1 active agent (#28919c2a) on claude_headspace project\n"
+            "- Status: WORKING [1], with \"Processing...\" state\n"
+            "Everything looks healthy after the server restart."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_looks_healthy_as_handoff(self):
+        """'Everything looks healthy' should match the handoff pattern for END_OF_TASK."""
+        text = (
+            "I've restarted the server and checked the dashboard.\n"
+            "Everything looks healthy."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_is_good(self):
+        """'Everything is good.' should detect completion (broadened 'is' adjectives)."""
+        result = detect_agent_intent("Everything is good.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
