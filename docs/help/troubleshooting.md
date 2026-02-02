@@ -87,11 +87,11 @@ Common issues and how to resolve them.
 
 **Solutions:**
 
-1. **claudec must be installed** — the respond widget requires a commander socket. Install `claudec` and then start sessions with:
+1. **Session must be started with `--bridge`** — the respond widget requires a commander socket. Install `claudec` and start sessions with:
    ```bash
-   claude-headspace start
+   claude-headspace start --bridge
    ```
-   The wrapper auto-detects `claudec` and enables Input Bridge. If the preamble shows `Input Bridge: unavailable`, install `claudec`: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
+   If the preamble shows `Input Bridge: unavailable`, install `claudec`: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
 
 2. **Check that claudec is installed:**
    ```bash

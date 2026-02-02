@@ -57,13 +57,16 @@ The wrapper script:
 - Checks that the Headspace server is reachable
 - Registers the session with the dashboard
 - Sets up environment variables for hook integration
-- Auto-detects `claudec` and wraps Claude Code with it for Input Bridge support
 - Launches Claude Code as a child process
 - Cleans up the session when Claude Code exits
 
-If `claudec` (claude-commander) is installed, Input Bridge is enabled automatically — the preamble will show `Input Bridge: enabled (claudec detected)`. This lets you respond to Claude Code prompts directly from the dashboard. If `claudec` is not installed, sessions work normally without the respond widget.
+To enable Input Bridge (respond to prompts from the dashboard), add `--bridge`:
 
-To install `claudec`: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases). See [Input Bridge](input-bridge) for details.
+```bash
+claude-headspace start --bridge
+```
+
+This requires `claudec` (claude-commander) to be installed. See [Input Bridge](input-bridge) for setup and details.
 
 ### Method 2: Hooks Only
 
@@ -108,7 +111,7 @@ Navigate to `http://localhost:5055` in your browser to see all your active sessi
 Each agent card shows its current state:
 
 - **Working** (blue) - Claude is actively processing
-- **Input Needed** (amber) - Claude is waiting for your response. If `claudec` is installed, a respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
+- **Input Needed** (amber) - Claude is waiting for your response. If the session was started with `--bridge`, a respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
 - **Idle** (gray) - Claude has completed its task
 
 ## Focus on a Session
