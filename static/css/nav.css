@@ -70,6 +70,9 @@
 .tab-btn-group {
     display: flex;
     align-items: center;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
 }
 
 /* Tab links (multi-page navigation) */
@@ -344,7 +347,7 @@
     padding-top: 92px; /* 52px nav + 40px stats bar */
 }
 
-/* Hamburger button - hidden on desktop */
+/* Hamburger button - hidden by default, shown via JS when items overflow */
 .hamburger-btn {
     display: none;
     flex-direction: column;
@@ -355,7 +358,23 @@
     border: none;
     padding: 12px 16px;
     cursor: pointer;
-    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.hamburger-btn.visible {
+    display: flex;
+}
+
+/* Tab links hidden by overflow detection */
+.tab-link.overflow-hidden {
+    visibility: hidden;
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Drawer items that are visible in main nav don't show in drawer */
+.mobile-menu-item.nav-visible {
+    display: none;
 }
 
 .hamburger-line {
@@ -492,14 +511,6 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .hamburger-btn {
-        display: flex;
-    }
-
-    .tab-btn-group {
-        display: none;
-    }
-
     .nav-brand {
         padding: 8px 12px;
         flex: 1;

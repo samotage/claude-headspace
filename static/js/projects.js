@@ -97,6 +97,7 @@
             document.getElementById('project-form').reset();
             this._hideFormError();
             document.getElementById('project-form-modal').classList.remove('hidden');
+            document.addEventListener('keydown', ProjectsPage._formModalEscHandler);
             document.getElementById('project-form-name').focus();
         },
 
@@ -122,6 +123,7 @@
                 document.getElementById('project-form-description').value = project.description || '';
                 this._hideFormError();
                 document.getElementById('project-form-modal').classList.remove('hidden');
+                document.addEventListener('keydown', ProjectsPage._formModalEscHandler);
                 document.getElementById('project-form-name').focus();
             } catch (error) {
                 console.error('ProjectsPage: Failed to open edit modal', error);
@@ -133,6 +135,16 @@
          */
         closeFormModal: function() {
             document.getElementById('project-form-modal').classList.add('hidden');
+            document.removeEventListener('keydown', ProjectsPage._formModalEscHandler);
+        },
+
+        /**
+         * Esc key handler for form modal
+         */
+        _formModalEscHandler: function(e) {
+            if (e.key === 'Escape') {
+                ProjectsPage.closeFormModal();
+            }
         },
 
         /**

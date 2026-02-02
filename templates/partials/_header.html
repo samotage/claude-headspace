@@ -9,25 +9,25 @@
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="nav-brand-cursor">&gt;_</span><span class="nav-brand-suffix">headspace</span>
     </a>
     <div class="tab-btn-group" role="navigation" aria-label="Main navigation">
-        <a href="{{ url_for('dashboard.dashboard') }}"
+        <a href="{{ url_for('dashboard.dashboard') }}" data-nav-key="dashboard"
            class="tab-link {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}"
            {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>dashboard</a>
-        <a href="{{ url_for('projects.projects_page') }}"
+        <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
            class="tab-link {% if request.endpoint == 'projects.projects_page' %}active{% endif %}"
            {% if request.endpoint == 'projects.projects_page' %}aria-current="page"{% endif %}>projects</a>
-        <a href="{{ url_for('activity.activity_page') }}"
+        <a href="{{ url_for('activity.activity_page') }}" data-nav-key="activity"
            class="tab-link {% if request.endpoint == 'activity.activity_page' %}active{% endif %}"
            {% if request.endpoint == 'activity.activity_page' %}aria-current="page"{% endif %}>activity</a>
-        <a href="{{ url_for('objective.objective_page') }}"
+        <a href="{{ url_for('objective.objective_page') }}" data-nav-key="objective"
            class="tab-link {% if request.endpoint == 'objective.objective_page' %}active{% endif %}"
            {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>objective</a>
-        <a href="{{ url_for('logging.logging_page') }}"
+        <a href="{{ url_for('logging.logging_page') }}" data-nav-key="logging"
            class="tab-link {% if request.endpoint and request.endpoint.startswith('logging.') %}active{% endif %}"
            {% if request.endpoint and request.endpoint.startswith('logging.') %}aria-current="page"{% endif %}>logging</a>
-        <a href="{{ url_for('config.config_page') }}"
+        <a href="{{ url_for('config.config_page') }}" data-nav-key="config"
            class="tab-link {% if request.endpoint == 'config.config_page' %}active{% endif %}"
            {% if request.endpoint == 'config.config_page' %}aria-current="page"{% endif %}>config</a>
-        <a href="{{ url_for('help.help_page') }}"
+        <a href="{{ url_for('help.help_page') }}" data-nav-key="help"
            class="tab-link {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}"
            {% if request.endpoint and request.endpoint.startswith('help.') %}aria-current="page"{% endif %}>help</a>
     </div>
@@ -47,37 +47,37 @@
         <button class="mobile-menu-close" onclick="closeMobileMenu()">&times;</button>
     </div>
     <div class="mobile-menu-items">
-        <a href="{{ url_for('dashboard.dashboard') }}"
+        <a href="{{ url_for('dashboard.dashboard') }}" data-nav-key="dashboard"
            class="mobile-menu-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9632;</span>
             <span>dashboard</span>
         </a>
-        <a href="{{ url_for('projects.projects_page') }}"
+        <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
            class="mobile-menu-item {% if request.endpoint == 'projects.projects_page' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9783;</span>
             <span>projects</span>
         </a>
-        <a href="{{ url_for('activity.activity_page') }}"
+        <a href="{{ url_for('activity.activity_page') }}" data-nav-key="activity"
            class="mobile-menu-item {% if request.endpoint == 'activity.activity_page' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9829;</span>
             <span>activity</span>
         </a>
-        <a href="{{ url_for('objective.objective_page') }}"
+        <a href="{{ url_for('objective.objective_page') }}" data-nav-key="objective"
            class="mobile-menu-item {% if request.endpoint == 'objective.objective_page' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9673;</span>
             <span>objective</span>
         </a>
-        <a href="{{ url_for('logging.logging_page') }}"
+        <a href="{{ url_for('logging.logging_page') }}" data-nav-key="logging"
            class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('logging.') %}active{% endif %}">
             <span class="mobile-menu-icon">&#9998;</span>
             <span>logging</span>
         </a>
-        <a href="{{ url_for('config.config_page') }}"
+        <a href="{{ url_for('config.config_page') }}" data-nav-key="config"
            class="mobile-menu-item {% if request.endpoint == 'config.config_page' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9881;</span>
             <span>config</span>
         </a>
-        <a href="{{ url_for('help.help_page') }}"
+        <a href="{{ url_for('help.help_page') }}" data-nav-key="help"
            class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}">
             <span class="mobile-menu-icon">?</span>
             <span>help</span>
@@ -138,4 +138,83 @@ function closeMobileMenu() {
     document.getElementById('mobile-menu-overlay').classList.remove('active');
     document.querySelector('.hamburger-btn').classList.remove('active');
 }
+
+/* Priority-Plus overflow detection */
+(function() {
+    var hamburgerBtn = document.querySelector('.hamburger-btn');
+    var tabGroup = document.querySelector('.tab-btn-group');
+    var tabLinks = tabGroup ? tabGroup.querySelectorAll('.tab-link') : [];
+    var mobileItems = document.querySelectorAll('.mobile-menu-item[data-nav-key]');
+    var resizeTimer;
+
+    function updateOverflowNav() {
+        if (!tabGroup || tabLinks.length === 0) return;
+
+        var isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+        if (isMobile) {
+            /* At mobile widths, hide all tab links and show all drawer items */
+            tabLinks.forEach(function(link) { link.classList.add('overflow-hidden'); });
+            mobileItems.forEach(function(item) { item.classList.remove('nav-visible'); });
+            hamburgerBtn.classList.add('visible');
+            return;
+        }
+
+        /* Reset all items first so we can measure accurately */
+        tabLinks.forEach(function(link) { link.classList.remove('overflow-hidden'); });
+
+        var containerRect = tabGroup.getBoundingClientRect();
+        var anyOverflow = false;
+
+        tabLinks.forEach(function(link) {
+            var linkRect = link.getBoundingClientRect();
+            /* Item overflows if its right edge exceeds the container's right edge */
+            var isOverflowing = linkRect.right > containerRect.right + 1;
+            link.classList.toggle('overflow-hidden', isOverflowing);
+
+            /* Mirror to corresponding drawer item */
+            var key = link.getAttribute('data-nav-key');
+            if (key) {
+                var drawerItem = document.querySelector('.mobile-menu-item[data-nav-key="' + key + '"]');
+                if (drawerItem) {
+                    drawerItem.classList.toggle('nav-visible', !isOverflowing);
+                }
+            }
+
+            if (isOverflowing) anyOverflow = true;
+        });
+
+        hamburgerBtn.classList.toggle('visible', anyOverflow);
+
+        /* If nothing overflows, close the drawer */
+        if (!anyOverflow) {
+            closeMobileMenu();
+        }
+    }
+
+    /* Debounced resize handler */
+    function onResize() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(updateOverflowNav, 50);
+    }
+
+    window.addEventListener('resize', onResize);
+    window.addEventListener('load', updateOverflowNav);
+
+    /* Run after fonts load for accurate measurement */
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(updateOverflowNav);
+    }
+
+    /* Also use ResizeObserver on the tab group for robustness */
+    if (typeof ResizeObserver !== 'undefined' && tabGroup) {
+        new ResizeObserver(function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(updateOverflowNav, 50);
+        }).observe(tabGroup);
+    }
+
+    /* Initial run */
+    updateOverflowNav();
+})();
 </script>
