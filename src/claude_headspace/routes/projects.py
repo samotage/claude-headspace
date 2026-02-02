@@ -407,7 +407,7 @@ def detect_metadata(project_id: int):
                                 claude_md_content=claude_md_content,
                             )
                             inference_result = inference_service.infer(
-                                level="turn",
+                                level="project",
                                 purpose="project_description",
                                 input_text=prompt,
                                 project_id=project_id,
