@@ -133,13 +133,13 @@ class TestFormatDocument:
         assert "Waypoint content" in result
         assert "restore context" in result
 
-    def test_summary_before_waypoint(self, service):
+    def test_waypoint_before_summary(self, service):
         result = service._format_document(
             "My Project", "WP", "SUM"
         )
         sum_pos = result.index("## Progress Summary")
         wp_pos = result.index("## Waypoint (Path Ahead)")
-        assert sum_pos < wp_pos
+        assert wp_pos < sum_pos
 
     def test_waypoint_only(self, service):
         result = service._format_document(

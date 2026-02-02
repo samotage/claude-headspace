@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Text
+from sqlalchemy import Boolean, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -12,7 +12,7 @@ class Project(db.Model):
     """
     Represents a monitored project/codebase.
 
-    Projects are auto-discovered from the filesystem and may have
+    Projects are manually registered and may have
     associated GitHub repository information.
     """
 
@@ -23,6 +23,12 @@ class Project(db.Model):
     path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     github_repo: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_branch: Mapped[str | None] = mapped_column(nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inference_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    inference_paused_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    inference_paused_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

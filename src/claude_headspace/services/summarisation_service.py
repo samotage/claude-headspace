@@ -69,6 +69,15 @@ class SummarisationService:
             logger.debug("Inference service unavailable, skipping turn summarisation")
             return None
 
+        # Check if project inference is paused
+        if hasattr(turn, "task") and turn.task:
+            agent = getattr(turn.task, "agent", None)
+            if agent:
+                project = getattr(agent, "project", None)
+                if project and getattr(project, "inference_paused", None) is True:
+                    logger.debug("Skipping turn summarisation for turn %s: project %s inference paused", turn.id, project.id)
+                    return None
+
         # Build prompt
         input_text = self._resolve_turn_prompt(turn)
 
@@ -128,6 +137,14 @@ class SummarisationService:
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping task summarisation")
             return None
+
+        # Check if project inference is paused
+        agent = getattr(task, "agent", None)
+        if agent:
+            project = getattr(agent, "project", None)
+            if project and getattr(project, "inference_paused", None) is True:
+                logger.debug("Skipping task summarisation for task %s: project %s inference paused", task.id, project.id)
+                return None
 
         # Build prompt — returns None when there's nothing to summarise
         input_text = self._resolve_task_prompt(task)
@@ -206,6 +223,14 @@ class SummarisationService:
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping instruction summarisation")
             return None
+
+        # Check if project inference is paused
+        agent = getattr(task, "agent", None)
+        if agent:
+            project = getattr(agent, "project", None)
+            if project and getattr(project, "inference_paused", None) is True:
+                logger.debug("Skipping instruction summarisation for task %s: project %s inference paused", task.id, project.id)
+                return None
 
         input_text = build_prompt("instruction", command_text=command_text)
 
