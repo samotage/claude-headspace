@@ -241,10 +241,10 @@ function renderBrainRebootContent(contentEl, data) {
     // Add "Generate Progress Summary" button when no summary exists
     if (!data.has_summary) {
         var btnWrap = document.createElement('div');
-        btnWrap.className = 'mt-4';
+        btnWrap.className = 'mt-4 flex justify-end';
         var btn = document.createElement('button');
         btn.id = 'brain-reboot-generate-summary-btn';
-        btn.className = 'btn btn-sm btn-outline';
+        btn.className = 'px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
         btn.textContent = 'Generate Progress Summary';
         btn.onclick = function() { generateProgressSummary(btn); };
         btnWrap.appendChild(btn);
