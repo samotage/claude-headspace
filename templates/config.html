@@ -155,7 +155,7 @@
                                            id="{{ section.name }}-{{ field.name }}"
                                            name="{{ section.name }}.{{ field.name }}"
                                            value="{{ config[section.name][field.name] or '' }}"
-                                           class="field-input w-full px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan pr-10"
+                                           class="field-input form-well w-full px-3 py-1.5 text-sm pr-10"
                                            aria-describedby="{{ section.name }}-{{ field.name }}-hint">
                                     <button type="button"
                                             class="password-toggle absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
@@ -178,7 +178,7 @@
                                        {% if field.min is defined %}min="{{ field.min }}"{% endif %}
                                        {% if field.max is defined %}max="{{ field.max }}"{% endif %}
                                        {% if field.type == 'float' %}step="0.1"{% else %}step="1"{% endif %}
-                                       class="field-input px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan"
+                                       class="field-input form-well px-3 py-1.5 text-sm"
                                        style="width: 100px;"
                                        aria-describedby="{{ section.name }}-{{ field.name }}-hint">
                                 {% if field.min is defined and field.max is defined %}
@@ -190,7 +190,7 @@
                                        id="{{ section.name }}-{{ field.name }}"
                                        name="{{ section.name }}.{{ field.name }}"
                                        value="{{ config[section.name][field.name] or '' }}"
-                                       class="field-input flex-1 px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan"
+                                       class="field-input form-well flex-1 px-3 py-1.5 text-sm"
                                        aria-describedby="{{ section.name }}-{{ field.name }}-hint">
                                 {% endif %}
 
@@ -440,11 +440,64 @@
         }
     });
 
-    // Refresh buttons
+    // Refresh / restart buttons
     refreshBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            if (confirm('This will restart the server. Continue?')) {
-                window.location.reload();
+        btn.addEventListener('click', async function() {
+            const ok = await ConfirmDialog.show(
+                'Restart Server',
+                'This will restart the server to apply your configuration changes. The page will reload automatically once the server is back.',
+                { confirmText: 'Restart', confirmClass: 'bg-amber hover:bg-amber/90' }
+            );
+            if (!ok) return;
+
+            // Disable buttons and show restarting state
+            refreshBtns.forEach(b => {
+                b.disabled = true;
+                b.textContent = 'Restarting...';
+            });
+
+            try {
+                const res = await fetch('/api/config/restart', { method: 'POST' });
+                if (!res.ok) {
+                    const data = await res.json();
+                    showToast(data.message || 'Failed to restart server', 'error');
+                    refreshBtns.forEach(b => {
+                        b.disabled = false;
+                        b.textContent = 'Apply Changes (Restart Required)';
+                    });
+                    return;
+                }
+
+                // Poll /health until server is back (max 15 attempts, 2s interval)
+                let attempts = 0;
+                const maxAttempts = 15;
+                const pollInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const health = await fetch('/health', { signal: AbortSignal.timeout(2000) });
+                        if (health.ok) {
+                            clearInterval(pollInterval);
+                            window.location.reload();
+                        }
+                    } catch (e) {
+                        // Server still down, keep polling
+                    }
+                    if (attempts >= maxAttempts) {
+                        clearInterval(pollInterval);
+                        showToast('Server is taking longer than expected. Try refreshing manually.', 'warning');
+                        refreshBtns.forEach(b => {
+                            b.disabled = false;
+                            b.textContent = 'Apply Changes (Restart Required)';
+                        });
+                    }
+                }, 2000);
+            } catch (err) {
+                console.error('Restart error:', err);
+                showToast('Failed to restart server', 'error');
+                refreshBtns.forEach(b => {
+                    b.disabled = false;
+                    b.textContent = 'Apply Changes (Restart Required)';
+                });
             }
         });
     });

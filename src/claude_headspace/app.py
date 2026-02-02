@@ -89,6 +89,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["APP_CONFIG"] = config
     app.config["APP_VERSION"] = __version__
+    app.config["APP_ROOT"] = str(app_root)
 
     # Setup logging
     setup_logging(config, app_root)

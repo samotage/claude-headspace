@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from ..database import db
 from ..models.agent import Agent
@@ -293,6 +293,7 @@ def get_inference_calls():
     Get paginated inference calls with optional filtering.
 
     Query parameters:
+        - search (optional): Case-insensitive text search across input_text, result_text, purpose
         - level (optional): Filter by inference level
         - model (optional): Filter by model name
         - project_id (optional): Filter by project ID
@@ -304,6 +305,7 @@ def get_inference_calls():
         JSON with paginated inference calls and metadata
     """
     try:
+        search = request.args.get("search", type=str)
         level = request.args.get("level", type=str)
         model = request.args.get("model", type=str)
         project_id = request.args.get("project_id", type=int)
@@ -321,6 +323,15 @@ def get_inference_calls():
 
         query = db.session.query(InferenceCall)
 
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    InferenceCall.input_text.ilike(search_pattern),
+                    InferenceCall.result_text.ilike(search_pattern),
+                    InferenceCall.purpose.ilike(search_pattern),
+                )
+            )
         if level:
             query = query.filter(InferenceCall.level == level)
         if model:

@@ -21,10 +21,11 @@ TOPICS = [
     {"slug": "index", "title": "Help Overview", "order": 0},
     {"slug": "getting-started", "title": "Getting Started", "order": 1},
     {"slug": "dashboard", "title": "Dashboard", "order": 2},
-    {"slug": "objective", "title": "Objective", "order": 3},
-    {"slug": "configuration", "title": "Configuration", "order": 4},
-    {"slug": "waypoints", "title": "Waypoints", "order": 5},
-    {"slug": "troubleshooting", "title": "Troubleshooting", "order": 6},
+    {"slug": "input-bridge", "title": "Input Bridge", "order": 3},
+    {"slug": "objective", "title": "Objective", "order": 4},
+    {"slug": "configuration", "title": "Configuration", "order": 5},
+    {"slug": "waypoints", "title": "Waypoints", "order": 6},
+    {"slug": "troubleshooting", "title": "Troubleshooting", "order": 7},
 ]
 
 

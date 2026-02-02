@@ -32,6 +32,21 @@
     let agentStates = new Map();
 
     /**
+     * Safe reload that defers if a ConfirmDialog is open.
+     * Prevents SSE-triggered reloads from flashing/dismissing confirm dialogs.
+     */
+    function safeDashboardReload() {
+        if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
+            console.log('SSE reload deferred — ConfirmDialog is open');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
+        window.location.reload();
+    }
+
+    /**
      * Initialize the dashboard SSE client.
      * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
      */
@@ -47,7 +62,7 @@
             console.log('SSE state:', oldState, '->', newState);
             if (newState === 'connected' && oldState === 'reconnecting') {
                 console.log('SSE reconnected after drop — reloading to sync state');
-                window.location.reload();
+                safeDashboardReload();
             }
         });
 
@@ -278,7 +293,7 @@
      */
     function handleSessionCreated(data, eventType) {
         console.log('Session created:', data.agent_id, '- reloading dashboard');
-        window.location.reload();
+        safeDashboardReload();
     }
 
     /**
@@ -294,7 +309,7 @@
         // Remove from tracked states
         agentStates.delete(agentId);
 
-        window.location.reload();
+        safeDashboardReload();
     }
 
     /**
@@ -425,7 +440,7 @@
         // If card not found, a new agent may have appeared — reload to render it
         if (!card) {
             if (reason === 'session_start' || reason === 'session_reactivated') {
-                window.location.reload();
+                safeDashboardReload();
             }
             return;
         }

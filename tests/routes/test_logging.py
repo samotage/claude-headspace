@@ -675,6 +675,13 @@ class TestInferenceLogPage:
         assert response.status_code == 200
         assert b"logging-inference.js" in response.data
 
+    def test_inference_log_page_has_search_input(self, client):
+        """Test that the inference log page has a search input."""
+        response = client.get("/logging/inference")
+        assert response.status_code == 200
+        assert b"filter-search" in response.data
+        assert b"Search prompts" in response.data
+
     def test_inference_log_page_has_sub_tabs(self, client):
         """Test that the inference log page has sub-tab navigation."""
         response = client.get("/logging/inference")
@@ -817,6 +824,33 @@ class TestGetInferenceCallsAPI:
 
             data = json.loads(response.data)
             assert data["page"] == 1
+
+    def test_get_inference_calls_with_search_filter(self, client):
+        """Test GET with search filter applies ILIKE across text fields."""
+        with patch("claude_headspace.routes.logging.db") as mock_db:
+            mock_query = MagicMock()
+            mock_query.filter.return_value = mock_query
+            mock_query.count.return_value = 0
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
+            mock_db.session.query.return_value = mock_query
+
+            response = client.get("/api/inference/calls?search=waiting+for+input")
+            assert response.status_code == 200
+            mock_query.filter.assert_called()
+
+    def test_get_inference_calls_with_search_and_other_filters(self, client):
+        """Test GET with search combined with other filters."""
+        with patch("claude_headspace.routes.logging.db") as mock_db:
+            mock_query = MagicMock()
+            mock_query.filter.return_value = mock_query
+            mock_query.count.return_value = 0
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
+            mock_db.session.query.return_value = mock_query
+
+            response = client.get("/api/inference/calls?search=summary&level=turn")
+            assert response.status_code == 200
+            # filter should be called at least twice (search + level)
+            assert mock_query.filter.call_count >= 2
 
     def test_get_inference_calls_database_error(self, client):
         """Test that database error returns 500."""

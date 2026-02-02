@@ -1,6 +1,9 @@
 """Config API routes for editing configuration."""
 
 import logging
+import os
+import subprocess
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
@@ -171,4 +174,56 @@ def save_config():
         return jsonify({
             "status": "error",
             "message": error_message or "Failed to save configuration",
+        }), 500
+
+
+@config_bp.route("/api/config/restart", methods=["POST"])
+def restart_server():
+    """
+    Restart the server by launching restart_server.sh.
+
+    The script is launched detached so it survives the parent process dying.
+
+    Returns:
+        200: Restart initiated
+        500: Script not found or launch failed
+    """
+    app_root = Path(current_app.config.get("APP_ROOT", "."))
+    script = app_root / "restart_server.sh"
+
+    if not script.is_file():
+        logger.error("restart_server.sh not found at %s", script)
+        return jsonify({
+            "status": "error",
+            "message": "restart_server.sh not found",
+        }), 500
+
+    try:
+        # Strip Werkzeug reloader env vars so the new server starts fresh.
+        # The request handler runs inside Werkzeug's reloader child which sets
+        # WERKZEUG_RUN_MAIN and WERKZEUG_SERVER_FD.  If these leak into the
+        # new python3 process it skips the reloader and tries to reuse a dead
+        # file descriptor, crashing on startup.
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("WERKZEUG_")
+        }
+        subprocess.Popen(
+            [str(script)],
+            cwd=str(app_root),
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=clean_env,
+        )
+        logger.info("Server restart initiated via restart_server.sh")
+        return jsonify({
+            "status": "ok",
+            "message": "Restart initiated",
+        }), 200
+    except OSError as e:
+        logger.exception("Failed to launch restart_server.sh: %s", e)
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to launch restart script: {e}",
         }), 500

@@ -16,7 +16,7 @@
 
                 <!-- Project selector -->
                 <select id="waypoint-project-select"
-                        class="px-3 py-1.5 bg-surface border border-border rounded text-primary text-sm focus:outline-none focus:border-cyan min-w-[200px]"
+                        class="form-well px-3 py-1.5 text-sm min-w-[200px]"
                         onchange="loadWaypoint(this.value)"
                         aria-label="Select project">
                     <option value="">Select a project...</option>
@@ -161,11 +161,14 @@
         document.addEventListener('keydown', handleEscapeKey);
     }
 
-    function closeWaypointEditor() {
+    async function closeWaypointEditor() {
         if (waypointState.isDirty) {
-            if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
-                return;
-            }
+            var ok = await ConfirmDialog.show(
+                'Unsaved Changes',
+                'You have unsaved changes. Are you sure you want to close?',
+                { confirmText: 'Discard', confirmClass: 'bg-red hover:bg-red/90' }
+            );
+            if (!ok) return;
         }
 
         const modal = document.getElementById('waypoint-editor-modal');
@@ -195,6 +198,8 @@
 
     function handleEscapeKey(e) {
         if (e.key === 'Escape') {
+            // Skip if ConfirmDialog is open — it handles its own Escape
+            if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) return;
             closeWaypointEditor();
         }
     }

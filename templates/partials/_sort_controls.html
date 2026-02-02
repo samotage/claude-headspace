@@ -23,7 +23,7 @@
     <div class="md:hidden">
         <label for="sort-select" class="sr-only">Sort by</label>
         <select id="sort-select"
-                class="w-full px-4 py-2 bg-surface border border-border rounded text-primary font-medium min-h-[44px]"
+                class="form-well w-full px-4 py-2 font-medium min-h-[44px]"
                 onchange="window.SortControls && window.SortControls.setSort(this.value)">
             <option value="project" {{ 'selected' if sort_mode == 'project' }}>Sort: By Project</option>
             <option value="priority" {{ 'selected' if sort_mode == 'priority' }}>Sort: By Priority</option>

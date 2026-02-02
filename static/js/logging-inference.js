@@ -20,17 +20,20 @@
     expandedCallIds: new Set(),
     sseClient: null,
     filters: {
+      search: null,
       level: null,
       model: null,
       project_id: null,
       agent_id: null,
       cached: null,
     },
+    _searchDebounceTimer: null,
 
     /**
      * Initialize the inference log page
      */
     init: function () {
+      this.searchFilter = document.getElementById("filter-search");
       this.levelFilter = document.getElementById("filter-level");
       this.modelFilter = document.getElementById("filter-model");
       this.projectFilter = document.getElementById("filter-project");
@@ -51,6 +54,14 @@
       this.clearLogsYes = document.getElementById("clear-logs-yes");
       this.clearLogsCancel = document.getElementById("clear-logs-cancel");
 
+      if (this.searchFilter) {
+        this.searchFilter.addEventListener("input", () => {
+          clearTimeout(this._searchDebounceTimer);
+          this._searchDebounceTimer = setTimeout(() => {
+            this._handleFilterChange();
+          }, 300);
+        });
+      }
       if (this.levelFilter) {
         this.levelFilter.addEventListener("change", () =>
           this._handleFilterChange()
@@ -130,6 +141,14 @@
      * Handle SSE inference_call event
      */
     _handleSSEEvent: function (data) {
+      // Search is server-side only; reload from API when active
+      if (this.filters.search) {
+        if (this.currentPage === 1) {
+          this._loadCalls();
+        }
+        return;
+      }
+
       if (!this._eventMatchesFilters(data)) {
         return;
       }
@@ -180,8 +199,14 @@
 
       if (this.tableBody.firstChild) {
         this.tableBody.insertBefore(row, this.tableBody.firstChild);
+        if (row._snippetRow) {
+          row.after(row._snippetRow);
+        }
       } else {
         this.tableBody.appendChild(row);
+        if (row._snippetRow) {
+          this.tableBody.appendChild(row._snippetRow);
+        }
       }
 
       setTimeout(function () {
@@ -263,6 +288,7 @@
      * Handle filter change
      */
     _handleFilterChange: function () {
+      this.filters.search = this.searchFilter ? this.searchFilter.value : null;
       this.filters.level = this.levelFilter ? this.levelFilter.value : null;
       this.filters.model = this.modelFilter ? this.modelFilter.value : null;
       this.filters.project_id = this.projectFilter ? this.projectFilter.value : null;
@@ -314,6 +340,7 @@
      * Clear all filters
      */
     _clearFilters: function () {
+      if (this.searchFilter) this.searchFilter.value = "";
       if (this.levelFilter) this.levelFilter.value = "";
       if (this.modelFilter) this.modelFilter.value = "";
       if (this.projectFilter) this.projectFilter.value = "";
@@ -321,6 +348,7 @@
       if (this.cachedFilter) this.cachedFilter.value = "";
 
       this.filters = {
+        search: null,
         level: null,
         model: null,
         project_id: null,
@@ -343,6 +371,9 @@
         url.searchParams.set("page", this.currentPage);
         url.searchParams.set("per_page", PER_PAGE);
 
+        if (this.filters.search) {
+          url.searchParams.set("search", this.filters.search);
+        }
         if (this.filters.level) {
           url.searchParams.set("level", this.filters.level);
         }
@@ -381,6 +412,7 @@
 
       if (!data.calls || data.calls.length === 0) {
         if (
+          this.filters.search ||
           this.filters.level ||
           this.filters.model ||
           this.filters.project_id ||
@@ -399,6 +431,9 @@
         data.calls.forEach(function (call) {
           var row = this._createCallRow(call);
           this.tableBody.appendChild(row);
+          if (row._snippetRow) {
+            this.tableBody.appendChild(row._snippetRow);
+          }
         }.bind(this));
       }
 
@@ -479,6 +514,32 @@
       row.addEventListener("click", function () {
         this._toggleCallDetails(call, row);
       }.bind(this));
+
+      // Add match snippet row when search is active
+      var snippet = this._getMatchSnippet(call);
+      if (snippet) {
+        var snippetRow = document.createElement("tr");
+        snippetRow.className = "snippet-row";
+        snippetRow.addEventListener("click", function () {
+          this._toggleCallDetails(call, row);
+        }.bind(this));
+        var snippetCell = document.createElement("td");
+        snippetCell.colSpan = 9;
+        snippetCell.className = "px-4 pb-2 pt-0 text-xs cursor-pointer";
+
+        var snippetLabel = document.createElement("span");
+        snippetLabel.className = "text-muted";
+        snippetLabel.textContent = "match in " + snippet.label + ": ";
+        snippetCell.appendChild(snippetLabel);
+
+        var snippetText = document.createElement("span");
+        snippetText.className = "text-secondary font-mono";
+        this._setTextWithHighlight(snippetText, snippet.snippet);
+        snippetCell.appendChild(snippetText);
+
+        snippetRow.appendChild(snippetCell);
+        row._snippetRow = snippetRow;
+      }
 
       return row;
     },
@@ -580,6 +641,65 @@
     },
 
     /**
+     * Escape HTML special characters for safe innerHTML use
+     */
+    _escapeHtml: function (text) {
+      var div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    },
+
+    /**
+     * Set text content with optional search term highlighting.
+     * When search is active, uses innerHTML with <mark> tags.
+     * Otherwise uses textContent for safety.
+     */
+    _setTextWithHighlight: function (element, text) {
+      if (!this.filters.search || !text) {
+        element.textContent = text || "";
+        return;
+      }
+      var escaped = this._escapeHtml(text);
+      var searchTerm = this.filters.search;
+      var escapedTerm = this._escapeHtml(searchTerm);
+      var regex = new RegExp("(" + escapedTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+      element.innerHTML = escaped.replace(regex, '<mark class="bg-amber/40 text-primary rounded px-0.5">$1</mark>');
+
+      // Scroll first highlight into view within the container
+      var firstMark = element.querySelector("mark");
+      if (firstMark) {
+        setTimeout(function () {
+          firstMark.scrollIntoView({ block: "center", behavior: "smooth" });
+        }, 50);
+      }
+    },
+
+    /**
+     * Extract a short context snippet around the first match of the search term
+     */
+    _getMatchSnippet: function (call) {
+      if (!this.filters.search) return null;
+      var term = this.filters.search.toLowerCase();
+      var fields = [
+        { label: "prompt", text: call.input_text },
+        { label: "response", text: call.result_text },
+        { label: "purpose", text: call.purpose },
+      ];
+      for (var i = 0; i < fields.length; i++) {
+        var text = fields[i].text;
+        if (!text) continue;
+        var idx = text.toLowerCase().indexOf(term);
+        if (idx !== -1) {
+          var start = Math.max(0, idx - 40);
+          var end = Math.min(text.length, idx + term.length + 40);
+          var snippet = (start > 0 ? "\u2026" : "") + text.substring(start, end) + (end < text.length ? "\u2026" : "");
+          return { label: fields[i].label, snippet: snippet };
+        }
+      }
+      return null;
+    },
+
+    /**
      * Toggle inference call details expansion
      */
     _toggleCallDetails: function (call, row) {
@@ -633,7 +753,7 @@
         promptDiv.appendChild(promptLabel);
         var promptPre = document.createElement("pre");
         promptPre.className = "text-sm text-primary font-mono overflow-x-auto bg-surface rounded p-3 max-h-64 overflow-y-auto whitespace-pre-wrap";
-        promptPre.textContent = this._prettyPrint(call.input_text);
+        this._setTextWithHighlight(promptPre, this._prettyPrint(call.input_text));
         promptDiv.appendChild(promptPre);
         content.appendChild(promptDiv);
       }
@@ -647,7 +767,7 @@
         resultDiv.appendChild(resultLabel);
         var resultPre = document.createElement("pre");
         resultPre.className = "text-sm text-primary font-mono overflow-x-auto bg-surface rounded p-3 max-h-64 overflow-y-auto whitespace-pre-wrap";
-        resultPre.textContent = this._prettyPrint(call.result_text);
+        this._setTextWithHighlight(resultPre, this._prettyPrint(call.result_text));
         resultDiv.appendChild(resultPre);
         content.appendChild(resultDiv);
       }

@@ -71,7 +71,7 @@
     <div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>
     <form class="respond-form flex gap-2"
           onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, {{ agent.id }}); return false;">
-      <input type="text" class="respond-text-input flex-1 px-2 py-1 text-sm bg-deep border border-border rounded text-primary placeholder-muted focus:border-cyan focus:outline-none"
+      <input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"
              placeholder="Type a response..."
              autocomplete="off">
       <button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">
