@@ -264,10 +264,11 @@ function generateProgressSummary(btn) {
     statusMsg.id = 'brain-reboot-summary-status';
     if (btnWrap) btnWrap.insertBefore(statusMsg, btn);
 
+    // Use time_based scope to force full regeneration (since_last returns empty if no new commits)
     fetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}'
+        body: JSON.stringify({ scope: 'time_based' })
     })
         .then(function(response) {
             if (!response.ok) {
@@ -279,7 +280,12 @@ function generateProgressSummary(btn) {
             }
             return response.json();
         })
-        .then(function() {
+        .then(function(summaryData) {
+            // Handle empty result (no commits in scope)
+            if (summaryData.status === 'empty') {
+                throw new Error('No commits found in the configured time window');
+            }
+
             // Update status message while refreshing
             if (statusMsg) statusMsg.textContent = 'Refreshing brain reboot...';
 
