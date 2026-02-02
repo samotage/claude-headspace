@@ -15,6 +15,9 @@
         <a href="{{ url_for('projects.projects_page') }}"
            class="tab-link {% if request.endpoint == 'projects.projects_page' %}active{% endif %}"
            {% if request.endpoint == 'projects.projects_page' %}aria-current="page"{% endif %}>projects</a>
+        <a href="{{ url_for('activity.activity_page') }}"
+           class="tab-link {% if request.endpoint == 'activity.activity_page' %}active{% endif %}"
+           {% if request.endpoint == 'activity.activity_page' %}aria-current="page"{% endif %}>activity</a>
         <a href="{{ url_for('objective.objective_page') }}"
            class="tab-link {% if request.endpoint == 'objective.objective_page' %}active{% endif %}"
            {% if request.endpoint == 'objective.objective_page' %}aria-current="page"{% endif %}>objective</a>
@@ -53,6 +56,11 @@
            class="mobile-menu-item {% if request.endpoint == 'projects.projects_page' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9783;</span>
             <span>projects</span>
+        </a>
+        <a href="{{ url_for('activity.activity_page') }}"
+           class="mobile-menu-item {% if request.endpoint == 'activity.activity_page' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9829;</span>
+            <span>activity</span>
         </a>
         <a href="{{ url_for('objective.objective_page') }}"
            class="mobile-menu-item {% if request.endpoint == 'objective.objective_page' %}active{% endif %}">

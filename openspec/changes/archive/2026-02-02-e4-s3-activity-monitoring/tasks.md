@@ -8,7 +8,7 @@
 
 ### 2.1 ActivityMetric Model
 
-- [ ] 2.1.1 Create `src/claude_headspace/models/activity_metric.py` with:
+- [x] 2.1.1 Create `src/claude_headspace/models/activity_metric.py` with:
   - Integer PK (matching existing model pattern)
   - `bucket_start` (datetime) — start of hourly time bucket
   - `agent_id` (FK, nullable) — scope to agent
@@ -20,13 +20,13 @@
   - `created_at` (datetime)
   - Composite indexes: (agent_id, bucket_start), (project_id, bucket_start), (is_overall, bucket_start)
 
-- [ ] 2.1.2 Add `ActivityMetric` to `models/__init__.py` exports
+- [x] 2.1.2 Add `ActivityMetric` to `models/__init__.py` exports
 
-- [ ] 2.1.3 Create Alembic migration for `activity_metrics` table
+- [x] 2.1.3 Create Alembic migration for `activity_metrics` table
 
 ### 2.2 Activity Aggregator Service
 
-- [ ] 2.2.1 Create `src/claude_headspace/services/activity_aggregator.py` with:
+- [x] 2.2.1 Create `src/claude_headspace/services/activity_aggregator.py` with:
   - Background thread following AgentReaper pattern (init, start, stop, _loop)
   - Configurable interval (default 300 seconds / 5 minutes)
   - `aggregate_once()` method that:
@@ -39,7 +39,7 @@
 
 ### 2.3 Activity Routes
 
-- [ ] 2.3.1 Create `src/claude_headspace/routes/activity.py` with:
+- [x] 2.3.1 Create `src/claude_headspace/routes/activity.py` with:
   - `GET /activity` page route (renders activity.html with status_counts)
   - `GET /api/metrics/agents/<int:agent_id>` — current + historical metrics for agent
   - `GET /api/metrics/projects/<int:project_id>` — aggregated metrics for project
@@ -49,12 +49,12 @@
 
 ### 2.4 App Registration
 
-- [ ] 2.4.1 Register `activity_bp` blueprint in `app.py`
-- [ ] 2.4.2 Initialize and start `ActivityAggregator` in app startup, stop on teardown
+- [x] 2.4.1 Register `activity_bp` blueprint in `app.py`
+- [x] 2.4.2 Initialize and start `ActivityAggregator` in app startup, stop on teardown
 
 ### 2.5 Activity Page Template
 
-- [ ] 2.5.1 Create `templates/activity.html` with:
+- [x] 2.5.1 Create `templates/activity.html` with:
   - Overall summary panel (system-wide turn rate, avg turn time, active agents)
   - Time-series chart container with day/week/month toggle buttons
   - Project sections with per-project and per-agent metrics
@@ -63,7 +63,7 @@
 
 ### 2.6 Activity JavaScript
 
-- [ ] 2.6.1 Create `static/js/activity.js` with:
+- [x] 2.6.1 Create `static/js/activity.js` with:
   - Fetch overall metrics on DOMContentLoaded
   - Render Chart.js line chart with turn count time-series
   - Day/week/month toggle buttons that re-fetch and re-render chart
@@ -73,13 +73,13 @@
 
 ### 2.7 Header Navigation
 
-- [ ] 2.7.1 Add "Activity" tab to `templates/partials/_header.html` (desktop + mobile)
+- [x] 2.7.1 Add "Activity" tab to `templates/partials/_header.html` (desktop + mobile)
 
 ## 3. Testing (Phase 3)
 
 ### 3.1 Route Tests
 
-- [ ] 3.1.1 Create `tests/routes/test_activity.py` with:
+- [x] 3.1.1 Create `tests/routes/test_activity.py` with:
   - Test GET /activity returns 200
   - Test GET /api/metrics/overall returns 200 with correct structure
   - Test GET /api/metrics/agents/<id> returns 404 for nonexistent agent
@@ -88,7 +88,7 @@
 
 ### 3.2 Service Tests
 
-- [ ] 3.2.1 Create `tests/services/test_activity_aggregator.py` with:
+- [x] 3.2.1 Create `tests/services/test_activity_aggregator.py` with:
   - Test aggregate_once produces correct turn counts
   - Test aggregate_once computes correct avg turn time
   - Test project-level rollup from agent metrics

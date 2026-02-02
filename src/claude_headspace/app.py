@@ -218,6 +218,13 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         reaper.start()
         app.extensions["agent_reaper"] = reaper
 
+    # Initialize activity aggregator (only in non-testing environments)
+    if not app.config.get("TESTING"):
+        from .services.activity_aggregator import ActivityAggregator
+        aggregator = ActivityAggregator(app=app, config=config)
+        aggregator.start()
+        app.extensions["activity_aggregator"] = aggregator
+
     # Register shutdown cleanup
     import atexit
 
@@ -228,6 +235,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             shutdown_broadcaster()
             if "agent_reaper" in app.extensions:
                 app.extensions["agent_reaper"].stop()
+            if "activity_aggregator" in app.extensions:
+                app.extensions["activity_aggregator"].stop()
             if "file_watcher" in app.extensions:
                 app.extensions["file_watcher"].stop()
             # Stop event writer to close database connections
@@ -269,6 +278,7 @@ def register_error_handlers(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
+    from .routes.activity import activity_bp
     from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
@@ -289,6 +299,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.summarisation import summarisation_bp
     from .routes.waypoint import waypoint_bp
 
+    app.register_blueprint(activity_bp)
     app.register_blueprint(archive_bp)
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
