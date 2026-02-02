@@ -78,6 +78,9 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:the PR is ready for review)",
     r"(?i)(?:committed to branch|changes have been pushed)",
     r"(?i)(?:here'?s a summary of what was done)",
+    # Artifact creation/delivery (e.g. "PRD created at docs/...", "File written to src/...")
+    r"(?i)(?:(?:file|prd|test|config|migration|template|document|spec|schema|script|module)\s+)?(?:created|written|saved|generated) (?:at|to|in) (?:\/|\.\/|\w)",
+    r"(?i)(?:I'?ve (?:created|written|saved|generated) (?:the |a )?(?:file|prd|test|config|migration|template|document|spec) (?:at|to|in) )",
     # Test result summaries (e.g. "All 68 tests pass", "12 tests passed")
     r"(?i)(?:all \d+ tests? pass(?:ed|ing|es)?)",
     r"(?i)(?:\d+ tests? pass(?:ed|ing|es)?[,.]?\s*\d+ fail)",
@@ -98,9 +101,13 @@ END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?i)(?:to (?:summarise|summarize|recap)|in summary)",
     r"(?i)(?:the following files were (?:modified|created|updated|changed):)",
     # Broader summary openers (e.g. "Here's what was changed:", "Here's what I did:")
-    r"(?i)(?:here'?s what (?:was|I) (?:changed|did|updated|implemented|fixed|added))",
+    r"(?i)(?:here'?s what (?:was|I) (?:changed|did|updated|implemented|fixed|added|created))",
+    # Broader "here's what it covers" pattern
+    r"(?i)(?:here'?s (?:a summary of )?what (?:it|this|the \w+) (?:covers|includes|contains|delivers))",
     # Numbered change summaries (e.g. "9 prompts updated", "3 files changed")
     r"(?i)(?:\d+ (?:prompts?|files?|tests?|assertions?|functions?) (?:updated|changed|modified|added|removed|fixed|created))",
+    # Numbered change summaries with adjective-first format (e.g. "6 new files", "8 modified files")
+    r"(?i)(?:\d+ (?:new|modified|changed|updated|created|deleted|added|removed) (?:files?|tests?|prompts?|functions?|endpoints?|routes?|models?|templates?|migrations?|modules?))",
 ]
 
 # End-of-task: soft-close offers (open-ended, work is done)
@@ -299,8 +306,13 @@ def detect_agent_intent(
     cleaned = _strip_code_blocks(text.strip())
     tail = _extract_tail(cleaned)
 
-    # Check continuation guard once
-    has_continuation = bool(_match_patterns(tail, CONTINUATION_PATTERNS))
+    # Check continuation guard on the LAST 5 lines only.
+    # The full tail (15 lines) can include intermediate text from earlier in
+    # the same assistant message (e.g. "Let me also check..." before tool
+    # calls) which would incorrectly veto END_OF_TASK detection when the
+    # final lines clearly show completion.
+    continuation_window = _extract_tail(cleaned, max_lines=5)
+    has_continuation = bool(_match_patterns(continuation_window, CONTINUATION_PATTERNS))
 
     # Phase 0: End-of-task detection on tail (before QUESTION — catches soft-close offers)
     eot_result = _detect_end_of_task(tail, has_continuation)

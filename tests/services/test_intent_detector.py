@@ -281,6 +281,10 @@ class TestPatternAccuracy:
         ("Complete. The feature is ready for review.", True),
         ("Finished. Here's what changed in the codebase.", True),
         ("All done! The tests pass and coverage is at 95%.", True),
+        # Artifact creation/delivery
+        ("PRD created at docs/prds/core/prd.md.", True),
+        ("File written to src/routes/projects.py.", True),
+        ("I've created the config at ./config.yaml.", True),
         # False positives we want to avoid
         ("The task is not done yet.", False),  # Negative
         ("I'm working on completing it.", False),  # In progress
@@ -1085,6 +1089,170 @@ class TestCompletionOpenerDetection:
         text = "\n".join(lines)
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.COMPLETION
+
+
+class TestArtifactCreationCompletion:
+    """Tests for artifact creation/delivery completion patterns."""
+
+    def test_prd_created_at_path(self):
+        """'PRD created at docs/...' should detect as completion."""
+        result = detect_agent_intent(
+            "PRD created at docs/prds/core/e4-s2-project-controls-prd.md."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_file_created_at_path(self):
+        """'File created at src/...' should detect as completion."""
+        result = detect_agent_intent("File created at src/services/new_service.py.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_created_the_file(self):
+        """'I've created the file at ...' should detect as completion."""
+        result = detect_agent_intent(
+            "I've created the file at src/routes/projects.py."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_migration_written_to_path(self):
+        """'Migration written to migrations/...' should detect as completion."""
+        result = detect_agent_intent(
+            "Migration written to migrations/versions/001_add_fields.py."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_config_saved_to_path(self):
+        """'Config saved to config.yaml' should detect as completion."""
+        result = detect_agent_intent("Config saved to ./config.yaml.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_spec_generated_at_path(self):
+        """'Spec generated at ...' should detect as completion."""
+        result = detect_agent_intent(
+            "Spec generated at openspec/specs/project-controls/spec.md."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_artifact_summary_message(self):
+        """Real-world PRD creation summary should detect as END_OF_TASK."""
+        text = (
+            "PRD created at docs/prds/core/e4-s2-project-controls-prd.md. "
+            "Here's a summary of what it covers:\n\n"
+            "Core deliverables:\n"
+            "- Project CRUD API (7 endpoints)\n"
+            "- Projects management UI at /projects\n"
+            "- Manual-only registration\n\n"
+            "Data model changes: 4 new columns on projects table\n\n"
+            "Key technical details:\n"
+            "- Inference gating at caller level\n"
+            "- Priority scoring filters out paused-project agents\n\n"
+            "Files: 6 new files, 8 modified files"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_artifact_summary_with_intermediate_text(self):
+        """Artifact creation with intermediate text blocks should still detect completion.
+
+        This simulates transcript text where the last assistant message contains
+        intermediate text blocks from before tool calls, followed by the summary.
+        """
+        text = (
+            "Now I have all the context needed. Let me create the PRD.\n"
+            "PRD created at docs/prds/core/e4-s2-prd.md. "
+            "Here's a summary of what it covers:\n\n"
+            "Core deliverables:\n"
+            "- Project CRUD API\n"
+            "- Projects management UI\n\n"
+            "Files: 6 new files, 8 modified files"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+
+class TestNumberedFileSummaryPatterns:
+    """Tests for adjective-first numbered file summary patterns."""
+
+    def test_new_files_count(self):
+        """'6 new files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("6 new files created for the feature.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_modified_files_count(self):
+        """'8 modified files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("8 modified files across the codebase.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_created_tests_count(self):
+        """'3 new tests' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("3 new tests added for coverage.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_deleted_files_count(self):
+        """'2 deleted files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("2 deleted files that were no longer needed.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+
+class TestContinuationGuardWindow:
+    """Tests that continuation guard only checks the last few lines."""
+
+    def test_intermediate_working_on_does_not_block_completion(self):
+        """'Working on' in intermediate text should NOT block completion detection.
+
+        When the transcript has intermediate text from before tool calls
+        (e.g. 'I'm working on creating the PRD') followed by a completion
+        summary, the completion should still be detected.
+        """
+        text = (
+            "I'm working on creating the PRD now.\n"
+            "PRD created at docs/prds/core/prd.md. "
+            "Here's a summary of what it covers:\n"
+            "- Feature A\n"
+            "- Feature B\n"
+            "- Feature C\n"
+            "- Feature D\n"
+            "- Feature E\n"
+            "- Feature F\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_intermediate_let_me_also_does_not_block(self):
+        """'Let me also' in intermediate text should NOT block completion."""
+        text = (
+            "Let me also check the integration points.\n"
+            "Here are the changes I made:\n"
+            "- Updated config\n"
+            "- Fixed tests\n"
+            "- Added migration\n"
+            "- Updated routes\n"
+            "- Added templates\n"
+            "- Updated docs\n"
+            "Let me know if there's anything else."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_working_on_at_end_still_blocks(self):
+        """'Working on' at the END of the message should still block completion."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the database layer\n"
+            "Working on the service layer now."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_next_ill_at_end_still_blocks(self):
+        """'Next I'll' at the end should still trigger continuation guard."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the bug\n"
+            "Next I'll add tests."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
 
 
 class TestCompletionOpenerUnit:
