@@ -84,6 +84,10 @@ headspace:
     min_turn_rate: 6
     max_frustration: 3
     min_duration_minutes: 15
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
 archive:
   enabled: true
   retention:

@@ -84,6 +84,9 @@
         // Handle priority toggle
         client.on('priority_toggle', handlePriorityToggle);
 
+        // Handle commander availability changes (Input Bridge)
+        client.on('commander_availability', handleCommanderAvailability);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
@@ -513,6 +516,9 @@
         if (state === 'AWAITING_INPUT' || state === 'TIMED_OUT') {
             highlightRecommendedUpdate();
         }
+
+        // Dispatch custom event for respond widget re-initialization
+        document.dispatchEvent(new CustomEvent('sse:card_refresh', { detail: data }));
     }
 
     /**
@@ -697,6 +703,15 @@
             textEl.classList.add('text-xs', 'whitespace-nowrap');
             textEl.classList.add(state === 'TIMED_OUT' ? 'text-red' : (state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary'));
         }
+    }
+
+    /**
+     * Handle commander availability events (Input Bridge).
+     * Dispatches a custom event for respond-init.js to handle.
+     */
+    function handleCommanderAvailability(data, eventType) {
+        console.log('Commander availability:', data.agent_id, 'available:', data.available);
+        document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
     }
 
     // Export

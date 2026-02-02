@@ -8,7 +8,7 @@
 
 ### Commander Service (Backend)
 
-- [ ] 2.1 Create `commander_service.py` — Unix socket client for claude-commander
+- [x] 2.1 Create `commander_service.py` — Unix socket client for claude-commander
   - Socket path derivation from `claude_session_id` (`/tmp/claudec-<SESSION_ID>.sock`)
   - `send_text(session_id, text)` — send JSON `{"action": "send", "text": "..."}` over socket, return success/error
   - `check_health(session_id)` — send `{"action": "status"}`, return availability result
@@ -16,13 +16,13 @@
   - Error handling: connection refused, socket not found, timeout, process died
   - NamedTuple result types following `iterm_focus.py` pattern
 
-- [ ] 2.2 Create `commander_availability.py` — availability tracking and periodic health checks
+- [x] 2.2 Create `commander_availability.py` — availability tracking and periodic health checks
   - In-memory cache of commander availability per agent
   - Periodic health check loop (configurable interval)
   - SSE broadcast on availability change
   - Thread-safe with locking (following `HookReceiverState` pattern)
 
-- [ ] 2.3 Register commander service in `app.py`
+- [x] 2.3 Register commander service in `app.py`
   - Import and initialize `CommanderService`
   - Register in `app.extensions["commander_service"]`
   - Start availability checker (non-testing only)
@@ -30,7 +30,7 @@
 
 ### Response API (Backend)
 
-- [ ] 2.4 Create `routes/respond.py` — response submission endpoint
+- [x] 2.4 Create `routes/respond.py` — response submission endpoint
   - `POST /api/respond/<int:agent_id>` — accepts `{"text": "..."}` JSON body
   - Validates: agent exists, agent in AWAITING_INPUT state, has `claude_session_id`, commander socket reachable
   - Sends text via commander service
@@ -40,11 +40,11 @@
   - Returns JSON response with status
   - `GET /api/respond/<int:agent_id>/availability` — check commander availability for agent
 
-- [ ] 2.5 Register respond blueprint in `app.py`
+- [x] 2.5 Register respond blueprint in `app.py`
 
 ### Dashboard UI (Frontend)
 
-- [ ] 2.6 Create `static/js/respond-api.js` — client-side response handler
+- [x] 2.6 Create `static/js/respond-api.js` — client-side response handler
   - `RespondAPI.sendResponse(agentId, text)` — POST to respond endpoint
   - Quick-action button click handler — sends option number
   - Free-text input submit handler — sends typed text
@@ -52,7 +52,7 @@
   - Visual confirmation animation on success
   - IIFE pattern with global export
 
-- [ ] 2.7 Extend dashboard template — add input widget to agent cards
+- [x] 2.7 Extend dashboard template — add input widget to agent cards
   - Conditionally render input widget when agent is in AWAITING_INPUT state AND commander available
   - Parse numbered options from question text using regex (e.g., `1. Yes / 2. No`)
   - Render quick-action buttons for each parsed option
@@ -60,7 +60,7 @@
   - Hide input widget when no commander socket available (show focus button only)
   - Wire up SSE listener for commander availability changes to show/hide widget dynamically
 
-- [ ] 2.8 Add CSS styles for input widget
+- [x] 2.8 Add CSS styles for input widget
   - Quick-action button styles (horizontal row, consistent with existing button patterns)
   - Free-text input field styles
   - Send button styles
@@ -70,7 +70,7 @@
 
 ### Configuration
 
-- [ ] 2.9 Add commander configuration to `config.yaml`
+- [x] 2.9 Add commander configuration to `config.yaml`
   - `commander.health_check_interval` — seconds between health checks (default: 30)
   - `commander.socket_timeout` — socket connection timeout in seconds (default: 2)
   - `commander.socket_path_prefix` — socket path prefix (default: `/tmp/claudec-`)
@@ -79,19 +79,19 @@
 
 ### Unit Tests
 
-- [ ] 3.1 Test `commander_service.py`
+- [x] 3.1 Test `commander_service.py`
   - Socket path derivation from session ID
   - Send text success/failure scenarios (mock socket)
   - Health check success/failure scenarios (mock socket)
   - Error handling: connection refused, timeout, socket not found, dead process
   - Result types and error classification
 
-- [ ] 3.2 Test `commander_availability.py`
+- [x] 3.2 Test `commander_availability.py`
   - Availability cache updates
   - Thread safety
   - SSE broadcast on availability change
 
-- [ ] 3.3 Test `routes/respond.py`
+- [x] 3.3 Test `routes/respond.py`
   - Happy path: send response, verify Turn created, state transitioned
   - Agent not found → 404
   - Agent not in AWAITING_INPUT → 409
@@ -102,7 +102,7 @@
 
 ### Integration Tests
 
-- [ ] 3.4 Test end-to-end response flow
+- [x] 3.4 Test end-to-end response flow
   - Create agent in AWAITING_INPUT state via factories
   - Submit response via API (with mock commander socket)
   - Verify Turn record created with correct actor/intent
@@ -111,6 +111,6 @@
 
 ## 4. Final Verification
 
-- [ ] 4.1 All tests passing
-- [ ] 4.2 No linter errors
-- [ ] 4.3 Manual verification complete — dashboard input widget appears and functions
+- [x] 4.1 All tests passing
+- [x] 4.2 No linter errors
+- [x] 4.3 Manual verification complete — dashboard input widget appears and functions
