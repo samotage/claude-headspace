@@ -354,7 +354,9 @@ def update_project_settings(project_id: int):
 def detect_metadata(project_id: int):
     """Detect project metadata from git remote and CLAUDE.md.
 
-    Returns suggested values for empty fields — does NOT persist.
+    Detects values for empty fields, persists them to the database,
+    and returns what was detected.  Inference calls are logged via
+    the standard InferenceService pipeline.
 
     Returns:
         200: Detected metadata (null for anything not detected)
@@ -367,6 +369,7 @@ def detect_metadata(project_id: int):
             return jsonify({"error": "Project not found"}), 404
 
         result = {"github_repo": None, "description": None}
+        dirty = False
 
         # Detect github_repo from git remote
         if not project.github_repo and project.path:
@@ -380,6 +383,8 @@ def detect_metadata(project_id: int):
                         owner_repo = GitMetadata.parse_owner_repo(git_info.repo_url)
                         if owner_repo:
                             result["github_repo"] = owner_repo
+                            project.github_repo = owner_repo
+                            dirty = True
             except Exception as e:
                 logger.debug(f"Git metadata detection failed for project {project_id}: {e}")
 
@@ -410,8 +415,21 @@ def detect_metadata(project_id: int):
                             if inference_result.text:
                                 cleaned = SummarisationService._clean_response(inference_result.text)
                                 result["description"] = cleaned
+                                project.description = cleaned
+                                dirty = True
             except Exception as e:
                 logger.debug(f"Description detection failed for project {project_id}: {e}")
+
+        if dirty:
+            try:
+                db.session.commit()
+                _broadcast_project_event("project_changed", {
+                    "action": "updated",
+                    "project_id": project.id,
+                })
+            except Exception as e:
+                logger.warning(f"Failed to persist detected metadata for project {project_id}: {e}")
+                db.session.rollback()
 
         return jsonify(result), 200
 

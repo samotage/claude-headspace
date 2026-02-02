@@ -125,6 +125,7 @@
                 document.getElementById('project-form-modal').classList.remove('hidden');
                 document.addEventListener('keydown', ProjectsPage._formModalEscHandler);
                 document.getElementById('project-form-name').focus();
+                this._autoResizeDescription();
 
                 // Auto-detect empty fields
                 var needsGithub = !project.github_repo;
@@ -171,6 +172,7 @@
                 }
                 if (needsDescription && descField && !descField.value && data.description) {
                     descField.value = data.description;
+                    ProjectsPage._autoResizeDescription();
                 }
             } catch (error) {
                 // Silently ignore — auto-detection is best-effort
@@ -354,6 +356,17 @@
         },
 
         // --- Utility ---
+
+        /**
+         * Auto-resize description textarea to fit content (min 4 rows)
+         */
+        _autoResizeDescription: function() {
+            var el = document.getElementById('project-form-description');
+            if (!el) return;
+            el.style.height = 'auto';
+            var minHeight = parseFloat(getComputedStyle(el).lineHeight) * 4 + parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
+            el.style.height = Math.max(el.scrollHeight, minHeight) + 'px';
+        },
 
         _escapeHtml: function(text) {
             var div = document.createElement('div');

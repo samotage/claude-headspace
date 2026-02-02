@@ -378,8 +378,8 @@ class TestDetectMetadata:
         response = client.post("/api/projects/999/detect-metadata")
         assert response.status_code == 404
 
-    def test_detect_github_repo(self, client, app, mock_db, mock_project):
-        """Test detecting github_repo from git remote."""
+    def test_detect_github_repo_persists(self, client, app, mock_db, mock_project):
+        """Test detecting github_repo from git remote and persisting it."""
         mock_project.github_repo = None
         mock_project.description = "Already set"
         mock_db.session.get.return_value = mock_project
@@ -397,8 +397,12 @@ class TestDetectMetadata:
         assert data["github_repo"] == "octocat/hello-world"
         assert data["description"] is None  # Already set, not detected
 
-    def test_detect_description_via_inference(self, client, app, mock_db, mock_project):
-        """Test detecting description from CLAUDE.md via LLM."""
+        # Verify persisted to model
+        assert mock_project.github_repo == "octocat/hello-world"
+        mock_db.session.commit.assert_called()
+
+    def test_detect_description_persists(self, client, app, mock_db, mock_project):
+        """Test detecting description from CLAUDE.md via LLM and persisting it."""
         mock_project.github_repo = "already/set"
         mock_project.description = None
         mock_db.session.get.return_value = mock_project
@@ -425,8 +429,32 @@ class TestDetectMetadata:
             assert data["github_repo"] is None  # Already set, not detected
             assert data["description"] is not None
 
+            # Verify persisted to model
+            assert mock_project.description is not None
+            mock_db.session.commit.assert_called()
+
+    def test_detect_broadcasts_project_changed(self, client, app, mock_db, mock_project):
+        """Test that detection broadcasts project_changed event when values detected."""
+        mock_project.github_repo = None
+        mock_project.description = "Already set"
+        mock_db.session.get.return_value = mock_project
+
+        mock_git_metadata = MagicMock()
+        mock_git_info = MagicMock()
+        mock_git_info.repo_url = "https://github.com/org/repo.git"
+        mock_git_metadata.get_git_info.return_value = mock_git_info
+        app.extensions["git_metadata"] = mock_git_metadata
+
+        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast:
+            response = client.post("/api/projects/1/detect-metadata")
+            assert response.status_code == 200
+            mock_broadcast.assert_called_once_with("project_changed", {
+                "action": "updated",
+                "project_id": 1,
+            })
+
     def test_both_already_set_returns_nulls(self, client, app, mock_db, mock_project):
-        """Test that when both fields are already set, both return null."""
+        """Test that when both fields are already set, both return null and no commit."""
         mock_project.github_repo = "owner/repo"
         mock_project.description = "Already described"
         mock_db.session.get.return_value = mock_project
@@ -436,6 +464,9 @@ class TestDetectMetadata:
         data = response.get_json()
         assert data["github_repo"] is None
         assert data["description"] is None
+
+        # No commit when nothing detected
+        mock_db.session.commit.assert_not_called()
 
     def test_git_failure_non_fatal(self, client, app, mock_db, mock_project):
         """Test that git failure is non-fatal and doesn't affect other detection."""
@@ -453,7 +484,7 @@ class TestDetectMetadata:
         assert data["github_repo"] is None
 
     def test_inference_unavailable_still_returns_github(self, client, app, mock_db, mock_project):
-        """Test that when inference is unavailable, github_repo is still detected."""
+        """Test that when inference is unavailable, github_repo is still detected and persisted."""
         mock_project.github_repo = None
         mock_project.description = None
         mock_db.session.get.return_value = mock_project
@@ -473,6 +504,10 @@ class TestDetectMetadata:
         data = response.get_json()
         assert data["github_repo"] == "org/project"
         assert data["description"] is None
+
+        # github_repo persisted even without inference
+        assert mock_project.github_repo == "org/project"
+        mock_db.session.commit.assert_called()
 
 
 class TestSSEBroadcasting:
