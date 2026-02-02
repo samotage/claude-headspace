@@ -238,6 +238,14 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         aggregator.start()
         app.extensions["activity_aggregator"] = aggregator
 
+    # Initialize commander availability tracker (only in non-testing environments)
+    from .services.commander_availability import CommanderAvailability
+    commander_availability = CommanderAvailability(app=app, config=config)
+    app.extensions["commander_availability"] = commander_availability
+    if not app.config.get("TESTING"):
+        commander_availability.start()
+    logger.info("Commander availability service initialized")
+
     # Register shutdown cleanup
     import atexit
 
@@ -252,6 +260,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
                 app.extensions["activity_aggregator"].stop()
             if "file_watcher" in app.extensions:
                 app.extensions["file_watcher"].stop()
+            if "commander_availability" in app.extensions:
+                app.extensions["commander_availability"].stop()
             # Stop event writer to close database connections
             event_writer = app.extensions.get("event_writer")
             if event_writer:
@@ -308,6 +318,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.priority import priority_bp
     from .routes.progress_summary import progress_summary_bp
     from .routes.projects import projects_bp
+    from .routes.respond import respond_bp
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
@@ -330,6 +341,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(priority_bp)
     app.register_blueprint(progress_summary_bp)
     app.register_blueprint(projects_bp)
+    app.register_blueprint(respond_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)

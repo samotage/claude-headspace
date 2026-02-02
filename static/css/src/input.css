@@ -101,6 +101,18 @@ body::after {
     text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);
 }
 
+/* Focus/respond success highlights */
+.focus-highlight,
+.respond-success {
+    box-shadow: 0 0 12px rgba(86,212,221,0.3), 0 0 30px rgba(86,212,221,0.1);
+    border-color: rgba(86,212,221,0.5);
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+.respond-success {
+    box-shadow: 0 0 12px rgba(115,224,160,0.3), 0 0 30px rgba(115,224,160,0.1);
+    border-color: rgba(115,224,160,0.5);
+}
+
 /* Card editor layout — code editor aesthetic */
 .card-editor {
     display: flex;
