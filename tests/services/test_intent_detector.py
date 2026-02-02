@@ -1357,3 +1357,120 @@ class TestStatusReportCompletion:
         """'Everything is good.' should detect completion (broadened 'is' adjectives)."""
         result = detect_agent_intent("Everything is good.")
         assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+
+class TestCookedCompletionMarker:
+    """Tests for Claude Code CLI completion marker (✻ Cooked for Xm Xs)."""
+
+    def test_cooked_marker(self):
+        """'✻ Cooked for 1m 33s' should detect as completion."""
+        result = detect_agent_intent("✻ Cooked for 1m 33s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_baked_marker(self):
+        """'✻ Baked for 2m 5s' should detect as completion."""
+        result = detect_agent_intent("✻ Baked for 2m 5s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_checkmark_variant(self):
+        """'✓ Worked for 45s' should detect as completion."""
+        result = detect_agent_intent("✓ Worked for 45s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_simmered_marker(self):
+        """'✻ Simmered for 3m 12s' should detect as completion."""
+        result = detect_agent_intent("✻ Simmered for 3m 12s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_pondered_marker(self):
+        """'✻ Pondered for 10m 2s' should detect as completion."""
+        result = detect_agent_intent("✻ Pondered for 10m 2s")
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestGitSuccessPatterns:
+    """Tests for git commit/push completion patterns."""
+
+    def test_committed_and_pushed(self):
+        """'Committed and pushed: <hash>' should detect as completion."""
+        result = detect_agent_intent(
+            "Committed and pushed: `755ed18` on `development`. Working tree clean. All 165 tests pass."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_working_tree_clean(self):
+        """'Working tree clean' should detect as completion."""
+        result = detect_agent_intent("Working tree clean.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_passing(self):
+        """'all passing' should detect as completion."""
+        result = detect_agent_intent(
+            "Ran all 26 objective route tests — all passing."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestBlockedPatternFalsePositives:
+    """Tests that 'Failed to' inside descriptions doesn't trigger false positives."""
+
+    def test_failed_to_in_quoted_text_not_blocked(self):
+        """'Failed to' inside a description of a fix should NOT be QUESTION."""
+        text = (
+            'The endpoint works. Here\'s what I found and fixed:\n\n'
+            '**Root cause:** The except blocks returned a generic '
+            '"Failed to save objective" message.\n\n'
+            '**Fix applied:** Added logger.exception calls.\n\n'
+            'Ran all 26 objective route tests — all passing. '
+            'Server restarted with the fix live.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_failed_to_in_logger_example_not_blocked(self):
+        """'Failed to' inside logger.exception example should NOT be QUESTION."""
+        text = (
+            'Added `logger.exception("Failed to save objective")` '
+            'to both exception handlers. All tests passing.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_real_failed_to_at_line_start_still_blocked(self):
+        """'Failed to' at start of line should still be detected as blocked."""
+        result = detect_agent_intent("Failed to install the dependency.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_error_at_line_start_still_blocked(self):
+        """'Error:' at start of line should still be detected as blocked."""
+        result = detect_agent_intent("Error: Unable to connect to the database.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_permission_denied_still_blocked(self):
+        """'Permission denied' anywhere should still be detected as blocked."""
+        result = detect_agent_intent("The operation failed: Permission denied.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_real_world_objective_fix_transcript(self):
+        """Exact transcript text from the objective endpoint fix should be COMPLETION."""
+        text = (
+            'The endpoint works. Here\'s what I found and fixed:\n\n'
+            '**What happened:** Your `POST /api/objective` request at 14:18:22 '
+            'returned a 500 error. The server was restarted at 14:19:31 '
+            '(which is why subsequent requests would have worked).\n\n'
+            '**Root cause:** Unknown \u2014 the exception handlers in `objective.py` '
+            'were silently swallowing all exceptions. The `except` blocks caught '
+            'the error, rolled back the DB transaction, and returned a generic '
+            '"Failed to save objective" message, but **never logged the actual '
+            'exception**. There\'s no traceback in the logs, just the werkzeug '
+            'access log showing the 500 status code.\n\n'
+            '**Fix applied:** Added `logger.exception(...)` calls to both exception '
+            'handlers in `src/claude_headspace/routes/objective.py`:\n'
+            '- Line 162: `logger.exception("Failed to save objective")` in the POST endpoint\n'
+            '- Line 233: `logger.exception("Failed to fetch objective history")` in the history endpoint\n\n'
+            'This ensures the full traceback will be logged if this happens again, '
+            'making it diagnosable. Ran all 26 objective route tests \u2014 all passing. '
+            'Server restarted with the fix live.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION

@@ -57,7 +57,10 @@ QUESTION_PATTERNS = [
 # Regex patterns for blocked/error detection (mapped to QUESTION intent)
 BLOCKED_PATTERNS = [
     r"(?i)(?:I don'?t have (?:permission|access) to|I can'?t access|this requires (?:authentication|authorization))",
-    r"(?i)(?:^Error:|Failed to\b|Permission denied)",
+    # "Error:" and "Failed to" anchored to start-of-line to avoid matching inside
+    # quoted text or descriptions (e.g. logger.exception("Failed to save ..."))
+    r"(?im)(?:^Error:|^Failed to\b)",
+    r"(?i)Permission denied",
     r"(?i)(?:I'?m unable to|I couldn'?t|I was unable to)",
 ]
 
@@ -76,7 +79,7 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:I'?ve made the following changes:)",
     r"(?i)(?:all tests are passing)",
     r"(?i)(?:the PR is ready for review)",
-    r"(?i)(?:committed to branch|changes have been pushed)",
+    r"(?i)(?:committed to branch|committed and pushed|changes have been pushed)",
     r"(?i)(?:here'?s a summary of what was done)",
     # Artifact creation/delivery (e.g. "PRD created at docs/...", "File written to src/...")
     r"(?i)(?:(?:file|prd|test|config|migration|template|document|spec|schema|script|module)\s+)?(?:created|written|saved|generated) (?:at|to|in) (?:\/|\.\/|\w)",
@@ -85,6 +88,12 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:all \d+ tests? pass(?:ed|ing|es)?)",
     r"(?i)(?:\d+ tests? pass(?:ed|ing|es)?[,.]?\s*\d+ fail)",
     r"(?i)(?:\d+ passed)",
+    # Broader test-passing patterns (e.g. "all 26 tests — all passing")
+    r"(?i)\ball passing\b",
+    # Git success indicators
+    r"(?i)working tree clean",
+    # Claude Code CLI completion marker (✻ Cooked for 1m 33s)
+    r"[✻✓]\s*\w+\s+for\s+\d+[ms]\s*\d*[sm]?",
 ]
 
 # Completion opener patterns — "Done." / "Complete." etc. at start of a line, followed by detail
