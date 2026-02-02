@@ -237,6 +237,99 @@ function renderBrainRebootContent(contentEl, data) {
     }
 
     contentEl.innerHTML = html;
+
+    // Add "Generate Progress Summary" button when no summary exists
+    if (!data.has_summary) {
+        var btnWrap = document.createElement('div');
+        btnWrap.className = 'mt-4';
+        var btn = document.createElement('button');
+        btn.id = 'brain-reboot-generate-summary-btn';
+        btn.className = 'btn btn-sm btn-outline';
+        btn.textContent = 'Generate Progress Summary';
+        btn.onclick = function() { generateProgressSummary(btn); };
+        btnWrap.appendChild(btn);
+        contentEl.appendChild(btnWrap);
+    }
+}
+
+function generateProgressSummary(btn) {
+    if (!brainRebootState.projectId) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    fetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+        .then(function(response) {
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error(data.error || 'Generation failed');
+                });
+            }
+            return response.json();
+        })
+        .then(function() {
+            // Re-trigger brain reboot generation to refresh modal with new summary
+            var contentEl = document.getElementById('brain-reboot-content');
+            if (contentEl) {
+                contentEl.innerHTML = '<p class="text-muted italic">Refreshing brain reboot...</p>';
+            }
+            return fetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error(data.error || 'Refresh failed');
+                });
+            }
+            return response.json();
+        })
+        .then(function(data) {
+            brainRebootState.content = data.content;
+            var contentEl = document.getElementById('brain-reboot-content');
+            if (contentEl) {
+                renderBrainRebootContent(contentEl, data);
+            }
+
+            // Update status
+            var statusEl = document.getElementById('brain-reboot-status');
+            if (statusEl && data.metadata && data.metadata.generated_at) {
+                statusEl.textContent = 'Generated: ' + new Date(data.metadata.generated_at).toLocaleString();
+            }
+
+            // Update artifacts info
+            var artifactsEl = document.getElementById('brain-reboot-artifacts');
+            if (artifactsEl) {
+                var parts = [];
+                if (data.has_waypoint) parts.push('Waypoint');
+                if (data.has_summary) parts.push('Progress Summary');
+                if (parts.length > 0) {
+                    artifactsEl.textContent = 'Includes: ' + parts.join(', ');
+                } else {
+                    artifactsEl.textContent = 'No artifacts available';
+                }
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = 'Generate Progress Summary';
+            btn.style.color = '#ef4444';
+            btn.style.borderColor = '#ef4444';
+            var contentEl = document.getElementById('brain-reboot-content');
+            var errorP = document.createElement('p');
+            errorP.className = 'text-red text-sm mt-2';
+            errorP.textContent = 'Error: ' + err.message;
+            if (contentEl) contentEl.appendChild(errorP);
+            setTimeout(function() {
+                btn.style.color = '';
+                btn.style.borderColor = '';
+            }, 2000);
+        });
 }
 
 function escapeHtmlBR(text) {

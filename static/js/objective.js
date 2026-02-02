@@ -19,6 +19,7 @@
     const ObjectivePage = {
         currentPage: 1,
         isSaving: false,
+        pendingNew: false,
 
         /**
          * Initialize the objective page
@@ -41,11 +42,12 @@
             if (this.form) {
                 this.form.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    this._save(false);
+                    this._save(this.pendingNew);
+                    this.pendingNew = false;
                 });
             }
             if (this.newBtn) {
-                this.newBtn.addEventListener('click', () => this._save(true));
+                this.newBtn.addEventListener('click', () => this._startNew());
             }
             if (this.loadMoreBtn) {
                 this.loadMoreBtn.addEventListener('click', () => this._loadMore());
@@ -60,6 +62,19 @@
                     if (id) this._deleteHistory(parseInt(id, 10), btn);
                 }
             });
+        },
+
+        /**
+         * Clear form for a new objective
+         */
+        _startNew: function() {
+            this.pendingNew = true;
+            if (this.textInput) {
+                this.textInput.value = '';
+                this.textInput.focus();
+            }
+            if (this.constraintsInput) this.constraintsInput.value = '';
+            this._updateStatus('info', 'Enter your new objective and press Save');
         },
 
         /**
@@ -147,6 +162,10 @@
                         }
                     }, 3000);
                     break;
+                case 'info':
+                    this.saveStatus.textContent = message || '';
+                    this.saveStatus.className = 'text-sm text-cyan';
+                    break;
                 case 'error':
                     this.saveStatus.textContent = message || 'Error saving';
                     this.saveStatus.className = 'text-sm text-red';
@@ -175,12 +194,31 @@
         },
 
         /**
-         * Delete a history item after confirmation
+         * Delete a history item with inline two-click confirmation
          */
         _deleteHistory: async function(id, button) {
-            if (!window.confirm('Delete this objective history item?')) return;
+            // First click: flip to confirmation state
+            if (!button.dataset.confirming) {
+                button.dataset.confirming = '1';
+                button.textContent = '[sure?]';
+                button.classList.remove('text-muted');
+                button.classList.add('text-red');
 
+                // Revert after 3 seconds if not confirmed
+                button._revertTimer = setTimeout(function() {
+                    delete button.dataset.confirming;
+                    button.textContent = '[x]';
+                    button.classList.remove('text-red');
+                    button.classList.add('text-muted');
+                }, 3000);
+                return;
+            }
+
+            // Second click: confirmed — do the delete
+            clearTimeout(button._revertTimer);
+            delete button.dataset.confirming;
             button.disabled = true;
+            button.textContent = '[...]';
 
             try {
                 var response = await fetch(DELETE_HISTORY_ENDPOINT + id, {
@@ -189,24 +227,33 @@
 
                 if (response.ok) {
                     var article = button.closest('article');
+                    var self = this;
                     if (article) {
                         article.style.transition = 'opacity 0.3s';
                         article.style.opacity = '0';
-                        setTimeout(function() { article.remove(); }, 300);
-                    }
-
-                    // Update total count on load-more button
-                    if (this.loadMoreBtn && this.loadMoreBtn.dataset.total) {
-                        var newTotal = parseInt(this.loadMoreBtn.dataset.total, 10) - 1;
-                        this.loadMoreBtn.dataset.total = newTotal;
+                        setTimeout(function() {
+                            article.remove();
+                            // Refresh list from server to reset pagination
+                            self.currentPage = 2;
+                            self._refreshHistory();
+                        }, 300);
+                    } else {
+                        this.currentPage = 2;
+                        this._refreshHistory();
                     }
                 } else {
                     console.error('ObjectivePage: Delete failed', response.status);
                     button.disabled = false;
+                    button.textContent = '[x]';
+                    button.classList.remove('text-red');
+                    button.classList.add('text-muted');
                 }
             } catch (error) {
                 console.error('ObjectivePage: Delete failed', error);
                 button.disabled = false;
+                button.textContent = '[x]';
+                button.classList.remove('text-red');
+                button.classList.add('text-muted');
             }
         },
 

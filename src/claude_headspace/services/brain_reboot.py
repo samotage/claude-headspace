@@ -180,7 +180,7 @@ class BrainRebootService:
                 "Neither a progress summary nor a waypoint has been created for this project yet.",
                 "",
                 "**To get started:**",
-                "- **Progress Summary:** Click the \"Generate\" button in the Headspace panel to create a progress summary from git history",
+                "- **Progress Summary:** Click the \"Generate Progress Summary\" button below to create one from git history",
                 "- **Waypoint:** Use the waypoint editor to define your project's path ahead",
                 "",
             ])
@@ -191,7 +191,7 @@ class BrainRebootService:
             if has_summary:
                 lines.append(summary_content)
             else:
-                lines.append("*Progress summary is not yet available. Click \"Generate\" in the Headspace panel to create one from git history.*")
+                lines.append("*Progress summary is not yet available. Click \"Generate Progress Summary\" below to create one from git history.*")
             lines.append("")
 
             # Waypoint second
