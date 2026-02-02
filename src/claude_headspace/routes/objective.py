@@ -1,11 +1,14 @@
 """Objective API endpoints and page route."""
 
+import logging
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, render_template, request
 
 from ..database import db
 from ..models.objective import Objective, ObjectiveHistory
+
+logger = logging.getLogger(__name__)
 
 objective_bp = Blueprint("objective", __name__)
 
@@ -85,8 +88,8 @@ def update_objective():
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
 
-    text = data.get("text", "").strip()
-    constraints = data.get("constraints", "").strip() or None
+    text = (data.get("text") or "").strip()
+    constraints = (data.get("constraints") or "").strip() or None
 
     if not text:
         return jsonify({"error": "Objective text is required"}), 400
@@ -155,7 +158,8 @@ def update_objective():
             }
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to save objective")
         db.session.rollback()
         return jsonify({"error": "Failed to save objective"}), 500
 
@@ -225,5 +229,6 @@ def get_objective_history():
             }
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to fetch objective history")
         return jsonify({"error": "Failed to fetch history"}), 500

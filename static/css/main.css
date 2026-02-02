@@ -1727,6 +1727,134 @@ body::after {
     text-shadow: 0 0 8px rgba(86, 212, 221, 0.2);
 }
 
+/* Objective banner — terminal prompt aesthetic */
+.objective-banner {
+    position: relative;
+}
+
+.objective-banner-inner {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.objective-banner-inner:hover {
+    border-left-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(86, 212, 221, 0.08);
+}
+
+.objective-banner-empty .objective-banner-inner,
+.objective-banner-empty {
+    border-left-color: var(--border);
+}
+
+.objective-banner-empty:hover {
+    border-left-color: var(--text-muted);
+    box-shadow: none;
+}
+
+.objective-banner-gutter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background: rgba(86, 212, 221, 0.05);
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.objective-banner-empty .objective-banner-gutter {
+    background: transparent;
+}
+
+.objective-banner-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--cyan);
+    opacity: 0.7;
+    text-transform: uppercase;
+}
+
+.objective-banner-empty .objective-banner-label {
+    color: var(--text-muted);
+}
+
+.objective-banner-content {
+    flex: 1;
+    padding: 8px 16px;
+    min-width: 0;
+}
+
+.objective-banner-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.objective-banner-text {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.objective-banner-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    font-weight: 400;
+}
+
+.objective-banner-edit {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.objective-banner-inner:hover .objective-banner-edit {
+    opacity: 1;
+}
+
+.objective-banner-edit:hover {
+    color: var(--cyan);
+}
+
+.objective-banner-constraints {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.objective-banner-constraints-label {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+/* Mobile: always show edit link */
+@media (max-width: 640px) {
+    .objective-banner-edit {
+        opacity: 1;
+    }
+}
+
 /* iOS smooth scrolling for overflow containers */
 .overflow-x-auto,
 .overflow-y-auto {

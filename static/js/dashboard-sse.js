@@ -78,6 +78,9 @@
         // Handle priority score updates
         client.on('priority_update', handlePriorityUpdate);
 
+        // Handle full card refresh (authoritative state from server)
+        client.on('card_refresh', handleCardRefresh);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
@@ -396,6 +399,117 @@
                 reasonEl.textContent = '// ' + reason.substring(0, 60);
             }
         });
+    }
+
+    /**
+     * Handle card_refresh events — authoritative full card state from server.
+     * Updates all visible fields on the agent card in one shot.
+     */
+    function handleCardRefresh(data, eventType) {
+        var agentId = parseInt(data.id);
+        var state = data.state;
+        var reason = data.reason || '';
+
+        if (!agentId || !state) return;
+
+        console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+
+        // If card not found, a new agent may have appeared — reload to render it
+        if (!card) {
+            if (reason === 'session_start' || reason === 'session_reactivated') {
+                window.location.reload();
+            }
+            return;
+        }
+
+        var stateInfo = data.state_info || STATE_INFO[state] || STATE_INFO['IDLE'];
+
+        // Line 01: status badge, last-seen, uptime
+        var statusBadge = card.querySelector('.status-badge');
+        if (statusBadge) {
+            if (data.is_active) {
+                statusBadge.textContent = 'ACTIVE';
+                statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green';
+            } else {
+                statusBadge.textContent = 'IDLE';
+                statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
+            }
+        }
+        var lastSeenEl = card.querySelector('.last-seen');
+        if (lastSeenEl && data.last_seen) {
+            lastSeenEl.textContent = data.last_seen;
+        }
+        var uptimeEl = card.querySelector('.uptime');
+        if (uptimeEl && data.uptime) {
+            uptimeEl.textContent = data.uptime;
+        }
+
+        // Line 02: state bar + state label
+        var stateBar = card.querySelector('.state-bar');
+        if (stateBar) {
+            stateBar.className = stateBar.className.replace(/bg-\w+/g, '');
+            stateBar.classList.add(stateInfo.bg_class);
+        }
+        var stateLabel = card.querySelector('.state-label');
+        if (stateLabel) {
+            stateLabel.textContent = stateInfo.label;
+        }
+        card.setAttribute('data-state', state);
+
+        // Line 03: task instruction
+        var instructionEl = card.querySelector('.task-instruction');
+        if (instructionEl) {
+            if (data.task_instruction) {
+                instructionEl.textContent = data.task_instruction;
+                instructionEl.classList.remove('text-muted', 'italic');
+                instructionEl.classList.add('text-primary', 'font-medium');
+            } else {
+                instructionEl.textContent = 'No instruction';
+                instructionEl.classList.remove('text-primary', 'font-medium');
+                instructionEl.classList.add('text-muted', 'italic');
+            }
+        }
+
+        // Line 04: task summary / completion summary
+        var taskSummary = card.querySelector('.task-summary');
+        if (taskSummary) {
+            if ((state === 'COMPLETE' || state === 'IDLE') && data.task_completion_summary) {
+                taskSummary.textContent = data.task_completion_summary;
+                taskSummary.classList.remove('text-secondary');
+                taskSummary.classList.add('text-green');
+            } else {
+                taskSummary.textContent = data.task_summary || '';
+                taskSummary.classList.remove('text-green');
+                taskSummary.classList.add('text-secondary');
+            }
+        }
+
+        // Footer: priority score and reason
+        var scoreBadge = card.querySelector('.border-t .font-mono');
+        if (scoreBadge && data.priority != null) {
+            scoreBadge.textContent = data.priority;
+        }
+        var reasonEl = card.querySelector('.border-t .italic');
+        if (reasonEl && data.priority_reason) {
+            reasonEl.textContent = '// ' + data.priority_reason.substring(0, 60);
+        }
+
+        // Update tracked state
+        agentStates.set(agentId, state);
+
+        // Recalculate header counts and project dots
+        updateStatusCounts();
+        var projectId = data.project_id;
+        if (projectId) {
+            updateProjectStateDots(projectId);
+        }
+
+        // Highlight if needs attention
+        if (state === 'AWAITING_INPUT' || state === 'TIMED_OUT') {
+            highlightRecommendedUpdate();
+        }
     }
 
     /**

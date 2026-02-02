@@ -7,6 +7,9 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
+        <!-- Objective Banner -->
+        {% include "partials/_objective_banner.html" %}
+
         <!-- Recommended Next Panel -->
         {% include "partials/_recommended_next.html" %}
 

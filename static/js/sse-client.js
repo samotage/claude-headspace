@@ -252,6 +252,7 @@
         "inference_call",
         "task_summary",
         "turn_summary",
+        "card_refresh",
         "error",
       ];
 

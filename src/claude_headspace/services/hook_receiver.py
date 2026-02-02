@@ -15,6 +15,7 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.task import TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
+from .card_state import broadcast_card_refresh
 from .intent_detector import detect_agent_intent
 from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_instruction_for_notification
 
@@ -238,6 +239,7 @@ def process_session_start(
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
         db.session.commit()
+        broadcast_card_refresh(agent, "session_start")
         logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")
         return HookEventResult(success=True, agent_id=agent.id, new_state=agent.state.value)
     except Exception as e:
@@ -264,6 +266,7 @@ def process_session_end(
         pending = lifecycle.get_pending_summarisations()
 
         db.session.commit()
+        broadcast_card_refresh(agent, "session_end")
         _execute_pending_summarisations(pending)
 
         _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value, message="Session ended")
@@ -311,6 +314,7 @@ def process_user_prompt_submit(
 
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
+        broadcast_card_refresh(agent, "user_prompt_submit")
         _execute_pending_summarisations(pending)
 
         new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
@@ -358,6 +362,7 @@ def process_stop(
         current_task = lifecycle.get_current_task(agent)
         if not current_task:
             db.session.commit()
+            broadcast_card_refresh(agent, "stop")
             logger.info(f"hook_event: type=stop, agent_id={agent.id}, no active task")
             return HookEventResult(success=True, agent_id=agent.id)
 
@@ -396,6 +401,7 @@ def process_stop(
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
+        broadcast_card_refresh(agent, "stop")
         _execute_pending_summarisations(pending)
 
         actual_state = current_task.state.value
@@ -442,6 +448,7 @@ def _handle_awaiting_input(
 
         if not current_task or current_task.state not in (TaskState.PROCESSING, TaskState.COMMANDED):
             db.session.commit()
+            broadcast_card_refresh(agent, event_type_str)
             logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing task)")
             return HookEventResult(success=True, agent_id=agent.id)
 
@@ -477,6 +484,7 @@ def _handle_awaiting_input(
         _send_notification(agent, current_task, turn_text=question_text or message or title)
 
         db.session.commit()
+        broadcast_card_refresh(agent, event_type_str)
 
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
@@ -557,6 +565,7 @@ def process_post_tool_use(
             _trigger_priority_scoring()
             pending = lifecycle.get_pending_summarisations()
             db.session.commit()
+            broadcast_card_refresh(agent, "post_tool_use_inferred")
             _execute_pending_summarisations(pending)
             _broadcast_state_change(agent, "post_tool_use", TaskState.PROCESSING.value)
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, inferred PROCESSING task_id={new_task.id}")
@@ -569,6 +578,7 @@ def process_post_tool_use(
                 _trigger_priority_scoring()
             pending = lifecycle.get_pending_summarisations()
             db.session.commit()
+            broadcast_card_refresh(agent, "post_tool_use_resume")
             _execute_pending_summarisations(pending)
             new_state = result.task.state.value if result.task else None
             if new_state == TaskState.PROCESSING.value:
@@ -585,6 +595,7 @@ def process_post_tool_use(
 
         # Already PROCESSING/COMMANDED — no-op
         db.session.commit()
+        broadcast_card_refresh(agent, "post_tool_use")
         logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, no-op (state={current_task.state.value})")
         return HookEventResult(success=True, agent_id=agent.id, new_state=current_task.state.value)
     except Exception as e:

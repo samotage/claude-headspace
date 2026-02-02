@@ -104,6 +104,17 @@ def hook_session_start():
         _log_hook_event("session_start", session_id, latency_ms)
 
         if result.success:
+            if correlation.is_new:
+                try:
+                    from ..services.broadcaster import get_broadcaster
+                    get_broadcaster().broadcast("session_created", {
+                        "agent_id": result.agent_id,
+                        "project_id": correlation.agent.project_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
+
             return jsonify({
                 "status": "ok",
                 "agent_id": result.agent_id,

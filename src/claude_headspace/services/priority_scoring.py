@@ -63,6 +63,7 @@ class PriorityScoringService:
                 })
             db_session.commit()
             self._broadcast_score_update(scored)
+            self._broadcast_card_refreshes(agents, "priority_scored")
             return {"scored": len(scored), "agents": scored, "context_type": "default"}
 
         # Build prompt and call inference
@@ -97,6 +98,7 @@ class PriorityScoringService:
 
             db_session.commit()
             self._broadcast_score_update(scored)
+            self._broadcast_card_refreshes(agents, "priority_scored")
             return {"scored": len(scored), "agents": scored, "context_type": context["context_type"]}
 
         except (InferenceServiceError, Exception) as e:
@@ -333,6 +335,17 @@ class PriorityScoringService:
         except Exception as e:
             logger.error(f"Unexpected error parsing scoring response: {e}")
             return []
+
+    @staticmethod
+    def _broadcast_card_refreshes(agents, reason: str) -> None:
+        """Broadcast card_refresh for each scored agent."""
+        try:
+            from .card_state import broadcast_card_refresh
+
+            for agent in agents:
+                broadcast_card_refresh(agent, reason)
+        except Exception as e:
+            logger.debug(f"card_refresh broadcast after scoring failed (non-fatal): {e}")
 
     def _broadcast_score_update(self, scored: list[dict]) -> None:
         """Broadcast priority_update SSE event."""

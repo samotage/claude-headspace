@@ -248,6 +248,7 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
 
                 elif req.type == "instruction" and req.task:
                     instruction = self.summarise_instruction(
@@ -264,6 +265,7 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "instruction_updated")
 
                 elif req.type == "task_completion" and req.task:
                     completion = self.summarise_task(req.task, db_session=db_session)
@@ -278,9 +280,25 @@ class SummarisationService:
                             project_id=project_id,
                             extra={"is_completion": True},
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "task_summary_updated")
 
             except Exception as e:
                 logger.warning(f"Pending summarisation failed for {req.type} (non-fatal): {e}")
+
+    @staticmethod
+    def _broadcast_card_refresh_for_agent(agent_id: int | None, db_session, reason: str) -> None:
+        """Load agent and broadcast card_refresh. No-op if agent not found."""
+        if not agent_id:
+            return
+        try:
+            from ..models.agent import Agent
+            from .card_state import broadcast_card_refresh
+
+            agent = db_session.get(Agent, agent_id)
+            if agent:
+                broadcast_card_refresh(agent, reason)
+        except Exception as e:
+            logger.debug(f"card_refresh for agent {agent_id} failed (non-fatal): {e}")
 
     def _broadcast_summary_update(
         self,

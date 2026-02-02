@@ -10,14 +10,16 @@ from flask import Flask
 from src.claude_headspace.models import TaskState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.dashboard import (
-    TIMED_OUT,
-    _get_completed_task_summary,
     calculate_status_counts,
     count_active_agents,
     dashboard_bp,
+    get_project_state_flags,
+)
+from src.claude_headspace.services.card_state import (
+    TIMED_OUT,
+    _get_completed_task_summary,
     format_uptime,
     get_effective_state,
-    get_project_state_flags,
     get_state_info,
     get_task_completion_summary,
     get_task_instruction,
@@ -87,7 +89,7 @@ class TestCalculateStatusCounts:
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 1, "working": 0, "idle": 1}
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_working_states(self, mock_config):
         """Test agents in working states (COMMANDED and PROCESSING)."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
@@ -107,7 +109,7 @@ class TestCalculateStatusCounts:
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 1}
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_mixed_states(self, mock_config):
         """Test with all different states."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
@@ -146,7 +148,7 @@ class TestGetProjectStateFlags:
         assert result["has_working"] is False
         assert result["has_idle"] is False
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_working_flag(self, mock_config):
         """Test that working agents set has_working."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
@@ -179,7 +181,7 @@ class TestGetProjectStateFlags:
         result = get_project_state_flags(agents)
         assert result["has_idle"] is True
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_mixed_states(self, mock_config):
         """Test that mixed states set multiple flags."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
@@ -813,7 +815,7 @@ class TestTimedOutState:
         assert result["bg_class"] == "bg-red"
         assert "Timed out" in result["label"]
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_stale_processing_returns_timed_out(self, mock_config):
         """Test that PROCESSING agent past threshold returns TIMED_OUT."""
         mock_config.return_value = {"stale_processing_seconds": 600}
@@ -825,7 +827,7 @@ class TestTimedOutState:
         result = get_effective_state(agent)
         assert result == TIMED_OUT
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_recent_processing_stays_processing(self, mock_config):
         """Test that PROCESSING agent within threshold stays PROCESSING."""
         mock_config.return_value = {"stale_processing_seconds": 600}
@@ -837,7 +839,7 @@ class TestTimedOutState:
         result = get_effective_state(agent)
         assert result == TaskState.PROCESSING
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_timed_out_counted_separately(self, mock_config):
         """Test that TIMED_OUT agents are counted in timed_out, not input_needed."""
         mock_config.return_value = {"stale_processing_seconds": 600}
@@ -854,7 +856,7 @@ class TestTimedOutState:
         assert result["input_needed"] == 1
         assert result["idle"] == 1
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
+    @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_timed_out_project_state_flag(self, mock_config):
         """Test that TIMED_OUT agents set has_timed_out flag."""
         mock_config.return_value = {"stale_processing_seconds": 600}
