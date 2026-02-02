@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_DIR = "docs/brain_reboot"
 SUMMARY_FILENAME = "progress_summary.md"
-ARCHIVE_DIR = "archive"
 
 
 class ProgressSummaryService:
@@ -25,11 +24,12 @@ class ProgressSummaryService:
     Writes progress_summary.md to target project's docs/brain_reboot/ directory.
     """
 
-    def __init__(self, inference_service: InferenceService, app=None):
+    def __init__(self, inference_service: InferenceService, app=None, archive_service=None):
         self._inference = inference_service
         self._app = app
         self._config = app.config.get("APP_CONFIG", {}) if app else {}
         self._git_analyzer = GitAnalyzer(config=self._config)
+        self._archive_service = archive_service
 
         # Concurrent generation guard
         self._lock = threading.Lock()
@@ -216,18 +216,22 @@ class ProgressSummaryService:
     def _write_summary(self, project_path: str, content: str, metadata: dict) -> None:
         """Write progress summary to the target project filesystem.
 
-        Archives existing summary before overwriting.
+        Archives existing summary before overwriting via centralized archive service.
         """
         base_dir = Path(project_path) / SUMMARY_DIR
         summary_path = base_dir / SUMMARY_FILENAME
 
         # Ensure directories exist
         self._ensure_directory(base_dir)
-        self._ensure_directory(base_dir / ARCHIVE_DIR)
 
-        # Archive existing before overwriting
-        if summary_path.exists():
-            self._archive_existing(base_dir, summary_path)
+        # Archive existing before overwriting via centralized service
+        if summary_path.exists() and self._archive_service is not None:
+            try:
+                self._archive_service.archive_artifact(
+                    project_path, "progress_summary"
+                )
+            except Exception as e:
+                logger.warning(f"Archive failed (non-blocking): {e}")
 
         # Build file content with metadata header
         frontmatter = self._build_frontmatter(metadata)
@@ -235,30 +239,6 @@ class ProgressSummaryService:
 
         summary_path.write_text(full_content, encoding="utf-8")
         logger.info(f"Progress summary written to {summary_path}")
-
-    def _archive_existing(self, base_dir: Path, summary_path: Path) -> None:
-        """Archive the current progress summary with date-stamped filename."""
-        archive_dir = base_dir / ARCHIVE_DIR
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-        # Base archive name
-        archive_name = f"progress_summary_{today}.md"
-        archive_path = archive_dir / archive_name
-
-        # Handle same-day suffix
-        if archive_path.exists():
-            suffix = 2
-            while True:
-                archive_name = f"progress_summary_{today}_{suffix}.md"
-                archive_path = archive_dir / archive_name
-                if not archive_path.exists():
-                    break
-                suffix += 1
-
-        # Copy current to archive (not move, to preserve original on write failure)
-        existing_content = summary_path.read_text(encoding="utf-8")
-        archive_path.write_text(existing_content, encoding="utf-8")
-        logger.info(f"Archived previous summary to {archive_path}")
 
     @staticmethod
     def _ensure_directory(path: Path) -> None:

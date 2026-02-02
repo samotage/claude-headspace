@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +12,6 @@ from claude_headspace.services.waypoint_editor import (
     DEFAULT_TEMPLATE,
     SaveResult,
     WaypointResult,
-    get_archive_dir,
-    get_archive_filename,
     get_waypoint_path,
     load_waypoint,
     save_waypoint,
@@ -33,15 +31,6 @@ class TestGetWaypointPath:
         """Should handle Path objects."""
         path = get_waypoint_path(Path("/projects/myapp"))
         assert path == Path("/projects/myapp/docs/brain_reboot/waypoint.md")
-
-
-class TestGetArchiveDir:
-    """Tests for get_archive_dir function."""
-
-    def test_returns_correct_path(self):
-        """Should return path to archive directory."""
-        path = get_archive_dir("/projects/myapp")
-        assert path == Path("/projects/myapp/docs/brain_reboot/archive")
 
 
 class TestLoadWaypoint:
@@ -97,43 +86,6 @@ class TestLoadWaypoint:
             assert "brain_reboot" in result.path
 
 
-class TestGetArchiveFilename:
-    """Tests for get_archive_filename function."""
-
-    def test_returns_date_based_filename(self):
-        """Should return filename with date."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            archive_dir = Path(tmpdir)
-            date = datetime(2026, 1, 29, tzinfo=timezone.utc)
-
-            filename = get_archive_filename(archive_dir, date)
-
-            assert filename == "waypoint_2026-01-29.md"
-
-    def test_adds_counter_when_file_exists(self):
-        """Should add counter when file already exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            archive_dir = Path(tmpdir)
-            (archive_dir / "waypoint_2026-01-29.md").write_text("old")
-            date = datetime(2026, 1, 29, tzinfo=timezone.utc)
-
-            filename = get_archive_filename(archive_dir, date)
-
-            assert filename == "waypoint_2026-01-29_2.md"
-
-    def test_increments_counter(self):
-        """Should increment counter for multiple files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            archive_dir = Path(tmpdir)
-            (archive_dir / "waypoint_2026-01-29.md").write_text("old1")
-            (archive_dir / "waypoint_2026-01-29_2.md").write_text("old2")
-            date = datetime(2026, 1, 29, tzinfo=timezone.utc)
-
-            filename = get_archive_filename(archive_dir, date)
-
-            assert filename == "waypoint_2026-01-29_3.md"
-
-
 class TestSaveWaypoint:
     """Tests for save_waypoint function."""
 
@@ -151,10 +103,33 @@ class TestSaveWaypoint:
             assert waypoint_path.exists()
             assert waypoint_path.read_text() == "# New Waypoint"
 
-    def test_archives_existing_waypoint(self):
-        """Should archive existing waypoint before save."""
+    def test_archives_existing_waypoint_via_service(self):
+        """Should delegate archiving to the archive service."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create existing waypoint
+            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir.mkdir(parents=True)
+            waypoint_file = waypoint_dir / "waypoint.md"
+            waypoint_file.write_text("# Old Content")
+
+            mock_archive = MagicMock()
+            mock_archive.archive_artifact.return_value = "archive/waypoint_2026-01-29_14-30-00.md"
+
+            result = save_waypoint(tmpdir, "# New Content", archive_service=mock_archive)
+
+            assert result.success is True
+            assert result.archived is True
+            assert result.archive_path == "archive/waypoint_2026-01-29_14-30-00.md"
+
+            # Verify archive service was called
+            mock_archive.archive_artifact.assert_called_once_with(tmpdir, "waypoint")
+
+            # Verify new content was saved
+            assert waypoint_file.read_text() == "# New Content"
+
+    def test_no_archive_without_service(self):
+        """Should skip archiving when no archive service provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
             waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
@@ -163,17 +138,24 @@ class TestSaveWaypoint:
             result = save_waypoint(tmpdir, "# New Content")
 
             assert result.success is True
-            assert result.archived is True
-            assert result.archive_path is not None
-            assert "archive" in result.archive_path
+            assert result.archived is False
+            assert result.archive_path is None
 
-            # Verify archive was created
-            archive_dir = get_archive_dir(tmpdir)
-            archive_files = list(archive_dir.glob("waypoint_*.md"))
-            assert len(archive_files) == 1
-            assert archive_files[0].read_text() == "# Old Content"
+    def test_archive_failure_non_blocking(self):
+        """Should continue saving even if archive fails."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir.mkdir(parents=True)
+            waypoint_file = waypoint_dir / "waypoint.md"
+            waypoint_file.write_text("# Old Content")
 
-            # Verify new content was saved
+            mock_archive = MagicMock()
+            mock_archive.archive_artifact.side_effect = OSError("disk full")
+
+            result = save_waypoint(tmpdir, "# New Content", archive_service=mock_archive)
+
+            assert result.success is True
+            assert result.archived is False
             assert waypoint_file.read_text() == "# New Content"
 
     def test_creates_directory_structure(self):
@@ -186,9 +168,6 @@ class TestSaveWaypoint:
             # Verify directories were created
             waypoint_path = get_waypoint_path(tmpdir)
             assert waypoint_path.parent.exists()
-
-            archive_dir = get_archive_dir(tmpdir)
-            assert archive_dir.exists()
 
     def test_returns_last_modified(self):
         """Should return last modification time after save."""

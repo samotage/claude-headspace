@@ -206,29 +206,29 @@ function renderBrainRebootContent(contentEl, data) {
         }
 
         if (trimmed.startsWith('# ')) {
-            html += '<h1 class="text-primary text-xl font-display mb-3">' + escapeHtmlBR(trimmed.substring(2)) + '</h1>';
+            html += '<h1 class="text-primary text-2xl font-display mb-3">' + escapeHtmlBR(trimmed.substring(2)) + '</h1>';
         } else if (trimmed.startsWith('## ')) {
-            html += '<h2 class="text-primary text-lg font-display mt-6 mb-2">' + escapeHtmlBR(trimmed.substring(3)) + '</h2>';
+            html += '<h2 class="text-primary text-xl font-display mt-6 mb-2">' + escapeHtmlBR(trimmed.substring(3)) + '</h2>';
         } else if (trimmed.startsWith('### ')) {
-            html += '<h3 class="text-secondary text-base font-medium mt-4 mb-2">' + escapeHtmlBR(trimmed.substring(4)) + '</h3>';
+            html += '<h3 class="text-secondary text-lg font-medium mt-4 mb-2">' + escapeHtmlBR(trimmed.substring(4)) + '</h3>';
         } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
             if (!inList) {
-                html += '<ul class="list-disc pl-5 space-y-1 text-secondary text-sm">';
+                html += '<ul class="list-disc pl-5 space-y-1 text-secondary text-base">';
                 inList = true;
             }
             html += '<li>' + escapeHtmlBR(trimmed.substring(2)) + '</li>';
         } else if (trimmed.startsWith('---')) {
             html += '<hr class="border-border my-4">';
         } else if (trimmed.startsWith('_') && trimmed.endsWith('_')) {
-            html += '<p class="text-muted text-sm italic mt-4">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
+            html += '<p class="text-muted text-base italic mt-4">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
         } else if (trimmed.startsWith('*') && trimmed.endsWith('*')) {
-            html += '<p class="text-muted text-sm italic">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
+            html += '<p class="text-muted text-base italic">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
         } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-            html += '<p class="text-primary text-sm font-medium">' + escapeHtmlBR(trimmed.slice(2, -2)) + '</p>';
+            html += '<p class="text-primary text-base font-medium">' + escapeHtmlBR(trimmed.slice(2, -2)) + '</p>';
         } else if (trimmed.startsWith('Generated:')) {
-            html += '<p class="text-muted text-xs mb-4">' + escapeHtmlBR(trimmed) + '</p>';
+            html += '<p class="text-muted text-sm mb-4">' + escapeHtmlBR(trimmed) + '</p>';
         } else {
-            html += '<p class="text-secondary text-sm leading-relaxed mb-2">' + escapeHtmlBR(trimmed) + '</p>';
+            html += '<p class="text-secondary text-base leading-relaxed mb-2">' + escapeHtmlBR(trimmed) + '</p>';
         }
     });
 
@@ -241,10 +241,10 @@ function renderBrainRebootContent(contentEl, data) {
     // Add "Generate Progress Summary" button when no summary exists
     if (!data.has_summary) {
         var btnWrap = document.createElement('div');
-        btnWrap.className = 'mt-4';
+        btnWrap.className = 'mt-4 flex justify-end';
         var btn = document.createElement('button');
         btn.id = 'brain-reboot-generate-summary-btn';
-        btn.className = 'btn btn-sm btn-outline';
+        btn.className = 'px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
         btn.textContent = 'Generate Progress Summary';
         btn.onclick = function() { generateProgressSummary(btn); };
         btnWrap.appendChild(btn);
@@ -260,11 +260,14 @@ function generateProgressSummary(btn) {
 
     fetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
     })
         .then(function(response) {
             if (!response.ok) {
-                return response.json().then(function(data) {
+                return response.json().catch(function() {
+                    throw new Error('Generation failed (HTTP ' + response.status + ')');
+                }).then(function(data) {
                     throw new Error(data.error || 'Generation failed');
                 });
             }

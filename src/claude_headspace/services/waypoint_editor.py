@@ -6,6 +6,10 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .archive_service import ArchiveService
 
 logger = logging.getLogger(__name__)
 
@@ -65,19 +69,6 @@ def get_waypoint_path(project_path: str | Path) -> Path:
     return Path(project_path) / "docs" / "brain_reboot" / "waypoint.md"
 
 
-def get_archive_dir(project_path: str | Path) -> Path:
-    """
-    Get the archive directory path for a project.
-
-    Args:
-        project_path: Path to the project root
-
-    Returns:
-        Path to the archive directory
-    """
-    return Path(project_path) / "docs" / "brain_reboot" / "archive"
-
-
 def load_waypoint(project_path: str | Path) -> WaypointResult:
     """
     Load waypoint content from a project.
@@ -119,52 +110,28 @@ def load_waypoint(project_path: str | Path) -> WaypointResult:
         raise
 
 
-def get_archive_filename(archive_dir: Path, date: datetime) -> str:
-    """
-    Get a unique archive filename with date and optional counter.
-
-    Args:
-        archive_dir: Path to the archive directory
-        date: Date for the archive
-
-    Returns:
-        Unique filename for the archive
-    """
-    date_str = date.strftime("%Y-%m-%d")
-    base_name = f"waypoint_{date_str}"
-
-    # Check if base filename exists
-    if not (archive_dir / f"{base_name}.md").exists():
-        return f"{base_name}.md"
-
-    # Find next available counter
-    counter = 2
-    while (archive_dir / f"{base_name}_{counter}.md").exists():
-        counter += 1
-
-    return f"{base_name}_{counter}.md"
-
-
 def save_waypoint(
     project_path: str | Path,
     content: str,
     expected_mtime: datetime | None = None,
+    archive_service: "ArchiveService | None" = None,
 ) -> SaveResult:
     """
     Save waypoint content to a project with automatic archiving.
 
-    Performs atomic write (temp file then rename) and archives existing waypoint.
+    Performs atomic write (temp file then rename) and archives existing waypoint
+    via the centralized archive service.
 
     Args:
         project_path: Path to the project root
         content: New waypoint content
         expected_mtime: Expected modification time for conflict detection
+        archive_service: Archive service for archiving previous version
 
     Returns:
         SaveResult with success flag, archive info, and any errors
     """
     path = get_waypoint_path(project_path)
-    archive_dir = get_archive_dir(project_path)
     archived = False
     archive_path = None
 
@@ -187,32 +154,18 @@ def save_waypoint(
 
         # Create directory structure if missing
         path.parent.mkdir(parents=True, exist_ok=True)
-        archive_dir.mkdir(parents=True, exist_ok=True)
 
-        # Archive existing waypoint
-        if path.exists():
-            now = datetime.now(timezone.utc)
-            archive_filename = get_archive_filename(archive_dir, now)
-            archive_file = archive_dir / archive_filename
-
-            # Atomic copy to archive
-            existing_content = path.read_text(encoding="utf-8")
-            fd, temp_archive = tempfile.mkstemp(
-                suffix=".md",
-                prefix="waypoint_archive_",
-                dir=archive_dir,
-            )
+        # Archive existing waypoint via centralized service
+        if path.exists() and archive_service is not None:
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(existing_content)
-                os.replace(temp_archive, archive_file)
-                archived = True
-                archive_path = str(archive_file.relative_to(path.parent))
-                logger.info(f"Archived waypoint to {archive_file}")
-            except Exception:
-                if os.path.exists(temp_archive):
-                    os.unlink(temp_archive)
-                raise
+                result = archive_service.archive_artifact(
+                    project_path, "waypoint"
+                )
+                if result is not None:
+                    archived = True
+                    archive_path = result
+            except Exception as e:
+                logger.warning(f"Archive failed (non-blocking): {e}")
 
         # Atomic write new content
         fd, temp_path = tempfile.mkstemp(
