@@ -9,6 +9,7 @@
 
     const API_ENDPOINT = '/api/objective';
     const HISTORY_ENDPOINT = '/api/objective/history';
+    const DELETE_HISTORY_ENDPOINT = '/api/objective/history/';
     const PRIORITY_ENDPOINT = '/api/objective/priority';
     const PER_PAGE = 10;
 
@@ -50,6 +51,15 @@
                 this.loadMoreBtn.addEventListener('click', () => this._loadMore());
                 this.currentPage = parseInt(this.loadMoreBtn.dataset.page) || 2;
             }
+
+            // Event delegation for delete buttons on history items
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('.delete-history-btn');
+                if (btn) {
+                    const id = btn.dataset.historyId;
+                    if (id) this._deleteHistory(parseInt(id, 10), btn);
+                }
+            });
         },
 
         /**
@@ -165,6 +175,42 @@
         },
 
         /**
+         * Delete a history item after confirmation
+         */
+        _deleteHistory: async function(id, button) {
+            if (!window.confirm('Delete this objective history item?')) return;
+
+            button.disabled = true;
+
+            try {
+                var response = await fetch(DELETE_HISTORY_ENDPOINT + id, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    var article = button.closest('article');
+                    if (article) {
+                        article.style.transition = 'opacity 0.3s';
+                        article.style.opacity = '0';
+                        setTimeout(function() { article.remove(); }, 300);
+                    }
+
+                    // Update total count on load-more button
+                    if (this.loadMoreBtn && this.loadMoreBtn.dataset.total) {
+                        var newTotal = parseInt(this.loadMoreBtn.dataset.total, 10) - 1;
+                        this.loadMoreBtn.dataset.total = newTotal;
+                    }
+                } else {
+                    console.error('ObjectivePage: Delete failed', response.status);
+                    button.disabled = false;
+                }
+            } catch (error) {
+                console.error('ObjectivePage: Delete failed', error);
+                button.disabled = false;
+            }
+        },
+
+        /**
          * Load more history items
          */
         _loadMore: async function() {
@@ -237,12 +283,16 @@
                 : '<span class="text-cyan">Current</span>';
 
             return `
-                <article class="p-4 bg-surface rounded border border-border">
+                <article class="p-4 bg-surface rounded border border-border" data-history-id="${item.id}">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 min-w-0">
                             <p class="text-primary break-words">${this._escapeHtml(item.text)}</p>
                             ${constraintsHtml}
                         </div>
+                        <button type="button"
+                                class="delete-history-btn flex-shrink-0 text-muted hover:text-red transition-colors text-xs font-mono px-1"
+                                data-history-id="${item.id}"
+                                title="Delete history item">[x]</button>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-4 text-xs text-muted">
                         <span>Started: <time datetime="${item.started_at}">${this._formatDate(startedAt)}</time></span>

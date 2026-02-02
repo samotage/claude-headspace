@@ -422,6 +422,54 @@ class TestGetObjectiveHistoryAPI:
             assert "error" in data
 
 
+class TestDeleteHistoryItemAPI:
+    """Tests for DELETE /api/objective/history/<id> endpoint."""
+
+    def test_delete_history_item(self, client):
+        """Test deleting an existing history item returns 200."""
+        mock_item = MagicMock()
+        mock_item.id = 42
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = mock_item
+
+            response = client.delete("/api/objective/history/42")
+            assert response.status_code == 200
+
+            data = json.loads(response.data)
+            assert data["deleted"] is True
+            assert data["id"] == 42
+            mock_db.session.delete.assert_called_once_with(mock_item)
+            mock_db.session.commit.assert_called()
+
+    def test_delete_history_item_not_found(self, client):
+        """Test deleting a non-existent history item returns 404."""
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = None
+
+            response = client.delete("/api/objective/history/999")
+            assert response.status_code == 404
+
+            data = json.loads(response.data)
+            assert "error" in data
+
+    def test_delete_history_database_error(self, client):
+        """Test that database error during delete returns 500."""
+        mock_item = MagicMock()
+        mock_item.id = 42
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = mock_item
+            mock_db.session.commit.side_effect = Exception("DB error")
+
+            response = client.delete("/api/objective/history/42")
+            assert response.status_code == 500
+
+            data = json.loads(response.data)
+            assert "error" in data
+            mock_db.session.rollback.assert_called()
+
+
 class TestGetPriorityStatusAPI:
     """Tests for GET /api/objective/priority endpoint."""
 

@@ -86,7 +86,7 @@
                 {% if history %}
                 <div id="history-list" class="space-y-4">
                     {% for item in history %}
-                    <article class="p-4 bg-surface rounded border border-border">
+                    <article class="p-4 bg-surface rounded border border-border" data-history-id="{{ item.id }}">
                         <div class="flex items-start justify-between gap-4">
                             <div class="flex-1 min-w-0">
                                 <p class="text-primary break-words">{{ item.text }}</p>
@@ -96,6 +96,10 @@
                                 </p>
                                 {% endif %}
                             </div>
+                            <button type="button"
+                                    class="delete-history-btn flex-shrink-0 text-muted hover:text-red transition-colors text-xs font-mono px-1"
+                                    data-history-id="{{ item.id }}"
+                                    title="Delete history item">[x]</button>
                         </div>
                         <div class="mt-3 flex flex-wrap gap-4 text-xs text-muted">
                             <span>

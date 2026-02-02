@@ -255,6 +255,34 @@ def get_objective_history():
         return jsonify({"error": "Failed to fetch history"}), 500
 
 
+@objective_bp.route("/api/objective/history/<int:history_id>", methods=["DELETE"])
+def delete_history_item(history_id):
+    """
+    Delete an individual objective history item.
+
+    Args:
+        history_id: The ID of the ObjectiveHistory record to delete
+
+    Returns:
+        JSON with deleted status or error
+    """
+    try:
+        item = db.session.query(ObjectiveHistory).get(history_id)
+
+        if not item:
+            return jsonify({"error": "History item not found"}), 404
+
+        db.session.delete(item)
+        db.session.commit()
+
+        return jsonify({"deleted": True, "id": history_id})
+
+    except Exception:
+        logger.exception("Failed to delete history item %s", history_id)
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete history item"}), 500
+
+
 @objective_bp.route("/api/objective/priority", methods=["GET"])
 def get_priority_status():
     """
