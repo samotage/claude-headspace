@@ -142,15 +142,18 @@ class SummarisationService:
             logger.error(f"Task summarisation failed for task {task.id}: {e}")
             return None
 
-    def summarise_instruction(self, task, command_text: str, db_session=None) -> str | None:
+    def summarise_instruction(self, task, command_text: str, db_session=None, reuse_summary: str | None = None) -> str | None:
         """Generate an instruction summary from the user's command text.
 
         Produces a 1-2 sentence summary of what the user instructed.
+        When reuse_summary is provided (e.g. from a turn summary of the same
+        command), it is used directly instead of making a separate LLM call.
 
         Args:
             task: Task model instance to persist the instruction to
             command_text: The full text of the user's command
             db_session: Database session for persisting
+            reuse_summary: Pre-computed summary to reuse (avoids duplicate LLM call)
 
         Returns:
             The instruction text, or None if generation failed or skipped
@@ -163,6 +166,18 @@ class SummarisationService:
         if not command_text or not command_text.strip():
             logger.debug(f"Skipping instruction summarisation for task {task.id}: empty command text")
             return None
+
+        # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
+        if reuse_summary:
+            task.instruction = reuse_summary
+            task.instruction_generated_at = datetime.now(timezone.utc)
+
+            if db_session:
+                db_session.add(task)
+                db_session.commit()
+
+            logger.debug(f"Reused turn summary as instruction for task {task.id}")
+            return reuse_summary
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping instruction summarisation")
@@ -204,15 +219,26 @@ class SummarisationService:
         Called after db.session.commit() in the hook receiver to avoid the race
         condition where async threads can't find newly-created rows.
 
+        When a turn (COMMAND intent) and instruction request are queued together,
+        the turn summary is reused as the instruction — avoiding a duplicate LLM call.
+
         Args:
             requests: List of SummarisationRequest objects
             db_session: Database session for persisting summaries
         """
+        # Track the last COMMAND turn summary so instruction requests can reuse it
+        last_command_turn_summary = None
+
         for req in requests:
             try:
                 if req.type == "turn" and req.turn:
                     summary = self.summarise_turn(req.turn, db_session=db_session)
                     if summary:
+                        # Track COMMAND turn summaries for reuse by instruction requests
+                        intent_value = req.turn.intent.value if hasattr(req.turn.intent, "value") else str(req.turn.intent)
+                        if intent_value == "command":
+                            last_command_turn_summary = summary
+
                         agent_id = req.turn.task.agent_id if req.turn.task else None
                         project_id = req.turn.task.agent.project_id if req.turn.task and req.turn.task.agent else None
                         self._broadcast_summary_update(
@@ -225,7 +251,8 @@ class SummarisationService:
 
                 elif req.type == "instruction" and req.task:
                     instruction = self.summarise_instruction(
-                        req.task, req.command_text, db_session=db_session
+                        req.task, req.command_text, db_session=db_session,
+                        reuse_summary=last_command_turn_summary,
                     )
                     if instruction:
                         agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None

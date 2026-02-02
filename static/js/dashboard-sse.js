@@ -122,6 +122,17 @@
         updateAgentCardState(agentId, newState);
         updateRecommendedPanel(agentId, newState);
 
+        // Clear line 04 when leaving AWAITING_INPUT — the question is no longer relevant
+        if (oldState === 'AWAITING_INPUT' && newState !== 'AWAITING_INPUT') {
+            const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
+            if (card) {
+                const taskSummary = card.querySelector('.task-summary');
+                if (taskSummary) {
+                    taskSummary.textContent = '';
+                }
+            }
+        }
+
         // Recalculate and update header counts
         updateStatusCounts();
 

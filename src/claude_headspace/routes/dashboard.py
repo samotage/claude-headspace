@@ -395,19 +395,22 @@ def get_task_summary(agent: Agent) -> str:
                     return text
                 break
 
-    # Default: get most recent turn
+    # Default: get most recent non-question turn
+    # AGENT QUESTION turns are only shown during AWAITING_INPUT (handled above);
+    # once the agent resumes, the stale question should not linger on line 04.
     if current_task.turns:
-        recent_turn = current_task.turns[-1] if current_task.turns else None
-        if recent_turn:
-            # Prefer AI-generated summary
-            if recent_turn.summary:
-                return recent_turn.summary
-            # Fall back to raw text
-            if recent_turn.text:
-                text = recent_turn.text
+        for turn in reversed(current_task.turns):
+            if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+                continue
+            if turn.summary:
+                return turn.summary
+            if turn.text:
+                text = turn.text
                 if len(text) > 100:
                     return text[:100] + "..."
                 return text
+        # All turns were questions — nothing relevant to show
+        return ""
 
     return "No active task"
 
