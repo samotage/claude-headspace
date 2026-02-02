@@ -130,6 +130,15 @@ CONFIG_SCHEMA = [
         ],
     ),
     SectionSchema(
+        name="commander",
+        title="Commander (Input Bridge)",
+        fields=[
+            FieldSchema("health_check_interval", "integer", "Seconds between socket availability checks", min_value=1, max_value=3600, default=30),
+            FieldSchema("socket_timeout", "integer", "Socket operation timeout in seconds", min_value=1, max_value=30, default=2),
+            FieldSchema("socket_path_prefix", "string", "Socket path prefix (must match claudec convention)", default="/tmp/claudec-"),
+        ],
+    ),
+    SectionSchema(
         name="notifications",
         title="Notifications",
         fields=[

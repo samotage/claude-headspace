@@ -60,7 +60,27 @@ The wrapper script:
 - Launches Claude Code as a child process
 - Cleans up the session when Claude Code exits
 
-### Method 2: Hooks Only
+### Method 2: Commander Wrapper (for Input Bridge)
+
+To respond to Claude Code prompts from the dashboard without switching to iTerm, launch sessions through `claudec`:
+
+```bash
+claudec claude
+```
+
+This wraps Claude Code in a pseudo-terminal and exposes a Unix socket that the dashboard uses to send responses. Sessions still register via hooks — `claudec` is transparent.
+
+**Prerequisites:** Install `claude-commander` first:
+
+```bash
+cargo install claude-commander
+```
+
+Or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
+
+See [Input Bridge](input-bridge) for full setup instructions and details.
+
+### Method 3: Hooks Only
 
 If you prefer to run `claude` directly, you must first install the Claude Code hooks:
 
@@ -103,15 +123,16 @@ Navigate to `http://localhost:5055` in your browser to see all your active sessi
 Each agent card shows its current state:
 
 - **Working** (blue) - Claude is actively processing
-- **Input Needed** (amber) - Claude is waiting for your response
+- **Input Needed** (amber) - Claude is waiting for your response. If the session was launched with `claudec`, a respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
 - **Idle** (gray) - Claude has completed its task
 
 ## Focus on a Session
 
-Click the "Headspace" button on any agent card to bring its iTerm window to the foreground.
+Click the state bar on any agent card to bring its iTerm window to the foreground.
 
 ## Next Steps
 
 - [Dashboard Overview](dashboard) - Learn about all dashboard features
+- [Input Bridge](input-bridge) - Respond to prompts from the dashboard
 - [Set an Objective](objective) - Guide Claude's priorities
 - [Configure Settings](configuration) - Customize your setup

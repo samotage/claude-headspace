@@ -53,6 +53,21 @@ objective: "Current priority description"
 
 The global objective used for agent prioritization.
 
+### Commander (Input Bridge)
+
+```yaml
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
+```
+
+- `health_check_interval` - Seconds between commander socket availability checks (1-3600, default: 30)
+- `socket_timeout` - Timeout in seconds for socket operations (default: 2)
+- `socket_path_prefix` - Path prefix for commander sockets. Must match the `claudec` binary's convention (default: `/tmp/claudec-`)
+
+These settings control the [Input Bridge](input-bridge) feature. You only need to change them if you have a custom `claudec` setup or want to adjust how frequently availability is checked.
+
 ### Notifications
 
 ```yaml

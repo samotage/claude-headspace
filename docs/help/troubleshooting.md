@@ -79,6 +79,69 @@ Common issues and how to resolve them.
 2. Ensure iTerm2 is the configured terminal
 3. Check that the session is still running
 
+## Input Bridge Issues
+
+### Respond widget not appearing
+
+**Symptoms:** Agent is in "Input Needed" (amber) state but no quick-action buttons or text input appear on the card.
+
+**Solutions:**
+
+1. **Session must be launched with `claudec`** — the respond widget requires a commander socket. Start sessions with:
+   ```bash
+   claudec claude
+   ```
+   Sessions started with plain `claude` or `claude-headspace start` without `claudec` do not have a commander socket.
+
+2. **Check that claudec is installed:**
+   ```bash
+   claudec --version
+   ```
+   If not found, install it: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
+
+3. **Socket startup delay** — there is a 2-5 second delay after launching `claudec` before the socket becomes available. The widget will appear automatically once the health check detects the socket.
+
+4. **Check socket exists** — verify the commander socket file is present:
+   ```bash
+   ls /tmp/claudec-*.sock
+   ```
+   If no socket files exist, `claudec` may not be running or may have crashed.
+
+5. **Agent needs a session ID** — if the agent has no `claude_session_id`, the socket path cannot be derived. This usually means the session didn't register properly via hooks.
+
+### "Session unreachable" error when responding
+
+**Symptoms:** You click a quick-action button or Send, and get a "Session unreachable" toast.
+
+**Solutions:**
+
+1. **Check if Claude Code is still running** — the process inside `claudec` may have exited
+2. **Check the socket file:**
+   ```bash
+   ls -la /tmp/claudec-*.sock
+   ```
+   If the file exists but the process is dead, the socket is stale. Restart the session with `claudec`.
+3. **Socket permissions** — ensure the socket file is readable/writable by your user
+
+### "Agent not waiting for input" warning
+
+**Symptoms:** Warning toast saying the agent is not waiting for input.
+
+**Cause:** The agent already moved past the prompt before your response was sent. This is a race condition — the agent may have timed out or another input source (keyboard in iTerm) provided the response.
+
+**Resolution:** No action needed. The state will update automatically on the next hook event.
+
+### Widget appears then disappears
+
+**Symptoms:** Respond widget flashes briefly then vanishes.
+
+**Cause:** The commander availability health check ran and found the socket unreachable.
+
+**Solutions:**
+1. Check if the `claudec` process is still running
+2. Check server logs for availability check failures
+3. The health check runs every 30 seconds (configurable in `config.yaml` → `commander.health_check_interval`)
+
 ## Configuration Issues
 
 ### Config page shows validation error

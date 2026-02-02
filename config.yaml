@@ -34,6 +34,10 @@ hooks:
   enabled: true
   polling_interval_with_hooks: 60
   fallback_timeout: 1200
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
 notifications:
   enabled: true
   sound: true
@@ -42,22 +46,22 @@ openrouter:
   base_url: https://openrouter.ai/api/v1
   timeout: 30
   models:
-    turn: anthropic/claude-3-haiku
-    task: anthropic/claude-3-haiku
-    project: anthropic/claude-3.5-sonnet
-    objective: anthropic/claude-3.5-sonnet
+    turn: liquid/lfm-2.5-1.2b-thinking:free
+    task: liquid/lfm-2.5-1.2b-thinking:free
+    project: liquid/lfm-2.5-1.2b-thinking:free
+    objective: liquid/lfm-2.5-1.2b-thinking:free
   rate_limits:
-    calls_per_minute: 20
-    tokens_per_minute: 1000
+    calls_per_minute: 30
+    tokens_per_minute: 10000
   cache:
     enabled: true
     ttl_seconds: 300
-  priority_scoring:
-    debounce_seconds: 5.0
   retry:
     max_attempts: 1
     base_delay_seconds: 1.0
     max_delay_seconds: 30.0
+  priority_scoring:
+    debounce_seconds: 5.0
   pricing:
     anthropic/claude-3-haiku:
       input_per_million: 0.25
@@ -84,10 +88,6 @@ headspace:
     min_turn_rate: 6
     max_frustration: 3
     min_duration_minutes: 15
-commander:
-  health_check_interval: 30
-  socket_timeout: 2
-  socket_path_prefix: /tmp/claudec-
 archive:
   enabled: true
   retention:
