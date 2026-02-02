@@ -10,6 +10,7 @@ Models:
     - Turn: Individual exchanges (user ↔ agent)
     - Event: Audit trail events
     - InferenceCall: LLM inference call logging
+    - ActivityMetric: Hourly activity metrics time-series
 
 Enums:
     - TaskState: idle, commanded, processing, awaiting_input, complete
@@ -18,6 +19,7 @@ Enums:
     - InferenceLevel: turn, task, project, objective
 """
 
+from .activity_metric import ActivityMetric
 from .agent import Agent
 from .event import Event, EventType
 from .inference_call import InferenceCall, InferenceLevel
@@ -28,6 +30,7 @@ from .turn import Turn, TurnActor, TurnIntent
 
 __all__ = [
     # Models
+    "ActivityMetric",
     "Objective",
     "ObjectiveHistory",
     "Project",

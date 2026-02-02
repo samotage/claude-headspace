@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Activity - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+
+        <!-- Overall Summary Panel -->
+        <section aria-labelledby="overall-heading" class="mb-6">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <h2 id="overall-heading" class="text-lg font-bold text-primary mb-4">Overall Activity</h2>
+                <div id="overall-metrics" class="grid grid-cols-3 gap-4">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-cyan" id="overall-turn-rate">--</div>
+                        <div class="text-xs text-muted uppercase tracking-wider mt-1">Turns / Hour</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-cyan" id="overall-avg-time">--</div>
+                        <div class="text-xs text-muted uppercase tracking-wider mt-1">Avg Turn Time</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-cyan" id="overall-active-agents">--</div>
+                        <div class="text-xs text-muted uppercase tracking-wider mt-1">Active Agents</div>
+                    </div>
+                </div>
+                <div id="overall-empty" class="hidden text-center py-4">
+                    <p class="text-secondary">No activity data yet.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Time-Series Chart -->
+        <section aria-labelledby="chart-heading" class="mb-6">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 id="chart-heading" class="text-lg font-bold text-primary">Turn Activity</h2>
+                    <div class="flex gap-2" id="window-toggles">
+                        <button type="button" data-window="day"
+                                class="px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium"
+                                onclick="ActivityPage.setWindow('day')">Day</button>
+                        <button type="button" data-window="week"
+                                class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
+                                onclick="ActivityPage.setWindow('week')">Week</button>
+                        <button type="button" data-window="month"
+                                class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
+                                onclick="ActivityPage.setWindow('month')">Month</button>
+                    </div>
+                </div>
+                <div class="relative" style="height: 300px;">
+                    <canvas id="activity-chart"></canvas>
+                </div>
+                <div id="chart-empty" class="hidden text-center py-8">
+                    <p class="text-secondary">No activity data to chart yet.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Project / Agent Metrics -->
+        <section aria-labelledby="projects-heading">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <h2 id="projects-heading" class="text-lg font-bold text-primary mb-4">Projects &amp; Agents</h2>
+                <div id="project-metrics-container">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <div id="projects-empty" class="hidden text-center py-8">
+                    <p class="text-secondary">No project activity data yet.</p>
+                </div>
+                <div id="projects-loading" class="text-center py-8">
+                    <p class="text-muted">Loading metrics...</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="{{ url_for('static', filename='js/activity.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}
