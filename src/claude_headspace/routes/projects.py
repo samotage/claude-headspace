@@ -1,9 +1,9 @@
-"""Project management API endpoints."""
+"""Project management API and page endpoints."""
 
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 from ..database import db
 from ..models.project import Project
@@ -11,6 +11,13 @@ from ..models.project import Project
 logger = logging.getLogger(__name__)
 
 projects_bp = Blueprint("projects", __name__)
+
+
+@projects_bp.route("/projects")
+def projects_page():
+    """Projects management page."""
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+    return render_template("projects.html", status_counts=status_counts)
 
 
 def _broadcast_project_event(event_type: str, data: dict) -> None:

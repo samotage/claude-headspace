@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <section aria-labelledby="projects-heading">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 id="projects-heading" class="text-lg font-bold text-primary">Projects</h2>
+                    <button type="button"
+                            id="add-project-btn"
+                            onclick="ProjectsPage.openAddModal()"
+                            class="px-4 py-2 bg-cyan/20 border border-cyan/30 rounded text-cyan font-medium text-sm hover:bg-cyan/30 hover:border-cyan transition-colors min-h-[44px]">
+                        + Add Project
+                    </button>
+                </div>
+
+                <!-- Projects table -->
+                <div id="projects-table-container">
+                    <table class="w-full text-sm" id="projects-table">
+                        <thead>
+                            <tr class="border-b border-border text-left text-muted text-xs uppercase tracking-wider">
+                                <th class="pb-3 pr-4">Name</th>
+                                <th class="pb-3 pr-4">Path</th>
+                                <th class="pb-3 pr-4 text-center">Agents</th>
+                                <th class="pb-3 pr-4">Status</th>
+                                <th class="pb-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projects-tbody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty state -->
+                <div id="projects-empty" class="hidden text-center py-8">
+                    <p class="text-secondary">No projects registered yet.</p>
+                    <p class="text-muted text-sm mt-1">Click "Add Project" to register your first project.</p>
+                </div>
+
+                <!-- Loading state -->
+                <div id="projects-loading" class="text-center py-8">
+                    <p class="text-muted">Loading projects...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+{% include "partials/_project_form_modal.html" %}
+
+<!-- Delete Confirmation Dialog -->
+<div id="delete-dialog"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="delete-dialog-title"
+     aria-modal="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="ProjectsPage.closeDeleteDialog()"></div>
+    <div class="relative mx-auto mt-[20vh] w-full max-w-md bg-elevated rounded-lg border border-border shadow-xl p-6" style="z-index: 201;">
+        <h3 id="delete-dialog-title" class="text-lg font-semibold text-primary mb-4">Delete Project</h3>
+        <p class="text-secondary mb-2">
+            Are you sure you want to delete
+            <span id="delete-project-name" class="text-primary font-medium"></span>?
+        </p>
+        <p id="delete-agent-warning" class="text-amber text-sm mb-6"></p>
+        <div class="flex justify-end gap-3">
+            <button type="button"
+                    onclick="ProjectsPage.closeDeleteDialog()"
+                    class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary transition-colors min-h-[44px]">
+                Cancel
+            </button>
+            <button type="button"
+                    id="delete-confirm-btn"
+                    onclick="ProjectsPage.confirmDelete()"
+                    class="px-4 py-2 bg-red/20 border border-red/30 rounded text-red font-medium hover:bg-red/30 transition-colors min-h-[44px]">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/projects.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}

@@ -101,7 +101,7 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "{analysis_text}\n\n"
         "Write a short and concise progress summary in past tense.\n"
         "Focus on accomplishments, patterns, and themes — not individual commits.\n"
-        "Bullet point list of work with a short one sentence summary of each item.\n"
+        "Output is a bullet point list of work, each with a short one sentence summary (~18 tokens) of each item.\n"
         "Use a professional tone suitable for a development journal."
     ),
 
