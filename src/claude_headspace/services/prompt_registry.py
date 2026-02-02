@@ -121,6 +121,17 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         'Return ONLY valid JSON: {{"summary": "...", "frustration_score": N}}'
     ),
 
+    # --- Project metadata: description generation ---
+    "project_description": (
+        "Below is the CLAUDE.md file from a software project.\n\n"
+        "---\n"
+        "{claude_md_content}\n"
+        "---\n\n"
+        "Write a 1-2 sentence project description suitable for a dashboard card. "
+        "Focus on what the project does and its primary technology. "
+        "Output ONLY the description — no preamble, labels, or commentary."
+    ),
+
     # --- Classification: completion ---
     "completion_classification": (
         "Classify this agent output. Is the agent:\n"

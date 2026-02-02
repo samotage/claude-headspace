@@ -368,6 +368,113 @@ class TestUpdateProjectSettings:
         assert mock_project.inference_paused_reason is None
 
 
+class TestDetectMetadata:
+    """Tests for POST /api/projects/<id>/detect-metadata."""
+
+    def test_not_found(self, client, mock_db):
+        """Test 404 when project doesn't exist."""
+        mock_db.session.get.return_value = None
+
+        response = client.post("/api/projects/999/detect-metadata")
+        assert response.status_code == 404
+
+    def test_detect_github_repo(self, client, app, mock_db, mock_project):
+        """Test detecting github_repo from git remote."""
+        mock_project.github_repo = None
+        mock_project.description = "Already set"
+        mock_db.session.get.return_value = mock_project
+
+        mock_git_metadata = MagicMock()
+        mock_git_info = MagicMock()
+        mock_git_info.repo_url = "git@github.com:octocat/hello-world.git"
+        mock_git_metadata.get_git_info.return_value = mock_git_info
+
+        app.extensions["git_metadata"] = mock_git_metadata
+
+        response = client.post("/api/projects/1/detect-metadata")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["github_repo"] == "octocat/hello-world"
+        assert data["description"] is None  # Already set, not detected
+
+    def test_detect_description_via_inference(self, client, app, mock_db, mock_project):
+        """Test detecting description from CLAUDE.md via LLM."""
+        mock_project.github_repo = "already/set"
+        mock_project.description = None
+        mock_db.session.get.return_value = mock_project
+
+        mock_inference = MagicMock()
+        mock_inference.is_available = True
+        mock_inference_result = MagicMock()
+        mock_inference_result.text = "A Flask dashboard for tracking sessions."
+        mock_inference.infer.return_value = mock_inference_result
+
+        app.extensions["inference_service"] = mock_inference
+        app.extensions["git_metadata"] = MagicMock()
+
+        with patch("os.path.isfile", return_value=True), \
+             patch("builtins.open", MagicMock(
+                 return_value=MagicMock(
+                     __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value="# My Project\nSome content"))),
+                     __exit__=MagicMock(return_value=False)
+                 )
+             )):
+            response = client.post("/api/projects/1/detect-metadata")
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["github_repo"] is None  # Already set, not detected
+            assert data["description"] is not None
+
+    def test_both_already_set_returns_nulls(self, client, app, mock_db, mock_project):
+        """Test that when both fields are already set, both return null."""
+        mock_project.github_repo = "owner/repo"
+        mock_project.description = "Already described"
+        mock_db.session.get.return_value = mock_project
+
+        response = client.post("/api/projects/1/detect-metadata")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["github_repo"] is None
+        assert data["description"] is None
+
+    def test_git_failure_non_fatal(self, client, app, mock_db, mock_project):
+        """Test that git failure is non-fatal and doesn't affect other detection."""
+        mock_project.github_repo = None
+        mock_project.description = "Already set"
+        mock_db.session.get.return_value = mock_project
+
+        mock_git_metadata = MagicMock()
+        mock_git_metadata.get_git_info.side_effect = Exception("Git not found")
+        app.extensions["git_metadata"] = mock_git_metadata
+
+        response = client.post("/api/projects/1/detect-metadata")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["github_repo"] is None
+
+    def test_inference_unavailable_still_returns_github(self, client, app, mock_db, mock_project):
+        """Test that when inference is unavailable, github_repo is still detected."""
+        mock_project.github_repo = None
+        mock_project.description = None
+        mock_db.session.get.return_value = mock_project
+
+        mock_git_metadata = MagicMock()
+        mock_git_info = MagicMock()
+        mock_git_info.repo_url = "https://github.com/org/project.git"
+        mock_git_metadata.get_git_info.return_value = mock_git_info
+        app.extensions["git_metadata"] = mock_git_metadata
+
+        mock_inference = MagicMock()
+        mock_inference.is_available = False
+        app.extensions["inference_service"] = mock_inference
+
+        response = client.post("/api/projects/1/detect-metadata")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["github_repo"] == "org/project"
+        assert data["description"] is None
+
+
 class TestSSEBroadcasting:
     """Tests for SSE event broadcasting on project changes."""
 

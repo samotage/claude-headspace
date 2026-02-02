@@ -26,6 +26,7 @@ class TestBuildPrompt:
             "instruction",
             "priority_scoring",
             "progress_summary",
+            "project_description",
             "completion_classification",
             "question_classification",
         ]
@@ -167,6 +168,24 @@ class TestProgressSummaryPrompt:
         assert "my-project" in result
         assert "Date range: 2026-01-01 to 2026-01-31" in result
         assert "3-5 paragraph" in result
+
+
+class TestProjectDescriptionPrompt:
+    """Tests for project description prompt template."""
+
+    def test_project_description(self):
+        result = build_prompt(
+            "project_description",
+            claude_md_content="# My Project\nA Flask web app for tracking tasks.",
+        )
+        assert "CLAUDE.md" in result
+        assert "My Project" in result
+        assert "dashboard card" in result
+        assert "Output ONLY" in result
+
+    def test_project_description_missing_content_raises(self):
+        with pytest.raises(KeyError):
+            build_prompt("project_description")
 
 
 class TestClassificationPrompts:

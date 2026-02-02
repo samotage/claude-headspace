@@ -120,6 +120,12 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["broadcaster"] = broadcaster
     logger.info("SSE broadcaster initialized")
 
+    # Initialize git metadata service
+    from .services.git_metadata import GitMetadata
+    git_metadata = GitMetadata()
+    app.extensions["git_metadata"] = git_metadata
+    logger.info("Git metadata service initialized")
+
     # Initialize inference service
     from .services.inference_service import InferenceService
     inference_service = InferenceService(

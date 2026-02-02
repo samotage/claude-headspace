@@ -1,9 +1,10 @@
 """Project management API and page endpoints."""
 
 import logging
+import os
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..database import db
 from ..models.project import Project
@@ -344,3 +345,76 @@ def update_project_settings(project_id: int):
         logger.exception("Failed to update settings for project %s", project_id)
         db.session.rollback()
         return jsonify({"error": "Failed to update project settings"}), 500
+
+
+# --- Metadata detection ---
+
+
+@projects_bp.route("/api/projects/<int:project_id>/detect-metadata", methods=["POST"])
+def detect_metadata(project_id: int):
+    """Detect project metadata from git remote and CLAUDE.md.
+
+    Returns suggested values for empty fields — does NOT persist.
+
+    Returns:
+        200: Detected metadata (null for anything not detected)
+        404: Project not found
+    """
+    try:
+        project = db.session.get(Project, project_id)
+
+        if not project:
+            return jsonify({"error": "Project not found"}), 404
+
+        result = {"github_repo": None, "description": None}
+
+        # Detect github_repo from git remote
+        if not project.github_repo and project.path:
+            try:
+                from ..services.git_metadata import GitMetadata
+                git_metadata = current_app.extensions.get("git_metadata")
+                if git_metadata:
+                    git_metadata.invalidate_cache(project.path)
+                    git_info = git_metadata.get_git_info(project.path)
+                    if git_info.repo_url:
+                        owner_repo = GitMetadata.parse_owner_repo(git_info.repo_url)
+                        if owner_repo:
+                            result["github_repo"] = owner_repo
+            except Exception as e:
+                logger.debug(f"Git metadata detection failed for project {project_id}: {e}")
+
+        # Detect description from CLAUDE.md via LLM
+        if not project.description and project.path:
+            try:
+                claude_md_path = os.path.join(project.path, "CLAUDE.md")
+                if os.path.isfile(claude_md_path):
+                    with open(claude_md_path, "r", encoding="utf-8") as f:
+                        claude_md_content = f.read(8000)
+
+                    if claude_md_content.strip():
+                        inference_service = current_app.extensions.get("inference_service")
+                        if inference_service and inference_service.is_available:
+                            from ..services.prompt_registry import build_prompt
+                            from ..services.summarisation_service import SummarisationService
+
+                            prompt = build_prompt(
+                                "project_description",
+                                claude_md_content=claude_md_content,
+                            )
+                            inference_result = inference_service.infer(
+                                level="turn",
+                                purpose="project_description",
+                                input_text=prompt,
+                                project_id=project_id,
+                            )
+                            if inference_result.text:
+                                cleaned = SummarisationService._clean_response(inference_result.text)
+                                result["description"] = cleaned
+            except Exception as e:
+                logger.debug(f"Description detection failed for project {project_id}: {e}")
+
+        return jsonify(result), 200
+
+    except Exception:
+        logger.exception("Failed to detect metadata for project %s", project_id)
+        return jsonify({"error": "Failed to detect metadata"}), 500

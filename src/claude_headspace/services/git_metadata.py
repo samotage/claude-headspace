@@ -7,6 +7,7 @@ but this is deferred to Epic 3 of the roadmap.
 
 import logging
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
@@ -28,6 +29,59 @@ class GitMetadata:
 
     Caches results to avoid repeated git command execution.
     """
+
+    @staticmethod
+    def parse_owner_repo(raw_url: Optional[str]) -> Optional[str]:
+        """Parse a git remote URL into owner/repo format.
+
+        Supports:
+            - git@github.com:owner/repo.git
+            - https://github.com/owner/repo.git
+            - ssh://git@github.com/owner/repo.git
+            - URLs with or without .git suffix
+
+        Returns:
+            "owner/repo" string, or None if parsing fails.
+        """
+        if not raw_url or not raw_url.strip():
+            return None
+
+        raw_url = raw_url.strip()
+
+        # SSH format: git@github.com:owner/repo.git
+        ssh_match = re.match(r"^[\w.-]+@[\w.-]+:(.*)", raw_url)
+        if ssh_match:
+            path = ssh_match.group(1)
+        else:
+            # HTTPS or ssh:// format
+            try:
+                # Strip protocol and host
+                # e.g. https://github.com/owner/repo.git → /owner/repo.git
+                parts = raw_url.split("://", 1)
+                if len(parts) == 2:
+                    after_proto = parts[1]
+                else:
+                    return None
+                # Remove host portion
+                slash_idx = after_proto.find("/")
+                if slash_idx < 0:
+                    return None
+                path = after_proto[slash_idx + 1:]
+            except Exception:
+                return None
+
+        # Strip .git suffix and leading/trailing slashes
+        path = path.rstrip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+
+        # Validate owner/repo format (at least two non-empty segments)
+        segments = [s for s in path.split("/") if s]
+        if len(segments) < 2:
+            return None
+
+        # Return first two segments (owner/repo)
+        return f"{segments[0]}/{segments[1]}"
 
     def __init__(self) -> None:
         self._cache: dict[str, GitInfo] = {}

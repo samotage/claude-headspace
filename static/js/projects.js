@@ -125,8 +125,58 @@
                 document.getElementById('project-form-modal').classList.remove('hidden');
                 document.addEventListener('keydown', ProjectsPage._formModalEscHandler);
                 document.getElementById('project-form-name').focus();
+
+                // Auto-detect empty fields
+                var needsGithub = !project.github_repo;
+                var needsDescription = !project.description;
+                if (needsGithub || needsDescription) {
+                    this._detectMetadata(project.id, needsGithub, needsDescription);
+                }
             } catch (error) {
                 console.error('ProjectsPage: Failed to open edit modal', error);
+            }
+        },
+
+        /**
+         * Auto-detect metadata for empty fields
+         */
+        _detectMetadata: async function(projectId, needsGithub, needsDescription) {
+            var githubField = document.getElementById('project-form-github');
+            var descField = document.getElementById('project-form-description');
+
+            // Set loading placeholders
+            var originalGithubPlaceholder = githubField ? githubField.placeholder : '';
+            var originalDescPlaceholder = descField ? descField.placeholder : '';
+
+            if (needsGithub && githubField) {
+                githubField.placeholder = 'Detecting from git remote...';
+            }
+            if (needsDescription && descField) {
+                descField.placeholder = 'Generating from CLAUDE.md...';
+            }
+
+            try {
+                var response = await fetch(API_ENDPOINT + '/' + projectId + '/detect-metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) return;
+
+                var data = await response.json();
+
+                // Only fill if field is still empty (user may have typed meanwhile)
+                if (needsGithub && githubField && !githubField.value && data.github_repo) {
+                    githubField.value = data.github_repo;
+                }
+                if (needsDescription && descField && !descField.value && data.description) {
+                    descField.value = data.description;
+                }
+            } catch (error) {
+                // Silently ignore — auto-detection is best-effort
+            } finally {
+                if (githubField) githubField.placeholder = originalGithubPlaceholder;
+                if (descField) descField.placeholder = originalDescPlaceholder;
             }
         },
 
