@@ -1,7 +1,7 @@
 /**
  * Objective page client for Claude Headspace.
  *
- * Handles auto-save with debounce and history pagination.
+ * Handles explicit save via button/form submit and history pagination.
  */
 
 (function(global) {
@@ -9,14 +9,12 @@
 
     const API_ENDPOINT = '/api/objective';
     const HISTORY_ENDPOINT = '/api/objective/history';
-    const DEBOUNCE_DELAY = 2500; // 2.5 seconds
     const PER_PAGE = 10;
 
     /**
      * Objective page controller
      */
     const ObjectivePage = {
-        debounceTimer: null,
         currentPage: 1,
         isSaving: false,
 
@@ -24,17 +22,23 @@
          * Initialize the objective page
          */
         init: function() {
+            this.form = document.getElementById('objective-form');
             this.textInput = document.getElementById('objective-text');
             this.constraintsInput = document.getElementById('objective-constraints');
+            this.saveBtn = document.getElementById('save-btn');
+            this.newBtn = document.getElementById('new-objective-btn');
             this.saveStatus = document.getElementById('save-status');
             this.loadMoreBtn = document.getElementById('load-more-btn');
             this.historyList = document.getElementById('history-list');
 
-            if (this.textInput) {
-                this.textInput.addEventListener('input', () => this._handleInput());
+            if (this.form) {
+                this.form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this._save(false);
+                });
             }
-            if (this.constraintsInput) {
-                this.constraintsInput.addEventListener('input', () => this._handleInput());
+            if (this.newBtn) {
+                this.newBtn.addEventListener('click', () => this._save(true));
             }
             if (this.loadMoreBtn) {
                 this.loadMoreBtn.addEventListener('click', () => this._loadMore());
@@ -43,29 +47,15 @@
         },
 
         /**
-         * Handle input changes with debounce
-         */
-        _handleInput: function() {
-            // Cancel any pending save
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
-            }
-
-            // Don't show "saving" status while still typing
-            // Start new debounce timer
-            this.debounceTimer = setTimeout(() => {
-                this._save();
-            }, DEBOUNCE_DELAY);
-        },
-
-        /**
          * Save the objective
+         * @param {boolean} isNew - If true, archives current and creates new objective
          */
-        _save: async function() {
+        _save: async function(isNew) {
             const text = this.textInput ? this.textInput.value.trim() : '';
 
             // Don't save empty objectives
             if (!text) {
+                this._updateStatus('error', 'Objective text is required');
                 return;
             }
 
@@ -76,6 +66,8 @@
 
             this.isSaving = true;
             this._updateStatus('saving');
+            if (this.saveBtn) this.saveBtn.disabled = true;
+            if (this.newBtn) this.newBtn.disabled = true;
 
             const constraints = this.constraintsInput ? this.constraintsInput.value.trim() : '';
 
@@ -87,15 +79,15 @@
                     },
                     body: JSON.stringify({
                         text: text,
-                        constraints: constraints || null
+                        constraints: constraints || null,
+                        new: isNew || false
                     })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    this._updateStatus('saved');
-                    // Refresh history to show new entry
+                    this._updateStatus(isNew ? 'created' : 'saved');
                     this._refreshHistory();
                 } else {
                     this._updateStatus('error', data.error || 'Failed to save');
@@ -105,6 +97,8 @@
                 this._updateStatus('error', 'Network error');
             } finally {
                 this.isSaving = false;
+                if (this.saveBtn) this.saveBtn.disabled = false;
+                if (this.newBtn) this.newBtn.disabled = false;
             }
         },
 
@@ -122,9 +116,17 @@
                 case 'saved':
                     this.saveStatus.textContent = 'Saved';
                     this.saveStatus.className = 'text-sm text-green';
-                    // Auto-dismiss after 3 seconds
                     setTimeout(() => {
                         if (this.saveStatus.textContent === 'Saved') {
+                            this.saveStatus.textContent = '';
+                        }
+                    }, 3000);
+                    break;
+                case 'created':
+                    this.saveStatus.textContent = 'New objective created';
+                    this.saveStatus.className = 'text-sm text-green';
+                    setTimeout(() => {
+                        if (this.saveStatus.textContent === 'New objective created') {
                             this.saveStatus.textContent = '';
                         }
                     }, 3000);

@@ -1,6 +1,6 @@
 <!-- Toast Container -->
 <div id="toast-container"
-     class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+     class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
      aria-live="polite"
      aria-atomic="true">
     <!-- Toasts will be inserted here dynamically -->
@@ -18,6 +18,7 @@
             <div class="flex-1 min-w-0">
                 <p class="toast-title font-medium text-primary text-sm"></p>
                 <p class="toast-message text-muted text-xs mt-1"></p>
+                <div class="toast-actions mt-2 hidden"></div>
             </div>
 
             <!-- Close button -->
@@ -43,7 +44,24 @@
          * @param {string} message - Toast message
          * @param {number} duration - Auto-dismiss duration in ms (0 for no auto-dismiss)
          */
-        show: function(type, title, message, duration = TOAST_DURATION) {
+        /**
+         * Show a toast notification
+         * @param {string} type - 'success', 'error', 'warning', 'info'
+         * @param {string} title - Toast title
+         * @param {string} message - Toast message
+         * @param {number|object} durationOrOpts - Auto-dismiss ms, or options object {duration, actions}
+         *   actions: [{label, onClick, className}]
+         */
+        show: function(type, title, message, durationOrOpts = TOAST_DURATION) {
+            var duration = TOAST_DURATION;
+            var actions = [];
+            if (typeof durationOrOpts === 'object' && durationOrOpts !== null) {
+                duration = durationOrOpts.duration !== undefined ? durationOrOpts.duration : TOAST_DURATION;
+                actions = durationOrOpts.actions || [];
+            } else {
+                duration = durationOrOpts;
+            }
+
             const container = document.getElementById('toast-container');
             const template = document.getElementById('toast-template');
 
@@ -80,6 +98,25 @@
             // Set content
             toast.querySelector('.toast-title').textContent = title;
             toast.querySelector('.toast-message').textContent = message;
+
+            // Add action buttons if provided
+            if (actions.length > 0) {
+                const actionsEl = toast.querySelector('.toast-actions');
+                actionsEl.classList.remove('hidden');
+                const self = this;
+                actions.forEach(function(action) {
+                    const btn = document.createElement('button');
+                    btn.textContent = action.label;
+                    btn.className = action.className || 'text-xs font-medium px-3 py-1 rounded border border-border text-muted hover:text-primary hover:border-accent transition-colors mr-2';
+                    btn.addEventListener('click', function() {
+                        if (action.onClick) action.onClick(toast);
+                        self.dismiss(toast);
+                    });
+                    actionsEl.appendChild(btn);
+                });
+                // Don't auto-dismiss toasts with actions
+                if (duration === TOAST_DURATION) duration = 0;
+            }
 
             // Add to container
             container.appendChild(toast);

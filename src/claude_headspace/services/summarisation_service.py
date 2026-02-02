@@ -1,12 +1,23 @@
 """Summarisation service for generating turn and task summaries via the inference layer."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from .inference_service import InferenceService, InferenceServiceError
 from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
+
+# Matches LLM preamble like "Here's a concise 18-token summary of..."
+# Only strips when the line contains summarisation-related words to avoid
+# false positives on legitimate content starting with "Here's".
+_PREAMBLE_RE = re.compile(
+    r"^(?:Sure[,.]?\s+)?"
+    r"(?:Here(?:'s| is)\s+(?:a |the )?(?:very )?"
+    r"(?:concise|brief|short|quick|simple)[\s\S]*?:\s*\n?)",
+    re.IGNORECASE,
+)
 
 
 class SummarisationService:
@@ -19,6 +30,17 @@ class SummarisationService:
             inference_service: The E3-S1 inference service for LLM calls
         """
         self._inference = inference_service
+
+    @staticmethod
+    def _clean_response(text: str) -> str:
+        """Strip common LLM preamble from summary responses.
+
+        Models sometimes echo back the prompt structure, e.g.
+        "Here's a concise 18-token summary: <actual summary>".
+        This method strips such preamble and returns the actual content.
+        """
+        cleaned = _PREAMBLE_RE.sub("", text).strip()
+        return cleaned if cleaned else text
 
     def summarise_turn(self, turn, db_session=None) -> str | None:
         """Generate a summary for a turn.
@@ -70,15 +92,16 @@ class SummarisationService:
                 turn_id=turn.id,
             )
 
-            # Persist summary to turn model
-            turn.summary = result.text
+            # Persist summary to turn model (strip LLM preamble)
+            summary = self._clean_response(result.text)
+            turn.summary = summary
             turn.summary_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(turn)
                 db_session.commit()
 
-            return result.text
+            return summary
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Turn summarisation failed for turn {turn.id}: {e}")
@@ -128,15 +151,16 @@ class SummarisationService:
                 task_id=task.id,
             )
 
-            # Persist summary to task model
-            task.completion_summary = result.text
+            # Persist summary to task model (strip LLM preamble)
+            summary = self._clean_response(result.text)
+            task.completion_summary = summary
             task.completion_summary_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(task)
                 db_session.commit()
 
-            return result.text
+            return summary
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Task summarisation failed for task {task.id}: {e}")
@@ -169,7 +193,7 @@ class SummarisationService:
 
         # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
         if reuse_summary:
-            task.instruction = reuse_summary
+            task.instruction = self._clean_response(reuse_summary)
             task.instruction_generated_at = datetime.now(timezone.utc)
 
             if db_session:
@@ -200,14 +224,15 @@ class SummarisationService:
                 task_id=task.id,
             )
 
-            task.instruction = result.text
+            instruction = self._clean_response(result.text)
+            task.instruction = instruction
             task.instruction_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(task)
                 db_session.commit()
 
-            return result.text
+            return instruction
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Instruction summarisation failed for task {task.id}: {e}")

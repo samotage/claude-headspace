@@ -74,14 +74,16 @@ def get_objective():
 @objective_bp.route("/api/objective", methods=["POST"])
 def update_objective():
     """
-    Create or update objective.
+    Save or create a new objective.
 
     Accepts JSON body with:
         - text (required): The objective text
         - constraints (optional): Constraints text
+        - new (optional, default false): If true, archives the current objective
+          and creates a new one. If false, updates the current objective in-place.
 
     Returns:
-        JSON with updated objective or validation error
+        JSON with the objective or validation error
     """
     data = request.get_json()
 
@@ -90,6 +92,7 @@ def update_objective():
 
     text = (data.get("text") or "").strip()
     constraints = (data.get("constraints") or "").strip() or None
+    is_new = data.get("new", False)
 
     if not text:
         return jsonify({"error": "Objective text is required"}), 400
@@ -98,9 +101,13 @@ def update_objective():
         now = datetime.now(timezone.utc)
         objective = db.session.query(Objective).first()
 
-        if objective:
-            # Update existing objective
-            # First, close the current history record
+        if objective and not is_new:
+            # Update existing objective in-place (no new history entry)
+            objective.current_text = text
+            objective.constraints = constraints
+            objective.set_at = now
+
+            # Also update the open history record to match
             current_history = (
                 db.session.query(ObjectiveHistory)
                 .filter(
@@ -109,11 +116,24 @@ def update_objective():
                 )
                 .first()
             )
+            if current_history:
+                current_history.text = text
+                current_history.constraints = constraints
 
+        elif objective and is_new:
+            # Archive current objective and create new one
+            current_history = (
+                db.session.query(ObjectiveHistory)
+                .filter(
+                    ObjectiveHistory.objective_id == objective.id,
+                    ObjectiveHistory.ended_at.is_(None),
+                )
+                .first()
+            )
             if current_history:
                 current_history.ended_at = now
 
-            # Update the objective
+            # Update the objective row
             objective.current_text = text
             objective.constraints = constraints
             objective.set_at = now
@@ -127,17 +147,17 @@ def update_objective():
                 ended_at=None,
             )
             db.session.add(new_history)
+
         else:
-            # Create new objective
+            # No objective exists yet — create one
             objective = Objective(
                 current_text=text,
                 constraints=constraints,
                 set_at=now,
             )
             db.session.add(objective)
-            db.session.flush()  # Get the objective ID
+            db.session.flush()
 
-            # Create initial history record
             history = ObjectiveHistory(
                 objective_id=objective.id,
                 text=text,

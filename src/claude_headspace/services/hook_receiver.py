@@ -225,6 +225,31 @@ def _send_notification(agent: Agent, task, turn_text: str | None) -> None:
         pass
 
 
+def _send_completion_notification(agent: Agent, task) -> None:
+    """Send task-complete notification using AI-generated summaries.
+
+    Called AFTER summarisation so task.completion_summary and task.instruction
+    are populated with useful content instead of raw transcript text.
+    """
+    try:
+        from .notification_service import get_notification_service
+        svc = get_notification_service()
+
+        instruction = get_instruction_for_notification(task)
+        # Prefer AI-generated completion summary over raw transcript
+        completion_text = task.completion_summary or None
+
+        svc.notify_task_complete(
+            agent_id=str(agent.id),
+            agent_name=agent.name or f"Agent {agent.id}",
+            project=agent.project.name if agent.project else None,
+            task_instruction=instruction,
+            turn_text=completion_text,
+        )
+    except Exception as e:
+        logger.warning(f"Completion notification failed (non-fatal): {e}")
+
+
 # --- Hook processors ---
 
 def process_session_start(
@@ -406,6 +431,11 @@ def process_stop(
 
         actual_state = current_task.state.value
         _broadcast_state_change(agent, "stop", actual_state, message=f"\u2192 {actual_state.upper()}")
+
+        # Send completion notification AFTER summarisation so it contains
+        # the AI-generated summary instead of raw transcript text.
+        if current_task.state == TaskState.COMPLETE:
+            _send_completion_notification(agent, current_task)
 
         # Broadcast question turn if transitioned to AWAITING_INPUT
         if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:

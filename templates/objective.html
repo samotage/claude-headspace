@@ -10,11 +10,8 @@
         <!-- Objective Form Section -->
         <section class="mb-8" aria-labelledby="objective-form-heading">
             <div class="bg-elevated rounded-lg border border-border p-6">
-                <div class="flex items-center justify-between mb-4">
+                <div class="mb-4">
                     <h2 id="objective-form-heading" class="text-lg font-bold text-primary">Current Objective</h2>
-                    <div id="save-status" class="text-sm text-muted" role="status" aria-live="polite">
-                        <!-- Status will be updated by JavaScript -->
-                    </div>
                 </div>
 
                 <form id="objective-form" class="space-y-4">
@@ -31,9 +28,6 @@
                                value="{{ objective.current_text if objective else '' }}"
                                required
                                aria-describedby="objective-hint">
-                        <p id="objective-hint" class="mt-1 text-xs text-muted">
-                            Changes save automatically
-                        </p>
                     </div>
 
                     <!-- Constraints field -->
@@ -46,6 +40,19 @@
                                   rows="3"
                                   class="w-full px-4 py-3 bg-surface border border-border rounded text-primary placeholder-muted focus:border-cyan focus:outline-none transition-colors resize-y"
                                   placeholder="Any constraints or boundaries to keep in mind?">{{ objective.constraints if objective and objective.constraints else '' }}</textarea>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="flex items-center justify-end gap-3">
+                        <span id="save-status" class="text-sm text-muted" role="status" aria-live="polite"></span>
+                        <button type="button" id="new-objective-btn"
+                                class="px-6 py-2 bg-amber/10 border border-amber/30 rounded text-amber font-medium text-sm hover:bg-amber/20 hover:border-amber transition-colors min-h-[44px]">
+                            New objective
+                        </button>
+                        <button type="submit" id="save-btn"
+                                class="px-6 py-2 bg-cyan/20 border border-cyan/30 rounded text-cyan font-medium text-sm hover:bg-cyan/30 hover:border-cyan transition-colors min-h-[44px]">
+                            Save
+                        </button>
                     </div>
                 </form>
 

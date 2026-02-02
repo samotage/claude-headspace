@@ -7,64 +7,76 @@ instead of assembling strings inline.
 
 _PROMPT_TEMPLATES: dict[str, str] = {
     # --- Summarisation: turn prompts (per-intent) ---
+    #
+    # IMPORTANT: All summarisation prompts must end with the anti-preamble
+    # instruction to prevent models from echoing back the prompt structure.
     "turn_command": (
-        "Summarise a very short and concise sentence around 18 tokens long the following command as an instruction:\n\n"
         "{instruction_context}"
-        "User command: {text}"
+        "User command: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising this command as an instruction. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_question": (
-        "Summarise in a very short and concise sentence around 18 tokens long what the agent is asking the user:\n\n"
         "{instruction_context}"
-        "Agent question: {text}"
+        "Agent question: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising what the agent is asking. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_completion": (
-        "Summarise in a very short and concise sentence around 18 tokens long what the agent accomplished:\n\n"
         "{instruction_context}"
-        "Agent completion message: {text}"
+        "Agent completion message: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising what the agent accomplished. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_progress": (
-        "Summarise in a very short and concise sentence around 18 tokens long the current progress of the agent:\n\n"
         "{instruction_context}"
-        "Agent progress update: {text}"
+        "Agent progress update: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising the agent's current progress. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_answer": (
-        "Summarise in a very short and concise sentence around 18 tokens long what information the user provided:\n\n"
         "{instruction_context}"
-        "User answer: {text}"
+        "User answer: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising what information the user provided. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_end_of_task": (
-        "Summarise in a very short and concise sentence around 18 tokens long the final outcome of this task:\n\n"
         "{instruction_context}"
-        "Final message: {text}"
+        "Final message: {text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising the final outcome. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_default": (
-        "Summarise in a very short and concise sentence around 18 tokens long "
-        "the action taken or requested:\n\n"
         "{instruction_context}"
         "Turn: {text}\n"
         "Actor: {actor}\n"
-        "Intent: {intent}"
+        "Intent: {intent}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising the action taken or requested. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: task completion ---
     "task_completion": (
-        "Summarise in a very short and concise sentence around 18 tokens long what was accomplished relative to the original instruction:\n\n"
         "Original instruction: {instruction}\n"
-        "Agent's final message: {final_turn_text}"
+        "Agent's final message: {final_turn_text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising what was accomplished. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
 
     # Task completion when no final agent message available — uses turn activity
     "task_completion_from_activity": (
-        "Summarise in a very short and concise sentence around 18 tokens long what was accomplished relative to the original instruction:\n\n"
         "Original instruction: {instruction}\n\n"
-        "Activity during this task:\n{turn_activity}"
+        "Activity during this task:\n{turn_activity}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising what was accomplished. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: instruction ---
     "instruction": (
-        "Summarise in a very short and concise sentence around 18 tokens long the following command as an instruction:\n\n"
-        "Focus on the core task or goal.\n\n"
-        "User command: {command_text}"
+        "User command: {command_text}\n\n"
+        "Write a single concise sentence (~18 tokens) summarising this as an instruction. "
+        "Focus on the core task or goal. "
+        "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
 
     # --- Priority scoring ---

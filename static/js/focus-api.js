@@ -40,8 +40,8 @@
                     this._showSuccessFeedback(agentId);
                     return true;
                 } else {
-                    // Error - show toast
-                    this._handleError(data);
+                    // Error - show toast with dismiss option
+                    this._handleError(data, agentId);
                     return false;
                 }
             } catch (error) {
@@ -85,9 +85,45 @@
         },
 
         /**
+         * Dismiss an agent (mark as ended) and remove its card from the dashboard
+         */
+        dismissAgent: async function(agentId) {
+            try {
+                const response = await fetch(`/api/agents/${agentId}/dismiss`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    // Remove agent card from DOM
+                    const card = document.querySelector(`[data-agent-id="${agentId}"]`);
+                    if (card) {
+                        card.style.transition = 'opacity 0.3s, transform 0.3s';
+                        card.style.opacity = '0';
+                        card.style.transform = 'scale(0.95)';
+                        setTimeout(() => card.remove(), 300);
+                    }
+                    if (window.Toast) {
+                        window.Toast.success('Agent dismissed', 'Agent card removed from dashboard');
+                    }
+                } else {
+                    const data = await response.json();
+                    if (window.Toast) {
+                        window.Toast.error('Dismiss failed', data.message || 'Could not dismiss agent');
+                    }
+                }
+            } catch (error) {
+                console.error('FocusAPI: Dismiss failed', error);
+                if (window.Toast) {
+                    window.Toast.error('Dismiss failed', 'Network error');
+                }
+            }
+        },
+
+        /**
          * Handle error responses with appropriate toasts
          */
-        _handleError: function(data) {
+        _handleError: function(data, agentId) {
             if (!window.Toast) {
                 console.error('FocusAPI: Error -', data.message || 'Unknown error');
                 return;
@@ -95,20 +131,32 @@
 
             const message = data.message || '';
 
+            // Build dismiss action for stale/unfocusable agents
+            var dismissAction = agentId ? [{
+                label: 'Dismiss Agent',
+                className: 'text-xs font-medium px-3 py-1 rounded border border-red/40 text-red hover:bg-red/10 transition-colors mr-2',
+                onClick: function() {
+                    window.FocusAPI.dismissAgent(agentId);
+                }
+            }] : [];
+
             if (message.includes('permission') || message.includes('automation')) {
-                window.Toast.error(
+                window.Toast.show('error',
                     'Permission required',
-                    'Grant iTerm automation permission in System Preferences → Privacy → Automation'
+                    'Grant iTerm automation permission in System Preferences → Privacy → Automation',
+                    { actions: dismissAction }
                 );
             } else if (message.includes('inactive') || message.includes('ended') || message.includes('not found')) {
-                window.Toast.error(
+                window.Toast.show('error',
                     'Session ended',
-                    'Cannot focus terminal - session no longer active'
+                    'Cannot focus terminal — session no longer active',
+                    { actions: dismissAction }
                 );
             } else {
-                window.Toast.error(
+                window.Toast.show('error',
                     'Could not focus terminal',
-                    message || 'Check if iTerm is running'
+                    message || 'Check if iTerm is running',
+                    { actions: dismissAction }
                 );
             }
         }

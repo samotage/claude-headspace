@@ -193,7 +193,7 @@ class TestUpdateObjectiveAPI:
                 mock_db.session.commit.assert_called()
 
     def test_update_objective_closes_previous_history(self, client):
-        """Test that updating an objective sets ended_at on previous history."""
+        """Test that creating a new objective sets ended_at on previous history."""
         mock_objective = MagicMock()
         mock_objective.id = 1
 
@@ -207,13 +207,37 @@ class TestUpdateObjectiveAPI:
             with patch("claude_headspace.routes.objective.ObjectiveHistory"):
                 response = client.post(
                     "/api/objective",
-                    data=json.dumps({"text": "New objective"}),
+                    data=json.dumps({"text": "New objective", "new": True}),
                     content_type="application/json"
                 )
 
                 assert response.status_code == 200
                 # Verify ended_at was set on the history
                 assert mock_history.ended_at is not None
+
+    def test_save_objective_updates_in_place(self, client):
+        """Test that saving without new flag updates in-place without closing history."""
+        mock_objective = MagicMock()
+        mock_objective.id = 1
+
+        mock_history = MagicMock()
+        mock_history.ended_at = None
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = mock_objective
+            mock_db.session.query.return_value.filter.return_value.first.return_value = mock_history
+
+            response = client.post(
+                "/api/objective",
+                data=json.dumps({"text": "Fixed typo"}),
+                content_type="application/json"
+            )
+
+            assert response.status_code == 200
+            # ended_at should NOT be set — in-place update
+            assert mock_history.ended_at is None
+            # But text should be updated
+            assert mock_history.text == "Fixed typo"
 
     def test_update_objective_validation_empty_text(self, client):
         """Test that empty objective text returns validation error."""

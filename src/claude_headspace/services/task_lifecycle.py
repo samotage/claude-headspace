@@ -261,24 +261,9 @@ class TaskLifecycleManager:
 
         logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
 
-        # Send OS notification for task completion
-        try:
-            from .notification_service import get_notification_service
-            svc = get_notification_service()
-
-            instruction = self._get_instruction_for_notification(task)
-            # Completion context: transcript text → completion_summary → None
-            completion_text = agent_text or task.completion_summary or None
-
-            svc.notify_task_complete(
-                agent_id=str(task.agent_id),
-                agent_name=task.agent.name or f"Agent {task.agent_id}",
-                project=task.agent.project.name if task.agent.project else None,
-                task_instruction=instruction,
-                turn_text=completion_text,
-            )
-        except Exception as e:
-            logger.warning(f"Notification send failed (non-fatal): {e}")
+        # NOTE: Completion notification is sent by the caller (hook_receiver)
+        # AFTER summarisation completes, so the notification contains the
+        # AI-generated summary instead of raw transcript text.
 
         # Write state transition event
         if self._event_writer:

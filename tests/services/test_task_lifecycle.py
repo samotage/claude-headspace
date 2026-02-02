@@ -192,9 +192,8 @@ class TestTaskLifecycleManagerUnit:
         assert turn.intent == TurnIntent.COMPLETION
         assert turn.task_id == mock_task.id
 
-    @patch("claude_headspace.services.notification_service.get_notification_service")
-    def test_complete_task_sends_notification(self, mock_get_notif, mock_session, mock_event_writer):
-        """complete_task should send a task_complete OS notification with context."""
+    def test_complete_task_does_not_send_notification(self, mock_session, mock_event_writer):
+        """complete_task should NOT send notifications — hook_receiver sends them after summarisation."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_agent.name = "test-agent"
@@ -213,18 +212,9 @@ class TestTaskLifecycleManagerUnit:
             event_writer=mock_event_writer,
         )
 
-        mock_svc = MagicMock()
-        mock_get_notif.return_value = mock_svc
-
-        manager.complete_task(mock_task, agent_text="Updated config defaults")
-
-        mock_svc.notify_task_complete.assert_called_once_with(
-            agent_id=str(mock_agent.id),
-            agent_name="test-agent",
-            project="test-project",
-            task_instruction="Fix notification port mismatch",
-            turn_text="Updated config defaults",
-        )
+        with patch("claude_headspace.services.notification_service.get_notification_service") as mock_get_notif:
+            manager.complete_task(mock_task, agent_text="Updated config defaults")
+            mock_get_notif.assert_not_called()
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
     def test_update_task_state_sends_awaiting_input_notification(self, mock_get_notif, mock_session, mock_event_writer):
@@ -271,19 +261,12 @@ class TestTaskLifecycleManagerUnit:
             turn_text="Which CSS framework?",
         )
 
-    @patch("claude_headspace.services.notification_service.get_notification_service")
-    def test_complete_task_notification_falls_back_to_command_text(self, mock_get_notif, mock_session, mock_event_writer):
-        """complete_task notification should fall back to first USER COMMAND turn text when instruction is None."""
+    def test_complete_task_does_not_send_notification_even_without_instruction(self, mock_session, mock_event_writer):
+        """complete_task should NOT send notifications even when instruction is None — hook_receiver handles it."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
-
-        # USER COMMAND turn — the fallback source for instruction
-        mock_command_turn = MagicMock()
-        mock_command_turn.actor = TurnActor.USER
-        mock_command_turn.intent = TurnIntent.COMMAND
-        mock_command_turn.text = "Fix the login page CSS alignment issue"
 
         mock_task = MagicMock()
         mock_task.id = 1
@@ -291,27 +274,18 @@ class TestTaskLifecycleManagerUnit:
         mock_task.agent = mock_agent
         mock_task.state = TaskState.PROCESSING
         mock_task.completed_at = None
-        mock_task.instruction = None  # Not yet summarised
+        mock_task.instruction = None
         mock_task.completion_summary = None
-        mock_task.turns = [mock_command_turn]
+        mock_task.turns = []
 
         manager = TaskLifecycleManager(
             session=mock_session,
             event_writer=mock_event_writer,
         )
 
-        mock_svc = MagicMock()
-        mock_get_notif.return_value = mock_svc
-
-        manager.complete_task(mock_task)
-
-        mock_svc.notify_task_complete.assert_called_once_with(
-            agent_id=str(mock_agent.id),
-            agent_name="test-agent",
-            project="test-project",
-            task_instruction="Fix the login page CSS alignment issue",
-            turn_text=None,
-        )
+        with patch("claude_headspace.services.notification_service.get_notification_service") as mock_get_notif:
+            manager.complete_task(mock_task)
+            mock_get_notif.assert_not_called()
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
     def test_update_task_state_notification_falls_back_to_command_text(self, mock_get_notif, mock_session, mock_event_writer):
