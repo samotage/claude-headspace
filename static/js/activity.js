@@ -4,6 +4,16 @@
     let chart = null;
     let currentWindow = 'day';
 
+    // Frustration thresholds from config (injected by template)
+    var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
+
+    // Color constants for frustration states
+    var FRUST_COLORS = {
+        green:  { text: 'text-green',  rgb: '76, 175, 80',  hex: '#4caf50' },
+        yellow: { text: 'text-amber',  rgb: '255, 193, 7',  hex: '#ffc107' },
+        red:    { text: 'text-red',    rgb: '255, 85, 85',   hex: '#ff5555' }
+    };
+
     const ActivityPage = {
         init: function() {
             this.loadOverallMetrics();
@@ -51,12 +61,13 @@
                         data.current.active_agents || 0;
 
                     // Sum total frustration across all history entries for window total
-                    var totalFrustration = 0;
-                    data.history.forEach(function(h) {
-                        if (h.total_frustration != null) totalFrustration += h.total_frustration;
-                    });
-                    document.getElementById('overall-frustration').textContent =
-                        totalFrustration > 0 ? totalFrustration : 0;
+                    var frustStats = ActivityPage._sumFrustrationHistory(data.history);
+                    var frustEl = document.getElementById('overall-frustration');
+                    frustEl.textContent = frustStats.total > 0 ? frustStats.total : 0;
+                    // Apply threshold-based color
+                    var level = ActivityPage._frustrationLevel(frustStats.total, frustStats.turns);
+                    var colors = FRUST_COLORS[level];
+                    frustEl.className = 'metric-card-value ' + colors.text;
 
                     ActivityPage._renderChart(data.history);
                 })
@@ -166,7 +177,8 @@
                         turn_count: 0,
                         avg_turn_time_seconds: null,
                         active_agents: null,
-                        total_frustration: null
+                        total_frustration: null,
+                        frustration_turn_count: null
                     });
                 }
                 cursor = new Date(cursor.getTime() + 3600000); // +1 hour
@@ -180,16 +192,20 @@
                 var d = new Date(h.bucket_start);
                 var key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
                 if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, bucket_start: h.bucket_start };
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
                 if (h.total_frustration != null) {
                     dayMap[key].total_frustration += h.total_frustration;
                 }
+                if (h.frustration_turn_count != null) {
+                    dayMap[key].frustration_turn_count += h.frustration_turn_count;
+                }
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
                 if (entry.total_frustration === 0) entry.total_frustration = null;
+                if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
                 return entry;
             });
         },
@@ -249,6 +265,12 @@
                 return h.total_frustration != null ? h.total_frustration : null;
             });
 
+            // Compute per-point frustration level color for chart segments
+            var pointColors = history.map(function(h) {
+                var lvl = ActivityPage._frustrationLevel(h.total_frustration, h.frustration_turn_count);
+                return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
+            });
+
             // Capture reference for tooltip closure
             var chartHistory = history;
 
@@ -266,16 +288,28 @@
                 label: 'Frustration',
                 type: 'line',
                 data: frustrationData,
-                borderColor: 'rgba(255, 85, 85, 1)',
-                backgroundColor: 'rgba(255, 85, 85, 0.1)',
                 borderWidth: 2,
                 pointRadius: 3,
-                pointBackgroundColor: 'rgba(255, 85, 85, 1)',
                 tension: 0.3,
                 fill: false,
                 spanGaps: false,
                 yAxisID: 'y1',
+                // Per-segment coloring based on frustration level
+                segment: {
+                    borderColor: function(ctx) {
+                        // Color segment by the destination point's frustration level
+                        return pointColors[ctx.p1DataIndex] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
+                    }
+                },
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
+                borderColor: pointColors[0] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)',
             }];
+
+            // Compute overall frustration level for y1 axis tick color
+            var overallFrust = ActivityPage._sumFrustrationHistory(history);
+            var overallLevel = ActivityPage._frustrationLevel(overallFrust.total, overallFrust.turns);
+            var axisColor = FRUST_COLORS[overallLevel].rgb;
 
             var scales = {
                 x: {
@@ -290,7 +324,7 @@
                 y1: {
                     position: 'right',
                     beginAtZero: true,
-                    ticks: { color: 'rgba(255, 85, 85, 0.6)', precision: 0 },
+                    ticks: { color: 'rgba(' + axisColor + ', 0.6)', precision: 0 },
                     grid: { drawOnChartArea: false }
                 }
             };
@@ -392,13 +426,9 @@
                     ActivityPage._escapeHtml(r.project.name) + '</h3>';
 
                 if (current) {
-                    // Sum frustration across project history for window total
-                    var projFrustration = 0;
-                    if (r.metrics.history) {
-                        r.metrics.history.forEach(function(h) {
-                            if (h.total_frustration != null) projFrustration += h.total_frustration;
-                        });
-                    }
+                    var projFrust = ActivityPage._sumFrustrationHistory(r.metrics.history);
+                    var projLevel = ActivityPage._frustrationLevel(projFrust.total, projFrust.turns);
+                    var projColor = FRUST_COLORS[projLevel].text;
                     html += '<div class="grid grid-cols-4 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value text-cyan">' + (current.turn_count || 0) + '</div>' +
@@ -411,7 +441,7 @@
                         '<div class="metric-card-value text-green">' + (current.active_agents || 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value text-red">' + projFrustration + '</div>' +
+                        '<div class="metric-card-value ' + projColor + '">' + projFrust.total + '</div>' +
                         '<div class="metric-card-label">Frustration</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
@@ -428,20 +458,16 @@
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
                         if (ac) {
-                            // Sum frustration across agent history for window total
-                            var agentFrustration = 0;
-                            if (ad.metrics.history) {
-                                ad.metrics.history.forEach(function(h) {
-                                    if (h.total_frustration != null) agentFrustration += h.total_frustration;
-                                });
-                            }
+                            var agentFrust = ActivityPage._sumFrustrationHistory(ad.metrics.history);
+                            var agentLevel = ActivityPage._frustrationLevel(agentFrust.total, agentFrust.turns);
+                            var agentFrustColor = FRUST_COLORS[agentLevel].text;
                             html += '<div class="agent-metric-stats">' +
                                 '<span><span class="stat-value">' + ac.turn_count + '</span><span class="stat-label">turns</span></span>';
                             if (ac.avg_turn_time_seconds != null) {
                                 html += '<span><span class="stat-value">' + ac.avg_turn_time_seconds.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
-                            if (agentFrustration > 0) {
-                                html += '<span><span class="stat-value text-red">' + agentFrustration + '</span><span class="stat-label">frust</span></span>';
+                            if (agentFrust.total > 0) {
+                                html += '<span><span class="stat-value ' + agentFrustColor + '">' + agentFrust.total + '</span><span class="stat-label">frust</span></span>';
                             }
                             html += '</div>';
                         } else {
@@ -455,6 +481,36 @@
                 section.innerHTML = html;
                 container.appendChild(section);
             });
+        },
+
+        /**
+         * Compute frustration color based on average frustration per USER turn.
+         * Uses PRD thresholds: green (< yellow), yellow (>= yellow, < red), red (>= red).
+         * @param {number} totalFrustration - sum of frustration scores
+         * @param {number} turnCount - number of USER turns with frustration scores
+         * @returns {string} 'green', 'yellow', or 'red'
+         */
+        _frustrationLevel: function(totalFrustration, turnCount) {
+            if (!totalFrustration || !turnCount || turnCount === 0) return 'green';
+            var avg = totalFrustration / turnCount;
+            if (avg >= THRESHOLDS.red) return 'red';
+            if (avg >= THRESHOLDS.yellow) return 'yellow';
+            return 'green';
+        },
+
+        /**
+         * Compute frustration stats from a history array.
+         * Sums total_frustration and frustration_turn_count across all entries.
+         */
+        _sumFrustrationHistory: function(history) {
+            var total = 0, turns = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.total_frustration != null) total += h.total_frustration;
+                    if (h.frustration_turn_count != null) turns += h.frustration_turn_count;
+                });
+            }
+            return { total: total, turns: turns };
         },
 
         _escapeHtml: function(str) {

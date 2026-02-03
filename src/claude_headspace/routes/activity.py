@@ -40,14 +40,26 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "avg_turn_time_seconds": m.avg_turn_time_seconds,
         "active_agents": m.active_agents,
         "total_frustration": m.total_frustration,
+        "frustration_turn_count": m.frustration_turn_count,
     }
 
 
 @activity_bp.route("/activity")
 def activity_page():
     """Activity monitoring page."""
+    from flask import current_app
+
     status_counts = {"input_needed": 0, "working": 0, "idle": 0}
-    return render_template("activity.html", status_counts=status_counts)
+    headspace = current_app.extensions.get("headspace_monitor")
+    frustration_thresholds = {
+        "yellow": getattr(headspace, "_yellow_threshold", 4),
+        "red": getattr(headspace, "_red_threshold", 7),
+    }
+    return render_template(
+        "activity.html",
+        status_counts=status_counts,
+        frustration_thresholds=frustration_thresholds,
+    )
 
 
 @activity_bp.route("/api/metrics/agents/<int:agent_id>")

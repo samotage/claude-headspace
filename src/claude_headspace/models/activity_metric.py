@@ -46,6 +46,9 @@ class ActivityMetric(db.Model):
     total_frustration: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
     )
+    frustration_turn_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
