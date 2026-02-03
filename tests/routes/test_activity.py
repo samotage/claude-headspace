@@ -20,7 +20,7 @@ class TestActivityPage:
 
         assert "activity-chart" in html
         assert "activity.js" in html
-        assert "Overall Activity" in html
+        assert "Turn Activity" in html
         assert "chart.js" in html.lower() or "Chart" in html
 
     def test_activity_page_includes_status_counts(self, client):

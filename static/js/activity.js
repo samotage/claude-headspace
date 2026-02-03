@@ -14,6 +14,13 @@
         red:    { text: 'text-red',    rgb: '255, 85, 85',   hex: '#ff5555' }
     };
 
+    // Window hours for rate calculations
+    var WINDOW_HOURS = { day: 24, week: 24 * 7, month: 24 * 30 };
+
+    // Rate label by window
+    var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
+    var TOTAL_LABELS = { day: 'Turns Today', week: 'Turns This Week', month: 'Turns This Month' };
+
     const ActivityPage = {
         init: function() {
             this.loadOverallMetrics();
@@ -34,6 +41,53 @@
             this.loadProjectMetrics();
         },
 
+        /**
+         * Compute turn rate from total turns based on window.
+         * Day: turns/hour, Week/Month: turns/day.
+         */
+        _computeRate: function(totalTurns) {
+            if (currentWindow === 'day') {
+                return totalTurns / 24;
+            }
+            // week/month: turns per day
+            var days = currentWindow === 'week' ? 7 : 30;
+            return totalTurns / days;
+        },
+
+        _formatRate: function(rate) {
+            if (rate === 0) return '0';
+            if (rate >= 10) return Math.round(rate).toString();
+            return rate.toFixed(1);
+        },
+
+        /**
+         * Sum all turns across a history array.
+         */
+        _sumTurns: function(history) {
+            var total = 0;
+            if (history) {
+                history.forEach(function(h) { total += (h.turn_count || 0); });
+            }
+            return total;
+        },
+
+        /**
+         * Compute weighted average turn time across history.
+         */
+        _weightedAvgTime: function(history) {
+            var totalTime = 0, totalPairs = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
+                        var pairs = h.turn_count - 1;
+                        totalTime += h.avg_turn_time_seconds * pairs;
+                        totalPairs += pairs;
+                    }
+                });
+            }
+            return totalPairs > 0 ? totalTime / totalPairs : null;
+        },
+
         loadOverallMetrics: function() {
             fetch('/api/metrics/overall?window=' + currentWindow)
                 .then(function(res) { return res.json(); })
@@ -41,7 +95,7 @@
                     var overallEmpty = document.getElementById('overall-empty');
                     var overallMetrics = document.getElementById('overall-metrics');
 
-                    if (!data.current) {
+                    if (!data.history || data.history.length === 0) {
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
@@ -51,23 +105,26 @@
                     overallEmpty.classList.add('hidden');
                     overallMetrics.classList.remove('hidden');
 
-                    document.getElementById('overall-turn-rate').textContent =
-                        data.current.turn_count || 0;
-                    document.getElementById('overall-avg-time').textContent =
-                        data.current.avg_turn_time_seconds != null
-                            ? data.current.avg_turn_time_seconds.toFixed(1) + 's'
-                            : '--';
-                    document.getElementById('overall-active-agents').textContent =
-                        data.current.active_agents || 0;
+                    // Compute window totals from history
+                    var totalTurns = ActivityPage._sumTurns(data.history);
+                    var rate = ActivityPage._computeRate(totalTurns);
+                    var avgTime = ActivityPage._weightedAvgTime(data.history);
 
-                    // Sum total frustration across all history entries for window total
+                    document.getElementById('overall-total-turns').textContent = totalTurns;
+                    document.getElementById('overall-total-turns-label').textContent = TOTAL_LABELS[currentWindow];
+                    document.getElementById('overall-turn-rate').textContent = ActivityPage._formatRate(rate);
+                    document.getElementById('overall-turn-rate-label').textContent = RATE_LABELS[currentWindow];
+                    document.getElementById('overall-avg-time').textContent =
+                        avgTime != null ? avgTime.toFixed(1) + 's' : '--';
+                    document.getElementById('overall-active-agents').textContent =
+                        data.current ? (data.current.active_agents || 0) : 0;
+
+                    // Frustration with threshold-based color
                     var frustStats = ActivityPage._sumFrustrationHistory(data.history);
                     var frustEl = document.getElementById('overall-frustration');
                     frustEl.textContent = frustStats.total > 0 ? frustStats.total : 0;
-                    // Apply threshold-based color
                     var level = ActivityPage._frustrationLevel(frustStats.total, frustStats.turns);
-                    var colors = FRUST_COLORS[level];
-                    frustEl.className = 'metric-card-value ' + colors.text;
+                    frustEl.className = 'metric-card-value ' + FRUST_COLORS[level].text;
 
                     ActivityPage._renderChart(data.history);
                 })
@@ -106,8 +163,6 @@
                     Promise.all(promises).then(function(results) {
                         var agentPromises = [];
                         results.forEach(function(r) {
-                            var agents = r.project.agents || [];
-                            // Use the project's active agent list from the project API
                             if (r.project.agent_count > 0) {
                                 agentPromises.push(
                                     fetch('/api/projects/' + r.project.id)
@@ -159,7 +214,6 @@
             });
             var first = new Date(history[0].bucket_start);
             var last = new Date(history[history.length - 1].bucket_start);
-            // Round to hour boundaries
             first.setMinutes(0, 0, 0);
             last.setMinutes(0, 0, 0);
             var result = [];
@@ -181,7 +235,7 @@
                         frustration_turn_count: null
                     });
                 }
-                cursor = new Date(cursor.getTime() + 3600000); // +1 hour
+                cursor = new Date(cursor.getTime() + 3600000);
             }
             return result;
         },
@@ -190,17 +244,13 @@
             var dayMap = {};
             history.forEach(function(h) {
                 var d = new Date(h.bucket_start);
-                var key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+                var key = d.toLocaleDateString('en-CA');
                 if (!dayMap[key]) {
                     dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
-                if (h.total_frustration != null) {
-                    dayMap[key].total_frustration += h.total_frustration;
-                }
-                if (h.frustration_turn_count != null) {
-                    dayMap[key].frustration_turn_count += h.frustration_turn_count;
-                }
+                if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
+                if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
@@ -221,7 +271,6 @@
                 return;
             }
 
-            // Check if any turns exist at all
             var hasAnyTurns = history.some(function(h) { return h.turn_count > 0; });
             if (!hasAnyTurns) {
                 if (chart) { chart.destroy(); chart = null; }
@@ -230,14 +279,11 @@
                 return;
             }
 
-            // Aggregate by day for week/month views, fill hourly gaps for day view
             var isAggregated = (currentWindow === 'week' || currentWindow === 'month');
             if (isAggregated) {
-                // Filter zeros before aggregation for week/month (no timeline continuity needed)
                 history = history.filter(function(h) { return h.turn_count > 0; });
                 history = this._aggregateByDay(history);
             } else {
-                // Day view: fill in missing hours so x-axis is continuous
                 history = this._fillHourlyGaps(history);
             }
 
@@ -255,23 +301,19 @@
                 }
             });
 
-            // For day view, use null for zero-turn hours so bars don't render but axis stays continuous
             var turnData = history.map(function(h) {
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
-            // Frustration data for line overlay (always present)
             var frustrationData = history.map(function(h) {
                 return h.total_frustration != null ? h.total_frustration : null;
             });
 
-            // Compute per-point frustration level color for chart segments
             var pointColors = history.map(function(h) {
                 var lvl = ActivityPage._frustrationLevel(h.total_frustration, h.frustration_turn_count);
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
-            // Capture reference for tooltip closure
             var chartHistory = history;
 
             if (chart) { chart.destroy(); }
@@ -294,10 +336,8 @@
                 fill: false,
                 spanGaps: false,
                 yAxisID: 'y1',
-                // Per-segment coloring based on frustration level
                 segment: {
                     borderColor: function(ctx) {
-                        // Color segment by the destination point's frustration level
                         return pointColors[ctx.p1DataIndex] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
                     }
                 },
@@ -306,7 +346,6 @@
                 borderColor: pointColors[0] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)',
             }];
 
-            // Compute overall frustration level for y1 axis tick color
             var overallFrust = ActivityPage._sumFrustrationHistory(history);
             var overallLevel = ActivityPage._frustrationLevel(overallFrust.total, overallFrust.turns);
             var axisColor = FRUST_COLORS[overallLevel].rgb;
@@ -331,17 +370,11 @@
 
             chart = new Chart(canvas, {
                 type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: datasets
-                },
+                data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
-                    },
+                    interaction: { intersect: false, mode: 'index' },
                     plugins: {
                         tooltip: {
                             callbacks: {
@@ -377,9 +410,7 @@
                                 }
                             }
                         },
-                        legend: {
-                            labels: { color: 'rgba(255,255,255,0.6)' }
-                        }
+                        legend: { labels: { color: 'rgba(255,255,255,0.6)' } }
                     },
                     scales: scales
                 }
@@ -391,11 +422,10 @@
             var empty = document.getElementById('projects-empty');
 
             var hasAnyData = results.some(function(r) {
-                return r.metrics.current != null || (r.agents && r.agents.length > 0);
+                return (r.metrics.history && r.metrics.history.length > 0) || (r.agents && r.agents.length > 0);
             });
 
             if (!hasAnyData && results.length > 0) {
-                // Projects exist but no metrics
                 container.innerHTML = '';
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
@@ -410,35 +440,41 @@
             container.innerHTML = '';
             empty.classList.add('hidden');
 
-            // Sort: projects with data first, no-data projects at the end
             results.sort(function(a, b) {
-                var aHasData = a.metrics.current != null || (a.agents && a.agents.length > 0) ? 1 : 0;
-                var bHasData = b.metrics.current != null || (b.agents && b.agents.length > 0) ? 1 : 0;
-                return bHasData - aHasData;
+                var aHas = (a.metrics.history && a.metrics.history.length > 0) || (a.agents && a.agents.length > 0) ? 1 : 0;
+                var bHas = (b.metrics.history && b.metrics.history.length > 0) || (b.agents && b.agents.length > 0) ? 1 : 0;
+                return bHas - aHas;
             });
 
             results.forEach(function(r) {
                 var section = document.createElement('div');
                 section.className = 'py-4 border-b border-border last:border-0';
 
-                var current = r.metrics.current;
+                var history = r.metrics.history || [];
                 var html = '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">' +
                     ActivityPage._escapeHtml(r.project.name) + '</h3>';
 
-                if (current) {
-                    var projFrust = ActivityPage._sumFrustrationHistory(r.metrics.history);
+                if (history.length > 0) {
+                    var totalTurns = ActivityPage._sumTurns(history);
+                    var rate = ActivityPage._computeRate(totalTurns);
+                    var avgTime = ActivityPage._weightedAvgTime(history);
+                    var projFrust = ActivityPage._sumFrustrationHistory(history);
                     var projLevel = ActivityPage._frustrationLevel(projFrust.total, projFrust.turns);
                     var projColor = FRUST_COLORS[projLevel].text;
-                    html += '<div class="grid grid-cols-4 gap-3 mb-3">' +
+
+                    html += '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value text-cyan">' + (current.turn_count || 0) + '</div>' +
+                        '<div class="metric-card-value text-cyan">' + totalTurns + '</div>' +
                         '<div class="metric-card-label">Turns</div></div>' +
                         '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-cyan">' + ActivityPage._formatRate(rate) + '</div>' +
+                        '<div class="metric-card-label">' + RATE_LABELS[currentWindow] + '</div></div>' +
+                        '<div class="metric-card-sm">' +
                         '<div class="metric-card-value text-amber">' +
-                        (current.avg_turn_time_seconds != null ? current.avg_turn_time_seconds.toFixed(1) + 's' : '--') +
+                        (avgTime != null ? avgTime.toFixed(1) + 's' : '--') +
                         '</div><div class="metric-card-label">Avg Time</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value text-green">' + (current.active_agents || 0) + '</div>' +
+                        '<div class="metric-card-value text-green">' + (r.metrics.current ? (r.metrics.current.active_agents || 0) : 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value ' + projColor + '">' + projFrust.total + '</div>' +
@@ -451,20 +487,22 @@
                 if (r.agents && r.agents.length > 0) {
                     html += '<div class="space-y-2">';
                     r.agents.forEach(function(ad) {
-                        var ac = ad.metrics.current;
+                        var agentHistory = ad.metrics.history || [];
                         var agentLabel = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
                             : 'Agent ' + ad.agent.id;
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
-                        if (ac) {
-                            var agentFrust = ActivityPage._sumFrustrationHistory(ad.metrics.history);
+                        if (agentHistory.length > 0) {
+                            var agentTurns = ActivityPage._sumTurns(agentHistory);
+                            var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
+                            var agentFrust = ActivityPage._sumFrustrationHistory(agentHistory);
                             var agentLevel = ActivityPage._frustrationLevel(agentFrust.total, agentFrust.turns);
                             var agentFrustColor = FRUST_COLORS[agentLevel].text;
                             html += '<div class="agent-metric-stats">' +
-                                '<span><span class="stat-value">' + ac.turn_count + '</span><span class="stat-label">turns</span></span>';
-                            if (ac.avg_turn_time_seconds != null) {
-                                html += '<span><span class="stat-value">' + ac.avg_turn_time_seconds.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
+                                '<span><span class="stat-value">' + agentTurns + '</span><span class="stat-label">turns</span></span>';
+                            if (agentAvg != null) {
+                                html += '<span><span class="stat-value">' + agentAvg.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
                             if (agentFrust.total > 0) {
                                 html += '<span><span class="stat-value ' + agentFrustColor + '">' + agentFrust.total + '</span><span class="stat-label">frust</span></span>';
@@ -483,13 +521,6 @@
             });
         },
 
-        /**
-         * Compute frustration color based on average frustration per USER turn.
-         * Uses PRD thresholds: green (< yellow), yellow (>= yellow, < red), red (>= red).
-         * @param {number} totalFrustration - sum of frustration scores
-         * @param {number} turnCount - number of USER turns with frustration scores
-         * @returns {string} 'green', 'yellow', or 'red'
-         */
         _frustrationLevel: function(totalFrustration, turnCount) {
             if (!totalFrustration || !turnCount || turnCount === 0) return 'green';
             var avg = totalFrustration / turnCount;
@@ -498,10 +529,6 @@
             return 'green';
         },
 
-        /**
-         * Compute frustration stats from a history array.
-         * Sums total_frustration and frustration_turn_count across all entries.
-         */
         _sumFrustrationHistory: function(history) {
             var total = 0, turns = 0;
             if (history) {
@@ -520,7 +547,6 @@
         }
     };
 
-    // Initialize on DOM ready
     document.addEventListener('DOMContentLoaded', function() {
         ActivityPage.init();
     });
