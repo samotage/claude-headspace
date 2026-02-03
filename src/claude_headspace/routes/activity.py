@@ -19,16 +19,32 @@ WINDOW_HOURS = {
 }
 
 
-def _get_window() -> tuple[str, int]:
-    """Parse and validate the ?window= query parameter.
+def _get_window() -> tuple[str, datetime]:
+    """Parse ?window= and optional ?since= query parameters.
+
+    If ``since`` is provided (ISO 8601 timestamp), it is used as the cutoff
+    directly — this allows the frontend to send calendar-day boundaries in the
+    user's local timezone.  Otherwise falls back to a rolling window.
 
     Returns:
-        (window_name, hours) tuple.
+        (window_name, cutoff_datetime) tuple.
     """
     window = request.args.get("window", "day")
     if window not in WINDOW_HOURS:
         window = "day"
-    return window, WINDOW_HOURS[window]
+
+    since = request.args.get("since")
+    if since:
+        try:
+            cutoff = datetime.fromisoformat(since)
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            return window, cutoff
+        except (ValueError, TypeError):
+            pass
+
+    hours = WINDOW_HOURS[window]
+    return window, datetime.now(timezone.utc) - timedelta(hours=hours)
 
 
 def _metric_to_dict(m: ActivityMetric) -> dict:
@@ -72,8 +88,7 @@ def agent_metrics(agent_id: int):
         if not agent:
             return jsonify({"error": "Agent not found"}), 404
 
-        window, hours = _get_window()
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        window, cutoff = _get_window()
 
         history = (
             db.session.query(ActivityMetric)
@@ -109,8 +124,7 @@ def project_metrics(project_id: int):
         if not project:
             return jsonify({"error": "Project not found"}), 404
 
-        window, hours = _get_window()
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        window, cutoff = _get_window()
 
         history = (
             db.session.query(ActivityMetric)
@@ -140,8 +154,7 @@ def project_metrics(project_id: int):
 def overall_metrics():
     """Get current and historical system-wide aggregated metrics."""
     try:
-        window, hours = _get_window()
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        window, cutoff = _get_window()
 
         history = (
             db.session.query(ActivityMetric)

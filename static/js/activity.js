@@ -29,7 +29,6 @@
 
         setWindow: function(window) {
             currentWindow = window;
-            // Update toggle button styles
             document.querySelectorAll('#window-toggles button').forEach(function(btn) {
                 if (btn.dataset.window === window) {
                     btn.className = 'px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium';
@@ -39,6 +38,32 @@
             });
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+        },
+
+        /**
+         * Compute the calendar-boundary start for the current window
+         * in the user's local timezone, returned as an ISO string.
+         *   day   = start of today (midnight local)
+         *   week  = start of Monday (midnight local)
+         *   month = 1st of this month (midnight local)
+         */
+        _windowSince: function() {
+            var now = new Date();
+            var start;
+            if (currentWindow === 'day') {
+                start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            } else if (currentWindow === 'week') {
+                var dow = now.getDay(); // 0=Sun
+                var diffToMon = (dow === 0 ? 6 : dow - 1);
+                start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
+            } else {
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+            }
+            return start.toISOString();
+        },
+
+        _apiParams: function() {
+            return 'window=' + currentWindow + '&since=' + encodeURIComponent(this._windowSince());
         },
 
         /**
@@ -89,7 +114,7 @@
         },
 
         loadOverallMetrics: function() {
-            fetch('/api/metrics/overall?window=' + currentWindow)
+            fetch('/api/metrics/overall?' + this._apiParams())
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     var overallEmpty = document.getElementById('overall-empty');
@@ -152,7 +177,7 @@
                     empty.classList.add('hidden');
 
                     var promises = projects.map(function(p) {
-                        return fetch('/api/metrics/projects/' + p.id + '?window=' + currentWindow)
+                        return fetch('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
                             .then(function(res) { return res.json(); })
                             .then(function(metrics) {
                                 return { project: p, metrics: metrics };
@@ -171,7 +196,7 @@
                                             var aPromises = (detail.agents || [])
                                                 .filter(function(a) { return !a.ended_at; })
                                                 .map(function(a) {
-                                                    return fetch('/api/metrics/agents/' + a.id + '?window=' + currentWindow)
+                                                    return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
                                                         .then(function(res) { return res.json(); })
                                                         .then(function(metrics) {
                                                             return { agent: a, metrics: metrics };
