@@ -3,6 +3,7 @@
 
     let chart = null;
     let currentWindow = 'day';
+    let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
 
     // Frustration thresholds from config (injected by template)
     var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
@@ -14,12 +15,8 @@
         red:    { text: 'text-red',    rgb: '255, 85, 85',   hex: '#ff5555' }
     };
 
-    // Window hours for rate calculations
-    var WINDOW_HOURS = { day: 24, week: 24 * 7, month: 24 * 30 };
-
     // Rate label by window
     var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
-    var TOTAL_LABELS = { day: 'Turns Today', week: 'Turns This Week', month: 'Turns This Month' };
 
     const ActivityPage = {
         init: function() {
@@ -27,43 +24,93 @@
             this.loadProjectMetrics();
         },
 
-        setWindow: function(window) {
-            currentWindow = window;
+        setWindow: function(w) {
+            currentWindow = w;
+            windowOffset = 0;
             document.querySelectorAll('#window-toggles button').forEach(function(btn) {
-                if (btn.dataset.window === window) {
+                if (btn.dataset.window === w) {
                     btn.className = 'px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium';
                 } else {
                     btn.className = 'px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors';
                 }
             });
+            this._refresh();
+        },
+
+        goBack: function() {
+            windowOffset--;
+            this._refresh();
+        },
+
+        goForward: function() {
+            if (windowOffset < 0) {
+                windowOffset++;
+                this._refresh();
+            }
+        },
+
+        _refresh: function() {
+            this._updateNav();
             this.loadOverallMetrics();
             this.loadProjectMetrics();
         },
 
         /**
-         * Compute the calendar-boundary start for the current window
-         * in the user's local timezone, returned as an ISO string.
-         *   day   = start of today (midnight local)
-         *   week  = start of Monday (midnight local)
-         *   month = 1st of this month (midnight local)
+         * Compute the start of a period given an offset from the current period.
+         * offset=0 is the current period, -1 is the previous, etc.
          */
-        _windowSince: function() {
+        _periodStart: function(offset) {
             var now = new Date();
-            var start;
             if (currentWindow === 'day') {
-                start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
             } else if (currentWindow === 'week') {
-                var dow = now.getDay(); // 0=Sun
+                var dow = now.getDay();
                 var diffToMon = (dow === 0 ? 6 : dow - 1);
-                start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
+                var thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
+                return new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + (offset * 7));
             } else {
-                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                return new Date(now.getFullYear(), now.getMonth() + offset, 1);
             }
-            return start.toISOString();
+        },
+
+        _periodTitle: function() {
+            var start = this._periodStart(windowOffset);
+            if (currentWindow === 'day') {
+                if (windowOffset === 0) return 'Today';
+                if (windowOffset === -1) return 'Yesterday';
+                return start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+            } else if (currentWindow === 'week') {
+                var end = new Date(start);
+                end.setDate(end.getDate() + 6);
+                if (windowOffset === 0) {
+                    return 'This Week';
+                }
+                return start.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
+                    ' \u2013 ' + end.toLocaleDateString([], { day: 'numeric', month: 'short' });
+            } else {
+                if (windowOffset === 0) return 'This Month';
+                return start.toLocaleDateString([], { month: 'long', year: 'numeric' });
+            }
+        },
+
+        _updateNav: function() {
+            document.getElementById('period-title').textContent = this._periodTitle();
+            var fwdBtn = document.getElementById('nav-forward');
+            if (windowOffset >= 0) {
+                fwdBtn.disabled = true;
+                fwdBtn.className = 'w-7 h-7 flex items-center justify-center rounded border border-border text-muted cursor-not-allowed text-sm';
+            } else {
+                fwdBtn.disabled = false;
+                fwdBtn.className = 'w-7 h-7 flex items-center justify-center rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors text-sm';
+            }
         },
 
         _apiParams: function() {
-            return 'window=' + currentWindow + '&since=' + encodeURIComponent(this._windowSince());
+            var since = this._periodStart(windowOffset).toISOString();
+            var until = this._periodStart(windowOffset + 1).toISOString();
+            return 'window=' + currentWindow +
+                '&since=' + encodeURIComponent(since) +
+                '&until=' + encodeURIComponent(until);
         },
 
         /**
@@ -136,7 +183,7 @@
                     var avgTime = ActivityPage._weightedAvgTime(data.history);
 
                     document.getElementById('overall-total-turns').textContent = totalTurns;
-                    document.getElementById('overall-total-turns-label').textContent = TOTAL_LABELS[currentWindow];
+                    document.getElementById('overall-total-turns-label').textContent = 'Total Turns';
                     document.getElementById('overall-turn-rate').textContent = ActivityPage._formatRate(rate);
                     document.getElementById('overall-turn-rate-label').textContent = RATE_LABELS[currentWindow];
                     document.getElementById('overall-avg-time').textContent =

@@ -8,19 +8,32 @@
 
     <main class="page-content container mx-auto px-4 py-6" role="main">
 
-        <!-- Global Window Toggle -->
+        <!-- Global Window Toggle + Period Navigation -->
         <div class="flex items-center justify-between mb-6 mt-2">
             <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">Activity</h2>
-            <div class="flex gap-2" id="window-toggles">
-                <button type="button" data-window="day"
-                        class="px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium"
-                        onclick="ActivityPage.setWindow('day')">Day</button>
-                <button type="button" data-window="week"
-                        class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
-                        onclick="ActivityPage.setWindow('week')">Week</button>
-                <button type="button" data-window="month"
-                        class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
-                        onclick="ActivityPage.setWindow('month')">Month</button>
+            <div class="flex items-center gap-4">
+                <!-- Period back/forward navigation -->
+                <div class="flex items-center gap-1" id="period-nav">
+                    <button type="button" id="nav-back"
+                            class="w-7 h-7 flex items-center justify-center rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors text-sm"
+                            onclick="ActivityPage.goBack()">&lsaquo;</button>
+                    <span id="period-title" class="text-sm text-primary font-medium min-w-[140px] text-center">Today</span>
+                    <button type="button" id="nav-forward"
+                            class="w-7 h-7 flex items-center justify-center rounded border border-border text-muted cursor-not-allowed text-sm"
+                            onclick="ActivityPage.goForward()" disabled>&rsaquo;</button>
+                </div>
+                <!-- Day / Week / Month granularity -->
+                <div class="flex gap-2" id="window-toggles">
+                    <button type="button" data-window="day"
+                            class="px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium"
+                            onclick="ActivityPage.setWindow('day')">Day</button>
+                    <button type="button" data-window="week"
+                            class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
+                            onclick="ActivityPage.setWindow('week')">Week</button>
+                    <button type="button" data-window="month"
+                            class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors"
+                            onclick="ActivityPage.setWindow('month')">Month</button>
+                </div>
             </div>
         </div>
 

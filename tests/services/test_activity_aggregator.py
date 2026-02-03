@@ -152,13 +152,11 @@ class TestPruneOldRecords:
 
 
 class TestUpsertMetric:
-    """Test _upsert_metric static method."""
+    """Test _upsert_metric static method (INSERT ON CONFLICT)."""
 
-    def test_upsert_creates_new_record(self):
-        """When no existing record, a new one is created."""
+    def test_upsert_executes_insert_on_conflict(self):
+        """_upsert_metric calls session.execute with an INSERT ON CONFLICT statement."""
         session = MagicMock()
-        session.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
-
         now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
         ActivityAggregator._upsert_metric(
@@ -172,14 +170,11 @@ class TestUpsertMetric:
             active_agents=None,
         )
 
-        session.add.assert_called_once()
+        session.execute.assert_called_once()
 
-    def test_upsert_updates_existing_record(self):
-        """When existing record found, it is updated in place."""
-        existing = MagicMock()
+    def test_upsert_passes_correct_values(self):
+        """_upsert_metric passes all metric values to the INSERT statement."""
         session = MagicMock()
-        session.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = existing
-
         now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
         ActivityAggregator._upsert_metric(
@@ -191,8 +186,14 @@ class TestUpsertMetric:
             turn_count=10,
             avg_turn_time_seconds=45.0,
             active_agents=None,
+            total_frustration=5,
+            frustration_turn_count=2,
         )
 
-        assert existing.turn_count == 10
-        assert existing.avg_turn_time_seconds == 45.0
-        session.add.assert_not_called()
+        session.execute.assert_called_once()
+        # Verify the compiled statement contains the expected values
+        stmt = session.execute.call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": False})
+        sql = str(compiled)
+        assert "ON CONFLICT" in sql
+        assert "DO UPDATE" in sql

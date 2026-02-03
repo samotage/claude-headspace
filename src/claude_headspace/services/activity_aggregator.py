@@ -9,6 +9,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
+import sqlalchemy as sa
 from flask import Flask
 
 from ..database import db
@@ -270,41 +271,40 @@ class ActivityAggregator:
         total_frustration: int | None = None,
         frustration_turn_count: int | None = None,
     ) -> None:
-        """Upsert an ActivityMetric record (update if bucket exists, else create)."""
-        # Build filter for finding existing record
-        query = session.query(ActivityMetric).filter(
-            ActivityMetric.bucket_start == bucket_start,
-            ActivityMetric.is_overall == is_overall,
+        """Upsert an ActivityMetric record using INSERT ON CONFLICT.
+
+        Uses the ``uq_activity_metrics_bucket_scope`` unique index
+        (bucket_start, COALESCE(agent_id,-1), COALESCE(project_id,-1), is_overall)
+        to atomically insert-or-update, preventing duplicate records.
+        """
+        from sqlalchemy.dialects.postgresql import insert
+
+        stmt = insert(ActivityMetric).values(
+            bucket_start=bucket_start,
+            agent_id=agent_id,
+            project_id=project_id,
+            is_overall=is_overall,
+            turn_count=turn_count,
+            avg_turn_time_seconds=avg_turn_time_seconds,
+            active_agents=active_agents,
+            total_frustration=total_frustration,
+            frustration_turn_count=frustration_turn_count,
         )
 
-        if agent_id is not None:
-            query = query.filter(ActivityMetric.agent_id == agent_id)
-        else:
-            query = query.filter(ActivityMetric.agent_id.is_(None))
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                ActivityMetric.bucket_start,
+                sa.text("COALESCE(agent_id, -1)"),
+                sa.text("COALESCE(project_id, -1)"),
+                ActivityMetric.is_overall,
+            ],
+            set_={
+                "turn_count": stmt.excluded.turn_count,
+                "avg_turn_time_seconds": stmt.excluded.avg_turn_time_seconds,
+                "active_agents": stmt.excluded.active_agents,
+                "total_frustration": stmt.excluded.total_frustration,
+                "frustration_turn_count": stmt.excluded.frustration_turn_count,
+            },
+        )
 
-        if project_id is not None:
-            query = query.filter(ActivityMetric.project_id == project_id)
-        else:
-            query = query.filter(ActivityMetric.project_id.is_(None))
-
-        existing = query.first()
-
-        if existing:
-            existing.turn_count = turn_count
-            existing.avg_turn_time_seconds = avg_turn_time_seconds
-            existing.active_agents = active_agents
-            existing.total_frustration = total_frustration
-            existing.frustration_turn_count = frustration_turn_count
-        else:
-            metric = ActivityMetric(
-                bucket_start=bucket_start,
-                agent_id=agent_id,
-                project_id=project_id,
-                is_overall=is_overall,
-                turn_count=turn_count,
-                avg_turn_time_seconds=avg_turn_time_seconds,
-                active_agents=active_agents,
-                total_frustration=total_frustration,
-                frustration_turn_count=frustration_turn_count,
-            )
-            session.add(metric)
+        session.execute(stmt)

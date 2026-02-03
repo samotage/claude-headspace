@@ -19,32 +19,41 @@ WINDOW_HOURS = {
 }
 
 
-def _get_window() -> tuple[str, datetime]:
-    """Parse ?window= and optional ?since= query parameters.
+def _parse_iso(value: str | None) -> datetime | None:
+    """Parse an ISO 8601 string into a timezone-aware datetime, or None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
 
-    If ``since`` is provided (ISO 8601 timestamp), it is used as the cutoff
-    directly — this allows the frontend to send calendar-day boundaries in the
-    user's local timezone.  Otherwise falls back to a rolling window.
+
+def _get_window() -> tuple[str, datetime, datetime | None]:
+    """Parse ?window=, ?since=, and ?until= query parameters.
+
+    ``since`` and ``until`` are ISO 8601 timestamps that define the exact
+    period boundaries (computed by the frontend in the user's local timezone).
+    ``until`` is exclusive — records with ``bucket_start < until`` are included.
 
     Returns:
-        (window_name, cutoff_datetime) tuple.
+        (window_name, cutoff_start, cutoff_end_or_None) tuple.
     """
     window = request.args.get("window", "day")
     if window not in WINDOW_HOURS:
         window = "day"
 
-    since = request.args.get("since")
-    if since:
-        try:
-            cutoff = datetime.fromisoformat(since)
-            if cutoff.tzinfo is None:
-                cutoff = cutoff.replace(tzinfo=timezone.utc)
-            return window, cutoff
-        except (ValueError, TypeError):
-            pass
+    since = _parse_iso(request.args.get("since"))
+    until = _parse_iso(request.args.get("until"))
 
-    hours = WINDOW_HOURS[window]
-    return window, datetime.now(timezone.utc) - timedelta(hours=hours)
+    if since is None:
+        hours = WINDOW_HOURS[window]
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    return window, since, until
 
 
 def _metric_to_dict(m: ActivityMetric) -> dict:
@@ -88,17 +97,18 @@ def agent_metrics(agent_id: int):
         if not agent:
             return jsonify({"error": "Agent not found"}), 404
 
-        window, cutoff = _get_window()
+        window, cutoff, cutoff_end = _get_window()
 
-        history = (
+        query = (
             db.session.query(ActivityMetric)
             .filter(
                 ActivityMetric.agent_id == agent_id,
                 ActivityMetric.bucket_start >= cutoff,
             )
-            .order_by(ActivityMetric.bucket_start.asc())
-            .all()
         )
+        if cutoff_end:
+            query = query.filter(ActivityMetric.bucket_start < cutoff_end)
+        history = query.order_by(ActivityMetric.bucket_start.asc()).all()
 
         current = history[-1] if history else None
 
@@ -124,17 +134,18 @@ def project_metrics(project_id: int):
         if not project:
             return jsonify({"error": "Project not found"}), 404
 
-        window, cutoff = _get_window()
+        window, cutoff, cutoff_end = _get_window()
 
-        history = (
+        query = (
             db.session.query(ActivityMetric)
             .filter(
                 ActivityMetric.project_id == project_id,
                 ActivityMetric.bucket_start >= cutoff,
             )
-            .order_by(ActivityMetric.bucket_start.asc())
-            .all()
         )
+        if cutoff_end:
+            query = query.filter(ActivityMetric.bucket_start < cutoff_end)
+        history = query.order_by(ActivityMetric.bucket_start.asc()).all()
 
         current = history[-1] if history else None
 
@@ -154,17 +165,18 @@ def project_metrics(project_id: int):
 def overall_metrics():
     """Get current and historical system-wide aggregated metrics."""
     try:
-        window, cutoff = _get_window()
+        window, cutoff, cutoff_end = _get_window()
 
-        history = (
+        query = (
             db.session.query(ActivityMetric)
             .filter(
                 ActivityMetric.is_overall == True,
                 ActivityMetric.bucket_start >= cutoff,
             )
-            .order_by(ActivityMetric.bucket_start.asc())
-            .all()
         )
+        if cutoff_end:
+            query = query.filter(ActivityMetric.bucket_start < cutoff_end)
+        history = query.order_by(ActivityMetric.bucket_start.asc()).all()
 
         current = history[-1] if history else None
 
