@@ -9,7 +9,7 @@ import pytest
 from src.claude_headspace.models.turn import TurnActor
 from src.claude_headspace.services.activity_aggregator import (
     ActivityAggregator,
-    RETENTION_DAYS,
+    DEFAULT_RETENTION_DAYS,
 )
 
 
@@ -33,14 +33,18 @@ def aggregator(mock_app):
 class TestAggregatorInit:
     """Test ActivityAggregator initialization."""
 
-    def test_default_interval(self, mock_app):
+    def test_default_config(self, mock_app):
         agg = ActivityAggregator(app=mock_app, config={})
+        assert agg._enabled is True
         assert agg._interval == 300
+        assert agg._retention_days == 30
 
-    def test_custom_interval(self, mock_app):
-        config = {"activity_aggregator": {"interval_seconds": 60}}
+    def test_custom_config(self, mock_app):
+        config = {"activity": {"interval_seconds": 60, "retention_days": 7, "enabled": False}}
         agg = ActivityAggregator(app=mock_app, config=config)
+        assert agg._enabled is False
         assert agg._interval == 60
+        assert agg._retention_days == 7
 
     def test_start_creates_thread(self, aggregator):
         aggregator.start()
@@ -48,6 +52,11 @@ class TestAggregatorInit:
         assert aggregator._thread.daemon is True
         assert aggregator._thread.name == "ActivityAggregator"
         aggregator.stop()
+
+    def test_start_disabled_skips(self, mock_app):
+        agg = ActivityAggregator(app=mock_app, config={"activity": {"enabled": False}})
+        agg.start()
+        assert agg._thread is None
 
     def test_stop_sets_event(self, aggregator):
         aggregator.start()

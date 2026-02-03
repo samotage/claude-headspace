@@ -19,8 +19,9 @@ from ..models.turn import Turn, TurnActor
 
 logger = logging.getLogger(__name__)
 
+# Defaults (overridden by config.yaml → activity section)
 DEFAULT_INTERVAL_SECONDS = 300  # 5 minutes
-RETENTION_DAYS = 30
+DEFAULT_RETENTION_DAYS = 30
 
 
 class ActivityAggregator:
@@ -31,15 +32,23 @@ class ActivityAggregator:
 
     def __init__(self, app: Flask, config: dict) -> None:
         self._app = app
-        aggregator_config = config.get("activity_aggregator", {})
-        self._interval = aggregator_config.get(
+        activity_config = config.get("activity", {})
+        self._enabled = activity_config.get("enabled", True)
+        self._interval = activity_config.get(
             "interval_seconds", DEFAULT_INTERVAL_SECONDS
+        )
+        self._retention_days = activity_config.get(
+            "retention_days", DEFAULT_RETENTION_DAYS
         )
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         """Start the aggregation background thread."""
+        if not self._enabled:
+            logger.info("Activity aggregator disabled by config")
+            return
+
         if self._thread and self._thread.is_alive():
             logger.warning("Activity aggregator already running")
             return
@@ -245,13 +254,13 @@ class ActivityAggregator:
             return stats
 
     def prune_old_records(self) -> int:
-        """Delete ActivityMetric records older than RETENTION_DAYS.
+        """Delete ActivityMetric records older than the configured retention period.
 
         Returns:
             Number of records deleted.
         """
         with self._app.app_context():
-            cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=self._retention_days)
             deleted = (
                 db.session.query(ActivityMetric)
                 .filter(ActivityMetric.bucket_start < cutoff)
@@ -260,7 +269,7 @@ class ActivityAggregator:
             db.session.commit()
 
             if deleted > 0:
-                logger.info(f"Pruned {deleted} activity metric records older than {RETENTION_DAYS} days")
+                logger.info(f"Pruned {deleted} activity metric records older than {self._retention_days} days")
 
             return deleted
 

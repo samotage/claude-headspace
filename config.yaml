@@ -46,8 +46,8 @@ openrouter:
   base_url: https://openrouter.ai/api/v1
   timeout: 30
   models:
-    turn: anthropic/claude-3-haiku
-    task: anthropic/claude-3-haiku
+    turn: anthropic/claude-haiku-4.5
+    task: anthropic/claude-haiku-4.5
     project: anthropic/claude-3.5-sonnet
     objective: anthropic/claude-3.5-sonnet
   rate_limits:
@@ -88,6 +88,10 @@ headspace:
     min_turn_rate: 6
     max_frustration: 3
     min_duration_minutes: 15
+activity:
+  enabled: true
+  interval_seconds: 300
+  retention_days: 30
 archive:
   enabled: true
   retention:
