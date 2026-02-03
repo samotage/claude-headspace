@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main"
+          data-project-id="{{ project.id }}"
+          data-project-slug="{{ project.slug }}">
+
+        <!-- Back link -->
+        <a href="{{ url_for('projects.projects_page') }}" class="text-cyan hover:underline text-sm mb-4 inline-block">&lt; Back to Projects</a>
+
+        <!-- Project Header -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <h1 id="project-name" class="text-xl font-bold text-primary mb-1">{{ project.name }}</h1>
+            <p id="project-path" class="text-secondary text-sm font-mono mb-2">{{ project.path }}</p>
+
+            <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-secondary mb-3">
+                <span id="project-github">
+                    {% if project.github_repo %}
+                        GitHub: <a href="https://github.com/{{ project.github_repo }}" target="_blank" rel="noopener" class="text-cyan hover:underline">{{ project.github_repo }}</a>
+                    {% else %}
+                        GitHub: <span class="text-muted">Not set</span>
+                    {% endif %}
+                </span>
+                <span id="project-branch">
+                    Branch: <span class="text-primary">{{ project.current_branch or 'Unknown' }}</span>
+                </span>
+                <span id="project-created">
+                    Created: {{ project.created_at.strftime('%d %b %Y') if project.created_at else 'Unknown' }}
+                </span>
+            </div>
+
+            <!-- Description -->
+            <div id="project-description" class="text-secondary text-sm mb-4">
+                {% if project.description %}
+                    {{ project.description }}
+                {% else %}
+                    <span class="text-muted italic">No description</span>
+                {% endif %}
+            </div>
+
+            <!-- Control Actions -->
+            <div class="flex flex-wrap gap-2 mb-4">
+                <button type="button" id="btn-edit" onclick="ProjectShow.openEditModal()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
+                    Edit
+                </button>
+                <button type="button" id="btn-delete" onclick="ProjectShow.openDeleteDialog()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-red/30 text-red hover:bg-red/10 transition-colors">
+                    Delete
+                </button>
+                <button type="button" id="btn-pause" onclick="ProjectShow.togglePause()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border transition-colors
+                        {% if project.inference_paused %}border-green/30 text-green hover:bg-green/10{% else %}border-amber/30 text-amber hover:bg-amber/10{% endif %}">
+                    {{ 'Resume Inference' if project.inference_paused else 'Pause Inference' }}
+                </button>
+                <button type="button" id="btn-regen-desc" onclick="ProjectShow.regenerateDescription()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
+                    Regen Description
+                </button>
+                <button type="button" id="btn-refetch-git" onclick="ProjectShow.refetchGitInfo()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
+                    Refetch Git Info
+                </button>
+            </div>
+
+            <!-- Inference Status -->
+            <div id="inference-status" class="text-sm">
+                {% if project.inference_paused %}
+                    <span class="text-amber">Inference Paused</span>
+                    {% if project.inference_paused_at %}
+                        <span class="text-muted"> since {{ project.inference_paused_at.strftime('%d %b %Y %H:%M') }}</span>
+                    {% endif %}
+                    {% if project.inference_paused_reason %}
+                        <span class="text-muted"> &mdash; {{ project.inference_paused_reason }}</span>
+                    {% endif %}
+                {% else %}
+                    <span class="text-green">Inference Active</span>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Waypoint Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-primary">Waypoint</h2>
+                <a href="#" id="waypoint-edit-link" onclick="ProjectShow.editWaypoint(); return false;"
+                   class="text-xs text-cyan hover:underline">Edit</a>
+            </div>
+            <div id="waypoint-content" class="prose prose-invert max-w-none text-sm">
+                <p class="text-muted italic">Loading...</p>
+            </div>
+        </section>
+
+        <!-- Brain Reboot Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-primary">Brain Reboot</h2>
+                    <p id="brain-reboot-timestamp" class="text-muted text-xs mt-0.5"></p>
+                </div>
+                <div class="flex gap-2">
+                    <button type="button" id="btn-regen-brain-reboot" onclick="ProjectShow.regenerateBrainReboot()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
+                        Regenerate
+                    </button>
+                    <button type="button" id="btn-export-brain-reboot" onclick="ProjectShow.exportBrainReboot()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-green/30 text-green hover:bg-green/10 transition-colors">
+                        Export
+                    </button>
+                </div>
+            </div>
+            <div id="brain-reboot-content" class="prose prose-invert max-w-none text-sm">
+                <p class="text-muted italic">Loading...</p>
+            </div>
+        </section>
+
+        <!-- Progress Summary Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-primary">Progress Summary</h2>
+                <button type="button" id="btn-regen-progress" onclick="ProjectShow.regenerateProgressSummary()"
+                        class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
+                    Regenerate
+                </button>
+            </div>
+            <div id="progress-summary-content" class="prose prose-invert max-w-none text-sm">
+                <p class="text-muted italic">Loading...</p>
+            </div>
+        </section>
+    </main>
+</div>
+
+{% include "partials/_project_form_modal.html" %}
+
+<!-- Delete Confirmation Dialog -->
+<div id="delete-dialog"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="delete-dialog-title"
+     aria-modal="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="ProjectShow.closeDeleteDialog()"></div>
+    <div class="relative mx-auto mt-[20vh] w-full max-w-md bg-elevated rounded-lg border border-border shadow-xl p-6" style="z-index: 201;">
+        <h3 id="delete-dialog-title" class="text-lg font-semibold text-primary mb-4">Delete Project</h3>
+        <p class="text-secondary mb-2">
+            Are you sure you want to delete
+            <span id="delete-project-name" class="text-primary font-medium">{{ project.name }}</span>?
+        </p>
+        <p id="delete-agent-warning" class="text-amber text-sm mb-6"></p>
+        <div class="flex justify-end gap-3">
+            <button type="button"
+                    onclick="ProjectShow.closeDeleteDialog()"
+                    class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary transition-colors min-h-[44px]">
+                Cancel
+            </button>
+            <button type="button"
+                    id="delete-confirm-btn"
+                    onclick="ProjectShow.confirmDelete()"
+                    class="px-4 py-2 bg-red/20 border border-red/30 rounded text-red font-medium hover:bg-red/30 transition-colors min-h-[44px]">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/project_show.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}

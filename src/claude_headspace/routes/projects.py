@@ -7,11 +7,26 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..database import db
-from ..models.project import Project
+from ..models.project import Project, generate_slug
 
 logger = logging.getLogger(__name__)
 
 projects_bp = Blueprint("projects", __name__)
+
+
+def _unique_slug(name: str, exclude_id: int | None = None) -> str:
+    """Generate a unique slug, appending numeric suffix on collision."""
+    base = generate_slug(name)
+    slug = base
+    counter = 2
+    while True:
+        query = Project.query.filter_by(slug=slug)
+        if exclude_id is not None:
+            query = query.filter(Project.id != exclude_id)
+        if not query.first():
+            return slug
+        slug = f"{base}-{counter}"
+        counter += 1
 
 
 @projects_bp.route("/projects")
@@ -19,6 +34,21 @@ def projects_page():
     """Projects management page."""
     status_counts = {"input_needed": 0, "working": 0, "idle": 0}
     return render_template("projects.html", status_counts=status_counts)
+
+
+@projects_bp.route("/projects/<slug>")
+def project_show(slug: str):
+    """Project detail show page."""
+    project = Project.query.filter_by(slug=slug).first()
+    if not project:
+        return render_template("404.html", message=f"Project not found: {slug}"), 404
+
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+    return render_template(
+        "project_show.html",
+        project=project,
+        status_counts=status_counts,
+    )
 
 
 def _broadcast_project_event(event_type: str, data: dict) -> None:
@@ -43,6 +73,7 @@ def list_projects():
             result.append({
                 "id": p.id,
                 "name": p.name,
+                "slug": p.slug,
                 "path": p.path,
                 "github_repo": p.github_repo,
                 "description": p.description,
@@ -95,6 +126,7 @@ def create_project():
 
         project = Project(
             name=name,
+            slug=_unique_slug(name),
             path=path,
             github_repo=(data.get("github_repo") or "").strip() or None,
             description=(data.get("description") or "").strip() or None,
@@ -110,6 +142,7 @@ def create_project():
         return jsonify({
             "id": project.id,
             "name": project.name,
+            "slug": project.slug,
             "path": project.path,
             "github_repo": project.github_repo,
             "description": project.description,
@@ -145,6 +178,7 @@ def get_project(project_id: int):
         return jsonify({
             "id": project.id,
             "name": project.name,
+            "slug": project.slug,
             "path": project.path,
             "github_repo": project.github_repo,
             "description": project.description,
@@ -202,8 +236,9 @@ def update_project(project_id: int):
 
         if "name" in data:
             name = (data["name"] or "").strip()
-            if name:
+            if name and name != project.name:
                 project.name = name
+                project.slug = _unique_slug(name, exclude_id=project.id)
 
         if "github_repo" in data:
             project.github_repo = (data["github_repo"] or "").strip() or None
@@ -221,6 +256,7 @@ def update_project(project_id: int):
         return jsonify({
             "id": project.id,
             "name": project.name,
+            "slug": project.slug,
             "path": project.path,
             "github_repo": project.github_repo,
             "description": project.description,

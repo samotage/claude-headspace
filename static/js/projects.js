@@ -66,21 +66,13 @@
             this.tbody.innerHTML = projects.map(function(p) {
                 var pausedClass = p.inference_paused ? 'text-amber' : 'text-green';
                 var pausedLabel = p.inference_paused ? 'Paused' : 'Active';
-                var pauseBtnLabel = p.inference_paused ? 'Resume' : 'Pause';
-                var pauseBtnClass = p.inference_paused
-                    ? 'text-green hover:text-green'
-                    : 'text-amber hover:text-amber';
+                var slug = p.slug || '';
 
                 return '<tr class="border-b border-border">' +
-                    '<td class="py-3 pr-4 text-primary font-medium">' + ProjectsPage._escapeHtml(p.name) + '</td>' +
+                    '<td class="py-3 pr-4 font-medium"><a href="/projects/' + ProjectsPage._escapeHtml(slug) + '" class="text-cyan hover:underline">' + ProjectsPage._escapeHtml(p.name) + '</a></td>' +
                     '<td class="py-3 pr-4 text-secondary text-xs font-mono truncate max-w-[200px]" title="' + ProjectsPage._escapeHtml(p.path) + '">' + ProjectsPage._escapeHtml(p.path) + '</td>' +
                     '<td class="py-3 pr-4 text-center text-secondary">' + p.agent_count + '</td>' +
                     '<td class="py-3 pr-4"><span class="' + pausedClass + ' text-xs font-medium">' + pausedLabel + '</span></td>' +
-                    '<td class="py-3 text-right space-x-2 whitespace-nowrap">' +
-                        '<button onclick="ProjectsPage.togglePause(' + p.id + ', ' + p.inference_paused + ')" class="text-xs ' + pauseBtnClass + ' hover:underline">' + pauseBtnLabel + '</button>' +
-                        '<button onclick="ProjectsPage.openEditModal(' + p.id + ')" class="text-xs text-cyan hover:underline">Edit</button>' +
-                        '<button onclick="ProjectsPage.openDeleteDialog(' + p.id + ', \'' + ProjectsPage._escapeHtml(p.name).replace(/'/g, "\\'") + '\', ' + p.agent_count + ')" class="text-xs text-red hover:underline">Delete</button>' +
-                    '</td>' +
                 '</tr>';
             }).join('');
         },

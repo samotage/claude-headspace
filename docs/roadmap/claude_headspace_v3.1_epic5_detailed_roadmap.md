@@ -1,0 +1,1084 @@
+# Epic 5 Detailed Roadmap: Voice Bridge & Project Enhancement
+
+**Project:** Claude Headspace v3.1  
+**Epic:** Epic 5 — Voice Bridge & Project Enhancement  
+**Author:** PM Agent (John)  
+**Status:** Roadmap — Baseline for PRD Generation  
+**Date:** 2026-02-04
+
+---
+
+## Executive Summary
+
+This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 3 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
+
+**Epic 5 Goal:** Enable remote session interaction via dashboard input and provide comprehensive project detail pages with hierarchical data exploration.
+
+**Epic 5 Value Proposition:**
+
+- **Input Bridge** — Respond to Claude Code permission prompts directly from the dashboard without context-switching to iTerm
+- **Project Show Page** — Unified view of a project's full state (metadata, waypoint, brain reboot, progress summary) from a single page
+- **Object Tree** — Drill into the complete hierarchy of agents, tasks, and turns with frustration score highlighting
+- **Embedded Metrics** — Activity data scoped to a specific project with day/week/month navigation
+
+**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction.
+
+**Success Criteria:**
+
+- See "Input needed" amber card → click quick-action button → agent resumes without leaving dashboard
+- Navigate to `/projects/claude-headspace` → see full project detail on one page
+- Click project name in list → navigates to show page (no inline edit/delete buttons)
+- Expand Agents accordion → see all agents with state, priority, timing
+- Expand Tasks accordion → see all tasks with state, instruction, completion summary
+- Expand Turns accordion → see turns with frustration scores highlighted
+- Activity metrics display with day/week/month toggle and period navigation
+- Archive history shows previous waypoint/brain reboot versions
+- SSE events update accordion data in real-time
+
+**Architectural Foundation:** Builds on Epic 4's project controls (pause/resume), activity monitoring (metrics infrastructure), and archive system (timestamped versions). Also leverages Epic 3's inference service, summarisation, and priority scoring.
+
+**Dependency:** Epic 4 must be complete before Epic 5 begins (project settings, activity metrics, archive APIs must exist).
+
+---
+
+## Epic 5 Story Mapping
+
+| Story ID | Story Name                                        | Subsystem            | PRD Directory | Sprint | Priority |
+| -------- | ------------------------------------------------- | -------------------- | ------------- | ------ | -------- |
+| E5-S1    | Remote session interaction via claude-commander   | `input-bridge`       | bridge/       | 1      | P1       |
+| E5-S2    | Project show page with metadata and controls      | `project-show-core`  | ui/           | 2      | P2       |
+| E5-S3    | Project show page with object tree and metrics    | `project-show-tree`  | ui/           | 3      | P2       |
+
+---
+
+## Sprint Breakdown
+
+### Sprint 1: Input Bridge (E5-S1) — DONE
+
+**Goal:** Enable users to send text responses to Claude Code sessions directly from the Headspace dashboard.
+
+**Duration:** 1 week  
+**Dependencies:** Epic 4 complete (project controls exist), claude-commander binary available
+
+**Deliverables:**
+
+- Commander service for Unix socket communication with claude-commander
+- Send text + newline (simulating "type and press Enter") to Claude Code sessions
+- Health check for commander socket availability
+- Response endpoint: `POST /api/respond/<agent_id>`
+- Turn record creation (actor: USER, intent: ANSWER) for audit trail
+- State transition: AWAITING_INPUT → PROCESSING
+- Quick-action buttons for numbered permission choices (parsed from question text)
+- Free-text input field for arbitrary responses
+- Visual feedback on send success/failure
+- Commander availability checking and SSE broadcast
+- Graceful degradation when no commander socket available
+- Documentation for launching sessions with `claudec` wrapper
+
+**Subsystem Requiring PRD:**
+
+1. `input-bridge` — Commander service, response endpoint, dashboard input UI
+
+**PRD Location:** `docs/prds/bridge/done/e5-s1-input-bridge-prd.md`
+
+**Stories:**
+
+- E5-S1: Remote session interaction via claude-commander
+
+**Technical Decisions Made:**
+
+- Socket path convention: `/tmp/claudec-<SESSION_ID>.sock` — **decided**
+- Socket protocol: Newline-delimited JSON over Unix domain socket — **decided**
+- Response creates Turn record for audit trail — **decided**
+- Input widget only shown when commander socket available — **decided**
+
+**Agent Card — AWAITING_INPUT State with Commander Available:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  [AMBER] claude-headspace                           Input needed    │
+├─────────────────────────────────────────────────────────────────────┤
+│  Line 04: "Do you want to proceed? 1. Yes 2. No 3. Cancel"          │
+│                                                                     │
+│  Quick Actions: [1: Yes] [2: No] [3: Cancel]                        │
+│                                                                     │
+│  ┌─────────────────────────────────────────────┐ [Send]             │
+│  │ Type a response...                          │                    │
+│  └─────────────────────────────────────────────┘                    │
+│                                                                     │
+│  [Focus iTerm]                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Risks:**
+
+- claude-commander is a new external dependency (single developer, v0.1.0)
+- Socket protocol could change in future versions
+- 2-5 second startup delay before socket is available
+
+**Acceptance Criteria:**
+
+- [x] User can respond to a permission prompt from the dashboard
+- [x] iTerm terminal remains fully interactive alongside dashboard input
+- [x] Quick-action buttons appear for numbered permission choices
+- [x] Free-text input available for arbitrary responses
+- [x] Visual feedback confirms response sent (or shows error)
+- [x] Dashboard degrades gracefully when commander socket unavailable
+- [x] Responses recorded as Turn entities in audit trail
+- [x] Commander availability broadcast via SSE
+
+---
+
+### Sprint 2: Project Show Page — Core (E5-S2)
+
+**Goal:** Create a dedicated project show page at `/projects/<slug>` that serves as the canonical detail view for a project.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E5-S1 complete, E4-S2 complete (project controls backend/UI exist)
+
+**Deliverables:**
+
+**Slug-Based Routing:**
+
+- Add `slug` field to Project model (unique, non-nullable, indexed)
+- Slug auto-generated from project name (lowercase, hyphens for spaces/special chars)
+- Slug regenerated when project name changes
+- Database migration to add slug column and backfill existing rows
+- Route: `GET /projects/<slug>` returns project show page
+- 404 response for non-existent slugs
+
+**Project Show Page:**
+
+- Metadata display: name, path, GitHub repo (linked), branch, description, created date
+- Inference status display: active or paused (with timestamp and reason if paused)
+- Control actions: Edit, Delete, Pause/Resume, Regenerate Description, Refetch GitHub Info
+- Edit opens form, saves changes, updates slug if name changed
+- Delete shows confirmation dialog with cascade warning, redirects to `/projects`
+
+**Content Sections:**
+
+- Waypoint section: rendered markdown, edit link, empty state guidance
+- Brain reboot section: rendered markdown, generation timestamp with time-ago, Regenerate and Export buttons
+- Progress summary section: rendered markdown, Regenerate button
+
+**Navigation Changes:**
+
+- Projects list: project names become clickable links to `/projects/<slug>`
+- Projects list: remove Edit, Delete, Pause/Resume action buttons
+- Brain reboot modal: add link to project show page
+
+**Subsystem Requiring PRD:**
+
+2. `project-show-core` — Slug routing, show page template, metadata display, control actions
+
+**PRD Location:** `docs/prds/ui/e5-s2-project-show-core-prd.md`
+
+**Stories:**
+
+- E5-S2: Project show page with metadata and controls
+
+**Technical Decisions Required:**
+
+- Slug collision handling: append numeric suffix (e.g., `my-project-2`) — **decided**
+- Bookmark breakage on rename: accepted trade-off (slugs update with name) — **decided**
+- Long content handling: max-height with scroll or "show more" — **implementation detail**
+
+**Data Model Changes:**
+
+```python
+class Project(Base):
+    ...
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+```
+
+**Project Show Page Layout:**
+
+```
++-----------------------------------------------------------------------+
+|  CLAUDE >_headspace    [Dashboard] [Projects] [Activity] [Objective]...|
++-----------------------------------------------------------------------+
+|                                                                        |
+|  < Back to Projects                                                    |
+|                                                                        |
+|  claude-headspace                                                      |
+|  ~/dev/otagelabs/claude_headspace                                      |
+|  GitHub: otagelabs/claude_headspace  |  Branch: development            |
+|  Created: 2 Jan 2026                                                   |
+|                                                                        |
+|  Description:                                                          |
+|  Kanban-style web dashboard for tracking Claude Code sessions          |
+|  across multiple projects...                                           |
+|                                                                        |
+|  +--------------------------------------------------------------+     |
+|  | [Edit] [Delete] [Pause Inference] [Regen Desc] [Refetch Git] |     |
+|  +--------------------------------------------------------------+     |
+|                                                                        |
+|  Inference: Active                                                     |
+|  (or: Paused since 3 Feb 2026 — "Cost control")                       |
+|                                                                        |
+|  ================================================================      |
+|                                                                        |
+|  Waypoint                                                    [Edit]    |
+|  ------------------------------------------------------------------   |
+|  [Rendered markdown content of waypoint.md]                            |
+|                                                                        |
+|  ================================================================      |
+|                                                                        |
+|  Brain Reboot                          Generated 2 hours ago           |
+|  ------------------------------------------------------------------   |
+|  [Rendered markdown content of last brain reboot]                      |
+|                                                                        |
+|  [Regenerate]  [Export]                                                |
+|                                                                        |
+|  ================================================================      |
+|                                                                        |
+|  Progress Summary                                        [Regenerate] |
+|  ------------------------------------------------------------------   |
+|  [Rendered markdown content of progress summary]                       |
+|                                                                        |
++-----------------------------------------------------------------------+
+```
+
+**Simplified Projects List:**
+
+```
++-----------------------------------------------------------------------+
+|  Projects                                            [+ Add Project]   |
+|  -------------------------------------------------------------------  |
+|                                                                        |
+|  +------------------------------------------------------------------+ |
+|  | Name                | Path                 | Agents | Status     | |
+|  +------------------------------------------------------------------+ |
+|  | claude-headspace    | ~/dev/.../headspace  | 3      | Active     | |
+|  | my-webapp           | ~/dev/my-webapp      | 1      | Paused     | |
+|  | api-server          | ~/dev/api-server     | 0      | Active     | |
+|  +------------------------------------------------------------------+ |
+|                                                                        |
+|  (project names are clickable links to /projects/<slug>)               |
+|  (no Edit/Delete/Pause action buttons in list)                         |
++-----------------------------------------------------------------------+
+```
+
+**Risks:**
+
+- Slug collisions with similar project names
+- Bookmarked URLs break on project rename
+- Large waypoint/brain reboot content making page unwieldy
+
+**Acceptance Criteria:**
+
+- [ ] Project model has `slug` field (unique, non-nullable, indexed)
+- [ ] Creating a project auto-generates a slug from the name
+- [ ] Editing a project name updates the slug
+- [ ] Navigate to `/projects/<slug>` — shows project detail
+- [ ] Navigate to non-existent slug — returns 404
+- [ ] Page displays metadata: name, path, GitHub (linked), branch, description, created
+- [ ] Page displays inference status (active/paused with timestamp and reason)
+- [ ] Edit action opens form, saves changes, updates display
+- [ ] Delete action shows confirmation, deletes, redirects to `/projects`
+- [ ] Pause/Resume toggles inference status immediately
+- [ ] Regenerate Description updates description field
+- [ ] Refetch GitHub Info updates repo and branch fields
+- [ ] Waypoint section shows rendered markdown or empty state
+- [ ] Brain reboot shows content with date and time-ago
+- [ ] Brain reboot Regenerate and Export work
+- [ ] Progress summary shows content with Regenerate option
+- [ ] Projects list: names are clickable links to show page
+- [ ] Projects list: no Edit/Delete/Pause action buttons
+- [ ] Brain reboot modal includes link to project show page
+
+---
+
+### Sprint 3: Project Show Page — Tree & Metrics (E5-S3)
+
+**Goal:** Extend the project show page with an accordion-based object tree and embedded activity metrics.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E5-S2 complete (show page exists), E4-S3 complete (activity metrics infrastructure)
+
+**Deliverables:**
+
+**Accordion Object Tree:**
+
+- Agents accordion: collapsed by default, count badge (e.g., "Agents (3)")
+- Agent rows: state indicator (color-coded), session UUID (truncated), priority score, started/ended timestamps, active duration
+- Ended agents visually distinguished (muted styling, "Ended" badge)
+- Tasks accordion (nested per agent): state badge, instruction (truncated), completion summary, started/completed timestamps, turn count
+- Turns accordion (nested per task): actor badge (USER/AGENT), intent label, summary text, frustration score
+- Frustration highlighting: yellow for scores >= 4, red for scores >= 7
+- Collapse/expand toggling, collapsing parent collapses children
+
+**Lazy Data Loading:**
+
+- Accordion sections don't fetch data until expanded
+- Loading indicator while fetching
+- Error state with "Retry" option on failure
+- Client-side caching (collapse/re-expand doesn't re-fetch)
+- SSE events invalidate cache for expanded sections
+
+**Activity Metrics Section:**
+
+- Default to week (7-day) view
+- Day/week/month toggle
+- Period navigation arrows (back/forward, forward disabled at current period)
+- Summary cards: turn count, average turn time, active agent count, frustration turn count
+- Time-series chart (matching `/activity` page pattern)
+
+**Archive History Section:**
+
+- List archived artifacts (waypoints, brain reboots, progress summaries) with timestamps
+- View action for each archive entry
+- Empty state message when no archives
+
+**Inference Metrics Summary:**
+
+- Total inference calls, input/output tokens, total cost for the project
+
+**SSE Real-Time Updates:**
+
+- SSE connection filtered for current project
+- Agent state changes update Agents accordion (if expanded)
+- Task state changes update Tasks accordion (if expanded)
+- Project changes update page metadata
+- Updates don't disrupt accordion expand/collapse state
+
+**Subsystem Requiring PRD:**
+
+3. `project-show-tree` — Accordion tree, lazy loading, activity metrics, archive history, SSE updates
+
+**PRD Location:** `docs/prds/ui/e5-s3-project-show-tree-and-metrics-prd.md`
+
+**Stories:**
+
+- E5-S3: Project show page with object tree and metrics
+
+**Technical Decisions Required:**
+
+- Accordion lazy loading: fetch on expand only — **decided**
+- Accordion caching: client-side, invalidated by SSE — **decided**
+- Activity metrics: reuse `/activity` page patterns (Chart.js, time navigation) — **decided**
+- SSE debouncing: batch updates every 2 seconds for high-activity projects — **recommended**
+
+**New API Endpoints Needed:**
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/agents/<id>/tasks` | List tasks for an agent |
+| `GET /api/tasks/<id>/turns` | List turns for a task |
+| `GET /api/projects/<id>/inference-summary` | Aggregate inference metrics |
+
+**Accordion Object Tree:**
+
+```
++-----------------------------------------------------------------------+
+|                                                                        |
+|  (... metadata, controls, waypoint, brain reboot from E5-S2 ...)      |
+|                                                                        |
+|  ================================================================      |
+|                                                                        |
+|  v Agents (3)                                                          |
+|  ------------------------------------------------------------------   |
+|  | [green] abc-1234...  | Score: 85 | Active | Started 2h ago     |   |
+|  |                                                                 |   |
+|  |   v Tasks (5)                                                   |   |
+|  |   +-----------------------------------------------------------+|   |
+|  |   | [COMPLETE] Fix auth bug          | 3 turns | 25 min       ||   |
+|  |   |                                                            ||   |
+|  |   |   v Turns (3)                                              ||   |
+|  |   |   +------------------------------------------------------+||   |
+|  |   |   | [USER]  COMMAND  "Fix the login bug"        frust: 0  |||   |
+|  |   |   | [AGENT] PROGRESS "Investigating auth..."    frust: -  |||   |
+|  |   |   | [USER]  ANSWER   "Yes, that file"           frust: 6  |||   |
+|  |   |   +------------------------------------------------------+||   |
+|  |   |                                                            ||   |
+|  |   | [PROCESSING] Add caching layer   | 1 turn  | 5 min        ||   |
+|  |   | > Tasks (collapsed)                                        ||   |
+|  |   +-----------------------------------------------------------+|   |
+|  |                                                                 |   |
+|  | [grey] def-5678...   | Score: -- | Ended  | 3h ago — 1h 20m    |   |
+|  | > Tasks (collapsed)                                             |   |
+|  |                                                                 |   |
+|  | [blue] ghi-9012...   | Score: 42 | Active | Started 30m ago    |   |
+|  | > Tasks (collapsed)                                             |   |
+|  ------------------------------------------------------------------   |
+|                                                                        |
++-----------------------------------------------------------------------+
+```
+
+**Activity Metrics Section:**
+
+```
++-----------------------------------------------------------------------+
+|                                                                        |
+|  Activity Metrics                                                      |
+|  ------------------------------------------------------------------   |
+|                                                                        |
+|  [< prev]  This Week (27 Jan - 2 Feb)  [next >]                       |
+|                                                                        |
+|  [Day] [Week*] [Month]                                                 |
+|                                                                        |
+|  +-------------+  +-------------+  +-------------+  +-------------+   |
+|  | Turns       |  | Avg Time    |  | Agents      |  | Frustration |   |
+|  | 142         |  | 3.2 min     |  | 4 active    |  | 8 elevated  |   |
+|  +-------------+  +-------------+  +-------------+  +-------------+   |
+|                                                                        |
+|  [====== time series chart ======]                                     |
+|  |  .    .                       |                                     |
+|  | . .. ..  .    .  .            |                                     |
+|  |..........  ....  ..  .   .    |                                     |
+|  +-------------------------------+                                     |
+|                                                                        |
++-----------------------------------------------------------------------+
+```
+
+**Risks:**
+
+- Deep nesting with many agents/tasks/turns could create large DOM
+- High-activity projects may generate many SSE events
+- Stale cached accordion data if page left open for a long time
+- Duplicating activity chart logic creates maintenance burden
+
+**Acceptance Criteria:**
+
+- [ ] Agents accordion present, collapsed by default with count badge
+- [ ] Expanding Agents fetches and shows all project agents (active and ended)
+- [ ] Agent rows show: state indicator, ID, priority score, timing, duration
+- [ ] Ended agents visually distinguished from active agents
+- [ ] Clicking agent expands Tasks section (lazy loaded)
+- [ ] Task rows show: state badge, instruction, summary, timing, turn count
+- [ ] Clicking task expands Turns section (lazy loaded)
+- [ ] Turn rows show: actor badge, intent, summary, frustration score
+- [ ] Frustration scores >= 4 highlighted (yellow)
+- [ ] Frustration scores >= 7 highlighted (red)
+- [ ] Loading indicators shown while fetching accordion data
+- [ ] Error state with retry shown on fetch failure
+- [ ] Collapsing parent collapses nested children
+- [ ] Activity metrics section displays with week default
+- [ ] Day/week/month toggle works
+- [ ] Period navigation arrows work
+- [ ] Forward arrow disabled at current period
+- [ ] Summary cards show: turn count, avg time, agents, frustration count
+- [ ] Time-series chart displays activity
+- [ ] Archive section lists artifacts with timestamps
+- [ ] Archive entries have view action
+- [ ] Empty state when no archives
+- [ ] Inference summary shows calls, tokens, cost
+- [ ] SSE connection established with project filter
+- [ ] SSE updates don't disrupt accordion state
+
+---
+
+## Subsystems Requiring OpenSpec PRDs
+
+The following 3 subsystems have PRDs created. Each PRD was validated before implementation.
+
+### PRD Directory Structure
+
+```
+docs/prds/
+├── bridge/
+│   └── done/
+│       └── e5-s1-input-bridge-prd.md        # DONE
+└── ui/
+    ├── e5-s2-project-show-core-prd.md       # Draft
+    └── e5-s3-project-show-tree-and-metrics-prd.md  # Draft
+```
+
+---
+
+### 1. Input Bridge
+
+**Subsystem ID:** `input-bridge`  
+**Sprint:** E5-S1  
+**Priority:** P1  
+**PRD Location:** `docs/prds/bridge/done/e5-s1-input-bridge-prd.md`
+
+**Scope:**
+
+- Commander service for Unix socket communication
+- Response endpoint with state transition
+- Quick-action buttons for numbered choices
+- Free-text input for arbitrary responses
+- Commander availability checking and SSE broadcast
+- Graceful degradation when socket unavailable
+
+**Key Requirements:**
+
+- Must send text + newline to Claude Code via commander socket
+- Must check socket availability before showing input widget
+- Must create Turn record for audit trail
+- Must trigger AWAITING_INPUT → PROCESSING state transition
+- Must parse numbered options from question text for quick-action buttons
+- Must broadcast commander availability changes via SSE
+
+**OpenSpec Spec:** `openspec/specs/input-bridge/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/services/commander_service.py` (new)
+- `src/claude_headspace/services/commander_availability.py` (new)
+- `src/claude_headspace/routes/respond.py` (new)
+- `templates/partials/_agent_card.html` (update — add input widget)
+- `static/js/respond.js` (new)
+- `config.yaml` (add commander section)
+
+**Config.yaml Additions:**
+
+```yaml
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
+```
+
+**Dependencies:** Epic 4 complete, claude-commander binary installed
+
+**Acceptance Tests:**
+
+- Send response via dashboard → Claude Code receives text
+- Quick-action buttons appear for numbered options
+- Free-text input sends arbitrary text
+- No commander socket → input widget hidden
+- Response creates Turn record
+- State transitions correctly
+
+---
+
+### 2. Project Show Core
+
+**Subsystem ID:** `project-show-core`  
+**Sprint:** E5-S2  
+**Priority:** P2  
+**PRD Location:** `docs/prds/ui/e5-s2-project-show-core-prd.md`
+
+**Scope:**
+
+- Slug field on Project model with migration
+- Slug auto-generation and update on rename
+- Project show page route and template
+- Metadata display (name, path, GitHub, branch, description, created)
+- Control actions (edit, delete, pause/resume, regenerate description, refetch git)
+- Waypoint section with markdown rendering
+- Brain reboot section with timestamp and controls
+- Progress summary section with regenerate
+- Projects list navigation changes
+- Brain reboot modal link to show page
+
+**Key Requirements:**
+
+- Must add slug field to Project model (unique, non-nullable, indexed)
+- Must auto-generate slug from name on create
+- Must regenerate slug when name changes
+- Must handle slug collisions with numeric suffix
+- Must display all project metadata on show page
+- Must provide all control actions inline (no modals in list)
+- Must render waypoint/brain reboot/progress as markdown
+- Must show brain reboot timestamp with time-ago
+
+**OpenSpec Spec:** `openspec/specs/project-show-core/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/models/project.py` (update — add slug field)
+- `src/claude_headspace/routes/projects.py` (update — add show page route)
+- `templates/project_show.html` (new)
+- `templates/projects.html` (update — links, remove actions)
+- `static/js/project_show.js` (new)
+- `static/js/projects.js` (update — remove action handlers)
+- `templates/partials/_brain_reboot_modal.html` (update — add link)
+- `migrations/versions/xxxx_add_project_slug.py` (new)
+- `tests/routes/test_project_show.py` (new)
+
+**Data Model Changes:**
+
+```python
+class Project(Base):
+    ...
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+```
+
+**Dependencies:** E5-S1 complete, E4-S2 complete (project controls exist)
+
+**Acceptance Tests:**
+
+- Create project → slug auto-generated
+- Rename project → slug updated
+- Navigate to `/projects/<slug>` → see show page
+- Navigate to invalid slug → 404
+- Edit/Delete/Pause work from show page
+- Waypoint/brain reboot/progress display correctly
+- Projects list shows clickable links, no action buttons
+
+---
+
+### 3. Project Show Tree
+
+**Subsystem ID:** `project-show-tree`  
+**Sprint:** E5-S3  
+**Priority:** P2  
+**PRD Location:** `docs/prds/ui/e5-s3-project-show-tree-and-metrics-prd.md`
+
+**Scope:**
+
+- Accordion object tree (agents → tasks → turns)
+- Lazy data loading per accordion section
+- Frustration score highlighting (yellow/red thresholds)
+- Activity metrics section with time navigation
+- Archive history section
+- Inference metrics summary
+- SSE real-time updates for expanded sections
+
+**Key Requirements:**
+
+- Must display expandable/collapsible accordion tree
+- Must lazy-load data only when section expanded
+- Must cache fetched data client-side
+- Must highlight frustration scores at or above thresholds
+- Must display activity metrics with day/week/month toggle
+- Must provide period navigation (back/forward)
+- Must list archived artifacts with view action
+- Must show inference metrics summary (calls, tokens, cost)
+- Must update via SSE without disrupting accordion state
+
+**OpenSpec Spec:** `openspec/specs/project-show-tree/spec.md`
+
+**Related Files:**
+
+- `templates/project_show.html` (update — add accordion, metrics, archive sections)
+- `templates/partials/_project_accordion.html` (new)
+- `templates/partials/_project_metrics.html` (new)
+- `static/js/project_show.js` (update — accordion logic, lazy loading, SSE)
+- `src/claude_headspace/routes/projects.py` (update — add drill-down endpoints if needed)
+- `src/claude_headspace/routes/agents.py` (update — add tasks endpoint if needed)
+- `src/claude_headspace/routes/tasks.py` (new — add turns endpoint)
+
+**Dependencies:** E5-S2 complete, E4-S3 complete (activity metrics exist)
+
+**Acceptance Tests:**
+
+- Agents accordion shows count badge, expands on click
+- Tasks accordion lazy-loads on expand
+- Turns accordion lazy-loads on expand
+- Frustration scores highlighted correctly
+- Activity metrics display with toggles and navigation
+- Archive history lists items with view action
+- Inference summary shows totals
+- SSE updates expanded sections without disruption
+
+---
+
+## Sprint Dependencies & Critical Path
+
+```
+[Epic 4 Complete]
+       │
+       ▼
+   E5-S1 (Input Bridge) ←── DONE
+       │
+       └──▶ E5-S2 (Project Show Core)
+               │
+               └──▶ E5-S3 (Project Show Tree & Metrics)
+                       │
+                       └──▶ [Epic 5 Complete]
+```
+
+**Critical Path:** Epic 4 → E5-S1 → E5-S2 → E5-S3
+
+**Parallel Tracks:**
+
+- E5-S1 (Input Bridge) is independent of E5-S2/E5-S3 — could technically run in parallel with Epic 4 completion
+- E5-S2 and E5-S3 are sequential (E5-S3 extends the page created in E5-S2)
+
+**Recommended Sequence:**
+
+1. E5-S1 (Input Bridge) — establishes commander service pattern (DONE)
+2. E5-S2 (Project Show Core) — creates the show page foundation
+3. E5-S3 (Project Show Tree & Metrics) — adds data exploration and metrics
+
+**Total Duration:** 3-5 weeks
+
+---
+
+## Technical Decisions Made
+
+### Decision 1: Slug Updates on Rename
+
+**Decision:** When a project name changes, the slug is regenerated to match. The old slug is not preserved as an alias.
+
+**Rationale:**
+
+- Simple implementation (no alias tracking)
+- Slugs always match current name (predictable)
+- Users can re-navigate from projects list
+- Alias management adds complexity with minimal benefit for single-user tool
+
+**Impact:**
+
+- Bookmarked URLs break on project rename
+- Users must navigate via projects list after rename
+- No redirect from old slug to new slug
+
+---
+
+### Decision 2: Accordion Lazy Loading
+
+**Decision:** Accordion sections fetch data from the API only when expanded, not on page load.
+
+**Rationale:**
+
+- Fast initial page load (no agent/task/turn data fetched)
+- Only load what user actually wants to see
+- Supports projects with many agents/tasks without performance hit
+- Client-side caching prevents redundant fetches
+
+**Impact:**
+
+- Brief loading indicator on first expand
+- Need API endpoints for drill-down data
+- SSE events must invalidate cached data
+
+---
+
+### Decision 3: Reuse Activity Page Patterns
+
+**Decision:** Activity metrics on the project show page reuse the same JavaScript patterns from the `/activity` page.
+
+**Rationale:**
+
+- Consistent UX (same toggles, navigation, chart style)
+- Reduced maintenance burden (shared code)
+- Proven patterns that already work
+- Chart.js already in use
+
+**Impact:**
+
+- May need to extract shared charting logic into reusable module
+- Both pages must stay in sync on UI changes
+
+---
+
+### Decision 4: Commander Socket Protocol
+
+**Decision:** Use the claude-commander socket protocol (JSON over Unix domain socket) as-is.
+
+**Rationale:**
+
+- Simple protocol (~200 lines of Rust)
+- Already working and released (v0.1.0)
+- Can fork/replace if project abandoned
+- Anthropic may add native IPC (easy to swap)
+
+**Impact:**
+
+- Dependency on external binary
+- Socket path convention must match
+- Protocol changes require service update
+
+---
+
+### Decision 5: Frustration Score Thresholds
+
+**Decision:** Use configurable thresholds for frustration highlighting (default: yellow >= 4, red >= 7).
+
+**Rationale:**
+
+- Matches headspace monitoring thresholds from E4-S4
+- Configurable allows user personalization
+- Visual consistency across dashboard and project show
+
+**Impact:**
+
+- Read thresholds from config at render time
+- CSS classes for yellow/red highlighting
+- Threshold changes update immediately
+
+---
+
+## Open Questions
+
+### 1. Voice Bridge Integration Points
+
+**Question:** Where should Phase 2 (Voice Capture) integrate with the Input Bridge architecture?
+
+**Options:**
+
+- **Option A:** Voice transcription feeds directly into commander service
+- **Option B:** Voice transcription goes through a separate voice service, then to commander
+- **Option C:** Voice transcription creates a new input type alongside text
+
+**Recommendation:** Option A — voice transcription feeds into the same commander service, keeping the architecture simple.
+
+**Decision needed by:** Future Voice Bridge Phase 2 planning
+
+---
+
+### 2. Project Show Page Caching Strategy
+
+**Question:** How long should accordion data be cached client-side?
+
+**Options:**
+
+- **Option A:** Cache forever until SSE invalidates
+- **Option B:** Cache with TTL (e.g., 5 minutes)
+- **Option C:** No caching, always re-fetch on expand
+
+**Recommendation:** Option A — cache until SSE invalidates. SSE provides real-time invalidation, so no TTL needed.
+
+**Decision needed by:** E5-S3 implementation
+
+---
+
+### 3. Large Project Performance
+
+**Question:** How should the accordion handle projects with many agents (>50)?
+
+**Options:**
+
+- **Option A:** Show all agents, let user scroll
+- **Option B:** Paginate agents (show first 20, "load more" button)
+- **Option C:** Virtual scrolling (only render visible items)
+
+**Recommendation:** Option B — pagination with "load more" is simpler than virtual scrolling and handles large projects gracefully.
+
+**Decision needed by:** E5-S3 implementation
+
+---
+
+## Risks & Mitigation
+
+### Risk 1: Slug Collisions
+
+**Risk:** Two projects could generate the same slug (e.g., "My Project" and "my-project").
+
+**Impact:** Low (unique constraint prevents data corruption)
+
+**Mitigation:**
+
+- Unique constraint on slug column
+- Slug generation appends numeric suffix on collision (e.g., `my-project-2`)
+- Collision handling tested in migration for existing data
+
+**Monitoring:** Track slug collision occurrences in logs
+
+---
+
+### Risk 2: claude-commander Dependency
+
+**Risk:** claude-commander is a new project (v0.1.0, single developer). It could be abandoned or have breaking changes.
+
+**Impact:** Medium (Input Bridge would stop working)
+
+**Mitigation:**
+
+- Simple protocol (~200 lines of Rust) — easy to fork/reimplement
+- Socket protocol is stable (JSON over Unix socket)
+- If Anthropic adds native IPC, can swap to that
+- Commander service is isolated — changes don't affect rest of system
+
+**Monitoring:** Track claude-commander releases, test with new versions
+
+---
+
+### Risk 3: Deep Accordion Nesting Performance
+
+**Risk:** A project with many agents, each with many tasks and turns, could create a very large DOM when fully expanded.
+
+**Impact:** Medium (UI slowdown, browser memory issues)
+
+**Mitigation:**
+
+- Lazy loading ensures only expanded sections are in DOM
+- Pagination for agents/tasks with high counts (>50)
+- Collapsing parent removes children from DOM
+- Consider virtual scrolling if pagination insufficient
+
+**Monitoring:** Track page performance metrics, DOM node counts
+
+---
+
+### Risk 4: SSE Event Volume
+
+**Risk:** A highly active project could generate many SSE events, causing frequent DOM updates while user is reading.
+
+**Impact:** Low (distracting, but not breaking)
+
+**Mitigation:**
+
+- Debounce accordion updates (batch every 2 seconds)
+- Only update sections that are currently expanded
+- SSE filter by project_id reduces irrelevant events
+
+**Monitoring:** Track SSE event frequency per project
+
+---
+
+### Risk 5: Bookmarked URLs Breaking
+
+**Risk:** Users bookmark project show URLs, then rename the project. The old URL returns 404.
+
+**Impact:** Low (single-user tool, easy to re-navigate)
+
+**Mitigation:**
+
+- Accepted trade-off per workshop decision
+- Users can navigate from projects list
+- Could add redirect table in future if needed
+
+**Monitoring:** Track 404 responses for `/projects/<slug>` pattern
+
+---
+
+## Success Metrics
+
+From Epic 5 Acceptance Criteria:
+
+### Test Case 1: Input Bridge
+
+**Setup:** Agent in AWAITING_INPUT state with permission question, commander socket available.
+
+**Success:**
+
+- ✅ Quick-action buttons appear for numbered options
+- ✅ Click quick-action button → response sent
+- ✅ Free-text input available
+- ✅ Send free-text → response sent
+- ✅ Visual feedback on success
+- ✅ Error message on failure
+- ✅ Turn record created for response
+- ✅ State transitions to PROCESSING
+- ✅ No commander socket → input widget hidden
+
+---
+
+### Test Case 2: Project Show Core
+
+**Setup:** Existing project with waypoint, brain reboot, and progress summary.
+
+**Success:**
+
+- ✅ Navigate to `/projects/<slug>` → see full project detail
+- ✅ Metadata displayed: name, path, GitHub (linked), branch, description, created
+- ✅ Inference status shows active or paused
+- ✅ Edit opens form, saves changes, updates display
+- ✅ Delete shows confirmation, deletes, redirects
+- ✅ Pause/Resume toggles immediately
+- ✅ Regenerate Description updates field
+- ✅ Refetch GitHub Info updates repo/branch
+- ✅ Waypoint section shows markdown
+- ✅ Brain reboot shows with timestamp and time-ago
+- ✅ Brain reboot Regenerate and Export work
+- ✅ Progress summary shows with Regenerate
+- ✅ Projects list: names are links
+- ✅ Projects list: no action buttons
+
+---
+
+### Test Case 3: Project Show Tree & Metrics
+
+**Setup:** Project with multiple agents, tasks, turns, and activity history.
+
+**Success:**
+
+- ✅ Agents accordion collapsed by default with count badge
+- ✅ Expand Agents → fetches and shows all agents
+- ✅ Agent rows show state, ID, score, timing
+- ✅ Ended agents visually distinguished
+- ✅ Click agent → Tasks expand (lazy loaded)
+- ✅ Task rows show state, instruction, summary, timing, turns
+- ✅ Click task → Turns expand (lazy loaded)
+- ✅ Turn rows show actor, intent, summary, frustration
+- ✅ Frustration >= 4 highlighted yellow
+- ✅ Frustration >= 7 highlighted red
+- ✅ Loading indicator during fetch
+- ✅ Error state with retry on failure
+- ✅ Activity metrics show with week default
+- ✅ Day/week/month toggle works
+- ✅ Period navigation works
+- ✅ Summary cards show correct data
+- ✅ Time-series chart displays
+- ✅ Archive history lists items
+- ✅ Inference summary shows totals
+- ✅ SSE updates expanded sections
+
+---
+
+### Test Case 4: End-to-End Epic 5 Flow
+
+**Setup:** Fresh Epic 5 deployment with Epic 4 complete.
+
+**Success:**
+
+- ✅ Start Claude Code session → agent appears on dashboard
+- ✅ Agent asks permission question → amber card, input widget appears
+- ✅ Click quick-action button → response sent, agent resumes
+- ✅ Navigate to projects list → click project name
+- ✅ Project show page displays with all sections
+- ✅ Expand Agents accordion → see agents with details
+- ✅ Drill into tasks and turns → see full hierarchy
+- ✅ Frustration scores highlighted appropriately
+- ✅ Activity metrics show project-specific data
+- ✅ Archive history shows previous versions
+- ✅ Edit project name → slug updates, page URL changes
+- ✅ SSE events update page in real-time
+
+---
+
+## Recommended PRD Generation Order
+
+All 3 PRDs have been generated. Implementation order:
+
+### Phase 1: Input Bridge — DONE
+
+1. **input-bridge** (`docs/prds/bridge/done/e5-s1-input-bridge-prd.md`) — Commander service, response endpoint, dashboard input UI
+
+**Rationale:** Enables dashboard response capability, establishes commander service pattern.
+
+---
+
+### Phase 2: Project Show Core
+
+2. **project-show-core** (`docs/prds/ui/e5-s2-project-show-core-prd.md`) — Slug routing, show page template, metadata display, control actions
+
+**Rationale:** Creates the project show page foundation that E5-S3 extends.
+
+---
+
+### Phase 3: Project Show Tree & Metrics
+
+3. **project-show-tree** (`docs/prds/ui/e5-s3-project-show-tree-and-metrics-prd.md`) — Accordion tree, lazy loading, activity metrics, archive history, SSE updates
+
+**Rationale:** Capstone feature, builds on show page foundation, integrates activity metrics.
+
+---
+
+## Future Roadmap (Voice Bridge Phases 2-3)
+
+Epic 5 Sprint 1 (Input Bridge) is Phase 1 of the Voice Bridge vision. Future phases are out of scope for Epic 5 but documented here for planning:
+
+### Phase 2: Voice Capture (Future)
+
+- Web Speech API integration for voice-to-text
+- Voice transcription feeds into commander service
+- "Push to talk" or voice activity detection modes
+- Dashboard microphone button/indicator
+
+### Phase 3: Voice Output (Future)
+
+- Text-to-speech for agent responses
+- Summarisation service generates spoken summaries
+- Hands-free monitoring loop
+- Audio output for notifications/alerts
+
+**Reference:** See `docs/ideas/VOICE_BRIDGE_OUTLINE_PROMPT.md` for the original Voice Bridge vision.
+
+---
+
+## Document History
+
+| Version | Date       | Author          | Changes                                         |
+| ------- | ---------- | --------------- | ----------------------------------------------- |
+| 1.0     | 2026-02-04 | PM Agent (John) | Initial detailed roadmap for Epic 5 (3 sprints) |
+
+---
+
+**End of Epic 5 Detailed Roadmap**

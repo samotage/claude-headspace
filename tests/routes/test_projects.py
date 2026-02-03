@@ -38,6 +38,7 @@ def mock_project():
     project = MagicMock()
     project.id = 1
     project.name = "test-project"
+    project.slug = "test-project"
     project.path = "/path/to/project"
     project.github_repo = "https://github.com/test/repo"
     project.description = "A test project"
@@ -141,6 +142,7 @@ class TestCreateProject:
             mock_project = MagicMock()
             mock_project.id = 1
             mock_project.name = "new-project"
+            mock_project.slug = "new-project"
             mock_project.path = "/path/to/new"
             mock_project.github_repo = None
             mock_project.description = None
@@ -179,6 +181,7 @@ class TestCreateProject:
             mock_project = MagicMock()
             mock_project.id = 1
             mock_project.name = "project"
+            mock_project.slug = "project"
             mock_project.path = "/path"
             mock_project.github_repo = "https://github.com/test/repo"
             mock_project.description = "A description"
@@ -248,9 +251,10 @@ class TestUpdateProject:
         """Test successful project update."""
         mock_db.session.get.return_value = mock_project
 
-        response = client.put("/api/projects/1", json={"name": "updated-name"})
-        assert response.status_code == 200
-        assert mock_project.name == "updated-name"
+        with patch("src.claude_headspace.routes.projects._unique_slug", return_value="updated-name"):
+            response = client.put("/api/projects/1", json={"name": "updated-name"})
+            assert response.status_code == 200
+            assert mock_project.name == "updated-name"
 
     def test_path_conflict_returns_409(self, client, mock_db, mock_project):
         """Test updating path to conflicting value returns 409."""
@@ -521,6 +525,7 @@ class TestSSEBroadcasting:
             mock_project = MagicMock()
             mock_project.id = 1
             mock_project.name = "test"
+            mock_project.slug = "test"
             mock_project.path = "/test"
             mock_project.github_repo = None
             mock_project.description = None
