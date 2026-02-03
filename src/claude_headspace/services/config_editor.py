@@ -153,7 +153,7 @@ CONFIG_SCHEMA = [
         fields=[
             FieldSchema("enabled", "boolean", "Enable activity metrics aggregation", default=True),
             FieldSchema("interval_seconds", "integer", "Seconds between aggregation passes", min_value=10, max_value=3600, default=300),
-            FieldSchema("retention_days", "integer", "Days to retain metric records before pruning", min_value=1, max_value=365, default=30),
+            FieldSchema("retention_days", "integer", "Days to retain metric records before pruning", min_value=1, max_value=3650, default=30),
         ],
     ),
     SectionSchema(
