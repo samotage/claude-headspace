@@ -132,6 +132,103 @@
                 <p class="text-muted italic">Loading...</p>
             </div>
         </section>
+
+        <!-- Agents Accordion Tree -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <div id="agents-accordion-header" class="flex items-center gap-2 cursor-pointer select-none" onclick="ProjectShow.toggleAgentsAccordion()">
+                <span id="agents-accordion-arrow" class="text-muted text-xs transition-transform duration-150">&#9654;</span>
+                <h2 class="text-lg font-bold text-primary">Agents</h2>
+                <span id="agents-count-badge" class="text-xs text-muted bg-surface px-2 py-0.5 rounded-full"></span>
+            </div>
+            <div id="agents-accordion-body" class="accordion-body mt-4" style="display: none;">
+                <div id="agents-list" class="space-y-2">
+                    <p class="text-muted italic text-sm">Loading...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity Metrics Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <h2 class="text-lg font-bold text-primary mb-4">Activity Metrics</h2>
+
+            <!-- Window toggles + Period navigation -->
+            <div class="flex items-center justify-between mb-4">
+                <div id="ps-window-toggles" class="flex gap-1">
+                    <button type="button" data-window="day" onclick="ProjectShow.setMetricsWindow('day')"
+                            class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors">Day</button>
+                    <button type="button" data-window="week" onclick="ProjectShow.setMetricsWindow('week')"
+                            class="px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium">Week</button>
+                    <button type="button" data-window="month" onclick="ProjectShow.setMetricsWindow('month')"
+                            class="px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors">Month</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="ps-nav-back" onclick="ProjectShow.metricsGoBack()"
+                            class="w-7 h-7 flex items-center justify-center rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors text-sm">&lt;</button>
+                    <span id="ps-period-title" class="text-sm text-secondary min-w-[100px] text-center">This Week</span>
+                    <button type="button" id="ps-nav-forward" onclick="ProjectShow.metricsGoForward()"
+                            class="w-7 h-7 flex items-center justify-center rounded border border-border text-muted cursor-not-allowed text-sm" disabled>&gt;</button>
+                </div>
+            </div>
+
+            <!-- Summary cards -->
+            <div id="ps-metrics-cards" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div class="metric-card-sm">
+                    <div id="ps-turn-count" class="metric-card-value text-cyan">--</div>
+                    <div class="metric-card-label">Turns</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="ps-avg-time" class="metric-card-value text-amber">--</div>
+                    <div class="metric-card-label">Avg Turn Time</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="ps-active-agents" class="metric-card-value text-green">--</div>
+                    <div class="metric-card-label">Active Agents</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="ps-frustration-count" class="metric-card-value text-muted">--</div>
+                    <div class="metric-card-label">Frustration Turns</div>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="relative" style="height: 250px;">
+                <canvas id="ps-activity-chart"></canvas>
+                <div id="ps-chart-empty" class="hidden absolute inset-0 flex items-center justify-center">
+                    <p class="text-muted text-sm italic">No activity data for this period.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Archive History Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <h2 class="text-lg font-bold text-primary mb-4">Archive History</h2>
+            <div id="archive-list">
+                <p class="text-muted italic text-sm">Loading...</p>
+            </div>
+        </section>
+
+        <!-- Inference Usage Section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <h2 class="text-lg font-bold text-primary mb-4">Inference Usage</h2>
+            <div id="inference-summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="metric-card-sm">
+                    <div id="inf-total-calls" class="metric-card-value text-cyan">--</div>
+                    <div class="metric-card-label">Total Calls</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="inf-total-tokens" class="metric-card-value text-blue">--</div>
+                    <div class="metric-card-label">Total Tokens</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="inf-input-tokens" class="metric-card-value text-secondary">--</div>
+                    <div class="metric-card-label">Input Tokens</div>
+                </div>
+                <div class="metric-card-sm">
+                    <div id="inf-total-cost" class="metric-card-value text-amber">--</div>
+                    <div class="metric-card-label">Total Cost</div>
+                </div>
+            </div>
+        </section>
     </main>
 </div>
 

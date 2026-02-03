@@ -5,9 +5,14 @@ import os
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
+from sqlalchemy import func
 
 from ..database import db
+from ..models.agent import Agent
+from ..models.inference_call import InferenceCall
 from ..models.project import Project, generate_slug
+from ..models.task import Task
+from ..models.turn import Turn
 
 logger = logging.getLogger(__name__)
 
@@ -472,3 +477,108 @@ def detect_metadata(project_id: int):
     except Exception:
         logger.exception("Failed to detect metadata for project %s", project_id)
         return jsonify({"error": "Failed to detect metadata"}), 500
+
+
+# --- Drill-down endpoints ---
+
+
+@projects_bp.route("/api/agents/<int:agent_id>/tasks", methods=["GET"])
+def get_agent_tasks(agent_id: int):
+    """Get all tasks for a specific agent."""
+    try:
+        agent = db.session.get(Agent, agent_id)
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+
+        tasks = (
+            db.session.query(Task)
+            .filter(Task.agent_id == agent_id)
+            .order_by(Task.started_at.desc())
+            .all()
+        )
+
+        result = []
+        for t in tasks:
+            turn_count = db.session.query(func.count(Turn.id)).filter(Turn.task_id == t.id).scalar()
+            result.append({
+                "id": t.id,
+                "state": t.state.value if hasattr(t.state, "value") else str(t.state),
+                "instruction": t.instruction,
+                "completion_summary": t.completion_summary,
+                "started_at": t.started_at.isoformat() if t.started_at else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+                "turn_count": turn_count,
+            })
+
+        return jsonify(result), 200
+
+    except Exception:
+        logger.exception("Failed to get tasks for agent %s", agent_id)
+        return jsonify({"error": "Failed to get agent tasks"}), 500
+
+
+@projects_bp.route("/api/tasks/<int:task_id>/turns", methods=["GET"])
+def get_task_turns(task_id: int):
+    """Get all turns for a specific task."""
+    try:
+        task = db.session.get(Task, task_id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        turns = (
+            db.session.query(Turn)
+            .filter(Turn.task_id == task_id)
+            .order_by(Turn.timestamp.asc())
+            .all()
+        )
+
+        result = []
+        for turn in turns:
+            result.append({
+                "id": turn.id,
+                "actor": turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor),
+                "intent": turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent),
+                "summary": turn.summary,
+                "frustration_score": turn.frustration_score,
+                "created_at": turn.timestamp.isoformat() if turn.timestamp else None,
+            })
+
+        return jsonify(result), 200
+
+    except Exception:
+        logger.exception("Failed to get turns for task %s", task_id)
+        return jsonify({"error": "Failed to get task turns"}), 500
+
+
+@projects_bp.route("/api/projects/<int:project_id>/inference-summary", methods=["GET"])
+def get_project_inference_summary(project_id: int):
+    """Get aggregate inference metrics for a project."""
+    try:
+        project = db.session.get(Project, project_id)
+        if not project:
+            return jsonify({"error": "Project not found"}), 404
+
+        # Aggregate inference calls scoped to this project
+        # Join through agents that belong to this project
+        row = (
+            db.session.query(
+                func.count(InferenceCall.id).label("total_calls"),
+                func.coalesce(func.sum(InferenceCall.input_tokens), 0).label("total_input_tokens"),
+                func.coalesce(func.sum(InferenceCall.output_tokens), 0).label("total_output_tokens"),
+                func.coalesce(func.sum(InferenceCall.cost), 0).label("total_cost"),
+            )
+            .filter(InferenceCall.project_id == project_id)
+            .one()
+        )
+
+        return jsonify({
+            "project_id": project_id,
+            "total_calls": row.total_calls,
+            "total_input_tokens": row.total_input_tokens,
+            "total_output_tokens": row.total_output_tokens,
+            "total_cost": float(row.total_cost) if row.total_cost else 0.0,
+        }), 200
+
+    except Exception:
+        logger.exception("Failed to get inference summary for project %s", project_id)
+        return jsonify({"error": "Failed to get inference summary"}), 500

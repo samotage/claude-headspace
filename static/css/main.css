@@ -831,8 +831,16 @@ select.form-well {
   margin-left: 1rem;
 }
 
+.ml-6 {
+  margin-left: 1.5rem;
+}
+
 .ml-\[42px\] {
   margin-left: 42px;
+}
+
+.ml-auto {
+  margin-left: auto;
 }
 
 .mr-2 {
@@ -998,6 +1006,10 @@ select.form-well {
   min-width: 0px;
 }
 
+.min-w-\[100px\] {
+  min-width: 100px;
+}
+
 .min-w-\[140px\] {
   min-width: 140px;
 }
@@ -1100,6 +1112,12 @@ select.form-well {
   cursor: pointer;
 }
 
+.select-none {
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+}
+
 .resize-none {
   resize: none;
 }
@@ -1184,10 +1202,13 @@ select.form-well {
   gap: 1.5rem;
 }
 
-.space-x-2 > :not([hidden]) ~ :not([hidden]) {
-  --tw-space-x-reverse: 0;
-  margin-right: calc(0.5rem * var(--tw-space-x-reverse));
-  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));
+.gap-x-6 {
+  -moz-column-gap: 1.5rem;
+       column-gap: 1.5rem;
+}
+
+.gap-y-1 {
+  row-gap: 0.25rem;
 }
 
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
@@ -1353,6 +1374,10 @@ select.form-well {
   background-color: rgb(224 176 115 / 0.1);
 }
 
+.bg-amber\/15 {
+  background-color: rgb(224 176 115 / 0.15);
+}
+
 .bg-amber\/20 {
   background-color: rgb(224 176 115 / 0.2);
 }
@@ -1374,6 +1399,10 @@ select.form-well {
   background-color: rgb(115 153 224 / var(--tw-bg-opacity, 1));
 }
 
+.bg-blue\/15 {
+  background-color: rgb(115 153 224 / 0.15);
+}
+
 .bg-blue\/20 {
   background-color: rgb(115 153 224 / 0.2);
 }
@@ -1381,6 +1410,10 @@ select.form-well {
 .bg-cyan {
   --tw-bg-opacity: 1;
   background-color: rgb(86 212 221 / var(--tw-bg-opacity, 1));
+}
+
+.bg-cyan\/10 {
+  background-color: rgb(86 212 221 / 0.1);
 }
 
 .bg-cyan\/20 {
@@ -1404,6 +1437,10 @@ select.form-well {
 .bg-green {
   --tw-bg-opacity: 1;
   background-color: rgb(115 224 160 / var(--tw-bg-opacity, 1));
+}
+
+.bg-green\/15 {
+  background-color: rgb(115 224 160 / 0.15);
 }
 
 .bg-green\/20 {
@@ -1526,6 +1563,11 @@ select.form-well {
   padding-bottom: 3rem;
 }
 
+.py-16 {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}
+
 .py-2 {
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
@@ -1595,10 +1637,6 @@ select.form-well {
   text-align: center;
 }
 
-.text-right {
-  text-align: right;
-}
-
 .font-display {
   font-family: Orbitron, SF Mono, monospace;
 }
@@ -1610,6 +1648,11 @@ select.form-well {
 .text-2xl {
   font-size: 1.5rem;
   line-height: 2rem;
+}
+
+.text-4xl {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
 }
 
 .text-6xl {
@@ -1813,6 +1856,10 @@ select.form-well {
 .transition-transform {
   transition-property: transform;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.duration-150 {
   transition-duration: 150ms;
 }
 
@@ -2515,6 +2562,39 @@ body::after {
   }
 }
 
+/* Accordion transitions — project show tree */
+
+.accordion-body {
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+
+.accordion-body.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+}
+
+.accordion-arrow {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  font-size: 0.625rem;
+}
+
+.accordion-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* Nested accordion indentation */
+
+.accordion-nested-1 {
+  padding-left: 1.25rem;
+}
+
+.accordion-nested-2 {
+  padding-left: 2.5rem;
+}
+
 /* iOS smooth scrolling for overflow containers */
 
 .overflow-x-auto,
@@ -2537,6 +2617,11 @@ body::after {
   border-color: rgb(224 176 115 / var(--tw-border-opacity, 1));
 }
 
+.hover\:border-border:hover {
+  --tw-border-opacity: 1;
+  border-color: rgb(37 37 48 / var(--tw-border-opacity, 1));
+}
+
 .hover\:border-border-bright:hover {
   --tw-border-opacity: 1;
   border-color: rgb(54 54 68 / var(--tw-border-opacity, 1));
@@ -2554,6 +2639,10 @@ body::after {
 .hover\:border-red:hover {
   --tw-border-opacity: 1;
   border-color: rgb(224 115 115 / var(--tw-border-opacity, 1));
+}
+
+.hover\:bg-amber\/10:hover {
+  background-color: rgb(224 176 115 / 0.1);
 }
 
 .hover\:bg-amber\/20:hover {
@@ -2609,16 +2698,6 @@ body::after {
   background-color: rgb(224 115 115 / 0.9);
 }
 
-.hover\:text-amber:hover {
-  --tw-text-opacity: 1;
-  color: rgb(224 176 115 / var(--tw-text-opacity, 1));
-}
-
-.hover\:text-green:hover {
-  --tw-text-opacity: 1;
-  color: rgb(115 224 160 / var(--tw-text-opacity, 1));
-}
-
 .hover\:text-primary:hover {
   --tw-text-opacity: 1;
   color: rgb(232 232 237 / var(--tw-text-opacity, 1));
@@ -2665,6 +2744,10 @@ body::after {
 
   .sm\:flex-initial {
     flex: 0 1 auto;
+  }
+
+  .sm\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .sm\:grid-cols-5 {
