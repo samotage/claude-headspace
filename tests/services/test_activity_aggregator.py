@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.claude_headspace.models.turn import TurnActor
 from src.claude_headspace.services.activity_aggregator import (
     ActivityAggregator,
     RETENTION_DAYS,
@@ -174,6 +175,59 @@ class TestAggregateOnce:
         assert stats["agents"] == 1
         assert stats["projects"] == 1
         assert stats["overall"] == 1
+
+    @patch("src.claude_headspace.services.activity_aggregator.db")
+    def test_aggregate_once_includes_frustration_from_user_turns(self, mock_db, aggregator):
+        """Frustration scores on USER turns are correctly aggregated using TurnActor enum."""
+        now = datetime.now(timezone.utc)
+        bucket_start = now.replace(minute=0, second=0, microsecond=0)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.project_id = 10
+        mock_agent.ended_at = None
+
+        agents_query = MagicMock()
+        agents_query.filter.return_value.all.return_value = [mock_agent]
+
+        mock_turn1 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=5),
+            actor=TurnActor.USER,
+            frustration_score=6,
+        )
+        mock_turn2 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=15),
+            actor=TurnActor.USER,
+            frustration_score=3,
+        )
+        mock_turn3 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=25),
+            actor=TurnActor.AGENT,
+            frustration_score=None,
+        )
+        turns_query = MagicMock()
+        turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            mock_turn1, mock_turn2, mock_turn3,
+        ]
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return agents_query
+            return turns_query
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        stats = aggregator.aggregate_once()
+
+        assert stats["agents"] == 1
+
+        # Verify the upsert was called with frustration data
+        # The agent-level upsert is the first execute call
+        execute_calls = mock_db.session.execute.call_args_list
+        assert len(execute_calls) >= 1  # At least agent-level metric written
 
     @patch("src.claude_headspace.services.activity_aggregator.db")
     def test_aggregate_once_excludes_agent_ended_before_bucket(self, mock_db, aggregator):

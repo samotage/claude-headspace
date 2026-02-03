@@ -15,7 +15,7 @@ from flask import Flask
 from ..database import db
 from ..models.activity_metric import ActivityMetric
 from ..models.agent import Agent
-from ..models.turn import Turn
+from ..models.turn import Turn, TurnActor
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ class ActivityAggregator:
                 # Compute total frustration from USER turns
                 user_frustration_turns = [
                     t for t in turns
-                    if t.actor == "USER" and t.frustration_score is not None
+                    if t.actor == TurnActor.USER and t.frustration_score is not None
                 ]
                 frustration_sum = sum(t.frustration_score for t in user_frustration_turns)
                 total_frustration = frustration_sum if frustration_sum > 0 else None
