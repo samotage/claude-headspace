@@ -13,8 +13,8 @@
            class="tab-link {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}"
            {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>dashboard</a>
         <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
-           class="tab-link {% if request.endpoint == 'projects.projects_page' %}active{% endif %}"
-           {% if request.endpoint == 'projects.projects_page' %}aria-current="page"{% endif %}>projects</a>
+           class="tab-link {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}"
+           {% if request.endpoint and request.endpoint.startswith('projects.') %}aria-current="page"{% endif %}>projects</a>
         <a href="{{ url_for('activity.activity_page') }}" data-nav-key="activity"
            class="tab-link {% if request.endpoint == 'activity.activity_page' %}active{% endif %}"
            {% if request.endpoint == 'activity.activity_page' %}aria-current="page"{% endif %}>activity</a>
@@ -53,7 +53,7 @@
             <span>dashboard</span>
         </a>
         <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
-           class="mobile-menu-item {% if request.endpoint == 'projects.projects_page' %}active{% endif %}">
+           class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}">
             <span class="mobile-menu-icon">&#9783;</span>
             <span>projects</span>
         </a>

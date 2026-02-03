@@ -10,7 +10,7 @@ var brainRebootState = {
     isOpen: false
 };
 
-function openBrainReboot(projectId, projectName) {
+function openBrainReboot(projectId, projectName, projectSlug) {
     brainRebootState.projectId = projectId;
     brainRebootState.projectName = projectName || 'Project';
     brainRebootState.content = null;
@@ -24,6 +24,17 @@ function openBrainReboot(projectId, projectName) {
     var subtitle = document.getElementById('brain-reboot-subtitle');
     if (subtitle) {
         subtitle.textContent = projectName || '';
+    }
+
+    // Update project show page link
+    var projectLink = document.getElementById('brain-reboot-project-link');
+    if (projectLink) {
+        if (projectSlug) {
+            projectLink.href = '/projects/' + projectSlug;
+            projectLink.classList.remove('hidden');
+        } else {
+            projectLink.classList.add('hidden');
+        }
     }
 
     // Show slider

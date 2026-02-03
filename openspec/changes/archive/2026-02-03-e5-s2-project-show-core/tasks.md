@@ -8,20 +8,20 @@
 
 ### Model & Migration
 
-- [ ] 2.1 Add `slug` field to Project model with unique constraint, non-nullable, indexed
-- [ ] 2.2 Add `generate_slug()` utility function (lowercase, hyphens, collapse, strip, collision handling)
-- [ ] 2.3 Add slug auto-generation on project creation (hook into model or route)
-- [ ] 2.4 Add slug regeneration on project name update
-- [ ] 2.5 Create Alembic migration: add slug column, backfill existing rows from name, add unique constraint
+- [x] 2.1 Add `slug` field to Project model with unique constraint, non-nullable, indexed
+- [x] 2.2 Add `generate_slug()` utility function (lowercase, hyphens, collapse, strip, collision handling)
+- [x] 2.3 Add slug auto-generation on project creation (hook into model or route)
+- [x] 2.4 Add slug regeneration on project name update
+- [x] 2.5 Create Alembic migration: add slug column, backfill existing rows from name, add unique constraint
 
 ### Show Page Route
 
-- [ ] 2.6 Add `GET /projects/<slug>` route to projects blueprint (resolve slug to project, render template)
-- [ ] 2.7 Return 404 for non-existent slugs
+- [x] 2.6 Add `GET /projects/<slug>` route to projects blueprint (resolve slug to project, render template)
+- [x] 2.7 Return 404 for non-existent slugs
 
 ### Show Page Template & JavaScript
 
-- [ ] 2.8 Create `templates/project_show.html` extending base template with:
+- [x] 2.8 Create `templates/project_show.html` extending base template with:
   - Back to Projects link
   - Project metadata section (name, path, GitHub repo linked, branch, description, created date)
   - Inference status display (active/paused with timestamp and reason)
@@ -29,7 +29,7 @@
   - Waypoint section (rendered markdown, empty state, edit link)
   - Brain reboot section (rendered markdown, date + time-ago, empty state, Regenerate + Export buttons)
   - Progress summary section (rendered markdown, empty state, Regenerate button)
-- [ ] 2.9 Create `static/js/project_show.js` with:
+- [x] 2.9 Create `static/js/project_show.js` with:
   - Load project metadata via `GET /api/projects/<id>`
   - Load waypoint via `GET /api/projects/<id>/waypoint`
   - Load brain reboot via `GET /api/projects/<id>/brain-reboot`
@@ -46,27 +46,27 @@
 
 ### Projects List Changes
 
-- [ ] 2.10 Update `templates/projects.html`: make project names clickable links to `/projects/<slug>`
-- [ ] 2.11 Update `templates/projects.html`: remove Edit, Delete, Pause/Resume action buttons from list rows
-- [ ] 2.12 Update `static/js/projects.js`: render project names as links, remove action handler code for inline buttons
+- [x] 2.10 Update `templates/projects.html`: make project names clickable links to `/projects/<slug>`
+- [x] 2.11 Update `templates/projects.html`: remove Edit, Delete, Pause/Resume action buttons from list rows
+- [x] 2.12 Update `static/js/projects.js`: render project names as links, remove action handler code for inline buttons
 
 ### Brain Reboot Modal Link
 
-- [ ] 2.13 Update `templates/partials/_brain_reboot_modal.html`: add link to project show page `/projects/<slug>`
+- [x] 2.13 Update `templates/partials/_brain_reboot_modal.html`: add link to project show page `/projects/<slug>`
 
 ## 3. Testing (Phase 3)
 
-- [ ] 3.1 Create `tests/routes/test_project_show.py` with route tests:
+- [x] 3.1 Create `tests/routes/test_project_show.py` with route tests:
   - GET `/projects/<slug>` returns 200 with valid slug
   - GET `/projects/<slug>` returns 404 with invalid slug
   - Slug auto-generation on project creation
   - Slug regeneration on project name update
   - Slug collision handling (numeric suffix)
-- [ ] 3.2 Update existing project route tests if affected by slug changes
-- [ ] 3.3 Run targeted tests: `pytest tests/routes/test_project_show.py tests/routes/test_projects.py`
+- [x] 3.2 Update existing project route tests if affected by slug changes
+- [x] 3.3 Run targeted tests: `pytest tests/routes/test_project_show.py tests/routes/test_projects.py`
 
 ## 4. Final Verification
 
-- [ ] 4.1 All tests passing
+- [x] 4.1 All tests passing
 - [ ] 4.2 No linter errors
 - [ ] 4.3 Manual verification complete

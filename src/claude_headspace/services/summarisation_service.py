@@ -37,13 +37,19 @@ class SummarisationService:
 
     @staticmethod
     def _clean_response(text: str) -> str:
-        """Strip common LLM preamble from summary responses.
+        """Strip common LLM preamble and markdown fences from summary responses.
 
         Models sometimes echo back the prompt structure, e.g.
         "Here's a concise 18-token summary: <actual summary>".
-        This method strips such preamble and returns the actual content.
+        Some models (e.g. Haiku 4.5) also wrap output in markdown code fences.
+        This method strips such artifacts and returns the actual content.
         """
-        cleaned = _PREAMBLE_RE.sub("", text).strip()
+        cleaned = text.strip()
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        fence_match = re.match(r"^```(?:\w+)?\s*\n?(.*?)\n?\s*```$", cleaned, re.DOTALL)
+        if fence_match:
+            cleaned = fence_match.group(1).strip()
+        cleaned = _PREAMBLE_RE.sub("", cleaned).strip()
         return cleaned if cleaned else text
 
     def summarise_turn(self, turn, db_session=None) -> str | None:
@@ -410,11 +416,46 @@ class SummarisationService:
             logger.debug(f"Failed to broadcast summary update (non-fatal): {e}")
 
     @staticmethod
+    def _get_prior_task_context(turn) -> str:
+        """Get context from the previous task for this agent.
+
+        For COMMAND turns that create a new task, the current task has no
+        instruction yet. The user's command may implicitly reference work
+        from the previous task (e.g. "verify" without saying what).
+        This method provides that continuity.
+        """
+        try:
+            task = turn.task if hasattr(turn, "task") else None
+            if not task:
+                return ""
+            agent = getattr(task, "agent", None)
+            if not agent or not hasattr(agent, "tasks"):
+                return ""
+
+            # Find the previous task (the one before the current one)
+            prior_tasks = [
+                t for t in agent.tasks
+                if t.id < task.id and t.instruction
+            ]
+            if not prior_tasks:
+                return ""
+
+            prior = prior_tasks[-1]  # Most recent prior task with an instruction
+            parts = [f"Prior task: {prior.instruction}"]
+            if prior.completion_summary:
+                parts.append(f"Prior outcome: {prior.completion_summary}")
+            return "\n".join(parts) + "\n\n"
+        except Exception:
+            return ""
+
+    @staticmethod
     def _resolve_turn_prompt(turn) -> str:
         """Build an intent-aware summarisation prompt for a turn.
 
         Uses different prompt templates based on the turn's intent,
         and includes the task instruction as context when available.
+        For COMMAND turns without a task instruction, includes prior
+        task context to help the LLM understand implicit references.
         """
         intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
         actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
@@ -425,6 +466,9 @@ class SummarisationService:
             instruction = getattr(turn.task, "instruction", None)
             if instruction:
                 instruction_context = f"Task instruction: {instruction}\n\n"
+            elif intent_value == "command":
+                # COMMAND turns have no instruction yet — use prior task for context
+                instruction_context = SummarisationService._get_prior_task_context(turn)
 
         # Select intent-specific template key
         prompt_type = f"turn_{intent_value}"
@@ -492,12 +536,20 @@ class SummarisationService:
 
     @staticmethod
     def _resolve_frustration_prompt(turn) -> str:
-        """Build the frustration-aware summarisation prompt for a user turn."""
+        """Build the frustration-aware summarisation prompt for a user turn.
+
+        For COMMAND turns where the current task has no instruction yet,
+        includes prior task context to help the LLM understand implicit
+        references in the user's message.
+        """
         instruction_context = ""
         if hasattr(turn, "task") and turn.task:
             instruction = getattr(turn.task, "instruction", None)
             if instruction:
                 instruction_context = f"Task instruction: {instruction}\n\n"
+            else:
+                # No instruction yet — use prior task for context
+                instruction_context = SummarisationService._get_prior_task_context(turn)
 
         return build_prompt(
             "turn_frustration",
@@ -505,26 +557,44 @@ class SummarisationService:
             instruction_context=instruction_context,
         )
 
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> str:
+        """Strip markdown code fences from LLM responses.
+
+        Some models (e.g. Claude Haiku 4.5) wrap JSON output in ```json ... ```
+        even when instructed to return only valid JSON.
+        """
+        stripped = text.strip()
+        # Match ```json or ``` at start and ``` at end
+        fence_re = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
+        m = fence_re.match(stripped)
+        if m:
+            return m.group(1).strip()
+        return stripped
+
     @classmethod
     def _parse_frustration_response(cls, text: str) -> tuple[str, int | None]:
         """Parse a frustration-aware LLM response.
 
         Attempts to parse JSON with summary and frustration_score.
+        Strips markdown code fences before parsing since some models
+        wrap JSON output in ```json ... ``` blocks.
         Falls back to treating the entire response as a plain text summary.
 
         Returns:
             Tuple of (summary, frustration_score). frustration_score is None on parse failure.
         """
+        cleaned_text = cls._strip_markdown_fences(text)
         try:
-            data = json.loads(text)
-            summary = cls._clean_response(str(data.get("summary", text)))
+            data = json.loads(cleaned_text)
+            summary = cls._clean_response(str(data.get("summary", cleaned_text)))
             score = data.get("frustration_score")
             if isinstance(score, (int, float)) and 0 <= score <= 10:
                 return summary, int(score)
             return summary, None
         except (json.JSONDecodeError, ValueError, TypeError):
             # Fallback: treat as plain text summary
-            return cls._clean_response(text), None
+            return cls._clean_response(cleaned_text), None
 
     def _trigger_headspace_recalculation(self, turn) -> None:
         """Trigger headspace monitor recalculation after frustration extraction."""

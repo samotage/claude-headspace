@@ -315,6 +315,7 @@ def dashboard():
             {
                 "id": project.id,
                 "name": project.name,
+                "slug": project.slug,
                 "state_flags": get_project_state_flags(live_agents),
                 "active_count": count_active_agents(live_agents),
                 "agents": agents_data,

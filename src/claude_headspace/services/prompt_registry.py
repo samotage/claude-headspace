@@ -13,7 +13,9 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     "turn_command": (
         "{instruction_context}"
         "User command: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising this command as an instruction. "
+        "Write a single concise sentence (~18 tokens) summarising the core objective of this command. "
+        "Focus on WHAT the user wants to achieve and WHY, not just the tools or actions mentioned. "
+        "If the command references verifying, checking, or confirming something, state what specifically is being verified. "
         "Output ONLY the summary sentence — no preamble, labels, or commentary."
     ),
     "turn_question": (
@@ -109,7 +111,9 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     "turn_frustration": (
         "{instruction_context}"
         "User message: {text}\n\n"
-        "1. Summarise this user turn in 1-2 concise sentences (~18 tokens).\n"
+        "1. Summarise the core objective of this user turn in 1-2 concise sentences (~18 tokens). "
+        "Focus on WHAT the user wants to achieve and WHY, not just the tools or actions mentioned. "
+        "If the message references verifying, checking, or confirming something, use the prior task context to state what specifically is being verified.\n"
         "2. Rate the user's apparent frustration level 0-10:\n"
         "   0-3: Calm, patient, constructive\n"
         "   4-6: Showing some frustration (repetition, mild exasperation)\n"
