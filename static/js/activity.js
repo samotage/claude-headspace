@@ -240,7 +240,9 @@
                                     fetch('/api/projects/' + r.project.id)
                                         .then(function(res) { return res.json(); })
                                         .then(function(detail) {
-                                            var aPromises = (detail.agents || [])
+                                            var activeAgents = (detail.agents || [])
+                                                .filter(function(a) { return !a.ended_at; });
+                                            var aPromises = activeAgents
                                                 .map(function(a) {
                                                     return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
                                                         .then(function(res) { return res.json(); })
@@ -557,19 +559,20 @@
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
 
-                // Agent rows
+                // Agent rows (active only, in accordion)
                 if (r.agents && r.agents.length > 0) {
-                    html += '<div class="space-y-2">';
+                    html += '<details class="activity-agents-accordion">' +
+                        '<summary class="activity-agents-toggle">' +
+                        '<span class="toggle-arrow">&#9654;</span> Active Agents (' + r.agents.length + ')' +
+                        '</summary>';
+                    html += '<div class="space-y-2 mt-2">';
                     r.agents.forEach(function(ad) {
                         var agentHistory = ad.metrics.history || [];
                         var agentLabel = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
                             : 'Agent ' + ad.agent.id;
-                        var endedBadge = ad.agent.ended_at
-                            ? ' <span class="text-muted text-xs">(ended)</span>'
-                            : '';
                         html += '<div class="agent-metric-row">' +
-                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + endedBadge + '</span>';
+                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
@@ -590,7 +593,7 @@
                         }
                         html += '</div>';
                     });
-                    html += '</div>';
+                    html += '</div></details>';
                 }
 
                 section.innerHTML = html;

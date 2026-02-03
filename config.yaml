@@ -42,6 +42,10 @@ notifications:
   enabled: true
   sound: true
   rate_limit_seconds: 5
+activity:
+  enabled: true
+  interval_seconds: 300
+  retention_days: 3000
 openrouter:
   base_url: https://openrouter.ai/api/v1
   timeout: 30
@@ -88,10 +92,6 @@ headspace:
     min_turn_rate: 6
     max_frustration: 3
     min_duration_minutes: 15
-activity:
-  enabled: true
-  interval_seconds: 300
-  retention_days: 30
 archive:
   enabled: true
   retention:
