@@ -127,6 +127,78 @@ class TestAggregateOnce:
         # With only 1 turn, no deltas can be computed
         assert len(turns) < 2
 
+    @patch("src.claude_headspace.services.activity_aggregator.db")
+    def test_aggregate_once_includes_ended_agent_in_bucket(self, mock_db, aggregator):
+        """An agent that ended during the current bucket should have its turns included."""
+        now = datetime.now(timezone.utc)
+        bucket_start = now.replace(minute=0, second=0, microsecond=0)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.project_id = 10
+        # Agent ended 30 minutes into the current bucket
+        mock_agent.ended_at = bucket_start + timedelta(minutes=30)
+
+        # Agents query returns the ended agent
+        agents_query = MagicMock()
+        agents_query.filter.return_value.all.return_value = [mock_agent]
+
+        # Turns query returns turns for this agent
+        mock_turn1 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=5),
+            actor="USER",
+            frustration_score=None,
+        )
+        mock_turn2 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=15),
+            actor="AGENT",
+            frustration_score=None,
+        )
+        turns_query = MagicMock()
+        turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            mock_turn1, mock_turn2,
+        ]
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return agents_query
+            return turns_query
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        stats = aggregator.aggregate_once()
+
+        assert stats["agents"] == 1
+        assert stats["projects"] == 1
+        assert stats["overall"] == 1
+
+    @patch("src.claude_headspace.services.activity_aggregator.db")
+    def test_aggregate_once_excludes_agent_ended_before_bucket(self, mock_db, aggregator):
+        """An agent that ended before the current bucket should be excluded."""
+        now = datetime.now(timezone.utc)
+        bucket_start = now.replace(minute=0, second=0, microsecond=0)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.project_id = 10
+        # Agent ended an hour before the current bucket
+        mock_agent.ended_at = bucket_start - timedelta(hours=1)
+
+        # Agents query returns empty (ended_at < bucket_start is filtered out)
+        agents_query = MagicMock()
+        agents_query.filter.return_value.all.return_value = []
+
+        mock_db.session.query.side_effect = lambda model: agents_query
+
+        stats = aggregator.aggregate_once()
+
+        assert stats["agents"] == 0
+        assert stats["projects"] == 0
+        assert stats["overall"] == 0
+
 
 class TestPruneOldRecords:
     """Test prune_old_records method."""

@@ -235,13 +235,12 @@
                     Promise.all(promises).then(function(results) {
                         var agentPromises = [];
                         results.forEach(function(r) {
-                            if (r.project.agent_count > 0) {
+                            if (r.metrics.history && r.metrics.history.length > 0) {
                                 agentPromises.push(
                                     fetch('/api/projects/' + r.project.id)
                                         .then(function(res) { return res.json(); })
                                         .then(function(detail) {
                                             var aPromises = (detail.agents || [])
-                                                .filter(function(a) { return !a.ended_at; })
                                                 .map(function(a) {
                                                     return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
                                                         .then(function(res) { return res.json(); })
@@ -252,7 +251,10 @@
                                             return Promise.all(aPromises);
                                         })
                                         .then(function(agentData) {
-                                            r.agents = agentData;
+                                            // Filter out agents with no metrics in the selected period
+                                            r.agents = agentData.filter(function(ad) {
+                                                return ad.metrics.history && ad.metrics.history.length > 0;
+                                            });
                                         })
                                 );
                             } else {
@@ -563,8 +565,11 @@
                         var agentLabel = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
                             : 'Agent ' + ad.agent.id;
+                        var endedBadge = ad.agent.ended_at
+                            ? ' <span class="text-muted text-xs">(ended)</span>'
+                            : '';
                         html += '<div class="agent-metric-row">' +
-                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
+                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + endedBadge + '</span>';
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);

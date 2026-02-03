@@ -87,10 +87,16 @@ class ActivityAggregator:
             stats = {"agents": 0, "projects": 0, "overall": 0}
 
             # --- Agent-level metrics ---
-            # Get all active agents (not ended)
-            active_agents = (
+            # Include agents still active OR ended during/after this bucket period.
+            # An agent that ended at 10:30 should still contribute its turns to the 10:00 bucket.
+            relevant_agents = (
                 db.session.query(Agent)
-                .filter(Agent.ended_at.is_(None))
+                .filter(
+                    sa.or_(
+                        Agent.ended_at.is_(None),
+                        Agent.ended_at >= bucket_start,
+                    )
+                )
                 .all()
             )
 
@@ -101,7 +107,7 @@ class ActivityAggregator:
             project_frustration: dict[int, int] = {}
             project_frustration_turns: dict[int, int] = {}
 
-            for agent in active_agents:
+            for agent in relevant_agents:
                 # Get turns for this agent in the current hour bucket
                 turns = (
                     db.session.query(Turn)
