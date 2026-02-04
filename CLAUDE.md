@@ -126,7 +126,7 @@ claude_headspace/
 |   |   +-- objective.py             # Global objective CRUD
 |   |   +-- waypoint.py              # Waypoint editor
 |   |   +-- focus.py                 # iTerm2 focus + agent dismiss
-|   |   +-- respond.py               # Respond to agents via commander
+|   |   +-- respond.py               # Respond to agents via tmux bridge
 |   |   +-- config.py                # Config viewer/editor
 |   |   +-- health.py                # Health check
 |   |   +-- help.py                  # Help page + topic search
@@ -188,14 +188,14 @@ claude_headspace/
 |   |   +-- conftest.py              # Server + browser fixtures
 |   |   +-- helpers/                 # Hook simulator, dashboard assertions
 |   +-- cli/                         # CLI tests
-+-- migrations/versions/             # 15 Alembic migration scripts
++-- migrations/versions/             # 21 Alembic migration scripts
 +-- templates/                       # Jinja2 templates
 |   +-- base.html                    # Base layout
 |   +-- dashboard.html               # Main dashboard
 |   +-- partials/                    # 14 reusable components
 +-- static/
 |   +-- css/                         # Tailwind CSS (src/input.css -> main.css)
-|   +-- js/                          # 15 vanilla JS modules (SSE, dashboard, etc.)
+|   +-- js/                          # 17 vanilla JS modules (SSE, dashboard, etc.)
 +-- bin/                             # Scripts (hooks installer, launcher, watcher)
 +-- docs/                            # Architecture docs, PRDs, help topics, roadmaps
 +-- openspec/                        # OpenSpec change management
@@ -230,17 +230,25 @@ database:
 
 openrouter:
   # Requires OPENROUTER_API_KEY env var (in .env)
+  base_url: https://openrouter.ai/api/v1
+  timeout: 30
   models:
-    turn: "anthropic/claude-3-5-haiku-20241022"
-    task: "anthropic/claude-3-5-haiku-20241022"
-    project: "anthropic/claude-3-5-sonnet-20241022"
-    objective: "anthropic/claude-3-5-sonnet-20241022"
+    turn: "anthropic/claude-haiku-4.5"
+    task: "anthropic/claude-haiku-4.5"
+    project: "anthropic/claude-3.5-sonnet"
+    objective: "anthropic/claude-3.5-sonnet"
   rate_limits:
-    calls_per_minute: 20
-    tokens_per_minute: 8000
+    calls_per_minute: 30
+    tokens_per_minute: 10000
   cache:
     enabled: true
     ttl_seconds: 300
+  retry:
+    max_attempts: 1
+    base_delay_seconds: 1.0
+    max_delay_seconds: 30.0
+  priority_scoring:
+    debounce_seconds: 5.0
 
 file_watcher:
   polling_interval: 2           # Seconds (fallback mode)
@@ -259,18 +267,27 @@ dashboard:
 
 headspace:
   enabled: true
-  yellow_threshold: 4             # Frustration score for yellow
-  red_threshold: 7                # Frustration score for red
+  thresholds:
+    yellow: 4                     # Frustration score for yellow
+    red: 7                        # Frustration score for red
+  session_rolling_window_minutes: 180  # 3-hour rolling window
+  alert_cooldown_minutes: 10
+  snapshot_retention_days: 7
+  flow_detection:
+    min_turn_rate: 6              # Min turns/hour for flow state
+    max_frustration: 3            # Max frustration during flow
+    min_duration_minutes: 15      # Min duration to declare flow
 
 reaper:
   enabled: true
-  interval: 60                    # Seconds between reaper runs
-  inactivity_timeout: 300         # 5 min inactive -> reap
+  interval_seconds: 60            # Seconds between reaper runs
+  inactivity_timeout_seconds: 300 # 5 min inactive -> reap
+  grace_period_seconds: 300       # Grace period before reaping
 
-commander:
-  health_check_interval: 30
-  socket_timeout: 2
-  socket_path_prefix: /tmp/claudec-
+tmux_bridge:
+  health_check_interval: 30      # Health check interval (seconds)
+  subprocess_timeout: 5           # Subprocess timeout (seconds)
+  text_enter_delay_ms: 100        # Delay between text and Enter (ms)
 
 notifications:
   enabled: true
@@ -286,8 +303,17 @@ event_system:
   write_retry_attempts: 3
   write_retry_delay_ms: 100
 
+activity:
+  enabled: true
+  interval_seconds: 300           # 5-minute aggregation interval
+  retention_days: 3000            # Activity metrics retention
+
 archive:
   enabled: true
+  retention:
+    policy: keep_all              # keep_all, keep_last_n, or days
+    keep_last_n: 10
+    days: 90
 ```
 
 ## Claude Code Hooks (Event-Driven)
@@ -349,17 +375,17 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 - **InferenceService** (`inference_service.py`) -- orchestrates LLM calls via OpenRouter with content-based caching (5-min TTL), rate limiting (20 calls/min, 8k tokens/min), cost tracking, and model selection by level (turn/task/project/objective)
 - **SummarisationService** (`summarisation_service.py`) -- generates AI summaries for turns (1-2 sentences) and tasks (2-3 sentences); includes frustration detection for USER turns (0-10 score persisted to turn.frustration_score)
 - **PriorityScoringService** (`priority_scoring.py`) -- batch scores all active agents 0-100 based on objective/waypoint alignment, agent state, and recency; debounced (5 seconds)
-- **ProgressSummaryService** (`progress_summary.py`) -- generates project-level progress analysis from recent task/turn history
+- **ProgressSummaryService** (`progress_summary.py`) -- generates LLM-powered project-level progress analysis from git commit history via GitAnalyzer; supports scope-based filtering (since_last, last_n, time_based)
 - **BrainRebootService** (`brain_reboot.py`) -- orchestrates brain reboot generation: combines waypoint content with progress summary, exports to project filesystem
 - **PromptRegistry** (`prompt_registry.py`) -- centralised registry of all LLM prompt templates (turn summarisation, task completion, frustration detection, priority scoring, progress analysis, project description, classification)
 
 ### Monitoring & Lifecycle
 
-- **HeadspaceMonitor** (`headspace_monitor.py`) -- tracks rolling frustration averages (10-turn, 30-min windows), detects flow state, raises traffic-light alerts (green/yellow/red), persists HeadspaceSnapshot records
+- **HeadspaceMonitor** (`headspace_monitor.py`) -- tracks rolling frustration averages (10-turn, 30-min, 3-hr windows), detects flow state, raises traffic-light alerts (green/yellow/red), persists HeadspaceSnapshot records
 - **AgentReaper** (`agent_reaper.py`) -- background thread that cleans up inactive agents (5-min timeout by default)
 - **ActivityAggregator** (`activity_aggregator.py`) -- background thread that computes hourly activity metrics at agent, project, and system-wide scope
 - **StalenessService** (`staleness.py`) -- detects stale PROCESSING state (>10 min) for display-only TIMED_OUT indicator
-- **CommanderAvailability** (`commander_availability.py`) -- background thread monitoring commander socket availability for each agent
+- **CommanderAvailability** (`commander_availability.py`) -- background thread monitoring tmux pane availability for each agent via tmux_bridge health checks
 
 ### Communication
 
@@ -367,7 +393,7 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 - **CardState** (`card_state.py`) -- computes dashboard card JSON for agents (state, summaries, priority, timing) and broadcasts card_refresh SSE events
 - **EventWriter** (`event_writer.py`) -- async audit logging to PostgreSQL with retry (3 attempts, exponential backoff), independent SQLAlchemy engine for transaction isolation
 - **NotificationService** (`notification_service.py`) -- macOS notifications via terminal-notifier with per-agent rate limiting (5s)
-- **CommanderService** (`commander_service.py`) -- sends text responses to Claude Code sessions via Unix domain sockets
+- **TmuxBridge** (`tmux_bridge.py`) -- sends text responses to Claude Code sessions via tmux send-keys; includes health checking, pane capture, and pane listing
 
 ### Infrastructure
 
@@ -376,25 +402,28 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 - **ArchiveService** (`archive_service.py`) -- archives waypoints and other artifacts with timestamped versions
 - **WaypointEditor** (`waypoint_editor.py`) -- loads, saves, and archives project waypoint files (docs/brain_reboot/waypoint.md)
 - **GitMetadata** (`git_metadata.py`) -- extracts and caches git repo URL and current branch for projects
+- **GitAnalyzer** (`git_analyzer.py`) -- extracts structured commit history from git repositories with scope-based queries (since_last, last_n, time_based); used by ProgressSummaryService
 - **SessionRegistry** (`session_registry.py`) -- thread-safe registry for FileWatcher session tracking
 - **JSONLParser** (`jsonl_parser.py`) -- incremental parser for Claude Code .jsonl session files
+- **TranscriptReader** (`transcript_reader.py`) -- reads Claude Code transcript files, extracts agent response text by walking backwards until user message
 - **ProjectDecoder** (`project_decoder.py`) -- encodes/decodes project paths to/from Claude Code folder names
 - **ITermFocus** (`iterm_focus.py`) -- AppleScript-based iTerm2 window/pane focus with error classification
+- **ProcessMonitor** (`process_monitor.py`) -- monitors background watcher process health; PID-based liveness checks
 
 ## Data Models
 
 | Model | Purpose | Key Fields |
 |-------|---------|------------|
-| **Project** | Monitored codebase | name, path, github_repo, current_branch, description, inference_paused |
-| **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason, iterm_pane_id, transcript_path |
+| **Project** | Monitored codebase | name, slug, path, github_repo, current_branch, description, inference_paused |
+| **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason, iterm_pane_id, tmux_pane_id, transcript_path |
 | **Task** | Unit of work (5-state) | state, instruction, completion_summary, started_at, completed_at |
 | **Turn** | Individual exchange | actor (USER/AGENT), intent, text, summary, frustration_score |
-| **Event** | Audit trail | event_type (12 types), payload (JSONB), project/agent/task/turn refs |
+| **Event** | Audit trail | event_type, payload (JSONB), project/agent/task/turn refs |
 | **InferenceCall** | LLM call log | model, input/output tokens, cost, latency, level, cached, input_hash |
 | **Objective** | Global priority context | current_text, constraints, priority_enabled |
 | **ObjectiveHistory** | Objective change log | text, constraints, started_at, ended_at |
 | **ActivityMetric** | Hourly activity data | bucket_start, turn_count, avg_turn_time, active_agents, scope (agent/project/overall) |
-| **HeadspaceSnapshot** | Monitoring state | frustration_rolling_10/30min, state (green/yellow/red), is_flow_state, turn_rate_per_hour |
+| **HeadspaceSnapshot** | Monitoring state | frustration_rolling_10/30min/3hr, state (green/yellow/red), is_flow_state, turn_rate_per_hour |
 
 **Task States:** `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
 
@@ -402,7 +431,7 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 
 **Turn Intents:** `COMMAND`, `ANSWER`, `QUESTION`, `COMPLETION`, `PROGRESS`, `END_OF_TASK`
 
-**Event Types:** `SESSION_REGISTERED`, `SESSION_ENDED`, `TURN_DETECTED`, `STATE_TRANSITION`, `OBJECTIVE_CHANGED`, `NOTIFICATION_SENT`, `HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_USER_PROMPT`, `HOOK_STOP`, `HOOK_NOTIFICATION`, `HOOK_POST_TOOL_USE`
+**Event Types:** `SESSION_DISCOVERED`, `SESSION_ENDED`, `TURN_DETECTED`, `STATE_TRANSITION`, `OBJECTIVE_CHANGED`, `NOTIFICATION_SENT`, `HOOK_RECEIVED` (legacy), `HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_USER_PROMPT`, `HOOK_STOP`, `HOOK_NOTIFICATION`
 
 **Inference Levels:** `TURN`, `TASK`, `PROJECT`, `OBJECTIVE`
 
@@ -446,10 +475,14 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 | Route | Method | Description |
 |-------|--------|-------------|
 | `/projects` | GET | Projects management page |
+| `/projects/<slug>` | GET | Project detail show page |
 | `/api/projects` | GET/POST | List all or create project |
 | `/api/projects/<id>` | GET/PUT/DELETE | Project CRUD |
 | `/api/projects/<id>/settings` | GET/PUT | Project inference settings |
 | `/api/projects/<id>/detect-metadata` | POST | Auto-detect git info + description |
+| `/api/projects/<id>/inference-summary` | GET | Project inference usage metrics |
+| `/api/agents/<id>/tasks` | GET | List tasks for an agent |
+| `/api/tasks/<id>/turns` | GET | List turns for a task |
 | `/api/projects/<id>/waypoint` | GET/POST | Waypoint content |
 | `/api/projects/<id>/progress-summary` | GET/POST | Progress summary |
 | `/api/projects/<id>/brain-reboot` | GET/POST | Brain reboot generation |
@@ -465,8 +498,8 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 | `/api/sessions/<uuid>` | GET/DELETE | Get or end session |
 | `/api/focus/<agent_id>` | POST | iTerm2 focus control |
 | `/api/agents/<agent_id>/dismiss` | POST | Dismiss agent (mark ended) |
-| `/api/respond/<agent_id>` | POST | Send text response to agent |
-| `/api/respond/<agent_id>/availability` | GET | Check commander socket availability |
+| `/api/respond/<agent_id>` | POST | Send text response to agent via tmux |
+| `/api/respond/<agent_id>/availability` | GET | Check tmux pane availability |
 
 ### Headspace & Activity
 
@@ -484,20 +517,30 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 
 | Route | Method | Description |
 |-------|--------|-------------|
+| `/objective` | GET | Objective editor page |
 | `/api/objective` | GET/POST | Global objective CRUD |
-| `/api/objective/history` | GET | Objective change history |
+| `/api/objective/history` | GET | Objective change history (paginated) |
+| `/api/objective/history/<id>` | DELETE | Delete history item |
 | `/api/objective/priority` | GET/POST | Toggle priority scoring |
 | `/config` | GET | Configuration editor page |
 | `/api/config` | GET/POST | Get or save configuration |
+| `/api/config/restart` | POST | Restart server via restart_server.sh |
 | `/api/notifications/preferences` | GET/PUT | Notification preferences |
+| `/api/notifications/refresh-availability` | POST | Re-check terminal-notifier |
 | `/api/notifications/test` | POST | Send test notification |
 | `/logging` | GET | Event log viewer page |
+| `/logging/inference` | GET | Inference log sub-tab page |
 | `/api/events` | GET/DELETE | Events (paginated, filterable) |
+| `/api/events/filters` | GET | Available event filter options |
 | `/api/inference/calls` | GET/DELETE | Inference calls (paginated) |
-| `/health` | GET | Health check |
-| `/help` | GET | Help documentation |
+| `/api/inference/calls/filters` | GET | Available inference filter options |
+| `/health` | GET | Health check (DB + SSE status) |
+| `/help` | GET | Help documentation page |
+| `/help/<slug>` | GET | Help page for specific topic |
 | `/api/help/topics` | GET | List help topics |
-| `/api/help/search` | GET | Search help content |
+| `/api/help/topics/<slug>` | GET | Get specific topic content |
+| `/api/help/setup-prompt` | GET | Get Claude Code setup prompt |
+| `/api/help/search` | GET | Search help content (full-text) |
 
 ## Notes for AI Assistants
 
@@ -572,8 +615,8 @@ pytest --cov=src                          # With coverage report
 
 #### Test Architecture (4-Tier)
 
-- **Unit tests** (`tests/services/`, ~39 files) -- mock dependencies, validate pure service logic in isolation
-- **Route tests** (`tests/routes/`, ~23 files) -- Flask test client with mocked services, validate HTTP contracts and response codes
+- **Unit tests** (`tests/services/`, ~40 files) -- mock dependencies, validate pure service logic in isolation
+- **Route tests** (`tests/routes/`, ~25 files) -- Flask test client with mocked services, validate HTTP contracts and response codes
 - **Integration tests** (`tests/integration/`, ~7 files) -- real PostgreSQL `_test` database, factory-boy data creation, verify actual persistence and constraints
 - **E2E tests** (`tests/e2e/`, ~4 files) -- real Flask server + Playwright browser, hook simulation, full lifecycle validation with screenshots
 

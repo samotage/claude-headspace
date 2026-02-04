@@ -922,6 +922,152 @@ class Project(Base):
 
 ---
 
+### 4. tmux Bridge
+
+**Subsystem ID:** `tmux-bridge`  
+**Sprint:** E5-S4  
+**Priority:** P1  
+**PRD Location:** `docs/prds/bridge/e5-s4-tmux-bridge-prd.md`
+
+**Scope:**
+
+- tmux bridge service wrapping CLI commands as subprocess calls
+- Replace commander socket transport with tmux send-keys
+- Add `tmux_pane_id` field to Agent model
+- Update hook scripts and routes to pass pane ID
+- Update respond pipeline to use tmux targeting
+- Replace availability socket probing with tmux pane checks
+- New error type enum for tmux-specific errors
+
+**Key Requirements:**
+
+- Must send text via `tmux send-keys -t <pane_id> -l "text"` + `send-keys Enter`
+- Must check pane existence and Claude Code process detection
+- Must preserve API contract (`POST /api/respond/<agent_id>`)
+- Must preserve SSE availability event shape
+- Must add `tmux_pane_id` to Agent model (nullable)
+- Must update all hook routes to extract `tmux_pane` from payload
+- Must provide clear error messages for tmux-specific failures
+
+**OpenSpec Spec:** `openspec/specs/tmux-bridge/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/services/tmux_bridge.py` (new)
+- `src/claude_headspace/services/commander_service.py` (replace internals)
+- `src/claude_headspace/services/commander_availability.py` (replace internals)
+- `src/claude_headspace/routes/respond.py` (update targeting)
+- `src/claude_headspace/routes/hooks.py` (extract tmux_pane)
+- `src/claude_headspace/services/hook_receiver.py` (store pane ID)
+- `src/claude_headspace/models/agent.py` (add tmux_pane_id)
+- `bin/notify-headspace.sh` (add $TMUX_PANE extraction)
+- `config.yaml` (replace commander section with tmux_bridge)
+- `migrations/versions/xxxx_add_agent_tmux_pane_id.py` (new)
+
+**Data Model Changes:**
+
+```python
+class Agent(Base):
+    ...
+    tmux_pane_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+```
+
+**Config.yaml Changes:**
+
+```yaml
+tmux_bridge:
+  health_check_interval: 30
+  subprocess_timeout: 5
+  text_enter_delay_ms: 100
+  sequential_send_delay_ms: 150
+```
+
+**Dependencies:** E5-S1 complete, tmux installed, iTerm2 tmux integration
+
+**Acceptance Tests:**
+
+- Response via tmux send-keys triggers Claude Code prompt submission
+- Dual input (keyboard + dashboard) works simultaneously
+- Pane ID extracted from hooks and stored on Agent
+- Availability reflects tmux pane existence
+- Error messages clear for pane not found, tmux not installed
+
+---
+
+### 5. Activity Frustration
+
+**Subsystem ID:** `activity-frustration`  
+**Sprint:** E5-S5  
+**Priority:** P2  
+**PRD Location:** `docs/prds/ui/e5-s5-activity-frustration-display-prd.md`
+
+**Scope:**
+
+- Activity page metric cards show average frustration (0-10) instead of sum
+- Chart frustration line shows per-bucket average with fixed 0-10 Y-axis
+- Threshold-based coloring on all frustration displays
+- New frustration state widget with three rolling-window averages
+- Add `frustration_rolling_3hr` to HeadspaceSnapshot model
+- Config UI section for frustration settings
+
+**Key Requirements:**
+
+- Must display average frustration (total_frustration ÷ frustration_turn_count)
+- Must color values green < 4, yellow 4-7, red > 7
+- Must display "—" when no scored turns exist
+- Must fix chart Y-axis at 0-10 (not dynamic)
+- Must show gaps in chart line for zero-turn buckets
+- Must add frustration state widget with immediate/short-term/session values
+- Must update widget via SSE in real-time
+- Must hide widget when headspace disabled
+- Must read all thresholds from config (no hardcoded values)
+- Must add 3-hour rolling window to HeadspaceSnapshot
+
+**OpenSpec Spec:** `openspec/specs/activity-frustration/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/models/headspace_snapshot.py` (add frustration_rolling_3hr)
+- `src/claude_headspace/services/headspace_monitor.py` (compute 3hr window)
+- `src/claude_headspace/routes/headspace.py` (include 3hr in response)
+- `src/claude_headspace/routes/activity.py` (pass config thresholds)
+- `templates/activity.html` (add widget, update cards)
+- `static/js/activity.js` (average calculation, widget, chart changes)
+- `templates/partials/_config_form.html` (add frustration settings)
+- `config.yaml` (add session_rolling_window_minutes)
+- `migrations/versions/xxxx_add_headspace_3hr_rolling.py` (new)
+
+**Data Model Changes:**
+
+```python
+class HeadspaceSnapshot(Base):
+    ...
+    frustration_rolling_3hr: Mapped[float | None]
+```
+
+**Config.yaml Additions:**
+
+```yaml
+headspace:
+  ...
+  session_rolling_window_minutes: 180
+```
+
+**Dependencies:** E4-S3 complete (activity monitoring), E4-S4 complete (headspace monitoring)
+
+**Acceptance Tests:**
+
+- Metric cards show decimal average instead of integer sum
+- Values colored based on thresholds
+- Chart Y-axis fixed 0-10
+- Chart line gaps for zero-turn buckets
+- Widget shows three rolling averages with colors
+- Widget updates via SSE
+- Widget hidden when headspace disabled
+- Config UI edits frustration settings
+
+---
+
 ## Sprint Dependencies & Critical Path
 
 ```
@@ -930,27 +1076,38 @@ class Project(Base):
        ▼
    E5-S1 (Input Bridge) ←── DONE
        │
-       └──▶ E5-S2 (Project Show Core)
+       ├──▶ E5-S2 (Project Show Core)
+       │       │
+       │       └──▶ E5-S3 (Project Show Tree & Metrics)
+       │
+       └──▶ E5-S4 (tmux Bridge) ←── IN PROGRESS
                │
-               └──▶ E5-S3 (Project Show Tree & Metrics)
-                       │
-                       └──▶ [Epic 5 Complete]
+               └──▶ [Input Bridge Complete]
+
+[E4-S3 + E4-S4 Complete]
+       │
+       └──▶ E5-S5 (Activity Frustration Display)
+               │
+               └──▶ [Epic 5 Complete]
 ```
 
-**Critical Path:** Epic 4 → E5-S1 → E5-S2 → E5-S3
+**Critical Path:** Epic 4 → E5-S1 → E5-S4 (for Input Bridge functionality)
 
 **Parallel Tracks:**
 
-- E5-S1 (Input Bridge) is independent of E5-S2/E5-S3 — could technically run in parallel with Epic 4 completion
-- E5-S2 and E5-S3 are sequential (E5-S3 extends the page created in E5-S2)
+- E5-S2/E5-S3 (Project Show) are independent of E5-S4 (tmux Bridge) — can run in parallel
+- E5-S5 (Activity Frustration) is independent of E5-S2/E5-S3/E5-S4 — depends only on E4-S3 and E4-S4
+- E5-S4 is a transport fix for E5-S1 — must complete for Input Bridge to actually work
 
 **Recommended Sequence:**
 
-1. E5-S1 (Input Bridge) — establishes commander service pattern (DONE)
-2. E5-S2 (Project Show Core) — creates the show page foundation
-3. E5-S3 (Project Show Tree & Metrics) — adds data exploration and metrics
+1. E5-S1 (Input Bridge) — establishes respond pipeline (DONE)
+2. E5-S4 (tmux Bridge) — fixes transport layer (IN PROGRESS)
+3. E5-S2 (Project Show Core) — creates the show page foundation
+4. E5-S3 (Project Show Tree & Metrics) — adds data exploration and metrics
+5. E5-S5 (Activity Frustration Display) — improves frustration metrics
 
-**Total Duration:** 3-5 weeks
+**Total Duration:** 5-7 weeks
 
 ---
 
@@ -1046,6 +1203,84 @@ class Project(Base):
 - Read thresholds from config at render time
 - CSS classes for yellow/red highlighting
 - Threshold changes update immediately
+
+---
+
+### Decision 6: tmux send-keys over Commander Socket
+
+**Decision:** Replace claude-commander Unix socket injection with tmux send-keys subprocess calls.
+
+**Rationale:**
+
+- Commander socket failed in practice — Claude Code's Ink TUI doesn't recognize socket-injected newlines
+- Proof of concept confirmed tmux send-keys reliably triggers Ink's onSubmit handler
+- tmux is widely available (`brew install tmux`)
+- iTerm2's native tmux integration preserves full terminal ergonomics
+
+**Impact:**
+
+- Users must launch Claude Code sessions inside tmux panes
+- Cannot target plain iTerm2 tabs without tmux
+- Dashboard respond UI unchanged (transport swap is invisible)
+- Existing API contracts preserved
+
+---
+
+### Decision 7: Separate Text and Enter Sends
+
+**Decision:** Send literal text and Enter key as separate tmux commands with 100ms delay.
+
+**Rationale:**
+
+- `-l` flag required for text to prevent tmux interpreting key names
+- Enter must be sent without `-l` to trigger as a key
+- 100ms delay prevents race conditions
+- Pattern verified in proof of concept
+
+**Impact:**
+
+- Slightly slower than single command (100ms overhead)
+- More reliable prompt submission
+- Clear separation of text content vs control keys
+
+---
+
+### Decision 8: Average vs Sum for Frustration Display
+
+**Decision:** Activity page displays average frustration per scored turn (0-10) instead of raw sum.
+
+**Rationale:**
+
+- Sum correlates with turn volume, not frustration intensity
+- A calm 50-turn session showing "50" appears worse than 5 angry turns showing "40"
+- Average on 0-10 scale is directly interpretable
+- Existing data supports this (total_frustration ÷ frustration_turn_count)
+
+**Impact:**
+
+- Breaking change to displayed metric interpretation
+- Chart Y-axis becomes fixed 0-10
+- Users see actual frustration intensity, not activity volume
+
+---
+
+### Decision 9: Three Rolling Windows for Frustration State
+
+**Decision:** Frustration state widget shows three windows: immediate (~10 turns), short-term (30 min), session (3 hours).
+
+**Rationale:**
+
+- Immediate captures real-time spikes
+- Short-term shows recent trend
+- Session provides overall context
+- Three windows balance responsiveness with stability
+- Immediate and short-term already computed by HeadspaceMonitor
+
+**Impact:**
+
+- New 3-hour rolling window added to HeadspaceSnapshot
+- Widget provides at-a-glance frustration state
+- Users can distinguish temporary spikes from sustained frustration
 
 ---
 
@@ -1183,6 +1418,71 @@ class Project(Base):
 
 ---
 
+### Risk 6: tmux Dependency
+
+**Risk:** Users must install tmux and launch Claude Code sessions inside tmux panes. This changes the workflow.
+
+**Impact:** Medium (requires setup change, but one-time)
+
+**Mitigation:**
+
+- Clear documentation for tmux setup
+- iTerm2's native tmux integration preserves terminal ergonomics
+- Recommended iTerm2 setting documented
+- Plain iTerm2 tabs still work for monitoring (just not respond)
+
+**Monitoring:** Track respond failures due to missing tmux_pane_id
+
+---
+
+### Risk 7: tmux Session Dimension Sharing
+
+**Risk:** All windows within a tmux session share dimensions. Resizing affects all panes.
+
+**Impact:** Low (use one tmux session per agent as workaround)
+
+**Mitigation:**
+
+- Document recommendation: one tmux session per Claude Code agent
+- Multiple iTerm2 windows can each attach to different tmux sessions
+- This is a tmux limitation, not a Headspace issue
+
+**Monitoring:** User feedback on workflow friction
+
+---
+
+### Risk 8: Frustration Metric Interpretation Change
+
+**Risk:** Users accustomed to sum-based frustration display may be confused by switch to average.
+
+**Impact:** Low (new metric is more intuitive once understood)
+
+**Mitigation:**
+
+- Tooltip on frustration values explaining "average per scored turn"
+- Fixed 0-10 scale makes interpretation obvious
+- Threshold coloring provides immediate visual meaning
+
+**Monitoring:** User feedback on metric clarity
+
+---
+
+### Risk 9: 3-Hour Rolling Window Performance
+
+**Risk:** Computing 3-hour rolling frustration average may be slower than existing 30-minute window.
+
+**Impact:** Low (query is still bounded, runs periodically not on-demand)
+
+**Mitigation:**
+
+- Index on timestamp column
+- Periodic computation (not real-time)
+- Same query pattern as existing windows, just wider range
+
+**Monitoring:** Track headspace recalculation duration
+
+---
+
 ## Success Metrics
 
 From Epic 5 Acceptance Criteria:
@@ -1263,9 +1563,9 @@ From Epic 5 Acceptance Criteria:
 
 **Success:**
 
-- ✅ Start Claude Code session → agent appears on dashboard
+- ✅ Start Claude Code session in tmux → agent appears on dashboard
 - ✅ Agent asks permission question → amber card, input widget appears
-- ✅ Click quick-action button → response sent, agent resumes
+- ✅ Click quick-action button → response sent via tmux, agent resumes
 - ✅ Navigate to projects list → click project name
 - ✅ Project show page displays with all sections
 - ✅ Expand Agents accordion → see agents with details
@@ -1275,6 +1575,48 @@ From Epic 5 Acceptance Criteria:
 - ✅ Archive history shows previous versions
 - ✅ Edit project name → slug updates, page URL changes
 - ✅ SSE events update page in real-time
+
+---
+
+### Test Case 5: tmux Bridge
+
+**Setup:** Claude Code session running inside a tmux pane, attached via iTerm2 `-CC`.
+
+**Success:**
+
+- ✅ Hook scripts include `tmux_pane` in payloads
+- ✅ Agent has `tmux_pane_id` populated from hooks
+- ✅ Dashboard shows input widget when agent in AWAITING_INPUT
+- ✅ Click quick-action button → tmux send-keys delivers text
+- ✅ Claude Code receives text and Enter → prompt submitted
+- ✅ Dual input works (typing in terminal + dashboard respond)
+- ✅ Availability checks detect pane existence
+- ✅ Availability changes broadcast via SSE
+- ✅ Clear error when tmux not installed
+- ✅ Clear error when pane not found
+- ✅ Clear error when no pane ID on agent
+
+---
+
+### Test Case 6: Activity Frustration Display
+
+**Setup:** Activity page with historical turn data including frustration scores.
+
+**Success:**
+
+- ✅ Overall metric card shows average frustration (0-10 decimal)
+- ✅ Project metric cards show average frustration
+- ✅ Agent rows show average frustration
+- ✅ Values colored green < 4, yellow 4-7, red > 7
+- ✅ "—" displayed for periods with no scored turns
+- ✅ Chart frustration line shows per-bucket average
+- ✅ Chart right Y-axis fixed at 0-10
+- ✅ Chart line has gaps for zero-turn buckets
+- ✅ Frustration state widget displays three windows
+- ✅ Widget values update via SSE
+- ✅ Widget hidden when headspace disabled
+- ✅ Hover tooltips show threshold boundaries
+- ✅ Config UI allows editing thresholds
 
 ---
 
