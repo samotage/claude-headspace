@@ -79,6 +79,9 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 # Read CLI-assigned session UUID from env (inherited: CLI -> Claude Code -> hook)
 HEADSPACE_SESSION_ID="${CLAUDE_HEADSPACE_SESSION_ID:-}"
 
+# Extract tmux pane ID from environment (set by tmux for processes in a pane)
+TMUX_PANE_ID="${TMUX_PANE:-}"
+
 echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY}" >> "$DEBUG_LOG"
 
 if [ -z "$SESSION_ID" ]; then
@@ -101,6 +104,7 @@ PAYLOAD=$(jq -n \
     --arg ntype "$NOTIFICATION_TYPE" \
     --arg tname "$TOOL_NAME" \
     --argjson tinput "${TOOL_INPUT:-null}" \
+    --arg tmux_pane "$TMUX_PANE_ID" \
     '{session_id: $sid}
      + (if $wd != "" then {working_directory: $wd} else {} end)
      + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
@@ -110,7 +114,8 @@ PAYLOAD=$(jq -n \
      + (if $title != "" then {title: $title} else {} end)
      + (if $ntype != "" then {notification_type: $ntype} else {} end)
      + (if $tname != "" then {tool_name: $tname} else {} end)
-     + (if $tinput != null then {tool_input: $tinput} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
+     + (if $tinput != null then {tool_input: $tinput} else {} end)
+     + (if $tmux_pane != "" then {tmux_pane: $tmux_pane} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
 CURL_RESULT=$(curl -s -w "\n%{http_code}" \

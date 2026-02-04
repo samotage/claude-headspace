@@ -34,10 +34,10 @@ hooks:
   enabled: true
   polling_interval_with_hooks: 60
   fallback_timeout: 1200
-commander:
+tmux_bridge:
   health_check_interval: 30
-  socket_timeout: 2
-  socket_path_prefix: /tmp/claudec-
+  subprocess_timeout: 5
+  text_enter_delay_ms: 100
 notifications:
   enabled: true
   sound: true

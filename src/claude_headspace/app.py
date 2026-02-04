@@ -239,7 +239,11 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         aggregator.start()
         app.extensions["activity_aggregator"] = aggregator
 
-    # Initialize commander availability tracker (only in non-testing environments)
+    # Register tmux bridge module (stateless, no init needed)
+    from .services import tmux_bridge
+    app.extensions["tmux_bridge"] = tmux_bridge
+
+    # Initialize commander availability tracker (uses tmux_bridge internally)
     from .services.commander_availability import CommanderAvailability
     commander_availability = CommanderAvailability(app=app, config=config)
     app.extensions["commander_availability"] = commander_availability

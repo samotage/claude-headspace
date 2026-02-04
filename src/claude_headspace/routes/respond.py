@@ -10,8 +10,9 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.task import TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
+from ..services import tmux_bridge
 from ..services.card_state import broadcast_card_refresh
-from ..services.commander_service import CommanderErrorType, send_text
+from ..services.tmux_bridge import TmuxBridgeErrorType
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +24,17 @@ def _get_commander_availability():
     return current_app.extensions.get("commander_availability")
 
 
+def _get_tmux_bridge():
+    """Get the tmux bridge service from app extensions."""
+    return current_app.extensions.get("tmux_bridge")
+
+
 @respond_bp.route("/api/respond/<int:agent_id>", methods=["POST"])
 def respond_to_agent(agent_id: int):
-    """Send a text response to a Claude Code session via commander socket.
+    """Send a text response to a Claude Code session via tmux send-keys.
 
     Validates that the agent exists, is in AWAITING_INPUT state, and has a
-    reachable commander socket. On success, creates a Turn record and triggers
+    reachable tmux pane. On success, creates a Turn record and triggers
     the AWAITING_INPUT -> PROCESSING state transition.
 
     Args:
@@ -39,11 +45,11 @@ def respond_to_agent(agent_id: int):
 
     Returns:
         200: Response sent successfully
-        400: Missing text or no session ID
+        400: Missing text or no pane ID
         404: Agent not found
         409: Agent not in AWAITING_INPUT state
-        502: Commander send failed
-        503: Commander socket unavailable
+        502: tmux send failed
+        503: tmux pane unavailable
     """
     start_time = time.time()
 
@@ -66,12 +72,12 @@ def respond_to_agent(agent_id: int):
             "message": f"Agent with ID {agent_id} not found.",
         }), 404
 
-    # Check agent has a session ID (needed for socket path)
-    if not agent.claude_session_id:
+    # Check agent has a tmux pane ID
+    if not agent.tmux_pane_id:
         return jsonify({
             "status": "error",
-            "error_type": "no_session_id",
-            "message": "Agent has no session ID — cannot derive commander socket path.",
+            "error_type": "no_pane_id",
+            "message": "Agent has no tmux pane ID — cannot send input.",
         }), 400
 
     # Check agent is in AWAITING_INPUT state
@@ -84,29 +90,27 @@ def respond_to_agent(agent_id: int):
             "message": f"Agent is not awaiting input (current state: {actual_state}).",
         }), 409
 
-    # Get commander config
+    # Get tmux bridge config
     config = current_app.config.get("APP_CONFIG", {})
-    commander_config = config.get("commander", {})
-    socket_prefix = commander_config.get("socket_path_prefix", "/tmp/claudec-")
-    socket_timeout = commander_config.get("socket_timeout", 2)
+    bridge_config = config.get("tmux_bridge", {})
+    subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
 
-    # Send text via commander socket
-    result = send_text(
-        session_id=agent.claude_session_id,
+    # Send text via tmux bridge
+    result = tmux_bridge.send_text(
+        pane_id=agent.tmux_pane_id,
         text=text,
-        prefix=socket_prefix,
-        timeout=socket_timeout,
+        timeout=subprocess_timeout,
+        text_enter_delay_ms=text_enter_delay_ms,
     )
 
     if not result.success:
         # Map error types to HTTP status codes
-        if result.error_type == CommanderErrorType.SOCKET_NOT_FOUND:
+        if result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND:
             status_code = 503
-        elif result.error_type == CommanderErrorType.CONNECTION_REFUSED:
+        elif result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED:
             status_code = 503
-        elif result.error_type == CommanderErrorType.PROCESS_DEAD:
-            status_code = 503
-        elif result.error_type == CommanderErrorType.TIMEOUT:
+        elif result.error_type == TmuxBridgeErrorType.TIMEOUT:
             status_code = 502
         else:
             status_code = 502
@@ -169,7 +173,7 @@ def respond_to_agent(agent_id: int):
 
 @respond_bp.route("/api/respond/<int:agent_id>/availability", methods=["GET"])
 def check_availability(agent_id: int):
-    """Check commander socket availability for an agent.
+    """Check tmux pane availability for an agent.
 
     Args:
         agent_id: Database ID of the agent
@@ -187,8 +191,8 @@ def check_availability(agent_id: int):
         }), 404
 
     availability = _get_commander_availability()
-    if availability and agent.claude_session_id:
-        available = availability.check_agent(agent_id, agent.claude_session_id)
+    if availability and agent.tmux_pane_id:
+        available = availability.check_agent(agent_id, agent.tmux_pane_id)
     else:
         available = False
 

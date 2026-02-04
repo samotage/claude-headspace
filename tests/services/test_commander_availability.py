@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from claude_headspace.services.commander_availability import CommanderAvailability
-from claude_headspace.services.commander_service import HealthResult
+from claude_headspace.services.tmux_bridge import HealthResult
 
 
 class TestCommanderAvailability:
@@ -18,30 +18,30 @@ class TestCommanderAvailability:
 
     def test_register_agent(self):
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
         # After registration, still not available (no health check yet)
         assert svc.is_available(1) is False
 
-    def test_register_agent_none_session(self):
+    def test_register_agent_none_pane_id(self):
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
         svc._availability[1] = True
-        # Re-register with None session clears availability
+        # Re-register with None pane_id clears availability
         svc.register_agent(1, None)
         assert svc.is_available(1) is False
 
     def test_unregister_agent(self):
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
         svc._availability[1] = True
         svc.unregister_agent(1)
         assert svc.is_available(1) is False
 
-    @patch("claude_headspace.services.commander_availability.commander_service.check_health")
+    @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     def test_check_agent_available(self, mock_health):
-        mock_health.return_value = HealthResult(available=True, running=True, pid=123)
+        mock_health.return_value = HealthResult(available=True, running=True)
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
 
         result = svc.check_agent(1)
 
@@ -49,39 +49,39 @@ class TestCommanderAvailability:
         assert svc.is_available(1) is True
         mock_health.assert_called_once()
 
-    @patch("claude_headspace.services.commander_availability.commander_service.check_health")
+    @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     def test_check_agent_unavailable(self, mock_health):
         mock_health.return_value = HealthResult(available=False)
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
 
         result = svc.check_agent(1)
 
         assert result is False
         assert svc.is_available(1) is False
 
-    def test_check_agent_no_session_id(self):
+    def test_check_agent_no_pane_id(self):
         svc = CommanderAvailability()
         result = svc.check_agent(1)
         assert result is False
 
-    @patch("claude_headspace.services.commander_availability.commander_service.check_health")
-    def test_check_agent_with_session_id_override(self, mock_health):
+    @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
+    def test_check_agent_with_pane_id_override(self, mock_health):
         mock_health.return_value = HealthResult(available=True, running=True)
         svc = CommanderAvailability()
 
-        result = svc.check_agent(1, session_id="session-xyz")
+        result = svc.check_agent(1, tmux_pane_id="%10")
 
         assert result is True
         # Should have registered the agent
-        assert "session-xyz" == svc._session_ids.get(1)
+        assert "%10" == svc._pane_ids.get(1)
 
-    @patch("claude_headspace.services.commander_availability.commander_service.check_health")
+    @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     def test_availability_change_broadcasts(self, mock_health):
         """Test that availability changes trigger SSE broadcast."""
         mock_health.return_value = HealthResult(available=True, running=True)
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
 
         # Set initial availability to False
         svc._availability[1] = False
@@ -90,12 +90,12 @@ class TestCommanderAvailability:
             svc.check_agent(1)
             mock_broadcast.assert_called_once_with(1, True)
 
-    @patch("claude_headspace.services.commander_availability.commander_service.check_health")
+    @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     def test_no_broadcast_when_unchanged(self, mock_health):
         """Test that no broadcast when availability doesn't change."""
         mock_health.return_value = HealthResult(available=True, running=True)
         svc = CommanderAvailability()
-        svc.register_agent(1, "session-abc")
+        svc.register_agent(1, "%5")
 
         # Set initial availability to True (same as check result)
         svc._availability[1] = True
@@ -106,16 +106,14 @@ class TestCommanderAvailability:
 
     def test_config_overrides(self):
         config = {
-            "commander": {
+            "tmux_bridge": {
                 "health_check_interval": 60,
-                "socket_path_prefix": "/var/run/cmd-",
-                "socket_timeout": 5,
+                "subprocess_timeout": 10,
             }
         }
         svc = CommanderAvailability(config=config)
         assert svc._health_check_interval == 60
-        assert svc._socket_prefix == "/var/run/cmd-"
-        assert svc._socket_timeout == 5
+        assert svc._subprocess_timeout == 10
 
     def test_start_stop(self):
         svc = CommanderAvailability(health_check_interval=100)

@@ -3,47 +3,6 @@
 ## Purpose
 TBD - created by archiving change e5-s1-input-bridge. Update Purpose after archive.
 ## Requirements
-### Requirement: Commander Communication Service
-
-The system SHALL provide a service that communicates with claude-commander Unix domain sockets to send text input to Claude Code sessions.
-
-#### Scenario: Send text to commander socket
-
-- **WHEN** a text response is submitted for an agent with a valid commander socket
-- **THEN** the system sends `{"action": "send", "text": "<response>"}` over the Unix domain socket
-- **AND** returns success when the socket confirms `{"status": "sent"}`
-
-#### Scenario: Derive socket path from session ID
-
-- **WHEN** an agent has a `claude_session_id`
-- **THEN** the system derives the socket path as `/tmp/claudec-<claude_session_id>.sock`
-
-#### Scenario: Health check commander socket
-
-- **WHEN** a health check is requested for an agent
-- **THEN** the system sends `{"action": "status"}` to the commander socket
-- **AND** returns the availability status based on the response
-
-#### Scenario: Socket not found
-
-- **WHEN** the derived socket path does not exist on the filesystem
-- **THEN** the service returns an error indicating the socket is unavailable
-- **AND** no connection attempt is made
-
-#### Scenario: Socket exists but process died
-
-- **WHEN** the socket file exists but the commander process is not responding
-- **THEN** the service returns an error indicating the session is unreachable
-- **AND** the error message is clear and user-facing
-
-#### Scenario: Socket connection timeout
-
-- **WHEN** the socket connection takes longer than the configured timeout
-- **THEN** the service returns a timeout error
-- **AND** does not block the server
-
----
-
 ### Requirement: Response Submission API
 
 The system SHALL provide an API endpoint for submitting text responses to Claude Code sessions from the dashboard.

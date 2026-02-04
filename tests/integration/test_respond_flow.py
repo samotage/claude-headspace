@@ -171,11 +171,9 @@ class TestRespondFlow:
         ).scalar_one()
         assert refreshed_task.state == TaskState.PROCESSING
 
-    def test_agent_session_id_maps_to_socket(self, db_session):
-        """Verify claude_session_id can be used to derive socket path."""
-        from claude_headspace.services.commander_service import get_socket_path
-
-        project = ProjectFactory(name="socket-path-test")
+    def test_agent_tmux_pane_id_stored(self, db_session):
+        """Verify tmux_pane_id can be stored on an agent."""
+        project = ProjectFactory(name="tmux-pane-test")
         db_session.flush()
 
         agent = AgentFactory(
@@ -184,5 +182,10 @@ class TestRespondFlow:
         )
         db_session.flush()
 
-        socket_path = get_socket_path(agent.claude_session_id)
-        assert socket_path == "/tmp/claudec-abc123def.sock"
+        agent.tmux_pane_id = "%5"
+        db_session.flush()
+
+        retrieved = db_session.execute(
+            select(Agent).where(Agent.id == agent.id)
+        ).scalar_one()
+        assert retrieved.tmux_pane_id == "%5"
