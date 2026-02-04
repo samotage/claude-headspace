@@ -70,6 +70,7 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "total_frustration": m.total_frustration,
         "frustration_turn_count": m.frustration_turn_count,
         "frustration_avg": frustration_avg,
+        "max_frustration": m.max_frustration,
     }
 
 

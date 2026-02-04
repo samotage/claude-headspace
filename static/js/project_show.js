@@ -702,11 +702,17 @@
                 var d = new Date(h.bucket_start);
                 var key = d.toLocaleDateString('en-CA');
                 if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
                 if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
                 if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
+                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
+                if (bucketMax != null) {
+                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
+                        ? Math.max(dayMap[key].max_frustration, bucketMax)
+                        : bucketMax;
+                }
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
@@ -747,7 +753,8 @@
                         avg_turn_time_seconds: null,
                         active_agents: null,
                         total_frustration: null,
-                        frustration_turn_count: null
+                        frustration_turn_count: null,
+                        max_frustration: null
                     });
                 }
                 cursor = new Date(cursor.getTime() + 3600000);
@@ -790,7 +797,15 @@
             });
 
             var turnData = history.map(function(h) { return h.turn_count > 0 ? h.turn_count : null; });
-            var frustrationData = history.map(function(h) { return h.total_frustration != null ? h.total_frustration : null; });
+            // Chart frustration line: max frustration per bucket (peak score)
+            var frustrationData = history.map(function(h) {
+                if (h.max_frustration != null) return h.max_frustration;
+                // Fallback for historical data without max tracked
+                if (h.total_frustration != null && h.frustration_turn_count && h.frustration_turn_count > 0) {
+                    return h.total_frustration / h.frustration_turn_count;
+                }
+                return null;
+            });
 
             var FRUST_COLORS = {
                 green: { rgb: '76, 175, 80' },
@@ -798,8 +813,9 @@
                 red: { rgb: '255, 85, 85' }
             };
 
-            var pointColors = history.map(function(h) {
-                var lvl = ProjectShow._frustrationLevel(h.total_frustration, h.frustration_turn_count);
+            var pointColors = frustrationData.map(function(val) {
+                if (val == null) return 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
+                var lvl = val >= THRESHOLDS.red ? 'red' : (val >= THRESHOLDS.yellow ? 'yellow' : 'green');
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
@@ -858,12 +874,14 @@
                                 },
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
-                                        return item.raw != null ? 'Frustration: ' + item.raw : null;
+                                        return item.raw != null ? 'Frustration Peak: ' + item.raw : null;
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
                                     var lines = ['Turns: ' + h.turn_count];
-                                    if (h.total_frustration != null) {
+                                    if (h.max_frustration != null) {
+                                        lines.push('Frustration Peak: ' + h.max_frustration);
+                                    } else if (h.total_frustration != null) {
                                         lines.push('Frustration: ' + h.total_frustration);
                                     }
                                     return lines;
@@ -885,7 +903,13 @@
                         y1: {
                             position: 'right',
                             beginAtZero: true,
-                            ticks: { color: 'rgba(255,193,7,0.6)', precision: 0 },
+                            min: 0,
+                            max: 10,
+                            ticks: {
+                                color: 'rgba(255, 193, 7, 0.6)',
+                                precision: 0,
+                                stepSize: 2,
+                            },
                             grid: { drawOnChartArea: false }
                         }
                     }

@@ -115,6 +115,7 @@ class ActivityAggregator:
             project_turn_time_counts: dict[int, int] = {}
             project_frustration: dict[int, int] = {}
             project_frustration_turns: dict[int, int] = {}
+            project_max_frustration: dict[int, int] = {}
 
             for agent in relevant_agents:
                 # Get turns for this agent in the current hour bucket
@@ -143,7 +144,7 @@ class ActivityAggregator:
                         deltas.append(delta)
                     avg_turn_time = sum(deltas) / len(deltas) if deltas else None
 
-                # Compute total frustration from USER turns
+                # Compute frustration metrics from USER turns
                 user_frustration_turns = [
                     t for t in turns
                     if t.actor == TurnActor.USER and t.frustration_score is not None
@@ -151,6 +152,7 @@ class ActivityAggregator:
                 frustration_sum = sum(t.frustration_score for t in user_frustration_turns)
                 total_frustration = frustration_sum if frustration_sum > 0 else None
                 frustration_turn_count = len(user_frustration_turns) if user_frustration_turns else None
+                max_frustration = max((t.frustration_score for t in user_frustration_turns), default=None)
 
                 # Upsert agent metric
                 self._upsert_metric(
@@ -164,6 +166,7 @@ class ActivityAggregator:
                     active_agents=None,
                     total_frustration=total_frustration,
                     frustration_turn_count=frustration_turn_count,
+                    max_frustration=max_frustration,
                 )
                 stats["agents"] += 1
 
@@ -178,6 +181,8 @@ class ActivityAggregator:
                     project_frustration[pid] = project_frustration.get(pid, 0) + total_frustration
                 if frustration_turn_count is not None:
                     project_frustration_turns[pid] = project_frustration_turns.get(pid, 0) + frustration_turn_count
+                if max_frustration is not None:
+                    project_max_frustration[pid] = max(project_max_frustration.get(pid, 0), max_frustration)
 
             # --- Project-level metrics ---
             total_turn_count = 0
@@ -186,6 +191,7 @@ class ActivityAggregator:
             total_turn_time_count = 0
             total_frustration_sum = 0
             total_frustration_turn_count = 0
+            total_max_frustration = 0
 
             for pid, turn_count in project_turn_counts.items():
                 active_count = project_agent_counts.get(pid, 0)
@@ -195,6 +201,7 @@ class ActivityAggregator:
 
                 pid_frustration = project_frustration.get(pid)
                 pid_frustration_turns = project_frustration_turns.get(pid)
+                pid_max_frustration = project_max_frustration.get(pid)
 
                 self._upsert_metric(
                     db.session,
@@ -207,6 +214,7 @@ class ActivityAggregator:
                     active_agents=active_count,
                     total_frustration=pid_frustration,
                     frustration_turn_count=pid_frustration_turns,
+                    max_frustration=pid_max_frustration,
                 )
                 stats["projects"] += 1
 
@@ -220,6 +228,8 @@ class ActivityAggregator:
                     total_frustration_sum += pid_frustration
                 if pid_frustration_turns is not None:
                     total_frustration_turn_count += pid_frustration_turns
+                if pid_max_frustration is not None:
+                    total_max_frustration = max(total_max_frustration, pid_max_frustration)
 
             # --- Overall-level metric ---
             if total_turn_count > 0:
@@ -238,6 +248,7 @@ class ActivityAggregator:
                     active_agents=total_active_agents,
                     total_frustration=total_frustration_sum if total_frustration_sum > 0 else None,
                     frustration_turn_count=total_frustration_turn_count if total_frustration_turn_count > 0 else None,
+                    max_frustration=total_max_frustration if total_max_frustration > 0 else None,
                 )
                 stats["overall"] = 1
 
@@ -285,6 +296,7 @@ class ActivityAggregator:
         active_agents: int | None,
         total_frustration: int | None = None,
         frustration_turn_count: int | None = None,
+        max_frustration: int | None = None,
     ) -> None:
         """Upsert an ActivityMetric record using INSERT ON CONFLICT.
 
@@ -304,6 +316,7 @@ class ActivityAggregator:
             active_agents=active_agents,
             total_frustration=total_frustration,
             frustration_turn_count=frustration_turn_count,
+            max_frustration=max_frustration,
         )
 
         stmt = stmt.on_conflict_do_update(
@@ -319,6 +332,7 @@ class ActivityAggregator:
                 "active_agents": stmt.excluded.active_agents,
                 "total_frustration": stmt.excluded.total_frustration,
                 "frustration_turn_count": stmt.excluded.frustration_turn_count,
+                "max_frustration": stmt.excluded.max_frustration,
             },
         )
 

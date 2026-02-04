@@ -347,7 +347,8 @@
                         avg_turn_time_seconds: null,
                         active_agents: null,
                         total_frustration: null,
-                        frustration_turn_count: null
+                        frustration_turn_count: null,
+                        max_frustration: null
                     });
                 }
                 cursor = new Date(cursor.getTime() + 3600000);
@@ -361,11 +362,18 @@
                 var d = new Date(h.bucket_start);
                 var key = d.toLocaleDateString('en-CA');
                 if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
                 if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
                 if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
+                // Track max across all buckets in the day
+                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
+                if (bucketMax != null) {
+                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
+                        ? Math.max(dayMap[key].max_frustration, bucketMax)
+                        : bucketMax;
+                }
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
@@ -376,10 +384,13 @@
         },
 
         /**
-         * Compute per-bucket frustration average for chart.
+         * Get per-bucket max frustration for chart.
+         * Uses max_frustration (peak score) when available, falls back to
+         * per-bucket average for historical data without max tracked.
          * Returns null for buckets with no scored turns (creates line gaps).
          */
-        _bucketFrustrationAvg: function(h) {
+        _bucketFrustration: function(h) {
+            if (h.max_frustration != null) return h.max_frustration;
             if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
                 return null;
             }
@@ -431,14 +442,14 @@
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
-            // Chart frustration line: per-bucket average (not sum)
+            // Chart frustration line: max frustration per bucket (peak score)
             var frustrationData = history.map(function(h) {
-                return ActivityPage._bucketFrustrationAvg(h);
+                return ActivityPage._bucketFrustration(h);
             });
 
-            // Threshold-based point colors
-            var pointColors = frustrationData.map(function(avg) {
-                var lvl = _levelFromAvg(avg);
+            // Threshold-based point colors (using peak value)
+            var pointColors = frustrationData.map(function(val) {
+                var lvl = _levelFromAvg(val);
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
@@ -521,7 +532,7 @@
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
                                         if (item.raw == null) return null;
-                                        return 'Frustration Avg: ' + item.raw.toFixed(1);
+                                        return 'Frustration Peak: ' + item.raw.toFixed(1);
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
@@ -561,8 +572,9 @@
                 container.innerHTML = '';
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
-                        '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">' +
-                        ActivityPage._escapeHtml(r.project.name) + '</h3>' +
+                        '<h3 class="text-xs font-semibold uppercase tracking-wider mb-2">' +
+                        '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                        ActivityPage._escapeHtml(r.project.name) + '</a></h3>' +
                         '<p class="text-muted text-sm">No activity data yet.</p></div>';
                 });
                 empty.classList.add('hidden');
@@ -583,8 +595,9 @@
                 section.className = 'py-4 border-b border-border last:border-0';
 
                 var history = r.metrics.history || [];
-                var html = '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">' +
-                    ActivityPage._escapeHtml(r.project.name) + '</h3>';
+                var html = '<h3 class="text-xs font-semibold uppercase tracking-wider mb-3">' +
+                    '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                    ActivityPage._escapeHtml(r.project.name) + '</a></h3>';
 
                 if (history.length > 0) {
                     var totalTurns = ActivityPage._sumTurns(history);
@@ -681,6 +694,13 @@
                     ActivityPage._updateWidgetValues(data);
                 } catch (err) {
                     console.error('Failed to parse headspace SSE:', err);
+                }
+            });
+            // Close on page unload to free connection slot
+            window.addEventListener('beforeunload', function() {
+                if (sseSource) {
+                    sseSource.close();
+                    sseSource = null;
                 }
             });
         },
