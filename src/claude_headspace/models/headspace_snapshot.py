@@ -24,6 +24,7 @@ class HeadspaceSnapshot(db.Model):
     )
     frustration_rolling_10: Mapped[float | None] = mapped_column(Float, nullable=True)
     frustration_rolling_30min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    frustration_rolling_3hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String(10), nullable=False, default="green")
     turn_rate_per_hour: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_flow_state: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

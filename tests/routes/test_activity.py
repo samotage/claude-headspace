@@ -4,6 +4,68 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+from claude_headspace.routes.activity import _metric_to_dict
+
+
+class TestMetricToDict:
+    """Test _metric_to_dict helper function."""
+
+    def test_frustration_avg_computed(self):
+        """frustration_avg is computed from total_frustration / frustration_turn_count."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = 15.0
+        m.frustration_turn_count = 3
+        result = _metric_to_dict(m)
+        assert result["frustration_avg"] == 5.0
+
+    def test_frustration_avg_null_when_no_turns(self):
+        """frustration_avg is None when frustration_turn_count is 0."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = 0
+        m.frustration_turn_count = 0
+        result = _metric_to_dict(m)
+        assert result["frustration_avg"] is None
+
+    def test_frustration_avg_null_when_none(self):
+        """frustration_avg is None when total_frustration is None."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = None
+        m.frustration_turn_count = None
+        result = _metric_to_dict(m)
+        assert result["frustration_avg"] is None
+
+    def test_frustration_avg_rounded_to_1_decimal(self):
+        """frustration_avg is rounded to 1 decimal place."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = 10.0
+        m.frustration_turn_count = 3
+        result = _metric_to_dict(m)
+        assert result["frustration_avg"] == 3.3
+
 
 class TestActivityPage:
     """Test GET /activity page route."""
@@ -28,6 +90,18 @@ class TestActivityPage:
         response = client.get("/activity")
         html = response.data.decode("utf-8")
         assert "[0]" in html
+
+    def test_activity_page_includes_frustration_thresholds(self, client):
+        """GET /activity injects frustration thresholds into template."""
+        response = client.get("/activity")
+        html = response.data.decode("utf-8")
+        assert "FRUSTRATION_THRESHOLDS" in html
+
+    def test_activity_page_includes_headspace_enabled(self, client):
+        """GET /activity injects HEADSPACE_ENABLED into template."""
+        response = client.get("/activity")
+        html = response.data.decode("utf-8")
+        assert "HEADSPACE_ENABLED" in html
 
 
 class TestOverallMetricsAPI:

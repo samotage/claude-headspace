@@ -58,6 +58,9 @@ def _get_window() -> tuple[str, datetime, datetime | None]:
 
 def _metric_to_dict(m: ActivityMetric) -> dict:
     """Convert an ActivityMetric to a JSON-serialisable dict."""
+    frustration_avg = None
+    if m.total_frustration and m.frustration_turn_count and m.frustration_turn_count > 0:
+        frustration_avg = round(m.total_frustration / m.frustration_turn_count, 1)
     return {
         "id": m.id,
         "bucket_start": m.bucket_start.isoformat(),
@@ -66,6 +69,7 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "active_agents": m.active_agents,
         "total_frustration": m.total_frustration,
         "frustration_turn_count": m.frustration_turn_count,
+        "frustration_avg": frustration_avg,
     }
 
 
@@ -76,14 +80,20 @@ def activity_page():
 
     status_counts = {"input_needed": 0, "working": 0, "idle": 0}
     headspace = current_app.extensions.get("headspace_monitor")
+    headspace_enabled = bool(headspace and headspace.enabled)
     frustration_thresholds = {
         "yellow": getattr(headspace, "_yellow_threshold", 4),
         "red": getattr(headspace, "_red_threshold", 7),
     }
+    session_rolling_window_minutes = getattr(
+        headspace, "_session_rolling_window_minutes", 180
+    )
     return render_template(
         "activity.html",
         status_counts=status_counts,
         frustration_thresholds=frustration_thresholds,
+        session_rolling_window_minutes=session_rolling_window_minutes,
+        headspace_enabled=headspace_enabled,
     )
 
 

@@ -56,6 +56,8 @@ class HeadspaceMonitor:
         self._flow_max_frustration = flow.get("max_frustration", 3)
         self._flow_min_duration = flow.get("min_duration_minutes", 15)
 
+        self._session_rolling_window_minutes = hs.get("session_rolling_window_minutes", 180)
+
         messages = hs.get("messages", {})
         self._gentle_alerts = messages.get("gentle_alerts", GENTLE_ALERTS_DEFAULT)
         self._flow_messages = messages.get("flow_messages", FLOW_MESSAGES_DEFAULT)
@@ -93,6 +95,7 @@ class HeadspaceMonitor:
                     "state": "green",
                     "frustration_rolling_10": None,
                     "frustration_rolling_30min": None,
+                    "frustration_rolling_3hr": None,
                     "is_flow_state": False,
                     "flow_duration_minutes": None,
                     "alert_suppressed": self._is_suppressed(),
@@ -112,6 +115,7 @@ class HeadspaceMonitor:
                 # Calculate rolling averages
                 rolling_10 = self._calc_rolling_10()
                 rolling_30min = self._calc_rolling_30min(now)
+                rolling_3hr = self._calc_rolling_3hr(now)
 
                 # Determine traffic light state
                 state = self._determine_state(rolling_10, rolling_30min)
@@ -131,8 +135,8 @@ class HeadspaceMonitor:
 
                 # Create snapshot
                 snapshot = self._create_snapshot(
-                    now, rolling_10, rolling_30min, state, turn_rate,
-                    is_flow, flow_duration,
+                    now, rolling_10, rolling_30min, rolling_3hr, state,
+                    turn_rate, is_flow, flow_duration,
                 )
 
                 # Prune old snapshots
@@ -175,6 +179,23 @@ class HeadspaceMonitor:
     def _calc_rolling_30min(self, now: datetime) -> float | None:
         """Calculate rolling average of scored user turns in the last 30 minutes."""
         cutoff = now - timedelta(minutes=30)
+        turns = (
+            db.session.query(Turn.frustration_score)
+            .filter(
+                Turn.actor == TurnActor.USER,
+                Turn.frustration_score.isnot(None),
+                Turn.timestamp >= cutoff,
+            )
+            .all()
+        )
+        if not turns:
+            return None
+        scores = [t[0] for t in turns]
+        return sum(scores) / len(scores)
+
+    def _calc_rolling_3hr(self, now: datetime) -> float | None:
+        """Calculate rolling average of scored user turns in the session window."""
+        cutoff = now - timedelta(minutes=self._session_rolling_window_minutes)
         turns = (
             db.session.query(Turn.frustration_score)
             .filter(
@@ -355,8 +376,8 @@ class HeadspaceMonitor:
         self._alert_count_today += 1
 
     def _create_snapshot(
-        self, now, rolling_10, rolling_30min, state, turn_rate,
-        is_flow, flow_duration,
+        self, now, rolling_10, rolling_30min, rolling_3hr, state,
+        turn_rate, is_flow, flow_duration,
     ) -> HeadspaceSnapshot:
         with self._lock:
             last_alert_at = self._last_alert_at
@@ -366,6 +387,7 @@ class HeadspaceMonitor:
             timestamp=now,
             frustration_rolling_10=rolling_10,
             frustration_rolling_30min=rolling_30min,
+            frustration_rolling_3hr=rolling_3hr,
             state=state,
             turn_rate_per_hour=turn_rate,
             is_flow_state=is_flow,
@@ -396,6 +418,7 @@ class HeadspaceMonitor:
                 "state": snapshot.state,
                 "frustration_rolling_10": snapshot.frustration_rolling_10,
                 "frustration_rolling_30min": snapshot.frustration_rolling_30min,
+                "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
                 "is_flow_state": snapshot.is_flow_state,
                 "flow_duration_minutes": snapshot.flow_duration_minutes,
             })
@@ -441,6 +464,7 @@ class HeadspaceMonitor:
             "state": snapshot.state,
             "frustration_rolling_10": snapshot.frustration_rolling_10,
             "frustration_rolling_30min": snapshot.frustration_rolling_30min,
+            "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
             "turn_rate_per_hour": snapshot.turn_rate_per_hour,
             "is_flow_state": snapshot.is_flow_state,
             "flow_duration_minutes": snapshot.flow_duration_minutes,

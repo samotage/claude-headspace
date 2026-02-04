@@ -1280,29 +1280,45 @@ From Epic 5 Acceptance Criteria:
 
 ## Recommended PRD Generation Order
 
-All 3 PRDs have been generated. Implementation order:
+All 5 PRDs have been generated. Implementation order:
 
 ### Phase 1: Input Bridge — DONE
 
 1. **input-bridge** (`docs/prds/bridge/done/e5-s1-input-bridge-prd.md`) — Commander service, response endpoint, dashboard input UI
 
-**Rationale:** Enables dashboard response capability, establishes commander service pattern.
+**Rationale:** Enables dashboard response capability, establishes respond pipeline.
 
 ---
 
-### Phase 2: Project Show Core
+### Phase 2: tmux Bridge — IN PROGRESS
 
-2. **project-show-core** (`docs/prds/ui/e5-s2-project-show-core-prd.md`) — Slug routing, show page template, metadata display, control actions
+2. **tmux-bridge** (`docs/prds/bridge/e5-s4-tmux-bridge-prd.md`) — Replace commander socket with tmux send-keys
+
+**Rationale:** Fixes transport layer — commander socket doesn't work with Claude Code's Ink TUI. Must complete for Input Bridge to function.
+
+---
+
+### Phase 3: Project Show Core
+
+3. **project-show-core** (`docs/prds/ui/e5-s2-project-show-core-prd.md`) — Slug routing, show page template, metadata display, control actions
 
 **Rationale:** Creates the project show page foundation that E5-S3 extends.
 
 ---
 
-### Phase 3: Project Show Tree & Metrics
+### Phase 4: Project Show Tree & Metrics
 
-3. **project-show-tree** (`docs/prds/ui/e5-s3-project-show-tree-and-metrics-prd.md`) — Accordion tree, lazy loading, activity metrics, archive history, SSE updates
+4. **project-show-tree** (`docs/prds/ui/e5-s3-project-show-tree-and-metrics-prd.md`) — Accordion tree, lazy loading, activity metrics, archive history, SSE updates
 
-**Rationale:** Capstone feature, builds on show page foundation, integrates activity metrics.
+**Rationale:** Builds on show page foundation, adds data exploration and embedded metrics.
+
+---
+
+### Phase 5: Activity Frustration Display
+
+5. **activity-frustration** (`docs/prds/ui/e5-s5-activity-frustration-display-prd.md`) — Average-based frustration display, frustration state widget
+
+**Rationale:** Improves frustration metrics interpretation on activity page, adds at-a-glance frustration state.
 
 ---
 
@@ -1333,6 +1349,7 @@ Epic 5 Sprint 1 (Input Bridge) is Phase 1 of the Voice Bridge vision. Future pha
 | Version | Date       | Author          | Changes                                         |
 | ------- | ---------- | --------------- | ----------------------------------------------- |
 | 1.0     | 2026-02-04 | PM Agent (John) | Initial detailed roadmap for Epic 5 (3 sprints) |
+| 1.1     | 2026-02-04 | PM Agent (John) | Added E5-S4 (tmux Bridge) and E5-S5 (Activity Frustration Display), now 5 sprints |
 
 ---
 
