@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from ..database import db
 from ..models.agent import Agent
@@ -170,14 +170,96 @@ def get_project(project_id: int):
         if not project:
             return jsonify({"error": "Project not found"}), 404
 
+        # Paginated agents, ordered by last_seen_at descending
+        page = request.args.get("agents_page", 1, type=int)
+        per_page = request.args.get("agents_per_page", 10, type=int)
+        per_page = min(per_page, 100)  # cap
+
+        agents_query = (
+            db.session.query(Agent)
+            .filter(Agent.project_id == project.id)
+            .order_by(Agent.last_seen_at.desc().nullslast())
+        )
+        total_agents = agents_query.count()
+        agents_page = agents_query.offset((page - 1) * per_page).limit(per_page).all()
+
+        # Batch-compute per-agent metrics for the current page
+        agent_ids = [a.id for a in agents_page]
+        agent_metrics = {}
+        if agent_ids:
+            # Turn counts and frustration averages per agent
+            turn_stats = (
+                db.session.query(
+                    Task.agent_id,
+                    func.count(Turn.id).label("turn_count"),
+                    func.avg(Turn.frustration_score).label("frustration_avg"),
+                )
+                .join(Turn, Turn.task_id == Task.id)
+                .filter(Task.agent_id.in_(agent_ids))
+                .group_by(Task.agent_id)
+                .all()
+            )
+            for row in turn_stats:
+                agent_metrics[row.agent_id] = {
+                    "turn_count": row.turn_count or 0,
+                    "frustration_avg": round(float(row.frustration_avg), 1) if row.frustration_avg is not None else None,
+                }
+
+            # Approximate avg turn time per agent:
+            # For each task, compute (max_timestamp - min_timestamp) / (count - 1)
+            # then average across tasks
+            from sqlalchemy import case
+            avg_turn_time_stats = (
+                db.session.query(
+                    Task.agent_id,
+                    func.avg(
+                        case(
+                            (func.count(Turn.id) > 1,
+                             func.extract("epoch", func.max(Turn.timestamp) - func.min(Turn.timestamp))
+                             / (func.count(Turn.id) - 1)),
+                            else_=None,
+                        )
+                    ).label("avg_turn_time"),
+                )
+                .join(Turn, Turn.task_id == Task.id)
+                .filter(Task.agent_id.in_(agent_ids))
+                .group_by(Task.agent_id, Task.id)
+            ).subquery()
+
+            avg_per_agent = (
+                db.session.query(
+                    avg_turn_time_stats.c.agent_id,
+                    func.avg(avg_turn_time_stats.c.avg_turn_time).label("avg_turn_time"),
+                )
+                .group_by(avg_turn_time_stats.c.agent_id)
+                .all()
+            )
+            for row in avg_per_agent:
+                if row.agent_id in agent_metrics:
+                    agent_metrics[row.agent_id]["avg_turn_time"] = (
+                        round(float(row.avg_turn_time), 1) if row.avg_turn_time is not None else None
+                    )
+                else:
+                    agent_metrics[row.agent_id] = {
+                        "turn_count": 0,
+                        "frustration_avg": None,
+                        "avg_turn_time": round(float(row.avg_turn_time), 1) if row.avg_turn_time is not None else None,
+                    }
+
         agents_data = []
-        for a in project.agents:
+        for a in agents_page:
+            metrics = agent_metrics.get(a.id, {})
             agents_data.append({
                 "id": a.id,
                 "session_uuid": str(a.session_uuid) if a.session_uuid else None,
                 "state": a.state.value if hasattr(a.state, "value") else str(a.state),
                 "started_at": a.started_at.isoformat() if a.started_at else None,
                 "ended_at": a.ended_at.isoformat() if a.ended_at else None,
+                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+                "priority_score": a.priority_score,
+                "turn_count": metrics.get("turn_count", 0),
+                "frustration_avg": metrics.get("frustration_avg"),
+                "avg_turn_time": metrics.get("avg_turn_time"),
             })
 
         return jsonify({
@@ -193,6 +275,12 @@ def get_project(project_id: int):
             "inference_paused_reason": project.inference_paused_reason,
             "created_at": project.created_at.isoformat() if project.created_at else None,
             "agents": agents_data,
+            "agents_pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total_agents,
+                "total_pages": (total_agents + per_page - 1) // per_page,
+            },
         }), 200
 
     except Exception:
@@ -493,7 +581,7 @@ def get_agent_tasks(agent_id: int):
         tasks = (
             db.session.query(Task)
             .filter(Task.agent_id == agent_id)
-            .order_by(Task.started_at.desc())
+            .order_by(Task.started_at.asc())
             .all()
         )
 
