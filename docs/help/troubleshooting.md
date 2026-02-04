@@ -87,27 +87,17 @@ Common issues and how to resolve them.
 
 **Solutions:**
 
-1. **Session must be started with `--bridge`** — the respond widget requires a commander socket. Install `claudec` and start sessions with:
+1. **Agent needs a tmux pane ID** — the respond widget requires a tmux pane. The `tmux_pane_id` is set when the session registers via hooks. If missing, the session didn't register properly.
+
+2. **Check tmux is running** — the bridge uses `tmux send-keys` to deliver input:
    ```bash
-   claude-headspace start --bridge
+   tmux list-panes -a
    ```
-   If the preamble shows `Input Bridge: unavailable`, install `claudec`: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
+   Verify the agent's pane exists.
 
-2. **Check that claudec is installed:**
-   ```bash
-   claudec --version
-   ```
-   If not found, install it: `cargo install claude-commander` or download from [GitHub releases](https://github.com/sstraus/claude-commander/releases).
+3. **Health check delay** — there is a brief delay before the availability check detects the pane. The widget will appear automatically once the health check succeeds.
 
-3. **Socket startup delay** — there is a 2-5 second delay after launching `claudec` before the socket becomes available. The widget will appear automatically once the health check detects the socket.
-
-4. **Check socket exists** — verify the commander socket file is present:
-   ```bash
-   ls /tmp/claudec-*.sock
-   ```
-   If no socket files exist, `claudec` may not be running or may have crashed.
-
-5. **Agent needs a session ID** — if the agent has no `claude_session_id`, the socket path cannot be derived. This usually means the session didn't register properly via hooks.
+4. **Check server logs** — look for tmux bridge health check failures in the server console.
 
 ### "Session unreachable" error when responding
 
@@ -115,13 +105,13 @@ Common issues and how to resolve them.
 
 **Solutions:**
 
-1. **Check if Claude Code is still running** — the process inside `claudec` may have exited
-2. **Check the socket file:**
+1. **Check if Claude Code is still running** — the process in the tmux pane may have exited
+2. **Check the tmux pane:**
    ```bash
-   ls -la /tmp/claudec-*.sock
+   tmux list-panes -a
    ```
-   If the file exists but the process is dead, the socket is stale. Restart the session with `claudec`.
-3. **Socket permissions** — ensure the socket file is readable/writable by your user
+   If the pane no longer exists, the session has ended.
+3. **tmux server** — ensure the tmux server is running
 
 ### "Agent not waiting for input" warning
 
@@ -135,12 +125,12 @@ Common issues and how to resolve them.
 
 **Symptoms:** Respond widget flashes briefly then vanishes.
 
-**Cause:** The commander availability health check ran and found the socket unreachable.
+**Cause:** The tmux availability health check ran and found the pane unreachable.
 
 **Solutions:**
-1. Check if the `claudec` process is still running
+1. Check if the tmux pane still exists
 2. Check server logs for availability check failures
-3. The health check runs every 30 seconds (configurable in `config.yaml` → `commander.health_check_interval`)
+3. The health check runs every 30 seconds (configurable in `config.yaml` → `tmux_bridge.health_check_interval`)
 
 ## Configuration Issues
 
@@ -181,6 +171,45 @@ Common issues and how to resolve them.
 1. Click Reload to see current file contents
 2. Check if another process modified the file
 3. If it's your only edit, use Overwrite
+
+## Brain Reboot Issues
+
+### "Project not found" error
+
+**Symptoms:** Brain reboot generates with an error.
+
+**Solutions:**
+1. Verify the project exists in the database (check Projects page)
+2. Restart the server if you recently added the project
+
+### Progress summary empty
+
+**Symptoms:** Brain reboot shows "No progress summary available."
+
+**Solutions:**
+1. The project must be a git repository with recent commits
+2. Click **Regenerate Progress Summary** to create one
+3. Check that `OPENROUTER_API_KEY` is set in `.env` (LLM required for summary generation)
+
+## Activity & Headspace Issues
+
+### No activity metrics showing
+
+**Symptoms:** Activity page shows "--" for all metrics.
+
+**Solutions:**
+1. The activity aggregator runs every 5 minutes — wait for the first aggregation
+2. Check `config.yaml` → `activity.enabled` is `true`
+3. Ensure there are active agents with recent turns
+
+### Frustration always shows green
+
+**Symptoms:** Headspace indicator never changes from green.
+
+**Solutions:**
+1. Frustration requires `OPENROUTER_API_KEY` — without it, no scores are generated
+2. Check `config.yaml` → `headspace.enabled` is `true`
+3. Verify inference is not paused for the project
 
 ## Performance Issues
 

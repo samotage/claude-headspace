@@ -8,17 +8,20 @@ The dashboard is the main view of Claude Headspace, showing all your active Clau
 
 The header shows:
 
-- **Navigation** - Links to Dashboard, Objective, Logging, and Config pages
-- **Status Counts** - How many agents are in each state
-- **Connection Status** - Shows if real-time updates are connected
+- **Navigation** - Links to Dashboard, Projects, Activity, Objective, Logging, Help, and Config pages
+- **Status Counts** - How many agents are in each state (Input Needed, Working, Idle)
+- **Headspace Indicator** - Traffic-light dot showing current frustration level (see [Headspace](headspace))
+- **Connection Status** - Shows if real-time updates are connected (Live/Connecting/Offline)
 
 ### Project Groups
 
 By default, agents are grouped by project. Each project group shows:
 
-- **Traffic Light** - Overall project status (red/yellow/green)
-- **Project Name** - The monitored project
+- **Traffic Light** - Overall project status (dots showing agent states)
+- **Project Name** - The monitored project (click to open project detail page)
+- **Brain Reboot** - Button to generate a brain reboot for the project
 - **Active Count** - Number of active agents in this project
+- **Staleness Badge** - Shows how recently the project had activity
 - **Waypoint Preview** - Current project waypoint with [Edit] button
 
 ### Agent Cards
@@ -30,18 +33,27 @@ Each agent has a card showing:
 - **State Bar** - Visual indicator of current state (click to focus iTerm window)
 - **Task Instruction** - The current prompt or task being worked on
 - **Task Summary** - AI-generated summary of progress
-- **Respond Widget** - Quick-action buttons and text input (only when awaiting input with commander available)
+- **Respond Widget** - Quick-action buttons and text input (only when awaiting input with tmux pane available)
 - **Priority Score** - Used for sorting
+
+### Recommended Next
+
+When agents need attention, a highlighted panel at the top suggests which agent to focus on next. It shows:
+
+- The agent's session ID and project
+- Current state and priority score
+- A rationale for why this agent is recommended
+- Click to focus the iTerm window
 
 ### Respond Widget (Input Bridge)
 
-When an agent is in the **Input Needed** (amber) state and the session was started with `--bridge`, a respond widget appears on the card:
+When an agent is in the **Input Needed** (amber) state and a tmux pane is available, a respond widget appears on the card:
 
 - **Quick-action buttons** — Parsed from numbered options in the prompt (e.g., "1. Yes", "2. No"). Click to send just the number.
 - **Free-text input** — Type any response and click Send or press Enter.
 - **Feedback** — Success shows a green highlight and toast. Errors show a toast with a specific message.
 
-The widget only appears when the commander socket is reachable. If the session was not started with `--bridge`, the card shows the normal state bar (click to focus iTerm) without the input widget.
+The widget only appears when the tmux pane is reachable. If the pane is not available, the card shows the normal state bar (click to focus iTerm) without the input widget.
 
 See [Input Bridge](input-bridge) for setup instructions and details.
 

@@ -6,69 +6,25 @@ When a Claude Code agent is waiting for input (permission prompts, yes/no questi
 
 ## How It Works
 
-Input Bridge uses **claude-commander** (`claudec`), a lightweight Rust binary that wraps Claude Code in a pseudo-terminal (PTY) and exposes a Unix domain socket for text injection. Both keyboard input in iTerm and dashboard-injected input write to the same PTY, so the terminal remains fully interactive.
+Input Bridge uses **tmux send-keys** to inject text into the terminal pane where Claude Code is running. The dashboard sends your response to the Flask backend, which writes it to the correct tmux pane.
 
 ```
 Dashboard button click
   → POST /api/respond/<agent_id>
-  → Server writes to Unix socket: /tmp/claudec-<session_id>.sock
-  → claudec writes to PTY master
-  → Claude Code reads from PTY slave (same as keyboard input)
-  → Agent resumes processing
+  → Server calls tmux send-keys on the agent's pane
+  → Text appears in the terminal as if typed
+  → Claude Code reads the input and resumes processing
 ```
 
-## Installing claude-commander
+## Prerequisites
 
-`claudec` is a Rust binary available from GitHub.
-
-### Install via Cargo (Rust toolchain)
-
-If you have Rust installed:
-
-```bash
-cargo install claude-commander
-```
-
-### Install from GitHub Release
-
-Download the pre-built binary for macOS:
-
-```bash
-# Download the latest release
-curl -L https://github.com/sstraus/claude-commander/releases/latest/download/claudec-darwin-arm64 -o /usr/local/bin/claudec
-chmod +x /usr/local/bin/claudec
-```
-
-### Verify Installation
-
-```bash
-claudec --version
-```
-
-You should see the version number (v0.1.0 or later).
-
-## Launching Sessions
-
-To enable Input Bridge, use the `--bridge` flag when starting a session:
-
-```bash
-claude-headspace start --bridge
-```
-
-This detects `claudec` in your PATH and wraps Claude Code with it. The preamble shows `Input Bridge: enabled (claudec detected)`. Behind the scenes, `claude-headspace` launches `claudec claude` as the child process, which:
-
-1. Creates a PTY pair for the Claude Code process
-2. Opens a Unix socket at `/tmp/claudec-<session_id>.sock`
-3. Launches Claude Code inside the PTY
-4. Forwards all keyboard input to the PTY (transparent to the user)
-
-The session registers with Headspace via the normal hooks. The Input Bridge becomes available once the commander socket is detected.
-
-Without `--bridge`, `claude-headspace start` launches `claude` directly as usual. Sessions work normally — you just won't have the respond widget on the dashboard.
+- **tmux** must be installed and running
+- Claude Code sessions must be running inside tmux panes
+- The agent's `tmux_pane_id` must be set (registered via hooks at session start)
 
 ## Using the Respond Widget
 
-When an agent is in the **Input Needed** (amber) state and the commander socket is reachable, the agent card shows a respond widget:
+When an agent is in the **Input Needed** (amber) state and its tmux pane is reachable, the agent card shows a respond widget:
 
 ### Quick-Action Buttons
 
@@ -88,17 +44,17 @@ A text field with a Send button is always available below the quick-action butto
 The respond widget only appears when **all** of these conditions are met:
 
 1. The agent is in **AWAITING_INPUT** state
-2. The agent has a `claude_session_id` (so the socket path can be derived)
-3. The commander socket is reachable (health check passes)
+2. The agent has a `tmux_pane_id` set
+3. The tmux pane is reachable (health check passes)
 
 If any condition is not met, the card displays the normal focus button to switch to iTerm instead. This is by design — the dashboard never shows a broken input widget.
 
 ## Availability Checking
 
-Headspace checks commander socket availability:
+Headspace checks tmux pane availability:
 
-- **On session start** — when an agent first registers
-- **Periodically** — every 30 seconds (configurable via `commander.health_check_interval`)
+- **On session start** — when an agent first registers via hooks
+- **Periodically** — every 30 seconds (configurable via `tmux_bridge.health_check_interval`)
 - **On demand** — when an agent transitions to AWAITING_INPUT
 
 Changes in availability are broadcast via SSE, so the widget appears or disappears in real-time without page refresh.
@@ -107,20 +63,20 @@ Changes in availability are broadcast via SSE, so the widget appears or disappea
 
 | Error | Meaning | What to Do |
 |-------|---------|------------|
-| **Session unreachable** | Commander socket not found or process dead | Was the session started with `claudec`? Check if the Claude Code process is still running |
+| **Session unreachable** | Tmux pane not found or process dead | Check if the Claude Code process is still running in tmux |
 | **Agent not waiting for input** | Agent already moved past the prompt | The agent continued on its own — no action needed |
-| **No session ID** | Agent has no `claude_session_id` | The session may not have registered properly. Restart with `claudec` |
+| **No pane ID** | Agent has no `tmux_pane_id` | The session may not have registered properly via hooks |
 | **Network error** | Cannot reach the Headspace server | Check if the Flask server is running |
 
 ## Configuration
 
-Commander settings are in `config.yaml` under the `commander` section:
+Tmux bridge settings are in `config.yaml` under the `tmux_bridge` section:
 
 ```yaml
-commander:
-  health_check_interval: 30        # Seconds between availability checks
-  socket_timeout: 2                # Socket operation timeout in seconds
-  socket_path_prefix: /tmp/claudec- # Must match claudec's convention
+tmux_bridge:
+  health_check_interval: 30      # Seconds between availability checks
+  subprocess_timeout: 5           # Subprocess timeout (seconds)
+  text_enter_delay_ms: 100        # Delay between sending text and Enter key (ms)
 ```
 
 These can also be edited from the [Configuration](configuration) page.
@@ -131,7 +87,6 @@ Every response sent via the dashboard is recorded as a Turn entity (actor: USER,
 
 ## Limitations
 
-- **Input only** — the socket sends text to Claude Code but does not capture output (hooks already handle output awareness)
-- **Local only** — Unix domain sockets work on the same machine; remote access is not supported
-- **No authentication** — socket access relies on Unix file permissions
-- **Startup delay** — there is a 2-5 second delay after launching `claudec` before the socket becomes available
+- **Input only** — tmux send-keys delivers text but does not capture output (hooks handle output awareness)
+- **Local only** — tmux works on the same machine; remote access is not supported
+- **No authentication** — tmux pane access relies on Unix user permissions
