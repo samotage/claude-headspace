@@ -262,6 +262,12 @@
 
                     empty.classList.add('hidden');
 
+                    // Update overall active agents from live project data
+                    var liveAgentTotal = 0;
+                    projects.forEach(function(p) { liveAgentTotal += (p.agent_count || 0); });
+                    var overallAgentsEl = document.getElementById('overall-active-agents');
+                    if (overallAgentsEl) overallAgentsEl.textContent = liveAgentTotal;
+
                     var promises = projects.map(function(p) {
                         return fetch('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
                             .then(function(res) { return res.json(); })
@@ -274,7 +280,7 @@
                     Promise.all(promises).then(function(results) {
                         var agentPromises = [];
                         results.forEach(function(r) {
-                            if (r.metrics.history && r.metrics.history.length > 0) {
+                            if ((r.metrics.history && r.metrics.history.length > 0) || (r.project.agent_count > 0)) {
                                 agentPromises.push(
                                     fetch('/api/projects/' + r.project.id)
                                         .then(function(res) { return res.json(); })
@@ -292,10 +298,7 @@
                                             return Promise.all(aPromises);
                                         })
                                         .then(function(agentData) {
-                                            // Filter out agents with no metrics in the selected period
-                                            r.agents = agentData.filter(function(ad) {
-                                                return ad.metrics.history && ad.metrics.history.length > 0;
-                                            });
+                                            r.agents = agentData;
                                         })
                                 );
                             } else {
@@ -619,7 +622,7 @@
                         (avgTime != null ? avgTime.toFixed(1) + 's' : '--') +
                         '</div><div class="metric-card-label">Avg Time</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value text-green">' + (r.metrics.current ? (r.metrics.current.active_agents || 0) : 0) + '</div>' +
+                        '<div class="metric-card-value text-green">' + (r.project.agent_count || 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +

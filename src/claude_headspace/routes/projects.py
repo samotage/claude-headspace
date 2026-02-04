@@ -174,14 +174,25 @@ def get_project(project_id: int):
         page = request.args.get("agents_page", 1, type=int)
         per_page = request.args.get("agents_per_page", 10, type=int)
         per_page = min(per_page, 100)  # cap
+        include_ended = request.args.get("include_ended", "false").lower() == "true"
 
         agents_query = (
             db.session.query(Agent)
             .filter(Agent.project_id == project.id)
-            .order_by(Agent.last_seen_at.desc().nullslast())
         )
+        if not include_ended:
+            agents_query = agents_query.filter(Agent.ended_at.is_(None))
+        agents_query = agents_query.order_by(Agent.last_seen_at.desc().nullslast())
+
         total_agents = agents_query.count()
         agents_page = agents_query.offset((page - 1) * per_page).limit(per_page).all()
+
+        # Always compute active agent count (ended_at IS NULL)
+        active_agent_count = (
+            db.session.query(Agent)
+            .filter(Agent.project_id == project.id, Agent.ended_at.is_(None))
+            .count()
+        )
 
         # Batch-compute per-agent metrics for the current page
         agent_ids = [a.id for a in agents_page]
@@ -247,10 +258,13 @@ def get_project(project_id: int):
         agents_data = []
         for a in agents_page:
             metrics = agent_metrics.get(a.id, {})
+            state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
+            if a.ended_at is not None:
+                state_value = "ended"
             agents_data.append({
                 "id": a.id,
                 "session_uuid": str(a.session_uuid) if a.session_uuid else None,
-                "state": a.state.value if hasattr(a.state, "value") else str(a.state),
+                "state": state_value,
                 "started_at": a.started_at.isoformat() if a.started_at else None,
                 "ended_at": a.ended_at.isoformat() if a.ended_at else None,
                 "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
@@ -272,6 +286,7 @@ def get_project(project_id: int):
             "inference_paused_at": project.inference_paused_at.isoformat() if project.inference_paused_at else None,
             "inference_paused_reason": project.inference_paused_reason,
             "created_at": project.created_at.isoformat() if project.created_at else None,
+            "active_agent_count": active_agent_count,
             "agents": agents_data,
             "agents_pagination": {
                 "page": page,

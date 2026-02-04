@@ -74,9 +74,13 @@
 
         _loadProjectData: async function() {
             try {
-                var response = await fetch('/api/projects/' + projectId);
+                var showEnded = projectData && projectData._showEnded;
+                var url = '/api/projects/' + projectId;
+                if (showEnded) url += '?include_ended=true';
+                var response = await fetch(url);
                 if (!response.ok) return;
                 projectData = await response.json();
+                projectData._showEnded = showEnded;
                 this._updateAgentWarning();
                 this._updateAgentsBadge();
                 cache.agents = projectData.agents || [];
@@ -107,8 +111,13 @@
         _updateAgentsBadge: function() {
             var badge = document.getElementById('agents-count-badge');
             if (badge && projectData) {
+                var activeCount = projectData.active_agent_count || 0;
                 var total = (projectData.agents_pagination && projectData.agents_pagination.total) || (projectData.agents || []).length;
-                badge.textContent = '(' + total + ')';
+                if (projectData._showEnded && total !== activeCount) {
+                    badge.textContent = '(' + activeCount + ' active / ' + total + ' total)';
+                } else {
+                    badge.textContent = '(' + activeCount + ')';
+                }
             }
         },
 
@@ -223,15 +232,40 @@
             }
         },
 
+        toggleShowEnded: function() {
+            var showEnded = projectData && projectData._showEnded;
+            var btn = document.getElementById('btn-show-ended');
+            if (showEnded) {
+                // Switch back to active-only
+                if (btn) {
+                    btn.textContent = 'Show ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-border text-muted hover:text-secondary hover:border-border-bright transition-colors';
+                }
+                if (projectData) projectData._showEnded = false;
+            } else {
+                if (btn) {
+                    btn.textContent = 'Hide ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-cyan/30 text-cyan hover:text-primary transition-colors';
+                }
+                if (projectData) projectData._showEnded = true;
+            }
+            cache.agents = null;
+            this._fetchAndRenderAgents(1);
+        },
+
         _fetchAndRenderAgents: async function(page) {
             var container = document.getElementById('agents-list');
             container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading agents...</span></p>';
 
             page = page || 1;
+            var showEnded = projectData && projectData._showEnded;
+            var url = '/api/projects/' + projectId + '?agents_page=' + page;
+            if (showEnded) url += '&include_ended=true';
             try {
-                var response = await fetch('/api/projects/' + projectId + '?agents_page=' + page);
+                var response = await fetch(url);
                 if (!response.ok) throw new Error('Failed to fetch');
                 var data = await response.json();
+                data._showEnded = showEnded;
                 cache.agents = data.agents || [];
                 cache.agentsPagination = data.agents_pagination || null;
                 projectData = data;
@@ -271,6 +305,7 @@
             agents.forEach(function(agent) {
                 var isEnded = !!agent.ended_at;
                 var stateValue = agent.state || 'idle';
+                if (isEnded) stateValue = 'ended';
                 var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
                 var agentId = agent.id;
 
@@ -631,7 +666,7 @@
                 // Update summary cards
                 var totalTurns = this._sumTurns(history);
                 var avgTime = this._weightedAvgTime(history);
-                var activeAgents = data.current ? (data.current.active_agents || 0) : 0;
+                var activeAgents = projectData ? (projectData.active_agent_count || 0) : 0;
                 var frustStats = this._sumFrustrationHistory(history);
 
                 var turnEl = document.getElementById('ps-turn-count');
@@ -1490,10 +1525,14 @@
                 // Invalidate cache and re-fetch, preserving current page
                 cache.agents = null;
                 var currentPage = (cache.agentsPagination && cache.agentsPagination.page) || 1;
+                var showEnded = projectData && projectData._showEnded;
+                var sseUrl = '/api/projects/' + projectId + '?agents_page=' + currentPage;
+                if (showEnded) sseUrl += '&include_ended=true';
                 var self = this;
-                fetch('/api/projects/' + projectId + '?agents_page=' + currentPage)
+                fetch(sseUrl)
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
+                        data._showEnded = showEnded;
                         projectData = data;
                         cache.agents = data.agents || [];
                         cache.agentsPagination = data.agents_pagination || null;
@@ -1535,7 +1574,8 @@
                 commanded: 'bg-amber/15 text-amber',
                 processing: 'bg-blue/15 text-blue',
                 awaiting_input: 'bg-amber/15 text-amber',
-                complete: 'bg-green/15 text-green'
+                complete: 'bg-green/15 text-green',
+                ended: 'bg-surface text-muted opacity-60'
             };
             return map[s] || 'bg-surface text-muted';
         },

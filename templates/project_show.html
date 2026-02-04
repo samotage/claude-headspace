@@ -154,10 +154,13 @@
 
         <!-- Agents Accordion Tree -->
         <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
-            <div id="agents-accordion-header" class="flex items-center gap-2 cursor-pointer select-none" onclick="ProjectShow.toggleAgentsAccordion()">
-                <span id="agents-accordion-arrow" class="text-muted text-xs transition-transform duration-150">&#9654;</span>
-                <h2 class="text-lg font-bold text-primary">Agents</h2>
-                <span id="agents-count-badge" class="text-xs text-muted bg-surface px-2 py-0.5 rounded-full"></span>
+            <div class="flex items-center justify-between">
+                <div id="agents-accordion-header" class="flex items-center gap-2 cursor-pointer select-none" onclick="ProjectShow.toggleAgentsAccordion()">
+                    <span id="agents-accordion-arrow" class="text-muted text-xs transition-transform duration-150">&#9654;</span>
+                    <h2 class="text-lg font-bold text-primary">Agents</h2>
+                    <span id="agents-count-badge" class="text-xs text-muted bg-surface px-2 py-0.5 rounded-full"></span>
+                </div>
+                <button type="button" id="btn-show-ended" onclick="ProjectShow.toggleShowEnded()" class="px-2 py-1 text-xs rounded border border-border text-muted hover:text-secondary hover:border-border-bright transition-colors">Show ended</button>
             </div>
             <div id="agents-accordion-body" class="accordion-body mt-4" style="display: none;">
                 <div id="agents-list" class="space-y-2">

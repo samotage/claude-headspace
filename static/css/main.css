@@ -1142,8 +1142,8 @@ select.form-well {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.grid-cols-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .grid-cols-5 {
@@ -1824,6 +1824,10 @@ select.form-well {
 
 .opacity-50 {
   opacity: 0.5;
+}
+
+.opacity-60 {
+  opacity: 0.6;
 }
 
 .opacity-75 {
@@ -2950,6 +2954,11 @@ body::after {
 .hover\:text-red:hover {
   --tw-text-opacity: 1;
   color: rgb(224 115 115 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-secondary:hover {
+  --tw-text-opacity: 1;
+  color: rgb(160 160 171 / var(--tw-text-opacity, 1));
 }
 
 .hover\:underline:hover {
