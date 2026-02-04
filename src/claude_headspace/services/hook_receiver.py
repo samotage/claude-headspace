@@ -270,6 +270,7 @@ def process_session_start(
     state.record_event(HookEventType.SESSION_START)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+        agent.ended_at = None  # Clear ended state for new session
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
 

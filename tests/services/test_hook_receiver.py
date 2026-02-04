@@ -129,6 +129,13 @@ class TestProcessSessionStart:
         assert fresh_state.last_event_type == HookEventType.SESSION_START
         assert fresh_state.events_received == 1
 
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_clears_ended_at(self, mock_db, mock_agent, fresh_state):
+        """session_start should clear agent.ended_at for the new session."""
+        mock_agent.ended_at = datetime.now(timezone.utc)
+        process_session_start(mock_agent, "session-123")
+        assert mock_agent.ended_at is None
+
 
 class TestProcessSessionEnd:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
@@ -878,6 +885,13 @@ class TestProcessPostToolUse:
         mock_get_lm.return_value = mock_lifecycle
         mock_lifecycle.get_current_task.return_value = None
 
+        # No recently completed tasks — query returns None
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = None
+
         new_task = MagicMock()
         new_task.id = 10
         new_task.state = TaskState.PROCESSING
@@ -890,6 +904,66 @@ class TestProcessPostToolUse:
         assert result.state_changed is True
         mock_lifecycle.create_task.assert_called_once_with(mock_agent, TaskState.COMMANDED)
         mock_lifecycle.update_task_state.assert_called_once()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_skips_inferred_when_recent_task_completed(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use should NOT create inferred task if previous task completed < 30s ago."""
+        from claude_headspace.models.task import TaskState
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = None
+
+        # Recent completed task — 5 seconds ago
+        recent_task = MagicMock()
+        recent_task.id = 50
+        recent_task.completed_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = recent_task
+
+        result = process_post_tool_use(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is False
+        mock_lifecycle.create_task.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_creates_inferred_when_old_task_completed(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use should create inferred task if previous task completed > 30s ago."""
+        from claude_headspace.models.task import TaskState
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = None
+
+        # Old completed task — 60 seconds ago
+        old_task = MagicMock()
+        old_task.id = 40
+        old_task.completed_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = old_task
+
+        new_task = MagicMock()
+        new_task.id = 11
+        new_task.state = TaskState.PROCESSING
+        mock_lifecycle.create_task.return_value = new_task
+        mock_lifecycle.get_pending_summarisations.return_value = []
+
+        result = process_post_tool_use(mock_agent, "session-123")
+
+        assert result.success is True
+        assert result.state_changed is True
+        mock_lifecycle.create_task.assert_called_once_with(mock_agent, TaskState.COMMANDED)
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
