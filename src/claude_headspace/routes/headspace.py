@@ -53,6 +53,7 @@ def headspace_history():
             "state": s.state,
             "frustration_rolling_10": s.frustration_rolling_10,
             "frustration_rolling_30min": s.frustration_rolling_30min,
+            "frustration_rolling_3hr": s.frustration_rolling_3hr,
             "turn_rate_per_hour": s.turn_rate_per_hour,
             "is_flow_state": s.is_flow_state,
             "flow_duration_minutes": s.flow_duration_minutes,

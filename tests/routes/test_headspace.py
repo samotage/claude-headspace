@@ -30,6 +30,7 @@ def mock_monitor():
         "state": "green",
         "frustration_rolling_10": 2.5,
         "frustration_rolling_30min": 1.8,
+        "frustration_rolling_3hr": 2.1,
         "turn_rate_per_hour": 10.0,
         "is_flow_state": False,
         "flow_duration_minutes": None,
@@ -50,6 +51,7 @@ class TestHeadspaceCurrent:
         data = resp.get_json()
         assert data["enabled"] is True
         assert data["current"]["state"] == "green"
+        assert data["current"]["frustration_rolling_3hr"] == 2.1
 
     def test_disabled_monitor(self, app, client):
         monitor = MagicMock()
@@ -80,6 +82,7 @@ class TestHeadspaceHistory:
         mock_snapshot.state = "green"
         mock_snapshot.frustration_rolling_10 = 2.0
         mock_snapshot.frustration_rolling_30min = 1.5
+        mock_snapshot.frustration_rolling_3hr = 1.8
         mock_snapshot.turn_rate_per_hour = 8.0
         mock_snapshot.is_flow_state = False
         mock_snapshot.flow_duration_minutes = None
@@ -93,6 +96,7 @@ class TestHeadspaceHistory:
         assert data["enabled"] is True
         assert len(data["history"]) == 1
         assert data["history"][0]["state"] == "green"
+        assert data["history"][0]["frustration_rolling_3hr"] == 1.8
 
     @patch("src.claude_headspace.routes.headspace.db")
     def test_with_since_param(self, mock_db, app, client, mock_monitor):

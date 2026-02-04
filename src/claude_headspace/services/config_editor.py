@@ -157,6 +157,18 @@ CONFIG_SCHEMA = [
         ],
     ),
     SectionSchema(
+        name="headspace",
+        title="Headspace",
+        fields=[
+            FieldSchema("enabled", "boolean", "Enable headspace monitoring", default=True),
+            FieldSchema("thresholds.yellow", "integer", "Yellow frustration threshold (0-10)", min_value=0, max_value=10, default=4),
+            FieldSchema("thresholds.red", "integer", "Red frustration threshold (0-10)", min_value=0, max_value=10, default=7),
+            FieldSchema("session_rolling_window_minutes", "integer", "Session rolling window duration (minutes)", min_value=10, max_value=1440, default=180),
+            FieldSchema("alert_cooldown_minutes", "integer", "Minutes between alerts", min_value=1, max_value=60, default=10),
+            FieldSchema("snapshot_retention_days", "integer", "Days to retain snapshots", min_value=1, max_value=365, default=7),
+        ],
+    ),
+    SectionSchema(
         name="openrouter",
         title="Inference",
         fields=[
@@ -391,23 +403,11 @@ def save_config_file(
         return False, error_msg
 
 
-def flatten_openrouter(config: dict) -> dict:
-    """
-    Flatten nested openrouter config keys into dot-notation.
-
-    Converts e.g. config['openrouter']['models']['turn'] to
-    config['openrouter']['models.turn'] so the flat section[field]
-    editor can handle it.
-
-    Args:
-        config: Configuration dictionary (modified in-place and returned)
-
-    Returns:
-        The config dict with openrouter section flattened
-    """
-    section = config.get("openrouter")
+def _flatten_section(config: dict, section_name: str) -> None:
+    """Flatten nested keys in a config section into dot-notation (in-place)."""
+    section = config.get(section_name)
     if not isinstance(section, dict):
-        return config
+        return
 
     flat = {}
     for key, value in list(section.items()):
@@ -417,26 +417,14 @@ def flatten_openrouter(config: dict) -> dict:
         else:
             flat[key] = value
 
-    config["openrouter"] = flat
-    return config
+    config[section_name] = flat
 
 
-def unflatten_openrouter(config: dict) -> dict:
-    """
-    Unflatten dot-notation openrouter keys back to nested dicts.
-
-    Converts e.g. config['openrouter']['models.turn'] to
-    config['openrouter']['models']['turn'] for YAML serialisation.
-
-    Args:
-        config: Configuration dictionary (modified in-place and returned)
-
-    Returns:
-        The config dict with openrouter section unflattened
-    """
-    section = config.get("openrouter")
+def _unflatten_section(config: dict, section_name: str) -> None:
+    """Unflatten dot-notation keys in a config section back to nested dicts (in-place)."""
+    section = config.get(section_name)
     if not isinstance(section, dict):
-        return config
+        return
 
     nested = {}
     for key, value in section.items():
@@ -448,7 +436,46 @@ def unflatten_openrouter(config: dict) -> dict:
         else:
             nested[key] = value
 
-    config["openrouter"] = nested
+    config[section_name] = nested
+
+
+NESTED_SECTIONS = ["openrouter", "headspace"]
+
+
+def flatten_openrouter(config: dict) -> dict:
+    """
+    Flatten nested config keys into dot-notation for sections with nested structure.
+
+    Converts e.g. config['openrouter']['models']['turn'] to
+    config['openrouter']['models.turn'] so the flat section[field]
+    editor can handle it.
+
+    Args:
+        config: Configuration dictionary (modified in-place and returned)
+
+    Returns:
+        The config dict with nested sections flattened
+    """
+    for section_name in NESTED_SECTIONS:
+        _flatten_section(config, section_name)
+    return config
+
+
+def unflatten_openrouter(config: dict) -> dict:
+    """
+    Unflatten dot-notation keys back to nested dicts for YAML serialisation.
+
+    Converts e.g. config['openrouter']['models.turn'] to
+    config['openrouter']['models']['turn'].
+
+    Args:
+        config: Configuration dictionary (modified in-place and returned)
+
+    Returns:
+        The config dict with nested sections unflattened
+    """
+    for section_name in NESTED_SECTIONS:
+        _unflatten_section(config, section_name)
     return config
 
 

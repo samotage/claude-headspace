@@ -86,6 +86,7 @@ headspace:
   thresholds:
     yellow: 4
     red: 7
+  session_rolling_window_minutes: 180
   alert_cooldown_minutes: 10
   snapshot_retention_days: 7
   flow_detection:

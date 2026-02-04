@@ -68,6 +68,15 @@ class TestConfiguration:
         assert monitor._flow_max_frustration == 3
         assert monitor._flow_min_duration == 15
 
+    def test_session_rolling_window_default(self, app):
+        m = HeadspaceMonitor(app=app, config={})
+        assert m._session_rolling_window_minutes == 180
+
+    def test_session_rolling_window_from_config(self, app):
+        config = {"headspace": {"session_rolling_window_minutes": 60}}
+        m = HeadspaceMonitor(app=app, config=config)
+        assert m._session_rolling_window_minutes == 60
+
     def test_custom_messages(self, app):
         config = {
             "headspace": {
@@ -200,6 +209,36 @@ class TestDailyAlertCount:
         assert monitor._alert_count_today == 1  # Reset
 
 
+class TestCalcRolling3hr:
+
+    @patch("src.claude_headspace.services.headspace_monitor.db")
+    def test_returns_none_when_no_turns(self, mock_db, monitor):
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
+        assert result is None
+
+    @patch("src.claude_headspace.services.headspace_monitor.db")
+    def test_returns_average_of_scored_turns(self, mock_db, monitor):
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            (2,), (4,), (6,),
+        ]
+        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
+        assert result == 4.0
+
+    @patch("src.claude_headspace.services.headspace_monitor.db")
+    def test_single_turn(self, mock_db, monitor):
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            (7,),
+        ]
+        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
+        assert result == 7.0
+
+    def test_uses_config_window(self, app):
+        config = {"headspace": {"session_rolling_window_minutes": 60}}
+        m = HeadspaceMonitor(app=app, config=config)
+        assert m._session_rolling_window_minutes == 60
+
+
 class TestRecalculate:
 
     def test_disabled_monitor_skips(self, app):
@@ -244,6 +283,7 @@ class TestGetCurrentState:
         state = monitor.get_current_state()
         assert state["state"] == "green"
         assert state["frustration_rolling_10"] is None
+        assert state["frustration_rolling_3hr"] is None
         assert state["is_flow_state"] is False
 
     @patch("src.claude_headspace.services.headspace_monitor.db")
@@ -252,6 +292,7 @@ class TestGetCurrentState:
         mock_snapshot.state = "yellow"
         mock_snapshot.frustration_rolling_10 = 5.0
         mock_snapshot.frustration_rolling_30min = 4.0
+        mock_snapshot.frustration_rolling_3hr = 3.5
         mock_snapshot.turn_rate_per_hour = 8.0
         mock_snapshot.is_flow_state = False
         mock_snapshot.flow_duration_minutes = None
@@ -263,3 +304,4 @@ class TestGetCurrentState:
         state = monitor.get_current_state()
         assert state["state"] == "yellow"
         assert state["frustration_rolling_10"] == 5.0
+        assert state["frustration_rolling_3hr"] == 3.5

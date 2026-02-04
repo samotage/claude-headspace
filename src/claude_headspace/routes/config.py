@@ -148,17 +148,17 @@ def save_config():
     for key, value in original.items():
         if key not in schema_sections:
             config[key] = value
-    # Deep-merge openrouter to preserve non-schema sub-keys (e.g. pricing, retry.base_delay_seconds)
-    original_or = original.get("openrouter", {})
-    config_or = config.get("openrouter", {})
-    for key, value in original_or.items():
-        if isinstance(value, dict) and key in config_or and isinstance(config_or[key], dict):
-            # Merge: schema fields already present, add non-schema ones
-            for subkey, subvalue in value.items():
-                if subkey not in config_or[key]:
-                    config_or[key][subkey] = subvalue
-        elif key not in config_or:
-            config_or[key] = value
+    # Deep-merge nested sections to preserve non-schema sub-keys
+    for nested_section in ["openrouter", "headspace"]:
+        original_nested = original.get(nested_section, {})
+        config_nested = config.get(nested_section, {})
+        for key, value in original_nested.items():
+            if isinstance(value, dict) and key in config_nested and isinstance(config_nested[key], dict):
+                for subkey, subvalue in value.items():
+                    if subkey not in config_nested[key]:
+                        config_nested[key][subkey] = subvalue
+            elif key not in config_nested:
+                config_nested[key] = value
 
     # Save configuration atomically
     success, error_message = save_config_file(config)

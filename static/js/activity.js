@@ -4,9 +4,11 @@
     let chart = null;
     let currentWindow = 'day';
     let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
+    let sseSource = null;
 
     // Frustration thresholds from config (injected by template)
     var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
+    var HEADSPACE_ENABLED = global.HEADSPACE_ENABLED || false;
 
     // Color constants for frustration states
     var FRUST_COLORS = {
@@ -18,10 +20,24 @@
     // Rate label by window
     var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
 
+    /**
+     * Compute frustration level (green/yellow/red) from a numeric average.
+     */
+    function _levelFromAvg(avg) {
+        if (avg == null) return 'green';
+        if (avg >= THRESHOLDS.red) return 'red';
+        if (avg >= THRESHOLDS.yellow) return 'yellow';
+        return 'green';
+    }
+
     const ActivityPage = {
         init: function() {
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+            if (HEADSPACE_ENABLED) {
+                this._initFrustrationWidget();
+                this._initSSE();
+            }
         },
 
         setWindow: function(w) {
@@ -160,6 +176,29 @@
             return totalPairs > 0 ? totalTime / totalPairs : null;
         },
 
+        /**
+         * Compute frustration average from history (total_frustration / frustration_turn_count).
+         */
+        _computeFrustrationAvg: function(history) {
+            var totalFrust = 0, totalTurns = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.total_frustration != null) totalFrust += h.total_frustration;
+                    if (h.frustration_turn_count != null) totalTurns += h.frustration_turn_count;
+                });
+            }
+            if (totalTurns === 0) return null;
+            return totalFrust / totalTurns;
+        },
+
+        /**
+         * Format a frustration average for display (1 decimal place).
+         */
+        _formatFrustAvg: function(avg) {
+            if (avg == null) return '\u2014';
+            return avg.toFixed(1);
+        },
+
         loadOverallMetrics: function() {
             fetch('/api/metrics/overall?' + this._apiParams())
                 .then(function(res) { return res.json(); })
@@ -191,12 +230,12 @@
                     document.getElementById('overall-active-agents').textContent =
                         data.current ? (data.current.active_agents || 0) : 0;
 
-                    // Frustration with threshold-based color
-                    var frustStats = ActivityPage._sumFrustrationHistory(data.history);
+                    // Frustration: display average instead of sum
+                    var frustAvg = ActivityPage._computeFrustrationAvg(data.history);
                     var frustEl = document.getElementById('overall-frustration');
-                    frustEl.textContent = frustStats.total > 0 ? frustStats.total : 0;
-                    var level = ActivityPage._frustrationLevel(frustStats.total, frustStats.turns);
-                    frustEl.className = 'metric-card-value ' + FRUST_COLORS[level].text;
+                    frustEl.textContent = ActivityPage._formatFrustAvg(frustAvg);
+                    var level = _levelFromAvg(frustAvg);
+                    frustEl.className = 'metric-card-value ' + (frustAvg != null ? FRUST_COLORS[level].text : 'text-muted');
 
                     ActivityPage._renderChart(data.history);
                 })
@@ -336,6 +375,17 @@
             });
         },
 
+        /**
+         * Compute per-bucket frustration average for chart.
+         * Returns null for buckets with no scored turns (creates line gaps).
+         */
+        _bucketFrustrationAvg: function(h) {
+            if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
+                return null;
+            }
+            return h.total_frustration / h.frustration_turn_count;
+        },
+
         _renderChart: function(history) {
             var canvas = document.getElementById('activity-chart');
             var chartEmpty = document.getElementById('chart-empty');
@@ -381,12 +431,14 @@
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
+            // Chart frustration line: per-bucket average (not sum)
             var frustrationData = history.map(function(h) {
-                return h.total_frustration != null ? h.total_frustration : null;
+                return ActivityPage._bucketFrustrationAvg(h);
             });
 
-            var pointColors = history.map(function(h) {
-                var lvl = ActivityPage._frustrationLevel(h.total_frustration, h.frustration_turn_count);
+            // Threshold-based point colors
+            var pointColors = frustrationData.map(function(avg) {
+                var lvl = _levelFromAvg(avg);
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
@@ -422,10 +474,6 @@
                 borderColor: pointColors[0] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)',
             }];
 
-            var overallFrust = ActivityPage._sumFrustrationHistory(history);
-            var overallLevel = ActivityPage._frustrationLevel(overallFrust.total, overallFrust.turns);
-            var axisColor = FRUST_COLORS[overallLevel].rgb;
-
             var scales = {
                 x: {
                     ticks: { color: 'rgba(255,255,255,0.4)', maxTicksLimit: 12 },
@@ -439,7 +487,13 @@
                 y1: {
                     position: 'right',
                     beginAtZero: true,
-                    ticks: { color: 'rgba(' + axisColor + ', 0.6)', precision: 0 },
+                    min: 0,
+                    max: 10,
+                    ticks: {
+                        color: 'rgba(255, 193, 7, 0.6)',
+                        precision: 0,
+                        stepSize: 2,
+                    },
                     grid: { drawOnChartArea: false }
                 }
             };
@@ -466,7 +520,8 @@
                                 },
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
-                                        return item.raw != null ? 'Frustration: ' + item.raw : null;
+                                        if (item.raw == null) return null;
+                                        return 'Frustration Avg: ' + item.raw.toFixed(1);
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
@@ -479,8 +534,9 @@
                                             lines.push('Active agents: ' + h.active_agents);
                                         }
                                     }
-                                    if (h.total_frustration != null) {
-                                        lines.push('Frustration: ' + h.total_frustration);
+                                    var avg = ActivityPage._bucketFrustrationAvg(h);
+                                    if (avg != null) {
+                                        lines.push('Frustration Avg: ' + avg.toFixed(1));
                                     }
                                     return lines;
                                 }
@@ -534,9 +590,9 @@
                     var totalTurns = ActivityPage._sumTurns(history);
                     var rate = ActivityPage._computeRate(totalTurns);
                     var avgTime = ActivityPage._weightedAvgTime(history);
-                    var projFrust = ActivityPage._sumFrustrationHistory(history);
-                    var projLevel = ActivityPage._frustrationLevel(projFrust.total, projFrust.turns);
-                    var projColor = FRUST_COLORS[projLevel].text;
+                    var projFrustAvg = ActivityPage._computeFrustrationAvg(history);
+                    var projLevel = _levelFromAvg(projFrustAvg);
+                    var projColor = projFrustAvg != null ? FRUST_COLORS[projLevel].text : 'text-muted';
 
                     html += '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
@@ -553,7 +609,7 @@
                         '<div class="metric-card-value text-green">' + (r.metrics.current ? (r.metrics.current.active_agents || 0) : 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value ' + projColor + '">' + projFrust.total + '</div>' +
+                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
                         '<div class="metric-card-label">Frustration</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
@@ -576,17 +632,15 @@
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
-                            var agentFrust = ActivityPage._sumFrustrationHistory(agentHistory);
-                            var agentLevel = ActivityPage._frustrationLevel(agentFrust.total, agentFrust.turns);
-                            var agentFrustColor = FRUST_COLORS[agentLevel].text;
+                            var agentFrustAvg = ActivityPage._computeFrustrationAvg(agentHistory);
+                            var agentLevel = _levelFromAvg(agentFrustAvg);
+                            var agentFrustColor = agentFrustAvg != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
                             html += '<div class="agent-metric-stats">' +
                                 '<span><span class="stat-value">' + agentTurns + '</span><span class="stat-label">turns</span></span>';
                             if (agentAvg != null) {
                                 html += '<span><span class="stat-value">' + agentAvg.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
-                            if (agentFrust.total > 0) {
-                                html += '<span><span class="stat-value ' + agentFrustColor + '">' + agentFrust.total + '</span><span class="stat-label">frust</span></span>';
-                            }
+                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentFrustAvg) + '</span><span class="stat-label">frust</span></span>';
                             html += '</div>';
                         } else {
                             html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
@@ -601,12 +655,58 @@
             });
         },
 
+        // ---- Frustration State Widget ----
+
+        _initFrustrationWidget: function() {
+            fetch('/api/headspace/current')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (!data.enabled || !data.current) return;
+                    ActivityPage._updateWidgetValues(data.current);
+                })
+                .catch(function(err) {
+                    console.error('Failed to load headspace state:', err);
+                });
+        },
+
+        _initSSE: function() {
+            if (sseSource) return;
+            sseSource = new EventSource('/api/events/stream?types=headspace_update');
+            sseSource.addEventListener('headspace_update', function(e) {
+                try {
+                    var data = JSON.parse(e.data);
+                    ActivityPage._updateWidgetValues(data);
+                } catch (err) {
+                    console.error('Failed to parse headspace SSE:', err);
+                }
+            });
+        },
+
+        _updateWidgetValues: function(state) {
+            this._setIndicator('frust-immediate-value', state.frustration_rolling_10);
+            this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
+            this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
+        },
+
+        _setIndicator: function(elementId, value) {
+            var el = document.getElementById(elementId);
+            if (!el) return;
+            if (value == null) {
+                el.textContent = '\u2014';
+                el.className = 'frustration-indicator-value text-muted';
+            } else {
+                el.textContent = value.toFixed(1);
+                var level = _levelFromAvg(value);
+                el.className = 'frustration-indicator-value ' + FRUST_COLORS[level].text;
+            }
+        },
+
+        // ---- Utilities ----
+
         _frustrationLevel: function(totalFrustration, turnCount) {
             if (!totalFrustration || !turnCount || turnCount === 0) return 'green';
             var avg = totalFrustration / turnCount;
-            if (avg >= THRESHOLDS.red) return 'red';
-            if (avg >= THRESHOLDS.yellow) return 'yellow';
-            return 'green';
+            return _levelFromAvg(avg);
         },
 
         _sumFrustrationHistory: function(history) {
