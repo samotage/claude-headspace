@@ -60,13 +60,13 @@ The wrapper script:
 - Launches Claude Code as a child process
 - Cleans up the session when Claude Code exits
 
-To enable Input Bridge (respond to prompts from the dashboard), add `--bridge`:
+To enable the tmux bridge (respond to prompts from the dashboard), add `--bridge`:
 
 ```bash
 claude-headspace start --bridge
 ```
 
-This requires `claudec` (claude-commander) to be installed. See [Input Bridge](input-bridge) for setup and details.
+This launches the session inside a tmux pane so the dashboard can send text responses via `tmux send-keys`. Requires tmux to be installed (`brew install tmux`). See [Input Bridge](input-bridge) for details.
 
 ### Method 2: Hooks Only
 
