@@ -212,13 +212,11 @@ def get_project(project_id: int):
             avg_turn_time_stats = (
                 db.session.query(
                     Task.agent_id,
-                    func.avg(
-                        case(
-                            (func.count(Turn.id) > 1,
-                             func.extract("epoch", func.max(Turn.timestamp) - func.min(Turn.timestamp))
-                             / (func.count(Turn.id) - 1)),
-                            else_=None,
-                        )
+                    case(
+                        (func.count(Turn.id) > 1,
+                         func.extract("epoch", func.max(Turn.timestamp) - func.min(Turn.timestamp))
+                         / (func.count(Turn.id) - 1)),
+                        else_=None,
                     ).label("avg_turn_time"),
                 )
                 .join(Turn, Turn.task_id == Task.id)

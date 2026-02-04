@@ -46,6 +46,138 @@
         window.location.reload();
     }
 
+    // ── Kanban card movement utilities ──────────────────────────────
+
+    /**
+     * Check if the dashboard is currently in Kanban view.
+     * Card movement only applies in Kanban view; project/priority views
+     * keep existing in-place update behavior.
+     */
+    function isKanbanView() {
+        return !!document.querySelector('.kanban-columns');
+    }
+
+    /**
+     * Map an agent state string to the Kanban column data-kanban-state value.
+     * Matches the Python _prepare_kanban_data() logic:
+     *   IDLE, COMPLETE -> 'IDLE'
+     *   COMMANDED, PROCESSING, TIMED_OUT -> 'PROCESSING'
+     *   AWAITING_INPUT -> 'AWAITING_INPUT'
+     */
+    function stateToKanbanColumn(state) {
+        switch (state) {
+            case 'IDLE':
+            case 'COMPLETE':
+                return 'IDLE';
+            case 'COMMANDED':
+            case 'PROCESSING':
+            case 'TIMED_OUT':
+                return 'PROCESSING';
+            case 'AWAITING_INPUT':
+                return 'AWAITING_INPUT';
+            default:
+                return 'IDLE';
+        }
+    }
+
+    /**
+     * Move an agent card to the correct Kanban column based on its new state.
+     * Handles column count updates, empty placeholders, and highlight animation.
+     */
+    function moveCardToColumn(agentId, newState, projectId) {
+        if (!isKanbanView()) return;
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        if (!card) return;
+
+        var targetColName = stateToKanbanColumn(newState);
+
+        // Find card's current column
+        var currentColumn = card.closest('[data-kanban-state]');
+        if (!currentColumn) return;
+
+        var currentColName = currentColumn.getAttribute('data-kanban-state');
+
+        // Already in the correct column — nothing to do
+        if (currentColName === targetColName) return;
+
+        // Find the target column body within the same project section
+        var projectSection = card.closest('[data-project-id]');
+        if (!projectSection) return;
+
+        var targetColumn = projectSection.querySelector('[data-kanban-state="' + targetColName + '"]');
+        if (!targetColumn) return;
+
+        var targetBody = targetColumn.querySelector('.kanban-column-body');
+        if (!targetBody) return;
+
+        var sourceBody = currentColumn.querySelector('.kanban-column-body');
+
+        // Move the card
+        targetBody.appendChild(card);
+
+        // Update source column: add empty placeholder if now empty
+        if (sourceBody) {
+            var remainingCards = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+            if (remainingCards.length === 0 && currentColName !== 'COMPLETE') {
+                var emptyLabels = {
+                    'IDLE': 'idle',
+                    'PROCESSING': 'processing',
+                    'AWAITING_INPUT': 'input needed'
+                };
+                var emptyText = 'No ' + (emptyLabels[currentColName] || currentColName.toLowerCase()) + ' tasks';
+                var placeholder = document.createElement('p');
+                placeholder.className = 'text-muted text-xs italic px-2';
+                placeholder.textContent = emptyText;
+                sourceBody.appendChild(placeholder);
+            }
+        }
+
+        // Update target column: remove empty placeholder if present
+        var targetPlaceholder = targetBody.querySelector('p.text-muted.italic');
+        if (targetPlaceholder) {
+            targetPlaceholder.remove();
+        }
+
+        // Update both column header counts
+        updateColumnCount(currentColumn);
+        updateColumnCount(targetColumn);
+
+        // Highlight the moved card
+        highlightMovedCard(card);
+    }
+
+    /**
+     * Update the (N) count in a Kanban column header.
+     * Counts article elements and details.kanban-completed-task elements.
+     */
+    function updateColumnCount(columnEl) {
+        if (!columnEl) return;
+
+        var body = columnEl.querySelector('.kanban-column-body');
+        if (!body) return;
+
+        var count = body.querySelectorAll('article, details.kanban-completed-task').length;
+        var countSpan = columnEl.querySelector('.kanban-column-count');
+        if (countSpan) {
+            countSpan.textContent = '(' + count + ')';
+        }
+    }
+
+    /**
+     * Apply a brief highlight animation on a card that just moved columns.
+     * Scrolls the card into view and adds a cyan ring for 1.5 seconds.
+     */
+    function highlightMovedCard(card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        card.classList.add('ring-2', 'ring-cyan');
+        setTimeout(function() {
+            card.classList.remove('ring-2', 'ring-cyan');
+        }, 1500);
+    }
+
+    // ── End Kanban card movement utilities ────────────────────────
+
     /**
      * Initialize the dashboard SSE client.
      * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
@@ -149,6 +281,9 @@
         // Update agent card and recommended panel
         updateAgentCardState(agentId, newState);
         updateRecommendedPanel(agentId, newState);
+
+        // Move card to correct Kanban column
+        moveCardToColumn(agentId, newState, data.project_id);
 
         // Clear line 04 when leaving AWAITING_INPUT — the question is no longer relevant
         if (oldState === 'AWAITING_INPUT' && newState !== 'AWAITING_INPUT') {
@@ -308,11 +443,49 @@
         const agentId = data.agent_id;
         if (!agentId) return;
 
-        console.log('Session ended:', agentId, '- reloading dashboard');
+        console.log('Session ended:', agentId);
 
         // Remove from tracked states
         agentStates.delete(agentId);
 
+        // In Kanban view, remove the card from DOM instead of full reload
+        if (isKanbanView()) {
+            var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+            if (card) {
+                var column = card.closest('[data-kanban-state]');
+                var body = column ? column.querySelector('.kanban-column-body') : null;
+
+                card.remove();
+
+                // Update source column: add empty placeholder if now empty
+                if (body) {
+                    var remaining = body.querySelectorAll('article, details.kanban-completed-task');
+                    if (remaining.length === 0) {
+                        var colName = column.getAttribute('data-kanban-state');
+                        if (colName !== 'COMPLETE') {
+                            var emptyLabels = {
+                                'IDLE': 'idle',
+                                'PROCESSING': 'processing',
+                                'AWAITING_INPUT': 'input needed'
+                            };
+                            var placeholder = document.createElement('p');
+                            placeholder.className = 'text-muted text-xs italic px-2';
+                            placeholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                            body.appendChild(placeholder);
+                        }
+                    }
+                }
+
+                // Update column count
+                if (column) updateColumnCount(column);
+
+                // Recalculate header counts
+                updateStatusCounts();
+                return;
+            }
+        }
+
+        // Fallback: reload for non-Kanban views or if card not found
         safeDashboardReload();
     }
 
@@ -532,8 +705,13 @@
             reasonEl.textContent = '// ' + data.priority_reason.substring(0, 60);
         }
 
-        // Update tracked state
+        // Update tracked state and move card if state changed
+        var oldState = agentStates.get(agentId);
         agentStates.set(agentId, state);
+
+        if (oldState !== state) {
+            moveCardToColumn(agentId, state, data.project_id);
+        }
 
         // Recalculate header counts and project dots
         updateStatusCounts();

@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # because user interaction happens AFTER the tool completes
 USER_INTERACTIVE_TOOLS = {"ExitPlanMode"}
 
+# Don't infer a new task from post_tool_use if the previous task
+# completed less than this many seconds ago (tail-end tool activity).
+INFERRED_TASK_COOLDOWN_SECONDS = 30
+
 
 # --- Data types ---
 
@@ -603,6 +607,32 @@ def process_post_tool_use(
         current_task = lifecycle.get_current_task(agent)
 
         if not current_task:
+            # Guard: don't infer a task if the previous one just completed
+            # (tail-end tool activity after session_end/stop)
+            from ..models.task import Task
+
+            recent_complete = (
+                db.session.query(Task)
+                .filter(
+                    Task.agent_id == agent.id,
+                    Task.state == TaskState.COMPLETE,
+                    Task.completed_at.isnot(None),
+                )
+                .order_by(Task.completed_at.desc())
+                .first()
+            )
+            if recent_complete and recent_complete.completed_at:
+                elapsed = (datetime.now(timezone.utc) - recent_complete.completed_at).total_seconds()
+                if elapsed < INFERRED_TASK_COOLDOWN_SECONDS:
+                    db.session.commit()
+                    broadcast_card_refresh(agent, "post_tool_use")
+                    logger.info(
+                        f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                        f"skipped inferred task (previous task {recent_complete.id} "
+                        f"completed {elapsed:.1f}s ago)"
+                    )
+                    return HookEventResult(success=True, agent_id=agent.id)
+
             # No task — infer one from tool use evidence
             new_task = lifecycle.create_task(agent, TaskState.COMMANDED)
             lifecycle.update_task_state(

@@ -62,6 +62,14 @@
     client.connect();
 
     global.headerSSEClient = client;
+
+    // Close SSE connection before page unload to free the browser connection slot.
+    // Chrome limits HTTP/1.1 to 6 connections per host — without this,
+    // navigating between pages accumulates stale SSE connections and
+    // eventually blocks all new requests.
+    window.addEventListener("beforeunload", function () {
+      client.disconnect();
+    });
   }
 
   if (document.readyState === "loading") {

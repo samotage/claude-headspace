@@ -242,7 +242,7 @@ def _prepare_kanban_data(
     Returns:
         List of dicts, each with project info and state columns
     """
-    columns = ["IDLE", "COMMANDED", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
+    columns = ["IDLE", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
     kanban_projects = []
 
     for proj_data in project_data:
@@ -284,7 +284,9 @@ def _prepare_kanban_data(
                     })
                 else:
                     # Agent has active task - goes in the state's column
-                    state_columns[state_name].append({
+                    # COMMANDED is a transitory state; display in PROCESSING column
+                    col_name = "PROCESSING" if state_name == "COMMANDED" else state_name
+                    state_columns[col_name].append({
                         "type": "task",
                         "agent": agent_data,
                         "task_instruction": agent_data.get("task_instruction"),
@@ -302,6 +304,20 @@ def _prepare_kanban_data(
                                 completion_summary = last_turn.summary or (
                                     last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
                                 )
+                            # Compute elapsed time
+                            elapsed = None
+                            if task.started_at and task.completed_at:
+                                delta = task.completed_at - task.started_at
+                                total_seconds = int(delta.total_seconds())
+                                hours = total_seconds // 3600
+                                minutes = (total_seconds % 3600) // 60
+                                if hours > 0:
+                                    elapsed = f"{hours}h {minutes}m"
+                                elif minutes > 0:
+                                    elapsed = f"{minutes}m"
+                                else:
+                                    elapsed = "<1m"
+
                             state_columns["COMPLETE"].append({
                                 "type": "completed_task",
                                 "agent": agent_data,
@@ -309,6 +325,8 @@ def _prepare_kanban_data(
                                 "completion_summary": completion_summary or "Completed",
                                 "instruction": task.instruction or "Task",
                                 "completed_at": task.completed_at,
+                                "turn_count": len(task.turns),
+                                "elapsed": elapsed,
                             })
 
         # Apply priority ordering within columns
@@ -459,6 +477,7 @@ def dashboard():
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
                 "project_name": project.name,
+                "project_slug": project.slug,
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }

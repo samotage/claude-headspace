@@ -129,7 +129,19 @@
     box-shadow: 0 0 12px rgba(86, 212, 221, 0.4), 0 0 30px rgba(86, 212, 221, 0.15);
 }
 
-/* Stats bar below nav */
+/* Dashboard activity bar (fixed, between nav and stats bar) */
+#dashboard-activity-bar {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    padding: 14px 16px 6px;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Stats bar below nav (or below activity bar on dashboard) */
 .stats-bar {
     display: flex;
     align-items: center;
@@ -141,8 +153,17 @@
     top: 52px;
     left: 0;
     right: 0;
-    z-index: 99;
+    z-index: 98;
     font-size: 0.875rem;
+}
+
+/* When dashboard has activity bar, push stats bar and content down */
+body:has(#dashboard-activity-bar) .stats-bar {
+    top: 118px;
+}
+
+body:has(#dashboard-activity-bar) .page-content {
+    padding-top: 158px; /* 52px nav + 66px activity bar + 40px stats bar */
 }
 
 .stats-bar .stat-item {

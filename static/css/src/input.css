@@ -134,7 +134,7 @@ body::after {
 /* Agent hero-style identity */
 .agent-hero {
     font-family: var(--font-mono);
-    font-size: 1.125rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: var(--cyan);
     line-height: 1;
@@ -801,7 +801,7 @@ body::after {
 /* Kanban board layout */
 .kanban-columns {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -810,8 +810,27 @@ body::after {
     border: 1px solid var(--border);
     border-radius: 8px;
     min-height: 200px;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    container-type: inline-size;
+}
+
+/* Condense ACTIVE/IDLE badges to colored dots when column is narrow */
+@container (max-width: 400px) {
+    .status-badge {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 0;
+        line-height: 0;
+        overflow: hidden;
+        flex-shrink: 0;
+        align-self: center;
+        background-color: currentColor !important;
+    }
 }
 
 .kanban-column-header {
@@ -845,9 +864,9 @@ body::after {
     overflow-y: auto;
 }
 
-.kanban-complete-scroll {
-    max-height: 400px;
-    overflow-y: auto;
+
+.kanban-completed-task {
+    flex-shrink: 0;
 }
 
 .kanban-completed-task summary {
@@ -865,13 +884,13 @@ body::after {
 
 @media (max-width: 1024px) {
     .kanban-columns {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 768px) {
     .kanban-columns {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

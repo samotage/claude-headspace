@@ -7,7 +7,7 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
-        <!-- Activity Metrics Bar -->
+        <!-- Activity Metrics Bar (fixed, below nav, above stats bar) -->
         {% include "partials/_activity_bar.html" %}
 
         <!-- Objective Banner -->
@@ -43,14 +43,14 @@
                             <!-- 01: Header row -->
                             <div class="card-line">
                               <span class="line-num">01</span>
-                              <div class="line-content flex items-center justify-between">
-                                <div class="flex flex-wrap items-center gap-2">
+                              <div class="line-content flex items-baseline justify-between">
+                                <div class="flex flex-wrap items-baseline gap-2">
                                   <h3 id="agent-{{ agent.id }}-heading" class="flex items-baseline gap-0.5">
                                     <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
                                   </h3>
-                                  <span class="text-muted text-sm hidden sm:inline">{{ agent.project_name }}</span>
+                                  <a href="/projects/{{ agent.project_slug }}" class="text-cyan text-sm hidden sm:inline hover:text-primary text-glow-cyan transition-colors">{{ agent.project_name }}</a>
                                 </div>
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-baseline gap-2">
                                   <span class="uptime text-muted text-xs hidden sm:inline">{{ agent.uptime }}</span>
                                   {% if agent.is_active %}
                                     <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"

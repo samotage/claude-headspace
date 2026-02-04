@@ -383,6 +383,7 @@ def build_card_state(agent: Agent) -> dict:
         "priority": agent.priority_score if agent.priority_score is not None else 50,
         "priority_reason": agent.priority_reason,
         "project_name": agent.project.name if agent.project else None,
+        "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
     }
 
