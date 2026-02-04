@@ -709,6 +709,7 @@
             this._setIndicator('frust-immediate-value', state.frustration_rolling_10);
             this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
             this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
+            this._setIndicator('frust-peak-today-value', state.peak_frustration_today);
         },
 
         _setIndicator: function(elementId, value) {
