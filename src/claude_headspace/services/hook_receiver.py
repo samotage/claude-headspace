@@ -256,6 +256,7 @@ def process_session_start(
     agent: Agent,
     claude_session_id: str,
     transcript_path: str | None = None,
+    tmux_pane_id: str | None = None,
 ) -> HookEventResult:
     state = get_receiver_state()
     state.record_event(HookEventType.SESSION_START)
@@ -263,6 +264,18 @@ def process_session_start(
         agent.last_seen_at = datetime.now(timezone.utc)
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
+
+        # Store tmux pane ID and register with availability tracker
+        if tmux_pane_id:
+            agent.tmux_pane_id = tmux_pane_id
+            try:
+                from flask import current_app
+                availability = current_app.extensions.get("commander_availability")
+                if availability:
+                    availability.register_agent(agent.id, tmux_pane_id)
+            except RuntimeError:
+                pass
+
         db.session.commit()
         broadcast_card_refresh(agent, "session_start")
         logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")

@@ -1,5 +1,8 @@
-## ADDED Requirements
+# tmux-bridge Specification
 
+## Purpose
+TBD - created by archiving change e5-s4-tmux-bridge. Update Purpose after archive.
+## Requirements
 ### Requirement: tmux Bridge Service
 
 The system SHALL provide a tmux bridge service (`tmux_bridge.py`) that wraps tmux CLI commands as subprocess calls for sending input to Claude Code sessions.
@@ -129,8 +132,6 @@ The system SHALL preserve the `tmux_pane_id` field on session end while unregist
 - **THEN** the availability tracker unregisters the agent
 - **AND** the `tmux_pane_id` field is NOT cleared (preserved for audit)
 
-## MODIFIED Requirements
-
 ### Requirement: Extension Registration
 
 The application SHALL register the tmux bridge service as `app.extensions["tmux_bridge"]` and MUST preserve the `app.extensions["commander_availability"]` key for backward compatibility.
@@ -150,11 +151,3 @@ The system SHALL use `TmuxBridgeErrorType` enum with tmux-specific error types r
 - **WHEN** a tmux operation fails
 - **THEN** the error is classified as one of: PANE_NOT_FOUND, TMUX_NOT_INSTALLED, SUBPROCESS_FAILED, NO_PANE_ID, TIMEOUT, SEND_FAILED, or UNKNOWN
 
-## REMOVED Requirements
-
-### Requirement: Commander Socket Service
-
-- `commander_service.py` (socket-based send/health) is deleted
-- Socket path derivation from `claude_session_id` is no longer used for input delivery
-- `CommanderErrorType` enum is removed
-- Config keys `socket_timeout` and `socket_path_prefix` are removed

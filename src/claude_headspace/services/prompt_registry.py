@@ -10,75 +10,92 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     #
     # IMPORTANT: All summarisation prompts must end with the anti-preamble
     # instruction to prevent models from echoing back the prompt structure.
+    #
+    # STYLE RULE: Summaries are task board entries. Use imperative/direct form.
+    # NEVER describe the user ("The user wants...", "The user is...").
+    # Good: "Fix login validation bug"  Bad: "The user wants to fix a bug"
     "turn_command": (
         "{instruction_context}"
-        "User command: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising the core objective of this command. "
-        "Focus on WHAT the user wants to achieve and WHY, not just the tools or actions mentioned. "
-        "If the command references verifying, checking, or confirming something, state what specifically is being verified. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Command: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the goal of this command. "
+        "Use imperative form (e.g. 'Fix login bug', 'Deploy to staging', 'Add unit tests for auth'). "
+        "If the command references verifying or checking something, state what specifically is being verified. "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_question": (
         "{instruction_context}"
-        "Agent question: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising what the agent is asking. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Agent asked: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what the agent needs to know. "
+        "Use direct form (e.g. 'Asking which auth method to use', 'Needs confirmation to delete files'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_completion": (
         "{instruction_context}"
-        "Agent completion message: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising what the agent accomplished. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Agent output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense (e.g. 'Implemented auth middleware', 'Fixed CSS layout bug'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_progress": (
         "{instruction_context}"
-        "Agent progress update: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising the agent's current progress. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Agent output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating current progress. "
+        "Use present tense (e.g. 'Running test suite', 'Refactoring auth module'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_answer": (
         "{instruction_context}"
-        "User answer: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising what information the user provided. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Response: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was confirmed or provided. "
+        "Use direct form (e.g. 'Use PostgreSQL for storage', 'Confirmed: proceed with refactor'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_end_of_task": (
         "{instruction_context}"
-        "Final message: {text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising the final outcome. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Final output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the final outcome. "
+        "Use past tense (e.g. 'Completed auth implementation', 'All tests passing'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_default": (
         "{instruction_context}"
-        "Turn: {text}\n"
-        "Actor: {actor}\n"
-        "Intent: {intent}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising the action taken or requested. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "{actor}: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the action taken or requested. "
+        "Use direct form. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: task completion ---
     "task_completion": (
-        "Original instruction: {instruction}\n"
-        "Agent's final message: {final_turn_text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising what was accomplished. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Task: {instruction}\n"
+        "Final output: {final_turn_text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # Task completion when no final agent message available — uses turn activity
     "task_completion_from_activity": (
-        "Original instruction: {instruction}\n\n"
-        "Activity during this task:\n{turn_activity}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising what was accomplished. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Task: {instruction}\n\n"
+        "Activity:\n{turn_activity}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: instruction ---
     "instruction": (
-        "User command: {command_text}\n\n"
-        "Write a single concise sentence (~18 tokens) summarising this as an instruction. "
-        "Focus on the core task or goal. "
-        "Output ONLY the summary sentence — no preamble, labels, or commentary."
+        "Command: {command_text}\n\n"
+        "Write a task board entry (~18 tokens) stating the goal. "
+        "Use imperative form (e.g. 'Fix login bug', 'Add dark mode support'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Priority scoring ---
@@ -110,15 +127,16 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     # --- Headspace: frustration-aware turn summarisation ---
     "turn_frustration": (
         "{instruction_context}"
-        "User message: {text}\n\n"
-        "1. Summarise the core objective of this user turn in 1-2 concise sentences (~18 tokens). "
-        "Focus on WHAT the user wants to achieve and WHY, not just the tools or actions mentioned. "
-        "If the message references verifying, checking, or confirming something, use the prior task context to state what specifically is being verified.\n"
-        "2. Rate the user's apparent frustration level 0-10:\n"
+        "Message: {text}\n\n"
+        "1. Write a task board entry (~18 tokens) stating the goal or action. "
+        "Use imperative form (e.g. 'Fix login bug', 'Confirmed: proceed with refactor'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "If the message references verifying or confirming something, state what specifically.\n"
+        "2. Rate the apparent frustration level 0-10:\n"
         "   0-3: Calm, patient, constructive\n"
         "   4-6: Showing some frustration (repetition, mild exasperation)\n"
         "   7-10: Clearly frustrated (caps, punctuation, harsh language, repeated complaints)\n\n"
-        "Consider: tone and language intensity, punctuation patterns (!!!, ???, CAPS), "
+        "Consider: tone, punctuation patterns (!!!, ???, CAPS), "
         "repetition of previous requests, explicit frustration signals "
         '("again", "still not working", "why won\'t you"), '
         "and patience indicators (clear instructions, positive framing).\n\n"

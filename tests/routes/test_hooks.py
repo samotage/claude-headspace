@@ -104,6 +104,27 @@ class TestHookSessionStart:
         assert data["status"] == "ok"
         assert data["agent_id"] == 1
 
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_session_start")
+    def test_passes_tmux_pane_to_process(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that tmux_pane is extracted and passed to process_session_start."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=False, new_state="idle",
+        )
+
+        response = client.post(
+            "/hook/session-start",
+            json={"session_id": "test-session", "tmux_pane": "%5"},
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["tmux_pane_id"] == "%5"
+
     def test_hooks_disabled(self, client, mock_receiver_state):
         """Test ignored when hooks are disabled."""
         mock_receiver_state.enabled = False

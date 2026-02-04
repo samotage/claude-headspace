@@ -1,15 +1,14 @@
 """Commander availability tracking with periodic health checks.
 
-Tracks which agents have reachable commander sockets and broadcasts
+Tracks which agents have reachable tmux panes and broadcasts
 availability changes via SSE so the dashboard can show/hide the input widget.
 """
 
 import logging
 import threading
-import time
 from datetime import datetime, timezone
 
-from . import commander_service
+from . import tmux_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ DEFAULT_HEALTH_CHECK_INTERVAL = 30  # seconds
 
 
 class CommanderAvailability:
-    """Tracks commander socket availability for active agents.
+    """Tracks tmux pane availability for active agents.
 
     Thread-safe in-memory cache with periodic health check loop.
     Broadcasts SSE events when availability changes.
@@ -35,25 +34,21 @@ class CommanderAvailability:
         self._lock = threading.Lock()
         # Maps agent_id -> bool (available)
         self._availability: dict[int, bool] = {}
-        # Maps agent_id -> session_id (for health checks)
-        self._session_ids: dict[int, str] = {}
+        # Maps agent_id -> tmux_pane_id (for health checks)
+        self._pane_ids: dict[int, str] = {}
         self._health_check_interval = health_check_interval
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
-        self._socket_prefix = commander_service.DEFAULT_SOCKET_PATH_PREFIX
-        self._socket_timeout = commander_service.DEFAULT_SOCKET_TIMEOUT
+        self._subprocess_timeout = tmux_bridge.DEFAULT_SUBPROCESS_TIMEOUT
 
         # Read config overrides
-        commander_config = self._config.get("commander", {})
-        if commander_config:
-            self._health_check_interval = commander_config.get(
+        bridge_config = self._config.get("tmux_bridge", {})
+        if bridge_config:
+            self._health_check_interval = bridge_config.get(
                 "health_check_interval", health_check_interval
             )
-            self._socket_prefix = commander_config.get(
-                "socket_path_prefix", self._socket_prefix
-            )
-            self._socket_timeout = commander_config.get(
-                "socket_timeout", self._socket_timeout
+            self._subprocess_timeout = bridge_config.get(
+                "subprocess_timeout", self._subprocess_timeout
             )
 
     def start(self) -> None:
@@ -81,7 +76,7 @@ class CommanderAvailability:
         logger.info("Commander availability checker stopped")
 
     def is_available(self, agent_id: int) -> bool:
-        """Check if a commander socket is available for an agent.
+        """Check if a tmux pane is available for an agent.
 
         Uses the cached value. Call check_agent() to refresh.
 
@@ -89,23 +84,23 @@ class CommanderAvailability:
             agent_id: The agent ID
 
         Returns:
-            True if commander socket is available
+            True if tmux pane is available
         """
         with self._lock:
             return self._availability.get(agent_id, False)
 
-    def register_agent(self, agent_id: int, session_id: str | None) -> None:
+    def register_agent(self, agent_id: int, tmux_pane_id: str | None) -> None:
         """Register an agent for availability tracking.
 
         Args:
             agent_id: The agent ID
-            session_id: The claude_session_id (may be None)
+            tmux_pane_id: The tmux pane ID (may be None)
         """
         with self._lock:
-            if session_id:
-                self._session_ids[agent_id] = session_id
-            elif agent_id in self._session_ids:
-                del self._session_ids[agent_id]
+            if tmux_pane_id:
+                self._pane_ids[agent_id] = tmux_pane_id
+            elif agent_id in self._pane_ids:
+                del self._pane_ids[agent_id]
                 self._availability[agent_id] = False
 
     def unregister_agent(self, agent_id: int) -> None:
@@ -115,32 +110,32 @@ class CommanderAvailability:
             agent_id: The agent ID
         """
         with self._lock:
-            self._session_ids.pop(agent_id, None)
+            self._pane_ids.pop(agent_id, None)
             self._availability.pop(agent_id, None)
 
-    def check_agent(self, agent_id: int, session_id: str | None = None) -> bool:
-        """Check and update commander availability for a specific agent.
+    def check_agent(self, agent_id: int, tmux_pane_id: str | None = None) -> bool:
+        """Check and update tmux pane availability for a specific agent.
 
         Args:
             agent_id: The agent ID
-            session_id: Optional session_id override (uses registered value if None)
+            tmux_pane_id: Optional pane_id override (uses registered value if None)
 
         Returns:
-            True if commander is available
+            True if tmux pane is available
         """
         with self._lock:
-            sid = session_id or self._session_ids.get(agent_id)
+            pid = tmux_pane_id or self._pane_ids.get(agent_id)
 
-        if not sid:
+        if not pid:
             self._update_availability(agent_id, False)
             return False
 
         # Register if not already tracked
-        if session_id:
-            self.register_agent(agent_id, session_id)
+        if tmux_pane_id:
+            self.register_agent(agent_id, tmux_pane_id)
 
-        health = commander_service.check_health(
-            sid, prefix=self._socket_prefix, timeout=self._socket_timeout
+        health = tmux_bridge.check_health(
+            pid, timeout=self._subprocess_timeout
         )
         self._update_availability(agent_id, health.available)
         return health.available
@@ -186,16 +181,15 @@ class CommanderAvailability:
     def _check_all_agents(self) -> None:
         """Check health for all registered agents."""
         with self._lock:
-            agents_to_check = dict(self._session_ids)
+            agents_to_check = dict(self._pane_ids)
 
-        for agent_id, session_id in agents_to_check.items():
+        for agent_id, pane_id in agents_to_check.items():
             if self._stop_event.is_set():
                 break
             try:
-                health = commander_service.check_health(
-                    session_id,
-                    prefix=self._socket_prefix,
-                    timeout=self._socket_timeout,
+                health = tmux_bridge.check_health(
+                    pane_id,
+                    timeout=self._subprocess_timeout,
                 )
                 self._update_availability(agent_id, health.available)
             except Exception as e:

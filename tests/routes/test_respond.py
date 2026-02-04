@@ -7,9 +7,9 @@ from flask import Flask
 
 from src.claude_headspace.models.task import TaskState
 from src.claude_headspace.routes.respond import respond_bp
-from src.claude_headspace.services.commander_service import (
-    CommanderErrorType,
+from src.claude_headspace.services.tmux_bridge import (
     SendResult,
+    TmuxBridgeErrorType,
 )
 
 
@@ -20,9 +20,9 @@ def app():
     app.register_blueprint(respond_bp)
     app.config["TESTING"] = True
     app.config["APP_CONFIG"] = {
-        "commander": {
-            "socket_path_prefix": "/tmp/claudec-",
-            "socket_timeout": 2,
+        "tmux_bridge": {
+            "subprocess_timeout": 5,
+            "text_enter_delay_ms": 100,
         }
     }
     return app
@@ -72,10 +72,10 @@ def mock_task_processing():
 
 @pytest.fixture
 def mock_agent(mock_project, mock_task_awaiting):
-    """Create a mock agent with session ID and AWAITING_INPUT task."""
+    """Create a mock agent with tmux pane ID and AWAITING_INPUT task."""
     agent = MagicMock()
     agent.id = 1
-    agent.claude_session_id = "session-abc123"
+    agent.tmux_pane_id = "%5"
     agent.project = mock_project
     agent.project_id = 1
     agent.get_current_task.return_value = mock_task_awaiting
@@ -83,11 +83,11 @@ def mock_agent(mock_project, mock_task_awaiting):
 
 
 @pytest.fixture
-def mock_agent_no_session(mock_project, mock_task_awaiting):
-    """Create a mock agent without session ID."""
+def mock_agent_no_pane(mock_project, mock_task_awaiting):
+    """Create a mock agent without tmux pane ID."""
     agent = MagicMock()
     agent.id = 2
-    agent.claude_session_id = None
+    agent.tmux_pane_id = None
     agent.project = mock_project
     agent.get_current_task.return_value = mock_task_awaiting
     return agent
@@ -98,7 +98,7 @@ def mock_agent_processing(mock_project, mock_task_processing):
     """Create a mock agent with PROCESSING task."""
     agent = MagicMock()
     agent.id = 3
-    agent.claude_session_id = "session-abc123"
+    agent.tmux_pane_id = "%5"
     agent.project = mock_project
     agent.get_current_task.return_value = mock_task_processing
     return agent
@@ -149,9 +149,9 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["error_type"] == "missing_text"
 
-    def test_no_session_id(self, client, mock_db, mock_agent_no_session):
-        """Test 400 when agent has no session ID."""
-        mock_db.session.get.return_value = mock_agent_no_session
+    def test_no_pane_id(self, client, mock_db, mock_agent_no_pane):
+        """Test 400 when agent has no tmux pane ID."""
+        mock_db.session.get.return_value = mock_agent_no_pane
 
         response = client.post(
             "/api/respond/2",
@@ -161,7 +161,7 @@ class TestRespondToAgent:
         assert response.status_code == 400
         data = response.get_json()
         assert data["status"] == "error"
-        assert data["error_type"] == "no_session_id"
+        assert data["error_type"] == "no_pane_id"
 
     def test_wrong_state(self, client, mock_db, mock_agent_processing):
         """Test 409 when agent is not in AWAITING_INPUT state."""
@@ -182,7 +182,7 @@ class TestRespondToAgent:
         """Test 409 when agent has no current task."""
         agent = MagicMock()
         agent.id = 4
-        agent.claude_session_id = "session-abc"
+        agent.tmux_pane_id = "%5"
         agent.get_current_task.return_value = None
         mock_db.session.get.return_value = agent
 
@@ -198,13 +198,13 @@ class TestRespondToAgent:
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
-    @patch("src.claude_headspace.routes.respond.send_text")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_success(
-        self, mock_send, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
     ):
         """Test successful response send."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         response = client.post(
             "/api/respond/1",
@@ -218,22 +218,22 @@ class TestRespondToAgent:
         assert data["new_state"].upper() == "PROCESSING"
         assert data["latency_ms"] >= 0
 
-        mock_send.assert_called_once_with(
-            session_id="session-abc123",
+        mock_bridge.send_text.assert_called_once_with(
+            pane_id="%5",
             text="1",
-            prefix="/tmp/claudec-",
-            timeout=2,
+            timeout=5,
+            text_enter_delay_ms=100,
         )
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
-    @patch("src.claude_headspace.routes.respond.send_text")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_creates_turn(
-        self, mock_send, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
     ):
         """Test that successful send creates a Turn record."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         client.post("/api/respond/1", json={"text": "yes"})
 
@@ -246,13 +246,13 @@ class TestRespondToAgent:
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
-    @patch("src.claude_headspace.routes.respond.send_text")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_transitions_state(
-        self, mock_send, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent, mock_task_awaiting
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent, mock_task_awaiting
     ):
         """Test that successful send transitions task to PROCESSING."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         client.post("/api/respond/1", json={"text": "1"})
 
@@ -261,27 +261,27 @@ class TestRespondToAgent:
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
-    @patch("src.claude_headspace.routes.respond.send_text")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_broadcasts(
-        self, mock_send, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
     ):
         """Test that successful send triggers broadcasts."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         client.post("/api/respond/1", json={"text": "hello"})
 
         mock_bcast_card.assert_called_once_with(mock_agent, "respond")
         mock_bcast_state.assert_called_once_with(mock_agent, "hello")
 
-    @patch("src.claude_headspace.routes.respond.send_text")
-    def test_socket_not_found(self, mock_send, client, mock_db, mock_agent):
-        """Test 503 when socket not found."""
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_pane_not_found(self, mock_bridge, client, mock_db, mock_agent):
+        """Test 503 when pane not found."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(
+        mock_bridge.send_text.return_value = SendResult(
             success=False,
-            error_type=CommanderErrorType.SOCKET_NOT_FOUND,
-            error_message="Socket not found",
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="Pane not found",
             latency_ms=5,
         )
 
@@ -290,16 +290,16 @@ class TestRespondToAgent:
         assert response.status_code == 503
         data = response.get_json()
         assert data["status"] == "error"
-        assert data["error_type"] == "socket_not_found"
+        assert data["error_type"] == "pane_not_found"
 
-    @patch("src.claude_headspace.routes.respond.send_text")
-    def test_connection_refused(self, mock_send, client, mock_db, mock_agent):
-        """Test 503 when connection refused."""
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_tmux_not_installed(self, mock_bridge, client, mock_db, mock_agent):
+        """Test 503 when tmux not installed."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(
+        mock_bridge.send_text.return_value = SendResult(
             success=False,
-            error_type=CommanderErrorType.CONNECTION_REFUSED,
-            error_message="Connection refused",
+            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+            error_message="tmux not installed",
             latency_ms=5,
         )
 
@@ -307,32 +307,15 @@ class TestRespondToAgent:
 
         assert response.status_code == 503
         data = response.get_json()
-        assert data["error_type"] == "connection_refused"
+        assert data["error_type"] == "tmux_not_installed"
 
-    @patch("src.claude_headspace.routes.respond.send_text")
-    def test_process_dead(self, mock_send, client, mock_db, mock_agent):
-        """Test 503 when process is dead."""
-        mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(
-            success=False,
-            error_type=CommanderErrorType.PROCESS_DEAD,
-            error_message="Process dead",
-            latency_ms=5,
-        )
-
-        response = client.post("/api/respond/1", json={"text": "hello"})
-
-        assert response.status_code == 503
-        data = response.get_json()
-        assert data["error_type"] == "process_dead"
-
-    @patch("src.claude_headspace.routes.respond.send_text")
-    def test_timeout(self, mock_send, client, mock_db, mock_agent):
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_timeout(self, mock_bridge, client, mock_db, mock_agent):
         """Test 502 when timeout."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(
+        mock_bridge.send_text.return_value = SendResult(
             success=False,
-            error_type=CommanderErrorType.TIMEOUT,
+            error_type=TmuxBridgeErrorType.TIMEOUT,
             error_message="Timed out",
             latency_ms=2000,
         )
@@ -343,13 +326,13 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["error_type"] == "timeout"
 
-    @patch("src.claude_headspace.routes.respond.send_text")
-    def test_send_failed(self, mock_send, client, mock_db, mock_agent):
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_send_failed(self, mock_bridge, client, mock_db, mock_agent):
         """Test 502 when send fails."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(
+        mock_bridge.send_text.return_value = SendResult(
             success=False,
-            error_type=CommanderErrorType.SEND_FAILED,
+            error_type=TmuxBridgeErrorType.SEND_FAILED,
             error_message="Send failed",
             latency_ms=50,
         )
@@ -362,13 +345,13 @@ class TestRespondToAgent:
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
-    @patch("src.claude_headspace.routes.respond.send_text")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_db_error_rollback(
-        self, mock_send, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
     ):
         """Test 500 when database error occurs after successful send."""
         mock_db.session.get.return_value = mock_agent
-        mock_send.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
         response = client.post("/api/respond/1", json={"text": "hello"})
@@ -422,7 +405,7 @@ class TestCheckAvailability:
         assert data["status"] == "ok"
         assert data["agent_id"] == 1
         assert data["commander_available"] is True
-        mock_avail.check_agent.assert_called_once_with(1, "session-abc123")
+        mock_avail.check_agent.assert_called_once_with(1, "%5")
 
     @patch("src.claude_headspace.routes.respond._get_commander_availability")
     def test_unavailable(self, mock_get_avail, client, mock_db, mock_agent):
@@ -451,11 +434,11 @@ class TestCheckAvailability:
         assert data["commander_available"] is False
 
     @patch("src.claude_headspace.routes.respond._get_commander_availability")
-    def test_no_session_id_returns_unavailable(
-        self, mock_get_avail, client, mock_db, mock_agent_no_session
+    def test_no_pane_id_returns_unavailable(
+        self, mock_get_avail, client, mock_db, mock_agent_no_pane
     ):
-        """Test availability returns false when agent has no session ID."""
-        mock_db.session.get.return_value = mock_agent_no_session
+        """Test availability returns false when agent has no pane ID."""
+        mock_db.session.get.return_value = mock_agent_no_pane
 
         response = client.get("/api/respond/2/availability")
 

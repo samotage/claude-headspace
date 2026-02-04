@@ -10,22 +10,25 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 3 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
+This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 5 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
 
-**Epic 5 Goal:** Enable remote session interaction via dashboard input and provide comprehensive project detail pages with hierarchical data exploration.
+**Epic 5 Goal:** Enable remote session interaction via dashboard input, provide comprehensive project detail pages with hierarchical data exploration, and improve frustration metrics display.
 
 **Epic 5 Value Proposition:**
 
 - **Input Bridge** — Respond to Claude Code permission prompts directly from the dashboard without context-switching to iTerm
+- **tmux Bridge** — Reliable transport layer using tmux send-keys (replaces non-functional commander socket)
 - **Project Show Page** — Unified view of a project's full state (metadata, waypoint, brain reboot, progress summary) from a single page
 - **Object Tree** — Drill into the complete hierarchy of agents, tasks, and turns with frustration score highlighting
 - **Embedded Metrics** — Activity data scoped to a specific project with day/week/month navigation
+- **Frustration Display** — Average-based frustration metrics and multi-window frustration state widget
 
-**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction.
+**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction. The tmux Bridge provides a proven, reliable transport mechanism after the initial commander socket approach proved incompatible with Claude Code's Ink-based TUI.
 
 **Success Criteria:**
 
 - See "Input needed" amber card → click quick-action button → agent resumes without leaving dashboard
+- Response delivered via tmux send-keys (reliable, verified working with Claude Code)
 - Navigate to `/projects/claude-headspace` → see full project detail on one page
 - Click project name in list → navigates to show page (no inline edit/delete buttons)
 - Expand Agents accordion → see all agents with state, priority, timing
@@ -34,6 +37,8 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - Activity metrics display with day/week/month toggle and period navigation
 - Archive history shows previous waypoint/brain reboot versions
 - SSE events update accordion data in real-time
+- Activity page frustration shows average (0-10) instead of raw sum
+- Frustration state widget shows immediate/short-term/session rolling averages
 
 **Architectural Foundation:** Builds on Epic 4's project controls (pause/resume), activity monitoring (metrics infrastructure), and archive system (timestamped versions). Also leverages Epic 3's inference service, summarisation, and priority scoring.
 
@@ -43,11 +48,13 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 
 ## Epic 5 Story Mapping
 
-| Story ID | Story Name                                        | Subsystem            | PRD Directory | Sprint | Priority |
-| -------- | ------------------------------------------------- | -------------------- | ------------- | ------ | -------- |
-| E5-S1    | Remote session interaction via claude-commander   | `input-bridge`       | bridge/       | 1      | P1       |
-| E5-S2    | Project show page with metadata and controls      | `project-show-core`  | ui/           | 2      | P2       |
-| E5-S3    | Project show page with object tree and metrics    | `project-show-tree`  | ui/           | 3      | P2       |
+| Story ID | Story Name                                        | Subsystem                    | PRD Directory | Sprint | Priority |
+| -------- | ------------------------------------------------- | ---------------------------- | ------------- | ------ | -------- |
+| E5-S1    | Remote session interaction via claude-commander   | `input-bridge`               | bridge/       | 1      | P1       |
+| E5-S2    | Project show page with metadata and controls      | `project-show-core`          | ui/           | 2      | P2       |
+| E5-S3    | Project show page with object tree and metrics    | `project-show-tree`          | ui/           | 3      | P2       |
+| E5-S4    | Replace commander socket with tmux send-keys      | `tmux-bridge`                | bridge/       | 4      | P1       |
+| E5-S5    | Activity page frustration display improvements    | `activity-frustration`       | ui/           | 5      | P2       |
 
 ---
 
@@ -468,20 +475,268 @@ class Project(Base):
 
 ---
 
+### Sprint 4: tmux Bridge (E5-S4)
+
+**Goal:** Replace the non-functional claude-commander socket bridge with a tmux-based input bridge using `tmux send-keys`.
+
+**Duration:** 1 week  
+**Dependencies:** E5-S1 complete (respond pipeline exists), tmux installed, iTerm2 tmux integration
+
+**Deliverables:**
+
+**tmux Bridge Service:**
+
+- New `tmux_bridge.py` service wrapping tmux CLI commands as subprocess calls
+- Send literal text via `tmux send-keys -t <pane_id> -l "<text>"`
+- Send special keys (Enter, Escape, Up, Down, C-c, C-u) via `tmux send-keys -t <pane_id> <key>`
+- Configurable delay between text send and Enter send (default 100ms)
+- Health check: pane existence and Claude Code process detection
+- Capture pane content for readiness detection
+- List all tmux panes with metadata
+
+**Agent Model & Hooks:**
+
+- Add `tmux_pane_id` field to Agent model (new migration)
+- Update `bin/notify-headspace.sh` to extract `$TMUX_PANE` in all hook payloads
+- Update hook routes to extract and pass `tmux_pane` through to hook receiver
+- Store pane ID on first hook event that includes it (typically session-start)
+- Late discovery: any hook can populate `tmux_pane_id` if not yet set
+
+**Respond Pipeline Updates:**
+
+- Replace socket-based send with tmux subprocess calls in respond route
+- Validate agent has `tmux_pane_id` before attempting send
+- Preserve existing API contract (`POST /api/respond/<agent_id>`)
+
+**Availability Tracking:**
+
+- Replace socket probing with tmux pane existence checks
+- Preserve SSE broadcast of availability changes
+- Preserve `commander_availability` extension key for backward compatibility
+
+**Error Handling:**
+
+- New `TmuxBridgeErrorType` enum replacing `CommanderErrorType`
+- Error types: `PANE_NOT_FOUND`, `TMUX_NOT_INSTALLED`, `SUBPROCESS_FAILED`, `NO_PANE_ID`, `TIMEOUT`, `SEND_FAILED`, `UNKNOWN`
+- Preserve `SendResult` and `HealthResult` namedtuple shapes
+
+**Configuration:**
+
+- Replace `commander:` config section with `tmux_bridge:` section
+- Settings: `health_check_interval`, `subprocess_timeout`, `text_enter_delay_ms`, `sequential_send_delay_ms`
+
+**Subsystem Requiring PRD:**
+
+4. `tmux-bridge` — tmux service, hook updates, respond pipeline rewiring
+
+**PRD Location:** `docs/prds/bridge/e5-s4-tmux-bridge-prd.md`
+
+**Stories:**
+
+- E5-S4: Replace commander socket with tmux send-keys
+
+**Technical Decisions Made:**
+
+- Use `-l` flag for user text to prevent tmux interpreting key names — **decided**
+- Send Enter as separate `send-keys` call without `-l` — **decided**
+- 100ms delay between text and Enter sends — **decided**
+- Preserve `commander_availability` extension key for backward compatibility — **decided**
+- `tmux_pane_id` coexists with `iterm_pane_id` (separate concerns) — **decided**
+
+**Data Model Changes:**
+
+```python
+class Agent(Base):
+    ...
+    tmux_pane_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+```
+
+**Config.yaml Changes:**
+
+```yaml
+# Remove:
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
+
+# Add:
+tmux_bridge:
+  health_check_interval: 30
+  subprocess_timeout: 5
+  text_enter_delay_ms: 100
+  sequential_send_delay_ms: 150
+```
+
+**Replacement Mapping:**
+
+| Current (commander) | New (tmux bridge) |
+|---------------------|-------------------|
+| `socket.connect("/tmp/claudec-{id}.sock")` | `subprocess.run(["tmux", "send-keys", ...])` |
+| `{"action": "send", "text": "..."}` | `send-keys -t {pane_id} -l "text"` + `send-keys Enter` |
+| `{"action": "status"}` | `tmux list-panes -a -F '#{pane_id} #{pane_current_command}'` |
+| Socket path from `claude_session_id` | Pane ID from `$TMUX_PANE` via hooks |
+| `CommanderErrorType` enum | `TmuxBridgeErrorType` enum |
+
+**Risks:**
+
+- tmux must be installed (`brew install tmux`)
+- Sessions must be launched inside tmux panes
+- Cannot target plain iTerm2 tabs without tmux
+- All windows in a tmux session share dimensions
+
+**Acceptance Criteria:**
+
+- [ ] Response via dashboard delivered to Claude Code via `tmux send-keys`
+- [ ] Dual input works (user typing + dashboard respond coexist)
+- [ ] Hook scripts pass `$TMUX_PANE` and pane ID stored on Agent
+- [ ] Availability checks detect tmux pane existence and Claude Code process
+- [ ] API contract unchanged (`POST /api/respond/<agent_id>`)
+- [ ] SSE events for availability changes continue to work
+- [ ] Dashboard JS unchanged (transport swap is invisible)
+- [ ] `tmux_pane_id` and `iterm_pane_id` coexist independently
+- [ ] Clear error messages for: pane not found, tmux not installed, no pane ID
+
+---
+
+### Sprint 5: Activity Frustration Display (E5-S5)
+
+**Goal:** Fix activity page frustration metrics to show averages instead of sums, and add a multi-window frustration state widget.
+
+**Duration:** 1 week  
+**Dependencies:** E4-S3 complete (activity monitoring), E4-S4 complete (headspace monitoring)
+
+**Deliverables:**
+
+**Average-Based Frustration Display:**
+
+- Activity page metric cards show average frustration (0-10) instead of raw sum
+- Average = `total_frustration ÷ frustration_turn_count`, rounded to one decimal
+- Threshold-based coloring: green < 4, yellow 4-7, red > 7
+- Display "—" when no scored turns in period
+- Apply to overall, project, and agent levels
+
+**Chart Frustration Line:**
+
+- Chart shows per-bucket average (0-10) instead of sum
+- Fixed right Y-axis scaled 0-10
+- Gaps in line for buckets with no scored turns
+- Threshold-based coloring on line/data points
+
+**Frustration State Widget:**
+
+- New widget near overall metrics section
+- Three rolling-window averages: Immediate (~10 turns), Short-term (30 min), Session (3 hours)
+- Numeric display with threshold-based coloring
+- Hover tooltips showing threshold boundaries
+- Real-time updates via SSE (existing headspace events)
+- Hidden when headspace monitoring disabled
+- "—" display when window has no data
+
+**HeadspaceSnapshot Model:**
+
+- Add `frustration_rolling_3hr` field (new rolling window)
+- Session window duration configurable via config.yaml
+- Update `/api/headspace/current` to include session-level average
+
+**Configuration:**
+
+- All thresholds read from config (no hardcoded values)
+- Session rolling window duration configurable
+- Config UI section for frustration settings
+
+**Subsystem Requiring PRD:**
+
+5. `activity-frustration` — Average display, chart changes, frustration state widget
+
+**PRD Location:** `docs/prds/ui/e5-s5-activity-frustration-display-prd.md`
+
+**Stories:**
+
+- E5-S5: Activity page frustration display improvements
+
+**Technical Decisions Made:**
+
+- Compute average at display time from existing fields (no aggregator changes) — **decided**
+- Reuse existing headspace SSE events for widget updates — **decided**
+- Fixed 0-10 Y-axis for chart (matches frustration score scale) — **decided**
+- Gap in chart line for zero-turn buckets (not draw-to-zero) — **decided**
+
+**Data Model Changes:**
+
+```python
+class HeadspaceSnapshot(Base):
+    ...
+    frustration_rolling_3hr: Mapped[float | None]  # New field
+```
+
+**Config.yaml Additions:**
+
+```yaml
+headspace:
+  ...
+  session_rolling_window_minutes: 180  # 3 hours, configurable
+```
+
+**Frustration State Widget:**
+
+```
++-----------------------------------------------------------------------+
+|                                                                        |
+|  Frustration State                                                     |
+|  ------------------------------------------------------------------   |
+|                                                                        |
+|  +------------------+  +------------------+  +------------------+     |
+|  | Immediate        |  | Short-term       |  | Session          |     |
+|  | 3.2 [green]      |  | 5.1 [yellow]     |  | 2.8 [green]      |     |
+|  +------------------+  +------------------+  +------------------+     |
+|                                                                        |
+|  (hover any value for threshold tooltip)                               |
+|                                                                        |
++-----------------------------------------------------------------------+
+```
+
+**Risks:**
+
+- 3-hour rolling window query performance (wider time range)
+- Widget SSE handling adding complexity to activity page
+- Users may be confused by average vs sum change
+
+**Acceptance Criteria:**
+
+- [ ] Metric cards show decimal average (0-10) instead of integer sum
+- [ ] Frustration values colored green/yellow/red based on thresholds
+- [ ] "—" displayed when no scored turns in period
+- [ ] Chart frustration line shows per-bucket average (0-10)
+- [ ] Chart right Y-axis fixed at 0-10
+- [ ] Chart has gaps for buckets with no scored turns
+- [ ] Frustration state widget displays three rolling averages
+- [ ] Widget values update in real-time via SSE
+- [ ] Widget hidden when headspace disabled
+- [ ] Hover tooltips show threshold boundaries
+- [ ] All thresholds from config (no hardcoded values)
+- [ ] Config UI includes frustration settings section
+- [ ] 3-hour rolling window computed by HeadspaceMonitor
+- [ ] `/api/headspace/current` includes session-level average
+
+---
+
 ## Subsystems Requiring OpenSpec PRDs
 
-The following 3 subsystems have PRDs created. Each PRD was validated before implementation.
+The following 5 subsystems have PRDs created. Each PRD was validated before implementation.
 
 ### PRD Directory Structure
 
 ```
 docs/prds/
 ├── bridge/
-│   └── done/
-│       └── e5-s1-input-bridge-prd.md        # DONE
+│   ├── done/
+│   │   └── e5-s1-input-bridge-prd.md        # DONE
+│   └── e5-s4-tmux-bridge-prd.md             # In Progress
 └── ui/
     ├── e5-s2-project-show-core-prd.md       # Draft
-    └── e5-s3-project-show-tree-and-metrics-prd.md  # Draft
+    ├── e5-s3-project-show-tree-and-metrics-prd.md  # Draft
+    └── e5-s5-activity-frustration-display-prd.md   # Pending
 ```
 
 ---

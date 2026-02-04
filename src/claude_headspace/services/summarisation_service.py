@@ -20,6 +20,23 @@ _PREAMBLE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Short confirmations that don't warrant LLM summarisation.
+# Matched against lowercased, stripped turn text.
+_TRIVIAL_CONFIRMATIONS = frozenset({
+    "y", "yes", "ok", "okay", "k", "sure", "go", "go ahead",
+    "do it", "proceed", "continue", "yep", "yup", "yeah",
+    "confirmed", "approve", "approved", "accept", "right",
+    "correct", "affirmative", "ack", "agreed", "sounds good",
+    "looks good", "lgtm", "ship it",
+})
+
+# Slash-command pattern: /word or /word:word (with optional arguments after space)
+_SLASH_COMMAND_RE = re.compile(r"^(/[\w:.=-]+)")
+
+# Maximum character length to consider for trivial input bypass.
+# Anything longer than this is sent to the LLM regardless.
+_TRIVIAL_MAX_LENGTH = 40
+
 
 class SummarisationService:
     """Generates AI summaries for turns and tasks using the inference service."""
@@ -52,11 +69,41 @@ class SummarisationService:
         cleaned = _PREAMBLE_RE.sub("", cleaned).strip()
         return cleaned if cleaned else text
 
+    @staticmethod
+    def _check_trivial_input(turn) -> str | None:
+        """Check if turn text is trivial and return a direct summary without LLM.
+
+        Handles two cases:
+        1. Slash commands (/start-queue, /commit, etc.) — the command name is
+           used directly as the summary since it IS the task description.
+        2. Short confirmations (yes, ok, go ahead, etc.) — returns a brief
+           confirmation label instead of wasting an LLM call on one word.
+
+        Returns:
+            A summary string if the input is trivial, None to proceed with LLM.
+        """
+        text = (turn.text or "").strip()
+        if not text or len(text) > _TRIVIAL_MAX_LENGTH:
+            return None
+
+        # Slash commands: use the command portion as the summary
+        m = _SLASH_COMMAND_RE.match(text)
+        if m:
+            return m.group(1)
+
+        # Short confirmations: return a brief label
+        normalised = text.lower().rstrip(".!,")
+        if normalised in _TRIVIAL_CONFIRMATIONS:
+            return "Confirmed"
+
+        return None
+
     def summarise_turn(self, turn, db_session=None) -> str | None:
         """Generate a summary for a turn.
 
         If the turn already has a summary, returns the existing summary.
         Skips summarisation when turn text is None or empty.
+        Bypasses LLM for trivial inputs (slash commands, short confirmations).
         Uses intent-aware prompts with task instruction context.
 
         Args:
@@ -74,6 +121,17 @@ class SummarisationService:
         if not turn.text or not turn.text.strip():
             logger.debug(f"Skipping turn summarisation for turn {turn.id}: empty text")
             return None
+
+        # Trivial input bypass: skip LLM for slash commands and short confirmations
+        trivial = self._check_trivial_input(turn)
+        if trivial is not None:
+            logger.debug(f"Trivial input bypass for turn {turn.id}: {trivial!r}")
+            turn.summary = trivial
+            turn.summary_generated_at = datetime.now(timezone.utc)
+            if db_session:
+                db_session.add(turn)
+                db_session.commit()
+            return trivial
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping turn summarisation")
@@ -242,6 +300,18 @@ class SummarisationService:
         if not command_text or not command_text.strip():
             logger.debug(f"Skipping instruction summarisation for task {task.id}: empty command text")
             return None
+
+        # Slash command bypass: use the command name directly as the instruction
+        stripped = command_text.strip()
+        m = _SLASH_COMMAND_RE.match(stripped)
+        if m:
+            task.instruction = m.group(1)
+            task.instruction_generated_at = datetime.now(timezone.utc)
+            if db_session:
+                db_session.add(task)
+                db_session.commit()
+            logger.debug(f"Slash command bypass for task {task.id}: {task.instruction!r}")
+            return task.instruction
 
         # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
         if reuse_summary:
