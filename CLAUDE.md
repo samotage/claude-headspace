@@ -9,7 +9,7 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 - Track active Claude Code agents across projects
 - Display agent status with AI-generated summaries and task instructions
 - Click-to-focus: bring iTerm2 windows to foreground from the dashboard
-- Respond to agents directly from the dashboard via commander sockets
+- Respond to agents directly from the dashboard via tmux bridge
 - Native macOS notifications when input is needed or tasks complete
 - Real-time updates via Server-Sent Events (SSE)
 - LLM-powered turn/task summarisation, frustration detection, and cross-project priority scoring
@@ -23,12 +23,12 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 Flask application factory (`app.py`) with:
 
 - **Event-driven hooks:** Claude Code fires lifecycle hooks (8 event types) -> Flask receives and processes state transitions
-- **Persistence:** PostgreSQL via Flask-SQLAlchemy with Alembic migrations (15 migration scripts)
+- **Persistence:** PostgreSQL via Flask-SQLAlchemy with Alembic migrations (21 migration scripts)
 - **Real-time broadcasting:** SSE pushes state changes, summaries, scores, and card refreshes to the dashboard
 - **Intelligence layer:** OpenRouter inference service powers summarisation, frustration detection, priority scoring, and progress summaries
 - **Headspace monitor:** Tracks frustration scores, detects flow state, and raises traffic-light alerts
 - **File watcher fallback:** Monitors Claude Code `.jsonl` and transcript files when hooks are silent
-- **Background services:** Agent reaper, activity aggregator, commander availability checker run in separate threads
+- **Background services:** Agent reaper, activity aggregator, tmux availability checker run in separate threads
 
 ```
 +---------------------------------------------------------+
@@ -50,7 +50,7 @@ Flask application factory (`app.py`) with:
 |    +-- Brain Reboot (waypoint + progress export)        |
 |                                                         |
 |  Headspace Monitor (frustration / flow / alerts)        |
-|  Commander Service (respond to agents via socket)       |
+|  Tmux Bridge (respond to agents via tmux send-keys)     |
 |  Activity Aggregator (hourly metrics)                   |
 |  Agent Reaper (cleanup inactive agents)                 |
 |                                                         |
@@ -66,10 +66,10 @@ Flask application factory (`app.py`) with:
 - **Database:** PostgreSQL via Flask-SQLAlchemy 3.1+ and Alembic (Flask-Migrate)
 - **Build:** Hatchling (pyproject.toml)
 - **Config:** PyYAML + python-dotenv
-- **CSS:** Tailwind CSS 4.0 (via Node.js: postcss, autoprefixer)
+- **CSS:** Tailwind CSS 3.x (via Node.js: postcss, autoprefixer)
 - **LLM:** OpenRouter API (Claude Haiku for turns/tasks, Sonnet for project/objective)
 - **Real-time:** Server-Sent Events (SSE)
-- **Terminal:** iTerm2 (AppleScript-based focus)
+- **Terminal:** iTerm2 (AppleScript-based focus) + tmux (send-keys bridge for agent responses)
 - **Notifications:** terminal-notifier (macOS)
 - **Testing:** pytest + factory-boy + pytest-cov + pytest-playwright (E2E)
 
@@ -82,7 +82,7 @@ flask db upgrade                     # Run pending migrations
 npx tailwindcss -i static/css/src/input.css -o static/css/main.css --watch  # Tailwind dev (v3)
 pytest tests/services/test_foo.py    # Run targeted tests (preferred)
 pytest tests/routes/ tests/services/ # Run relevant directories
-pytest                               # Full suite (~77 test files) -- only when asked
+pytest                               # Full suite (~80 test files) -- only when asked
 pytest --cov=src                     # Full suite with coverage -- only when asked
 pip install -e ".[dev]"              # Install with dev dependencies
 npm install                          # Install Tailwind/Node dependencies
@@ -137,7 +137,7 @@ claude_headspace/
 |   |   +-- brain_reboot.py          # Brain reboot generation/export
 |   |   +-- progress_summary.py      # Progress summary generation
 |   |   +-- archive.py               # Archive viewer
-|   +-- services/                    # ~37 service modules
+|   +-- services/                    # 37 service modules
 |       +-- hook_receiver.py         # Processes Claude Code hooks
 |       +-- task_lifecycle.py        # Task state management
 |       +-- state_machine.py         # Transition validation
@@ -158,8 +158,8 @@ claude_headspace/
 |       +-- file_watcher.py          # .jsonl + transcript monitoring
 |       +-- notification_service.py  # macOS notifications
 |       +-- iterm_focus.py           # AppleScript iTerm2 control
-|       +-- commander_service.py     # Respond to agents via socket
-|       +-- commander_availability.py # Commander socket monitoring
+|       +-- tmux_bridge.py          # Respond to agents via tmux send-keys
+|       +-- commander_availability.py # Tmux pane availability monitoring
 |       +-- activity_aggregator.py   # Hourly activity metrics
 |       +-- agent_reaper.py          # Cleanup inactive agents
 |       +-- archive_service.py       # Waypoint/artifact archival
@@ -173,15 +173,14 @@ claude_headspace/
 |       +-- transcript_reader.py     # Transcript file reading
 |       +-- project_decoder.py       # Path <-> folder name encoding
 |       +-- waypoint_editor.py       # Waypoint load/save/archive
-|       +-- event_schemas.py         # Event payload validation
 |       +-- process_monitor.py       # Process monitoring
 +-- tests/
 |   +-- conftest.py                  # Root fixtures (app, client, _force_test_database)
 |   +-- test_app.py                  # App init tests
 |   +-- test_database.py             # DB config tests
 |   +-- test_models.py               # Model tests
-|   +-- services/                    # Service unit tests (~39 files)
-|   +-- routes/                      # Route tests (~23 files)
+|   +-- services/                    # Service unit tests (~40 files)
+|   +-- routes/                      # Route tests (~25 files)
 |   +-- integration/                 # Real PostgreSQL tests (~7 files)
 |   |   +-- conftest.py              # DB lifecycle fixtures
 |   |   +-- factories.py             # Factory Boy factories

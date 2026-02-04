@@ -24,6 +24,11 @@ function openBrainReboot(projectId, projectName, projectSlug) {
     var subtitle = document.getElementById('brain-reboot-subtitle');
     if (subtitle) {
         subtitle.textContent = projectName || '';
+        if (projectSlug) {
+            subtitle.href = '/projects/' + projectSlug;
+        } else {
+            subtitle.removeAttribute('href');
+        }
     }
 
     // Update project show page link
@@ -31,6 +36,7 @@ function openBrainReboot(projectId, projectName, projectSlug) {
     if (projectLink) {
         if (projectSlug) {
             projectLink.href = '/projects/' + projectSlug;
+            projectLink.textContent = 'View ' + (projectName || 'Project');
             projectLink.classList.remove('hidden');
         } else {
             projectLink.classList.add('hidden');

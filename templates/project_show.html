@@ -15,7 +15,33 @@
 
         <!-- Project Header -->
         <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
-            <h1 id="project-name" class="text-xl font-bold text-primary mb-1">{{ project.name }}</h1>
+            <div class="flex items-center justify-between gap-4 mb-1">
+                <h1 id="project-name" class="text-xl font-bold text-primary">{{ project.name }}</h1>
+                <!-- Control Actions -->
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="btn-edit" onclick="ProjectShow.openEditModal()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
+                        Edit
+                    </button>
+                    <button type="button" id="btn-delete" onclick="ProjectShow.openDeleteDialog()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-red/30 text-red hover:bg-red/10 transition-colors">
+                        Delete
+                    </button>
+                    <button type="button" id="btn-pause" onclick="ProjectShow.togglePause()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border transition-colors
+                            {% if project.inference_paused %}border-green/30 text-green hover:bg-green/10{% else %}border-amber/30 text-amber hover:bg-amber/10{% endif %}">
+                        {{ 'Resume Inference' if project.inference_paused else 'Pause Inference' }}
+                    </button>
+                    <button type="button" id="btn-regen-desc" onclick="ProjectShow.regenerateDescription()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
+                        Regen Description
+                    </button>
+                    <button type="button" id="btn-refetch-git" onclick="ProjectShow.refetchGitInfo()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
+                        Refetch Git Info
+                    </button>
+                </div>
+            </div>
             <p id="project-path" class="text-secondary text-sm font-mono mb-2">{{ project.path }}</p>
 
             <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-secondary mb-3">
@@ -43,31 +69,6 @@
                 {% endif %}
             </div>
 
-            <!-- Control Actions -->
-            <div class="flex flex-wrap gap-2 mb-4">
-                <button type="button" id="btn-edit" onclick="ProjectShow.openEditModal()"
-                        class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
-                    Edit
-                </button>
-                <button type="button" id="btn-delete" onclick="ProjectShow.openDeleteDialog()"
-                        class="px-3 py-1.5 text-xs font-medium rounded border border-red/30 text-red hover:bg-red/10 transition-colors">
-                    Delete
-                </button>
-                <button type="button" id="btn-pause" onclick="ProjectShow.togglePause()"
-                        class="px-3 py-1.5 text-xs font-medium rounded border transition-colors
-                        {% if project.inference_paused %}border-green/30 text-green hover:bg-green/10{% else %}border-amber/30 text-amber hover:bg-amber/10{% endif %}">
-                    {{ 'Resume Inference' if project.inference_paused else 'Pause Inference' }}
-                </button>
-                <button type="button" id="btn-regen-desc" onclick="ProjectShow.regenerateDescription()"
-                        class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
-                    Regen Description
-                </button>
-                <button type="button" id="btn-refetch-git" onclick="ProjectShow.refetchGitInfo()"
-                        class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary hover:border-border transition-colors">
-                    Refetch Git Info
-                </button>
-            </div>
-
             <!-- Inference Status -->
             <div id="inference-status" class="text-sm">
                 {% if project.inference_paused %}
@@ -88,11 +89,29 @@
         <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold text-primary">Waypoint</h2>
-                <a href="#" id="waypoint-edit-link" onclick="ProjectShow.editWaypoint(); return false;"
-                   class="text-xs text-cyan hover:underline">Edit</a>
+                <div id="waypoint-actions">
+                    <a href="#" id="waypoint-edit-link" onclick="ProjectShow.editWaypoint(); return false;"
+                       class="text-xs text-cyan hover:underline">Edit</a>
+                </div>
             </div>
             <div id="waypoint-content" class="prose prose-invert max-w-none text-sm">
                 <p class="text-muted italic">Loading...</p>
+            </div>
+            <div id="waypoint-editor" class="hidden">
+                <textarea id="waypoint-editor-textarea"
+                          class="form-well w-full px-3 py-2 text-sm font-mono resize-y"
+                          rows="16"
+                          placeholder="# Waypoint&#10;&#10;## Next Up&#10;..."></textarea>
+                <div class="flex justify-end gap-2 mt-3">
+                    <button type="button" onclick="ProjectShow.cancelWaypointEdit()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-border text-secondary hover:text-primary transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button" id="waypoint-save-btn" onclick="ProjectShow.saveWaypoint()"
+                            class="px-3 py-1.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors">
+                        Save
+                    </button>
+                </div>
             </div>
         </section>
 

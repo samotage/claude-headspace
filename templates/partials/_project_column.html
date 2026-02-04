@@ -21,7 +21,7 @@
                         role="status" aria-label="Idle"></span>
                 </div>
 
-                <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium font-display">
+                <h2 id="project-{{ project.id }}-heading" class="text-primary font-semibold font-display text-xl">
                     {{ project.name }}
                 </h2>
                 {% if project.staleness and project.staleness.tier == 'stale' %}

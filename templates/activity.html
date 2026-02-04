@@ -37,33 +37,6 @@
             </div>
         </div>
 
-        <!-- Frustration State Widget -->
-        {% if headspace_enabled %}
-        <section id="frustration-widget" aria-labelledby="frustration-widget-heading" class="mb-6">
-            <h2 id="frustration-widget-heading" class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Frustration State</h2>
-            <div class="grid grid-cols-3 gap-3">
-                <div class="frustration-indicator" id="frust-immediate"
-                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
-                    <div class="frustration-indicator-value text-muted" id="frust-immediate-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Immediate</div>
-                    <div class="frustration-indicator-sublabel">Last 10 turns</div>
-                </div>
-                <div class="frustration-indicator" id="frust-shortterm"
-                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
-                    <div class="frustration-indicator-value text-muted" id="frust-shortterm-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Short-term</div>
-                    <div class="frustration-indicator-sublabel">Last 30 min</div>
-                </div>
-                <div class="frustration-indicator" id="frust-session"
-                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
-                    <div class="frustration-indicator-value text-muted" id="frust-session-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Session</div>
-                    <div class="frustration-indicator-sublabel">Last {{ session_rolling_window_minutes }} min</div>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-
         <!-- Overall Summary Panel -->
         <section aria-labelledby="overall-heading" class="mb-6">
             <h2 id="overall-heading" class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Overall</h2>
@@ -93,6 +66,33 @@
                 <p class="text-secondary">No activity data yet.</p>
             </div>
         </section>
+
+        <!-- Frustration State Widget -->
+        {% if headspace_enabled %}
+        <section id="frustration-widget" aria-labelledby="frustration-widget-heading" class="mb-6">
+            <h2 id="frustration-widget-heading" class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Frustration State</h2>
+            <div class="grid grid-cols-3 gap-3">
+                <div class="frustration-indicator" id="frust-immediate"
+                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
+                    <div class="frustration-indicator-value text-muted" id="frust-immediate-value">&mdash;</div>
+                    <div class="frustration-indicator-label">Immediate</div>
+                    <div class="frustration-indicator-sublabel">Last 10 turns</div>
+                </div>
+                <div class="frustration-indicator" id="frust-shortterm"
+                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
+                    <div class="frustration-indicator-value text-muted" id="frust-shortterm-value">&mdash;</div>
+                    <div class="frustration-indicator-label">Short-term</div>
+                    <div class="frustration-indicator-sublabel">Last 30 min</div>
+                </div>
+                <div class="frustration-indicator" id="frust-session"
+                     title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
+                    <div class="frustration-indicator-value text-muted" id="frust-session-value">&mdash;</div>
+                    <div class="frustration-indicator-label">Session</div>
+                    <div class="frustration-indicator-sublabel">Last {{ session_rolling_window_minutes }} min</div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
 
         <!-- Time-Series Chart -->
         <section aria-labelledby="chart-heading" class="mb-6">

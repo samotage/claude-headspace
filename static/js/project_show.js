@@ -118,6 +118,8 @@
                 }
                 var data = await response.json();
                 var content = data.content || data.waypoint || '';
+                // Strip leading "# Waypoint" heading since the section already has one
+                content = content.replace(/^\s*#\s+Waypoint\s*\n/, '');
                 if (content.trim()) {
                     container.innerHTML = this._renderMarkdown(content);
                 } else {
@@ -1224,13 +1226,93 @@
             }
         },
 
-        editWaypoint: function() {
-            // Open the waypoint editor modal if available, or navigate
-            if (typeof openWaypointEditor === 'function') {
-                openWaypointEditor(projectId);
-            } else {
-                // Fallback: navigate to dashboard where waypoint editor is
-                window.location.href = '/?waypoint=' + projectId;
+        editWaypoint: async function() {
+            var content = document.getElementById('waypoint-content');
+            var editor = document.getElementById('waypoint-editor');
+            var textarea = document.getElementById('waypoint-editor-textarea');
+            var actions = document.getElementById('waypoint-actions');
+            if (!content || !editor || !textarea) return;
+
+            // Load raw markdown content into textarea
+            try {
+                var response = await fetch('/api/projects/' + projectId + '/waypoint');
+                if (response.ok) {
+                    var data = await response.json();
+                    textarea.value = data.content || '';
+                    // Store last_modified for conflict detection
+                    textarea.dataset.lastModified = data.last_modified || '';
+                } else {
+                    textarea.value = '';
+                    textarea.dataset.lastModified = '';
+                }
+            } catch (e) {
+                textarea.value = '';
+                textarea.dataset.lastModified = '';
+            }
+
+            // Toggle visibility
+            content.classList.add('hidden');
+            editor.classList.remove('hidden');
+            if (actions) actions.classList.add('hidden');
+            textarea.focus();
+        },
+
+        cancelWaypointEdit: function() {
+            var content = document.getElementById('waypoint-content');
+            var editor = document.getElementById('waypoint-editor');
+            var actions = document.getElementById('waypoint-actions');
+            if (content) content.classList.remove('hidden');
+            if (editor) editor.classList.add('hidden');
+            if (actions) actions.classList.remove('hidden');
+        },
+
+        saveWaypoint: async function() {
+            var textarea = document.getElementById('waypoint-editor-textarea');
+            var saveBtn = document.getElementById('waypoint-save-btn');
+            if (!textarea) return;
+
+            var payload = { content: textarea.value };
+            if (textarea.dataset.lastModified) {
+                payload.expected_mtime = textarea.dataset.lastModified;
+            }
+
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+            }
+
+            try {
+                var response = await fetch('/api/projects/' + projectId + '/waypoint', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    // Switch back to view mode and reload rendered content
+                    this.cancelWaypointEdit();
+                    this._loadWaypoint();
+                } else {
+                    var data = await response.json();
+                    if (response.status === 409) {
+                        // Conflict - file was modified externally, reload and re-enter edit
+                        alert('Waypoint was modified externally. Your content has been preserved. The latest version will be reloaded.');
+                        var savedContent = textarea.value;
+                        await this.editWaypoint();
+                        // Restore user's edits so they can merge manually
+                        textarea.value = savedContent;
+                    } else {
+                        alert('Failed to save waypoint: ' + (data.message || data.error || 'Unknown error'));
+                    }
+                }
+            } catch (e) {
+                console.error('ProjectShow: Save waypoint failed', e);
+                alert('Failed to save waypoint. Check the console for details.');
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save';
+                }
             }
         },
 
