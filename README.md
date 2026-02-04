@@ -2,14 +2,13 @@
 
 **AI-powered Claude Code session monitoring dashboard -- the only tool with frustration detection, flow state tracking, and agent priority scoring.**
 
-Monitor and manage all your Claude Code agents from a single web dashboard. See what each agent is working on, who needs input, which sessions are stuck -- and respond to agents directly via tmux, without switching terminal tabs. Spec-driven, production-grade software with 80+ tests and full observability.
+Monitor and manage all your Claude Code agents from a single web dashboard. See what each agent is working on, who needs input, which sessions are stuck -- and respond to agents directly via tmux, without switching terminal tabs or just click on the agent to open their iTerm2 directly. Spec-driven, production-grade software with 80+ tests and full observability.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/flask-3.0+-green)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
 
-<!-- TODO: Add a hero screenshot/GIF of the dashboard with multiple active agents -->
 
 ## Quick Start
 
