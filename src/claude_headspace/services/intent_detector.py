@@ -57,7 +57,10 @@ QUESTION_PATTERNS = [
 # Regex patterns for blocked/error detection (mapped to QUESTION intent)
 BLOCKED_PATTERNS = [
     r"(?i)(?:I don'?t have (?:permission|access) to|I can'?t access|this requires (?:authentication|authorization))",
-    r"(?i)(?:^Error:|Failed to\b|Permission denied)",
+    # "Error:" and "Failed to" anchored to start-of-line to avoid matching inside
+    # quoted text or descriptions (e.g. logger.exception("Failed to save ..."))
+    r"(?im)(?:^Error:|^Failed to\b)",
+    r"(?i)Permission denied",
     r"(?i)(?:I'?m unable to|I couldn'?t|I was unable to)",
 ]
 
@@ -69,15 +72,28 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:i'?(?:ve|m) (?:finished|completed|done)|task (?:complete|finished|done))",
     r"(?i)(?:successfully (?:completed|finished)|changes (?:have been )?(?:made|applied|committed))",
     # Summary completion phrases (tightened to avoid false positives)
-    r"(?i)(?:that'?s all (?:the changes|I (?:need|have))|all changes (?:have been|are) (?:made|applied|committed|complete)|everything is (?:set|done|ready|in place|complete))[\.!\s]*$",
+    r"(?i)(?:that'?s all (?:the changes|I (?:need|have))|all changes (?:have been|are) (?:made|applied|committed|complete)|everything (?:is |looks |appears |seems )?(?:set|done|ready|in place|complete|good|healthy|fine|correct))[\.!\s]*$",
     # Implementation complete phrases
     r"(?i)(?:implementation (?:is )?complete|feature (?:is )?(?:ready|done|complete))",
     # Detailed completion phrases
     r"(?i)(?:I'?ve made the following changes:)",
     r"(?i)(?:all tests are passing)",
     r"(?i)(?:the PR is ready for review)",
-    r"(?i)(?:committed to branch|changes have been pushed)",
+    r"(?i)(?:committed to branch|committed and pushed|changes have been pushed)",
     r"(?i)(?:here'?s a summary of what was done)",
+    # Artifact creation/delivery (e.g. "PRD created at docs/...", "File written to src/...")
+    r"(?i)(?:(?:file|prd|test|config|migration|template|document|spec|schema|script|module)\s+)?(?:created|written|saved|generated) (?:at|to|in) (?:\/|\.\/|\w)",
+    r"(?i)(?:I'?ve (?:created|written|saved|generated) (?:the |a )?(?:file|prd|test|config|migration|template|document|spec) (?:at|to|in) )",
+    # Test result summaries (e.g. "All 68 tests pass", "12 tests passed")
+    r"(?i)(?:all \d+ tests? pass(?:ed|ing|es)?)",
+    r"(?i)(?:\d+ tests? pass(?:ed|ing|es)?[,.]?\s*\d+ fail)",
+    r"(?i)(?:\d+ passed)",
+    # Broader test-passing patterns (e.g. "all 26 tests — all passing")
+    r"(?i)\ball passing\b",
+    # Git success indicators
+    r"(?i)working tree clean",
+    # Claude Code CLI completion marker (✻ Cooked for 1m 33s)
+    r"[✻✓]\s*\w+\s+for\s+\d+[ms]\s*\d*[sm]?",
 ]
 
 # Completion opener patterns — "Done." / "Complete." etc. at start of a line, followed by detail
@@ -93,6 +109,14 @@ END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?i)(?:here are the (?:changes|updates|modifications) I (?:made|implemented))",
     r"(?i)(?:to (?:summarise|summarize|recap)|in summary)",
     r"(?i)(?:the following files were (?:modified|created|updated|changed):)",
+    # Broader summary openers (e.g. "Here's what was changed:", "Here's what I did:")
+    r"(?i)(?:here'?s what (?:was|I) (?:changed|did|updated|implemented|fixed|added|created))",
+    # Broader "here's what it covers" pattern
+    r"(?i)(?:here'?s (?:a summary of )?what (?:it|this|the \w+) (?:covers|includes|contains|delivers))",
+    # Numbered change summaries (e.g. "9 prompts updated", "3 files changed")
+    r"(?i)(?:\d+ (?:prompts?|files?|tests?|assertions?|functions?) (?:updated|changed|modified|added|removed|fixed|created))",
+    # Numbered change summaries with adjective-first format (e.g. "6 new files", "8 modified files")
+    r"(?i)(?:\d+ (?:new|modified|changed|updated|created|deleted|added|removed) (?:files?|tests?|prompts?|functions?|endpoints?|routes?|models?|templates?|migrations?|modules?))",
 ]
 
 # End-of-task: soft-close offers (open-ended, work is done)
@@ -107,7 +131,11 @@ END_OF_TASK_SOFT_CLOSE_PATTERNS = [
 # End-of-task: capability handoff
 END_OF_TASK_HANDOFF_PATTERNS = [
     r"(?i)(?:you (?:can|should) now (?:be able to )?)",
-    r"(?i)(?:everything (?:should be|is) (?:working|in place|ready|set up))",
+    r"(?i)(?:everything (?:should be|is|looks|appears|seems) (?:working|in place|ready|set up|good|healthy|fine|correct))",
+    # "The change is live", "Server is running", "The fix is deployed"
+    r"(?i)(?:the (?:change|update|fix|edit|server|patch) is (?:live|running|deployed|applied|done|complete))",
+    # "Refresh the dashboard to verify", "Refresh to see the changes"
+    r"(?i)(?:refresh (?:the )?(?:dashboard|page|browser|view|app) to (?:verify|see|check|confirm))",
 ]
 
 # Continuation patterns (NEGATIVE guard -- vetoes end-of-task)
@@ -291,8 +319,13 @@ def detect_agent_intent(
     cleaned = _strip_code_blocks(text.strip())
     tail = _extract_tail(cleaned)
 
-    # Check continuation guard once
-    has_continuation = bool(_match_patterns(tail, CONTINUATION_PATTERNS))
+    # Check continuation guard on the LAST 5 lines only.
+    # The full tail (15 lines) can include intermediate text from earlier in
+    # the same assistant message (e.g. "Let me also check..." before tool
+    # calls) which would incorrectly veto END_OF_TASK detection when the
+    # final lines clearly show completion.
+    continuation_window = _extract_tail(cleaned, max_lines=5)
+    has_continuation = bool(_match_patterns(continuation_window, CONTINUATION_PATTERNS))
 
     # Phase 0: End-of-task detection on tail (before QUESTION — catches soft-close offers)
     eot_result = _detect_end_of_task(tail, has_continuation)

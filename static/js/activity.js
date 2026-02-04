@@ -1,0 +1,735 @@
+(function(global) {
+    'use strict';
+
+    let chart = null;
+    let currentWindow = 'day';
+    let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
+    let sseSource = null;
+
+    // Frustration thresholds from config (injected by template)
+    var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
+    var HEADSPACE_ENABLED = global.HEADSPACE_ENABLED || false;
+
+    // Color constants for frustration states
+    var FRUST_COLORS = {
+        green:  { text: 'text-green',  rgb: '76, 175, 80',  hex: '#4caf50' },
+        yellow: { text: 'text-amber',  rgb: '255, 193, 7',  hex: '#ffc107' },
+        red:    { text: 'text-red',    rgb: '255, 85, 85',   hex: '#ff5555' }
+    };
+
+    // Rate label by window
+    var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
+
+    /**
+     * Compute frustration level (green/yellow/red) from a numeric average.
+     */
+    function _levelFromAvg(avg) {
+        if (avg == null) return 'green';
+        if (avg >= THRESHOLDS.red) return 'red';
+        if (avg >= THRESHOLDS.yellow) return 'yellow';
+        return 'green';
+    }
+
+    const ActivityPage = {
+        init: function() {
+            this.loadOverallMetrics();
+            this.loadProjectMetrics();
+            if (HEADSPACE_ENABLED) {
+                this._initFrustrationWidget();
+                this._initSSE();
+            }
+        },
+
+        setWindow: function(w) {
+            currentWindow = w;
+            windowOffset = 0;
+            document.querySelectorAll('#window-toggles button').forEach(function(btn) {
+                if (btn.dataset.window === w) {
+                    btn.className = 'px-3 py-1 text-sm rounded border border-cyan/30 bg-cyan/20 text-cyan font-medium';
+                } else {
+                    btn.className = 'px-3 py-1 text-sm rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors';
+                }
+            });
+            this._refresh();
+        },
+
+        goBack: function() {
+            windowOffset--;
+            this._refresh();
+        },
+
+        goForward: function() {
+            if (windowOffset < 0) {
+                windowOffset++;
+                this._refresh();
+            }
+        },
+
+        _refresh: function() {
+            this._updateNav();
+            this.loadOverallMetrics();
+            this.loadProjectMetrics();
+        },
+
+        /**
+         * Compute the start of a period given an offset from the current period.
+         * offset=0 is the current period, -1 is the previous, etc.
+         */
+        _periodStart: function(offset) {
+            var now = new Date();
+            if (currentWindow === 'day') {
+                return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+            } else if (currentWindow === 'week') {
+                var dow = now.getDay();
+                var diffToMon = (dow === 0 ? 6 : dow - 1);
+                var thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
+                return new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + (offset * 7));
+            } else {
+                return new Date(now.getFullYear(), now.getMonth() + offset, 1);
+            }
+        },
+
+        _periodTitle: function() {
+            var start = this._periodStart(windowOffset);
+            if (currentWindow === 'day') {
+                if (windowOffset === 0) return 'Today';
+                if (windowOffset === -1) return 'Yesterday';
+                return start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+            } else if (currentWindow === 'week') {
+                var end = new Date(start);
+                end.setDate(end.getDate() + 6);
+                if (windowOffset === 0) {
+                    return 'This Week';
+                }
+                return start.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
+                    ' \u2013 ' + end.toLocaleDateString([], { day: 'numeric', month: 'short' });
+            } else {
+                if (windowOffset === 0) return 'This Month';
+                return start.toLocaleDateString([], { month: 'long', year: 'numeric' });
+            }
+        },
+
+        _updateNav: function() {
+            document.getElementById('period-title').textContent = this._periodTitle();
+            var fwdBtn = document.getElementById('nav-forward');
+            if (windowOffset >= 0) {
+                fwdBtn.disabled = true;
+                fwdBtn.className = 'w-7 h-7 flex items-center justify-center rounded border border-border text-muted cursor-not-allowed text-sm';
+            } else {
+                fwdBtn.disabled = false;
+                fwdBtn.className = 'w-7 h-7 flex items-center justify-center rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors text-sm';
+            }
+        },
+
+        _apiParams: function() {
+            var since = this._periodStart(windowOffset).toISOString();
+            var until = this._periodStart(windowOffset + 1).toISOString();
+            return 'window=' + currentWindow +
+                '&since=' + encodeURIComponent(since) +
+                '&until=' + encodeURIComponent(until);
+        },
+
+        /**
+         * Compute turn rate from total turns based on window.
+         * Day: turns/hour, Week/Month: turns/day.
+         */
+        _computeRate: function(totalTurns) {
+            if (currentWindow === 'day') {
+                return totalTurns / 24;
+            }
+            // week/month: turns per day
+            var days = currentWindow === 'week' ? 7 : 30;
+            return totalTurns / days;
+        },
+
+        _formatRate: function(rate) {
+            if (rate === 0) return '0';
+            if (rate >= 10) return Math.round(rate).toString();
+            return rate.toFixed(1);
+        },
+
+        /**
+         * Sum all turns across a history array.
+         */
+        _sumTurns: function(history) {
+            var total = 0;
+            if (history) {
+                history.forEach(function(h) { total += (h.turn_count || 0); });
+            }
+            return total;
+        },
+
+        /**
+         * Compute weighted average turn time across history.
+         */
+        _weightedAvgTime: function(history) {
+            var totalTime = 0, totalPairs = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
+                        var pairs = h.turn_count - 1;
+                        totalTime += h.avg_turn_time_seconds * pairs;
+                        totalPairs += pairs;
+                    }
+                });
+            }
+            return totalPairs > 0 ? totalTime / totalPairs : null;
+        },
+
+        /**
+         * Compute frustration average from history (total_frustration / frustration_turn_count).
+         */
+        _computeFrustrationAvg: function(history) {
+            var totalFrust = 0, totalTurns = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.total_frustration != null) totalFrust += h.total_frustration;
+                    if (h.frustration_turn_count != null) totalTurns += h.frustration_turn_count;
+                });
+            }
+            if (totalTurns === 0) return null;
+            return totalFrust / totalTurns;
+        },
+
+        /**
+         * Format a frustration average for display (1 decimal place).
+         */
+        _formatFrustAvg: function(avg) {
+            if (avg == null) return '\u2014';
+            return avg.toFixed(1);
+        },
+
+        loadOverallMetrics: function() {
+            fetch('/api/metrics/overall?' + this._apiParams())
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    var overallEmpty = document.getElementById('overall-empty');
+                    var overallMetrics = document.getElementById('overall-metrics');
+
+                    if (!data.history || data.history.length === 0) {
+                        overallEmpty.classList.remove('hidden');
+                        overallMetrics.classList.add('hidden');
+                        ActivityPage._renderChart([]);
+                        return;
+                    }
+
+                    overallEmpty.classList.add('hidden');
+                    overallMetrics.classList.remove('hidden');
+
+                    // Compute window totals from history
+                    var totalTurns = ActivityPage._sumTurns(data.history);
+                    var rate = ActivityPage._computeRate(totalTurns);
+                    var avgTime = ActivityPage._weightedAvgTime(data.history);
+
+                    document.getElementById('overall-total-turns').textContent = totalTurns;
+                    document.getElementById('overall-total-turns-label').textContent = 'Total Turns';
+                    document.getElementById('overall-turn-rate').textContent = ActivityPage._formatRate(rate);
+                    document.getElementById('overall-turn-rate-label').textContent = RATE_LABELS[currentWindow];
+                    document.getElementById('overall-avg-time').textContent =
+                        avgTime != null ? avgTime.toFixed(1) + 's' : '--';
+                    document.getElementById('overall-active-agents').textContent =
+                        data.current ? (data.current.active_agents || 0) : 0;
+
+                    // Frustration: display average instead of sum
+                    var frustAvg = ActivityPage._computeFrustrationAvg(data.history);
+                    var frustEl = document.getElementById('overall-frustration');
+                    frustEl.textContent = ActivityPage._formatFrustAvg(frustAvg);
+                    var level = _levelFromAvg(frustAvg);
+                    frustEl.className = 'metric-card-value ' + (frustAvg != null ? FRUST_COLORS[level].text : 'text-muted');
+
+                    ActivityPage._renderChart(data.history);
+                })
+                .catch(function(err) {
+                    console.error('Failed to load overall metrics:', err);
+                });
+        },
+
+        loadProjectMetrics: function() {
+            // First fetch list of projects, then fetch metrics for each
+            fetch('/api/projects')
+                .then(function(res) { return res.json(); })
+                .then(function(projects) {
+                    var container = document.getElementById('project-metrics-container');
+                    var loading = document.getElementById('projects-loading');
+                    var empty = document.getElementById('projects-empty');
+                    loading.classList.add('hidden');
+
+                    if (!projects || projects.length === 0) {
+                        container.innerHTML = '';
+                        empty.classList.remove('hidden');
+                        return;
+                    }
+
+                    empty.classList.add('hidden');
+
+                    var promises = projects.map(function(p) {
+                        return fetch('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
+                            .then(function(res) { return res.json(); })
+                            .then(function(metrics) {
+                                return { project: p, metrics: metrics };
+                            });
+                    });
+
+                    // Also fetch agent metrics for each project's agents
+                    Promise.all(promises).then(function(results) {
+                        var agentPromises = [];
+                        results.forEach(function(r) {
+                            if (r.metrics.history && r.metrics.history.length > 0) {
+                                agentPromises.push(
+                                    fetch('/api/projects/' + r.project.id)
+                                        .then(function(res) { return res.json(); })
+                                        .then(function(detail) {
+                                            var activeAgents = (detail.agents || [])
+                                                .filter(function(a) { return !a.ended_at; });
+                                            var aPromises = activeAgents
+                                                .map(function(a) {
+                                                    return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
+                                                        .then(function(res) { return res.json(); })
+                                                        .then(function(metrics) {
+                                                            return { agent: a, metrics: metrics };
+                                                        });
+                                                });
+                                            return Promise.all(aPromises);
+                                        })
+                                        .then(function(agentData) {
+                                            // Filter out agents with no metrics in the selected period
+                                            r.agents = agentData.filter(function(ad) {
+                                                return ad.metrics.history && ad.metrics.history.length > 0;
+                                            });
+                                        })
+                                );
+                            } else {
+                                r.agents = [];
+                            }
+                        });
+
+                        return Promise.all(agentPromises).then(function() {
+                            return results;
+                        });
+                    }).then(function(results) {
+                        ActivityPage._renderProjectPanels(results);
+                    });
+                })
+                .catch(function(err) {
+                    console.error('Failed to load project metrics:', err);
+                    document.getElementById('projects-loading').classList.add('hidden');
+                });
+        },
+
+        _fillHourlyGaps: function(history) {
+            if (history.length < 2) return history;
+            var bucketMap = {};
+            history.forEach(function(h) {
+                var d = new Date(h.bucket_start);
+                var key = d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0') + 'T' +
+                    String(d.getHours()).padStart(2, '0');
+                bucketMap[key] = h;
+            });
+            var first = new Date(history[0].bucket_start);
+            var last = new Date(history[history.length - 1].bucket_start);
+            first.setMinutes(0, 0, 0);
+            last.setMinutes(0, 0, 0);
+            var result = [];
+            var cursor = new Date(first);
+            while (cursor <= last) {
+                var key = cursor.getFullYear() + '-' +
+                    String(cursor.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(cursor.getDate()).padStart(2, '0') + 'T' +
+                    String(cursor.getHours()).padStart(2, '0');
+                if (bucketMap[key]) {
+                    result.push(bucketMap[key]);
+                } else {
+                    result.push({
+                        bucket_start: cursor.toISOString(),
+                        turn_count: 0,
+                        avg_turn_time_seconds: null,
+                        active_agents: null,
+                        total_frustration: null,
+                        frustration_turn_count: null
+                    });
+                }
+                cursor = new Date(cursor.getTime() + 3600000);
+            }
+            return result;
+        },
+
+        _aggregateByDay: function(history) {
+            var dayMap = {};
+            history.forEach(function(h) {
+                var d = new Date(h.bucket_start);
+                var key = d.toLocaleDateString('en-CA');
+                if (!dayMap[key]) {
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
+                }
+                dayMap[key].turn_count += h.turn_count;
+                if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
+                if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
+            });
+            return Object.keys(dayMap).sort().map(function(k) {
+                var entry = dayMap[k];
+                if (entry.total_frustration === 0) entry.total_frustration = null;
+                if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
+                return entry;
+            });
+        },
+
+        /**
+         * Compute per-bucket frustration average for chart.
+         * Returns null for buckets with no scored turns (creates line gaps).
+         */
+        _bucketFrustrationAvg: function(h) {
+            if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
+                return null;
+            }
+            return h.total_frustration / h.frustration_turn_count;
+        },
+
+        _renderChart: function(history) {
+            var canvas = document.getElementById('activity-chart');
+            var chartEmpty = document.getElementById('chart-empty');
+
+            if (!history || history.length === 0) {
+                if (chart) { chart.destroy(); chart = null; }
+                canvas.style.display = 'none';
+                chartEmpty.classList.remove('hidden');
+                return;
+            }
+
+            var hasAnyTurns = history.some(function(h) { return h.turn_count > 0; });
+            if (!hasAnyTurns) {
+                if (chart) { chart.destroy(); chart = null; }
+                canvas.style.display = 'none';
+                chartEmpty.classList.remove('hidden');
+                return;
+            }
+
+            var isAggregated = (currentWindow === 'week' || currentWindow === 'month');
+            if (isAggregated) {
+                history = history.filter(function(h) { return h.turn_count > 0; });
+                history = this._aggregateByDay(history);
+            } else {
+                history = this._fillHourlyGaps(history);
+            }
+
+            canvas.style.display = 'block';
+            chartEmpty.classList.add('hidden');
+
+            var labels = history.map(function(h) {
+                var d = new Date(h.bucket_start);
+                if (currentWindow === 'day') {
+                    return d.getHours().toString().padStart(2, '0') + ':00';
+                } else if (currentWindow === 'week') {
+                    return d.toLocaleDateString([], { weekday: 'long' });
+                } else {
+                    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                }
+            });
+
+            var turnData = history.map(function(h) {
+                return h.turn_count > 0 ? h.turn_count : null;
+            });
+
+            // Chart frustration line: per-bucket average (not sum)
+            var frustrationData = history.map(function(h) {
+                return ActivityPage._bucketFrustrationAvg(h);
+            });
+
+            // Threshold-based point colors
+            var pointColors = frustrationData.map(function(avg) {
+                var lvl = _levelFromAvg(avg);
+                return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
+            });
+
+            var chartHistory = history;
+
+            if (chart) { chart.destroy(); }
+
+            var datasets = [{
+                label: 'Turns',
+                data: turnData,
+                backgroundColor: 'rgba(86, 212, 221, 0.7)',
+                borderColor: 'rgba(86, 212, 221, 1)',
+                borderWidth: 1,
+                borderRadius: 3,
+                yAxisID: 'y',
+            }, {
+                label: 'Frustration',
+                type: 'line',
+                data: frustrationData,
+                borderWidth: 2,
+                pointRadius: 3,
+                tension: 0.3,
+                fill: false,
+                spanGaps: false,
+                yAxisID: 'y1',
+                segment: {
+                    borderColor: function(ctx) {
+                        return pointColors[ctx.p1DataIndex] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
+                    }
+                },
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
+                borderColor: pointColors[0] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)',
+            }];
+
+            var scales = {
+                x: {
+                    ticks: { color: 'rgba(255,255,255,0.4)', maxTicksLimit: 12 },
+                    grid: { color: 'rgba(255,255,255,0.06)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: 'rgba(255,255,255,0.4)', precision: 0 },
+                    grid: { color: 'rgba(255,255,255,0.06)' }
+                },
+                y1: {
+                    position: 'right',
+                    beginAtZero: true,
+                    min: 0,
+                    max: 10,
+                    ticks: {
+                        color: 'rgba(255, 193, 7, 0.6)',
+                        precision: 0,
+                        stepSize: 2,
+                    },
+                    grid: { drawOnChartArea: false }
+                }
+            };
+
+            chart = new Chart(canvas, {
+                type: 'bar',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) {
+                                    if (!items.length) return '';
+                                    var idx = items[0].dataIndex;
+                                    var h = chartHistory[idx];
+                                    var d = new Date(h.bucket_start);
+                                    if (isAggregated) {
+                                        return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+                                    }
+                                    return d.toLocaleString();
+                                },
+                                label: function(item) {
+                                    if (item.dataset.label === 'Frustration') {
+                                        if (item.raw == null) return null;
+                                        return 'Frustration Avg: ' + item.raw.toFixed(1);
+                                    }
+                                    var idx = item.dataIndex;
+                                    var h = chartHistory[idx];
+                                    var lines = ['Turns: ' + h.turn_count];
+                                    if (!isAggregated) {
+                                        if (h.avg_turn_time_seconds != null) {
+                                            lines.push('Avg time: ' + h.avg_turn_time_seconds.toFixed(1) + 's');
+                                        }
+                                        if (h.active_agents != null) {
+                                            lines.push('Active agents: ' + h.active_agents);
+                                        }
+                                    }
+                                    var avg = ActivityPage._bucketFrustrationAvg(h);
+                                    if (avg != null) {
+                                        lines.push('Frustration Avg: ' + avg.toFixed(1));
+                                    }
+                                    return lines;
+                                }
+                            }
+                        },
+                        legend: { labels: { color: 'rgba(255,255,255,0.6)' } }
+                    },
+                    scales: scales
+                }
+            });
+        },
+
+        _renderProjectPanels: function(results) {
+            var container = document.getElementById('project-metrics-container');
+            var empty = document.getElementById('projects-empty');
+
+            var hasAnyData = results.some(function(r) {
+                return (r.metrics.history && r.metrics.history.length > 0) || (r.agents && r.agents.length > 0);
+            });
+
+            if (!hasAnyData && results.length > 0) {
+                container.innerHTML = '';
+                results.forEach(function(r) {
+                    container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
+                        '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">' +
+                        ActivityPage._escapeHtml(r.project.name) + '</h3>' +
+                        '<p class="text-muted text-sm">No activity data yet.</p></div>';
+                });
+                empty.classList.add('hidden');
+                return;
+            }
+
+            container.innerHTML = '';
+            empty.classList.add('hidden');
+
+            results.sort(function(a, b) {
+                var aHas = (a.metrics.history && a.metrics.history.length > 0) || (a.agents && a.agents.length > 0) ? 1 : 0;
+                var bHas = (b.metrics.history && b.metrics.history.length > 0) || (b.agents && b.agents.length > 0) ? 1 : 0;
+                return bHas - aHas;
+            });
+
+            results.forEach(function(r) {
+                var section = document.createElement('div');
+                section.className = 'py-4 border-b border-border last:border-0';
+
+                var history = r.metrics.history || [];
+                var html = '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">' +
+                    ActivityPage._escapeHtml(r.project.name) + '</h3>';
+
+                if (history.length > 0) {
+                    var totalTurns = ActivityPage._sumTurns(history);
+                    var rate = ActivityPage._computeRate(totalTurns);
+                    var avgTime = ActivityPage._weightedAvgTime(history);
+                    var projFrustAvg = ActivityPage._computeFrustrationAvg(history);
+                    var projLevel = _levelFromAvg(projFrustAvg);
+                    var projColor = projFrustAvg != null ? FRUST_COLORS[projLevel].text : 'text-muted';
+
+                    html += '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-cyan">' + totalTurns + '</div>' +
+                        '<div class="metric-card-label">Turns</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-cyan">' + ActivityPage._formatRate(rate) + '</div>' +
+                        '<div class="metric-card-label">' + RATE_LABELS[currentWindow] + '</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-amber">' +
+                        (avgTime != null ? avgTime.toFixed(1) + 's' : '--') +
+                        '</div><div class="metric-card-label">Avg Time</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value text-green">' + (r.metrics.current ? (r.metrics.current.active_agents || 0) : 0) + '</div>' +
+                        '<div class="metric-card-label">Agents</div></div>' +
+                        '<div class="metric-card-sm">' +
+                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
+                        '<div class="metric-card-label">Frustration</div></div></div>';
+                } else {
+                    html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
+                }
+
+                // Agent rows (active only, in accordion)
+                if (r.agents && r.agents.length > 0) {
+                    html += '<details class="activity-agents-accordion">' +
+                        '<summary class="activity-agents-toggle">' +
+                        '<span class="toggle-arrow">&#9654;</span> Active Agents (' + r.agents.length + ')' +
+                        '</summary>';
+                    html += '<div class="space-y-2 mt-2">';
+                    r.agents.forEach(function(ad) {
+                        var agentHistory = ad.metrics.history || [];
+                        var agentLabel = ad.agent.session_uuid
+                            ? ad.agent.session_uuid.substring(0, 8)
+                            : 'Agent ' + ad.agent.id;
+                        html += '<div class="agent-metric-row">' +
+                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
+                        if (agentHistory.length > 0) {
+                            var agentTurns = ActivityPage._sumTurns(agentHistory);
+                            var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
+                            var agentFrustAvg = ActivityPage._computeFrustrationAvg(agentHistory);
+                            var agentLevel = _levelFromAvg(agentFrustAvg);
+                            var agentFrustColor = agentFrustAvg != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
+                            html += '<div class="agent-metric-stats">' +
+                                '<span><span class="stat-value">' + agentTurns + '</span><span class="stat-label">turns</span></span>';
+                            if (agentAvg != null) {
+                                html += '<span><span class="stat-value">' + agentAvg.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
+                            }
+                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentFrustAvg) + '</span><span class="stat-label">frust</span></span>';
+                            html += '</div>';
+                        } else {
+                            html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
+                        }
+                        html += '</div>';
+                    });
+                    html += '</div></details>';
+                }
+
+                section.innerHTML = html;
+                container.appendChild(section);
+            });
+        },
+
+        // ---- Frustration State Widget ----
+
+        _initFrustrationWidget: function() {
+            fetch('/api/headspace/current')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (!data.enabled || !data.current) return;
+                    ActivityPage._updateWidgetValues(data.current);
+                })
+                .catch(function(err) {
+                    console.error('Failed to load headspace state:', err);
+                });
+        },
+
+        _initSSE: function() {
+            if (sseSource) return;
+            sseSource = new EventSource('/api/events/stream?types=headspace_update');
+            sseSource.addEventListener('headspace_update', function(e) {
+                try {
+                    var data = JSON.parse(e.data);
+                    ActivityPage._updateWidgetValues(data);
+                } catch (err) {
+                    console.error('Failed to parse headspace SSE:', err);
+                }
+            });
+        },
+
+        _updateWidgetValues: function(state) {
+            this._setIndicator('frust-immediate-value', state.frustration_rolling_10);
+            this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
+            this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
+        },
+
+        _setIndicator: function(elementId, value) {
+            var el = document.getElementById(elementId);
+            if (!el) return;
+            if (value == null) {
+                el.textContent = '\u2014';
+                el.className = 'frustration-indicator-value text-muted';
+            } else {
+                el.textContent = value.toFixed(1);
+                var level = _levelFromAvg(value);
+                el.className = 'frustration-indicator-value ' + FRUST_COLORS[level].text;
+            }
+        },
+
+        // ---- Utilities ----
+
+        _frustrationLevel: function(totalFrustration, turnCount) {
+            if (!totalFrustration || !turnCount || turnCount === 0) return 'green';
+            var avg = totalFrustration / turnCount;
+            return _levelFromAvg(avg);
+        },
+
+        _sumFrustrationHistory: function(history) {
+            var total = 0, turns = 0;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.total_frustration != null) total += h.total_frustration;
+                    if (h.frustration_turn_count != null) turns += h.frustration_turn_count;
+                });
+            }
+            return { total: total, turns: turns };
+        },
+
+        _escapeHtml: function(str) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str || ''));
+            return div.innerHTML;
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        ActivityPage.init();
+    });
+
+    global.ActivityPage = ActivityPage;
+})(window);

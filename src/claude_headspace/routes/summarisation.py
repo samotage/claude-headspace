@@ -46,6 +46,10 @@ def summarise_turn(turn_id):
     if summary is None:
         return jsonify({"error": "Summarisation failed"}), 500
 
+    if summary and turn.task and turn.task.agent:
+        from ..services.card_state import broadcast_card_refresh
+        broadcast_card_refresh(turn.task.agent, "manual_turn_summary")
+
     return jsonify({
         "turn_id": turn_id,
         "summary": summary,
@@ -89,6 +93,10 @@ def summarise_task(task_id):
     summary = service.summarise_task(task, db_session=db.session)
     if summary is None:
         return jsonify({"error": "Summarisation failed"}), 500
+
+    if summary and task.agent:
+        from ..services.card_state import broadcast_card_refresh
+        broadcast_card_refresh(task.agent, "manual_task_summary")
 
     return jsonify({
         "task_id": task_id,

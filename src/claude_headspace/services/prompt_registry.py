@@ -7,66 +7,95 @@ instead of assembling strings inline.
 
 _PROMPT_TEMPLATES: dict[str, str] = {
     # --- Summarisation: turn prompts (per-intent) ---
+    #
+    # IMPORTANT: All summarisation prompts must end with the anti-preamble
+    # instruction to prevent models from echoing back the prompt structure.
+    #
+    # STYLE RULE: Summaries are task board entries. Use imperative/direct form.
+    # NEVER describe the user ("The user wants...", "The user is...").
+    # Good: "Fix login validation bug"  Bad: "The user wants to fix a bug"
     "turn_command": (
-        "Summarise a very short and concise sentence around 18 tokens long the following command as an instruction:\n\n"
         "{instruction_context}"
-        "User command: {text}"
+        "Command: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the goal of this command. "
+        "Use imperative form (e.g. 'Fix login bug', 'Deploy to staging', 'Add unit tests for auth'). "
+        "If the command references verifying or checking something, state what specifically is being verified. "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_question": (
-        "Summarise what the agent is asking the user in 1-2 concise sentences.\n\n"
         "{instruction_context}"
-        "Agent question: {text}"
+        "Agent asked: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what the agent needs to know. "
+        "Use direct form (e.g. 'Asking which auth method to use', 'Needs confirmation to delete files'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_completion": (
-        "Summarise what the agent accomplished in 1-2 concise sentences.\n\n"
         "{instruction_context}"
-        "Agent completion message: {text}"
+        "Agent output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense (e.g. 'Implemented auth middleware', 'Fixed CSS layout bug'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_progress": (
-        "Summarise what progress the agent has made in 1-2 concise sentences.\n\n"
         "{instruction_context}"
-        "Agent progress update: {text}"
+        "Agent output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating current progress. "
+        "Use present tense (e.g. 'Running test suite', 'Refactoring auth module'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_answer": (
-        "Summarise what information the user provided in 1-2 concise sentences.\n\n"
         "{instruction_context}"
-        "User answer: {text}"
+        "Response: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was confirmed or provided. "
+        "Use direct form (e.g. 'Use PostgreSQL for storage', 'Confirmed: proceed with refactor'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_end_of_task": (
-        "Summarise the final outcome of this task in 1-2 concise sentences.\n\n"
         "{instruction_context}"
-        "Final message: {text}"
+        "Final output: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the final outcome. "
+        "Use past tense (e.g. 'Completed auth implementation', 'All tests passing'). "
+        "NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
     "turn_default": (
-        "Summarise this turn in 1-2 concise sentences focusing on "
-        "what action was taken or requested.\n\n"
         "{instruction_context}"
-        "Turn: {text}\n"
-        "Actor: {actor}\n"
-        "Intent: {intent}"
+        "{actor}: {text}\n\n"
+        "Write a task board entry (~18 tokens) stating the action taken or requested. "
+        "Use direct form. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: task completion ---
     "task_completion": (
-        "Summarise what was accomplished in this completed task in 2-3 sentences. "
-        "Describe the outcome relative to what was originally asked.\n\n"
-        "Original instruction: {instruction}\n"
-        "Agent's final message: {final_turn_text}"
+        "Task: {instruction}\n"
+        "Final output: {final_turn_text}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # Task completion when no final agent message available — uses turn activity
     "task_completion_from_activity": (
-        "Summarise what was accomplished in this completed task in 2-3 sentences. "
-        "Describe the outcome relative to what was originally asked.\n\n"
-        "Original instruction: {instruction}\n\n"
-        "Activity during this task:\n{turn_activity}"
+        "Task: {instruction}\n\n"
+        "Activity:\n{turn_activity}\n\n"
+        "Write a task board entry (~18 tokens) stating what was accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Summarisation: instruction ---
     "instruction": (
-        "Summarise a very short and concise sentence around 18 tokens long the following command as in instruction:\n\n"
-        "Focus on the core task or goal.\n\n"
-        "User command: {command_text}"
+        "Command: {command_text}\n\n"
+        "Write a task board entry (~18 tokens) stating the goal. "
+        "Use imperative form (e.g. 'Fix login bug', 'Add dark mode support'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
     # --- Priority scoring ---
@@ -89,10 +118,40 @@ _PROMPT_TEMPLATES: dict[str, str] = {
     "progress_summary": (
         "You are summarising recent development progress for the project '{project_name}'.\n\n"
         "{analysis_text}\n\n"
-        "Write a 3-5 paragraph narrative progress summary in past tense.\n"
+        "Write a short and concise progress summary in past tense.\n"
         "Focus on accomplishments, patterns, and themes — not individual commits.\n"
-        "Group related work into coherent paragraphs.\n"
+        "Output is a bullet point list of work, each with a short one sentence summary (~18 tokens) of each item.\n"
         "Use a professional tone suitable for a development journal."
+    ),
+
+    # --- Headspace: frustration-aware turn summarisation ---
+    "turn_frustration": (
+        "{instruction_context}"
+        "Message: {text}\n\n"
+        "1. Write a task board entry (~18 tokens) stating the goal or action. "
+        "Use imperative form (e.g. 'Fix login bug', 'Confirmed: proceed with refactor'). "
+        "NEVER start with 'The user' or describe user behavior. "
+        "If the message references verifying or confirming something, state what specifically.\n"
+        "2. Rate the apparent frustration level 0-10:\n"
+        "   0-3: Calm, patient, constructive\n"
+        "   4-6: Showing some frustration (repetition, mild exasperation)\n"
+        "   7-10: Clearly frustrated (caps, punctuation, harsh language, repeated complaints)\n\n"
+        "Consider: tone, punctuation patterns (!!!, ???, CAPS), "
+        "repetition of previous requests, explicit frustration signals "
+        '("again", "still not working", "why won\'t you"), '
+        "and patience indicators (clear instructions, positive framing).\n\n"
+        'Return ONLY valid JSON: {{"summary": "...", "frustration_score": N}}'
+    ),
+
+    # --- Project metadata: description generation ---
+    "project_description": (
+        "Below is the CLAUDE.md file from a software project.\n\n"
+        "---\n"
+        "{claude_md_content}\n"
+        "---\n\n"
+        "Write a 1-2 sentence project description suitable for a dashboard card. "
+        "Focus on what the project does and its primary technology. "
+        "Output ONLY the description — no preamble, labels, or commentary."
     ),
 
     # --- Classification: completion ---

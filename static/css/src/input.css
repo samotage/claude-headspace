@@ -49,6 +49,41 @@
     }
 }
 
+/* Form well — recessed input styling */
+@layer components {
+    .form-well {
+        background: var(--bg-void);
+        border: 1px solid var(--border-bright);
+        border-radius: 0.25rem;
+        color: var(--text-primary);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .form-well::placeholder {
+        color: var(--text-muted);
+    }
+    .form-well:focus {
+        border-color: var(--cyan);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5),
+                    0 0 0 1px rgba(86, 212, 221, 0.15);
+        outline: none;
+    }
+    .form-well.border-red {
+        border-color: var(--red);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5),
+                    0 0 0 1px rgba(224, 115, 115, 0.15);
+    }
+    select.form-well {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236a6a78' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 12px 8px;
+        padding-right: 2.5rem;
+    }
+}
+
 /* Scanline overlay */
 body::after {
     content: '';
@@ -99,6 +134,18 @@ body::after {
 /* Neon text glow utility */
 .text-glow-cyan {
     text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);
+}
+
+/* Focus/respond success highlights */
+.focus-highlight,
+.respond-success {
+    box-shadow: 0 0 12px rgba(86,212,221,0.3), 0 0 30px rgba(86,212,221,0.1);
+    border-color: rgba(86,212,221,0.5);
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+.respond-success {
+    box-shadow: 0 0 12px rgba(115,224,160,0.3), 0 0 30px rgba(115,224,160,0.1);
+    border-color: rgba(115,224,160,0.5);
 }
 
 /* Card editor layout — code editor aesthetic */
@@ -172,6 +219,40 @@ body::after {
 [data-state="TIMED_OUT"] .state-strip {
     background: rgba(224,115,115,0.15);
     color: var(--red);
+}
+
+/* Card text truncation — 3-line clamp with ellipsis */
+.task-instruction,
+.task-summary {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.task-instruction.is-truncated,
+.task-summary.is-truncated {
+    cursor: pointer;
+}
+
+/* Card text tooltip — floating overlay for full text */
+.card-text-tooltip {
+    position: fixed;
+    background: #353540;
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    max-width: 520px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+    z-index: 500;
+    pointer-events: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Mobile responsive: agent cards */
@@ -354,6 +435,349 @@ body::after {
 
 .logging-subtab.active .subtab-label {
     text-shadow: 0 0 8px rgba(86, 212, 221, 0.2);
+}
+
+/* Activity metric cards */
+.metric-card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+
+.metric-card-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.metric-card-value {
+    font-family: var(--font-mono);
+    font-size: 2.25rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+
+/* Project metric cards — smaller variant */
+.metric-card-sm {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+.metric-card-sm .metric-card-label {
+    font-size: 0.625rem;
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.metric-card-sm .metric-card-value {
+    font-size: 1.5rem;
+}
+
+/* Agent row in activity page */
+.agent-metric-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+}
+
+.agent-metric-row:hover {
+    border-color: var(--border-bright);
+}
+
+.agent-metric-tag {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    min-width: 72px;
+}
+
+.agent-metric-stats {
+    display: flex;
+    gap: 16px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+}
+
+.agent-metric-stats .stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.agent-metric-stats .stat-label {
+    color: var(--text-muted);
+    margin-left: 4px;
+    font-size: 0.6875rem;
+}
+
+/* Frustration state widget */
+.frustration-indicator {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    text-align: center;
+    cursor: default;
+}
+
+.frustration-indicator:hover {
+    border-color: var(--border-bright);
+}
+
+.frustration-indicator-value {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+
+.frustration-indicator-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.frustration-indicator-sublabel {
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* Activity agents accordion */
+.activity-agents-accordion {
+    margin-top: 0.5rem;
+}
+
+.activity-agents-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 0;
+    list-style: none;
+    user-select: none;
+    transition: color 0.15s ease;
+}
+
+.activity-agents-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.activity-agents-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.activity-agents-toggle .toggle-arrow {
+    font-size: 0.5rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+}
+
+.activity-agents-accordion[open] .toggle-arrow {
+    transform: rotate(90deg);
+}
+
+/* Objective banner — top-of-dashboard objective display */
+.objective-banner {
+    position: relative;
+}
+
+.objective-banner-inner {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.objective-banner-inner:hover {
+    border-left-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(86, 212, 221, 0.08);
+}
+
+.objective-banner-empty .objective-banner-inner,
+.objective-banner-empty {
+    border-left-color: var(--border);
+}
+
+.objective-banner-empty:hover {
+    border-left-color: var(--text-muted);
+    box-shadow: none;
+}
+
+.objective-banner-gutter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background: rgba(86, 212, 221, 0.05);
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.objective-banner-empty .objective-banner-gutter {
+    background: transparent;
+}
+
+.objective-banner-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--cyan);
+    opacity: 0.7;
+    text-transform: uppercase;
+}
+
+.objective-banner-empty .objective-banner-label {
+    color: var(--text-muted);
+}
+
+.objective-banner-content {
+    flex: 1;
+    padding: 8px 16px;
+    min-width: 0;
+}
+
+.objective-banner-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.objective-banner-text {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.objective-banner-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    font-weight: 400;
+}
+
+.objective-banner-edit {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.objective-banner-inner:hover .objective-banner-edit {
+    opacity: 1;
+}
+
+.objective-banner-edit:hover {
+    color: var(--cyan);
+}
+
+.objective-banner-constraints {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.objective-banner-constraints-label {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.objective-banner-priority-badge {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+.priority-enabled {
+    color: var(--green);
+    background: rgba(80, 250, 123, 0.1);
+    border-color: rgba(80, 250, 123, 0.3);
+}
+
+.priority-disabled {
+    color: var(--text-muted);
+    background: var(--surface);
+    border-color: var(--border);
+}
+
+/* Mobile: always show edit link */
+@media (max-width: 640px) {
+    .objective-banner-edit {
+        opacity: 1;
+    }
+}
+
+/* Accordion transitions — project show tree */
+.accordion-body {
+    overflow: hidden;
+    transition: max-height 0.2s ease, opacity 0.2s ease;
+    opacity: 1;
+}
+
+.accordion-body.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+}
+
+.accordion-arrow {
+    display: inline-block;
+    transition: transform 0.15s ease;
+    font-size: 0.625rem;
+}
+
+.accordion-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+/* Nested accordion indentation */
+.accordion-nested-1 {
+    padding-left: 1.25rem;
+}
+
+.accordion-nested-2 {
+    padding-left: 2.5rem;
 }
 
 /* iOS smooth scrolling for overflow containers */

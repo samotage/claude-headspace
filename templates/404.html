@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Not Found - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% set status_counts = status_counts or {"input_needed": 0, "working": 0, "idle": 0} %}
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <div class="text-center py-16">
+            <h1 class="text-4xl font-bold text-muted mb-4">404</h1>
+            <p class="text-secondary mb-2">{{ message or "Page not found" }}</p>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="text-cyan hover:underline text-sm">Back to Dashboard</a>
+        </div>
+    </main>
+</div>
+{% endblock %}

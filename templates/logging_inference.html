@@ -15,11 +15,20 @@
                 <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                     <h2 id="filter-heading" class="sr-only">Inference Filters</h2>
 
+                    <!-- Search Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto sm:flex-1">
+                        <label for="filter-search" class="text-sm text-secondary whitespace-nowrap">Search:</label>
+                        <input type="text" id="filter-search"
+                               class="form-well flex-1 px-3 py-2 min-h-[44px]"
+                               placeholder="Search prompts & responses..."
+                               aria-label="Search inference call content">
+                    </div>
+
                     <!-- Level Filter -->
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <label for="filter-level" class="text-sm text-secondary whitespace-nowrap">Level:</label>
                         <select id="filter-level"
-                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
                                 aria-label="Filter by level">
                             <option value="">All Levels</option>
                         </select>
@@ -29,7 +38,7 @@
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <label for="filter-model" class="text-sm text-secondary whitespace-nowrap">Model:</label>
                         <select id="filter-model"
-                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
                                 aria-label="Filter by model">
                             <option value="">All Models</option>
                         </select>
@@ -39,7 +48,7 @@
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <label for="filter-project" class="text-sm text-secondary whitespace-nowrap">Project:</label>
                         <select id="filter-project"
-                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
                                 aria-label="Filter by project">
                             <option value="">All Projects</option>
                         </select>
@@ -49,7 +58,7 @@
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <label for="filter-agent" class="text-sm text-secondary whitespace-nowrap">Agent:</label>
                         <select id="filter-agent"
-                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
                                 aria-label="Filter by agent">
                             <option value="">All Agents</option>
                         </select>
@@ -59,7 +68,7 @@
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <label for="filter-cached" class="text-sm text-secondary whitespace-nowrap">Cached:</label>
                         <select id="filter-cached"
-                                class="flex-1 sm:flex-initial px-3 py-2 bg-surface border border-border rounded text-primary focus:border-cyan focus:outline-none transition-colors min-h-[44px]"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
                                 aria-label="Filter by cached status">
                             <option value="">All</option>
                             <option value="true">Cached</option>

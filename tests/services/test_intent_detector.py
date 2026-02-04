@@ -281,6 +281,10 @@ class TestPatternAccuracy:
         ("Complete. The feature is ready for review.", True),
         ("Finished. Here's what changed in the codebase.", True),
         ("All done! The tests pass and coverage is at 95%.", True),
+        # Artifact creation/delivery
+        ("PRD created at docs/prds/core/prd.md.", True),
+        ("File written to src/routes/projects.py.", True),
+        ("I've created the config at ./config.yaml.", True),
         # False positives we want to avoid
         ("The task is not done yet.", False),  # Negative
         ("I'm working on completing it.", False),  # In progress
@@ -559,6 +563,54 @@ class TestExpandedCompletionPatterns:
     def test_summary_of_what_was_done(self):
         result = detect_agent_intent("Here's a summary of what was done:\n- Item 1\n- Item 2")
         # Now detected as END_OF_TASK (structured summary) rather than COMPLETION
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_all_68_tests_pass(self):
+        """'All 68 tests pass' with a number should be COMPLETION."""
+        result = detect_agent_intent("All 68 tests pass.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_12_tests_passed(self):
+        """'All 12 tests passed' past tense with number should be COMPLETION."""
+        result = detect_agent_intent("All 12 tests passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_68_passed(self):
+        """'68 passed' should be COMPLETION."""
+        result = detect_agent_intent("68 passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_real_world_test_summary_with_changes(self):
+        """Real-world output: test results + summary of changes → END_OF_TASK."""
+        text = (
+            "All 68 tests pass. Here's a summary of what was changed:\n\n"
+            "prompt_registry.py — 9 prompts updated:\n"
+            "- turn_question changed from 1-2 sentences to 18 tokens\n"
+            "- task_completion changed from 2-3 sentences to 18 tokens\n\n"
+            "Tests updated in test_prompt_registry.py (3 assertions) to match."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_summary_of_what_was_changed(self):
+        """'Here's a summary of what was changed' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "Here's a summary of what was changed:\n- Item 1\n- Item 2"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_heres_what_i_did(self):
+        """'Here's what I did' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "Here's what I did:\n- Updated the config\n- Fixed tests"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_numbered_change_summary(self):
+        """'9 prompts updated' change count should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "9 prompts updated:\n- turn_question\n- turn_completion"
+        )
         assert result.intent == TurnIntent.END_OF_TASK
 
 
@@ -1039,6 +1091,170 @@ class TestCompletionOpenerDetection:
         assert result.intent == TurnIntent.COMPLETION
 
 
+class TestArtifactCreationCompletion:
+    """Tests for artifact creation/delivery completion patterns."""
+
+    def test_prd_created_at_path(self):
+        """'PRD created at docs/...' should detect as completion."""
+        result = detect_agent_intent(
+            "PRD created at docs/prds/core/e4-s2-project-controls-prd.md."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_file_created_at_path(self):
+        """'File created at src/...' should detect as completion."""
+        result = detect_agent_intent("File created at src/services/new_service.py.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_created_the_file(self):
+        """'I've created the file at ...' should detect as completion."""
+        result = detect_agent_intent(
+            "I've created the file at src/routes/projects.py."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_migration_written_to_path(self):
+        """'Migration written to migrations/...' should detect as completion."""
+        result = detect_agent_intent(
+            "Migration written to migrations/versions/001_add_fields.py."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_config_saved_to_path(self):
+        """'Config saved to config.yaml' should detect as completion."""
+        result = detect_agent_intent("Config saved to ./config.yaml.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_spec_generated_at_path(self):
+        """'Spec generated at ...' should detect as completion."""
+        result = detect_agent_intent(
+            "Spec generated at openspec/specs/project-controls/spec.md."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_artifact_summary_message(self):
+        """Real-world PRD creation summary should detect as END_OF_TASK."""
+        text = (
+            "PRD created at docs/prds/core/e4-s2-project-controls-prd.md. "
+            "Here's a summary of what it covers:\n\n"
+            "Core deliverables:\n"
+            "- Project CRUD API (7 endpoints)\n"
+            "- Projects management UI at /projects\n"
+            "- Manual-only registration\n\n"
+            "Data model changes: 4 new columns on projects table\n\n"
+            "Key technical details:\n"
+            "- Inference gating at caller level\n"
+            "- Priority scoring filters out paused-project agents\n\n"
+            "Files: 6 new files, 8 modified files"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_artifact_summary_with_intermediate_text(self):
+        """Artifact creation with intermediate text blocks should still detect completion.
+
+        This simulates transcript text where the last assistant message contains
+        intermediate text blocks from before tool calls, followed by the summary.
+        """
+        text = (
+            "Now I have all the context needed. Let me create the PRD.\n"
+            "PRD created at docs/prds/core/e4-s2-prd.md. "
+            "Here's a summary of what it covers:\n\n"
+            "Core deliverables:\n"
+            "- Project CRUD API\n"
+            "- Projects management UI\n\n"
+            "Files: 6 new files, 8 modified files"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+
+class TestNumberedFileSummaryPatterns:
+    """Tests for adjective-first numbered file summary patterns."""
+
+    def test_new_files_count(self):
+        """'6 new files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("6 new files created for the feature.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_modified_files_count(self):
+        """'8 modified files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("8 modified files across the codebase.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_created_tests_count(self):
+        """'3 new tests' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("3 new tests added for coverage.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_deleted_files_count(self):
+        """'2 deleted files' should be detected as END_OF_TASK summary."""
+        result = detect_agent_intent("2 deleted files that were no longer needed.")
+        assert result.intent == TurnIntent.END_OF_TASK
+
+
+class TestContinuationGuardWindow:
+    """Tests that continuation guard only checks the last few lines."""
+
+    def test_intermediate_working_on_does_not_block_completion(self):
+        """'Working on' in intermediate text should NOT block completion detection.
+
+        When the transcript has intermediate text from before tool calls
+        (e.g. 'I'm working on creating the PRD') followed by a completion
+        summary, the completion should still be detected.
+        """
+        text = (
+            "I'm working on creating the PRD now.\n"
+            "PRD created at docs/prds/core/prd.md. "
+            "Here's a summary of what it covers:\n"
+            "- Feature A\n"
+            "- Feature B\n"
+            "- Feature C\n"
+            "- Feature D\n"
+            "- Feature E\n"
+            "- Feature F\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+
+    def test_intermediate_let_me_also_does_not_block(self):
+        """'Let me also' in intermediate text should NOT block completion."""
+        text = (
+            "Let me also check the integration points.\n"
+            "Here are the changes I made:\n"
+            "- Updated config\n"
+            "- Fixed tests\n"
+            "- Added migration\n"
+            "- Updated routes\n"
+            "- Added templates\n"
+            "- Updated docs\n"
+            "Let me know if there's anything else."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_working_on_at_end_still_blocks(self):
+        """'Working on' at the END of the message should still block completion."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the database layer\n"
+            "Working on the service layer now."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+    def test_next_ill_at_end_still_blocks(self):
+        """'Next I'll' at the end should still trigger continuation guard."""
+        text = (
+            "Here's a summary of the changes:\n"
+            "- Fixed the bug\n"
+            "Next I'll add tests."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.END_OF_TASK
+
+
 class TestCompletionOpenerUnit:
     """Unit tests for _detect_completion_opener function."""
 
@@ -1092,3 +1308,169 @@ class TestCompletionOpenerUnit:
         assert result is not None
         assert result.intent == TurnIntent.COMPLETION
         assert result.confidence == 0.75
+
+
+class TestStatusReportCompletion:
+    """Tests for status-report style completion patterns (e.g. 'Everything looks healthy')."""
+
+    def test_everything_looks_healthy(self):
+        """'Everything looks healthy after the server restart.' should detect completion."""
+        result = detect_agent_intent("Everything looks healthy after the server restart.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_looks_good(self):
+        """'Everything looks good.' should detect completion."""
+        result = detect_agent_intent("Everything looks good.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_appears_correct(self):
+        """'Everything appears correct.' should detect completion."""
+        result = detect_agent_intent("Everything appears correct.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_seems_fine(self):
+        """'Everything seems fine.' should detect completion."""
+        result = detect_agent_intent("Everything seems fine.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_status_report_with_bullet_points(self):
+        """Full multi-line status report ending with 'everything looks healthy' -> completion."""
+        text = (
+            "The dashboard is running and showing this session. It shows:\n"
+            "- 1 active agent (#28919c2a) on claude_headspace project\n"
+            "- Status: WORKING [1], with \"Processing...\" state\n"
+            "Everything looks healthy after the server restart."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_looks_healthy_as_handoff(self):
+        """'Everything looks healthy' should match the handoff pattern for END_OF_TASK."""
+        text = (
+            "I've restarted the server and checked the dashboard.\n"
+            "Everything looks healthy."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_everything_is_good(self):
+        """'Everything is good.' should detect completion (broadened 'is' adjectives)."""
+        result = detect_agent_intent("Everything is good.")
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+
+class TestCookedCompletionMarker:
+    """Tests for Claude Code CLI completion marker (✻ Cooked for Xm Xs)."""
+
+    def test_cooked_marker(self):
+        """'✻ Cooked for 1m 33s' should detect as completion."""
+        result = detect_agent_intent("✻ Cooked for 1m 33s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_baked_marker(self):
+        """'✻ Baked for 2m 5s' should detect as completion."""
+        result = detect_agent_intent("✻ Baked for 2m 5s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_checkmark_variant(self):
+        """'✓ Worked for 45s' should detect as completion."""
+        result = detect_agent_intent("✓ Worked for 45s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_simmered_marker(self):
+        """'✻ Simmered for 3m 12s' should detect as completion."""
+        result = detect_agent_intent("✻ Simmered for 3m 12s")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_pondered_marker(self):
+        """'✻ Pondered for 10m 2s' should detect as completion."""
+        result = detect_agent_intent("✻ Pondered for 10m 2s")
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestGitSuccessPatterns:
+    """Tests for git commit/push completion patterns."""
+
+    def test_committed_and_pushed(self):
+        """'Committed and pushed: <hash>' should detect as completion."""
+        result = detect_agent_intent(
+            "Committed and pushed: `755ed18` on `development`. Working tree clean. All 165 tests pass."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_working_tree_clean(self):
+        """'Working tree clean' should detect as completion."""
+        result = detect_agent_intent("Working tree clean.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_passing(self):
+        """'all passing' should detect as completion."""
+        result = detect_agent_intent(
+            "Ran all 26 objective route tests — all passing."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestBlockedPatternFalsePositives:
+    """Tests that 'Failed to' inside descriptions doesn't trigger false positives."""
+
+    def test_failed_to_in_quoted_text_not_blocked(self):
+        """'Failed to' inside a description of a fix should NOT be QUESTION."""
+        text = (
+            'The endpoint works. Here\'s what I found and fixed:\n\n'
+            '**Root cause:** The except blocks returned a generic '
+            '"Failed to save objective" message.\n\n'
+            '**Fix applied:** Added logger.exception calls.\n\n'
+            'Ran all 26 objective route tests — all passing. '
+            'Server restarted with the fix live.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_failed_to_in_logger_example_not_blocked(self):
+        """'Failed to' inside logger.exception example should NOT be QUESTION."""
+        text = (
+            'Added `logger.exception("Failed to save objective")` '
+            'to both exception handlers. All tests passing.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent != TurnIntent.QUESTION
+
+    def test_real_failed_to_at_line_start_still_blocked(self):
+        """'Failed to' at start of line should still be detected as blocked."""
+        result = detect_agent_intent("Failed to install the dependency.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_error_at_line_start_still_blocked(self):
+        """'Error:' at start of line should still be detected as blocked."""
+        result = detect_agent_intent("Error: Unable to connect to the database.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_permission_denied_still_blocked(self):
+        """'Permission denied' anywhere should still be detected as blocked."""
+        result = detect_agent_intent("The operation failed: Permission denied.")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_real_world_objective_fix_transcript(self):
+        """Exact transcript text from the objective endpoint fix should be COMPLETION."""
+        text = (
+            'The endpoint works. Here\'s what I found and fixed:\n\n'
+            '**What happened:** Your `POST /api/objective` request at 14:18:22 '
+            'returned a 500 error. The server was restarted at 14:19:31 '
+            '(which is why subsequent requests would have worked).\n\n'
+            '**Root cause:** Unknown \u2014 the exception handlers in `objective.py` '
+            'were silently swallowing all exceptions. The `except` blocks caught '
+            'the error, rolled back the DB transaction, and returned a generic '
+            '"Failed to save objective" message, but **never logged the actual '
+            'exception**. There\'s no traceback in the logs, just the werkzeug '
+            'access log showing the 500 status code.\n\n'
+            '**Fix applied:** Added `logger.exception(...)` calls to both exception '
+            'handlers in `src/claude_headspace/routes/objective.py`:\n'
+            '- Line 162: `logger.exception("Failed to save objective")` in the POST endpoint\n'
+            '- Line 233: `logger.exception("Failed to fetch objective history")` in the history endpoint\n\n'
+            'This ensures the full traceback will be logged if this happens again, '
+            'making it diagnosable. Ran all 26 objective route tests \u2014 all passing. '
+            'Server restarted with the fix live.'
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION

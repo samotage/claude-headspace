@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -54,6 +54,7 @@ class Turn(db.Model):
     summary_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="turns")

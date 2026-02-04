@@ -1,6 +1,8 @@
 """Summarisation service for generating turn and task summaries via the inference layer."""
 
+import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from .inference_service import InferenceService, InferenceServiceError
@@ -8,23 +10,100 @@ from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
+# Matches LLM preamble like "Here's a concise 18-token summary of..."
+# Only strips when the line contains summarisation-related words to avoid
+# false positives on legitimate content starting with "Here's".
+_PREAMBLE_RE = re.compile(
+    r"^(?:Sure[,.]?\s+)?"
+    r"(?:Here(?:'s| is)\s+(?:a |the )?(?:very )?"
+    r"(?:concise|brief|short|quick|simple)[\s\S]*?:\s*\n?)",
+    re.IGNORECASE,
+)
+
+# Short confirmations that don't warrant LLM summarisation.
+# Matched against lowercased, stripped turn text.
+_TRIVIAL_CONFIRMATIONS = frozenset({
+    "y", "yes", "ok", "okay", "k", "sure", "go", "go ahead",
+    "do it", "proceed", "continue", "yep", "yup", "yeah",
+    "confirmed", "approve", "approved", "accept", "right",
+    "correct", "affirmative", "ack", "agreed", "sounds good",
+    "looks good", "lgtm", "ship it",
+})
+
+# Slash-command pattern: /word or /word:word (with optional arguments after space)
+_SLASH_COMMAND_RE = re.compile(r"^(/[\w:.=-]+)")
+
+# Maximum character length to consider for trivial input bypass.
+# Anything longer than this is sent to the LLM regardless.
+_TRIVIAL_MAX_LENGTH = 40
+
 
 class SummarisationService:
     """Generates AI summaries for turns and tasks using the inference service."""
 
-    def __init__(self, inference_service: InferenceService):
+    def __init__(self, inference_service: InferenceService, config: dict | None = None):
         """Initialize the summarisation service.
 
         Args:
             inference_service: The E3-S1 inference service for LLM calls
+            config: Application config dict (for headspace settings)
         """
         self._inference = inference_service
+        headspace_config = (config or {}).get("headspace", {})
+        self._headspace_enabled = headspace_config.get("enabled", True)
+
+    @staticmethod
+    def _clean_response(text: str) -> str:
+        """Strip common LLM preamble and markdown fences from summary responses.
+
+        Models sometimes echo back the prompt structure, e.g.
+        "Here's a concise 18-token summary: <actual summary>".
+        Some models (e.g. Haiku 4.5) also wrap output in markdown code fences.
+        This method strips such artifacts and returns the actual content.
+        """
+        cleaned = text.strip()
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        fence_match = re.match(r"^```(?:\w+)?\s*\n?(.*?)\n?\s*```$", cleaned, re.DOTALL)
+        if fence_match:
+            cleaned = fence_match.group(1).strip()
+        cleaned = _PREAMBLE_RE.sub("", cleaned).strip()
+        return cleaned if cleaned else text
+
+    @staticmethod
+    def _check_trivial_input(turn) -> str | None:
+        """Check if turn text is trivial and return a direct summary without LLM.
+
+        Handles two cases:
+        1. Slash commands (/start-queue, /commit, etc.) — the command name is
+           used directly as the summary since it IS the task description.
+        2. Short confirmations (yes, ok, go ahead, etc.) — returns a brief
+           confirmation label instead of wasting an LLM call on one word.
+
+        Returns:
+            A summary string if the input is trivial, None to proceed with LLM.
+        """
+        text = (turn.text or "").strip()
+        if not text or len(text) > _TRIVIAL_MAX_LENGTH:
+            return None
+
+        # Slash commands: use the command portion as the summary
+        m = _SLASH_COMMAND_RE.match(text)
+        if m:
+            return m.group(1)
+
+        # Short confirmations: return a brief label
+        normalised = text.lower().rstrip(".!,")
+        if normalised in _TRIVIAL_CONFIRMATIONS:
+            return "Confirmed"
+
+        return None
 
     def summarise_turn(self, turn, db_session=None) -> str | None:
         """Generate a summary for a turn.
 
         If the turn already has a summary, returns the existing summary.
         Skips summarisation when turn text is None or empty.
+        Bypasses LLM for trivial inputs (slash commands, short confirmations).
         Uses intent-aware prompts with task instruction context.
 
         Args:
@@ -43,12 +122,39 @@ class SummarisationService:
             logger.debug(f"Skipping turn summarisation for turn {turn.id}: empty text")
             return None
 
+        # Trivial input bypass: skip LLM for slash commands and short confirmations
+        trivial = self._check_trivial_input(turn)
+        if trivial is not None:
+            logger.debug(f"Trivial input bypass for turn {turn.id}: {trivial!r}")
+            turn.summary = trivial
+            turn.summary_generated_at = datetime.now(timezone.utc)
+            if db_session:
+                db_session.add(turn)
+                db_session.commit()
+            return trivial
+
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping turn summarisation")
             return None
 
+        # Check if project inference is paused
+        if hasattr(turn, "task") and turn.task:
+            agent = getattr(turn.task, "agent", None)
+            if agent:
+                project = getattr(agent, "project", None)
+                if project and getattr(project, "inference_paused", None) is True:
+                    logger.debug("Skipping turn summarisation for turn %s: project %s inference paused", turn.id, project.id)
+                    return None
+
+        # Determine if this is a USER turn eligible for frustration extraction
+        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        use_frustration_prompt = self._headspace_enabled and actor_value == "user"
+
         # Build prompt
-        input_text = self._resolve_turn_prompt(turn)
+        if use_frustration_prompt:
+            input_text = self._resolve_frustration_prompt(turn)
+        else:
+            input_text = self._resolve_turn_prompt(turn)
 
         # Get entity associations for InferenceCall logging
         task_id = turn.task_id if turn.task_id else None
@@ -70,19 +176,38 @@ class SummarisationService:
                 turn_id=turn.id,
             )
 
+            # Parse response: try JSON for frustration-aware prompts, fallback to plain text
+            summary = None
+            frustration_score = None
+
+            if use_frustration_prompt:
+                summary, frustration_score = self._parse_frustration_response(result.text)
+            else:
+                summary = self._clean_response(result.text)
+
             # Persist summary to turn model
-            turn.summary = result.text
+            turn.summary = summary
             turn.summary_generated_at = datetime.now(timezone.utc)
+            if frustration_score is not None:
+                turn.frustration_score = frustration_score
 
             if db_session:
                 db_session.add(turn)
                 db_session.commit()
 
-            return result.text
-
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Turn summarisation failed for turn {turn.id}: {e}")
             return None
+
+        # Trigger headspace recalculation after successful summarisation (outside
+        # the main try block so failures here don't lose the summary result)
+        if frustration_score is not None:
+            try:
+                self._trigger_headspace_recalculation(turn)
+            except Exception as e:
+                logger.warning(f"Headspace recalculation trigger failed (non-fatal): {e}")
+
+        return summary
 
     def summarise_task(self, task, db_session=None) -> str | None:
         """Generate a completion summary for a completed task.
@@ -106,6 +231,14 @@ class SummarisationService:
             logger.debug("Inference service unavailable, skipping task summarisation")
             return None
 
+        # Check if project inference is paused
+        agent = getattr(task, "agent", None)
+        if agent:
+            project = getattr(agent, "project", None)
+            if project and getattr(project, "inference_paused", None) is True:
+                logger.debug("Skipping task summarisation for task %s: project %s inference paused", task.id, project.id)
+                return None
+
         # Build prompt — returns None when there's nothing to summarise
         input_text = self._resolve_task_prompt(task)
         if input_text is None:
@@ -128,29 +261,33 @@ class SummarisationService:
                 task_id=task.id,
             )
 
-            # Persist summary to task model
-            task.completion_summary = result.text
+            # Persist summary to task model (strip LLM preamble)
+            summary = self._clean_response(result.text)
+            task.completion_summary = summary
             task.completion_summary_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(task)
                 db_session.commit()
 
-            return result.text
+            return summary
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Task summarisation failed for task {task.id}: {e}")
             return None
 
-    def summarise_instruction(self, task, command_text: str, db_session=None) -> str | None:
+    def summarise_instruction(self, task, command_text: str, db_session=None, reuse_summary: str | None = None) -> str | None:
         """Generate an instruction summary from the user's command text.
 
         Produces a 1-2 sentence summary of what the user instructed.
+        When reuse_summary is provided (e.g. from a turn summary of the same
+        command), it is used directly instead of making a separate LLM call.
 
         Args:
             task: Task model instance to persist the instruction to
             command_text: The full text of the user's command
             db_session: Database session for persisting
+            reuse_summary: Pre-computed summary to reuse (avoids duplicate LLM call)
 
         Returns:
             The instruction text, or None if generation failed or skipped
@@ -164,9 +301,41 @@ class SummarisationService:
             logger.debug(f"Skipping instruction summarisation for task {task.id}: empty command text")
             return None
 
+        # Slash command bypass: use the command name directly as the instruction
+        stripped = command_text.strip()
+        m = _SLASH_COMMAND_RE.match(stripped)
+        if m:
+            task.instruction = m.group(1)
+            task.instruction_generated_at = datetime.now(timezone.utc)
+            if db_session:
+                db_session.add(task)
+                db_session.commit()
+            logger.debug(f"Slash command bypass for task {task.id}: {task.instruction!r}")
+            return task.instruction
+
+        # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
+        if reuse_summary:
+            task.instruction = self._clean_response(reuse_summary)
+            task.instruction_generated_at = datetime.now(timezone.utc)
+
+            if db_session:
+                db_session.add(task)
+                db_session.commit()
+
+            logger.debug(f"Reused turn summary as instruction for task {task.id}")
+            return reuse_summary
+
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping instruction summarisation")
             return None
+
+        # Check if project inference is paused
+        agent = getattr(task, "agent", None)
+        if agent:
+            project = getattr(agent, "project", None)
+            if project and getattr(project, "inference_paused", None) is True:
+                logger.debug("Skipping instruction summarisation for task %s: project %s inference paused", task.id, project.id)
+                return None
 
         input_text = build_prompt("instruction", command_text=command_text)
 
@@ -185,14 +354,15 @@ class SummarisationService:
                 task_id=task.id,
             )
 
-            task.instruction = result.text
+            instruction = self._clean_response(result.text)
+            task.instruction = instruction
             task.instruction_generated_at = datetime.now(timezone.utc)
 
             if db_session:
                 db_session.add(task)
                 db_session.commit()
 
-            return result.text
+            return instruction
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Instruction summarisation failed for task {task.id}: {e}")
@@ -204,15 +374,26 @@ class SummarisationService:
         Called after db.session.commit() in the hook receiver to avoid the race
         condition where async threads can't find newly-created rows.
 
+        When a turn (COMMAND intent) and instruction request are queued together,
+        the turn summary is reused as the instruction — avoiding a duplicate LLM call.
+
         Args:
             requests: List of SummarisationRequest objects
             db_session: Database session for persisting summaries
         """
+        # Track the last COMMAND turn summary so instruction requests can reuse it
+        last_command_turn_summary = None
+
         for req in requests:
             try:
                 if req.type == "turn" and req.turn:
                     summary = self.summarise_turn(req.turn, db_session=db_session)
                     if summary:
+                        # Track COMMAND turn summaries for reuse by instruction requests
+                        intent_value = req.turn.intent.value if hasattr(req.turn.intent, "value") else str(req.turn.intent)
+                        if intent_value == "command":
+                            last_command_turn_summary = summary
+
                         agent_id = req.turn.task.agent_id if req.turn.task else None
                         project_id = req.turn.task.agent.project_id if req.turn.task and req.turn.task.agent else None
                         self._broadcast_summary_update(
@@ -222,10 +403,12 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
 
                 elif req.type == "instruction" and req.task:
                     instruction = self.summarise_instruction(
-                        req.task, req.command_text, db_session=db_session
+                        req.task, req.command_text, db_session=db_session,
+                        reuse_summary=last_command_turn_summary,
                     )
                     if instruction:
                         agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None
@@ -237,6 +420,7 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "instruction_updated")
 
                 elif req.type == "task_completion" and req.task:
                     completion = self.summarise_task(req.task, db_session=db_session)
@@ -251,9 +435,25 @@ class SummarisationService:
                             project_id=project_id,
                             extra={"is_completion": True},
                         )
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "task_summary_updated")
 
             except Exception as e:
                 logger.warning(f"Pending summarisation failed for {req.type} (non-fatal): {e}")
+
+    @staticmethod
+    def _broadcast_card_refresh_for_agent(agent_id: int | None, db_session, reason: str) -> None:
+        """Load agent and broadcast card_refresh. No-op if agent not found."""
+        if not agent_id:
+            return
+        try:
+            from ..models.agent import Agent
+            from .card_state import broadcast_card_refresh
+
+            agent = db_session.get(Agent, agent_id)
+            if agent:
+                broadcast_card_refresh(agent, reason)
+        except Exception as e:
+            logger.debug(f"card_refresh for agent {agent_id} failed (non-fatal): {e}")
 
     def _broadcast_summary_update(
         self,
@@ -286,11 +486,46 @@ class SummarisationService:
             logger.debug(f"Failed to broadcast summary update (non-fatal): {e}")
 
     @staticmethod
+    def _get_prior_task_context(turn) -> str:
+        """Get context from the previous task for this agent.
+
+        For COMMAND turns that create a new task, the current task has no
+        instruction yet. The user's command may implicitly reference work
+        from the previous task (e.g. "verify" without saying what).
+        This method provides that continuity.
+        """
+        try:
+            task = turn.task if hasattr(turn, "task") else None
+            if not task:
+                return ""
+            agent = getattr(task, "agent", None)
+            if not agent or not hasattr(agent, "tasks"):
+                return ""
+
+            # Find the previous task (the one before the current one)
+            prior_tasks = [
+                t for t in agent.tasks
+                if t.id < task.id and t.instruction
+            ]
+            if not prior_tasks:
+                return ""
+
+            prior = prior_tasks[-1]  # Most recent prior task with an instruction
+            parts = [f"Prior task: {prior.instruction}"]
+            if prior.completion_summary:
+                parts.append(f"Prior outcome: {prior.completion_summary}")
+            return "\n".join(parts) + "\n\n"
+        except Exception:
+            return ""
+
+    @staticmethod
     def _resolve_turn_prompt(turn) -> str:
         """Build an intent-aware summarisation prompt for a turn.
 
         Uses different prompt templates based on the turn's intent,
         and includes the task instruction as context when available.
+        For COMMAND turns without a task instruction, includes prior
+        task context to help the LLM understand implicit references.
         """
         intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
         actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
@@ -301,6 +536,9 @@ class SummarisationService:
             instruction = getattr(turn.task, "instruction", None)
             if instruction:
                 instruction_context = f"Task instruction: {instruction}\n\n"
+            elif intent_value == "command":
+                # COMMAND turns have no instruction yet — use prior task for context
+                instruction_context = SummarisationService._get_prior_task_context(turn)
 
         # Select intent-specific template key
         prompt_type = f"turn_{intent_value}"
@@ -365,3 +603,75 @@ class SummarisationService:
 
         # No turn activity at all — nothing meaningful to summarise
         return None
+
+    @staticmethod
+    def _resolve_frustration_prompt(turn) -> str:
+        """Build the frustration-aware summarisation prompt for a user turn.
+
+        For COMMAND turns where the current task has no instruction yet,
+        includes prior task context to help the LLM understand implicit
+        references in the user's message.
+        """
+        instruction_context = ""
+        if hasattr(turn, "task") and turn.task:
+            instruction = getattr(turn.task, "instruction", None)
+            if instruction:
+                instruction_context = f"Task instruction: {instruction}\n\n"
+            else:
+                # No instruction yet — use prior task for context
+                instruction_context = SummarisationService._get_prior_task_context(turn)
+
+        return build_prompt(
+            "turn_frustration",
+            text=turn.text,
+            instruction_context=instruction_context,
+        )
+
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> str:
+        """Strip markdown code fences from LLM responses.
+
+        Some models (e.g. Claude Haiku 4.5) wrap JSON output in ```json ... ```
+        even when instructed to return only valid JSON.
+        """
+        stripped = text.strip()
+        # Match ```json or ``` at start and ``` at end
+        fence_re = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
+        m = fence_re.match(stripped)
+        if m:
+            return m.group(1).strip()
+        return stripped
+
+    @classmethod
+    def _parse_frustration_response(cls, text: str) -> tuple[str, int | None]:
+        """Parse a frustration-aware LLM response.
+
+        Attempts to parse JSON with summary and frustration_score.
+        Strips markdown code fences before parsing since some models
+        wrap JSON output in ```json ... ``` blocks.
+        Falls back to treating the entire response as a plain text summary.
+
+        Returns:
+            Tuple of (summary, frustration_score). frustration_score is None on parse failure.
+        """
+        cleaned_text = cls._strip_markdown_fences(text)
+        try:
+            data = json.loads(cleaned_text)
+            summary = cls._clean_response(str(data.get("summary", cleaned_text)))
+            score = data.get("frustration_score")
+            if isinstance(score, (int, float)) and 0 <= score <= 10:
+                return summary, int(score)
+            return summary, None
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # Fallback: treat as plain text summary
+            return cls._clean_response(cleaned_text), None
+
+    def _trigger_headspace_recalculation(self, turn) -> None:
+        """Trigger headspace monitor recalculation after frustration extraction."""
+        try:
+            from flask import current_app
+            monitor = current_app.extensions.get("headspace_monitor")
+            if monitor:
+                monitor.recalculate(turn)
+        except Exception as e:
+            logger.debug(f"Headspace recalculation failed (non-fatal): {e}")

@@ -9,6 +9,7 @@ variables for hooks integration.
 import argparse
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -158,6 +159,16 @@ def verify_claude_cli() -> bool:
         return False
 
 
+def detect_claudec() -> str | None:
+    """
+    Detect whether claudec (claude-commander) is available in PATH.
+
+    Returns:
+        Full path to claudec binary, or None if not found
+    """
+    return shutil.which("claudec")
+
+
 def validate_prerequisites(server_url: str) -> tuple[bool, str | None]:
     """
     Validate that all prerequisites are met.
@@ -277,18 +288,27 @@ def setup_environment(server_url: str, session_uuid: uuid.UUID) -> dict:
     return env
 
 
-def launch_claude(claude_args: list[str], env: dict) -> int:
+def launch_claude(
+    claude_args: list[str], env: dict, claudec_path: str | None = None
+) -> int:
     """
     Launch Claude Code as a child process.
+
+    If claudec_path is provided, wraps claude with claudec for Input Bridge
+    support (PTY + commander socket).
 
     Args:
         claude_args: Additional arguments to pass to claude
         env: Environment variables
+        claudec_path: Path to claudec binary, or None to launch claude directly
 
     Returns:
         Exit code from claude process
     """
-    cmd = ["claude"] + claude_args
+    if claudec_path:
+        cmd = [claudec_path, "claude"] + claude_args
+    else:
+        cmd = ["claude"] + claude_args
     logger.info(f"Launching: {' '.join(cmd)}")
 
     try:
@@ -394,12 +414,21 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     print(f"Registered agent #{response_data['agent_id']}")
 
+    # Detect claudec for Input Bridge (opt-in via --bridge)
+    claudec_path = None
+    if getattr(args, "bridge", False):
+        claudec_path = detect_claudec()
+        if claudec_path:
+            print("Input Bridge: enabled (claudec detected)")
+        else:
+            print("Input Bridge: unavailable (claudec not found)", file=sys.stderr)
+
     # Set up environment
     env = setup_environment(server_url, session_uuid)
 
     # Launch claude with session management
     with SessionManager(server_url, session_uuid):
-        exit_code = launch_claude(args.claude_args, env)
+        exit_code = launch_claude(args.claude_args, env, claudec_path=claudec_path)
 
     print(f"Session ended (exit code: {exit_code})")
     return EXIT_SUCCESS if exit_code == 0 else exit_code
@@ -418,6 +447,12 @@ def create_parser() -> argparse.ArgumentParser:
     start_parser = subparsers.add_parser(
         "start",
         help="Start a monitored Claude Code session",
+    )
+    start_parser.add_argument(
+        "--bridge",
+        action="store_true",
+        default=False,
+        help="Enable Input Bridge (wrap claude with claudec for dashboard responses)",
     )
     start_parser.add_argument(
         "claude_args",

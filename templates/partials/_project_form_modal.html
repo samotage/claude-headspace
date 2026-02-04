@@ -1,0 +1,90 @@
+<!-- Project Form Modal (Add/Edit) -->
+<div id="project-form-modal"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="project-form-title"
+     aria-modal="true">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="ProjectsPage.closeFormModal()"></div>
+
+    <!-- Modal content -->
+    <div class="modal-content" style="max-width: 32rem;">
+        <!-- Header -->
+        <div class="modal-header">
+            <h3 id="project-form-title" class="text-lg font-semibold text-primary">Add Project</h3>
+            <button type="button"
+                    onclick="ProjectsPage.closeFormModal()"
+                    class="modal-close-btn"
+                    aria-label="Close modal">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Form -->
+        <form id="project-form" class="flex-1 overflow-y-auto px-5 py-4 space-y-4" onsubmit="event.preventDefault(); ProjectsPage.submitProject();">
+            <input type="hidden" id="project-form-id" value="">
+
+            <!-- Error display -->
+            <div id="project-form-error" class="hidden p-3 bg-red/10 border border-red/30 rounded text-red text-sm"></div>
+
+            <div>
+                <label for="project-form-name" class="block text-sm text-secondary mb-1">
+                    Name <span class="text-red">*</span>
+                </label>
+                <input type="text"
+                       id="project-form-name"
+                       class="form-well w-full px-3 py-2"
+                       placeholder="my-project"
+                       required>
+            </div>
+
+            <div>
+                <label for="project-form-path" class="block text-sm text-secondary mb-1">
+                    Path <span class="text-red">*</span>
+                </label>
+                <input type="text"
+                       id="project-form-path"
+                       class="form-well w-full px-3 py-2"
+                       placeholder="/Users/you/dev/my-project"
+                       required>
+            </div>
+
+            <div>
+                <label for="project-form-github" class="block text-sm text-secondary mb-1">
+                    GitHub Repo <span class="text-muted">(optional)</span>
+                </label>
+                <input type="text"
+                       id="project-form-github"
+                       class="form-well w-full px-3 py-2"
+                       placeholder="owner/repo">
+            </div>
+
+            <div>
+                <label for="project-form-description" class="block text-sm text-secondary mb-1">
+                    Description <span class="text-muted">(optional)</span>
+                </label>
+                <textarea id="project-form-description"
+                          rows="4"
+                          class="form-well w-full px-3 py-2 resize-y"
+                          placeholder="Brief project description"></textarea>
+            </div>
+        </form>
+
+        <!-- Footer -->
+        <div class="modal-footer justify-end gap-3">
+            <button type="button"
+                    onclick="ProjectsPage.closeFormModal()"
+                    class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary transition-colors min-h-[44px]">
+                Cancel
+            </button>
+            <button type="submit"
+                    form="project-form"
+                    id="project-form-submit"
+                    class="px-4 py-2 bg-cyan/20 border border-cyan/30 rounded text-cyan font-medium hover:bg-cyan/30 hover:border-cyan transition-colors min-h-[44px]">
+                Save Project
+            </button>
+        </div>
+    </div>
+</div>

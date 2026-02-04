@@ -30,7 +30,7 @@ class TestConfigSchema:
     def test_schema_has_all_sections(self):
         """Schema should have all expected sections."""
         section_names = [s.name for s in CONFIG_SCHEMA]
-        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "notifications", "openrouter"]
+        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "commander", "notifications", "activity", "openrouter"]
         assert section_names == expected
 
     def test_each_section_has_title(self):

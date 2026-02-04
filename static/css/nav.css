@@ -70,6 +70,9 @@
 .tab-btn-group {
     display: flex;
     align-items: center;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
 }
 
 /* Tab links (multi-page navigation) */
@@ -195,12 +198,156 @@
     box-shadow: 0 0 6px rgba(115,224,160,0.5);
 }
 
+/* Headspace indicator in stats bar */
+.headspace-indicator {
+    cursor: default;
+    transition: all 0.3s ease;
+}
+
+.headspace-indicator .headspace-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.headspace-indicator .headspace-label {
+    font-weight: 500;
+    text-transform: uppercase;
+    transition: color 0.3s ease;
+}
+
+/* Headspace green (calm) */
+.headspace-green .headspace-dot {
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(115,224,160,0.4);
+}
+.headspace-green .headspace-label {
+    color: var(--green);
+}
+
+/* Headspace yellow (elevated) */
+.headspace-yellow .headspace-dot {
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(224,176,115,0.5);
+}
+.headspace-yellow .headspace-label {
+    color: var(--amber);
+}
+
+/* Headspace red (high frustration) */
+.headspace-red .headspace-dot {
+    background: var(--red);
+    box-shadow: 0 0 10px rgba(224,115,115,0.6);
+    animation: headspace-pulse 2s ease-in-out infinite;
+}
+.headspace-red .headspace-label {
+    color: var(--red);
+}
+
+@keyframes headspace-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(224,115,115,0.6); }
+    50% { box-shadow: 0 0 16px rgba(224,115,115,0.9); }
+}
+
+/* Headspace alert banner */
+.headspace-alert-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 20px;
+    background: rgba(224,115,115,0.1);
+    border-bottom: 1px solid rgba(224,115,115,0.3);
+    position: fixed;
+    top: 92px; /* nav 52px + stats bar 40px */
+    left: 0;
+    right: 0;
+    z-index: 98;
+    font-size: 0.875rem;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.headspace-alert-banner.hidden {
+    display: none;
+}
+
+.headspace-alert-text {
+    color: var(--red);
+    font-style: italic;
+}
+
+.headspace-alert-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.headspace-fine-btn {
+    background: transparent;
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: inherit;
+    transition: background 0.2s ease;
+}
+
+.headspace-fine-btn:hover {
+    background: rgba(224,176,115,0.15);
+}
+
+.headspace-dismiss-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 2px 6px;
+}
+
+.headspace-dismiss-btn:hover {
+    color: var(--text-primary);
+}
+
+/* Headspace flow toast */
+.headspace-flow-toast {
+    position: fixed;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 97;
+    padding: 8px 20px;
+    background: rgba(115,224,160,0.1);
+    border: 1px solid rgba(115,224,160,0.3);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    animation: flow-toast-in 0.4s ease;
+}
+
+.headspace-flow-toast.hidden {
+    display: none;
+}
+
+.headspace-flow-text {
+    color: var(--green);
+}
+
+@keyframes flow-toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Page content offset for fixed nav + stats bar */
 .page-content {
     padding-top: 92px; /* 52px nav + 40px stats bar */
 }
 
-/* Hamburger button - hidden on desktop */
+/* Hamburger button - hidden by default, shown via JS when items overflow */
 .hamburger-btn {
     display: none;
     flex-direction: column;
@@ -211,7 +358,23 @@
     border: none;
     padding: 12px 16px;
     cursor: pointer;
-    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.hamburger-btn.visible {
+    display: flex;
+}
+
+/* Tab links hidden by overflow detection */
+.tab-link.overflow-hidden {
+    visibility: hidden;
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Drawer items that are visible in main nav don't show in drawer */
+.mobile-menu-item.nav-visible {
+    display: none;
 }
 
 .hamburger-line {
@@ -348,14 +511,6 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .hamburger-btn {
-        display: flex;
-    }
-
-    .tab-btn-group {
-        display: none;
-    }
-
     .nav-brand {
         padding: 8px 12px;
         flex: 1;
@@ -393,6 +548,19 @@
 
     .stats-bar .connection-text {
         display: none;
+    }
+
+    .headspace-indicator .headspace-label {
+        display: none;
+    }
+
+    .headspace-alert-banner {
+        top: 80px;
+        padding: 8px 12px;
+    }
+
+    .headspace-flow-toast {
+        top: 80px;
     }
 }
 

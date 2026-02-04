@@ -141,3 +141,71 @@ class TestGitMetadata:
         metadata.invalidate_cache(git_repo)
         info = metadata.get_git_info(git_repo)
         assert info.current_branch == "test-branch"
+
+
+class TestParseOwnerRepo:
+    """Tests for GitMetadata.parse_owner_repo() static method."""
+
+    def test_ssh_format(self):
+        """Test git@github.com:owner/repo.git format."""
+        assert GitMetadata.parse_owner_repo("git@github.com:owner/repo.git") == "owner/repo"
+
+    def test_ssh_format_no_git_suffix(self):
+        """Test SSH format without .git suffix."""
+        assert GitMetadata.parse_owner_repo("git@github.com:owner/repo") == "owner/repo"
+
+    def test_https_format(self):
+        """Test https://github.com/owner/repo.git format."""
+        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo.git") == "owner/repo"
+
+    def test_https_format_no_git_suffix(self):
+        """Test HTTPS format without .git suffix."""
+        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo") == "owner/repo"
+
+    def test_ssh_url_format(self):
+        """Test ssh://git@github.com/owner/repo.git format."""
+        assert GitMetadata.parse_owner_repo("ssh://git@github.com/owner/repo.git") == "owner/repo"
+
+    def test_none_input(self):
+        """Test None input returns None."""
+        assert GitMetadata.parse_owner_repo(None) is None
+
+    def test_empty_string(self):
+        """Test empty string returns None."""
+        assert GitMetadata.parse_owner_repo("") is None
+
+    def test_whitespace_only(self):
+        """Test whitespace-only string returns None."""
+        assert GitMetadata.parse_owner_repo("   ") is None
+
+    def test_invalid_url(self):
+        """Test invalid URL returns None."""
+        assert GitMetadata.parse_owner_repo("not-a-url") is None
+
+    def test_url_with_trailing_slash(self):
+        """Test URL with trailing slash."""
+        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo/") == "owner/repo"
+
+    def test_nested_path(self):
+        """Test URL with nested paths returns only owner/repo."""
+        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo/tree/main") == "owner/repo"
+
+    def test_url_only_host(self):
+        """Test URL with only host (no path) returns None."""
+        assert GitMetadata.parse_owner_repo("https://github.com") is None
+
+    def test_url_single_segment(self):
+        """Test URL with only one path segment returns None."""
+        assert GitMetadata.parse_owner_repo("https://github.com/owner") is None
+
+    def test_strips_whitespace(self):
+        """Test that leading/trailing whitespace is stripped."""
+        assert GitMetadata.parse_owner_repo("  https://github.com/owner/repo.git  ") == "owner/repo"
+
+    def test_gitlab_ssh(self):
+        """Test GitLab SSH format."""
+        assert GitMetadata.parse_owner_repo("git@gitlab.com:org/project.git") == "org/project"
+
+    def test_http_format(self):
+        """Test HTTP (non-HTTPS) format."""
+        assert GitMetadata.parse_owner_repo("http://github.com/owner/repo.git") == "owner/repo"

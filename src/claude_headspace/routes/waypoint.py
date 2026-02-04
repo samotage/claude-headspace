@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from ..database import db
 from ..models.project import Project
@@ -152,7 +152,8 @@ def post_waypoint(project_id: int):
             }), 400
 
     try:
-        result = save_waypoint(project.path, content, expected_mtime)
+        archive_service = current_app.extensions.get("archive_service")
+        result = save_waypoint(project.path, content, expected_mtime, archive_service=archive_service)
 
         if not result.success:
             if result.error == "conflict":

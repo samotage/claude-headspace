@@ -7,6 +7,9 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
+        <!-- Objective Banner -->
+        {% include "partials/_objective_banner.html" %}
+
         <!-- Recommended Next Panel -->
         {% include "partials/_recommended_next.html" %}
 
@@ -131,6 +134,11 @@
 <script src="{{ url_for('static', filename='js/dashboard-sse.js') }}?v={{ cache_bust }}"></script>
 <!-- Focus API client -->
 <script src="{{ url_for('static', filename='js/focus-api.js') }}?v={{ cache_bust }}"></script>
+<!-- Respond API client (Input Bridge) -->
+<script src="{{ url_for('static', filename='js/respond-api.js') }}?v={{ cache_bust }}"></script>
+<script src="{{ url_for('static', filename='js/respond-init.js') }}?v={{ cache_bust }}"></script>
+<!-- Card text tooltip (truncation expand) -->
+<script src="{{ url_for('static', filename='js/card-tooltip.js') }}?v={{ cache_bust }}"></script>
 <!-- Brain Reboot -->
 <script src="{{ url_for('static', filename='js/brain-reboot.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

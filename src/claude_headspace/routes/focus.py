@@ -1,7 +1,8 @@
-"""Focus API endpoint for iTerm2 pane focusing."""
+"""Focus API endpoint for iTerm2 pane focusing and agent dismissal."""
 
 import logging
 import time
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 
@@ -136,3 +137,57 @@ def focus_agent(agent_id: int):
             "message": result.error_message,
             "fallback_path": fallback_path,
         }), status_code
+
+
+@focus_bp.route("/api/agents/<int:agent_id>/dismiss", methods=["POST"])
+def dismiss_agent(agent_id: int):
+    """
+    Dismiss an agent by marking it as ended.
+
+    Used from the dashboard when an agent's terminal window is no longer
+    reachable (closed externally, no pane ID, etc.).
+
+    Args:
+        agent_id: Database ID of the agent
+
+    Returns:
+        200: Agent dismissed
+        404: Agent not found
+        409: Agent already ended
+    """
+    agent = db.session.get(Agent, agent_id)
+
+    if agent is None:
+        return jsonify({
+            "status": "error",
+            "message": f"Agent {agent_id} not found",
+        }), 404
+
+    if agent.ended_at is not None:
+        return jsonify({
+            "status": "error",
+            "message": "Agent already ended",
+        }), 409
+
+    now = datetime.now(timezone.utc)
+    agent.ended_at = now
+    agent.last_seen_at = now
+    db.session.commit()
+
+    logger.info(f"Agent {agent_id} dismissed from dashboard")
+
+    # Broadcast so other dashboard clients also remove the card
+    try:
+        from ..services.broadcaster import get_broadcaster
+        get_broadcaster().broadcast("session_ended", {
+            "agent_id": agent_id,
+            "reason": "dismissed",
+            "timestamp": now.isoformat(),
+        })
+    except Exception:
+        pass
+
+    return jsonify({
+        "status": "ok",
+        "agent_id": agent_id,
+    }), 200

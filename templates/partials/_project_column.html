@@ -21,7 +21,7 @@
                         role="status" aria-label="Idle"></span>
                 </div>
 
-                <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium font-display">
+                <h2 id="project-{{ project.id }}-heading" class="text-primary font-semibold font-display text-xl">
                     {{ project.name }}
                 </h2>
                 {% if project.staleness and project.staleness.tier == 'stale' %}
@@ -33,7 +33,7 @@
 
             <!-- Brain Reboot -->
             <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="openBrainReboot({{ project.id }}, '{{ project.name }}')"
+                    onclick="openBrainReboot({{ project.id }}, '{{ project.name }}', '{{ project.slug }}')"
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>

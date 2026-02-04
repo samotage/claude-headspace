@@ -242,7 +242,53 @@ tail -3 "$SHELL_CONFIG"
 
 The last 3 lines should show the comment and export line that were just added.
 
-## Step 6: Verify ~/.claude/projects/ access (REQUIRED)
+## Step 6: Install claude-commander for Input Bridge (OPTIONAL)
+
+Tell the user: "Installing claude-commander (claudec) — a lightweight Rust binary that enables
+responding to Claude Code prompts directly from the Headspace dashboard. This is optional but
+recommended for the full dashboard experience."
+
+claude-commander wraps Claude Code in a pseudo-terminal (PTY) and exposes a Unix domain socket
+for text injection, allowing dashboard-based responses to permission prompts and questions.
+
+### Option A: Install from GitHub Release (pre-built macOS binary — fastest)
+
+```bash
+curl -L https://github.com/sstraus/claude-commander/releases/latest/download/claudec-macos-arm64 -o /usr/local/bin/claudec
+chmod +x /usr/local/bin/claudec
+```
+
+For Intel Macs, use `claudec-macos-x64` instead of `claudec-macos-arm64`.
+
+### Option B: Install via Cargo from Git (if Rust toolchain is installed)
+
+Check if Cargo is available:
+```bash
+which cargo
+```
+
+If available:
+```bash
+cargo install --git https://github.com/sstraus/claude-commander
+```
+
+Note: The crate is NOT published to crates.io — the `--git` flag is required.
+
+### Verify installation
+
+```bash
+claudec --version
+```
+
+You should see a version number (v0.1.0 or later).
+
+If the installation fails or the user declines, note it as unavailable and continue:
+"claude-commander is not installed. Input Bridge (dashboard-based responses) will be unavailable.
+ Sessions launched with `claude` or `claude-headspace start` will still work normally — you'll
+ just need to switch to iTerm to respond to prompts.
+ To install later, see the Input Bridge help topic in the dashboard."
+
+## Step 7: Verify ~/.claude/projects/ access (REQUIRED)
 
 Tell the user: "Checking that ~/.claude/projects/ is readable. The Headspace server reads Claude Code session JSONL files from this directory to track sessions. Read-only check."
 
@@ -255,7 +301,7 @@ ls -la ~/.claude/projects/ 2>/dev/null
 If the directory doesn't exist, that's OK — Claude Code creates it on first session.
 If it exists, confirm the current user has read permission on it and its contents.
 
-## Step 7: Verify the Headspace server (OPTIONAL)
+## Step 8: Verify the Headspace server (OPTIONAL)
 
 Tell the user: "Checking whether the Headspace server is running on localhost:5055. This step is optional — hooks work fine even when the server is offline."
 
@@ -275,7 +321,7 @@ Do NOT send a test hook event (e.g. to `/hook/session-start`). Test events creat
 phantom agents on the dashboard that never receive a session-end and persist forever.
 Connectivity is sufficiently verified by the health check above.
 
-## Step 8: Report results
+## Step 9: Report results
 
 Print a summary checklist:
 
@@ -288,6 +334,7 @@ Claude Headspace Setup Results
 [PASS/FAIL] claude-headspace CLI symlinked to $USER_BIN
 [PASS/FAIL/MANUAL] PATH configured (bin directory in PATH or shell config updated)
 [PASS/FAIL] ~/.claude/projects/ accessible
+[PASS/SKIP] claude-commander installed (optional, enables Input Bridge)
 [PASS/SKIP] terminal-notifier installed (optional)
 [PASS/SKIP] Headspace server reachable (health check, optional)
 ```
@@ -298,6 +345,7 @@ If all REQUIRED items passed:
 
    To start the dashboard:  cd $REPO_DIR && python run.py
    To launch a monitored session:  claude-headspace start
+   To launch with Input Bridge:  claude-headspace start --bridge
    To view hook status:  curl http://localhost:5055/hook/status"
 
 If PATH was updated during setup, add this note:

@@ -11,17 +11,18 @@ from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
-DEBOUNCE_SECONDS = 5.0
-
 
 class PriorityScoringService:
     """Scores all active agents 0-100 using LLM inference with objective/waypoint context."""
 
-    def __init__(self, inference_service: InferenceService, app=None):
+    def __init__(self, inference_service: InferenceService, app=None, config: dict | None = None):
         self._inference = inference_service
         self._app = app
         self._debounce_timer: threading.Timer | None = None
         self._debounce_lock = threading.Lock()
+
+        ps_config = (config or {}).get("openrouter", {}).get("priority_scoring", {})
+        self._debounce_seconds = ps_config.get("debounce_seconds", 5.0)
 
     def score_all_agents(self, db_session) -> dict:
         """Score all active agents in a single batch inference call.
@@ -33,11 +34,20 @@ class PriorityScoringService:
             Dict with scored agents list, count, and context_type
         """
         from ..models.agent import Agent
+        from ..models.objective import Objective
+        from ..models.project import Project
 
-        # Gather active agents (not ended)
+        # Check if priority scoring is disabled
+        objective = db_session.query(Objective).first()
+        if objective and not objective.priority_enabled:
+            return {"scored": 0, "agents": [], "context_type": "disabled"}
+
+        # Gather active agents (not ended), excluding agents from paused projects
         agents = (
             db_session.query(Agent)
+            .join(Agent.project)
             .filter(Agent.ended_at.is_(None))
+            .filter(Project.inference_paused == False)  # noqa: E712
             .all()
         )
 
@@ -63,6 +73,7 @@ class PriorityScoringService:
                 })
             db_session.commit()
             self._broadcast_score_update(scored)
+            self._broadcast_card_refreshes(agents, "priority_scored")
             return {"scored": len(scored), "agents": scored, "context_type": "default"}
 
         # Build prompt and call inference
@@ -97,6 +108,7 @@ class PriorityScoringService:
 
             db_session.commit()
             self._broadcast_score_update(scored)
+            self._broadcast_card_refreshes(agents, "priority_scored")
             return {"scored": len(scored), "agents": scored, "context_type": context["context_type"]}
 
         except (InferenceServiceError, Exception) as e:
@@ -129,7 +141,7 @@ class PriorityScoringService:
                 self._debounce_timer.cancel()
 
             self._debounce_timer = threading.Timer(
-                DEBOUNCE_SECONDS,
+                self._debounce_seconds,
                 self.score_all_agents_async,
             )
             self._debounce_timer.daemon = True
@@ -333,6 +345,17 @@ class PriorityScoringService:
         except Exception as e:
             logger.error(f"Unexpected error parsing scoring response: {e}")
             return []
+
+    @staticmethod
+    def _broadcast_card_refreshes(agents, reason: str) -> None:
+        """Broadcast card_refresh for each scored agent."""
+        try:
+            from .card_state import broadcast_card_refresh
+
+            for agent in agents:
+                broadcast_card_refresh(agent, reason)
+        except Exception as e:
+            logger.debug(f"card_refresh broadcast after scoring failed (non-fatal): {e}")
 
     def _broadcast_score_update(self, scored: list[dict]) -> None:
         """Broadcast priority_update SSE event."""

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -21,6 +21,7 @@ class Objective(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     current_text: Mapped[str] = mapped_column(Text, nullable=False)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     set_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

@@ -20,7 +20,7 @@ def mock_inference():
 
 @pytest.fixture
 def service(mock_inference):
-    return PriorityScoringService(inference_service=mock_inference)
+    return PriorityScoringService(inference_service=mock_inference, config={})
 
 
 @pytest.fixture
@@ -213,11 +213,48 @@ class TestParseResponse:
         assert results[0]["score"] == 50
 
 
+class TestPriorityDisabledGuard:
+
+    def test_scoring_skipped_when_disabled(self, service, mock_agent):
+        """Scoring returns early with context_type 'disabled' when priority_enabled is False."""
+        mock_session = MagicMock()
+
+        mock_objective = MagicMock()
+        mock_objective.priority_enabled = False
+        mock_session.query.return_value.first.return_value = mock_objective
+
+        result = service.score_all_agents(mock_session)
+
+        assert result["scored"] == 0
+        assert result["context_type"] == "disabled"
+        assert result["agents"] == []
+
+    def test_scoring_proceeds_when_no_objective(self, service, mock_agent):
+        """No objective means not disabled — scoring should proceed (existing fallback)."""
+        mock_session = MagicMock()
+        # First query (Objective) returns None
+        # Second query (Agent join/filter) returns agents
+        # Third query (Objective order_by) for context also returns None
+        mock_session.query.return_value.first.return_value = None
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.order_by.return_value.first.return_value = None
+
+        wp_result = MagicMock()
+        wp_result.exists = False
+
+        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+            result = service.score_all_agents(mock_session)
+
+        # Should not be "disabled" — it should proceed to default scoring
+        assert result["context_type"] == "default"
+        assert result["scored"] == 1
+
+
 class TestScoreAllAgents:
 
     def test_no_agents_returns_empty(self, service):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = []
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = []
 
         result = service.score_all_agents(mock_session)
 
@@ -227,7 +264,7 @@ class TestScoreAllAgents:
 
     def test_default_context_assigns_50(self, service, mock_agent):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
         # No objective
         mock_session.query.return_value.order_by.return_value.first.return_value = None
 
@@ -244,7 +281,7 @@ class TestScoreAllAgents:
 
     def test_successful_scoring_persists(self, service, mock_inference, mock_agent, mock_agent_2):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_2]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_2]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Ship auth"
@@ -272,7 +309,7 @@ class TestScoreAllAgents:
 
     def test_inference_error_preserves_scores(self, service, mock_inference, mock_agent):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Test"
@@ -309,22 +346,48 @@ class TestDebounceTrigger:
 
     def test_trigger_skipped_when_unavailable(self, mock_inference):
         mock_inference.is_available = False
-        service = PriorityScoringService(inference_service=mock_inference)
+        service = PriorityScoringService(inference_service=mock_inference, config={})
 
         with patch.object(service, "score_all_agents_async") as mock_async:
             service.trigger_scoring()
             mock_async.assert_not_called()
 
 
+class TestDebounceConfig:
+
+    def test_default_debounce_when_no_config(self, mock_inference):
+        service = PriorityScoringService(inference_service=mock_inference)
+        assert service._debounce_seconds == 5.0
+
+    def test_default_debounce_when_empty_config(self, mock_inference):
+        service = PriorityScoringService(inference_service=mock_inference, config={})
+        assert service._debounce_seconds == 5.0
+
+    def test_custom_debounce_from_config(self, mock_inference):
+        config = {"openrouter": {"priority_scoring": {"debounce_seconds": 10.0}}}
+        service = PriorityScoringService(inference_service=mock_inference, config=config)
+        assert service._debounce_seconds == 10.0
+
+    def test_debounce_used_in_trigger(self, mock_inference):
+        config = {"openrouter": {"priority_scoring": {"debounce_seconds": 2.0}}}
+        service = PriorityScoringService(inference_service=mock_inference, config=config)
+
+        with patch.object(service, "score_all_agents_async"):
+            service.trigger_scoring()
+            assert service._debounce_timer is not None
+            assert service._debounce_timer.interval == 2.0
+            service._debounce_timer.cancel()
+
+
 class TestAsyncScoring:
 
     def test_async_skipped_when_unavailable(self, mock_inference):
         mock_inference.is_available = False
-        service = PriorityScoringService(inference_service=mock_inference)
+        service = PriorityScoringService(inference_service=mock_inference, config={})
         service.score_all_agents_async()  # Should not raise
 
     def test_async_skipped_without_app(self, mock_inference):
-        service = PriorityScoringService(inference_service=mock_inference, app=None)
+        service = PriorityScoringService(inference_service=mock_inference, app=None, config={})
         service.score_all_agents_async()  # Should not raise
 
 

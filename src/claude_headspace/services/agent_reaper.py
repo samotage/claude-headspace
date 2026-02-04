@@ -193,6 +193,16 @@ class AgentReaper:
 
             if result.reaped > 0:
                 db.session.commit()
+                # Broadcast card_refresh for each reaped agent (after commit)
+                try:
+                    from .card_state import broadcast_card_refresh
+
+                    for detail in result.details:
+                        agent_obj = db.session.get(Agent, detail.agent_id)
+                        if agent_obj:
+                            broadcast_card_refresh(agent_obj, f"reaper_{detail.reason}")
+                except Exception as e:
+                    logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
 
         return result
 

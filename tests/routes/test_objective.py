@@ -108,6 +108,7 @@ class TestGetObjectiveAPI:
         mock_objective.id = 1
         mock_objective.current_text = "Test objective"
         mock_objective.constraints = "Test constraints"
+        mock_objective.priority_enabled = True
         mock_objective.set_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         with patch("claude_headspace.routes.objective.db") as mock_db:
@@ -120,6 +121,7 @@ class TestGetObjectiveAPI:
             assert data["id"] == 1
             assert data["current_text"] == "Test objective"
             assert data["constraints"] == "Test constraints"
+            assert data["priority_enabled"] is True
             assert data["set_at"] is not None
 
     def test_get_objective_when_none_exists(self, client):
@@ -193,7 +195,7 @@ class TestUpdateObjectiveAPI:
                 mock_db.session.commit.assert_called()
 
     def test_update_objective_closes_previous_history(self, client):
-        """Test that updating an objective sets ended_at on previous history."""
+        """Test that creating a new objective sets ended_at on previous history."""
         mock_objective = MagicMock()
         mock_objective.id = 1
 
@@ -207,13 +209,37 @@ class TestUpdateObjectiveAPI:
             with patch("claude_headspace.routes.objective.ObjectiveHistory"):
                 response = client.post(
                     "/api/objective",
-                    data=json.dumps({"text": "New objective"}),
+                    data=json.dumps({"text": "New objective", "new": True}),
                     content_type="application/json"
                 )
 
                 assert response.status_code == 200
                 # Verify ended_at was set on the history
                 assert mock_history.ended_at is not None
+
+    def test_save_objective_updates_in_place(self, client):
+        """Test that saving without new flag updates in-place without closing history."""
+        mock_objective = MagicMock()
+        mock_objective.id = 1
+
+        mock_history = MagicMock()
+        mock_history.ended_at = None
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = mock_objective
+            mock_db.session.query.return_value.filter.return_value.first.return_value = mock_history
+
+            response = client.post(
+                "/api/objective",
+                data=json.dumps({"text": "Fixed typo"}),
+                content_type="application/json"
+            )
+
+            assert response.status_code == 200
+            # ended_at should NOT be set — in-place update
+            assert mock_history.ended_at is None
+            # But text should be updated
+            assert mock_history.text == "Fixed typo"
 
     def test_update_objective_validation_empty_text(self, client):
         """Test that empty objective text returns validation error."""
@@ -394,6 +420,151 @@ class TestGetObjectiveHistoryAPI:
 
             data = json.loads(response.data)
             assert "error" in data
+
+
+class TestDeleteHistoryItemAPI:
+    """Tests for DELETE /api/objective/history/<id> endpoint."""
+
+    def test_delete_history_item(self, client):
+        """Test deleting an existing history item returns 200."""
+        mock_item = MagicMock()
+        mock_item.id = 42
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = mock_item
+
+            response = client.delete("/api/objective/history/42")
+            assert response.status_code == 200
+
+            data = json.loads(response.data)
+            assert data["deleted"] is True
+            assert data["id"] == 42
+            mock_db.session.delete.assert_called_once_with(mock_item)
+            mock_db.session.commit.assert_called()
+
+    def test_delete_history_item_not_found(self, client):
+        """Test deleting a non-existent history item returns 404."""
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = None
+
+            response = client.delete("/api/objective/history/999")
+            assert response.status_code == 404
+
+            data = json.loads(response.data)
+            assert "error" in data
+
+    def test_delete_history_database_error(self, client):
+        """Test that database error during delete returns 500."""
+        mock_item = MagicMock()
+        mock_item.id = 42
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.get.return_value = mock_item
+            mock_db.session.commit.side_effect = Exception("DB error")
+
+            response = client.delete("/api/objective/history/42")
+            assert response.status_code == 500
+
+            data = json.loads(response.data)
+            assert "error" in data
+            mock_db.session.rollback.assert_called()
+
+
+class TestGetPriorityStatusAPI:
+    """Tests for GET /api/objective/priority endpoint."""
+
+    def test_get_priority_status_with_objective(self, client):
+        """Test GET returns current priority_enabled state."""
+        mock_objective = MagicMock()
+        mock_objective.priority_enabled = False
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = mock_objective
+
+            response = client.get("/api/objective/priority")
+            assert response.status_code == 200
+
+            data = json.loads(response.data)
+            assert data["priority_enabled"] is False
+
+    def test_get_priority_status_no_objective(self, client):
+        """Test GET defaults to true when no objective exists."""
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = None
+
+            response = client.get("/api/objective/priority")
+            assert response.status_code == 200
+
+            data = json.loads(response.data)
+            assert data["priority_enabled"] is True
+
+
+class TestTogglePriorityAPI:
+    """Tests for POST /api/objective/priority endpoint."""
+
+    def test_toggle_priority_on(self, client):
+        """Test enabling priority scoring."""
+        mock_objective = MagicMock()
+        mock_objective.priority_enabled = False
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = mock_objective
+
+            response = client.post(
+                "/api/objective/priority",
+                data=json.dumps({"enabled": True}),
+                content_type="application/json",
+            )
+
+            assert response.status_code == 200
+            assert mock_objective.priority_enabled is True
+            mock_db.session.commit.assert_called()
+
+    def test_toggle_priority_off(self, client):
+        """Test disabling priority scoring."""
+        mock_objective = MagicMock()
+        mock_objective.priority_enabled = True
+
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = mock_objective
+
+            response = client.post(
+                "/api/objective/priority",
+                data=json.dumps({"enabled": False}),
+                content_type="application/json",
+            )
+
+            assert response.status_code == 200
+            assert mock_objective.priority_enabled is False
+            mock_db.session.commit.assert_called()
+
+    def test_toggle_priority_no_objective(self, client):
+        """Test toggle returns 404 when no objective exists."""
+        with patch("claude_headspace.routes.objective.db") as mock_db:
+            mock_db.session.query.return_value.first.return_value = None
+
+            response = client.post(
+                "/api/objective/priority",
+                data=json.dumps({"enabled": True}),
+                content_type="application/json",
+            )
+
+            assert response.status_code == 404
+            data = json.loads(response.data)
+            assert "error" in data
+
+    def test_toggle_priority_missing_field(self, client):
+        """Test toggle returns 400 when enabled field is missing."""
+        response = client.post(
+            "/api/objective/priority",
+            data=json.dumps({"something": "else"}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert "error" in data
+        assert "enabled" in data["error"].lower()
 
 
 class TestObjectiveNavigation:

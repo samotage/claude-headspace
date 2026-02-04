@@ -5,7 +5,7 @@
     <div class="modal-header">
         <div>
             <h2 id="brain-reboot-title" class="text-primary font-display text-lg">Brain Reboot</h2>
-            <p id="brain-reboot-subtitle" class="text-muted text-sm mt-0.5"></p>
+            <a id="brain-reboot-subtitle" href="#" class="text-muted text-sm mt-0.5 hover:text-cyan transition-colors"></a>
         </div>
         <div class="flex items-center gap-2">
             <!-- Copy to Clipboard -->
@@ -40,7 +40,10 @@
 
     <!-- Footer -->
     <div class="modal-footer">
-        <div id="brain-reboot-status" class="text-muted text-xs"></div>
+        <div class="flex items-center gap-2">
+            <span id="brain-reboot-status" class="text-muted text-xs"></span>
+            <a id="brain-reboot-project-link" href="#" class="text-cyan text-xs hover:underline hidden">View Project</a>
+        </div>
         <div class="flex items-center gap-2">
             <span id="brain-reboot-artifacts" class="text-muted text-xs"></span>
         </div>

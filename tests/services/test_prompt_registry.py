@@ -26,6 +26,7 @@ class TestBuildPrompt:
             "instruction",
             "priority_scoring",
             "progress_summary",
+            "project_description",
             "completion_classification",
             "question_classification",
         ]
@@ -52,7 +53,7 @@ class TestTurnPrompts:
             instruction_context="",
             text="Which database?",
         )
-        assert "what the agent is asking" in result
+        assert "what the agent needs to know" in result
         assert "Which database?" in result
 
     def test_turn_completion(self):
@@ -61,7 +62,7 @@ class TestTurnPrompts:
             instruction_context="",
             text="All tests pass",
         )
-        assert "what the agent accomplished" in result
+        assert "what was accomplished" in result
         assert "All tests pass" in result
 
     def test_turn_progress(self):
@@ -79,7 +80,7 @@ class TestTurnPrompts:
             instruction_context="",
             text="Use PostgreSQL",
         )
-        assert "information the user provided" in result
+        assert "what was confirmed or provided" in result
         assert "Use PostgreSQL" in result
 
     def test_turn_end_of_task(self):
@@ -99,10 +100,9 @@ class TestTurnPrompts:
             actor="agent",
             intent="unknown",
         )
-        assert "1-2 concise sentences" in result
+        assert "18 tokens" in result
         assert "Some text" in result
         assert "agent" in result
-        assert "unknown" in result
 
 
 class TestTaskPrompts:
@@ -114,10 +114,10 @@ class TestTaskPrompts:
             instruction="Refactor auth middleware",
             final_turn_text="All 12 tests passing",
         )
-        assert "2-3 sentences" in result
+        assert "18 tokens" in result
         assert "Refactor auth middleware" in result
         assert "All 12 tests passing" in result
-        assert "Original instruction" in result
+        assert "Task:" in result
 
     def test_task_completion_from_activity(self):
         result = build_prompt(
@@ -125,9 +125,9 @@ class TestTaskPrompts:
             instruction="Refactor auth middleware",
             turn_activity="- [AGENT/progress] Working on middleware\n- [AGENT/question] Which pattern?",
         )
-        assert "2-3 sentences" in result
+        assert "18 tokens" in result
         assert "Refactor auth middleware" in result
-        assert "Activity during this task" in result
+        assert "Activity:" in result
         assert "Working on middleware" in result
 
     def test_instruction(self):
@@ -135,7 +135,7 @@ class TestTaskPrompts:
             "instruction",
             command_text="Fix the login page CSS",
         )
-        assert "core task or goal" in result
+        assert "stating the goal" in result
         assert "Fix the login page CSS" in result
 
 
@@ -166,7 +166,25 @@ class TestProgressSummaryPrompt:
         )
         assert "my-project" in result
         assert "Date range: 2026-01-01 to 2026-01-31" in result
-        assert "3-5 paragraph" in result
+        assert "progress summary" in result
+
+
+class TestProjectDescriptionPrompt:
+    """Tests for project description prompt template."""
+
+    def test_project_description(self):
+        result = build_prompt(
+            "project_description",
+            claude_md_content="# My Project\nA Flask web app for tracking tasks.",
+        )
+        assert "CLAUDE.md" in result
+        assert "My Project" in result
+        assert "dashboard card" in result
+        assert "Output ONLY" in result
+
+    def test_project_description_missing_content_raises(self):
+        with pytest.raises(KeyError):
+            build_prompt("project_description")
 
 
 class TestClassificationPrompts:

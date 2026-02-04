@@ -60,6 +60,14 @@ The wrapper script:
 - Launches Claude Code as a child process
 - Cleans up the session when Claude Code exits
 
+To enable Input Bridge (respond to prompts from the dashboard), add `--bridge`:
+
+```bash
+claude-headspace start --bridge
+```
+
+This requires `claudec` (claude-commander) to be installed. See [Input Bridge](input-bridge) for setup and details.
+
 ### Method 2: Hooks Only
 
 If you prefer to run `claude` directly, you must first install the Claude Code hooks:
@@ -103,15 +111,16 @@ Navigate to `http://localhost:5055` in your browser to see all your active sessi
 Each agent card shows its current state:
 
 - **Working** (blue) - Claude is actively processing
-- **Input Needed** (amber) - Claude is waiting for your response
+- **Input Needed** (amber) - Claude is waiting for your response. If the session was started with `--bridge`, a respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
 - **Idle** (gray) - Claude has completed its task
 
 ## Focus on a Session
 
-Click the "Headspace" button on any agent card to bring its iTerm window to the foreground.
+Click the state bar on any agent card to bring its iTerm window to the foreground.
 
 ## Next Steps
 
 - [Dashboard Overview](dashboard) - Learn about all dashboard features
+- [Input Bridge](input-bridge) - Respond to prompts from the dashboard
 - [Set an Objective](objective) - Guide Claude's priorities
 - [Configure Settings](configuration) - Customize your setup

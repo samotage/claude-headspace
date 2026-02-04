@@ -89,6 +89,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["APP_CONFIG"] = config
     app.config["APP_VERSION"] = __version__
+    app.config["APP_ROOT"] = str(app_root)
 
     # Setup logging
     setup_logging(config, app_root)
@@ -120,6 +121,12 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["broadcaster"] = broadcaster
     logger.info("SSE broadcaster initialized")
 
+    # Initialize git metadata service
+    from .services.git_metadata import GitMetadata
+    git_metadata = GitMetadata()
+    app.extensions["git_metadata"] = git_metadata
+    logger.info("Git metadata service initialized")
+
     # Initialize inference service
     from .services.inference_service import InferenceService
     inference_service = InferenceService(
@@ -136,15 +143,23 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services.summarisation_service import SummarisationService
     summarisation_service = SummarisationService(
         inference_service=inference_service,
+        config=config,
     )
     app.extensions["summarisation_service"] = summarisation_service
     logger.info("Summarisation service initialized")
+
+    # Initialize headspace monitor
+    from .services.headspace_monitor import HeadspaceMonitor
+    headspace_monitor = HeadspaceMonitor(app=app, config=config)
+    app.extensions["headspace_monitor"] = headspace_monitor
+    logger.info("Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled)
 
     # Initialize priority scoring service
     from .services.priority_scoring import PriorityScoringService
     priority_scoring_service = PriorityScoringService(
         inference_service=inference_service,
         app=app,
+        config=config,
     )
     app.extensions["priority_scoring_service"] = priority_scoring_service
     logger.info("Priority scoring service initialized")
@@ -173,18 +188,28 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     notification_service.is_available()
     logger.info(f"Notification service initialized (dashboard_url={dashboard_url})")
 
+    # Initialize archive service
+    from .services.archive_service import ArchiveService
+    archive_service = ArchiveService(config=config)
+    app.extensions["archive_service"] = archive_service
+    logger.info("Archive service initialized")
+
     # Initialize progress summary service
     from .services.progress_summary import ProgressSummaryService
     progress_summary_service = ProgressSummaryService(
         inference_service=inference_service,
         app=app,
+        archive_service=archive_service,
     )
     app.extensions["progress_summary_service"] = progress_summary_service
     logger.info("Progress summary service initialized")
 
     # Initialize brain reboot service
     from .services.brain_reboot import BrainRebootService
-    brain_reboot_service = BrainRebootService(app=app)
+    brain_reboot_service = BrainRebootService(
+        app=app,
+        archive_service=archive_service,
+    )
     app.extensions["brain_reboot_service"] = brain_reboot_service
     logger.info("Brain reboot service initialized")
 
@@ -207,6 +232,25 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         reaper.start()
         app.extensions["agent_reaper"] = reaper
 
+    # Initialize activity aggregator (only in non-testing environments)
+    if not app.config.get("TESTING"):
+        from .services.activity_aggregator import ActivityAggregator
+        aggregator = ActivityAggregator(app=app, config=config)
+        aggregator.start()
+        app.extensions["activity_aggregator"] = aggregator
+
+    # Register tmux bridge module (stateless, no init needed)
+    from .services import tmux_bridge
+    app.extensions["tmux_bridge"] = tmux_bridge
+
+    # Initialize commander availability tracker (uses tmux_bridge internally)
+    from .services.commander_availability import CommanderAvailability
+    commander_availability = CommanderAvailability(app=app, config=config)
+    app.extensions["commander_availability"] = commander_availability
+    if not app.config.get("TESTING"):
+        commander_availability.start()
+    logger.info("Commander availability service initialized")
+
     # Register shutdown cleanup
     import atexit
 
@@ -217,8 +261,12 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             shutdown_broadcaster()
             if "agent_reaper" in app.extensions:
                 app.extensions["agent_reaper"].stop()
+            if "activity_aggregator" in app.extensions:
+                app.extensions["activity_aggregator"].stop()
             if "file_watcher" in app.extensions:
                 app.extensions["file_watcher"].stop()
+            if "commander_availability" in app.extensions:
+                app.extensions["commander_availability"].stop()
             # Stop event writer to close database connections
             event_writer = app.extensions.get("event_writer")
             if event_writer:
@@ -258,10 +306,13 @@ def register_error_handlers(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
+    from .routes.activity import activity_bp
+    from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
     from .routes.focus import focus_bp
+    from .routes.headspace import headspace_bp
     from .routes.health import health_bp
     from .routes.help import help_bp
     from .routes.hooks import hooks_bp
@@ -271,15 +322,20 @@ def register_blueprints(app: Flask) -> None:
     from .routes.objective import objective_bp
     from .routes.priority import priority_bp
     from .routes.progress_summary import progress_summary_bp
+    from .routes.projects import projects_bp
+    from .routes.respond import respond_bp
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
     from .routes.waypoint import waypoint_bp
 
+    app.register_blueprint(activity_bp)
+    app.register_blueprint(archive_bp)
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(focus_bp)
+    app.register_blueprint(headspace_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(help_bp)
     app.register_blueprint(hooks_bp)
@@ -289,6 +345,8 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(objective_bp)
     app.register_blueprint(priority_bp)
     app.register_blueprint(progress_summary_bp)
+    app.register_blueprint(projects_bp)
+    app.register_blueprint(respond_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)

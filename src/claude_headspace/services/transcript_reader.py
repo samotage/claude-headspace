@@ -59,7 +59,14 @@ def _extract_text(data: dict) -> tuple[str | None, str | None]:
 
 
 def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
-    """Read the last agent response text from a transcript .jsonl file."""
+    """Read all agent response text from the current turn in a transcript .jsonl file.
+
+    Walks backwards from the end of the file collecting all assistant messages
+    until a user message is encountered (marking the turn boundary).  The
+    collected texts are returned in chronological order so that completion
+    signals from earlier assistant messages in multi-tool-call turns are not
+    lost.
+    """
     if not transcript_path:
         return TranscriptReadResult(success=False, error="No transcript path")
 
@@ -67,10 +74,11 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
 
     try:
-        # Read all lines, walk backwards to find the last assistant text
         with open(transcript_path, "r") as f:
             lines = f.readlines()
 
+        # Walk backwards, collecting assistant texts until we hit a user message
+        parts: list[str] = []
         for line in reversed(lines):
             line = line.strip()
             if not line:
@@ -80,17 +88,30 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
             except json.JSONDecodeError:
                 continue
 
-            if data.get("type") != "assistant":
+            entry_type = data.get("type")
+
+            # User message marks the start of the current turn — stop collecting
+            if entry_type == "user":
+                break
+
+            if entry_type != "assistant":
                 continue
 
-            role, text = _extract_text(data)
+            _role, text = _extract_text(data)
             if text:
-                if len(text) > MAX_CONTENT_LENGTH:
-                    text = text[:MAX_CONTENT_LENGTH] + "... [truncated]"
-                return TranscriptReadResult(success=True, text=text)
+                parts.append(text)
 
-        # No assistant text found
-        return TranscriptReadResult(success=True, text="")
+        if not parts:
+            return TranscriptReadResult(success=True, text="")
+
+        # Reverse to restore chronological order
+        parts.reverse()
+        combined = "\n\n".join(parts)
+
+        if len(combined) > MAX_CONTENT_LENGTH:
+            combined = combined[:MAX_CONTENT_LENGTH] + "... [truncated]"
+
+        return TranscriptReadResult(success=True, text=combined)
 
     except Exception as e:
         logger.warning(f"Error reading transcript {transcript_path}: {e}")

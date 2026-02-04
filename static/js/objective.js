@@ -1,7 +1,7 @@
 /**
  * Objective page client for Claude Headspace.
  *
- * Handles auto-save with debounce and history pagination.
+ * Handles explicit save via button/form submit and history pagination.
  */
 
 (function(global) {
@@ -9,63 +9,84 @@
 
     const API_ENDPOINT = '/api/objective';
     const HISTORY_ENDPOINT = '/api/objective/history';
-    const DEBOUNCE_DELAY = 2500; // 2.5 seconds
+    const DELETE_HISTORY_ENDPOINT = '/api/objective/history/';
+    const PRIORITY_ENDPOINT = '/api/objective/priority';
     const PER_PAGE = 10;
 
     /**
      * Objective page controller
      */
     const ObjectivePage = {
-        debounceTimer: null,
         currentPage: 1,
         isSaving: false,
+        pendingNew: false,
 
         /**
          * Initialize the objective page
          */
         init: function() {
+            this.form = document.getElementById('objective-form');
             this.textInput = document.getElementById('objective-text');
             this.constraintsInput = document.getElementById('objective-constraints');
+            this.saveBtn = document.getElementById('save-btn');
+            this.newBtn = document.getElementById('new-objective-btn');
             this.saveStatus = document.getElementById('save-status');
             this.loadMoreBtn = document.getElementById('load-more-btn');
             this.historyList = document.getElementById('history-list');
+            this.priorityToggle = document.getElementById('priority-toggle');
+            this.priorityLabel = document.getElementById('priority-toggle-label');
 
-            if (this.textInput) {
-                this.textInput.addEventListener('input', () => this._handleInput());
+            if (this.priorityToggle && !this.priorityToggle.disabled) {
+                this.priorityToggle.addEventListener('click', () => this._togglePriority());
             }
-            if (this.constraintsInput) {
-                this.constraintsInput.addEventListener('input', () => this._handleInput());
+            if (this.form) {
+                this.form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this._save(this.pendingNew);
+                    this.pendingNew = false;
+                });
+            }
+            if (this.newBtn) {
+                this.newBtn.addEventListener('click', () => this._startNew());
             }
             if (this.loadMoreBtn) {
                 this.loadMoreBtn.addEventListener('click', () => this._loadMore());
                 this.currentPage = parseInt(this.loadMoreBtn.dataset.page) || 2;
             }
+
+            // Event delegation for delete buttons on history items
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('.delete-history-btn');
+                if (btn) {
+                    const id = btn.dataset.historyId;
+                    if (id) this._deleteHistory(parseInt(id, 10), btn);
+                }
+            });
         },
 
         /**
-         * Handle input changes with debounce
+         * Clear form for a new objective
          */
-        _handleInput: function() {
-            // Cancel any pending save
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
+        _startNew: function() {
+            this.pendingNew = true;
+            if (this.textInput) {
+                this.textInput.value = '';
+                this.textInput.focus();
             }
-
-            // Don't show "saving" status while still typing
-            // Start new debounce timer
-            this.debounceTimer = setTimeout(() => {
-                this._save();
-            }, DEBOUNCE_DELAY);
+            if (this.constraintsInput) this.constraintsInput.value = '';
+            this._updateStatus('info', 'Enter your new objective and press Save');
         },
 
         /**
          * Save the objective
+         * @param {boolean} isNew - If true, archives current and creates new objective
          */
-        _save: async function() {
+        _save: async function(isNew) {
             const text = this.textInput ? this.textInput.value.trim() : '';
 
             // Don't save empty objectives
             if (!text) {
+                this._updateStatus('error', 'Objective text is required');
                 return;
             }
 
@@ -76,6 +97,8 @@
 
             this.isSaving = true;
             this._updateStatus('saving');
+            if (this.saveBtn) this.saveBtn.disabled = true;
+            if (this.newBtn) this.newBtn.disabled = true;
 
             const constraints = this.constraintsInput ? this.constraintsInput.value.trim() : '';
 
@@ -87,15 +110,15 @@
                     },
                     body: JSON.stringify({
                         text: text,
-                        constraints: constraints || null
+                        constraints: constraints || null,
+                        new: isNew || false
                     })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    this._updateStatus('saved');
-                    // Refresh history to show new entry
+                    this._updateStatus(isNew ? 'created' : 'saved');
                     this._refreshHistory();
                 } else {
                     this._updateStatus('error', data.error || 'Failed to save');
@@ -105,6 +128,8 @@
                 this._updateStatus('error', 'Network error');
             } finally {
                 this.isSaving = false;
+                if (this.saveBtn) this.saveBtn.disabled = false;
+                if (this.newBtn) this.newBtn.disabled = false;
             }
         },
 
@@ -122,12 +147,24 @@
                 case 'saved':
                     this.saveStatus.textContent = 'Saved';
                     this.saveStatus.className = 'text-sm text-green';
-                    // Auto-dismiss after 3 seconds
                     setTimeout(() => {
                         if (this.saveStatus.textContent === 'Saved') {
                             this.saveStatus.textContent = '';
                         }
                     }, 3000);
+                    break;
+                case 'created':
+                    this.saveStatus.textContent = 'New objective created';
+                    this.saveStatus.className = 'text-sm text-green';
+                    setTimeout(() => {
+                        if (this.saveStatus.textContent === 'New objective created') {
+                            this.saveStatus.textContent = '';
+                        }
+                    }, 3000);
+                    break;
+                case 'info':
+                    this.saveStatus.textContent = message || '';
+                    this.saveStatus.className = 'text-sm text-cyan';
                     break;
                 case 'error':
                     this.saveStatus.textContent = message || 'Error saving';
@@ -153,6 +190,70 @@
                 }
             } catch (error) {
                 console.error('ObjectivePage: Failed to refresh history', error);
+            }
+        },
+
+        /**
+         * Delete a history item with inline two-click confirmation
+         */
+        _deleteHistory: async function(id, button) {
+            // First click: flip to confirmation state
+            if (!button.dataset.confirming) {
+                button.dataset.confirming = '1';
+                button.textContent = '[sure?]';
+                button.classList.remove('text-muted');
+                button.classList.add('text-red');
+
+                // Revert after 3 seconds if not confirmed
+                button._revertTimer = setTimeout(function() {
+                    delete button.dataset.confirming;
+                    button.textContent = '[x]';
+                    button.classList.remove('text-red');
+                    button.classList.add('text-muted');
+                }, 3000);
+                return;
+            }
+
+            // Second click: confirmed — do the delete
+            clearTimeout(button._revertTimer);
+            delete button.dataset.confirming;
+            button.disabled = true;
+            button.textContent = '[...]';
+
+            try {
+                var response = await fetch(DELETE_HISTORY_ENDPOINT + id, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    var article = button.closest('article');
+                    var self = this;
+                    if (article) {
+                        article.style.transition = 'opacity 0.3s';
+                        article.style.opacity = '0';
+                        setTimeout(function() {
+                            article.remove();
+                            // Refresh list from server to reset pagination
+                            self.currentPage = 2;
+                            self._refreshHistory();
+                        }, 300);
+                    } else {
+                        this.currentPage = 2;
+                        this._refreshHistory();
+                    }
+                } else {
+                    console.error('ObjectivePage: Delete failed', response.status);
+                    button.disabled = false;
+                    button.textContent = '[x]';
+                    button.classList.remove('text-red');
+                    button.classList.add('text-muted');
+                }
+            } catch (error) {
+                console.error('ObjectivePage: Delete failed', error);
+                button.disabled = false;
+                button.textContent = '[x]';
+                button.classList.remove('text-red');
+                button.classList.add('text-muted');
             }
         },
 
@@ -229,12 +330,16 @@
                 : '<span class="text-cyan">Current</span>';
 
             return `
-                <article class="p-4 bg-surface rounded border border-border">
+                <article class="p-4 bg-surface rounded border border-border" data-history-id="${item.id}">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 min-w-0">
                             <p class="text-primary break-words">${this._escapeHtml(item.text)}</p>
                             ${constraintsHtml}
                         </div>
+                        <button type="button"
+                                class="delete-history-btn flex-shrink-0 text-muted hover:text-red transition-colors text-xs font-mono px-1"
+                                data-history-id="${item.id}"
+                                title="Delete history item">[x]</button>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-4 text-xs text-muted">
                         <span>Started: <time datetime="${item.started_at}">${this._formatDate(startedAt)}</time></span>
@@ -284,6 +389,70 @@
          */
         _formatDate: function(date) {
             return date.toISOString().slice(0, 16).replace('T', ' ');
+        },
+
+        /**
+         * Toggle priority scoring on/off
+         */
+        _togglePriority: async function() {
+            if (!this.priorityToggle || this.priorityToggle.disabled) return;
+
+            // Read current state from the dot position
+            var dot = this.priorityToggle.querySelector('.toggle-dot');
+            var currentlyEnabled = dot && dot.classList.contains('left-7');
+            var newEnabled = !currentlyEnabled;
+
+            // Optimistic UI update
+            this._updateToggleUI(newEnabled);
+
+            try {
+                var response = await fetch(PRIORITY_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: newEnabled })
+                });
+
+                if (!response.ok) {
+                    // Revert on failure
+                    this._updateToggleUI(currentlyEnabled);
+                }
+            } catch (error) {
+                console.error('ObjectivePage: Priority toggle failed', error);
+                this._updateToggleUI(currentlyEnabled);
+            }
+        },
+
+        /**
+         * Update toggle button UI
+         */
+        _updateToggleUI: function(enabled) {
+            if (!this.priorityToggle) return;
+
+            var dot = this.priorityToggle.querySelector('.toggle-dot');
+
+            if (enabled) {
+                this.priorityToggle.classList.add('bg-cyan');
+                this.priorityToggle.classList.remove('bg-surface', 'border', 'border-border');
+                if (dot) {
+                    dot.classList.add('left-7');
+                    dot.classList.remove('left-1');
+                }
+            } else {
+                this.priorityToggle.classList.remove('bg-cyan');
+                this.priorityToggle.classList.add('bg-surface', 'border', 'border-border');
+                if (dot) {
+                    dot.classList.remove('left-7');
+                    dot.classList.add('left-1');
+                }
+            }
+
+            if (this.priorityLabel) {
+                this.priorityLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+                this.priorityLabel.classList.toggle('text-green', enabled);
+                this.priorityLabel.classList.toggle('text-muted', !enabled);
+            }
+
+            this.priorityToggle.title = enabled ? 'Disable priority scoring' : 'Enable priority scoring';
         },
 
         /**

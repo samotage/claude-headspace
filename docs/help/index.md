@@ -6,6 +6,7 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 
 - [Getting Started](getting-started) - New to Claude Headspace? Start here
 - [Dashboard](dashboard) - Understanding the main dashboard
+- [Input Bridge](input-bridge) - Responding to prompts from the dashboard
 - [Objective](objective) - Setting and managing your global objective
 - [Configuration](configuration) - Customizing config.yaml settings
 - [Waypoints](waypoints) - Editing project waypoints

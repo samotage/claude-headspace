@@ -27,10 +27,23 @@ Each agent has a card showing:
 
 - **Status Badge** - ACTIVE or IDLE
 - **Session ID** - Unique identifier
-- **State Bar** - Visual indicator of current state
-- **Task Summary** - What the agent is currently doing
+- **State Bar** - Visual indicator of current state (click to focus iTerm window)
+- **Task Instruction** - The current prompt or task being worked on
+- **Task Summary** - AI-generated summary of progress
+- **Respond Widget** - Quick-action buttons and text input (only when awaiting input with commander available)
 - **Priority Score** - Used for sorting
-- **Headspace Button** - Click to focus the terminal window
+
+### Respond Widget (Input Bridge)
+
+When an agent is in the **Input Needed** (amber) state and the session was started with `--bridge`, a respond widget appears on the card:
+
+- **Quick-action buttons** — Parsed from numbered options in the prompt (e.g., "1. Yes", "2. No"). Click to send just the number.
+- **Free-text input** — Type any response and click Send or press Enter.
+- **Feedback** — Success shows a green highlight and toast. Errors show a toast with a specific message.
+
+The widget only appears when the commander socket is reachable. If the session was not started with `--bridge`, the card shows the normal state bar (click to focus iTerm) without the input widget.
+
+See [Input Bridge](input-bridge) for setup instructions and details.
 
 ## Sorting
 

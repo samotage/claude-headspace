@@ -370,21 +370,17 @@ def _create_agent_for_session(
     Returns:
         Tuple of (agent, project)
     """
-    # Find or create project
+    # Find registered project — auto-creation is disabled
     project = (
         db.session.query(Project)
         .filter(Project.path == working_directory)
         .first()
     )
     if not project:
-        # Extract project name from the resolved project root
-        project_name = working_directory.rstrip("/").split("/")[-1]
-        project = Project(
-            name=project_name,
-            path=working_directory,
+        raise ValueError(
+            f"Project not registered: '{working_directory}'. "
+            f"Register this project at the /projects management page before starting a session."
         )
-        db.session.add(project)
-        db.session.flush()  # Get project ID
 
     # Create agent with persistent claude_session_id
     agent = Agent(

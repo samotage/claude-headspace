@@ -33,29 +33,39 @@ sse:
 hooks:
   enabled: true
   polling_interval_with_hooks: 60
-  fallback_timeout: 300
+  fallback_timeout: 1200
+tmux_bridge:
+  health_check_interval: 30
+  subprocess_timeout: 5
+  text_enter_delay_ms: 100
 notifications:
   enabled: true
   sound: true
   rate_limit_seconds: 5
+activity:
+  enabled: true
+  interval_seconds: 300
+  retention_days: 3000
 openrouter:
   base_url: https://openrouter.ai/api/v1
   timeout: 30
   models:
-    turn: anthropic/claude-3-haiku
-    task: anthropic/claude-3-haiku
+    turn: anthropic/claude-haiku-4.5
+    task: anthropic/claude-haiku-4.5
     project: anthropic/claude-3.5-sonnet
     objective: anthropic/claude-3.5-sonnet
   rate_limits:
     calls_per_minute: 30
-    tokens_per_minute: 50000
+    tokens_per_minute: 10000
   cache:
     enabled: true
     ttl_seconds: 300
   retry:
-    max_attempts: 3
+    max_attempts: 1
     base_delay_seconds: 1.0
     max_delay_seconds: 30.0
+  priority_scoring:
+    debounce_seconds: 5.0
   pricing:
     anthropic/claude-3-haiku:
       input_per_million: 0.25
@@ -71,3 +81,21 @@ reaper:
   interval_seconds: 60
   inactivity_timeout_seconds: 300
   grace_period_seconds: 300
+headspace:
+  enabled: true
+  thresholds:
+    yellow: 4
+    red: 7
+  session_rolling_window_minutes: 180
+  alert_cooldown_minutes: 10
+  snapshot_retention_days: 7
+  flow_detection:
+    min_turn_rate: 6
+    max_frustration: 3
+    min_duration_minutes: 15
+archive:
+  enabled: true
+  retention:
+    policy: keep_all
+    keep_last_n: 10
+    days: 90

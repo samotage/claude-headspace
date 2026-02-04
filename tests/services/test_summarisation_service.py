@@ -131,7 +131,7 @@ class TestTurnSummarisation:
         assert "Refactoring the authentication middleware" in prompt
         assert "agent" in prompt
         assert "progress" in prompt
-        assert "1-2 concise sentences" in prompt
+        assert "18 tokens" in prompt
 
 
 class TestTaskSummarisation:
@@ -184,11 +184,10 @@ class TestTaskSummarisation:
     def test_task_prompt_includes_context(self, service, mock_task):
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert "2-3 sentences" in prompt
+        assert "18 tokens" in prompt
         assert "All 12 tests passing" in prompt
         assert "Refactor the authentication middleware" in prompt
-        assert "Original instruction" in prompt
-        assert "final message" in prompt
+        assert "Task:" in prompt
 
     def test_task_summary_persisted_with_db_session(self, service, mock_inference, mock_task):
         mock_inference.infer.return_value = InferenceResult(
@@ -311,7 +310,7 @@ class TestInstructionSummarisation:
 
         call_kwargs = mock_inference.infer.call_args[1]
         assert "Fix the login page CSS styling" in call_kwargs["input_text"]
-        assert "core task or goal" in call_kwargs["input_text"]
+        assert "stating the goal" in call_kwargs["input_text"]
 
 
 class TestExecutePending:
@@ -507,7 +506,7 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "what the agent is asking" in prompt
+        assert "what the agent needs to know" in prompt
         assert "Which database should I use?" in prompt
 
     def test_completion_intent_uses_completion_template(self, service):
@@ -519,7 +518,7 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "what the agent accomplished" in prompt
+        assert "what was accomplished" in prompt
         assert "All tests are now passing" in prompt
 
     def test_progress_intent_uses_progress_template(self, service):
@@ -543,7 +542,7 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "information the user provided" in prompt
+        assert "what was confirmed or provided" in prompt
         assert "Use PostgreSQL" in prompt
 
     def test_end_of_task_intent_uses_end_template(self, service):
@@ -567,9 +566,9 @@ class TestResolveTurnPrompt:
 
         prompt = service._resolve_turn_prompt(turn)
 
-        assert "1-2 concise sentences" in prompt
+        assert "18 tokens" in prompt
         assert "Some text" in prompt
-        assert "unknown_intent" in prompt
+        assert "agent" in prompt
 
     def test_turn_prompt_includes_task_instruction_context(self, service):
         turn = MagicMock()
@@ -720,3 +719,191 @@ class TestSSEBroadcast:
                 entity_id=1,
                 summary="Test",
             )
+
+
+class TestTrivialInputFilter:
+    """Tests for _check_trivial_input() — slash commands and short confirmations."""
+
+    def test_slash_command_returns_command(self):
+        turn = MagicMock()
+        turn.text = "/start-queue"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "/start-queue"
+
+    def test_slash_command_with_args_returns_command_only(self):
+        turn = MagicMock()
+        turn.text = "/opsx:apply some args"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "/opsx:apply"
+
+    def test_slash_command_with_equals(self):
+        turn = MagicMock()
+        turn.text = "/orch:10-queue-add"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "/orch:10-queue-add"
+
+    def test_yes_returns_confirmed(self):
+        turn = MagicMock()
+        turn.text = "yes"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "Confirmed"
+
+    def test_ok_returns_confirmed(self):
+        turn = MagicMock()
+        turn.text = "ok"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "Confirmed"
+
+    def test_go_ahead_returns_confirmed(self):
+        turn = MagicMock()
+        turn.text = "go ahead"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "Confirmed"
+
+    def test_confirmation_case_insensitive(self):
+        turn = MagicMock()
+        turn.text = "YES"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "Confirmed"
+
+    def test_confirmation_with_trailing_punctuation(self):
+        turn = MagicMock()
+        turn.text = "yes."
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result == "Confirmed"
+
+    def test_long_text_returns_none(self):
+        turn = MagicMock()
+        turn.text = "Please refactor the authentication middleware to use JWT tokens instead of sessions"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result is None
+
+    def test_normal_command_returns_none(self):
+        turn = MagicMock()
+        turn.text = "Fix the login page"
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result is None
+
+    def test_empty_text_returns_none(self):
+        turn = MagicMock()
+        turn.text = ""
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result is None
+
+    def test_none_text_returns_none(self):
+        turn = MagicMock()
+        turn.text = None
+
+        result = SummarisationService._check_trivial_input(turn)
+
+        assert result is None
+
+
+class TestTrivialInputBypassIntegration:
+    """Tests that trivial inputs bypass LLM in summarise_turn()."""
+
+    def test_slash_command_bypasses_llm(self, service, mock_inference):
+        turn = MagicMock()
+        turn.id = 1
+        turn.text = "/start-queue"
+        turn.summary = None
+
+        result = service.summarise_turn(turn)
+
+        assert result == "/start-queue"
+        assert turn.summary == "/start-queue"
+        assert turn.summary_generated_at is not None
+        mock_inference.infer.assert_not_called()
+
+    def test_confirmation_bypasses_llm(self, service, mock_inference):
+        turn = MagicMock()
+        turn.id = 1
+        turn.text = "yes"
+        turn.summary = None
+
+        result = service.summarise_turn(turn)
+
+        assert result == "Confirmed"
+        assert turn.summary == "Confirmed"
+        mock_inference.infer.assert_not_called()
+
+    def test_trivial_persisted_with_db_session(self, service, mock_inference):
+        turn = MagicMock()
+        turn.id = 1
+        turn.text = "ok"
+        turn.summary = None
+        mock_session = MagicMock()
+
+        result = service.summarise_turn(turn, db_session=mock_session)
+
+        assert result == "Confirmed"
+        mock_session.add.assert_called_once_with(turn)
+        mock_session.commit.assert_called_once()
+        mock_inference.infer.assert_not_called()
+
+
+class TestSlashCommandInstructionBypass:
+    """Tests that slash commands bypass LLM in summarise_instruction()."""
+
+    def test_slash_command_sets_instruction_directly(self, service, mock_inference, mock_task):
+        mock_task.instruction = None
+
+        result = service.summarise_instruction(mock_task, "/start-queue")
+
+        assert result == "/start-queue"
+        assert mock_task.instruction == "/start-queue"
+        assert mock_task.instruction_generated_at is not None
+        mock_inference.infer.assert_not_called()
+
+    def test_slash_command_with_args(self, service, mock_inference, mock_task):
+        mock_task.instruction = None
+
+        result = service.summarise_instruction(mock_task, "/opsx:apply task1 task2")
+
+        assert result == "/opsx:apply"
+        assert mock_task.instruction == "/opsx:apply"
+        mock_inference.infer.assert_not_called()
+
+    def test_slash_command_persisted_with_db_session(self, service, mock_inference, mock_task):
+        mock_task.instruction = None
+        mock_session = MagicMock()
+
+        result = service.summarise_instruction(mock_task, "/commit-push", db_session=mock_session)
+
+        assert result == "/commit-push"
+        mock_session.add.assert_called_once_with(mock_task)
+        mock_session.commit.assert_called_once()
+
+    def test_normal_command_still_uses_llm(self, service, mock_inference, mock_task):
+        mock_task.instruction = None
+        mock_inference.infer.return_value = InferenceResult(
+            text="Fix login page styling",
+            input_tokens=40, output_tokens=10,
+            model="model", latency_ms=150,
+        )
+
+        service.summarise_instruction(mock_task, "Fix the login page CSS")
+
+        mock_inference.infer.assert_called_once()

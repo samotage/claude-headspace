@@ -30,7 +30,7 @@
             </div>
 
             <!-- Project name + staleness -->
-            <h2 id="project-{{ project.id }}-heading" class="text-primary font-medium">
+            <h2 id="project-{{ project.id }}-heading" class="text-primary font-semibold font-display text-xl">
                 {{ project.name }}
             </h2>
             {% if project.staleness and project.staleness.tier == 'stale' %}
@@ -45,7 +45,7 @@
         <!-- Active agent count + actions -->
         <div class="flex items-center gap-2">
             <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, '{{ project.name }}')"
+                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, '{{ project.name }}', '{{ project.slug }}')"
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>

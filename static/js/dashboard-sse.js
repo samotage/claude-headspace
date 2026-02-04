@@ -32,6 +32,21 @@
     let agentStates = new Map();
 
     /**
+     * Safe reload that defers if a ConfirmDialog is open.
+     * Prevents SSE-triggered reloads from flashing/dismissing confirm dialogs.
+     */
+    function safeDashboardReload() {
+        if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
+            console.log('SSE reload deferred — ConfirmDialog is open');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
+        window.location.reload();
+    }
+
+    /**
      * Initialize the dashboard SSE client.
      * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
      */
@@ -47,7 +62,7 @@
             console.log('SSE state:', oldState, '->', newState);
             if (newState === 'connected' && oldState === 'reconnecting') {
                 console.log('SSE reconnected after drop — reloading to sync state');
-                window.location.reload();
+                safeDashboardReload();
             }
         });
 
@@ -77,6 +92,15 @@
 
         // Handle priority score updates
         client.on('priority_update', handlePriorityUpdate);
+
+        // Handle full card refresh (authoritative state from server)
+        client.on('card_refresh', handleCardRefresh);
+
+        // Handle priority toggle
+        client.on('priority_toggle', handlePriorityToggle);
+
+        // Handle commander availability changes (Input Bridge)
+        client.on('commander_availability', handleCommanderAvailability);
 
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
@@ -121,6 +145,17 @@
         // Update agent card and recommended panel
         updateAgentCardState(agentId, newState);
         updateRecommendedPanel(agentId, newState);
+
+        // Clear line 04 when leaving AWAITING_INPUT — the question is no longer relevant
+        if (oldState === 'AWAITING_INPUT' && newState !== 'AWAITING_INPUT') {
+            const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
+            if (card) {
+                const taskSummary = card.querySelector('.task-summary');
+                if (taskSummary) {
+                    taskSummary.textContent = '';
+                }
+            }
+        }
 
         // Recalculate and update header counts
         updateStatusCounts();
@@ -258,7 +293,7 @@
      */
     function handleSessionCreated(data, eventType) {
         console.log('Session created:', data.agent_id, '- reloading dashboard');
-        window.location.reload();
+        safeDashboardReload();
     }
 
     /**
@@ -274,7 +309,7 @@
         // Remove from tracked states
         agentStates.delete(agentId);
 
-        window.location.reload();
+        safeDashboardReload();
     }
 
     /**
@@ -296,6 +331,7 @@
             instructionEl.textContent = instruction;
             instructionEl.classList.remove('text-muted', 'italic');
             instructionEl.classList.add('text-primary', 'font-medium');
+            if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
         }
     }
 
@@ -322,6 +358,7 @@
                 taskSummary.classList.remove('text-secondary');
                 taskSummary.classList.add('text-green');
             }
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
         }
     }
 
@@ -350,6 +387,7 @@
             taskSummary.textContent = summary;
             taskSummary.classList.remove('text-green');
             taskSummary.classList.add('text-secondary');
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
         }
     }
 
@@ -385,6 +423,137 @@
                 reasonEl.textContent = '// ' + reason.substring(0, 60);
             }
         });
+    }
+
+    /**
+     * Handle card_refresh events — authoritative full card state from server.
+     * Updates all visible fields on the agent card in one shot.
+     */
+    function handleCardRefresh(data, eventType) {
+        var agentId = parseInt(data.id);
+        var state = data.state;
+        var reason = data.reason || '';
+
+        if (!agentId || !state) return;
+
+        console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+
+        // If card not found, a new agent may have appeared — reload to render it
+        if (!card) {
+            if (reason === 'session_start' || reason === 'session_reactivated') {
+                safeDashboardReload();
+            }
+            return;
+        }
+
+        var stateInfo = data.state_info || STATE_INFO[state] || STATE_INFO['IDLE'];
+
+        // Line 01: status badge, last-seen, uptime
+        var statusBadge = card.querySelector('.status-badge');
+        if (statusBadge) {
+            if (data.is_active) {
+                statusBadge.textContent = 'ACTIVE';
+                statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green';
+            } else {
+                statusBadge.textContent = 'IDLE';
+                statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
+            }
+        }
+        var lastSeenEl = card.querySelector('.last-seen');
+        if (lastSeenEl && data.last_seen) {
+            lastSeenEl.textContent = data.last_seen;
+        }
+        var uptimeEl = card.querySelector('.uptime');
+        if (uptimeEl && data.uptime) {
+            uptimeEl.textContent = data.uptime;
+        }
+
+        // Line 02: state bar + state label
+        var stateBar = card.querySelector('.state-bar');
+        if (stateBar) {
+            stateBar.className = stateBar.className.replace(/bg-\w+/g, '');
+            stateBar.classList.add(stateInfo.bg_class);
+        }
+        var stateLabel = card.querySelector('.state-label');
+        if (stateLabel) {
+            stateLabel.textContent = stateInfo.label;
+        }
+        card.setAttribute('data-state', state);
+
+        // Line 03: task instruction
+        var instructionEl = card.querySelector('.task-instruction');
+        if (instructionEl) {
+            if (data.task_instruction) {
+                instructionEl.textContent = data.task_instruction;
+                instructionEl.classList.remove('text-muted', 'italic');
+                instructionEl.classList.add('text-primary', 'font-medium');
+            } else {
+                instructionEl.textContent = 'No instruction';
+                instructionEl.classList.remove('text-primary', 'font-medium');
+                instructionEl.classList.add('text-muted', 'italic');
+            }
+            if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
+        }
+
+        // Line 04: task summary / completion summary
+        var taskSummary = card.querySelector('.task-summary');
+        if (taskSummary) {
+            if ((state === 'COMPLETE' || state === 'IDLE') && data.task_completion_summary) {
+                taskSummary.textContent = data.task_completion_summary;
+                taskSummary.classList.remove('text-secondary');
+                taskSummary.classList.add('text-green');
+            } else {
+                taskSummary.textContent = data.task_summary || '';
+                taskSummary.classList.remove('text-green');
+                taskSummary.classList.add('text-secondary');
+            }
+            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+        }
+
+        // Footer: priority score and reason
+        var scoreBadge = card.querySelector('.border-t .font-mono');
+        if (scoreBadge && data.priority != null) {
+            scoreBadge.textContent = data.priority;
+        }
+        var reasonEl = card.querySelector('.border-t .italic');
+        if (reasonEl && data.priority_reason) {
+            reasonEl.textContent = '// ' + data.priority_reason.substring(0, 60);
+        }
+
+        // Update tracked state
+        agentStates.set(agentId, state);
+
+        // Recalculate header counts and project dots
+        updateStatusCounts();
+        var projectId = data.project_id;
+        if (projectId) {
+            updateProjectStateDots(projectId);
+        }
+
+        // Highlight if needs attention
+        if (state === 'AWAITING_INPUT' || state === 'TIMED_OUT') {
+            highlightRecommendedUpdate();
+        }
+
+        // Dispatch custom event for respond widget re-initialization
+        document.dispatchEvent(new CustomEvent('sse:card_refresh', { detail: data }));
+    }
+
+    /**
+     * Handle priority toggle events — update the banner badge
+     */
+    function handlePriorityToggle(data, eventType) {
+        var badge = document.getElementById('priority-status-badge');
+        if (!badge) return;
+
+        var enabled = data.priority_enabled;
+        console.log('Priority toggle:', enabled);
+
+        badge.textContent = 'prioritisation ' + (enabled ? 'enabled' : 'disabled');
+        badge.className = 'objective-banner-priority-badge ' + (enabled ? 'priority-enabled' : 'priority-disabled');
+        badge.title = 'Priority scoring is ' + (enabled ? 'enabled' : 'disabled');
     }
 
     /**
@@ -554,6 +723,15 @@
             textEl.classList.add('text-xs', 'whitespace-nowrap');
             textEl.classList.add(state === 'TIMED_OUT' ? 'text-red' : (state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary'));
         }
+    }
+
+    /**
+     * Handle commander availability events (Input Bridge).
+     * Dispatches a custom event for respond-init.js to handle.
+     */
+    function handleCommanderAvailability(data, eventType) {
+        console.log('Commander availability:', data.agent_id, 'available:', data.available);
+        document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
     }
 
     // Export

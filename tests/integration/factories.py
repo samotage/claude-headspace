@@ -32,6 +32,7 @@ class ProjectFactory(SQLAlchemyModelFactory):
         sqlalchemy_session_persistence = "commit"
 
     name = factory.Sequence(lambda n: f"project-{n}")
+    slug = factory.LazyAttribute(lambda o: o.name)
     path = factory.Sequence(lambda n: f"/home/user/projects/project-{n}")
     github_repo = factory.LazyAttribute(lambda o: f"user/{o.name}")
     current_branch = "main"
@@ -101,6 +102,7 @@ class ObjectiveFactory(SQLAlchemyModelFactory):
 
     current_text = factory.Sequence(lambda n: f"Objective {n}: Complete the task")
     constraints = "No constraints"
+    priority_enabled = True
     set_at = factory.LazyFunction(lambda: datetime.now(timezone.utc))
 
 

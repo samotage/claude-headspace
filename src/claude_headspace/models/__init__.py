@@ -10,6 +10,8 @@ Models:
     - Turn: Individual exchanges (user ↔ agent)
     - Event: Audit trail events
     - InferenceCall: LLM inference call logging
+    - ActivityMetric: Hourly activity metrics time-series
+    - HeadspaceSnapshot: Headspace state snapshots (frustration, flow, alerts)
 
 Enums:
     - TaskState: idle, commanded, processing, awaiting_input, complete
@@ -18,7 +20,9 @@ Enums:
     - InferenceLevel: turn, task, project, objective
 """
 
+from .activity_metric import ActivityMetric
 from .agent import Agent
+from .headspace_snapshot import HeadspaceSnapshot
 from .event import Event, EventType
 from .inference_call import InferenceCall, InferenceLevel
 from .objective import Objective, ObjectiveHistory
@@ -28,6 +32,8 @@ from .turn import Turn, TurnActor, TurnIntent
 
 __all__ = [
     # Models
+    "ActivityMetric",
+    "HeadspaceSnapshot",
     "Objective",
     "ObjectiveHistory",
     "Project",

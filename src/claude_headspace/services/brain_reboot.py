@@ -20,14 +20,16 @@ class BrainRebootService:
     summary artifacts. No LLM calls — pure file composition.
     """
 
-    def __init__(self, app=None):
+    def __init__(self, app=None, archive_service=None):
         """
         Initialize the brain reboot service.
 
         Args:
             app: Flask application instance for config access
+            archive_service: Archive service for archiving artifacts on export
         """
         self._app = app
+        self._archive_service = archive_service
         config = app.config.get("APP_CONFIG", {}) if app else {}
         self._export_filename = get_value(
             config, "brain_reboot", "export_filename", default="brain_reboot.md"
@@ -180,27 +182,27 @@ class BrainRebootService:
                 "Neither a progress summary nor a waypoint has been created for this project yet.",
                 "",
                 "**To get started:**",
-                "- **Progress Summary:** Click the \"Generate\" button in the Headspace panel to create a progress summary from git history",
+                "- **Progress Summary:** Click the \"Generate Progress Summary\" button below to create one from git history",
                 "- **Waypoint:** Use the waypoint editor to define your project's path ahead",
                 "",
             ])
         else:
-            # Progress summary first (FR8)
-            lines.append("## Progress Summary")
-            lines.append("")
-            if has_summary:
-                lines.append(summary_content)
-            else:
-                lines.append("*Progress summary is not yet available. Click \"Generate\" in the Headspace panel to create one from git history.*")
-            lines.append("")
-
-            # Waypoint second
+            # Waypoint first (path ahead context before progress)
             lines.append("## Waypoint (Path Ahead)")
             lines.append("")
             if has_waypoint:
                 lines.append(waypoint_content)
             else:
                 lines.append("*Waypoint is not yet available. Use the waypoint editor to define your project's path ahead.*")
+            lines.append("")
+
+            # Progress summary second
+            lines.append("## Progress Summary")
+            lines.append("")
+            if has_summary:
+                lines.append(summary_content)
+            else:
+                lines.append("*Progress summary is not yet available. Click \"Generate Progress Summary\" below to create one from git history.*")
             lines.append("")
 
         lines.extend([
@@ -216,22 +218,33 @@ class BrainRebootService:
         """
         Export brain reboot content to the target project's filesystem.
 
+        Archives previous brain_reboot and cascades to archive waypoint
+        and progress_summary before writing new content.
+
         Args:
             project: Project model instance with path
             content: Brain reboot markdown content to write
 
         Returns:
-            Dict with success, path, error
+            Dict with success, path, error, archived
         """
         project_path = Path(project.path)
         brain_reboot_dir = project_path / BRAIN_REBOOT_DIR
         export_path = brain_reboot_dir / self._export_filename
+        archived = {}
 
         try:
-            # Create directory structure if missing (FR18)
+            # Create directory structure if missing
             brain_reboot_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write file (FR20: overwrite if exists)
+            # Cascading archive: archive all three artifacts before overwrite
+            if self._archive_service is not None:
+                try:
+                    archived = self._archive_service.archive_cascade(project.path)
+                except Exception as e:
+                    logger.warning(f"Cascade archive failed (non-blocking): {e}")
+
+            # Write file (overwrite if exists)
             export_path.write_text(content, encoding="utf-8")
 
             logger.info(f"Exported brain reboot to {export_path}")
@@ -239,6 +252,7 @@ class BrainRebootService:
                 "success": True,
                 "path": str(export_path),
                 "error": None,
+                "archived": archived,
             }
         except PermissionError as e:
             error_msg = f"Permission denied writing to {export_path}"
@@ -247,6 +261,7 @@ class BrainRebootService:
                 "success": False,
                 "path": str(export_path),
                 "error": error_msg,
+                "archived": archived,
             }
         except OSError as e:
             error_msg = f"Failed to write brain reboot: {e}"
@@ -255,6 +270,7 @@ class BrainRebootService:
                 "success": False,
                 "path": str(export_path),
                 "error": error_msg,
+                "archived": archived,
             }
 
     def get_last_generated(self, project_id: int) -> dict | None:

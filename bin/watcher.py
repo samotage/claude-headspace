@@ -23,7 +23,6 @@ sys.path.insert(0, str(project_root / "src"))
 from claude_headspace.config import (
     get_claude_projects_path,
     get_database_url,
-    get_event_system_config,
     get_file_watcher_config,
     load_config,
 )

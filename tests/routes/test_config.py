@@ -14,11 +14,12 @@ from src.claude_headspace.routes.config import config_bp
 
 
 @pytest.fixture
-def app():
+def app(tmp_path):
     """Create a test Flask application."""
     app = Flask(__name__)
     app.register_blueprint(config_bp)
     app.config["TESTING"] = True
+    app.config["APP_ROOT"] = str(tmp_path)
     return app
 
 
@@ -279,3 +280,52 @@ class TestValidationErrorResponse:
         assert error["section"] == "server"
         assert error["field"] == "port"
         assert error["message"] == "must be an integer"
+
+
+class TestRestartServer:
+    """Tests for POST /api/config/restart."""
+
+    @patch("src.claude_headspace.routes.config.subprocess.Popen")
+    def test_restart_success(self, mock_popen, client, app, tmp_path):
+        """Should launch restart_server.sh and return 200."""
+        # Create the script file so the endpoint finds it
+        script = tmp_path / "restart_server.sh"
+        script.write_text("#!/bin/bash\nexit 0\n")
+        script.chmod(0o755)
+
+        with app.app_context():
+            response = client.post("/api/config/restart")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert "Restart initiated" in data["message"]
+        mock_popen.assert_called_once()
+
+    def test_restart_script_not_found(self, client, app, tmp_path):
+        """Should return 500 when restart_server.sh doesn't exist."""
+        # tmp_path has no script file
+        with app.app_context():
+            response = client.post("/api/config/restart")
+
+        assert response.status_code == 500
+        data = response.get_json()
+        assert data["status"] == "error"
+        assert "not found" in data["message"]
+
+    @patch("src.claude_headspace.routes.config.subprocess.Popen")
+    def test_restart_handles_popen_error(self, mock_popen, client, app, tmp_path):
+        """Should return 500 when Popen raises OSError."""
+        script = tmp_path / "restart_server.sh"
+        script.write_text("#!/bin/bash\nexit 0\n")
+        script.chmod(0o755)
+
+        mock_popen.side_effect = OSError("Permission denied")
+
+        with app.app_context():
+            response = client.post("/api/config/restart")
+
+        assert response.status_code == 500
+        data = response.get_json()
+        assert data["status"] == "error"
+        assert "Permission denied" in data["message"]

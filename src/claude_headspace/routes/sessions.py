@@ -75,17 +75,13 @@ def create_session():
         project_name = project_path.rstrip("/").split("/")[-1]
 
     try:
-        # Find or create project
+        # Find registered project — auto-creation is disabled
         project = Project.query.filter_by(path=project_path).first()
         if project is None:
-            project = Project(
-                name=project_name,
-                path=project_path,
-                current_branch=current_branch,
-            )
-            db.session.add(project)
-            db.session.flush()  # Get project.id
-            logger.info(f"Created new project: {project_name} at {project_path}")
+            return jsonify({
+                "error": f"Project not registered: '{project_path}'. "
+                         f"Register this project at the /projects management page before starting a session.",
+            }), 404
         else:
             # Update branch if provided
             if current_branch:

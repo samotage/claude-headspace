@@ -10,7 +10,7 @@ from claude_headspace.services.event_writer import (
     WriteResult,
     create_event_writer,
 )
-from claude_headspace.services.event_schemas import EventType
+from claude_headspace.services.event_writer import EventType
 
 
 class TestEventWriterMetrics:
@@ -309,7 +309,6 @@ class TestEventWriterRetryLogic:
             call_count[0] += 1
             if call_count[0] < 3:
                 raise OperationalError("statement", {}, Exception("Connection lost"))
-            # Third call succeeds
 
         mock_session.commit.side_effect = mock_commit
 
@@ -319,21 +318,12 @@ class TestEventWriterRetryLogic:
             retry_delay_ms=100,
         )
 
-        # Patch the _write_to_db method to use our mock session behavior
-        original_write = writer._write_to_db
-
-        def patched_write(event):
-            mock_commit()
-            return 123
-
-        writer._write_to_db = patched_write
-
-        # Should succeed after retries
+        # Should succeed after retries (session mock fails twice, succeeds third)
         result = writer.write_event(
             event_type=EventType.SESSION_ENDED,
             payload={"session_uuid": "abc", "reason": "timeout"},
         )
 
         # Verify retries happened with exponential backoff
-        assert mock_sleep.call_count == 2  # Called before 2nd and 3rd attempts
+        assert mock_sleep.call_count == 2
         assert result.success is True

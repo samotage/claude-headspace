@@ -5,7 +5,6 @@ import pytest
 from claude_headspace.models.task import TaskState
 from claude_headspace.models.turn import TurnActor, TurnIntent
 from claude_headspace.services.state_machine import (
-    StateMachine,
     TransitionResult,
     VALID_TRANSITIONS,
     get_valid_transitions_from,
@@ -117,46 +116,6 @@ class TestValidateTransition:
                 assert result.valid is False, f"Unexpected valid transition from COMPLETE: {actor.value}:{intent.value}"
 
 
-class TestStateMachineClass:
-    """Tests for StateMachine class."""
-
-    @pytest.fixture
-    def state_machine(self):
-        """Create a StateMachine instance."""
-        return StateMachine()
-
-    def test_transition_valid(self, state_machine):
-        """Transition method should process valid transitions."""
-        result = state_machine.transition(
-            TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND
-        )
-        assert result.valid is True
-        assert result.to_state == TaskState.COMMANDED
-
-    def test_transition_invalid_logs_warning(self, state_machine, caplog):
-        """Transition method should log warning for invalid transitions."""
-        import logging
-        caplog.set_level(logging.WARNING)
-
-        result = state_machine.transition(
-            TaskState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS
-        )
-        assert result.valid is False
-        assert "Invalid state transition rejected" in caplog.text
-
-    def test_can_transition_valid(self, state_machine):
-        """can_transition should return True for valid transitions."""
-        assert state_machine.can_transition(
-            TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND
-        ) is True
-
-    def test_can_transition_invalid(self, state_machine):
-        """can_transition should return False for invalid transitions."""
-        assert state_machine.can_transition(
-            TaskState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS
-        ) is False
-
-
 class TestGetValidTransitionsFrom:
     """Tests for get_valid_transitions_from function."""
 
@@ -249,24 +208,8 @@ class TestTransitionResultDataclass:
         assert result.trigger is None
 
 
-class TestStateMachineStateless:
-    """Tests to verify stateless/reentrant design."""
-
-    def test_multiple_transitions_same_machine(self):
-        """StateMachine should handle multiple transitions without state."""
-        sm = StateMachine()
-
-        # First transition
-        r1 = sm.transition(TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND)
-        assert r1.to_state == TaskState.COMMANDED
-
-        # Second transition (with different starting state)
-        r2 = sm.transition(TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.QUESTION)
-        assert r2.to_state == TaskState.AWAITING_INPUT
-
-        # First transition again (should produce same result)
-        r3 = sm.transition(TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND)
-        assert r3.to_state == r1.to_state
+class TestValidateTransitionPure:
+    """Tests to verify stateless/pure design."""
 
     def test_validate_transition_is_pure(self):
         """validate_transition should be a pure function."""
