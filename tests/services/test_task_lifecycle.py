@@ -549,6 +549,34 @@ class TestTaskLifecycleManagerUnit:
         assert result.transition.to_state == TaskState.PROCESSING
         assert result.new_task_created is False
 
+    def test_process_turn_user_answer_while_processing_continues_task(self, mock_session, mock_event_writer, mock_agent, mock_task):
+        """User confirmation while PROCESSING should stay PROCESSING (no new task)."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_task.state = TaskState.PROCESSING
+
+        # Mock current task
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_task
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="yes",
+        )
+
+        assert result.success is True
+        assert result.intent.intent == TurnIntent.ANSWER
+        assert result.transition.valid is True
+        assert result.transition.to_state == TaskState.PROCESSING
+        assert result.new_task_created is False
+
     def test_process_turn_creates_turn_with_empty_text_when_none(self, mock_session, mock_event_writer, mock_agent):
         """Turn text should default to empty string when None (hook path)."""
         manager = TaskLifecycleManager(

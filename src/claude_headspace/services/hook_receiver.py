@@ -21,6 +21,10 @@ from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_inst
 
 logger = logging.getLogger(__name__)
 
+# Tools where post_tool_use should NOT resume from AWAITING_INPUT
+# because user interaction happens AFTER the tool completes
+USER_INTERACTIVE_TOOLS = {"ExitPlanMode"}
+
 
 # --- Data types ---
 
@@ -366,7 +370,7 @@ def process_user_prompt_submit(
                     "project_id": agent.project_id,
                     "text": prompt_text,
                     "actor": "user",
-                    "intent": "command",
+                    "intent": result.intent.intent.value if result.intent else "command",
                     "task_id": result.task.id if result.task else None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
@@ -613,6 +617,16 @@ def process_post_tool_use(
             _broadcast_state_change(agent, "post_tool_use", TaskState.PROCESSING.value)
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, inferred PROCESSING task_id={new_task.id}")
             return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=TaskState.PROCESSING.value)
+
+        if current_task.state == TaskState.AWAITING_INPUT and tool_name in USER_INTERACTIVE_TOOLS:
+            # Interactive tools (e.g. ExitPlanMode) fire post_tool_use before the user
+            # sees the dialog, so we must preserve AWAITING_INPUT state
+            db.session.commit()
+            broadcast_card_refresh(agent, "post_tool_use")
+            logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                        f"preserved AWAITING_INPUT for interactive tool {tool_name}")
+            return HookEventResult(success=True, agent_id=agent.id,
+                                   new_state=TaskState.AWAITING_INPUT.value)
 
         if current_task.state == TaskState.AWAITING_INPUT:
             # Resume: user answered

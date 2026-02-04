@@ -933,3 +933,50 @@ class TestProcessPostToolUse:
 
         assert result.success is True
         mock_lifecycle.process_turn.assert_called_once()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_preserves_awaiting_for_exit_plan_mode(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use(ExitPlanMode) should NOT resume from AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = mock_task
+
+        result = process_post_tool_use(mock_agent, "session-123", tool_name="ExitPlanMode")
+
+        assert result.success is True
+        assert result.new_state == TaskState.AWAITING_INPUT.value
+        # Should NOT have called process_turn (no resume)
+        mock_lifecycle.process_turn.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_resumes_for_normal_tools(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use for normal tools should resume from AWAITING_INPUT."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = mock_task
+
+        result_task = MagicMock()
+        result_task.state = TaskState.PROCESSING
+        mock_lifecycle.process_turn.return_value = TurnProcessingResult(
+            success=True, task=result_task,
+        )
+        mock_lifecycle.get_pending_summarisations.return_value = []
+
+        result = process_post_tool_use(mock_agent, "session-123", tool_name="Bash")
+
+        assert result.success is True
+        # Should have called process_turn (resume)
+        mock_lifecycle.process_turn.assert_called_once()

@@ -7,6 +7,7 @@ from claude_headspace.models.turn import TurnActor, TurnIntent
 from unittest.mock import MagicMock
 
 from claude_headspace.services.intent_detector import (
+    BARE_AFFIRMATIVES,
     BLOCKED_PATTERNS,
     COMPLETION_OPENER_PATTERNS,
     COMPLETION_PATTERNS,
@@ -14,12 +15,14 @@ from claude_headspace.services.intent_detector import (
     END_OF_TASK_HANDOFF_PATTERNS,
     END_OF_TASK_SOFT_CLOSE_PATTERNS,
     END_OF_TASK_SUMMARY_PATTERNS,
+    PLAN_APPROVAL_PATTERN,
     QUESTION_PATTERNS,
     IntentResult,
     _detect_completion_opener,
     _detect_end_of_task,
     _extract_tail,
     _infer_completion_classification,
+    _is_confirmation,
     _strip_code_blocks,
     detect_agent_intent,
     detect_intent,
@@ -181,9 +184,15 @@ class TestDetectUserIntent:
         assert result.confidence == 1.0
 
     def test_user_command_from_processing(self):
-        """User turn from PROCESSING state should be COMMAND (interruption)."""
+        """Substantive user turn from PROCESSING state should be COMMAND (interruption)."""
         result = detect_user_intent("Stop that, do this instead.", TaskState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
+
+    def test_user_confirmation_from_processing(self):
+        """Confirmation during PROCESSING should be ANSWER (not a new command)."""
+        result = detect_user_intent("Yes", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.ANSWER
+        assert result.confidence == 0.9
 
     def test_user_command_from_commanded(self):
         """User turn from COMMANDED state should be COMMAND."""
@@ -1474,3 +1483,102 @@ class TestBlockedPatternFalsePositives:
         )
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.COMPLETION
+
+
+class TestConfirmationDetection:
+    """Tests for _is_confirmation helper and confirmation detection in detect_user_intent."""
+
+    # _is_confirmation unit tests
+
+    def test_bare_affirmative_yes(self):
+        """'yes' should be detected as confirmation."""
+        assert _is_confirmation("yes") is True
+
+    def test_bare_affirmative_y(self):
+        """'y' should be detected as confirmation."""
+        assert _is_confirmation("y") is True
+
+    def test_bare_affirmative_ok(self):
+        """'ok' should be detected as confirmation."""
+        assert _is_confirmation("ok") is True
+
+    def test_bare_affirmative_sure(self):
+        """'sure' should be detected as confirmation."""
+        assert _is_confirmation("sure") is True
+
+    def test_bare_affirmative_go_ahead(self):
+        """'go ahead' should be detected as confirmation."""
+        assert _is_confirmation("go ahead") is True
+
+    def test_bare_affirmative_lgtm(self):
+        """'LGTM' should be detected as confirmation (case insensitive)."""
+        assert _is_confirmation("LGTM") is True
+
+    def test_bare_affirmative_with_period(self):
+        """'Yes.' should be detected as confirmation (trailing punctuation stripped)."""
+        assert _is_confirmation("Yes.") is True
+
+    def test_bare_affirmative_with_exclamation(self):
+        """'OK!' should be detected as confirmation."""
+        assert _is_confirmation("OK!") is True
+
+    def test_plan_approval_clear_context(self):
+        """Plan approval 'Yes, clear context and auto-accept edits' should be confirmation."""
+        assert _is_confirmation("Yes, clear context and auto-accept edits") is True
+
+    def test_plan_approval_manually_approve(self):
+        """Plan approval 'Yes, manually approve each edit' should be confirmation."""
+        assert _is_confirmation("Yes, manually approve each edit") is True
+
+    def test_substantive_command_not_confirmation(self):
+        """'Fix the bug' should NOT be confirmation."""
+        assert _is_confirmation("Fix the bug") is False
+
+    def test_stop_command_not_confirmation(self):
+        """'Stop that, do this instead' should NOT be confirmation."""
+        assert _is_confirmation("Stop that, do this instead") is False
+
+    def test_empty_text_not_confirmation(self):
+        """Empty string should NOT be confirmation."""
+        assert _is_confirmation("") is False
+
+    # detect_user_intent integration tests
+
+    def test_yes_during_processing_is_answer(self):
+        """'yes' during PROCESSING should be ANSWER."""
+        result = detect_user_intent("yes", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.ANSWER
+        assert result.confidence == 0.9
+        assert result.matched_pattern == "confirmation"
+
+    def test_plan_approval_during_processing_is_answer(self):
+        """Plan approval text during PROCESSING should be ANSWER."""
+        result = detect_user_intent(
+            "Yes, clear context and auto-accept edits", TaskState.PROCESSING
+        )
+        assert result.intent == TurnIntent.ANSWER
+
+    def test_substantive_command_during_processing_is_command(self):
+        """'Fix the bug' during PROCESSING should still be COMMAND."""
+        result = detect_user_intent("Fix the bug in login", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_confirmation_during_idle_is_command(self):
+        """'yes' during IDLE should be COMMAND (confirmation only applies during PROCESSING)."""
+        result = detect_user_intent("yes", TaskState.IDLE)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_confirmation_during_complete_is_command(self):
+        """'yes' during COMPLETE should be COMMAND."""
+        result = detect_user_intent("yes", TaskState.COMPLETE)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_none_text_during_processing_is_command(self):
+        """None text during PROCESSING should be COMMAND (not matched as confirmation)."""
+        result = detect_user_intent(None, TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_empty_text_during_processing_is_command(self):
+        """Empty text during PROCESSING should be COMMAND."""
+        result = detect_user_intent("", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND

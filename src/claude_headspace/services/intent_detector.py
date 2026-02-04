@@ -147,6 +147,29 @@ CONTINUATION_PATTERNS = [
     r"(?i)(?:working on|starting|beginning|in progress)",
 ]
 
+# Bare affirmative words/phrases that indicate user confirmation, not a new command
+BARE_AFFIRMATIVES = {
+    "yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure",
+    "go ahead", "proceed", "continue", "do it", "go for it",
+    "sounds good", "looks good", "lgtm", "approved", "accept",
+}
+
+# Plan approval dialog responses from Claude Code
+PLAN_APPROVAL_PATTERN = re.compile(
+    r"^yes[,.]?\s*(?:clear context|auto[- ]?accept|manually approve)",
+    re.IGNORECASE,
+)
+
+
+def _is_confirmation(text: str) -> bool:
+    """Check if text is a confirmation/approval rather than a new command."""
+    normalized = text.strip().rstrip(".!").lower()
+    if normalized in BARE_AFFIRMATIVES:
+        return True
+    if PLAN_APPROVAL_PATTERN.search(text.strip()):
+        return True
+    return False
+
 
 @dataclass
 class IntentResult:
@@ -420,9 +443,6 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
     Returns:
         IntentResult with detected intent and confidence
     """
-    # User intent is determined by current state, not text content
-    # (In Epic 3, we might analyze text for more nuanced detection)
-
     if current_state == TaskState.AWAITING_INPUT:
         # User is answering a question
         logger.debug("User responding while AWAITING_INPUT -> ANSWER intent")
@@ -430,6 +450,15 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
             intent=TurnIntent.ANSWER,
             confidence=1.0,
             matched_pattern=None,
+        )
+
+    # Detect confirmations/approvals while PROCESSING (e.g. plan approval responses)
+    if current_state == TaskState.PROCESSING and text and _is_confirmation(text):
+        logger.debug("User confirmation while PROCESSING -> ANSWER intent")
+        return IntentResult(
+            intent=TurnIntent.ANSWER,
+            confidence=0.9,
+            matched_pattern="confirmation",
         )
 
     # User is giving a command (new task or continuation)
