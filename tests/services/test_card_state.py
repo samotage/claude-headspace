@@ -59,7 +59,8 @@ class TestBuildCardState:
         result = build_card_state(agent)
 
         expected_keys = {
-            "id", "session_uuid", "is_active", "uptime", "last_seen",
+            "id", "session_uuid", "hero_chars", "hero_trail",
+            "is_active", "uptime", "last_seen",
             "state", "state_info", "task_summary", "task_instruction",
             "task_completion_summary", "priority", "priority_reason",
             "project_name", "project_id",

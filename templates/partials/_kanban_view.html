@@ -1,0 +1,69 @@
+<!-- Kanban View: Tasks grouped by lifecycle state -->
+{% for kproject in kanban_data %}
+<section class="mb-8" data-project-id="{{ kproject.id }}">
+    <!-- Project header -->
+    <div class="flex items-center gap-3 mb-3">
+        <h2 class="text-primary font-semibold font-display text-lg">{{ kproject.name }}</h2>
+        {% if kproject.staleness and kproject.staleness.tier == 'stale' %}
+            <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
+        {% elif kproject.staleness and kproject.staleness.tier == 'aging' %}
+            <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-amber/20 text-amber">Aging</span>
+        {% endif %}
+    </div>
+
+    <!-- State columns -->
+    <div class="kanban-columns">
+        {% set column_meta = {
+            'IDLE': {'label': 'Idle', 'color': 'text-muted', 'border': 'border-border'},
+            'COMMANDED': {'label': 'Commanded', 'color': 'text-amber', 'border': 'border-amber/30'},
+            'PROCESSING': {'label': 'Processing', 'color': 'text-blue', 'border': 'border-blue/30'},
+            'AWAITING_INPUT': {'label': 'Input Needed', 'color': 'text-amber', 'border': 'border-amber/30'},
+            'COMPLETE': {'label': 'Complete', 'color': 'text-green', 'border': 'border-green/30'}
+        } %}
+
+        {% for col_name in ['IDLE', 'COMMANDED', 'PROCESSING', 'AWAITING_INPUT', 'COMPLETE'] %}
+        {% set meta = column_meta[col_name] %}
+        <div class="kanban-column" data-kanban-state="{{ col_name }}">
+            <!-- Column header -->
+            <div class="kanban-column-header {{ meta.border }}">
+                <span class="kanban-column-title {{ meta.color }}">{{ meta.label }}</span>
+                <span class="kanban-column-count text-muted">({{ kproject.columns[col_name]|length }})</span>
+            </div>
+
+            <!-- Column body -->
+            <div class="kanban-column-body {% if col_name == 'COMPLETE' %}kanban-complete-scroll{% endif %}">
+                {% for item in kproject.columns[col_name] %}
+                    {% if item.type == 'agent' %}
+                        {# Full agent card for idle agents #}
+                        {% set agent = item.agent %}
+                        {% include "partials/_agent_card.html" %}
+                    {% elif item.type == 'task' %}
+                        {# Task card for active tasks #}
+                        {% include "partials/_kanban_task_card.html" %}
+                    {% elif item.type == 'completed_task' %}
+                        {# Collapsed accordion for completed tasks #}
+                        <details class="kanban-completed-task bg-elevated rounded border border-green/20">
+                            <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-hover transition-colors">
+                                <span class="text-xs text-muted">&#9654;</span>
+                                <span class="flex items-baseline gap-0.5">
+                                    <span class="agent-hero text-sm">{{ item.agent.hero_chars }}</span><span class="agent-hero-trail">{{ item.agent.hero_trail }}</span>
+                                </span>
+                                <span class="text-green text-xs italic truncate flex-1">{{ item.completion_summary }}</span>
+                            </summary>
+                            <div class="px-3 py-2 border-t border-green/10">
+                                <p class="text-muted text-xs mb-1">{{ item.instruction }}</p>
+                                <p class="text-green text-sm">{{ item.completion_summary }}</p>
+                            </div>
+                        </details>
+                    {% endif %}
+                {% else %}
+                    {% if col_name != 'COMPLETE' %}
+                    <p class="text-muted text-xs italic px-2">No {{ meta.label|lower }} tasks</p>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}

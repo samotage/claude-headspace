@@ -102,6 +102,10 @@
         // Handle commander availability changes (Input Bridge)
         client.on('commander_availability', handleCommanderAvailability);
 
+        // Handle activity bar updates on turn events
+        client.on('turn_detected', handleActivityBarUpdate);
+        client.on('turn_created', handleActivityBarUpdate);
+
         // DEBUG: Wildcard handler to see ALL events
         client.on('*', function(data, eventType) {
             console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
@@ -450,7 +454,13 @@
 
         var stateInfo = data.state_info || STATE_INFO[state] || STATE_INFO['IDLE'];
 
-        // Line 01: status badge, last-seen, uptime
+        // Line 01: hero identity, status badge, last-seen, uptime
+        if (data.hero_chars) {
+            var heroEl = card.querySelector('.agent-hero');
+            if (heroEl) heroEl.textContent = data.hero_chars;
+            var trailEl = card.querySelector('.agent-hero-trail');
+            if (trailEl) trailEl.textContent = data.hero_trail || '';
+        }
         var statusBadge = card.querySelector('.status-badge');
         if (statusBadge) {
             if (data.is_active) {
@@ -723,6 +733,71 @@
             textEl.classList.add('text-xs', 'whitespace-nowrap');
             textEl.classList.add(state === 'TIMED_OUT' ? 'text-red' : (state === 'AWAITING_INPUT' ? 'text-amber' : 'text-secondary'));
         }
+    }
+
+    /**
+     * Handle activity bar updates when turns are detected.
+     * Fetches fresh metrics from /api/metrics/overall.
+     */
+    var _activityBarDebounce = null;
+    function handleActivityBarUpdate(data, eventType) {
+        // Debounce: only fetch once per 2 seconds
+        if (_activityBarDebounce) return;
+        _activityBarDebounce = setTimeout(function() { _activityBarDebounce = null; }, 2000);
+
+        var bar = document.getElementById('dashboard-activity-bar');
+        if (!bar) return;
+
+        fetch('/api/metrics/overall')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data.current) return;
+                var c = data.current;
+
+                var turnsEl = document.getElementById('activity-bar-turns');
+                if (turnsEl) turnsEl.textContent = c.turn_count || 0;
+
+                var rateEl = document.getElementById('activity-bar-rate');
+                if (rateEl) rateEl.textContent = c.turn_count || '--';
+
+                var avgEl = document.getElementById('activity-bar-avg-time');
+                if (avgEl) avgEl.textContent = c.avg_turn_time_seconds != null ? c.avg_turn_time_seconds.toFixed(1) + 's' : '--';
+
+                var agentsEl = document.getElementById('activity-bar-agents');
+                if (agentsEl) agentsEl.textContent = c.active_agents || 0;
+
+                var frustEl = document.getElementById('activity-bar-frustration');
+                if (frustEl) {
+                    var frustVal = c.frustration_avg;
+                    frustEl.textContent = frustVal != null ? frustVal.toFixed(1) : '--';
+                    frustEl.className = 'activity-bar-value';
+                    if (frustVal != null) {
+                        if (frustVal >= 7) frustEl.classList.add('text-red');
+                        else if (frustVal >= 4) frustEl.classList.add('text-amber');
+                        else frustEl.classList.add('text-green');
+                    }
+                }
+            })
+            .catch(function(err) {
+                console.warn('Activity bar update failed:', err);
+            });
+
+        // Also fetch immediate frustration from headspace
+        fetch('/api/headspace/current')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data.enabled || !data.current) return;
+                var frustEl = document.getElementById('activity-bar-frustration');
+                if (frustEl && data.current.frustration_rolling_10 != null) {
+                    var val = data.current.frustration_rolling_10;
+                    frustEl.textContent = val.toFixed(1);
+                    frustEl.className = 'activity-bar-value';
+                    if (val >= 7) frustEl.classList.add('text-red');
+                    else if (val >= 4) frustEl.classList.add('text-amber');
+                    else frustEl.classList.add('text-green');
+                }
+            })
+            .catch(function() {});
     }
 
     /**

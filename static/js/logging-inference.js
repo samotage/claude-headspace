@@ -277,7 +277,8 @@
           var option = document.createElement("option");
           option.value = agent.id;
           var prefix = agent.is_active ? "\u25CF " : "";
-          option.textContent = prefix + "#" + agent.session_uuid.substring(0, 8);
+          var uuid8 = agent.session_uuid.substring(0, 8);
+          option.textContent = prefix + uuid8.substring(0, 2) + " - " + uuid8;
           this.agentFilter.appendChild(option);
         }.bind(this));
         this.agentFilter.value = currentValue;
@@ -458,9 +459,19 @@
       // Agent
       var agentCell = document.createElement("td");
       agentCell.className = "px-4 py-3 text-sm text-secondary font-mono";
-      agentCell.textContent = call.agent_session
-        ? "#" + call.agent_session.substring(0, 8)
-        : "-";
+      if (call.agent_session) {
+        var uuid8 = call.agent_session.substring(0, 8);
+        var heroSpan = document.createElement("span");
+        heroSpan.className = "agent-hero";
+        heroSpan.textContent = uuid8.substring(0, 2);
+        var trailSpan = document.createElement("span");
+        trailSpan.className = "agent-hero-trail";
+        trailSpan.textContent = uuid8.substring(2);
+        agentCell.appendChild(heroSpan);
+        agentCell.appendChild(trailSpan);
+      } else {
+        agentCell.textContent = "-";
+      }
       row.appendChild(agentCell);
 
       // Level
@@ -777,7 +788,10 @@
       metaDiv.className = "text-sm text-muted";
       var parts = [];
       if (call.project_name) parts.push("Project: " + call.project_name);
-      if (call.agent_session) parts.push("Agent: #" + call.agent_session.substring(0, 8));
+      if (call.agent_session) {
+        var uuid8m = call.agent_session.substring(0, 8);
+        parts.push("Agent: " + uuid8m.substring(0, 2) + " - " + uuid8m);
+      }
       else if (call.agent_id) parts.push("Agent ID: " + call.agent_id);
       if (parts.length > 0) {
         metaDiv.textContent = parts.join(" | ");

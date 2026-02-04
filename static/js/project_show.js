@@ -245,7 +245,7 @@
             agents.forEach(function(agent) {
                 var isEnded = !!agent.ended_at;
                 var stateValue = agent.state || 'idle';
-                var sessionLabel = agent.session_uuid ? agent.session_uuid.substring(0, 8) : 'Agent ' + agent.id;
+                var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
                 var agentId = agent.id;
 
                 var rowClass = isEnded ? 'opacity-50' : '';
@@ -255,7 +255,11 @@
                 html += '<div class="flex items-center gap-3 p-3 bg-surface rounded border border-border cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentTasks(' + agentId + ')">';
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '">&#9654;</span>';
                 html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
-                html += '<span class="text-sm font-mono text-secondary">' + ProjectShow._escapeHtml(sessionLabel) + '</span>';
+                if (uuid8) {
+                    html += '<span class="flex items-baseline gap-0.5"><span class="agent-hero">' + ProjectShow._escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ProjectShow._escapeHtml(uuid8.substring(2)) + '</span></span>';
+                } else {
+                    html += '<span class="text-sm font-mono text-secondary">Agent ' + agent.id + '</span>';
+                }
                 if (agent.priority_score != null) {
                     html += '<span class="text-xs text-muted">P:' + agent.priority_score + '</span>';
                 }

@@ -366,9 +366,12 @@ def build_card_state(agent: Agent) -> dict:
     effective_state = get_effective_state(agent)
     state_name = effective_state if isinstance(effective_state, str) else effective_state.name
 
+    truncated_uuid = str(agent.session_uuid)[:8]
     return {
         "id": agent.id,
-        "session_uuid": str(agent.session_uuid)[:8],
+        "session_uuid": truncated_uuid,
+        "hero_chars": truncated_uuid[:2],
+        "hero_trail": truncated_uuid[2:],
         "is_active": is_agent_active(agent),
         "uptime": format_uptime(agent.started_at),
         "last_seen": format_last_seen(agent.last_seen_at),

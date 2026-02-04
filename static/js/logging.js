@@ -226,7 +226,8 @@
           const option = document.createElement("option");
           option.value = agent.id;
           const prefix = agent.is_active ? "\u25CF " : "";
-          option.textContent = prefix + "#" + agent.session_uuid.substring(0, 8);
+          const uuid8 = agent.session_uuid.substring(0, 8);
+          option.textContent = prefix + uuid8.substring(0, 2) + " - " + uuid8;
           this.agentFilter.appendChild(option);
         });
         this.agentFilter.value = currentValue;
@@ -410,9 +411,19 @@
       // Agent
       const agentCell = document.createElement("td");
       agentCell.className = "px-4 py-3 text-sm text-secondary font-mono";
-      agentCell.textContent = event.agent_session
-        ? "#" + event.agent_session.substring(0, 8)
-        : "-";
+      if (event.agent_session) {
+        const uuid8 = event.agent_session.substring(0, 8);
+        const heroSpan = document.createElement("span");
+        heroSpan.className = "agent-hero";
+        heroSpan.textContent = uuid8.substring(0, 2);
+        const trailSpan = document.createElement("span");
+        trailSpan.className = "agent-hero-trail";
+        trailSpan.textContent = uuid8.substring(2);
+        agentCell.appendChild(heroSpan);
+        agentCell.appendChild(trailSpan);
+      } else {
+        agentCell.textContent = "-";
+      }
       row.appendChild(agentCell);
 
       // Event Type
