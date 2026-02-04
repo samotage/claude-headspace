@@ -24,7 +24,7 @@
 
         <!-- Agent info row -->
         <div class="flex flex-wrap items-center gap-2 md:gap-4 mb-2">
-            <span class="text-primary font-mono text-sm truncate max-w-[160px] sm:max-w-none">#{{ recommended_next.session_uuid }}</span>
+            <span class="flex items-baseline gap-0.5"><span class="agent-hero">{{ recommended_next.hero_chars }}</span><span class="agent-hero-trail">{{ recommended_next.hero_trail }}</span></span>
             <span class="text-secondary text-sm">{{ recommended_next.project_name }}</span>
 
             <!-- State indicator -->

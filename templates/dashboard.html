@@ -7,6 +7,9 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
+        <!-- Activity Metrics Bar -->
+        {% include "partials/_activity_bar.html" %}
+
         <!-- Objective Banner -->
         {% include "partials/_objective_banner.html" %}
 
@@ -17,7 +20,17 @@
         {% include "partials/_sort_controls.html" %}
 
         <!-- Content based on sort mode -->
-        {% if sort_mode == 'priority' %}
+        {% if sort_mode == 'kanban' %}
+            <!-- Kanban View: Tasks by lifecycle state -->
+            {% if kanban_data %}
+                {% include "partials/_kanban_view.html" %}
+            {% else %}
+                <div class="text-center py-12">
+                    <p class="text-secondary text-lg">No agents found.</p>
+                    <p class="text-muted mt-2">Start a Claude Code session to see agents here.</p>
+                </div>
+            {% endif %}
+        {% elif sort_mode == 'priority' %}
             <!-- By Priority View: Flat list of agents -->
             {% if priority_sorted_agents %}
                 <div class="space-y-4" id="priority-view">
@@ -32,6 +45,13 @@
                               <span class="line-num">01</span>
                               <div class="line-content flex items-center justify-between">
                                 <div class="flex flex-wrap items-center gap-2">
+                                  <h3 id="agent-{{ agent.id }}-heading" class="flex items-baseline gap-0.5">
+                                    <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
+                                  </h3>
+                                  <span class="text-muted text-sm hidden sm:inline">{{ agent.project_name }}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                  <span class="uptime text-muted text-xs hidden sm:inline">{{ agent.uptime }}</span>
                                   {% if agent.is_active %}
                                     <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
                                           role="status">ACTIVE</span>
@@ -39,9 +59,6 @@
                                     <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
                                           role="status">IDLE</span>
                                   {% endif %}
-                                  <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono truncate max-w-[140px] sm:max-w-none">#{{ agent.session_uuid }}</h3>
-                                  <span class="text-muted text-sm hidden sm:inline">{{ agent.project_name }}</span>
-                                  <span class="uptime text-muted text-xs hidden sm:inline">up {{ agent.uptime }}</span>
                                 </div>
                               </div>
                             </div>

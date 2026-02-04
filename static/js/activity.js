@@ -610,7 +610,7 @@
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
-                        '<div class="metric-card-label">Frustration</div></div></div>';
+                        '<div class="metric-card-label">Frustration (Imm.)</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
@@ -624,11 +624,14 @@
                     html += '<div class="space-y-2 mt-2">';
                     r.agents.forEach(function(ad) {
                         var agentHistory = ad.metrics.history || [];
-                        var agentLabel = ad.agent.session_uuid
+                        var agentUuid8 = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
+                            : '';
+                        var agentHeroHtml = agentUuid8
+                            ? '<span class="agent-hero">' + ActivityPage._escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ActivityPage._escapeHtml(agentUuid8.substring(2)) + '</span>'
                             : 'Agent ' + ad.agent.id;
                         html += '<div class="agent-metric-row">' +
-                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
+                            '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);

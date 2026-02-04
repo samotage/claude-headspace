@@ -224,6 +224,167 @@ def count_active_agents(agents: list[Agent]) -> int:
     return sum(1 for agent in agents if is_agent_active(agent))
 
 
+def _prepare_kanban_data(
+    projects: list, project_data: list, priority_enabled: bool
+) -> list:
+    """Prepare Kanban board data grouped by project and task state.
+
+    Each project gets columns for each task lifecycle state.
+    Idle agents (no active task) go in the IDLE column.
+    Agents with active tasks go in the column matching the task state.
+    Completed tasks appear in the COMPLETE column.
+
+    Args:
+        projects: List of Project model instances
+        project_data: List of project data dicts (with agents)
+        priority_enabled: Whether priority ordering is enabled
+
+    Returns:
+        List of dicts, each with project info and state columns
+    """
+    columns = ["IDLE", "COMMANDED", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
+    kanban_projects = []
+
+    for proj_data in project_data:
+        if not proj_data["agents"]:
+            continue
+
+        # Find matching Project model
+        project_model = None
+        for p in projects:
+            if p.id == proj_data["id"]:
+                project_model = p
+                break
+
+        state_columns = {col: [] for col in columns}
+
+        if project_model:
+            # Get live agents for this project
+            live_agents = [a for a in project_model.agents if a.ended_at is None]
+
+            for agent in live_agents:
+                # Find the agent data dict
+                agent_data = None
+                for ad in proj_data["agents"]:
+                    if ad["id"] == agent.id:
+                        agent_data = ad
+                        break
+                if not agent_data:
+                    continue
+
+                current_task = agent.get_current_task()
+                effective_state = get_effective_state(agent)
+                state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+
+                if current_task is None or state_name in ("IDLE", "COMPLETE"):
+                    # Agent is idle or completed - goes in IDLE column with full card
+                    state_columns["IDLE"].append({
+                        "type": "agent",
+                        "agent": agent_data,
+                    })
+                else:
+                    # Agent has active task - goes in the state's column
+                    state_columns[state_name].append({
+                        "type": "task",
+                        "agent": agent_data,
+                        "task_instruction": agent_data.get("task_instruction"),
+                        "task_summary": agent_data.get("task_summary"),
+                        "state": state_name,
+                    })
+
+                # Add completed tasks to COMPLETE column
+                if agent.tasks:
+                    for task in agent.tasks:
+                        if task.state == TaskState.COMPLETE:
+                            completion_summary = task.completion_summary
+                            if not completion_summary and task.turns:
+                                last_turn = task.turns[-1]
+                                completion_summary = last_turn.summary or (
+                                    last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
+                                )
+                            state_columns["COMPLETE"].append({
+                                "type": "completed_task",
+                                "agent": agent_data,
+                                "task_id": task.id,
+                                "completion_summary": completion_summary or "Completed",
+                                "instruction": task.instruction or "Task",
+                                "completed_at": task.completed_at,
+                            })
+
+        # Apply priority ordering within columns
+        if priority_enabled:
+            for col in columns:
+                state_columns[col].sort(
+                    key=lambda x: -(x["agent"].get("priority", 50) or 50)
+                )
+
+        kanban_projects.append({
+            "id": proj_data["id"],
+            "name": proj_data["name"],
+            "slug": proj_data["slug"],
+            "columns": state_columns,
+            "staleness": proj_data.get("staleness"),
+        })
+
+    return kanban_projects
+
+
+def _get_dashboard_activity_metrics() -> dict | None:
+    """Fetch overall activity metrics for the dashboard activity bar.
+
+    Returns the most recent overall ActivityMetric or None.
+    Also includes immediate frustration from HeadspaceMonitor.
+    """
+    from ..models.activity_metric import ActivityMetric
+    from ..models.headspace_snapshot import HeadspaceSnapshot
+
+    try:
+        # Get the most recent overall metric
+        latest = (
+            db.session.query(ActivityMetric)
+            .filter(ActivityMetric.is_overall == True)
+            .order_by(ActivityMetric.bucket_start.desc())
+            .first()
+        )
+
+        if not latest:
+            return None
+
+        # Calculate frustration average from the metric
+        frustration_avg = None
+        if latest.total_frustration and latest.frustration_turn_count and latest.frustration_turn_count > 0:
+            frustration_avg = round(latest.total_frustration / latest.frustration_turn_count, 1)
+
+        # Try to get immediate frustration (last 10 turns) from headspace
+        immediate_frustration = None
+        try:
+            latest_snapshot = (
+                db.session.query(HeadspaceSnapshot)
+                .order_by(HeadspaceSnapshot.created_at.desc())
+                .first()
+            )
+            if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
+                immediate_frustration = round(latest_snapshot.frustration_rolling_10, 1)
+        except Exception:
+            pass
+
+        # Calculate turn rate
+        turn_rate = None
+        if latest.turn_count:
+            # Bucket is hourly, so turn_count is turns in that hour
+            turn_rate = latest.turn_count
+
+        return {
+            "total_turns": latest.turn_count or 0,
+            "turn_rate": turn_rate,
+            "avg_turn_time": round(latest.avg_turn_time_seconds, 1) if latest.avg_turn_time_seconds else None,
+            "active_agents": latest.active_agents or 0,
+            "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
+        }
+    except Exception:
+        return None
+
+
 @dashboard_bp.route("/")
 @dashboard_bp.route("/dashboard")
 def dashboard():
@@ -236,10 +397,10 @@ def dashboard():
     Returns:
         Rendered dashboard template
     """
-    # Get sort mode from query parameter (default to 'project')
-    sort_mode = request.args.get("sort", "project")
-    if sort_mode not in ("project", "priority"):
-        sort_mode = "project"
+    # Get sort mode from query parameter (default to 'kanban')
+    sort_mode = request.args.get("sort", "kanban")
+    if sort_mode not in ("kanban", "project", "priority"):
+        sort_mode = "kanban"
 
     # Query all projects with eager-loaded relationships
     projects = (
@@ -280,9 +441,12 @@ def dashboard():
             effective_state = get_effective_state(agent)
             # state_name: string for templates (handles both TaskState enum and TIMED_OUT string)
             state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+            truncated_uuid = str(agent.session_uuid)[:8]
             agent_dict = {
                 "id": agent.id,
-                "session_uuid": str(agent.session_uuid)[:8],
+                "session_uuid": truncated_uuid,
+                "hero_chars": truncated_uuid[:2],
+                "hero_trail": truncated_uuid[2:],
                 "is_active": is_agent_active(agent),
                 "uptime": format_uptime(agent.started_at),
                 "last_seen": format_last_seen(agent.last_seen_at),
@@ -341,6 +505,16 @@ def dashboard():
         for project in projects_with_agents:
             project["agents"] = sort_agents_by_priority(project["agents"])
 
+    # Prepare Kanban data (group by task lifecycle state per project)
+    kanban_data = []
+    if sort_mode == "kanban":
+        kanban_data = _prepare_kanban_data(
+            projects, project_data, objective and objective.priority_enabled
+        )
+
+    # Fetch overall activity metrics for the activity bar
+    activity_metrics = _get_dashboard_activity_metrics()
+
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
@@ -349,4 +523,6 @@ def dashboard():
         sort_mode=sort_mode,
         priority_sorted_agents=priority_sorted_agents,
         objective=objective,
+        kanban_data=kanban_data,
+        activity_metrics=activity_metrics,
     )
