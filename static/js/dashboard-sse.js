@@ -189,12 +189,21 @@
             return null;
         }
 
-        // Reload page on reconnect to catch up on missed events
+        // Reload page on reconnect to catch up on missed events.
+        // Track whether we've been connected before so we only reload
+        // on RE-connections (not the initial page-load connection).
+        // The old check (oldState === 'reconnecting') never matched because
+        // state transitions go RECONNECTING → CONNECTING → CONNECTED,
+        // so oldState was always 'connecting' when reaching 'connected'.
+        var hasBeenConnected = false;
         client.onStateChange(function(newState, oldState) {
             console.log('SSE state:', oldState, '->', newState);
-            if (newState === 'connected' && oldState === 'reconnecting') {
-                console.log('SSE reconnected after drop — reloading to sync state');
-                safeDashboardReload();
+            if (newState === 'connected') {
+                if (hasBeenConnected) {
+                    console.log('SSE reconnected after drop — reloading to sync state');
+                    safeDashboardReload();
+                }
+                hasBeenConnected = true;
             }
         });
 
