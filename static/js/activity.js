@@ -98,6 +98,12 @@
             this._updateNav();
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+            if (HEADSPACE_ENABLED) {
+                if (windowOffset === 0) {
+                    this._initFrustrationWidget();
+                }
+                // Historical frustration is updated inside loadOverallMetrics callback
+            }
         },
 
         /**
@@ -245,6 +251,9 @@
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
+                        if (HEADSPACE_ENABLED && windowOffset !== 0) {
+                            ActivityPage._updateFrustrationFromHistory([]);
+                        }
                         return;
                     }
 
@@ -266,6 +275,10 @@
                         data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
 
                     ActivityPage._renderChart(data.history);
+
+                    if (HEADSPACE_ENABLED && windowOffset !== 0) {
+                        ActivityPage._updateFrustrationFromHistory(data.history);
+                    }
                 });
         },
 
@@ -704,10 +717,70 @@
                 .then(function(data) {
                     if (!data.enabled || !data.current) return;
                     ActivityPage._updateWidgetValues(data.current);
+                    // Restore live labels
+                    ActivityPage._setLabel('frust-peak-today-label', 'Max Today');
+                    ActivityPage._setLabel('frust-peak-today-sublabel', 'Peak score');
+                    ActivityPage._setLabel('frust-immediate-label', 'Immediate');
+                    ActivityPage._setLabel('frust-immediate-sublabel', 'Last 10 turns');
+                    ActivityPage._setLabel('frust-shortterm-label', 'Short-term');
+                    ActivityPage._setLabel('frust-shortterm-sublabel', 'Last 30 min');
+                    ActivityPage._setLabel('frust-session-label', 'Session');
+                    ActivityPage._setLabel('frust-session-sublabel', 'Last ' + (data.current.session_window_minutes || 180) + ' min');
                 })
                 .catch(function(err) {
                     console.error('Failed to load headspace state:', err);
                 });
+        },
+
+        _updateFrustrationFromHistory: function(history) {
+            if (!history || history.length === 0) {
+                // No data — show dashes for all
+                this._setIndicator('frust-peak-today-value', null);
+                this._setIndicator('frust-immediate-value', null);
+                this._setIndicator('frust-shortterm-value', null);
+                this._setIndicator('frust-session-value', null);
+                this._setLabel('frust-peak-today-label', 'Peak');
+                this._setLabel('frust-peak-today-sublabel', 'No data');
+                this._setLabel('frust-immediate-label', 'Average');
+                this._setLabel('frust-immediate-sublabel', 'No data');
+                this._setLabel('frust-shortterm-label', 'Short-term');
+                this._setLabel('frust-shortterm-sublabel', 'N/A (historical)');
+                this._setLabel('frust-session-label', 'Session');
+                this._setLabel('frust-session-sublabel', 'N/A (historical)');
+                return;
+            }
+
+            // Peak: max of all bucket max_frustration values
+            var peak = null;
+            history.forEach(function(h) {
+                if (h.max_frustration != null) {
+                    peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                }
+            });
+
+            // Average: total_frustration / frustration_turn_count across all buckets
+            var avg = this._computeFrustrationAvg(history);
+
+            // Update values
+            this._setIndicator('frust-peak-today-value', peak);
+            this._setIndicator('frust-immediate-value', avg);
+            this._setIndicator('frust-shortterm-value', null);
+            this._setIndicator('frust-session-value', null);
+
+            // Update labels for historical view
+            this._setLabel('frust-peak-today-label', 'Peak');
+            this._setLabel('frust-peak-today-sublabel', 'Max in period');
+            this._setLabel('frust-immediate-label', 'Average');
+            this._setLabel('frust-immediate-sublabel', 'Period average');
+            this._setLabel('frust-shortterm-label', 'Short-term');
+            this._setLabel('frust-shortterm-sublabel', 'N/A (historical)');
+            this._setLabel('frust-session-label', 'Session');
+            this._setLabel('frust-session-sublabel', 'N/A (historical)');
+        },
+
+        _setLabel: function(elementId, text) {
+            var el = document.getElementById(elementId);
+            if (el) el.textContent = text;
         },
 
         /**
@@ -747,7 +820,10 @@
 
             if (HEADSPACE_ENABLED) {
                 client.on('headspace_update', function(data) {
-                    ActivityPage._updateWidgetValues(data);
+                    // Only update frustration widget from SSE when viewing current period
+                    if (windowOffset === 0) {
+                        ActivityPage._updateWidgetValues(data);
+                    }
                 });
             }
         },

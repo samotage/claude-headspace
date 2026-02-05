@@ -71,26 +71,26 @@
                 <div class="frustration-indicator" id="frust-peak-today"
                      title="Highest single frustration score from any turn today">
                     <div class="frustration-indicator-value text-muted" id="frust-peak-today-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Max Today</div>
-                    <div class="frustration-indicator-sublabel">Peak score</div>
+                    <div class="frustration-indicator-label" id="frust-peak-today-label">Max Today</div>
+                    <div class="frustration-indicator-sublabel" id="frust-peak-today-sublabel">Peak score</div>
                 </div>
                 <div class="frustration-indicator" id="frust-immediate"
                      title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
                     <div class="frustration-indicator-value text-muted" id="frust-immediate-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Immediate</div>
-                    <div class="frustration-indicator-sublabel">Last 10 turns</div>
+                    <div class="frustration-indicator-label" id="frust-immediate-label">Immediate</div>
+                    <div class="frustration-indicator-sublabel" id="frust-immediate-sublabel">Last 10 turns</div>
                 </div>
                 <div class="frustration-indicator" id="frust-shortterm"
                      title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
                     <div class="frustration-indicator-value text-muted" id="frust-shortterm-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Short-term</div>
-                    <div class="frustration-indicator-sublabel">Last 30 min</div>
+                    <div class="frustration-indicator-label" id="frust-shortterm-label">Short-term</div>
+                    <div class="frustration-indicator-sublabel" id="frust-shortterm-sublabel">Last 30 min</div>
                 </div>
                 <div class="frustration-indicator" id="frust-session"
                      title="Green: < {{ frustration_thresholds.yellow }} | Yellow: {{ frustration_thresholds.yellow }}-{{ frustration_thresholds.red }} | Red: &ge; {{ frustration_thresholds.red }}">
                     <div class="frustration-indicator-value text-muted" id="frust-session-value">&mdash;</div>
-                    <div class="frustration-indicator-label">Session</div>
-                    <div class="frustration-indicator-sublabel">Last {{ session_rolling_window_minutes }} min</div>
+                    <div class="frustration-indicator-label" id="frust-session-label">Session</div>
+                    <div class="frustration-indicator-sublabel" id="frust-session-sublabel">Last {{ session_rolling_window_minutes }} min</div>
                 </div>
             </div>
         </section>
