@@ -30,7 +30,7 @@ class TestConfigSchema:
     def test_schema_has_all_sections(self):
         """Schema should have all expected sections."""
         section_names = [s.name for s in CONFIG_SCHEMA]
-        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "commander", "notifications", "activity", "headspace", "openrouter"]
+        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "reaper", "sse", "hooks", "tmux_bridge", "dashboard", "archive", "commander", "notifications", "activity", "headspace", "openrouter"]
         assert section_names == expected
 
     def test_each_section_has_title(self):
@@ -284,7 +284,7 @@ class TestMergeWithDefaults:
         config = {}
         result = merge_with_defaults(config)
 
-        expected_sections = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks"]
+        expected_sections = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "tmux_bridge", "dashboard", "archive", "commander"]
         for section in expected_sections:
             assert section in result
 
@@ -422,6 +422,101 @@ class TestFlattenUnflatten:
         config = {"openrouter": {"models.turn": "haiku"}}
         result = unflatten_nested_sections(config)
         assert result is config
+
+
+class TestNewSchemaSections:
+    """Tests for new CONFIG_SCHEMA sections (tmux_bridge, dashboard, archive)."""
+
+    def test_tmux_bridge_section_exists(self):
+        """Schema should have tmux_bridge section."""
+        section = next((s for s in CONFIG_SCHEMA if s.name == "tmux_bridge"), None)
+        assert section is not None
+        assert section.title == "Tmux Bridge"
+
+    def test_tmux_bridge_fields(self):
+        """tmux_bridge section should have expected fields."""
+        section = next(s for s in CONFIG_SCHEMA if s.name == "tmux_bridge")
+        field_names = [f.name for f in section.fields]
+        assert "health_check_interval" in field_names
+        assert "subprocess_timeout" in field_names
+        assert "text_enter_delay_ms" in field_names
+
+    def test_dashboard_section_exists(self):
+        """Schema should have dashboard section."""
+        section = next((s for s in CONFIG_SCHEMA if s.name == "dashboard"), None)
+        assert section is not None
+        assert section.title == "Dashboard"
+
+    def test_dashboard_fields(self):
+        """dashboard section should have expected fields."""
+        section = next(s for s in CONFIG_SCHEMA if s.name == "dashboard")
+        field_names = [f.name for f in section.fields]
+        assert "stale_processing_seconds" in field_names
+        assert "active_timeout_minutes" in field_names
+
+    def test_archive_section_exists(self):
+        """Schema should have archive section."""
+        section = next((s for s in CONFIG_SCHEMA if s.name == "archive"), None)
+        assert section is not None
+        assert section.title == "Archive"
+
+    def test_archive_fields(self):
+        """archive section should have expected fields including nested retention."""
+        section = next(s for s in CONFIG_SCHEMA if s.name == "archive")
+        field_names = [f.name for f in section.fields]
+        assert "enabled" in field_names
+        assert "retention.policy" in field_names
+        assert "retention.keep_last_n" in field_names
+        assert "retention.days" in field_names
+
+    def test_new_openrouter_fields(self):
+        """openrouter section should have retry and priority_scoring fields."""
+        section = next(s for s in CONFIG_SCHEMA if s.name == "openrouter")
+        field_names = [f.name for f in section.fields]
+        assert "retry.base_delay_seconds" in field_names
+        assert "retry.max_delay_seconds" in field_names
+        assert "priority_scoring.debounce_seconds" in field_names
+
+    def test_new_headspace_flow_detection_fields(self):
+        """headspace section should have flow_detection fields."""
+        section = next(s for s in CONFIG_SCHEMA if s.name == "headspace")
+        field_names = [f.name for f in section.fields]
+        assert "flow_detection.min_turn_rate" in field_names
+        assert "flow_detection.max_frustration" in field_names
+        assert "flow_detection.min_duration_minutes" in field_names
+
+    def test_archive_in_nested_sections(self):
+        """archive should be in NESTED_SECTIONS for flatten/unflatten."""
+        from claude_headspace.services.config_editor import NESTED_SECTIONS
+        assert "archive" in NESTED_SECTIONS
+
+
+class TestHelpMetadata:
+    """Tests for help_text and section_description metadata."""
+
+    def test_all_sections_have_section_description(self):
+        """Every section should have a non-empty section_description."""
+        for section in CONFIG_SCHEMA:
+            assert section.section_description, f"Section '{section.name}' missing section_description"
+
+    def test_all_fields_have_help_text(self):
+        """Every field should have a non-empty help_text."""
+        for section in CONFIG_SCHEMA:
+            for field in section.fields:
+                assert field.help_text, f"Field '{section.name}.{field.name}' missing help_text"
+
+    def test_get_config_schema_includes_help_text(self):
+        """get_config_schema should include help_text in field dicts."""
+        schema = get_config_schema()
+        for section in schema:
+            for field in section["fields"]:
+                assert "help_text" in field
+
+    def test_get_config_schema_includes_section_description(self):
+        """get_config_schema should include section_description in section dicts."""
+        schema = get_config_schema()
+        for section in schema:
+            assert "section_description" in section
 
 
 class TestOpenrouterValidation:

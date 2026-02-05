@@ -32,13 +32,10 @@
             <!-- Column body -->
             <div class="kanban-column-body">
                 {% for item in kproject.columns[col_name] %}
-                    {% if item.type == 'agent' %}
-                        {# Full agent card for idle agents #}
+                    {% if item.type == 'agent' or item.type == 'task' %}
+                        {# Unified agent card for all agent/task items #}
                         {% set agent = item.agent %}
                         {% include "partials/_agent_card.html" %}
-                    {% elif item.type == 'task' %}
-                        {# Task card for active tasks #}
-                        {% include "partials/_kanban_task_card.html" %}
                     {% elif item.type == 'completed_task' %}
                         {# Completed task card: card-editor style with accordion #}
                         <details class="kanban-completed-task bg-elevated rounded-lg border border-green/20 overflow-hidden" data-agent-id="{{ item.agent.id }}">

@@ -632,11 +632,13 @@ class SummarisationService:
         """Strip markdown code fences from LLM responses.
 
         Some models (e.g. Claude Haiku 4.5) wrap JSON output in ```json ... ```
-        even when instructed to return only valid JSON.
+        even when instructed to return only valid JSON.  The closing fence may
+        not be at the very end of the string (trailing explanation text, extra
+        newlines, etc.), so we use a non-greedy match that doesn't require ``$``.
         """
         stripped = text.strip()
-        # Match ```json or ``` at start and ``` at end
-        fence_re = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
+        # Match opening ```json / ``` then content then closing ``` (not anchored to end)
+        fence_re = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
         m = fence_re.match(stripped)
         if m:
             return m.group(1).strip()
@@ -649,7 +651,8 @@ class SummarisationService:
         Attempts to parse JSON with summary and frustration_score.
         Strips markdown code fences before parsing since some models
         wrap JSON output in ```json ... ``` blocks.
-        Falls back to treating the entire response as a plain text summary.
+        Falls back to extracting the summary field via regex, then to
+        treating the entire response as plain text.
 
         Returns:
             Tuple of (summary, frustration_score). frustration_score is None on parse failure.
@@ -663,8 +666,33 @@ class SummarisationService:
                 return summary, int(score)
             return summary, None
         except (json.JSONDecodeError, ValueError, TypeError):
-            # Fallback: treat as plain text summary
-            return cls._clean_response(cleaned_text), None
+            pass
+
+        # json.loads failed — try to find a JSON object in the text and parse it
+        obj_match = re.search(r"\{[^{}]*\}", cleaned_text)
+        if obj_match:
+            try:
+                data = json.loads(obj_match.group())
+                summary = cls._clean_response(str(data.get("summary", "")))
+                if summary:
+                    score = data.get("frustration_score")
+                    if isinstance(score, (int, float)) and 0 <= score <= 10:
+                        return summary, int(score)
+                    return summary, None
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+
+        # Last resort: extract the "summary" value with regex
+        summary_match = re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned_text)
+        if summary_match:
+            return cls._clean_response(summary_match.group(1)), None
+
+        # Nothing worked — return cleaned text (strip any remaining JSON artifacts)
+        fallback = cls._clean_response(cleaned_text)
+        # If it still looks like JSON, don't return it
+        if fallback.lstrip().startswith("{"):
+            return "Summary unavailable", None
+        return fallback, None
 
     def _trigger_headspace_recalculation(self, turn) -> None:
         """Trigger headspace monitor recalculation after frustration extraction."""
