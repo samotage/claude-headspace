@@ -4,7 +4,6 @@
     let chart = null;
     let currentWindow = 'day';
     let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
-    let sseSource = null;
     var _refreshDebounce = null;
 
     // Frustration thresholds from config (injected by template)
@@ -721,43 +720,29 @@
         },
 
         _initSSE: function() {
-            if (sseSource) return;
-
-            var sseTypes = 'turn_detected,turn_created,activity_update';
-            if (HEADSPACE_ENABLED) {
-                sseTypes += ',headspace_update';
+            // Use the shared SSE connection from header-sse.js
+            var client = window.headerSSEClient;
+            if (!client) {
+                console.warn('Shared SSE client not available (headerSSEClient)');
+                return;
             }
-            sseSource = new EventSource('/api/events/stream?types=' + sseTypes);
 
             // Real-time activity updates: debounce-refresh on new turns or aggregation
-            sseSource.addEventListener('turn_detected', function() {
+            client.on('turn_detected', function() {
                 ActivityPage._debouncedRefresh();
             });
-            sseSource.addEventListener('turn_created', function() {
+            client.on('turn_created', function() {
                 ActivityPage._debouncedRefresh();
             });
-            sseSource.addEventListener('activity_update', function() {
+            client.on('activity_update', function() {
                 ActivityPage._debouncedRefresh();
             });
 
             if (HEADSPACE_ENABLED) {
-                sseSource.addEventListener('headspace_update', function(e) {
-                    try {
-                        var data = JSON.parse(e.data);
-                        ActivityPage._updateWidgetValues(data);
-                    } catch (err) {
-                        console.error('Failed to parse headspace SSE:', err);
-                    }
+                client.on('headspace_update', function(data) {
+                    ActivityPage._updateWidgetValues(data);
                 });
             }
-
-            // Close on page unload to free connection slot
-            window.addEventListener('beforeunload', function() {
-                if (sseSource) {
-                    sseSource.close();
-                    sseSource = null;
-                }
-            });
         },
 
         _updateWidgetValues: function(state) {

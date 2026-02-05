@@ -117,19 +117,31 @@ class ActivityAggregator:
             project_frustration_turns: dict[int, int] = {}
             project_max_frustration: dict[int, int] = {}
 
-            for agent in relevant_agents:
-                # Get turns for this agent in the current hour bucket
-                turns = (
-                    db.session.query(Turn)
-                    .join(Turn.task)
-                    .filter(
-                        Turn.task.has(agent_id=agent.id),
-                        Turn.timestamp >= bucket_start,
-                        Turn.timestamp < bucket_end,
-                    )
-                    .order_by(Turn.timestamp.asc())
-                    .all()
+            # Single bulk query: fetch all turns in this bucket for all relevant agents
+            from ..models.task import Task
+            agent_ids = [a.id for a in relevant_agents]
+            agent_map = {a.id: a for a in relevant_agents}
+
+            all_turns = (
+                db.session.query(Turn, Task.agent_id)
+                .join(Task, Turn.task_id == Task.id)
+                .filter(
+                    Task.agent_id.in_(agent_ids),
+                    Turn.timestamp >= bucket_start,
+                    Turn.timestamp < bucket_end,
                 )
+                .order_by(Task.agent_id, Turn.timestamp.asc())
+                .all()
+            ) if agent_ids else []
+
+            # Group turns by agent_id
+            from collections import defaultdict
+            turns_by_agent: dict[int, list] = defaultdict(list)
+            for turn, agent_id in all_turns:
+                turns_by_agent[agent_id].append(turn)
+
+            for agent in relevant_agents:
+                turns = turns_by_agent.get(agent.id, [])
 
                 turn_count = len(turns)
                 if turn_count == 0:

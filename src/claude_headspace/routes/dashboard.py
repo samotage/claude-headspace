@@ -467,7 +467,7 @@ def dashboard():
     projects = (
         db.session.query(Project)
         .options(
-            selectinload(Project.agents).selectinload(Agent.tasks).selectinload(Task.turns)
+            selectinload(Project.agents).selectinload(Agent.tasks)
         )
         .order_by(Project.name)
         .all()

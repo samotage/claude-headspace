@@ -90,13 +90,13 @@ class TestAggregateOnce:
         agents_query = MagicMock()
         agents_query.filter.return_value.all.return_value = [mock_agent]
 
-        # Turns query - returns empty for the agent
+        # Turns bulk query - returns empty (no turns for any agent)
         turns_query = MagicMock()
         turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = []
 
         call_count = [0]
 
-        def query_side_effect(model):
+        def query_side_effect(*args):
             call_count[0] += 1
             if call_count[0] == 1:
                 return agents_query
@@ -153,7 +153,7 @@ class TestAggregateOnce:
         agents_query = MagicMock()
         agents_query.filter.return_value.all.return_value = [mock_agent]
 
-        # Turns query returns turns for this agent
+        # Turns bulk query returns (turn, agent_id) tuples
         mock_turn1 = MagicMock(
             timestamp=bucket_start + timedelta(minutes=5),
             actor="USER",
@@ -166,12 +166,12 @@ class TestAggregateOnce:
         )
         turns_query = MagicMock()
         turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            mock_turn1, mock_turn2,
+            (mock_turn1, 1), (mock_turn2, 1),
         ]
 
         call_count = [0]
 
-        def query_side_effect(model):
+        def query_side_effect(*args):
             call_count[0] += 1
             if call_count[0] == 1:
                 return agents_query
@@ -216,12 +216,12 @@ class TestAggregateOnce:
         )
         turns_query = MagicMock()
         turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            mock_turn1, mock_turn2, mock_turn3,
+            (mock_turn1, 1), (mock_turn2, 1), (mock_turn3, 1),
         ]
 
         call_count = [0]
 
-        def query_side_effect(model):
+        def query_side_effect(*args):
             call_count[0] += 1
             if call_count[0] == 1:
                 return agents_query

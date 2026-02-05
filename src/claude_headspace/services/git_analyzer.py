@@ -127,9 +127,13 @@ class GitAnalyzer:
             commits = commits[: self._max_commits]
             truncated = True
 
-        # Get files changed for each commit
-        for commit in commits:
-            commit.files_changed = self._get_files_changed(repo_path, commit.hash)
+        # Get files changed for all commits in a single subprocess call
+        if commits:
+            files_map = self._get_files_changed_batch(
+                repo_path, [c.hash for c in commits]
+            )
+            for commit in commits:
+                commit.files_changed = files_map.get(commit.hash, [])
 
         # Build result
         all_files = set()
@@ -271,6 +275,53 @@ class GitAnalyzer:
             ["log", f"--format={GIT_LOG_FORMAT}", f"--since={days}.days.ago"],
         )
         return self._parse_git_log(output)
+
+    def _get_files_changed_batch(
+        self, repo_path: Path, commit_hashes: list[str]
+    ) -> dict[str, list[str]]:
+        """Get files changed for multiple commits in a single subprocess call.
+
+        Uses `git log --name-only --format=%H` with explicit commit list to
+        retrieve all file listings at once, replacing N subprocess calls with 1.
+
+        Args:
+            repo_path: Path to the git repository
+            commit_hashes: List of commit hashes to get files for
+
+        Returns:
+            Dict mapping commit_hash -> list of changed file paths
+        """
+        if not commit_hashes:
+            return {}
+
+        try:
+            # Use --stdin to pass commit hashes, --name-only for file lists,
+            # --format=%H to identify which commit the files belong to,
+            # --no-walk to avoid traversing parents.
+            output = self._run_git(
+                repo_path,
+                ["log", "--no-walk", "--name-only", "--format=%H"] + commit_hashes,
+            )
+        except GitAnalyzerError:
+            logger.warning("Failed to batch-fetch files changed; falling back to empty")
+            return {}
+
+        result: dict[str, list[str]] = {}
+        current_hash = None
+
+        for line in output.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # A 40-char hex string is a commit hash
+            if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
+                current_hash = line
+                if current_hash not in result:
+                    result[current_hash] = []
+            elif current_hash:
+                result[current_hash].append(line)
+
+        return result
 
     def _get_files_changed(self, repo_path: Path, commit_hash: str) -> list[str]:
         """Get list of files changed in a specific commit."""

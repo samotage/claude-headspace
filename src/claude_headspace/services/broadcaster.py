@@ -180,15 +180,17 @@ class Broadcaster:
         with self._lock:
             self._event_id_counter += 1
             event_id = self._event_id_counter
+            # Copy client list under lock to avoid holding it during iteration
+            clients_snapshot = list(self._clients.values())
         event = SSEEvent(event_type=event_type, data=data, event_id=event_id)
 
         sent_count = 0
-        with self._lock:
-            for client in self._clients.values():
-                if client.is_active and client.matches_filter(event_type, data):
-                    client.event_queue.put(event)
-                    client.last_event_at = datetime.now(timezone.utc)
-                    sent_count += 1
+        now = datetime.now(timezone.utc)
+        for client in clients_snapshot:
+            if client.is_active and client.matches_filter(event_type, data):
+                client.event_queue.put(event)
+                client.last_event_at = now
+                sent_count += 1
 
         logger.debug(f"Broadcast: type={event_type}, id={event_id}, sent_to={sent_count}")
         return sent_count
