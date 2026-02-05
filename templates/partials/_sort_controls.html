@@ -3,6 +3,13 @@
     <!-- Desktop: Toggle buttons -->
     <div class="hidden md:flex items-center gap-2">
         <span class="text-muted text-sm mr-2 font-display">SORT:</span>
+        <button id="sort-by-kanban"
+                class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'kanban' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
+                data-sort="kanban"
+                aria-pressed="{{ 'true' if sort_mode == 'kanban' else 'false' }}"
+                onclick="window.SortControls && window.SortControls.setSort('kanban')">
+            Kanban
+        </button>
         <button id="sort-by-project"
                 class="px-4 py-2 text-sm font-medium rounded transition-colors min-h-[44px] {{ 'bg-cyan/20 text-cyan border border-cyan/30 shadow-neon-cyan' if sort_mode == 'project' else 'bg-surface text-secondary hover:bg-hover border border-border' }}"
                 data-sort="project"
@@ -25,6 +32,7 @@
         <select id="sort-select"
                 class="form-well w-full px-4 py-2 font-medium min-h-[44px]"
                 onchange="window.SortControls && window.SortControls.setSort(this.value)">
+            <option value="kanban" {{ 'selected' if sort_mode == 'kanban' }}>Sort: Kanban</option>
             <option value="project" {{ 'selected' if sort_mode == 'project' }}>Sort: By Project</option>
             <option value="priority" {{ 'selected' if sort_mode == 'priority' }}>Sort: By Priority</option>
         </select>
@@ -41,8 +49,8 @@
          * Set the sort mode and update the page
          */
         setSort: function(mode) {
-            if (mode !== 'project' && mode !== 'priority') {
-                mode = 'project';
+            if (mode !== 'kanban' && mode !== 'project' && mode !== 'priority') {
+                mode = 'kanban';
             }
 
             // Save to localStorage
@@ -63,9 +71,9 @@
          */
         getSavedSort: function() {
             try {
-                return localStorage.getItem(STORAGE_KEY) || 'project';
+                return localStorage.getItem(STORAGE_KEY) || 'kanban';
             } catch (e) {
-                return 'project';
+                return 'kanban';
             }
         },
 
@@ -74,7 +82,7 @@
          */
         init: function() {
             const savedSort = this.getSavedSort();
-            const currentSort = new URLSearchParams(window.location.search).get('sort') || 'project';
+            const currentSort = new URLSearchParams(window.location.search).get('sort') || 'kanban';
 
             // If saved preference differs from current, redirect to apply it
             if (savedSort !== currentSort && !sessionStorage.getItem('sort_applied')) {

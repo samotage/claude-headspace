@@ -21,6 +21,14 @@ from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_inst
 
 logger = logging.getLogger(__name__)
 
+# Tools where post_tool_use should NOT resume from AWAITING_INPUT
+# because user interaction happens AFTER the tool completes
+USER_INTERACTIVE_TOOLS = {"ExitPlanMode"}
+
+# Don't infer a new task from post_tool_use if the previous task
+# completed less than this many seconds ago (tail-end tool activity).
+INFERRED_TASK_COOLDOWN_SECONDS = 30
+
 
 # --- Data types ---
 
@@ -116,17 +124,14 @@ def reset_receiver_state() -> None:
 
 def _get_lifecycle_manager() -> TaskLifecycleManager:
     event_writer = None
-    summarisation_service = None
     try:
         from flask import current_app
         event_writer = current_app.extensions.get("event_writer")
-        summarisation_service = current_app.extensions.get("summarisation_service")
     except RuntimeError:
         pass
     return TaskLifecycleManager(
         session=db.session,
         event_writer=event_writer,
-        summarisation_service=summarisation_service,
     )
 
 
@@ -262,6 +267,7 @@ def process_session_start(
     state.record_event(HookEventType.SESSION_START)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+        agent.ended_at = None  # Clear ended state for new session
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
 
@@ -366,7 +372,7 @@ def process_user_prompt_submit(
                     "project_id": agent.project_id,
                     "text": prompt_text,
                     "actor": "user",
-                    "intent": "command",
+                    "intent": result.intent.intent.value if result.intent else "command",
                     "task_id": result.task.id if result.task else None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
@@ -495,9 +501,7 @@ def _handle_awaiting_input(
             logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing task)")
             return HookEventResult(success=True, agent_id=agent.id)
 
-        current_task.state = TaskState.AWAITING_INPUT
-
-        # Build question text and create turn
+        # Build question text and create turn BEFORE state transition
         question_text = None
         if tool_name is not None or tool_input is not None:
             # pre_tool_use / permission_request: always create turn
@@ -523,8 +527,12 @@ def _handle_awaiting_input(
                         intent=TurnIntent.QUESTION, text=question_text,
                     ))
 
-        # OS notification
-        _send_notification(agent, current_task, turn_text=question_text or message or title)
+        # Use lifecycle manager for state transition (writes event + sends notification)
+        lifecycle = _get_lifecycle_manager()
+        lifecycle.update_task_state(
+            current_task, TaskState.AWAITING_INPUT,
+            trigger=event_type_str, confidence=1.0,
+        )
 
         db.session.commit()
         broadcast_card_refresh(agent, event_type_str)
@@ -599,6 +607,39 @@ def process_post_tool_use(
         current_task = lifecycle.get_current_task(agent)
 
         if not current_task:
+            # Guard: don't infer a task for ended/reaped agents
+            if agent.ended_at is not None:
+                db.session.commit()
+                broadcast_card_refresh(agent, "post_tool_use")
+                logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, skipped (agent ended)")
+                return HookEventResult(success=True, agent_id=agent.id)
+
+            # Guard: don't infer a task if the previous one just completed
+            # (tail-end tool activity after session_end/stop)
+            from ..models.task import Task
+
+            recent_complete = (
+                db.session.query(Task)
+                .filter(
+                    Task.agent_id == agent.id,
+                    Task.state == TaskState.COMPLETE,
+                    Task.completed_at.isnot(None),
+                )
+                .order_by(Task.completed_at.desc())
+                .first()
+            )
+            if recent_complete and recent_complete.completed_at:
+                elapsed = (datetime.now(timezone.utc) - recent_complete.completed_at).total_seconds()
+                if elapsed < INFERRED_TASK_COOLDOWN_SECONDS:
+                    db.session.commit()
+                    broadcast_card_refresh(agent, "post_tool_use")
+                    logger.info(
+                        f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                        f"skipped inferred task (previous task {recent_complete.id} "
+                        f"completed {elapsed:.1f}s ago)"
+                    )
+                    return HookEventResult(success=True, agent_id=agent.id)
+
             # No task — infer one from tool use evidence
             new_task = lifecycle.create_task(agent, TaskState.COMMANDED)
             lifecycle.update_task_state(
@@ -613,6 +654,16 @@ def process_post_tool_use(
             _broadcast_state_change(agent, "post_tool_use", TaskState.PROCESSING.value)
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, inferred PROCESSING task_id={new_task.id}")
             return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=TaskState.PROCESSING.value)
+
+        if current_task.state == TaskState.AWAITING_INPUT and tool_name in USER_INTERACTIVE_TOOLS:
+            # Interactive tools (e.g. ExitPlanMode) fire post_tool_use before the user
+            # sees the dialog, so we must preserve AWAITING_INPUT state
+            db.session.commit()
+            broadcast_card_refresh(agent, "post_tool_use")
+            logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                        f"preserved AWAITING_INPUT for interactive tool {tool_name}")
+            return HookEventResult(success=True, agent_id=agent.id,
+                                   new_state=TaskState.AWAITING_INPUT.value)
 
         if current_task.state == TaskState.AWAITING_INPUT:
             # Resume: user answered

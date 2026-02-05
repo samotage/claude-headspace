@@ -254,9 +254,21 @@ class ArchiveService:
         if artifact_type not in VALID_ARTIFACT_TYPES:
             return None
 
+        # Validate timestamp format to prevent path traversal
+        expected_filename = f"{artifact_type}_{timestamp_str}.md"
+        if not ARCHIVE_FILENAME_RE.match(expected_filename):
+            logger.warning(f"Invalid archive timestamp format: {timestamp_str}")
+            return None
+
         archive_dir = Path(project_path) / ARCHIVE_DIR
-        archive_filename = f"{artifact_type}_{timestamp_str}.md"
-        archive_path = archive_dir / archive_filename
+        archive_path = archive_dir / expected_filename
+
+        # Ensure resolved path stays within archive_dir
+        try:
+            archive_path.resolve().relative_to(archive_dir.resolve())
+        except ValueError:
+            logger.warning(f"Path traversal attempt blocked: {timestamp_str}")
+            return None
 
         if not archive_path.exists():
             return None
@@ -270,7 +282,7 @@ class ArchiveService:
             return {
                 "artifact": artifact_type,
                 "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "filename": archive_filename,
+                "filename": expected_filename,
                 "content": content,
             }
         except Exception as e:

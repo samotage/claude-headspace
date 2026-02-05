@@ -341,7 +341,7 @@ def toggle_priority():
             try:
                 from flask import current_app
 
-                scoring_service = current_app.extensions.get("priority_scoring")
+                scoring_service = current_app.extensions.get("priority_scoring_service")
                 if scoring_service:
                     scoring_service.trigger_scoring_immediate()
             except Exception:

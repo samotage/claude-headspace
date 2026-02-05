@@ -1,6 +1,6 @@
 """Dashboard route for agent monitoring."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, render_template, request
 from sqlalchemy.orm import selectinload
@@ -224,6 +224,228 @@ def count_active_agents(agents: list[Agent]) -> int:
     return sum(1 for agent in agents if is_agent_active(agent))
 
 
+def _prepare_kanban_data(
+    projects: list, project_data: list, priority_enabled: bool
+) -> list:
+    """Prepare Kanban board data grouped by project and task state.
+
+    Each project gets columns for each task lifecycle state.
+    Idle agents (no active task) go in the IDLE column.
+    Agents with active tasks go in the column matching the task state.
+    Completed tasks appear in the COMPLETE column.
+
+    Args:
+        projects: List of Project model instances
+        project_data: List of project data dicts (with agents)
+        priority_enabled: Whether priority ordering is enabled
+
+    Returns:
+        List of dicts, each with project info and state columns
+    """
+    columns = ["IDLE", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
+    kanban_projects = []
+
+    for proj_data in project_data:
+        if not proj_data["agents"]:
+            continue
+
+        # Find matching Project model
+        project_model = None
+        for p in projects:
+            if p.id == proj_data["id"]:
+                project_model = p
+                break
+
+        state_columns = {col: [] for col in columns}
+
+        if project_model:
+            # Get live agents for this project
+            live_agents = [a for a in project_model.agents if a.ended_at is None]
+
+            for agent in live_agents:
+                # Find the agent data dict
+                agent_data = None
+                for ad in proj_data["agents"]:
+                    if ad["id"] == agent.id:
+                        agent_data = ad
+                        break
+                if not agent_data:
+                    continue
+
+                current_task = agent.get_current_task()
+                effective_state = get_effective_state(agent)
+                state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+
+                if current_task is None or state_name in ("IDLE", "COMPLETE"):
+                    # Agent is idle (or just completed a task — completed tasks
+                    # are added as condensed accordion cards by the loop below).
+                    # Override display state to IDLE so the card renders correctly.
+                    idle_data = agent_data
+                    if state_name == "COMPLETE":
+                        idle_data = {
+                            **agent_data,
+                            "state": TaskState.IDLE,
+                            "state_name": "IDLE",
+                            "state_info": get_state_info(TaskState.IDLE),
+                            "task_summary": "No active task",
+                            "task_instruction": None,
+                            "task_completion_summary": None,
+                        }
+                    state_columns["IDLE"].append({
+                        "type": "agent",
+                        "agent": idle_data,
+                    })
+                else:
+                    # Agent has active task - goes in the state's column
+                    # COMMANDED is a transitory state; display in PROCESSING column
+                    col_name = "PROCESSING" if state_name == "COMMANDED" else state_name
+                    state_columns[col_name].append({
+                        "type": "task",
+                        "agent": agent_data,
+                        "task_instruction": agent_data.get("task_instruction"),
+                        "task_summary": agent_data.get("task_summary"),
+                        "state": state_name,
+                    })
+
+                # Add all completed tasks to COMPLETE column as condensed accordion cards
+                if agent.tasks:
+                    for task in agent.tasks:
+                        if task.state != TaskState.COMPLETE:
+                            continue
+
+                        completion_summary = task.completion_summary
+                        if not completion_summary and task.turns:
+                            last_turn = task.turns[-1]
+                            completion_summary = last_turn.summary or (
+                                last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
+                            )
+                        # Compute elapsed time
+                        elapsed = None
+                        if task.started_at and task.completed_at:
+                            delta = task.completed_at - task.started_at
+                            total_seconds = int(delta.total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            if hours > 0:
+                                elapsed = f"{hours}h {minutes}m"
+                            elif minutes > 0:
+                                elapsed = f"{minutes}m"
+                            else:
+                                elapsed = "<1m"
+
+                        state_columns["COMPLETE"].append({
+                            "type": "completed_task",
+                            "agent": agent_data,
+                            "task_id": task.id,
+                            "completion_summary": completion_summary or "Completed",
+                            "instruction": task.instruction or "Task",
+                            "completed_at": task.completed_at,
+                            "turn_count": len(task.turns),
+                            "elapsed": elapsed,
+                        })
+
+        # Apply priority ordering within columns
+        if priority_enabled:
+            for col in columns:
+                state_columns[col].sort(
+                    key=lambda x: -(x["agent"].get("priority", 50) or 50)
+                )
+
+        kanban_projects.append({
+            "id": proj_data["id"],
+            "name": proj_data["name"],
+            "slug": proj_data["slug"],
+            "columns": state_columns,
+            "staleness": proj_data.get("staleness"),
+        })
+
+    return kanban_projects
+
+
+def _get_dashboard_activity_metrics() -> dict | None:
+    """Fetch daily activity metrics for the dashboard activity bar.
+
+    Aggregates ALL overall ActivityMetric buckets for the current day
+    (midnight UTC to now) to show full-day totals.
+    Also includes immediate frustration from HeadspaceMonitor.
+    """
+    from ..models.activity_metric import ActivityMetric
+    from ..models.headspace_snapshot import HeadspaceSnapshot
+
+    try:
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Get ALL overall metrics for today
+        today_metrics = (
+            db.session.query(ActivityMetric)
+            .filter(
+                ActivityMetric.is_overall == True,
+                ActivityMetric.bucket_start >= today_start,
+            )
+            .order_by(ActivityMetric.bucket_start.asc())
+            .all()
+        )
+
+        if not today_metrics:
+            return None
+
+        # Aggregate daily totals
+        total_turns = sum(m.turn_count or 0 for m in today_metrics)
+
+        # Weighted average turn time across all buckets
+        weighted_time_sum = 0.0
+        weighted_time_count = 0
+        for m in today_metrics:
+            if m.avg_turn_time_seconds is not None and m.turn_count and m.turn_count >= 2:
+                weight = m.turn_count - 1  # number of deltas
+                weighted_time_sum += m.avg_turn_time_seconds * weight
+                weighted_time_count += weight
+        avg_turn_time = (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+
+        # Count distinct agents active today from agent-level metrics
+        distinct_agents = (
+            db.session.query(db.func.count(db.func.distinct(ActivityMetric.agent_id)))
+            .filter(
+                ActivityMetric.agent_id.isnot(None),
+                ActivityMetric.bucket_start >= today_start,
+            )
+            .scalar()
+        ) or 0
+
+        # Turn rate: total turns / hours elapsed today (at least 1 hour)
+        hours_elapsed = max((now - today_start).total_seconds() / 3600, 1.0)
+        turn_rate = round(total_turns / hours_elapsed, 1)
+
+        # Frustration: aggregate across all buckets
+        total_frustration = sum(m.total_frustration or 0 for m in today_metrics)
+        total_frust_turns = sum(m.frustration_turn_count or 0 for m in today_metrics)
+        frustration_avg = round(total_frustration / total_frust_turns, 1) if total_frust_turns > 0 else None
+
+        # Try to get immediate frustration (last 10 turns) from headspace
+        immediate_frustration = None
+        try:
+            latest_snapshot = (
+                db.session.query(HeadspaceSnapshot)
+                .order_by(HeadspaceSnapshot.created_at.desc())
+                .first()
+            )
+            if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
+                immediate_frustration = round(latest_snapshot.frustration_rolling_10, 1)
+        except Exception:
+            pass
+
+        return {
+            "total_turns": total_turns,
+            "turn_rate": turn_rate,
+            "avg_turn_time": round(avg_turn_time, 1) if avg_turn_time else None,
+            "active_agents": distinct_agents,
+            "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
+        }
+    except Exception:
+        return None
+
+
 @dashboard_bp.route("/")
 @dashboard_bp.route("/dashboard")
 def dashboard():
@@ -236,10 +458,10 @@ def dashboard():
     Returns:
         Rendered dashboard template
     """
-    # Get sort mode from query parameter (default to 'project')
-    sort_mode = request.args.get("sort", "project")
-    if sort_mode not in ("project", "priority"):
-        sort_mode = "project"
+    # Get sort mode from query parameter (default to 'kanban')
+    sort_mode = request.args.get("sort", "kanban")
+    if sort_mode not in ("kanban", "project", "priority"):
+        sort_mode = "kanban"
 
     # Query all projects with eager-loaded relationships
     projects = (
@@ -280,9 +502,12 @@ def dashboard():
             effective_state = get_effective_state(agent)
             # state_name: string for templates (handles both TaskState enum and TIMED_OUT string)
             state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+            truncated_uuid = str(agent.session_uuid)[:8]
             agent_dict = {
                 "id": agent.id,
-                "session_uuid": str(agent.session_uuid)[:8],
+                "session_uuid": truncated_uuid,
+                "hero_chars": truncated_uuid[:2],
+                "hero_trail": truncated_uuid[2:],
                 "is_active": is_agent_active(agent),
                 "uptime": format_uptime(agent.started_at),
                 "last_seen": format_last_seen(agent.last_seen_at),
@@ -295,6 +520,7 @@ def dashboard():
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
                 "project_name": project.name,
+                "project_slug": project.slug,
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
@@ -341,6 +567,18 @@ def dashboard():
         for project in projects_with_agents:
             project["agents"] = sort_agents_by_priority(project["agents"])
 
+    # Prepare Kanban data (group by task lifecycle state per project)
+    kanban_data = []
+    if sort_mode == "kanban":
+        kanban_data = _prepare_kanban_data(
+            projects, project_data, objective and objective.priority_enabled
+        )
+
+    # Activity metrics are fetched client-side via JS to use the browser's
+    # local timezone for "today" boundaries (matching the activity page).
+    # Server-side computation used UTC midnight which gave wrong results
+    # for non-UTC timezones.
+
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
@@ -349,4 +587,6 @@ def dashboard():
         sort_mode=sort_mode,
         priority_sorted_agents=priority_sorted_agents,
         objective=objective,
+        kanban_data=kanban_data,
+        activity_metrics=None,
     )

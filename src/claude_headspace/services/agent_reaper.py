@@ -165,7 +165,7 @@ class AgentReaper:
                         reap_reason = "pane_not_found"
                     elif status == PaneStatus.ITERM_NOT_RUNNING:
                         # Can't verify via iTerm — fall through to inactivity
-                        if agent.last_seen_at < inactivity_cutoff:
+                        if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                             reap_reason = "inactivity_timeout"
                         else:
                             result.skipped_alive += 1
@@ -176,7 +176,7 @@ class AgentReaper:
                         continue
                 else:
                     # No pane ID — can only use inactivity timeout
-                    if agent.last_seen_at < inactivity_cutoff:
+                    if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                         reap_reason = "inactivity_timeout"
                     else:
                         result.skipped_alive += 1

@@ -70,6 +70,7 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "total_frustration": m.total_frustration,
         "frustration_turn_count": m.frustration_turn_count,
         "frustration_avg": frustration_avg,
+        "max_frustration": m.max_frustration,
     }
 
 
@@ -190,12 +191,68 @@ def overall_metrics():
 
         current = history[-1] if history else None
 
+        # Compute daily totals aggregated across all buckets in the window
+        daily_totals = _compute_daily_totals(history, cutoff)
+
         return jsonify({
             "window": window,
             "current": _metric_to_dict(current) if current else None,
             "history": [_metric_to_dict(m) for m in history],
+            "daily_totals": daily_totals,
         }), 200
 
     except Exception:
         logger.exception("Failed to get overall metrics")
         return jsonify({"error": "Failed to get overall metrics"}), 500
+
+
+def _compute_daily_totals(metrics: list[ActivityMetric], cutoff: datetime) -> dict:
+    """Aggregate metrics across all hourly buckets into daily totals."""
+    if not metrics:
+        return {
+            "total_turns": 0,
+            "turn_rate": 0,
+            "avg_turn_time_seconds": None,
+            "active_agents": 0,
+            "frustration_avg": None,
+        }
+
+    total_turns = sum(m.turn_count or 0 for m in metrics)
+
+    # Weighted average turn time
+    weighted_time_sum = 0.0
+    weighted_time_count = 0
+    for m in metrics:
+        if m.avg_turn_time_seconds is not None and m.turn_count and m.turn_count >= 2:
+            weight = m.turn_count - 1
+            weighted_time_sum += m.avg_turn_time_seconds * weight
+            weighted_time_count += weight
+    avg_turn_time = (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+
+    # Count distinct agents active in the window from agent-level metrics
+    distinct_agents = (
+        db.session.query(db.func.count(db.func.distinct(ActivityMetric.agent_id)))
+        .filter(
+            ActivityMetric.agent_id.isnot(None),
+            ActivityMetric.bucket_start >= cutoff,
+        )
+        .scalar()
+    ) or 0
+
+    # Turn rate: total turns / hours elapsed
+    now = datetime.now(timezone.utc)
+    hours_elapsed = max((now - cutoff).total_seconds() / 3600, 1.0)
+    turn_rate = round(total_turns / hours_elapsed, 1)
+
+    # Frustration average
+    total_frustration = sum(m.total_frustration or 0 for m in metrics)
+    total_frust_turns = sum(m.frustration_turn_count or 0 for m in metrics)
+    frustration_avg = round(total_frustration / total_frust_turns, 1) if total_frust_turns > 0 else None
+
+    return {
+        "total_turns": total_turns,
+        "turn_rate": turn_rate,
+        "avg_turn_time_seconds": round(avg_turn_time, 1) if avg_turn_time else None,
+        "active_agents": distinct_agents,
+        "frustration_avg": frustration_avg,
+    }

@@ -23,7 +23,7 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 Flask application factory (`app.py`) with:
 
 - **Event-driven hooks:** Claude Code fires lifecycle hooks (8 event types) -> Flask receives and processes state transitions
-- **Persistence:** PostgreSQL via Flask-SQLAlchemy with Alembic migrations (21 migration scripts)
+- **Persistence:** PostgreSQL via Flask-SQLAlchemy with Alembic migrations
 - **Real-time broadcasting:** SSE pushes state changes, summaries, scores, and card refreshes to the dashboard
 - **Intelligence layer:** OpenRouter inference service powers summarisation, frustration detection, priority scoring, and progress summaries
 - **Headspace monitor:** Tracks frustration scores, detects flow state, and raises traffic-light alerts
@@ -93,274 +93,57 @@ npm install                          # Install Tailwind/Node dependencies
 ```
 claude_headspace/
 +-- run.py                           # Entry point
-+-- config.yaml                      # Server/DB/OpenRouter/headspace config
++-- config.yaml                      # All configuration (server, DB, OpenRouter, headspace, etc.)
 +-- pyproject.toml                   # Build config & dependencies
 +-- restart_server.sh                # Server restart script
 +-- tailwind.config.js               # Tailwind CSS configuration
-+-- package.json                     # Node.js dependencies (Tailwind)
 +-- src/claude_headspace/
 |   +-- app.py                       # Flask app factory
 |   +-- config.py                    # Config loading (YAML + env overrides)
 |   +-- database.py                  # SQLAlchemy init
-|   +-- cli/
-|   |   +-- launcher.py              # CLI launcher
-|   +-- models/                      # 10 domain models
-|   |   +-- project.py               # Project (monitored codebase)
-|   |   +-- agent.py                 # Agent (Claude Code session)
-|   |   +-- task.py                  # Task (5-state lifecycle)
-|   |   +-- turn.py                  # Turn (user/agent exchange)
-|   |   +-- event.py                 # Event (audit trail)
-|   |   +-- inference_call.py        # InferenceCall (LLM usage log)
-|   |   +-- objective.py             # Objective + ObjectiveHistory
-|   |   +-- activity_metric.py       # ActivityMetric (hourly aggregation)
-|   |   +-- headspace_snapshot.py    # HeadspaceSnapshot (monitoring state)
-|   +-- routes/                      # 22 Flask blueprints
-|   |   +-- dashboard.py             # Main dashboard view
-|   |   +-- hooks.py                 # Claude Code hook endpoints (8 hooks)
-|   |   +-- sse.py                   # SSE streaming
-|   |   +-- sessions.py              # Session lifecycle
-|   |   +-- projects.py              # Project management CRUD
-|   |   +-- inference.py             # Inference status/usage
-|   |   +-- summarisation.py         # Turn/task summary API
-|   |   +-- priority.py              # Priority scoring API
-|   |   +-- objective.py             # Global objective CRUD
-|   |   +-- waypoint.py              # Waypoint editor
-|   |   +-- focus.py                 # iTerm2 focus + agent dismiss
-|   |   +-- respond.py               # Respond to agents via tmux bridge
-|   |   +-- config.py                # Config viewer/editor
-|   |   +-- health.py                # Health check
-|   |   +-- help.py                  # Help page + topic search
-|   |   +-- logging.py               # Event + inference log viewer
-|   |   +-- notifications.py         # Notification settings
-|   |   +-- activity.py              # Activity metrics display
-|   |   +-- headspace.py             # Headspace monitoring API
-|   |   +-- brain_reboot.py          # Brain reboot generation/export
-|   |   +-- progress_summary.py      # Progress summary generation
-|   |   +-- archive.py               # Archive viewer
-|   +-- services/                    # 37 service modules
-|       +-- hook_receiver.py         # Processes Claude Code hooks
-|       +-- task_lifecycle.py        # Task state management
-|       +-- state_machine.py         # Transition validation
-|       +-- intent_detector.py       # Turn intent classification (regex + LLM)
-|       +-- session_correlator.py    # Session -> Agent mapping
-|       +-- inference_service.py     # LLM orchestration via OpenRouter
-|       +-- openrouter_client.py     # OpenRouter API client
-|       +-- inference_cache.py       # Content-based caching
-|       +-- inference_rate_limiter.py # Rate limiting
-|       +-- summarisation_service.py # Turn/task summaries + frustration
-|       +-- priority_scoring.py      # Agent priority scoring (0-100)
-|       +-- progress_summary.py      # Project progress analysis
-|       +-- brain_reboot.py          # Brain reboot orchestration
-|       +-- headspace_monitor.py     # Frustration/flow/alert tracking
-|       +-- broadcaster.py           # SSE distribution
-|       +-- event_writer.py          # Async audit logging
-|       +-- card_state.py            # Dashboard card state + broadcast
-|       +-- file_watcher.py          # .jsonl + transcript monitoring
-|       +-- notification_service.py  # macOS notifications
-|       +-- iterm_focus.py           # AppleScript iTerm2 control
-|       +-- tmux_bridge.py          # Respond to agents via tmux send-keys
-|       +-- commander_availability.py # Tmux pane availability monitoring
-|       +-- activity_aggregator.py   # Hourly activity metrics
-|       +-- agent_reaper.py          # Cleanup inactive agents
-|       +-- archive_service.py       # Waypoint/artifact archival
-|       +-- staleness.py             # Stale processing detection
-|       +-- config_editor.py         # Config read/write/validate
-|       +-- git_metadata.py          # Git repo URL + branch
-|       +-- git_analyzer.py          # Git analysis utilities
-|       +-- prompt_registry.py       # Centralised LLM prompt templates
-|       +-- session_registry.py      # Thread-safe session tracking
-|       +-- jsonl_parser.py          # Incremental .jsonl parsing
-|       +-- transcript_reader.py     # Transcript file reading
-|       +-- project_decoder.py       # Path <-> folder name encoding
-|       +-- waypoint_editor.py       # Waypoint load/save/archive
-|       +-- process_monitor.py       # Process monitoring
+|   +-- models/                      # 10 domain models (project, agent, task, turn, event, etc.)
+|   +-- routes/                      # 22 Flask blueprints (dashboard, hooks, sse, projects, etc.)
+|   +-- services/                    # 37 service modules (see Key Services below)
 +-- tests/
 |   +-- conftest.py                  # Root fixtures (app, client, _force_test_database)
-|   +-- test_app.py                  # App init tests
-|   +-- test_database.py             # DB config tests
-|   +-- test_models.py               # Model tests
 |   +-- services/                    # Service unit tests (~40 files)
 |   +-- routes/                      # Route tests (~25 files)
-|   +-- integration/                 # Real PostgreSQL tests (~7 files)
-|   |   +-- conftest.py              # DB lifecycle fixtures
-|   |   +-- factories.py             # Factory Boy factories
-|   +-- e2e/                         # End-to-end browser tests (Playwright)
-|   |   +-- conftest.py              # Server + browser fixtures
-|   |   +-- helpers/                 # Hook simulator, dashboard assertions
-|   +-- cli/                         # CLI tests
-+-- migrations/versions/             # 21 Alembic migration scripts
-+-- templates/                       # Jinja2 templates
-|   +-- base.html                    # Base layout
-|   +-- dashboard.html               # Main dashboard
-|   +-- partials/                    # 14 reusable components
+|   +-- integration/                 # Real PostgreSQL tests (~7 files, factory-boy)
+|   +-- e2e/                         # Playwright browser tests
++-- migrations/versions/             # Alembic migration scripts
++-- templates/                       # Jinja2 templates (base.html, dashboard.html, partials/)
 +-- static/
-|   +-- css/                         # Tailwind CSS (src/input.css -> main.css)
-|   +-- js/                          # 17 vanilla JS modules (SSE, dashboard, etc.)
+|   +-- css/src/input.css            # Tailwind source (-> compiled to css/main.css)
+|   +-- js/                          # Vanilla JS modules (SSE, dashboard, etc.)
 +-- bin/                             # Scripts (hooks installer, launcher, watcher)
 +-- docs/                            # Architecture docs, PRDs, help topics, roadmaps
-+-- openspec/                        # OpenSpec change management
-|   +-- specs/                       # ~34 current spec files
-|   +-- changes/                     # Active + archived changes (24 archived)
++-- openspec/                        # OpenSpec change management (specs + changes)
 +-- orch/                            # PRD orchestration (Ruby)
 +-- .claude/                         # Claude Code settings, rules, skills
-    +-- rules/ai-guardrails.md       # AI safety guardrails
 ```
 
 ## Configuration
 
-Edit `config.yaml` to configure the application. Key sections:
+All configuration is in `config.yaml`. Key things to know:
 
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 5055
-  debug: true
+- Server runs on port 5055
+- Requires `OPENROUTER_API_KEY` in `.env` for LLM features
+- Database settings construct the PostgreSQL connection URL
+- `notifications.enabled` controls macOS notifications (requires `terminal-notifier` via Homebrew)
 
-logging:
-  level: INFO
-  file: logs/app.log
+## Claude Code Hooks
 
-database:
-  host: localhost
-  port: 5432
-  name: claude_headspace
-  user: samotage
-  pool_size: 10
-  pool_timeout: 30
+8 lifecycle hooks fire from Claude Code to Flask endpoints at `http://localhost:5055/hook/*`:
 
-openrouter:
-  # Requires OPENROUTER_API_KEY env var (in .env)
-  base_url: https://openrouter.ai/api/v1
-  timeout: 30
-  models:
-    turn: "anthropic/claude-haiku-4.5"
-    task: "anthropic/claude-haiku-4.5"
-    project: "anthropic/claude-3.5-sonnet"
-    objective: "anthropic/claude-3.5-sonnet"
-  rate_limits:
-    calls_per_minute: 30
-    tokens_per_minute: 10000
-  cache:
-    enabled: true
-    ttl_seconds: 300
-  retry:
-    max_attempts: 1
-    base_delay_seconds: 1.0
-    max_delay_seconds: 30.0
-  priority_scoring:
-    debounce_seconds: 5.0
+`session-start`, `session-end`, `stop`, `notification`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`, `permission-request`
 
-file_watcher:
-  polling_interval: 2           # Seconds (fallback mode)
-  reconciliation_interval: 60   # Seconds (hooks-active mode)
-  inactivity_timeout: 5400      # 90 minutes
-  debounce_interval: 0.5
+Setup: Run `bin/install-hooks.sh`. Hook commands must use absolute paths.
 
-hooks:
-  enabled: true
-  polling_interval_with_hooks: 60
-  fallback_timeout: 1200
-
-dashboard:
-  stale_processing_seconds: 600   # 10 min -> display TIMED_OUT
-  active_timeout_minutes: 60
-
-headspace:
-  enabled: true
-  thresholds:
-    yellow: 4                     # Frustration score for yellow
-    red: 7                        # Frustration score for red
-  session_rolling_window_minutes: 180  # 3-hour rolling window
-  alert_cooldown_minutes: 10
-  snapshot_retention_days: 7
-  flow_detection:
-    min_turn_rate: 6              # Min turns/hour for flow state
-    max_frustration: 3            # Max frustration during flow
-    min_duration_minutes: 15      # Min duration to declare flow
-
-reaper:
-  enabled: true
-  interval_seconds: 60            # Seconds between reaper runs
-  inactivity_timeout_seconds: 300 # 5 min inactive -> reap
-  grace_period_seconds: 300       # Grace period before reaping
-
-tmux_bridge:
-  health_check_interval: 30      # Health check interval (seconds)
-  subprocess_timeout: 5           # Subprocess timeout (seconds)
-  text_enter_delay_ms: 100        # Delay between text and Enter (ms)
-
-notifications:
-  enabled: true
-  sound: true
-  rate_limit_seconds: 5
-
-sse:
-  heartbeat_interval_seconds: 30
-  max_connections: 100
-  connection_timeout_seconds: 60
-
-event_system:
-  write_retry_attempts: 3
-  write_retry_delay_ms: 100
-
-activity:
-  enabled: true
-  interval_seconds: 300           # 5-minute aggregation interval
-  retention_days: 3000            # Activity metrics retention
-
-archive:
-  enabled: true
-  retention:
-    policy: keep_all              # keep_all, keep_last_n, or days
-    keep_last_n: 10
-    days: 90
-```
-
-## Claude Code Hooks (Event-Driven)
-
-The monitor receives lifecycle events directly from Claude Code via hooks:
-
-```
-+------------------------------------------------------------+
-|              Claude Code (Terminal Session)                  |
-|                                                             |
-|  Hooks fire on lifecycle events -------------------+        |
-+----------------------------------------------------+-------+
-                                                     |
-                                                     v
-+------------------------------------------------------------+
-|              Claude Headspace (Flask)                        |
-|              http://localhost:5055                           |
-|                                                             |
-|  POST /hook/session-start      -> Agent created, IDLE       |
-|  POST /hook/user-prompt-submit -> Transition to COMMANDED   |
-|  POST /hook/stop               -> Detect intent, complete   |
-|  POST /hook/notification       -> Timestamp update          |
-|  POST /hook/session-end        -> Agent marked inactive     |
-|  POST /hook/pre-tool-use       -> Tool execution start      |
-|  POST /hook/post-tool-use      -> Tool execution complete   |
-|  POST /hook/permission-request -> Permission needed         |
-|  GET  /hook/status             -> Receiver status           |
-+------------------------------------------------------------+
-```
-
-**Benefits over polling:**
-
-- Instant state updates (<100ms vs 2-second polling)
-- 100% confidence (event-based vs inference)
-- Reduced resource usage (no constant terminal scraping)
-
-**Setup:**
-
-Ask Claude Code to install the hooks, or run `bin/install-hooks.sh`.
-
-**Important:** Hook commands must use absolute paths (e.g., `/Users/yourname/.claude/hooks/...`).
-
-See `docs/architecture/claude-code-hooks.md` for detailed documentation.
+See `docs/architecture/claude-code-hooks.md` for details.
 
 ## Key Services
 
-Services are registered in `app.extensions` and can be accessed via `app.extensions["service_name"]`.
+Services are registered in `app.extensions` and accessed via `app.extensions["service_name"]`.
 
 ### Hook & State Management
 
@@ -377,7 +160,7 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 - **PriorityScoringService** (`priority_scoring.py`) -- batch scores all active agents 0-100 based on objective/waypoint alignment, agent state, and recency; debounced (5 seconds)
 - **ProgressSummaryService** (`progress_summary.py`) -- generates LLM-powered project-level progress analysis from git commit history via GitAnalyzer; supports scope-based filtering (since_last, last_n, time_based)
 - **BrainRebootService** (`brain_reboot.py`) -- orchestrates brain reboot generation: combines waypoint content with progress summary, exports to project filesystem
-- **PromptRegistry** (`prompt_registry.py`) -- centralised registry of all LLM prompt templates (turn summarisation, task completion, frustration detection, priority scoring, progress analysis, project description, classification)
+- **PromptRegistry** (`prompt_registry.py`) -- centralised registry of all LLM prompt templates
 
 ### Monitoring & Lifecycle
 
@@ -385,30 +168,25 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 - **AgentReaper** (`agent_reaper.py`) -- background thread that cleans up inactive agents (5-min timeout by default)
 - **ActivityAggregator** (`activity_aggregator.py`) -- background thread that computes hourly activity metrics at agent, project, and system-wide scope
 - **StalenessService** (`staleness.py`) -- detects stale PROCESSING state (>10 min) for display-only TIMED_OUT indicator
-- **CommanderAvailability** (`commander_availability.py`) -- background thread monitoring tmux pane availability for each agent via tmux_bridge health checks
+- **CommanderAvailability** (`commander_availability.py`) -- background thread monitoring tmux pane availability for each agent
 
 ### Communication
 
-- **Broadcaster** (`broadcaster.py`) -- SSE event distribution with client filters (event_type, project_id, agent_id), queue-based delivery, heartbeat, max 100 connections
-- **CardState** (`card_state.py`) -- computes dashboard card JSON for agents (state, summaries, priority, timing) and broadcasts card_refresh SSE events
-- **EventWriter** (`event_writer.py`) -- async audit logging to PostgreSQL with retry (3 attempts, exponential backoff), independent SQLAlchemy engine for transaction isolation
-- **NotificationService** (`notification_service.py`) -- macOS notifications via terminal-notifier with per-agent rate limiting (5s)
-- **TmuxBridge** (`tmux_bridge.py`) -- sends text responses to Claude Code sessions via tmux send-keys; includes health checking, pane capture, and pane listing
+- **Broadcaster** (`broadcaster.py`) -- SSE event distribution with client filters, queue-based delivery, heartbeat, max 100 connections
+- **CardState** (`card_state.py`) -- computes dashboard card JSON for agents and broadcasts card_refresh SSE events
+- **EventWriter** (`event_writer.py`) -- async audit logging to PostgreSQL with retry, independent SQLAlchemy engine
+- **NotificationService** (`notification_service.py`) -- macOS notifications via terminal-notifier with per-agent rate limiting
+- **TmuxBridge** (`tmux_bridge.py`) -- sends text responses to Claude Code sessions via tmux send-keys
 
 ### Infrastructure
 
-- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` and transcript files; content pipeline with regex-based question detection and inference fallback
-- **ConfigEditor** (`config_editor.py`) -- reads, validates, merges, and saves config.yaml changes
+- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` and transcript files
+- **ConfigEditor** (`config_editor.py`) -- reads, validates, merges, and saves config.yaml
 - **ArchiveService** (`archive_service.py`) -- archives waypoints and other artifacts with timestamped versions
-- **WaypointEditor** (`waypoint_editor.py`) -- loads, saves, and archives project waypoint files (docs/brain_reboot/waypoint.md)
-- **GitMetadata** (`git_metadata.py`) -- extracts and caches git repo URL and current branch for projects
-- **GitAnalyzer** (`git_analyzer.py`) -- extracts structured commit history from git repositories with scope-based queries (since_last, last_n, time_based); used by ProgressSummaryService
-- **SessionRegistry** (`session_registry.py`) -- thread-safe registry for FileWatcher session tracking
-- **JSONLParser** (`jsonl_parser.py`) -- incremental parser for Claude Code .jsonl session files
-- **TranscriptReader** (`transcript_reader.py`) -- reads Claude Code transcript files, extracts agent response text by walking backwards until user message
+- **WaypointEditor** (`waypoint_editor.py`) -- loads, saves, and archives project waypoint files
+- **GitMetadata/GitAnalyzer** -- git repo info extraction and commit history analysis
 - **ProjectDecoder** (`project_decoder.py`) -- encodes/decodes project paths to/from Claude Code folder names
-- **ITermFocus** (`iterm_focus.py`) -- AppleScript-based iTerm2 window/pane focus with error classification
-- **ProcessMonitor** (`process_monitor.py`) -- monitors background watcher process health; PID-based liveness checks
+- **ITermFocus** (`iterm_focus.py`) -- AppleScript-based iTerm2 window/pane focus
 
 ## Data Models
 
@@ -437,413 +215,48 @@ Services are registered in `app.extensions` and can be accessed via `app.extensi
 
 ## API Endpoints
 
-### Dashboard & Real-Time
+Routes are organised into 22 blueprints in `src/claude_headspace/routes/`. Key groups:
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/` | GET | Main dashboard view |
-| `/dashboard` | GET | Dashboard (alias) |
-| `/api/events/stream` | GET | SSE stream (filters: `?types=...&project_id=...&agent_id=...`) |
+- **Dashboard:** `/`, `/dashboard`, `/api/events/stream` (SSE)
+- **Hooks:** `/hook/{session-start,session-end,stop,notification,user-prompt-submit,pre-tool-use,post-tool-use,permission-request,status}`
+- **Projects:** `/projects`, `/api/projects/<id>` (CRUD + settings, metadata detection, waypoint, progress-summary, brain-reboot, archives)
+- **Intelligence:** `/api/inference/*`, `/api/summarise/*`, `/api/priority/*`
+- **Agents:** `/api/sessions/*`, `/api/focus/*`, `/api/agents/*/dismiss`, `/api/respond/*`
+- **Headspace:** `/api/headspace/*`, `/api/metrics/*`, `/activity`
+- **Other:** `/objective`, `/config`, `/logging`, `/health`, `/help`
 
-### Claude Code Hooks
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/hook/session-start` | POST | Claude Code session started |
-| `/hook/session-end` | POST | Claude Code session ended |
-| `/hook/stop` | POST | Claude finished turn (primary completion signal) |
-| `/hook/notification` | POST | Claude Code notification |
-| `/hook/user-prompt-submit` | POST | User submitted prompt |
-| `/hook/pre-tool-use` | POST | Tool execution starting |
-| `/hook/post-tool-use` | POST | Tool execution completed |
-| `/hook/permission-request` | POST | Permission needed from user |
-| `/hook/status` | GET | Hook receiver status and activity |
-
-### Intelligence Layer
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/inference/status` | GET | Inference service health and config |
-| `/api/inference/usage` | GET | Usage statistics and cost breakdown |
-| `/api/summarise/turn/<id>` | POST | Generate or retrieve turn summary |
-| `/api/summarise/task/<id>` | POST | Generate or retrieve task summary |
-| `/api/priority/score` | POST | Trigger batch priority scoring |
-| `/api/priority/rankings` | GET | Get current priority rankings |
-
-### Project Management
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/projects` | GET | Projects management page |
-| `/projects/<slug>` | GET | Project detail show page |
-| `/api/projects` | GET/POST | List all or create project |
-| `/api/projects/<id>` | GET/PUT/DELETE | Project CRUD |
-| `/api/projects/<id>/settings` | GET/PUT | Project inference settings |
-| `/api/projects/<id>/detect-metadata` | POST | Auto-detect git info + description |
-| `/api/projects/<id>/inference-summary` | GET | Project inference usage metrics |
-| `/api/agents/<id>/tasks` | GET | List tasks for an agent |
-| `/api/tasks/<id>/turns` | GET | List turns for a task |
-| `/api/projects/<id>/waypoint` | GET/POST | Waypoint content |
-| `/api/projects/<id>/progress-summary` | GET/POST | Progress summary |
-| `/api/projects/<id>/brain-reboot` | GET/POST | Brain reboot generation |
-| `/api/projects/<id>/brain-reboot/export` | POST | Export brain reboot to filesystem |
-| `/api/projects/<id>/archives` | GET | List archived artifacts |
-| `/api/projects/<id>/archives/<artifact>/<ts>` | GET | Retrieve specific archive |
-
-### Session & Agent Control
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/sessions` | POST | Register new session |
-| `/api/sessions/<uuid>` | GET/DELETE | Get or end session |
-| `/api/focus/<agent_id>` | POST | iTerm2 focus control |
-| `/api/agents/<agent_id>/dismiss` | POST | Dismiss agent (mark ended) |
-| `/api/respond/<agent_id>` | POST | Send text response to agent via tmux |
-| `/api/respond/<agent_id>/availability` | GET | Check tmux pane availability |
-
-### Headspace & Activity
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/activity` | GET | Activity monitoring page |
-| `/api/metrics/agents/<id>` | GET | Agent activity metrics |
-| `/api/metrics/projects/<id>` | GET | Project activity metrics |
-| `/api/metrics/overall` | GET | System-wide activity metrics |
-| `/api/headspace/current` | GET | Current headspace state |
-| `/api/headspace/history` | GET | Headspace snapshot history |
-| `/api/headspace/suppress` | POST | Suppress alerts for 1 hour |
-
-### Other Endpoints
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/objective` | GET | Objective editor page |
-| `/api/objective` | GET/POST | Global objective CRUD |
-| `/api/objective/history` | GET | Objective change history (paginated) |
-| `/api/objective/history/<id>` | DELETE | Delete history item |
-| `/api/objective/priority` | GET/POST | Toggle priority scoring |
-| `/config` | GET | Configuration editor page |
-| `/api/config` | GET/POST | Get or save configuration |
-| `/api/config/restart` | POST | Restart server via restart_server.sh |
-| `/api/notifications/preferences` | GET/PUT | Notification preferences |
-| `/api/notifications/refresh-availability` | POST | Re-check terminal-notifier |
-| `/api/notifications/test` | POST | Send test notification |
-| `/logging` | GET | Event log viewer page |
-| `/logging/inference` | GET | Inference log sub-tab page |
-| `/api/events` | GET/DELETE | Events (paginated, filterable) |
-| `/api/events/filters` | GET | Available event filter options |
-| `/api/inference/calls` | GET/DELETE | Inference calls (paginated) |
-| `/api/inference/calls/filters` | GET | Available inference filter options |
-| `/health` | GET | Health check (DB + SSE status) |
-| `/help` | GET | Help documentation page |
-| `/help/<slug>` | GET | Help page for specific topic |
-| `/api/help/topics` | GET | List help topics |
-| `/api/help/topics/<slug>` | GET | Get specific topic content |
-| `/api/help/setup-prompt` | GET | Get Claude Code setup prompt |
-| `/api/help/search` | GET | Search help content (full-text) |
+Discover specific endpoints by reading the relevant route file in `src/claude_headspace/routes/`.
 
 ## Notes for AI Assistants
 
 ### Auto-Commit After Plan Execution
 
-After finishing execution of a plan (e.g., implementing tasks from `/opsx:apply`, completing a unit of work from orchestration, or finishing any multi-step implementation), automatically run `/commit-push` to stage, commit, and push all changes to the current branch. Do not ask for confirmation -- the skill handles everything including meaningful commit messages derived from the actual diff.
+After finishing execution of a plan (e.g., implementing tasks from `/opsx:apply`, completing a unit of work from orchestration, or finishing any multi-step implementation), automatically run `/commit-push` to stage, commit, and push all changes to the current branch. Do not ask for confirmation.
 
-This applies when:
-- You finish implementing all tasks from a plan or spec
-- You complete a significant unit of work (feature, fix, refactor)
-- Orchestration phases complete (build, test passing, etc.)
-
-This does **not** apply when:
-- You are only doing research, exploration, or answering questions
-- The user explicitly says not to commit
-- You are in the middle of multi-step work that isn't yet complete
-
-### Notifications
-
-Notifications require `terminal-notifier` installed via Homebrew:
-
-```bash
-brew install terminal-notifier
-```
-
-Notifications can be enabled/disabled via:
-
-- **Dashboard:** Toggle in settings panel
-- **API:** `PUT /api/notifications/preferences`
-- **Config:** `notifications.enabled` in config.yaml
+This applies when you finish implementing all tasks from a plan/spec or complete a significant unit of work. Does **not** apply for research/exploration, when user says not to commit, or when work isn't complete.
 
 ### Development Tips
 
-- **Run targeted tests:** Run only the tests relevant to your change (e.g., `pytest tests/services/test_hook_receiver.py tests/routes/test_hooks.py`). Do NOT run the full suite unless explicitly asked by the user or preparing a commit/PR. Use `-k` to narrow further when useful.
-- **Use run.py:** Recommended entry point -- `python run.py`
-- **Debug mode:** Set `debug: true` in config.yaml for Flask debug mode
+- **Run targeted tests:** Run only tests relevant to your change. Do NOT run the full suite unless explicitly asked. See `.claude/rules/ai-guardrails.md` for testing rules.
 - **Service injection:** Access services via `app.extensions["service_name"]`
 - **State transitions:** Use the state machine via `TaskLifecycleManager`
 - **Migrations:** Run `flask db upgrade` after model changes
-- **LLM features:** Set `OPENROUTER_API_KEY` in `.env` for inference/summarisation/priority
-- **Tailwind CSS:** Run the Tailwind CLI watcher during frontend development; source is `static/css/src/input.css`, output is `static/css/main.css`
+- **LLM features:** Set `OPENROUTER_API_KEY` in `.env`
+- **Tailwind CSS:** Source is `static/css/src/input.css`, output is `static/css/main.css`. Use `npx tailwindcss` (v3), NOT `npx @tailwindcss/cli` (v4).
 - The frontend uses vanilla JS with Tailwind CSS -- no framework dependencies
 
 ### Testing
 
-#### CRITICAL: Test Database Safety
+Test database safety rules and testing policies are in `.claude/rules/ai-guardrails.md`. Key points:
 
-**Tests MUST NEVER connect to production or development databases.** All databases that do not end in `_test` are protected. This rule is enforced at multiple levels:
-
-1. **Fixture enforcement:** `tests/conftest.py` contains a session-scoped autouse fixture `_force_test_database` that sets `DATABASE_URL` to `claude_headspace_test` before any test runs. This fixture must NEVER be removed, bypassed, or weakened.
-2. **Config guard:** `config.py` contains `_guard_production_db()` that raises `RuntimeError` if tests attempt to connect to a non-test database.
-3. **New test requirement:** All new test files MUST use the existing fixture system (`app`, `client`, `db_session`). No ad-hoc database connections are allowed.
-4. **AI guardrail:** See `.claude/rules/ai-guardrails.md` -- Database Protection section.
-
-Testing must not pollute, corrupt, or delete any user data in production or development databases.
-
-#### Commands
-
-```bash
-# Targeted testing (default -- run what's relevant to the change)
-pytest tests/services/test_hook_receiver.py          # Specific service test
-pytest tests/routes/test_hooks.py                    # Specific route test
-pytest tests/services/ tests/routes/                 # Relevant directories
-pytest -k "test_state_machine"                       # Pattern match
-pytest tests/integration/test_persistence_flow.py    # Specific integration test
-pytest tests/e2e/ -v                                 # E2E browser tests (requires Playwright)
-
-# Full suite (only when explicitly requested or before commit/PR)
-pytest                                    # All tests (always uses _test DB)
-pytest --cov=src                          # With coverage report
-```
-
-#### Test Architecture (4-Tier)
-
-- **Unit tests** (`tests/services/`, ~40 files) -- mock dependencies, validate pure service logic in isolation
-- **Route tests** (`tests/routes/`, ~25 files) -- Flask test client with mocked services, validate HTTP contracts and response codes
-- **Integration tests** (`tests/integration/`, ~7 files) -- real PostgreSQL `_test` database, factory-boy data creation, verify actual persistence and constraints
-- **E2E tests** (`tests/e2e/`, ~4 files) -- real Flask server + Playwright browser, hook simulation, full lifecycle validation with screenshots
-
-#### Integration Testing Framework
-
-Real PostgreSQL integration tests with automatic database lifecycle management.
-
-**Prerequisites:**
-
-- PostgreSQL running locally
-- Database user with `CREATE DATABASE` privilege
-- Dev dependencies installed: `pip install -e ".[dev]"`
-
-**Database lifecycle (automatic):**
-
-1. **Session start:** creates `claude_headspace_test` database (drops first if exists)
-2. **Schema creation:** `db.metadata.create_all()` initialises all tables
-3. **Per-test isolation:** each test wrapped in a transaction, rolled back after
-4. **Session end:** drops the test database
-
-**Test database URL** is resolved in order:
-
-1. `TEST_DATABASE_URL` environment variable (if set)
-2. Auto-constructed from `config.yaml` database settings with `_test` suffix
-
-**Factory Boy factories** (`tests/integration/factories.py`):
-
-| Factory | Model | Auto-creates Parent |
-|---------|-------|---------------------|
-| `ProjectFactory` | Project | -- |
-| `AgentFactory` | Agent | Project |
-| `TaskFactory` | Task | Agent -> Project |
-| `TurnFactory` | Turn | Task -> Agent -> Project |
-| `EventFactory` | Event | -- (refs optional) |
-| `ObjectiveFactory` | Objective | -- |
-| `ObjectiveHistoryFactory` | ObjectiveHistory | Objective |
-
-**Key fixtures** (`tests/integration/conftest.py`):
-
-| Fixture | Scope | Description |
-|---------|-------|-------------|
-| `test_database_url` | session | Test database connection URL |
-| `test_db_engine` | session | Engine that manages create/drop of test DB |
-| `TestSessionFactory` | session | `sessionmaker` bound to test engine |
-| `db_session` | function | Per-test session with automatic rollback |
-
-**Writing new integration tests:**
-
-```python
-import pytest
-from sqlalchemy import select
-from claude_headspace.models import Project, Agent
-from .factories import ProjectFactory, AgentFactory
-
-@pytest.fixture(autouse=True)
-def _set_factory_session(db_session):
-    ProjectFactory._meta.sqlalchemy_session = db_session
-    AgentFactory._meta.sqlalchemy_session = db_session
-
-class TestMyFeature:
-    def test_something(self, db_session):
-        project = ProjectFactory(name="my-project")
-        db_session.flush()
-
-        result = db_session.execute(
-            select(Project).where(Project.id == project.id)
-        ).scalar_one()
-        assert result.name == "my-project"
-```
-
-See `docs/testing/integration-testing-guide.md` for the full guide.
-
-#### E2E Testing Framework
-
-Browser-based end-to-end tests using Playwright with a real Flask server.
-
-**Prerequisites:**
-
-- Playwright installed: `pip install pytest-playwright && playwright install`
-- PostgreSQL running locally
-
-**E2E fixtures** (`tests/e2e/conftest.py`):
-
-| Fixture | Scope | Description |
-|---------|-------|-------------|
-| `e2e_test_db` | session | Creates/drops E2E test database |
-| `e2e_app` | session | Flask app configured for E2E |
-| `e2e_server` | session | Flask running in background thread |
-| `clean_db` | function | Truncates tables between tests |
-| `hook_client` | function | HookSimulator for firing lifecycle events |
-| `dashboard` | function | Navigates to dashboard, asserts SSE connected |
-
-**E2E helpers** (`tests/e2e/helpers/`):
-
-- `HookSimulator` -- fires POST requests to hook endpoints simulating Claude Code
-- `DashboardAssertions` -- SSE connection checks, DOM assertions, screenshot capture
-
-#### Test Configuration
-
-From `pyproject.toml`:
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_functions = ["test_*"]
-addopts = "-v"
-markers = ["e2e: end-to-end browser tests"]
-```
-
-Dev dependencies: `pip install -e ".[dev]"` (pytest, pytest-cov, factory-boy, pytest-playwright)
-
-### AppleScript (Legacy)
-
-Test AppleScript commands manually before modifying:
-
-```bash
-osascript -e 'tell application "iTerm" to get name of windows'
-```
-
-If permissions errors occur, check System Preferences -> Privacy & Security -> Automation.
-
-### Auto-Restart Server
-
-When making changes that require a server restart, **use the restart script**:
-
-```bash
-./restart_server.sh
-```
-
-The script handles everything: kills old process, activates venv, starts new one, verifies it's running.
-
-## PRD Orchestration System
-
-This project includes a PRD-driven development orchestration system for managing feature development through a structured pipeline, plus an OpenSpec change management system for tracking individual changes.
-
-### Orchestration Overview
-
-The system uses Ruby scripts (`orch/`) with Claude Code commands (`.claude/commands/otl/`) to automate:
-
-1. **PRD Workshop** - Create and validate PRDs
-2. **Queue Management** - Batch processing of multiple PRDs
-3. **Proposal Generation** - Create OpenSpec change proposals from PRDs
-4. **Build Phase** - Implement changes with AI assistance
-5. **Test Phase** - Run pytest with auto-retry (Ralph loop)
-6. **Validation** - Verify implementation matches spec
-7. **Finalize** - Commit, create PR, and merge
+- Tests MUST use `_test` databases only (enforced by `_force_test_database` fixture)
+- 4-tier architecture: unit (`tests/services/`), route (`tests/routes/`), integration (`tests/integration/`), E2E (`tests/e2e/`)
+- Integration tests use factory-boy (`tests/integration/factories.py`) -- see `docs/testing/integration-testing-guide.md`
+- Run targeted tests by default, full suite only when asked
 
 ### Git Workflow
-
-```
-development (base) -> feature/change-name -> PR -> development
-```
 
 - Feature branches are created FROM `development`
 - PRs target `development` branch
 - `main` is the stable/release branch
-
-### Key Commands
-
-```bash
-# PRD Management
-/10: prd-workshop      # Create/remediate PRDs
-/20: prd-list          # List pending PRDs
-/30: prd-validate      # Quality gate validation
-
-# Orchestration (from development branch)
-/10: queue-add         # Add PRDs to queue
-/20: prd-orchestrate   # Start queue processing
-
-# Ruby CLI (direct access)
-ruby orch/orchestrator.rb status      # Show current state
-ruby orch/orchestrator.rb queue list  # List queue items
-ruby orch/prd_validator.rb list-all   # List PRDs with validation status
-```
-
-### Orchestration Directories
-
-```
-orch/
-+-- orchestrator.rb      # Main orchestration dispatcher
-+-- state_manager.rb     # State persistence
-+-- queue_manager.rb     # Queue operations
-+-- prd_validator.rb     # PRD validation
-+-- usage_tracker.rb     # Usage tracking
-+-- config.yaml          # Orchestration config
-+-- commands/            # Ruby command implementations
-+-- working/             # State/queue files (gitignored)
-+-- log/                 # Log files (gitignored)
-
-openspec/
-+-- config.yaml          # OpenSpec configuration
-+-- specs/               # ~34 current specification files
-+-- changes/
-    +-- archive/         # 24 completed changes
-    +-- (active changes)
-
-.claude/commands/otl/
-+-- prds/                # PRD management commands
-+-- orch/                # Orchestration commands
-```
-
-### PRD Location
-
-PRDs are stored in `docs/prds/{subsystem}/`:
-
-```
-docs/prds/
-+-- core/done/           # Core system PRDs (9)
-+-- events/done/         # Event handling PRDs (3)
-+-- inference/done/      # Intelligence layer PRDs (6)
-+-- ui/done/             # UI layer PRDs (7)
-+-- notifications/done/  # Notification PRDs (1)
-+-- scripts/done/        # Script PRDs (2)
-+-- state/done/          # State management PRDs (1)
-+-- testing/done/        # Testing PRDs (1)
-+-- bridge/done/         # Bridge PRDs (1)
-+-- flask/done/          # Flask setup PRDs
-+-- api/done/            # API layer PRDs
-```
-
-### Running the Orchestration
-
-1. Create a PRD in `docs/prds/{subsystem}/`
-2. Run `/10: prd-workshop` to validate
-3. Switch to `development` branch
-4. Run `/10: queue-add` to add to queue
-5. Run `/20: prd-orchestrate` to start processing
-
-See `.claude/commands/otl/README.md` for detailed documentation.
+- See `.claude/rules/orchestration.md` for PRD orchestration details

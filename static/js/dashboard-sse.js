@@ -46,6 +46,145 @@
         window.location.reload();
     }
 
+    // ── Kanban card movement utilities ──────────────────────────────
+
+    /**
+     * Check if the dashboard is currently in Kanban view.
+     * Card movement only applies in Kanban view; project/priority views
+     * keep existing in-place update behavior.
+     */
+    function isKanbanView() {
+        return !!document.querySelector('.kanban-columns');
+    }
+
+    /**
+     * Map an agent state string to the Kanban column data-kanban-state value.
+     *   IDLE -> 'IDLE'
+     *   COMPLETE -> 'COMPLETE'
+     *   COMMANDED, PROCESSING, TIMED_OUT -> 'PROCESSING'
+     *   AWAITING_INPUT -> 'AWAITING_INPUT'
+     */
+    function stateToKanbanColumn(state) {
+        switch (state) {
+            case 'IDLE':
+                return 'IDLE';
+            case 'COMPLETE':
+                return 'COMPLETE';
+            case 'COMMANDED':
+            case 'PROCESSING':
+            case 'TIMED_OUT':
+                return 'PROCESSING';
+            case 'AWAITING_INPUT':
+                return 'AWAITING_INPUT';
+            default:
+                return 'IDLE';
+        }
+    }
+
+    /**
+     * Move an agent card to the correct Kanban column based on its new state.
+     * Handles column count updates, empty placeholders, and highlight animation.
+     */
+    function moveCardToColumn(agentId, newState, projectId) {
+        if (!isKanbanView()) return;
+
+        var card = findAgentCard(agentId);
+        if (!card) return;
+
+        // Never move a full agent card (article) into the COMPLETE column.
+        // COMPLETE column only holds condensed <details> cards created by
+        // handleCardRefresh. Without this guard, a state_transition event
+        // could move the full card there and orphan it from IDLE.
+        if (newState === 'COMPLETE' && card.tagName === 'ARTICLE') return;
+
+        var targetColName = stateToKanbanColumn(newState);
+
+        // Find card's current column
+        var currentColumn = card.closest('[data-kanban-state]');
+        if (!currentColumn) return;
+
+        var currentColName = currentColumn.getAttribute('data-kanban-state');
+
+        // Already in the correct column — nothing to do
+        if (currentColName === targetColName) return;
+
+        // Find the target column body within the same project section
+        var projectSection = card.closest('[data-project-id]');
+        if (!projectSection) return;
+
+        var targetColumn = projectSection.querySelector('[data-kanban-state="' + targetColName + '"]');
+        if (!targetColumn) return;
+
+        var targetBody = targetColumn.querySelector('.kanban-column-body');
+        if (!targetBody) return;
+
+        var sourceBody = currentColumn.querySelector('.kanban-column-body');
+
+        // Move the card
+        targetBody.appendChild(card);
+
+        // Update source column: add empty placeholder if now empty
+        if (sourceBody) {
+            var remainingCards = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+            if (remainingCards.length === 0 && currentColName !== 'COMPLETE') {
+                var emptyLabels = {
+                    'IDLE': 'idle',
+                    'PROCESSING': 'processing',
+                    'AWAITING_INPUT': 'input needed'
+                };
+                var emptyText = 'No ' + (emptyLabels[currentColName] || currentColName.toLowerCase()) + ' tasks';
+                var placeholder = document.createElement('p');
+                placeholder.className = 'text-muted text-xs italic px-2';
+                placeholder.textContent = emptyText;
+                sourceBody.appendChild(placeholder);
+            }
+        }
+
+        // Update target column: remove empty placeholder if present
+        var targetPlaceholder = targetBody.querySelector('p.text-muted.italic');
+        if (targetPlaceholder) {
+            targetPlaceholder.remove();
+        }
+
+        // Update both column header counts
+        updateColumnCount(currentColumn);
+        updateColumnCount(targetColumn);
+
+        // Highlight the moved card
+        highlightMovedCard(card);
+    }
+
+    /**
+     * Update the (N) count in a Kanban column header.
+     * Counts article elements and details.kanban-completed-task elements.
+     */
+    function updateColumnCount(columnEl) {
+        if (!columnEl) return;
+
+        var body = columnEl.querySelector('.kanban-column-body');
+        if (!body) return;
+
+        var count = body.querySelectorAll('article, details.kanban-completed-task').length;
+        var countSpan = columnEl.querySelector('.kanban-column-count');
+        if (countSpan) {
+            countSpan.textContent = '(' + count + ')';
+        }
+    }
+
+    /**
+     * Apply a brief highlight animation on a card that just moved columns.
+     * Scrolls the card into view and adds a cyan ring for 1.5 seconds.
+     */
+    function highlightMovedCard(card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        card.classList.add('ring-2', 'ring-cyan');
+        setTimeout(function() {
+            card.classList.remove('ring-2', 'ring-cyan');
+        }, 1500);
+    }
+
+    // ── End Kanban card movement utilities ────────────────────────
+
     /**
      * Initialize the dashboard SSE client.
      * Uses the shared SSE connection from header-sse.js (window.headerSSEClient).
@@ -57,12 +196,21 @@
             return null;
         }
 
-        // Reload page on reconnect to catch up on missed events
+        // Reload page on reconnect to catch up on missed events.
+        // Track whether we've been connected before so we only reload
+        // on RE-connections (not the initial page-load connection).
+        // The old check (oldState === 'reconnecting') never matched because
+        // state transitions go RECONNECTING → CONNECTING → CONNECTED,
+        // so oldState was always 'connecting' when reaching 'connected'.
+        var hasBeenConnected = false;
         client.onStateChange(function(newState, oldState) {
             console.log('SSE state:', oldState, '->', newState);
-            if (newState === 'connected' && oldState === 'reconnecting') {
-                console.log('SSE reconnected after drop — reloading to sync state');
-                safeDashboardReload();
+            if (newState === 'connected') {
+                if (hasBeenConnected) {
+                    console.log('SSE reconnected after drop — reloading to sync state');
+                    safeDashboardReload();
+                }
+                hasBeenConnected = true;
             }
         });
 
@@ -102,10 +250,9 @@
         // Handle commander availability changes (Input Bridge)
         client.on('commander_availability', handleCommanderAvailability);
 
-        // DEBUG: Wildcard handler to see ALL events
-        client.on('*', function(data, eventType) {
-            console.log('[DEBUG] SSE EVENT RECEIVED:', eventType, JSON.stringify(data));
-        });
+        // Handle activity bar updates on turn events
+        client.on('turn_detected', handleActivityBarUpdate);
+        client.on('turn_created', handleActivityBarUpdate);
 
         return client;
     }
@@ -117,34 +264,27 @@
         const agentId = data.agent_id;
         const newState = data.new_state || data.state;
 
-        console.log('[DEBUG] handleStateTransition called:', {
-            eventType: eventType,
-            rawData: JSON.stringify(data),
-            agentId: agentId,
-            agentIdType: typeof agentId,
-            newState: newState,
-            newStateType: typeof newState,
-        });
-
         if (!agentId || !newState) {
-            console.warn('[DEBUG] Invalid state transition event (missing agentId or newState):', data);
+            return;
+        }
+
+        // In Kanban view, COMPLETE transitions are handled by handleCardRefresh
+        // which creates the condensed card + resets the agent card to IDLE.
+        // Ignore state_transition events for COMPLETE to avoid undoing that work.
+        if (newState === 'COMPLETE' && isKanbanView()) {
             return;
         }
 
         // Update tracked state
         const oldState = agentStates.get(agentId);
-        console.log('[DEBUG] agentStates lookup:', {
-            agentId: agentId,
-            agentIdType: typeof agentId,
-            oldState: oldState,
-            mapSize: agentStates.size,
-            mapKeys: Array.from(agentStates.keys()).map(k => `${k} (${typeof k})`),
-        });
         agentStates.set(agentId, newState);
 
         // Update agent card and recommended panel
         updateAgentCardState(agentId, newState);
         updateRecommendedPanel(agentId, newState);
+
+        // Move card to correct Kanban column
+        moveCardToColumn(agentId, newState, data.project_id);
 
         // Clear line 04 when leaving AWAITING_INPUT — the question is no longer relevant
         if (oldState === 'AWAITING_INPUT' && newState !== 'AWAITING_INPUT') {
@@ -181,15 +321,7 @@
         const selector = `article[data-agent-id="${agentId}"]`;
         const card = document.querySelector(selector);
 
-        console.log('[DEBUG] updateAgentCardState:', {
-            agentId: agentId,
-            agentIdType: typeof agentId,
-            selector: selector,
-            cardFound: !!card,
-        });
-
         if (!card) {
-            console.warn('[DEBUG] Card NOT FOUND for selector:', selector);
             return;
         }
 
@@ -197,25 +329,20 @@
 
         // Update state bar
         const stateBar = card.querySelector('.state-bar');
-        console.log('[DEBUG] stateBar found:', !!stateBar, 'className before:', stateBar ? stateBar.className : 'N/A');
         if (stateBar) {
             // Remove old bg classes
             stateBar.className = stateBar.className.replace(/bg-\w+/g, '');
             stateBar.classList.add(stateInfo.bg_class);
-            console.log('[DEBUG] stateBar className after:', stateBar.className);
         }
 
         // Update state label
         const stateLabel = card.querySelector('.state-label');
-        console.log('[DEBUG] stateLabel found:', !!stateLabel, 'text before:', stateLabel ? stateLabel.textContent : 'N/A');
         if (stateLabel) {
             stateLabel.textContent = stateInfo.label;
-            console.log('[DEBUG] stateLabel text after:', stateLabel.textContent);
         }
 
         // Update data attribute
         card.setAttribute('data-state', state);
-        console.log('[DEBUG] Card data-state set to:', state);
     }
 
     /**
@@ -304,11 +431,49 @@
         const agentId = data.agent_id;
         if (!agentId) return;
 
-        console.log('Session ended:', agentId, '- reloading dashboard');
+        console.log('Session ended:', agentId);
 
         // Remove from tracked states
         agentStates.delete(agentId);
 
+        // In Kanban view, remove the card from DOM instead of full reload
+        if (isKanbanView()) {
+            var card = findAgentCard(agentId);
+            if (card) {
+                var column = card.closest('[data-kanban-state]');
+                var body = column ? column.querySelector('.kanban-column-body') : null;
+
+                card.remove();
+
+                // Update source column: add empty placeholder if now empty
+                if (body) {
+                    var remaining = body.querySelectorAll('article, details.kanban-completed-task');
+                    if (remaining.length === 0) {
+                        var colName = column.getAttribute('data-kanban-state');
+                        if (colName !== 'COMPLETE') {
+                            var emptyLabels = {
+                                'IDLE': 'idle',
+                                'PROCESSING': 'processing',
+                                'AWAITING_INPUT': 'input needed'
+                            };
+                            var placeholder = document.createElement('p');
+                            placeholder.className = 'text-muted text-xs italic px-2';
+                            placeholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                            body.appendChild(placeholder);
+                        }
+                    }
+                }
+
+                // Update column count
+                if (column) updateColumnCount(column);
+
+                // Recalculate header counts
+                updateStatusCounts();
+                return;
+            }
+        }
+
+        // Fallback: reload for non-Kanban views or if card not found
         safeDashboardReload();
     }
 
@@ -426,6 +591,67 @@
     }
 
     /**
+     * Build a condensed completed-task accordion element for the COMPLETE column.
+     * Matches the server-side template in _kanban_view.html.
+     */
+    function buildCompletedTaskCard(data) {
+        var details = document.createElement('details');
+        details.className = 'kanban-completed-task bg-elevated rounded-lg border border-green/20 overflow-hidden';
+        details.setAttribute('data-agent-id', data.id);
+
+        var esc = window.CHUtils.escapeHtml;
+        var instruction = esc(data.task_instruction || 'Task');
+        var completionSummary = esc(data.task_completion_summary || data.task_summary || 'Completed');
+        var heroChars = esc(data.hero_chars || '');
+        var heroTrail = esc(data.hero_trail || '');
+        var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
+        var elapsed = esc(data.elapsed || '');
+        var turnLabel = turnCount === 1 ? 'turn' : 'turns';
+        var elapsedStr = elapsed ? ' \u00b7 ' + elapsed : '';
+
+        details.innerHTML =
+            '<summary class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-hover transition-colors">' +
+                '<span class="text-xs text-muted">&#9654;</span>' +
+                '<span class="flex items-baseline gap-0.5">' +
+                    '<span class="agent-hero text-sm">' + heroChars + '</span>' +
+                    '<span class="agent-hero-trail">' + heroTrail + '</span>' +
+                '</span>' +
+                '<span class="task-instruction text-primary text-sm font-medium truncate flex-1" title="' + instruction + '">' + instruction + '</span>' +
+            '</summary>' +
+            '<div class="card-editor border-t border-green/10">' +
+                '<div class="card-line">' +
+                    '<span class="line-num">01</span>' +
+                    '<div class="line-content">' +
+                        '<p class="task-instruction text-primary text-sm font-medium">' + instruction + '</p>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-line">' +
+                    '<span class="line-num">02</span>' +
+                    '<div class="line-content">' +
+                        '<p class="task-summary text-green text-sm italic">' + completionSummary + '</p>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-line">' +
+                    '<span class="line-num">03</span>' +
+                    '<div class="line-content">' +
+                        '<span class="text-muted text-xs">' + turnCount + ' ' + turnLabel + elapsedStr + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        return details;
+    }
+
+    /**
+     * Find an agent's card element — may be an <article> (full card) or
+     * a <details> (condensed completed-task card).
+     */
+    function findAgentCard(agentId) {
+        return document.querySelector('article[data-agent-id="' + agentId + '"]') ||
+               document.querySelector('details[data-agent-id="' + agentId + '"]');
+    }
+
+    /**
      * Handle card_refresh events — authoritative full card state from server.
      * Updates all visible fields on the agent card in one shot.
      */
@@ -438,7 +664,7 @@
 
         console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
 
-        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        var card = findAgentCard(agentId);
 
         // If card not found, a new agent may have appeared — reload to render it
         if (!card) {
@@ -448,9 +674,118 @@
             return;
         }
 
+        var isCondensed = card.tagName === 'DETAILS';
+
+        // Condensed completed-task card transitioning to a non-COMPLETE state
+        // means a new task started — reload to get the full agent card template
+        if (isCondensed && state !== 'COMPLETE') {
+            safeDashboardReload();
+            return;
+        }
+
+        // Full agent card transitioning to COMPLETE in Kanban view —
+        // create a condensed completed-task accordion in the COMPLETE column
+        // AND reset the agent card to IDLE in the IDLE column
+        if (!isCondensed && state === 'COMPLETE' && isKanbanView()) {
+            agentStates.set(agentId, 'IDLE');
+
+            var condensedCard = buildCompletedTaskCard(data);
+
+            var projectSection = card.closest('[data-project-id]');
+            var sourceColumn = card.closest('[data-kanban-state]');
+
+            if (projectSection) {
+                // 1. Add condensed card to COMPLETE column
+                var completeColumn = projectSection.querySelector('[data-kanban-state="COMPLETE"]');
+                var completeBody = completeColumn ? completeColumn.querySelector('.kanban-column-body') : null;
+
+                if (completeBody) {
+                    var placeholder = completeBody.querySelector('p.text-muted.italic');
+                    if (placeholder) placeholder.remove();
+                    completeBody.insertBefore(condensedCard, completeBody.firstChild);
+                }
+
+                // 2. Reset the agent card to IDLE state
+                var idleInfo = STATE_INFO['IDLE'];
+                card.setAttribute('data-state', 'IDLE');
+
+                var stateBar = card.querySelector('.state-bar');
+                if (stateBar) {
+                    stateBar.className = stateBar.className.replace(/bg-\w+/g, '');
+                    stateBar.classList.add(idleInfo.bg_class);
+                }
+                var stateLabel = card.querySelector('.state-label');
+                if (stateLabel) stateLabel.textContent = idleInfo.label;
+
+                var instructionEl = card.querySelector('.task-instruction');
+                if (instructionEl) {
+                    instructionEl.textContent = 'No active task';
+                    instructionEl.classList.remove('text-primary', 'font-medium');
+                    instructionEl.classList.add('text-muted', 'italic');
+                }
+                var taskSummary = card.querySelector('.task-summary');
+                if (taskSummary) {
+                    taskSummary.textContent = '';
+                    taskSummary.classList.remove('text-green');
+                    taskSummary.classList.add('text-secondary');
+                }
+
+                // 3. Move the agent card to the IDLE column
+                var idleColumn = projectSection.querySelector('[data-kanban-state="IDLE"]');
+                var idleBody = idleColumn ? idleColumn.querySelector('.kanban-column-body') : null;
+
+                if (idleBody) {
+                    var idlePlaceholder = idleBody.querySelector('p.text-muted.italic');
+                    if (idlePlaceholder) idlePlaceholder.remove();
+                    idleBody.appendChild(card);
+                }
+
+                // 4. Update source column (where the card came from)
+                if (sourceColumn && sourceColumn !== idleColumn) {
+                    var sourceBody = sourceColumn.querySelector('.kanban-column-body');
+                    if (sourceBody) {
+                        var remaining = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+                        if (remaining.length === 0) {
+                            var colName = sourceColumn.getAttribute('data-kanban-state');
+                            if (colName !== 'COMPLETE') {
+                                var emptyLabels = {
+                                    'IDLE': 'idle',
+                                    'PROCESSING': 'processing',
+                                    'AWAITING_INPUT': 'input needed'
+                                };
+                                var emptyPlaceholder = document.createElement('p');
+                                emptyPlaceholder.className = 'text-muted text-xs italic px-2';
+                                emptyPlaceholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                                sourceBody.appendChild(emptyPlaceholder);
+                            }
+                        }
+                    }
+                    updateColumnCount(sourceColumn);
+                }
+
+                // 5. Update column counts
+                if (idleColumn) updateColumnCount(idleColumn);
+                if (completeColumn) updateColumnCount(completeColumn);
+                highlightMovedCard(condensedCard);
+            }
+
+            updateStatusCounts();
+            var projectId = data.project_id;
+            if (projectId) updateProjectStateDots(projectId);
+
+            document.dispatchEvent(new CustomEvent('sse:card_refresh', { detail: data }));
+            return;
+        }
+
         var stateInfo = data.state_info || STATE_INFO[state] || STATE_INFO['IDLE'];
 
-        // Line 01: status badge, last-seen, uptime
+        // Line 01: hero identity, status badge, last-seen, uptime
+        if (data.hero_chars) {
+            var heroEl = card.querySelector('.agent-hero');
+            if (heroEl) heroEl.textContent = data.hero_chars;
+            var trailEl = card.querySelector('.agent-hero-trail');
+            if (trailEl) trailEl.textContent = data.hero_trail || '';
+        }
         var statusBadge = card.querySelector('.status-badge');
         if (statusBadge) {
             if (data.is_active) {
@@ -522,8 +857,13 @@
             reasonEl.textContent = '// ' + data.priority_reason.substring(0, 60);
         }
 
-        // Update tracked state
+        // Update tracked state and move card if state changed
+        var oldState = agentStates.get(agentId);
         agentStates.set(agentId, state);
+
+        if (oldState !== state) {
+            moveCardToColumn(agentId, state, data.project_id);
+        }
 
         // Recalculate header counts and project dots
         updateStatusCounts();
@@ -565,9 +905,7 @@
         let working = 0;
         let idle = 0;
 
-        console.log('[DEBUG] updateStatusCounts: agentStates dump:');
         agentStates.forEach(function(state, key) {
-            console.log('[DEBUG]   key:', key, '(' + typeof key + ') -> state:', state);
             if (state === 'TIMED_OUT') {
                 timedOut++;
             } else if (state === 'AWAITING_INPUT') {
@@ -578,8 +916,6 @@
                 idle++;
             }
         });
-
-        console.log('[DEBUG] updateStatusCounts result:', { timedOut, inputNeeded, working, idle });
 
         // Update header badges
         const inputBadge = document.querySelector('#status-input-needed .status-count');
@@ -678,20 +1014,13 @@
     function initAgentStates() {
         // Scope to article elements to avoid the recommended-next panel div
         const agentCards = document.querySelectorAll('article[data-agent-id][data-state]');
-        console.log('[DEBUG] initAgentStates: found', agentCards.length, 'agent cards');
         agentCards.forEach(function(card) {
             const agentId = card.getAttribute('data-agent-id');
             const state = card.getAttribute('data-state');
-            console.log('[DEBUG] initAgentStates card:', {
-                rawAgentId: agentId,
-                parsedAgentId: parseInt(agentId),
-                state: state,
-            });
             if (agentId && state) {
                 agentStates.set(parseInt(agentId), state);
             }
         });
-        console.log('[DEBUG] initAgentStates complete. Map keys:', Array.from(agentStates.keys()).map(k => `${k} (${typeof k})`));
     }
 
     /**
@@ -726,6 +1055,120 @@
     }
 
     /**
+     * Fetch and populate the dashboard activity bar.
+     *
+     * Uses the browser's local timezone to compute "today" boundaries
+     * (midnight local → midnight+1 local), matching the activity page exactly.
+     * Computes totals from the history array using the same logic as activity.js.
+     */
+    function fetchActivityBar() {
+        var bar = document.getElementById('dashboard-activity-bar');
+        if (!bar) return;
+
+        // Compute today's boundaries in local time (same as activity.js _periodStart)
+        var now = new Date();
+        var since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var until = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        var params = 'window=day' +
+            '&since=' + encodeURIComponent(since.toISOString()) +
+            '&until=' + encodeURIComponent(until.toISOString());
+
+        fetch('/api/metrics/overall?' + params)
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var history = data.history || [];
+                if (history.length === 0) return;
+
+                // Sum turns from history (same as activity.js _sumTurns)
+                var totalTurns = 0;
+                history.forEach(function(h) { totalTurns += (h.turn_count || 0); });
+
+                // Rate: turns / 24 (same as activity.js _computeRate for day window)
+                var rate = totalTurns / 24;
+
+                // Weighted average turn time (same as activity.js _weightedAvgTime)
+                var totalTime = 0, totalPairs = 0;
+                history.forEach(function(h) {
+                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
+                        var pairs = h.turn_count - 1;
+                        totalTime += h.avg_turn_time_seconds * pairs;
+                        totalPairs += pairs;
+                    }
+                });
+                var avgTime = totalPairs > 0 ? totalTime / totalPairs : null;
+
+                // Active agents from daily_totals
+                var activeAgents = data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
+
+                // Populate DOM
+                var turnsEl = document.getElementById('activity-bar-turns');
+                if (turnsEl) turnsEl.textContent = totalTurns;
+
+                var rateEl = document.getElementById('activity-bar-rate');
+                if (rateEl) {
+                    if (rate === 0) rateEl.textContent = '0';
+                    else if (rate >= 10) rateEl.textContent = Math.round(rate).toString();
+                    else rateEl.textContent = rate.toFixed(1);
+                }
+
+                var avgEl = document.getElementById('activity-bar-avg-time');
+                if (avgEl) avgEl.textContent = avgTime != null ? avgTime.toFixed(1) + 's' : '--';
+
+                var agentsEl = document.getElementById('activity-bar-agents');
+                if (agentsEl) agentsEl.textContent = activeAgents;
+
+                // Frustration from activity metrics (fallback if headspace unavailable)
+                var frustEl = document.getElementById('activity-bar-frustration');
+                if (frustEl) {
+                    var totalFrust = 0, totalFrustTurns = 0;
+                    history.forEach(function(h) {
+                        if (h.total_frustration != null) totalFrust += h.total_frustration;
+                        if (h.frustration_turn_count != null) totalFrustTurns += h.frustration_turn_count;
+                    });
+                    var frustAvg = totalFrustTurns > 0 ? totalFrust / totalFrustTurns : null;
+                    frustEl.textContent = frustAvg != null ? frustAvg.toFixed(1) : '--';
+                    frustEl.className = 'activity-bar-value';
+                    if (frustAvg != null) {
+                        if (frustAvg >= 7) frustEl.classList.add('text-red');
+                        else if (frustAvg >= 4) frustEl.classList.add('text-amber');
+                        else frustEl.classList.add('text-green');
+                    }
+                }
+            })
+            .catch(function(err) {
+                console.warn('Activity bar fetch failed:', err);
+            });
+
+        // Fetch immediate frustration from headspace (overrides activity avg)
+        fetch('/api/headspace/current')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data.enabled || !data.current) return;
+                var frustEl = document.getElementById('activity-bar-frustration');
+                if (frustEl && data.current.frustration_rolling_10 != null) {
+                    var val = data.current.frustration_rolling_10;
+                    frustEl.textContent = val.toFixed(1);
+                    frustEl.className = 'activity-bar-value';
+                    if (val >= 7) frustEl.classList.add('text-red');
+                    else if (val >= 4) frustEl.classList.add('text-amber');
+                    else frustEl.classList.add('text-green');
+                }
+            })
+            .catch(function() {});
+    }
+
+    /**
+     * Handle activity bar updates when turns are detected.
+     * Debounces and delegates to fetchActivityBar.
+     */
+    var _activityBarDebounce = null;
+    function handleActivityBarUpdate(data, eventType) {
+        if (_activityBarDebounce) return;
+        _activityBarDebounce = setTimeout(function() { _activityBarDebounce = null; }, 2000);
+        fetchActivityBar();
+    }
+
+    /**
      * Handle commander availability events (Input Bridge).
      * Dispatches a custom event for respond-init.js to handle.
      */
@@ -739,6 +1182,8 @@
         init: function() {
             initAgentStates();
             handleHighlightParam();
+            // Fetch activity bar stats on page load (uses local timezone)
+            fetchActivityBar();
             return initDashboardSSE();
         },
         highlightAgent: function(agentId) {

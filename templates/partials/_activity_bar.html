@@ -1,0 +1,27 @@
+<!-- Dashboard Activity Metrics Bar -->
+<div id="dashboard-activity-bar">
+    <div class="grid grid-cols-5 gap-2">
+        <div class="activity-bar-card">
+            <div class="activity-bar-value text-cyan" id="activity-bar-turns">{{ activity_metrics.total_turns if activity_metrics else '--' }}</div>
+            <div class="activity-bar-label">Turns</div>
+        </div>
+        <div class="activity-bar-card">
+            <div class="activity-bar-value text-cyan" id="activity-bar-rate">{{ activity_metrics.turn_rate if activity_metrics and activity_metrics.turn_rate else '--' }}</div>
+            <div class="activity-bar-label">Turns/Hr</div>
+        </div>
+        <div class="activity-bar-card">
+            <div class="activity-bar-value text-amber" id="activity-bar-avg-time">{{ '%0.1f' % activity_metrics.avg_turn_time ~ 's' if activity_metrics and activity_metrics.avg_turn_time else '--' }}</div>
+            <div class="activity-bar-label">Avg Time</div>
+        </div>
+        <div class="activity-bar-card">
+            <div class="activity-bar-value text-green" id="activity-bar-agents">{{ activity_metrics.active_agents if activity_metrics else '--' }}</div>
+            <div class="activity-bar-label">Agents</div>
+        </div>
+        <div class="activity-bar-card">
+            <div class="activity-bar-value {% if activity_metrics and activity_metrics.frustration is not none %}{% if activity_metrics.frustration >= 7 %}text-red{% elif activity_metrics.frustration >= 4 %}text-amber{% else %}text-green{% endif %}{% endif %}" id="activity-bar-frustration">
+                {{ activity_metrics.frustration if activity_metrics and activity_metrics.frustration is not none else '--' }}
+            </div>
+            <div class="activity-bar-label">Frustration</div>
+        </div>
+    </div>
+</div>

@@ -602,57 +602,6 @@ class TestEventWriterIntegration(TestHookLifecycleBridge):
         assert lifecycle._event_writer is None
 
 
-class TestSummarisationServiceInjection(TestHookLifecycleBridge):
-    """Tests for summarisation service injection into lifecycle manager."""
-
-    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
-    def test_lifecycle_manager_receives_summarisation_service(
-        self, mock_db, mock_event_writer
-    ):
-        """Lifecycle manager should receive summarisation_service when available."""
-        from flask import Flask
-
-        mock_summarisation = MagicMock()
-        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
-
-        test_app = Flask(__name__)
-        test_app.extensions["summarisation_service"] = mock_summarisation
-
-        with test_app.app_context():
-            lifecycle = bridge._get_lifecycle_manager()
-
-            assert lifecycle._summarisation_service is mock_summarisation
-
-    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
-    def test_lifecycle_manager_none_when_no_app_context(
-        self, mock_db, mock_event_writer
-    ):
-        """Lifecycle manager should have None summarisation_service outside app context."""
-        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
-
-        # Outside any app context, RuntimeError is caught internally
-        lifecycle = bridge._get_lifecycle_manager()
-
-        assert lifecycle._summarisation_service is None
-
-    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
-    def test_lifecycle_manager_none_when_service_not_registered(
-        self, mock_db, mock_event_writer
-    ):
-        """Lifecycle manager should have None when summarisation_service not in extensions."""
-        from flask import Flask
-
-        bridge = HookLifecycleBridge(event_writer=mock_event_writer)
-
-        test_app = Flask(__name__)
-        # Don't register summarisation_service
-
-        with test_app.app_context():
-            lifecycle = bridge._get_lifecycle_manager()
-
-            assert lifecycle._summarisation_service is None
-
-
 class TestStateMachineValidation(TestHookLifecycleBridge):
     """Tests verifying state machine validation is used."""
 

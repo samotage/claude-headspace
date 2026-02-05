@@ -66,16 +66,18 @@
         if (!toc) return;
 
         toc.innerHTML = topics.map(function(topic) {
+            var esc = window.CHUtils.escapeHtml;
+            var safeSlug = esc(topic.slug);
             var isActive = helpState.currentTopic === topic.slug;
-            return '<a href="/help/' + topic.slug + '"' +
-                   ' onclick="loadHelpTopic(\'' + topic.slug + '\'); return false;"' +
+            return '<a href="/help/' + safeSlug + '"' +
+                   ' onclick="loadHelpTopic(\'' + safeSlug.replace(/'/g, '\\&#39;') + '\'); return false;"' +
                    ' class="block px-3 py-2 rounded text-sm ' +
                    (isActive
                        ? 'bg-cyan/20 text-cyan'
                        : 'text-secondary hover:text-primary hover:bg-hover') +
                    ' transition-colors"' +
-                   ' data-topic="' + topic.slug + '">' +
-                   escapeHtml(topic.title) +
+                   ' data-topic="' + safeSlug + '">' +
+                   esc(topic.title) +
                    '</a>';
         }).join('');
     }
@@ -185,11 +187,13 @@
                 results.length + ' result' + (results.length === 1 ? '' : 's') +
             '</div>' +
             results.map(function(result) {
-                return '<a href="/help/' + result.slug + '"' +
-                       ' onclick="loadHelpTopic(\'' + result.slug + '\'); return false;"' +
+                var esc = window.CHUtils.escapeHtml;
+                var safeSlug = esc(result.slug);
+                return '<a href="/help/' + safeSlug + '"' +
+                       ' onclick="loadHelpTopic(\'' + safeSlug.replace(/'/g, '\\&#39;') + '\'); return false;"' +
                        ' class="block px-3 py-2 rounded text-sm text-secondary hover:text-primary hover:bg-hover transition-colors">' +
-                       '<div class="font-medium">' + highlightMatch(result.title, query) + '</div>' +
-                       (result.excerpt ? '<div class="text-xs text-muted mt-1 line-clamp-2">' + highlightMatch(escapeHtml(result.excerpt), query) + '</div>' : '') +
+                       '<div class="font-medium">' + highlightMatch(esc(result.title), query) + '</div>' +
+                       (result.excerpt ? '<div class="text-xs text-muted mt-1 line-clamp-2">' + highlightMatch(esc(result.excerpt), query) + '</div>' : '') +
                        '</a>';
             }).join('');
     }

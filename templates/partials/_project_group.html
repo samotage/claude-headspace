@@ -3,8 +3,6 @@
          aria-labelledby="project-{{ project.id }}-heading">
     <!-- Project header -->
     <div class="flex items-center justify-between p-4 bg-elevated cursor-pointer hover:bg-hover transition-colors min-h-[44px]"
-         hx-get="#"
-         hx-swap="none"
          onclick="this.parentElement.querySelector('.project-content').classList.toggle('hidden')"
          role="button"
          tabindex="0"
@@ -30,8 +28,8 @@
             </div>
 
             <!-- Project name + staleness -->
-            <h2 id="project-{{ project.id }}-heading" class="text-primary font-semibold font-display text-xl">
-                {{ project.name }}
+            <h2 id="project-{{ project.id }}-heading" class="font-semibold font-display text-xl">
+                <a href="/projects/{{ project.slug }}" class="text-cyan hover:text-primary text-glow-cyan transition-colors" onclick="event.stopPropagation()">{{ project.name }}</a>
             </h2>
             {% if project.staleness and project.staleness.tier == 'stale' %}
                 <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
@@ -45,7 +43,7 @@
         <!-- Active agent count + actions -->
         <div class="flex items-center gap-2">
             <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, '{{ project.name }}', '{{ project.slug }}')"
+                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})"
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>

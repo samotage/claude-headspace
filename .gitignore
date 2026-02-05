@@ -12,9 +12,10 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
-.claude/
-.codex/
-.cursor/
+.claude/settings.json
+.claude/settings.local.json
+.claude/skills/
+.codex/skills/
 
 # OS
 .DS_Store
@@ -36,8 +37,9 @@ data/logs/
 # User config overrides (optional)
 config.local.yaml
 
-# Orchestration (Ruby scripts - user-specific)
-orch/
+# Orchestration runtime data (user-specific)
+orch/working/
+orch/log/
 
 # Project data files (user-specific, use project.yaml.example as template)
 data/projects/*
@@ -52,8 +54,3 @@ data/state.yaml
 # E2E test screenshots
 tests/e2e/screenshots/
 
-# GitHub workflows (user-specific)
-.github/
-
-# Bmad directory
-_bmad/

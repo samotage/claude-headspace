@@ -5,6 +5,7 @@
     let currentWindow = 'day';
     let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
     let sseSource = null;
+    var _refreshDebounce = null;
 
     // Frustration thresholds from config (injected by template)
     var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
@@ -21,6 +22,35 @@
     var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
 
     /**
+     * Fetch with retry and exponential backoff.
+     * Returns the parsed JSON response, or null after all retries fail.
+     */
+    function _fetchWithRetry(url, maxRetries, baseDelayMs) {
+        maxRetries = maxRetries || 3;
+        baseDelayMs = baseDelayMs || 1000;
+        var attempt = 0;
+
+        function doFetch() {
+            return fetch(url).then(function(res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).catch(function(err) {
+                attempt++;
+                if (attempt >= maxRetries) {
+                    console.error('Fetch failed after ' + maxRetries + ' attempts: ' + url, err);
+                    return null;
+                }
+                var delay = baseDelayMs * Math.pow(2, attempt - 1);
+                return new Promise(function(resolve) {
+                    setTimeout(function() { resolve(doFetch()); }, delay);
+                });
+            });
+        }
+
+        return doFetch();
+    }
+
+    /**
      * Compute frustration level (green/yellow/red) from a numeric average.
      */
     function _levelFromAvg(avg) {
@@ -34,9 +64,9 @@
         init: function() {
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+            this._initSSE();
             if (HEADSPACE_ENABLED) {
                 this._initFrustrationWidget();
-                this._initSSE();
             }
         },
 
@@ -200,13 +230,12 @@
         },
 
         loadOverallMetrics: function() {
-            fetch('/api/metrics/overall?' + this._apiParams())
-                .then(function(res) { return res.json(); })
+            _fetchWithRetry('/api/metrics/overall?' + this._apiParams())
                 .then(function(data) {
                     var overallEmpty = document.getElementById('overall-empty');
                     var overallMetrics = document.getElementById('overall-metrics');
 
-                    if (!data.history || data.history.length === 0) {
+                    if (!data || !data.history || data.history.length === 0) {
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
@@ -228,26 +257,14 @@
                     document.getElementById('overall-avg-time').textContent =
                         avgTime != null ? avgTime.toFixed(1) + 's' : '--';
                     document.getElementById('overall-active-agents').textContent =
-                        data.current ? (data.current.active_agents || 0) : 0;
-
-                    // Frustration: display average instead of sum
-                    var frustAvg = ActivityPage._computeFrustrationAvg(data.history);
-                    var frustEl = document.getElementById('overall-frustration');
-                    frustEl.textContent = ActivityPage._formatFrustAvg(frustAvg);
-                    var level = _levelFromAvg(frustAvg);
-                    frustEl.className = 'metric-card-value ' + (frustAvg != null ? FRUST_COLORS[level].text : 'text-muted');
+                        data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
 
                     ActivityPage._renderChart(data.history);
-                })
-                .catch(function(err) {
-                    console.error('Failed to load overall metrics:', err);
                 });
         },
 
         loadProjectMetrics: function() {
-            // First fetch list of projects, then fetch metrics for each
-            fetch('/api/projects')
-                .then(function(res) { return res.json(); })
+            _fetchWithRetry('/api/projects')
                 .then(function(projects) {
                     var container = document.getElementById('project-metrics-container');
                     var loading = document.getElementById('projects-loading');
@@ -262,11 +279,16 @@
 
                     empty.classList.add('hidden');
 
+                    // Update overall active agents from live project data
+                    var liveAgentTotal = 0;
+                    projects.forEach(function(p) { liveAgentTotal += (p.agent_count || 0); });
+                    var overallAgentsEl = document.getElementById('overall-active-agents');
+                    if (overallAgentsEl) overallAgentsEl.textContent = liveAgentTotal;
+
                     var promises = projects.map(function(p) {
-                        return fetch('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
-                            .then(function(res) { return res.json(); })
+                        return _fetchWithRetry('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
                             .then(function(metrics) {
-                                return { project: p, metrics: metrics };
+                                return { project: p, metrics: metrics || { history: [] } };
                             });
                     });
 
@@ -274,28 +296,24 @@
                     Promise.all(promises).then(function(results) {
                         var agentPromises = [];
                         results.forEach(function(r) {
-                            if (r.metrics.history && r.metrics.history.length > 0) {
+                            if ((r.metrics.history && r.metrics.history.length > 0) || (r.project.agent_count > 0)) {
                                 agentPromises.push(
-                                    fetch('/api/projects/' + r.project.id)
-                                        .then(function(res) { return res.json(); })
+                                    _fetchWithRetry('/api/projects/' + r.project.id)
                                         .then(function(detail) {
+                                            if (!detail) { r.agents = []; return; }
                                             var activeAgents = (detail.agents || [])
                                                 .filter(function(a) { return !a.ended_at; });
                                             var aPromises = activeAgents
                                                 .map(function(a) {
-                                                    return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
-                                                        .then(function(res) { return res.json(); })
+                                                    return _fetchWithRetry('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
                                                         .then(function(metrics) {
-                                                            return { agent: a, metrics: metrics };
+                                                            return { agent: a, metrics: metrics || { history: [] } };
                                                         });
                                                 });
                                             return Promise.all(aPromises);
                                         })
                                         .then(function(agentData) {
-                                            // Filter out agents with no metrics in the selected period
-                                            r.agents = agentData.filter(function(ad) {
-                                                return ad.metrics.history && ad.metrics.history.length > 0;
-                                            });
+                                            if (agentData) r.agents = agentData;
                                         })
                                 );
                             } else {
@@ -309,10 +327,6 @@
                     }).then(function(results) {
                         ActivityPage._renderProjectPanels(results);
                     });
-                })
-                .catch(function(err) {
-                    console.error('Failed to load project metrics:', err);
-                    document.getElementById('projects-loading').classList.add('hidden');
                 });
         },
 
@@ -347,7 +361,8 @@
                         avg_turn_time_seconds: null,
                         active_agents: null,
                         total_frustration: null,
-                        frustration_turn_count: null
+                        frustration_turn_count: null,
+                        max_frustration: null
                     });
                 }
                 cursor = new Date(cursor.getTime() + 3600000);
@@ -361,11 +376,18 @@
                 var d = new Date(h.bucket_start);
                 var key = d.toLocaleDateString('en-CA');
                 if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
                 if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
                 if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
+                // Track max across all buckets in the day
+                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
+                if (bucketMax != null) {
+                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
+                        ? Math.max(dayMap[key].max_frustration, bucketMax)
+                        : bucketMax;
+                }
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
@@ -376,10 +398,18 @@
         },
 
         /**
-         * Compute per-bucket frustration average for chart.
-         * Returns null for buckets with no scored turns (creates line gaps).
+         * Get per-bucket average frustration (total / count).
+         * Returns null for buckets with no scored turns.
          */
         _bucketFrustrationAvg: function(h) {
+            if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
+                return null;
+            }
+            return h.total_frustration / h.frustration_turn_count;
+        },
+
+        _bucketFrustration: function(h) {
+            if (h.max_frustration != null) return h.max_frustration;
             if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
                 return null;
             }
@@ -431,14 +461,14 @@
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
-            // Chart frustration line: per-bucket average (not sum)
+            // Chart frustration line: max frustration per bucket (peak score)
             var frustrationData = history.map(function(h) {
-                return ActivityPage._bucketFrustrationAvg(h);
+                return ActivityPage._bucketFrustration(h);
             });
 
-            // Threshold-based point colors
-            var pointColors = frustrationData.map(function(avg) {
-                var lvl = _levelFromAvg(avg);
+            // Threshold-based point colors (using peak value)
+            var pointColors = frustrationData.map(function(val) {
+                var lvl = _levelFromAvg(val);
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
@@ -521,7 +551,7 @@
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
                                         if (item.raw == null) return null;
-                                        return 'Frustration Avg: ' + item.raw.toFixed(1);
+                                        return 'Frustration Peak: ' + item.raw.toFixed(1);
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
@@ -561,8 +591,9 @@
                 container.innerHTML = '';
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
-                        '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">' +
-                        ActivityPage._escapeHtml(r.project.name) + '</h3>' +
+                        '<h3 class="text-xs font-semibold uppercase tracking-wider mb-2">' +
+                        '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                        ActivityPage._escapeHtml(r.project.name) + '</a></h3>' +
                         '<p class="text-muted text-sm">No activity data yet.</p></div>';
                 });
                 empty.classList.add('hidden');
@@ -583,8 +614,9 @@
                 section.className = 'py-4 border-b border-border last:border-0';
 
                 var history = r.metrics.history || [];
-                var html = '<h3 class="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">' +
-                    ActivityPage._escapeHtml(r.project.name) + '</h3>';
+                var html = '<h3 class="text-xs font-semibold uppercase tracking-wider mb-3">' +
+                    '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                    ActivityPage._escapeHtml(r.project.name) + '</a></h3>';
 
                 if (history.length > 0) {
                     var totalTurns = ActivityPage._sumTurns(history);
@@ -606,11 +638,11 @@
                         (avgTime != null ? avgTime.toFixed(1) + 's' : '--') +
                         '</div><div class="metric-card-label">Avg Time</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value text-green">' + (r.metrics.current ? (r.metrics.current.active_agents || 0) : 0) + '</div>' +
+                        '<div class="metric-card-value text-green">' + (r.project.agent_count || 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
                         '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
-                        '<div class="metric-card-label">Frustration</div></div></div>';
+                        '<div class="metric-card-label">Frustration (Imm.)</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
@@ -624,11 +656,14 @@
                     html += '<div class="space-y-2 mt-2">';
                     r.agents.forEach(function(ad) {
                         var agentHistory = ad.metrics.history || [];
-                        var agentLabel = ad.agent.session_uuid
+                        var agentUuid8 = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
+                            : '';
+                        var agentHeroHtml = agentUuid8
+                            ? '<span class="agent-hero">' + ActivityPage._escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ActivityPage._escapeHtml(agentUuid8.substring(2)) + '</span>'
                             : 'Agent ' + ad.agent.id;
                         html += '<div class="agent-metric-row">' +
-                            '<span class="agent-metric-tag">' + ActivityPage._escapeHtml(agentLabel) + '</span>';
+                            '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
@@ -669,15 +704,58 @@
                 });
         },
 
+        /**
+         * Debounced refresh of all activity data.
+         * Coalesces rapid SSE events into a single re-fetch.
+         */
+        _debouncedRefresh: function() {
+            if (_refreshDebounce) return;
+            _refreshDebounce = setTimeout(function() {
+                _refreshDebounce = null;
+                // Only refresh if viewing the current period (not historical)
+                if (windowOffset === 0) {
+                    ActivityPage.loadOverallMetrics();
+                    ActivityPage.loadProjectMetrics();
+                }
+            }, 3000);
+        },
+
         _initSSE: function() {
             if (sseSource) return;
-            sseSource = new EventSource('/api/events/stream?types=headspace_update');
-            sseSource.addEventListener('headspace_update', function(e) {
-                try {
-                    var data = JSON.parse(e.data);
-                    ActivityPage._updateWidgetValues(data);
-                } catch (err) {
-                    console.error('Failed to parse headspace SSE:', err);
+
+            var sseTypes = 'turn_detected,turn_created,activity_update';
+            if (HEADSPACE_ENABLED) {
+                sseTypes += ',headspace_update';
+            }
+            sseSource = new EventSource('/api/events/stream?types=' + sseTypes);
+
+            // Real-time activity updates: debounce-refresh on new turns or aggregation
+            sseSource.addEventListener('turn_detected', function() {
+                ActivityPage._debouncedRefresh();
+            });
+            sseSource.addEventListener('turn_created', function() {
+                ActivityPage._debouncedRefresh();
+            });
+            sseSource.addEventListener('activity_update', function() {
+                ActivityPage._debouncedRefresh();
+            });
+
+            if (HEADSPACE_ENABLED) {
+                sseSource.addEventListener('headspace_update', function(e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        ActivityPage._updateWidgetValues(data);
+                    } catch (err) {
+                        console.error('Failed to parse headspace SSE:', err);
+                    }
+                });
+            }
+
+            // Close on page unload to free connection slot
+            window.addEventListener('beforeunload', function() {
+                if (sseSource) {
+                    sseSource.close();
+                    sseSource = null;
                 }
             });
         },
@@ -686,6 +764,7 @@
             this._setIndicator('frust-immediate-value', state.frustration_rolling_10);
             this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
             this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
+            this._setIndicator('frust-peak-today-value', state.peak_frustration_today);
         },
 
         _setIndicator: function(elementId, value) {

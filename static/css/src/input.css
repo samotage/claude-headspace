@@ -131,6 +131,24 @@ body::after {
     transition: border-color 0.3s, box-shadow 0.3s;
 }
 
+/* Agent hero-style identity */
+.agent-hero {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--cyan);
+    line-height: 1;
+    letter-spacing: 0.02em;
+}
+
+.agent-hero-trail {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    line-height: 1;
+}
+
 /* Neon text glow utility */
 .text-glow-cyan {
     text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);
@@ -443,6 +461,7 @@ body::after {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 20px;
+    text-align: center;
 }
 
 .metric-card-label {
@@ -778,6 +797,136 @@ body::after {
 
 .accordion-nested-2 {
     padding-left: 2.5rem;
+}
+
+/* Kanban board layout */
+.kanban-columns {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.kanban-column {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-height: 200px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    container-type: inline-size;
+}
+
+/* Condense ACTIVE/IDLE badges to colored dots when column is narrow */
+@container (max-width: 400px) {
+    .status-badge {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 0;
+        line-height: 0;
+        overflow: hidden;
+        flex-shrink: 0;
+        align-self: center;
+        background-color: currentColor !important;
+    }
+}
+
+.kanban-column-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.kanban-column-title {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.kanban-column-count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+}
+
+.kanban-column-body {
+    padding: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+
+
+.kanban-completed-task {
+    flex-shrink: 0;
+}
+
+.kanban-completed-task summary {
+    list-style: none;
+}
+
+.kanban-completed-task summary::-webkit-details-marker {
+    display: none;
+}
+
+.kanban-completed-task[open] summary .text-muted {
+    transform: rotate(90deg);
+    display: inline-block;
+}
+
+@media (max-width: 1024px) {
+    .kanban-columns {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .kanban-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Dashboard activity bar */
+.activity-bar-card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    text-align: center;
+}
+
+.activity-bar-value {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.activity-bar-label {
+    font-size: 0.5625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+    .activity-bar-card {
+        padding: 6px 8px;
+    }
+    .activity-bar-value {
+        font-size: 1rem;
+    }
 }
 
 /* iOS smooth scrolling for overflow containers */

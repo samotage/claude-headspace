@@ -139,7 +139,7 @@ class TestGetValidTransitionsFrom:
     def test_get_from_processing(self):
         """Get valid transitions from PROCESSING state."""
         transitions = get_valid_transitions_from(TaskState.PROCESSING)
-        assert len(transitions) == 4
+        assert len(transitions) == 5
 
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
@@ -277,7 +277,16 @@ class TestEndOfTaskTransitions:
         transitions = get_valid_transitions_from(TaskState.COMMANDED)
         assert len(transitions) == 4
 
-    def test_processing_now_has_four_transitions(self):
-        """PROCESSING should now have 4 valid agent transitions (PROGRESS, QUESTION, COMPLETION, END_OF_TASK)."""
+    def test_processing_now_has_five_transitions(self):
+        """PROCESSING should have 5 valid transitions (4 agent + user confirmation)."""
         transitions = get_valid_transitions_from(TaskState.PROCESSING)
-        assert len(transitions) == 4
+        assert len(transitions) == 5
+
+    def test_user_answer_while_processing_stays_processing(self):
+        """User ANSWER while PROCESSING should stay in PROCESSING (confirmation/approval)."""
+        result = validate_transition(
+            TaskState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER
+        )
+        assert result.valid is True
+        assert result.to_state == TaskState.PROCESSING
+        assert result.trigger == "user:answer"

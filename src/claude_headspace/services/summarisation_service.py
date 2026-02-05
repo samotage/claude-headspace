@@ -323,7 +323,7 @@ class SummarisationService:
                 db_session.commit()
 
             logger.debug(f"Reused turn summary as instruction for task {task.id}")
-            return reuse_summary
+            return task.instruction
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping instruction summarisation")

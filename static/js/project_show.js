@@ -23,6 +23,7 @@
     // Client-side cache
     var cache = {
         agents: null,          // agents list from projectData
+        agentsPagination: null, // pagination metadata
         agentTasks: {},        // agentId -> tasks array
         taskTurns: {}          // taskId -> turns array
     };
@@ -73,12 +74,21 @@
 
         _loadProjectData: async function() {
             try {
-                var response = await fetch('/api/projects/' + projectId);
+                var showEnded = projectData && projectData._showEnded;
+                var url = '/api/projects/' + projectId;
+                if (showEnded) url += '?include_ended=true';
+                var response = await fetch(url);
                 if (!response.ok) return;
                 projectData = await response.json();
+                projectData._showEnded = showEnded;
                 this._updateAgentWarning();
                 this._updateAgentsBadge();
                 cache.agents = projectData.agents || [];
+                cache.agentsPagination = projectData.agents_pagination || null;
+                // Auto-expand agents accordion if there are agents
+                if (cache.agents.length > 0 && !agentsExpanded) {
+                    this.toggleAgentsAccordion();
+                }
             } catch (e) {
                 console.error('ProjectShow: Failed to load project data', e);
             }
@@ -101,8 +111,13 @@
         _updateAgentsBadge: function() {
             var badge = document.getElementById('agents-count-badge');
             if (badge && projectData) {
-                var agents = projectData.agents || [];
-                badge.textContent = '(' + agents.length + ')';
+                var activeCount = projectData.active_agent_count || 0;
+                var total = (projectData.agents_pagination && projectData.agents_pagination.total) || (projectData.agents || []).length;
+                if (projectData._showEnded && total !== activeCount) {
+                    badge.textContent = '(' + activeCount + ' active / ' + total + ' total)';
+                } else {
+                    badge.textContent = '(' + activeCount + ')';
+                }
             }
         },
 
@@ -217,15 +232,42 @@
             }
         },
 
-        _fetchAndRenderAgents: async function() {
+        toggleShowEnded: function() {
+            var showEnded = projectData && projectData._showEnded;
+            var btn = document.getElementById('btn-show-ended');
+            if (showEnded) {
+                // Switch back to active-only
+                if (btn) {
+                    btn.textContent = 'Show ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-border text-muted hover:text-secondary hover:border-border-bright transition-colors';
+                }
+                if (projectData) projectData._showEnded = false;
+            } else {
+                if (btn) {
+                    btn.textContent = 'Hide ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-cyan/30 text-cyan hover:text-primary transition-colors';
+                }
+                if (projectData) projectData._showEnded = true;
+            }
+            cache.agents = null;
+            this._fetchAndRenderAgents(1);
+        },
+
+        _fetchAndRenderAgents: async function(page) {
             var container = document.getElementById('agents-list');
             container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading agents...</span></p>';
 
+            page = page || 1;
+            var showEnded = projectData && projectData._showEnded;
+            var url = '/api/projects/' + projectId + '?agents_page=' + page;
+            if (showEnded) url += '&include_ended=true';
             try {
-                var response = await fetch('/api/projects/' + projectId);
+                var response = await fetch(url);
                 if (!response.ok) throw new Error('Failed to fetch');
                 var data = await response.json();
+                data._showEnded = showEnded;
                 cache.agents = data.agents || [];
+                cache.agentsPagination = data.agents_pagination || null;
                 projectData = data;
                 this._updateAgentsBadge();
                 this._renderAgentsList(cache.agents);
@@ -236,8 +278,26 @@
 
         _renderAgentsList: function(agents) {
             var container = document.getElementById('agents-list');
+
+            // Sort: active (non-ended) first, then by last_seen_at descending
+            if (agents && agents.length > 1) {
+                agents = agents.slice().sort(function(a, b) {
+                    var aEnded = !!a.ended_at;
+                    var bEnded = !!b.ended_at;
+                    if (aEnded !== bEnded) return aEnded ? 1 : -1;
+                    var aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+                    var bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+                    return bTime - aTime;
+                });
+            }
+
             if (!agents || agents.length === 0) {
-                container.innerHTML = '<p class="text-muted italic text-sm">No agents.</p>';
+                var pagination = cache.agentsPagination;
+                if (pagination && pagination.page > 1) {
+                    container.innerHTML = '<p class="text-muted italic text-sm">No agents on this page.</p>';
+                } else {
+                    container.innerHTML = '<p class="text-muted italic text-sm">No agents.</p>';
+                }
                 return;
             }
 
@@ -245,33 +305,69 @@
             agents.forEach(function(agent) {
                 var isEnded = !!agent.ended_at;
                 var stateValue = agent.state || 'idle';
-                var sessionLabel = agent.session_uuid ? agent.session_uuid.substring(0, 8) : 'Agent ' + agent.id;
+                if (isEnded) stateValue = 'ended';
+                var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
                 var agentId = agent.id;
 
                 var rowClass = isEnded ? 'opacity-50' : '';
                 var stateClass = ProjectShow._stateColorClass(stateValue);
 
+                var agentHeroHtml = uuid8
+                    ? '<span class="agent-hero">' + ProjectShow._escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ProjectShow._escapeHtml(uuid8.substring(2)) + '</span>'
+                    : 'Agent ' + agent.id;
+
                 html += '<div class="accordion-agent-row ' + rowClass + '">';
-                html += '<div class="flex items-center gap-3 p-3 bg-surface rounded border border-border cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentTasks(' + agentId + ')">';
-                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '">&#9654;</span>';
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
-                html += '<span class="text-sm font-mono text-secondary">' + ProjectShow._escapeHtml(sessionLabel) + '</span>';
-                if (agent.priority_score != null) {
-                    html += '<span class="text-xs text-muted">P:' + agent.priority_score + '</span>';
+                html += '<div class="agent-metric-row cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentTasks(' + agentId + ')">';
+
+                // Arrow + state badge
+                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '" style="flex-shrink:0">&#9654;</span>';
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
+
+                // UUID hero/trail
+                html += '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
+
+                // Metric stats
+                html += '<div class="agent-metric-stats">';
+                html += '<span><span class="stat-value">' + (agent.turn_count || 0) + '</span><span class="stat-label">turns</span></span>';
+                if (agent.avg_turn_time != null) {
+                    html += '<span><span class="stat-value">' + agent.avg_turn_time.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                 }
-                if (agent.started_at) {
-                    html += '<span class="text-xs text-muted ml-auto">' + ProjectShow._formatDate(agent.started_at) + '</span>';
+                if (agent.frustration_avg != null) {
+                    var frustLevel = agent.frustration_avg >= THRESHOLDS.red ? 'text-red' : (agent.frustration_avg >= THRESHOLDS.yellow ? 'text-amber' : 'text-green');
+                    html += '<span><span class="stat-value ' + frustLevel + '">' + agent.frustration_avg.toFixed(1) + '</span><span class="stat-label">frust</span></span>';
                 }
+                html += '</div>';
+
+                // Last seen / ended badge
                 if (isEnded) {
-                    html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted">Ended</span>';
+                    html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';
                     if (agent.started_at && agent.ended_at) {
-                        html += '<span class="text-xs text-muted">' + ProjectShow._formatDuration(agent.started_at, agent.ended_at) + '</span>';
+                        html += '<span class="text-xs text-muted" style="flex-shrink:0">' + ProjectShow._formatDuration(agent.started_at, agent.ended_at) + '</span>';
                     }
+                } else if (agent.last_seen_at) {
+                    html += '<span class="text-xs text-muted" style="flex-shrink:0">' + ProjectShow._timeAgo(agent.last_seen_at) + '</span>';
                 }
+
                 html += '</div>';
                 html += '<div id="agent-tasks-' + agentId + '" class="accordion-body ml-6 mt-1" style="display: none;"></div>';
                 html += '</div>';
             });
+
+            // Pagination controls
+            var pagination = cache.agentsPagination;
+            if (pagination && pagination.total_pages > 1) {
+                html += '<div class="flex items-center justify-between mt-3 pt-3 border-t border-border">';
+                html += '<span class="text-xs text-muted">Page ' + pagination.page + ' of ' + pagination.total_pages + ' (' + pagination.total + ' agents)</span>';
+                html += '<div class="flex gap-2">';
+                if (pagination.page > 1) {
+                    html += '<button type="button" onclick="ProjectShow._fetchAndRenderAgents(' + (pagination.page - 1) + ')" class="px-3 py-1 text-xs rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors">&laquo; Prev</button>';
+                }
+                if (pagination.page < pagination.total_pages) {
+                    html += '<button type="button" onclick="ProjectShow._fetchAndRenderAgents(' + (pagination.page + 1) + ')" class="px-3 py-1 text-xs rounded border border-border text-secondary hover:text-primary hover:border-cyan/30 transition-colors">Next &raquo;</button>';
+                }
+                html += '</div>';
+                html += '</div>';
+            }
 
             container.innerHTML = html;
         },
@@ -329,30 +425,55 @@
                 return;
             }
 
-            var html = '<div class="space-y-1">';
+            var html = '<div class="space-y-2">';
             tasks.forEach(function(task) {
                 var stateValue = task.state || 'idle';
                 var stateClass = ProjectShow._stateColorClass(stateValue);
                 var instruction = task.instruction || '';
                 var summary = task.completion_summary || '';
-                var displayText = instruction.length > 80 ? instruction.substring(0, 80) + '...' : instruction;
+                var displayText = instruction.length > 60 ? instruction.substring(0, 60) + '...' : instruction;
                 var taskId = task.id;
+                var isComplete = stateValue.toLowerCase() === 'complete';
+                var borderColor = isComplete ? 'border-green/20' : 'border-border';
 
                 html += '<div class="accordion-task-row">';
-                html += '<div class="flex items-center gap-3 p-2 bg-deep rounded border border-border cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleTaskTurns(' + taskId + ', ' + agentId + ')">';
+                // Header row (clickable, expands turns)
+                html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleTaskTurns(' + taskId + ', ' + agentId + ')">';
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="task-arrow-' + taskId + '">&#9654;</span>';
                 html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
                 if (displayText) {
-                    html += '<span class="text-sm text-secondary truncate flex-1">' + ProjectShow._escapeHtml(displayText) + '</span>';
+                    html += '<span class="text-sm text-primary font-medium truncate flex-1">' + ProjectShow._escapeHtml(displayText) + '</span>';
                 }
-                if (summary) {
-                    html += '<span class="text-xs text-muted truncate max-w-[200px]">' + ProjectShow._escapeHtml(summary) + '</span>';
-                }
-                if (task.started_at) {
-                    html += '<span class="text-xs text-muted">' + ProjectShow._formatDate(task.started_at) + '</span>';
-                }
-                html += '<span class="text-xs text-muted">' + (task.turn_count || 0) + ' turns</span>';
                 html += '</div>';
+
+                // Card-editor body
+                html += '<div class="card-editor border-t-0 rounded-t-none border ' + borderColor + ' border-t-0 rounded-b-lg">';
+                // Line 01: Full instruction
+                html += '<div class="card-line"><span class="line-num">01</span><div class="line-content">';
+                html += '<p class="task-instruction text-primary text-sm font-medium">' + ProjectShow._escapeHtml(instruction || 'No instruction') + '</p>';
+                html += '</div></div>';
+                // Line 02: Completion summary or in-progress indicator
+                html += '<div class="card-line"><span class="line-num">02</span><div class="line-content">';
+                if (isComplete && summary) {
+                    html += '<p class="task-summary text-green text-sm italic">' + ProjectShow._escapeHtml(summary) + '</p>';
+                } else if (isComplete) {
+                    html += '<p class="text-green text-sm italic">Completed</p>';
+                } else {
+                    html += '<p class="text-amber text-sm italic">In progress...</p>';
+                }
+                html += '</div></div>';
+                // Line 03: Turn count + duration (completed only)
+                if (isComplete) {
+                    html += '<div class="card-line"><span class="line-num">03</span><div class="line-content">';
+                    var turnLabel = (task.turn_count || 0) + ' turn' + ((task.turn_count || 0) !== 1 ? 's' : '');
+                    if (task.started_at && task.completed_at) {
+                        turnLabel += ' \u00B7 ' + ProjectShow._formatDuration(task.started_at, task.completed_at);
+                    }
+                    html += '<span class="text-muted text-xs">' + turnLabel + '</span>';
+                    html += '</div></div>';
+                }
+                html += '</div>';
+
                 html += '<div id="task-turns-' + taskId + '" class="accordion-body ml-6 mt-1" style="display: none;"></div>';
                 html += '</div>';
             });
@@ -434,7 +555,10 @@
                 }
                 if (frustration != null) {
                     var frustClass = frustration >= THRESHOLDS.red ? 'text-red' : (frustration >= THRESHOLDS.yellow ? 'text-amber' : 'text-green');
-                    html += '<span class="text-xs ml-auto ' + frustClass + '">F:' + frustration + '</span>';
+                    html += '<span class="text-xs ' + frustClass + '">F:' + frustration + '</span>';
+                }
+                if (turn.created_at) {
+                    html += '<span class="text-xs text-muted ml-auto">' + ProjectShow._formatDate(turn.created_at) + '</span>';
                 }
                 html += '</div>';
                 if (summary) {
@@ -542,7 +666,7 @@
                 // Update summary cards
                 var totalTurns = this._sumTurns(history);
                 var avgTime = this._weightedAvgTime(history);
-                var activeAgents = data.current ? (data.current.active_agents || 0) : 0;
+                var activeAgents = projectData ? (projectData.active_agent_count || 0) : 0;
                 var frustStats = this._sumFrustrationHistory(history);
 
                 var turnEl = document.getElementById('ps-turn-count');
@@ -613,11 +737,17 @@
                 var d = new Date(h.bucket_start);
                 var key = d.toLocaleDateString('en-CA');
                 if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, bucket_start: h.bucket_start };
+                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
                 }
                 dayMap[key].turn_count += h.turn_count;
                 if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
                 if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
+                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
+                if (bucketMax != null) {
+                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
+                        ? Math.max(dayMap[key].max_frustration, bucketMax)
+                        : bucketMax;
+                }
             });
             return Object.keys(dayMap).sort().map(function(k) {
                 var entry = dayMap[k];
@@ -658,7 +788,8 @@
                         avg_turn_time_seconds: null,
                         active_agents: null,
                         total_frustration: null,
-                        frustration_turn_count: null
+                        frustration_turn_count: null,
+                        max_frustration: null
                     });
                 }
                 cursor = new Date(cursor.getTime() + 3600000);
@@ -701,7 +832,15 @@
             });
 
             var turnData = history.map(function(h) { return h.turn_count > 0 ? h.turn_count : null; });
-            var frustrationData = history.map(function(h) { return h.total_frustration != null ? h.total_frustration : null; });
+            // Chart frustration line: max frustration per bucket (peak score)
+            var frustrationData = history.map(function(h) {
+                if (h.max_frustration != null) return h.max_frustration;
+                // Fallback for historical data without max tracked
+                if (h.total_frustration != null && h.frustration_turn_count && h.frustration_turn_count > 0) {
+                    return h.total_frustration / h.frustration_turn_count;
+                }
+                return null;
+            });
 
             var FRUST_COLORS = {
                 green: { rgb: '76, 175, 80' },
@@ -709,8 +848,9 @@
                 red: { rgb: '255, 85, 85' }
             };
 
-            var pointColors = history.map(function(h) {
-                var lvl = ProjectShow._frustrationLevel(h.total_frustration, h.frustration_turn_count);
+            var pointColors = frustrationData.map(function(val) {
+                if (val == null) return 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
+                var lvl = val >= THRESHOLDS.red ? 'red' : (val >= THRESHOLDS.yellow ? 'yellow' : 'green');
                 return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
             });
 
@@ -769,12 +909,14 @@
                                 },
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
-                                        return item.raw != null ? 'Frustration: ' + item.raw : null;
+                                        return item.raw != null ? 'Frustration Peak: ' + item.raw : null;
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
                                     var lines = ['Turns: ' + h.turn_count];
-                                    if (h.total_frustration != null) {
+                                    if (h.max_frustration != null) {
+                                        lines.push('Frustration Peak: ' + h.max_frustration);
+                                    } else if (h.total_frustration != null) {
                                         lines.push('Frustration: ' + h.total_frustration);
                                     }
                                     return lines;
@@ -796,7 +938,13 @@
                         y1: {
                             position: 'right',
                             beginAtZero: true,
-                            ticks: { color: 'rgba(255,193,7,0.6)', precision: 0 },
+                            min: 0,
+                            max: 10,
+                            ticks: {
+                                color: 'rgba(255, 193, 7, 0.6)',
+                                precision: 0,
+                                stepSize: 2,
+                            },
                             grid: { drawOnChartArea: false }
                         }
                     }
@@ -1374,14 +1522,20 @@
         _processAccordionUpdates: function(pending) {
             // Refresh agents list if accordion is expanded
             if (agentsExpanded && pending.agents) {
-                // Invalidate cache and re-fetch
+                // Invalidate cache and re-fetch, preserving current page
                 cache.agents = null;
+                var currentPage = (cache.agentsPagination && cache.agentsPagination.page) || 1;
+                var showEnded = projectData && projectData._showEnded;
+                var sseUrl = '/api/projects/' + projectId + '?agents_page=' + currentPage;
+                if (showEnded) sseUrl += '&include_ended=true';
                 var self = this;
-                fetch('/api/projects/' + projectId)
+                fetch(sseUrl)
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
+                        data._showEnded = showEnded;
                         projectData = data;
                         cache.agents = data.agents || [];
+                        cache.agentsPagination = data.agents_pagination || null;
                         self._updateAgentsBadge();
                         self._renderAgentsList(cache.agents);
                         // Re-expand agents that were expanded
@@ -1420,7 +1574,8 @@
                 commanded: 'bg-amber/15 text-amber',
                 processing: 'bg-blue/15 text-blue',
                 awaiting_input: 'bg-amber/15 text-amber',
-                complete: 'bg-green/15 text-green'
+                complete: 'bg-green/15 text-green',
+                ended: 'bg-surface text-muted opacity-60'
             };
             return map[s] || 'bg-surface text-muted';
         },

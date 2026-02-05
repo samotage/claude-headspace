@@ -47,7 +47,7 @@ class TestListProjects:
         mock_query.order_by.return_value.all.return_value = [mock_project1, mock_project2]
         mock_db.session.query.return_value = mock_query
 
-        response = client.get("/api/projects")
+        response = client.get("/api/waypoint/projects")
 
         assert response.status_code == 200
         data = response.get_json()
@@ -63,7 +63,7 @@ class TestListProjects:
         mock_query.order_by.return_value.all.return_value = []
         mock_db.session.query.return_value = mock_query
 
-        response = client.get("/api/projects")
+        response = client.get("/api/waypoint/projects")
 
         assert response.status_code == 200
         data = response.get_json()

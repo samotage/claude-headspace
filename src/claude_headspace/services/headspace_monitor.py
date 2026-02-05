@@ -99,6 +99,7 @@ class HeadspaceMonitor:
                     "is_flow_state": False,
                     "flow_duration_minutes": None,
                     "alert_suppressed": self._is_suppressed(),
+                    "peak_frustration_today": self._calc_peak_today(),
                     "timestamp": None,
                 }
             return self._snapshot_to_dict(snapshot)
@@ -142,9 +143,9 @@ class HeadspaceMonitor:
                 # Prune old snapshots
                 self._prune_snapshots(now)
 
-                # Broadcast SSE updates
-                prev_state = self._last_state
+                # Update state tracking under lock before broadcasting
                 with self._lock:
+                    prev_state = self._last_state
                     self._last_state = state
 
                 if state != prev_state:
@@ -223,6 +224,21 @@ class HeadspaceMonitor:
         )
         return float(count)
 
+    def _calc_peak_today(self) -> float | None:
+        """Return the highest frustration_score from any USER turn today."""
+        from sqlalchemy import func
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = (
+            db.session.query(func.max(Turn.frustration_score))
+            .filter(
+                Turn.actor == TurnActor.USER,
+                Turn.frustration_score.isnot(None),
+                Turn.timestamp >= today_start,
+            )
+            .scalar()
+        )
+        return float(result) if result is not None else None
+
     def _determine_state(self, rolling_10: float | None, rolling_30min: float | None) -> str:
         """Determine traffic light state from rolling averages."""
         avg = None
@@ -293,6 +309,13 @@ class HeadspaceMonitor:
         elif rolling_30min is not None:
             avg = rolling_30min
 
+        # Track sustained state timing BEFORE checks so duration is correct
+        with self._lock:
+            if state != self._last_state:
+                self._sustained_state_since = now
+            elif self._sustained_state_since is None:
+                self._sustained_state_since = now
+
         alert_type = None
 
         # Absolute spike: single turn >= 8
@@ -340,13 +363,6 @@ class HeadspaceMonitor:
                     duration = (now - self._sustained_state_since).total_seconds() / 60
                     if duration >= 30:
                         alert_type = "time_based"
-
-        # Track sustained state timing
-        with self._lock:
-            if state != self._last_state:
-                self._sustained_state_since = now
-            elif self._sustained_state_since is None:
-                self._sustained_state_since = now
 
         if alert_type:
             with self._lock:
@@ -421,6 +437,7 @@ class HeadspaceMonitor:
                 "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
                 "is_flow_state": snapshot.is_flow_state,
                 "flow_duration_minutes": snapshot.flow_duration_minutes,
+                "peak_frustration_today": self._calc_peak_today(),
             })
         except Exception as e:
             logger.debug(f"Failed to broadcast headspace update (non-fatal): {e}")
@@ -471,5 +488,6 @@ class HeadspaceMonitor:
             "last_alert_at": snapshot.last_alert_at.isoformat() if snapshot.last_alert_at else None,
             "alert_count_today": snapshot.alert_count_today,
             "alert_suppressed": self._is_suppressed(),
+            "peak_frustration_today": self._calc_peak_today(),
             "timestamp": snapshot.timestamp.isoformat() if snapshot.timestamp else None,
         }

@@ -911,8 +911,61 @@ class TestGetInferenceCallFiltersAPI:
             assert "error" in data
 
 
+class TestClearEventsAPI:
+    """Tests for DELETE /api/events endpoint."""
+
+    def test_clear_events_requires_confirm_header(self, client):
+        """Test DELETE requires X-Confirm-Destructive header."""
+        response = client.delete("/api/events")
+        assert response.status_code == 403
+
+        data = json.loads(response.data)
+        assert "X-Confirm-Destructive" in data["error"]
+
+    def test_clear_events_deletes_all(self, client):
+        """Test DELETE removes all event records."""
+        with patch("claude_headspace.routes.logging.db") as mock_db:
+            mock_query = MagicMock()
+            mock_query.count.return_value = 10
+            mock_query.delete.return_value = 10
+            mock_db.session.query.return_value = mock_query
+
+            response = client.delete(
+                "/api/events",
+                headers={"X-Confirm-Destructive": "true"},
+            )
+            assert response.status_code == 200
+
+            data = json.loads(response.data)
+            assert data["deleted"] == 10
+            mock_db.session.commit.assert_called_once()
+
+    def test_clear_events_database_error(self, client):
+        """Test that database error returns 500 and rollback is called."""
+        with patch("claude_headspace.routes.logging.db") as mock_db:
+            mock_db.session.query.side_effect = Exception("DB error")
+
+            response = client.delete(
+                "/api/events",
+                headers={"X-Confirm-Destructive": "true"},
+            )
+            assert response.status_code == 500
+
+            data = json.loads(response.data)
+            assert "error" in data
+            mock_db.session.rollback.assert_called_once()
+
+
 class TestClearInferenceCallsAPI:
     """Tests for DELETE /api/inference/calls endpoint."""
+
+    def test_clear_inference_calls_requires_confirm_header(self, client):
+        """Test DELETE requires X-Confirm-Destructive header."""
+        response = client.delete("/api/inference/calls")
+        assert response.status_code == 403
+
+        data = json.loads(response.data)
+        assert "X-Confirm-Destructive" in data["error"]
 
     def test_clear_inference_calls_deletes_all(self, client):
         """Test DELETE removes all inference call records."""
@@ -922,7 +975,10 @@ class TestClearInferenceCallsAPI:
             mock_query.delete.return_value = 5
             mock_db.session.query.return_value = mock_query
 
-            response = client.delete("/api/inference/calls")
+            response = client.delete(
+                "/api/inference/calls",
+                headers={"X-Confirm-Destructive": "true"},
+            )
             assert response.status_code == 200
 
             data = json.loads(response.data)
@@ -934,7 +990,10 @@ class TestClearInferenceCallsAPI:
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_db.session.query.side_effect = Exception("DB error")
 
-            response = client.delete("/api/inference/calls")
+            response = client.delete(
+                "/api/inference/calls",
+                headers={"X-Confirm-Destructive": "true"},
+            )
             assert response.status_code == 500
 
             data = json.loads(response.data)

@@ -38,6 +38,14 @@ class FocusResult(NamedTuple):
     latency_ms: int = 0
 
 
+def _sanitize_pane_id(pane_id: str) -> str:
+    """Escape pane_id for safe interpolation into AppleScript strings.
+
+    Prevents injection by escaping backslashes and double quotes.
+    """
+    return pane_id.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _build_applescript(pane_id: str) -> str:
     """
     Build AppleScript to focus a specific iTerm2 pane.
@@ -56,11 +64,12 @@ def _build_applescript(pane_id: str) -> str:
     """
     # Note: ITERM_SESSION_ID format is typically like "w0t0p0:GUID"
     # We need to match against iTerm's session tty or unique identifier
+    safe_pane_id = _sanitize_pane_id(pane_id)
     return f'''
 tell application "iTerm"
     activate
 
-    set targetPaneId to "{pane_id}"
+    set targetPaneId to "{safe_pane_id}"
     set foundSession to false
 
     repeat with w in windows
@@ -252,6 +261,7 @@ def _build_check_applescript(pane_id: str) -> str:
     Returns:
         AppleScript code as string
     """
+    safe_pane_id = _sanitize_pane_id(pane_id)
     return f'''
 tell application "System Events"
     if not (exists process "iTerm2") then
@@ -259,7 +269,7 @@ tell application "System Events"
     end if
 end tell
 tell application "iTerm"
-    set targetPaneId to "{pane_id}"
+    set targetPaneId to "{safe_pane_id}"
     repeat with w in windows
         repeat with t in tabs of w
             repeat with s in sessions of t

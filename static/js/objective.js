@@ -316,33 +316,38 @@
          * Render a single history item
          */
         _renderHistoryItem: function(item) {
+            const esc = window.CHUtils.escapeHtml;
             const startedAt = new Date(item.started_at);
             const endedAt = item.ended_at ? new Date(item.ended_at) : null;
 
             const constraintsHtml = item.constraints
                 ? `<p class="mt-2 text-sm text-secondary break-words">
-                       <span class="text-muted">Constraints:</span> ${this._escapeHtml(item.constraints)}
+                       <span class="text-muted">Constraints:</span> ${esc(item.constraints)}
                    </p>`
                 : '';
 
+            const safeId = esc(String(item.id));
+            const safeStartedAt = esc(item.started_at);
+            const safeEndedAt = item.ended_at ? esc(item.ended_at) : '';
+
             const endedHtml = endedAt
-                ? `<span>Ended: <time datetime="${item.ended_at}">${this._formatDate(endedAt)}</time></span>`
+                ? `<span>Ended: <time datetime="${safeEndedAt}">${esc(this._formatDate(endedAt))}</time></span>`
                 : '<span class="text-cyan">Current</span>';
 
             return `
-                <article class="p-4 bg-surface rounded border border-border" data-history-id="${item.id}">
+                <article class="p-4 bg-surface rounded border border-border" data-history-id="${safeId}">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 min-w-0">
-                            <p class="text-primary break-words">${this._escapeHtml(item.text)}</p>
+                            <p class="text-primary break-words">${esc(item.text)}</p>
                             ${constraintsHtml}
                         </div>
                         <button type="button"
                                 class="delete-history-btn flex-shrink-0 text-muted hover:text-red transition-colors text-xs font-mono px-1"
-                                data-history-id="${item.id}"
+                                data-history-id="${safeId}"
                                 title="Delete history item">[x]</button>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-4 text-xs text-muted">
-                        <span>Started: <time datetime="${item.started_at}">${this._formatDate(startedAt)}</time></span>
+                        <span>Started: <time datetime="${safeStartedAt}">${esc(this._formatDate(startedAt))}</time></span>
                         ${endedHtml}
                     </div>
                 </article>

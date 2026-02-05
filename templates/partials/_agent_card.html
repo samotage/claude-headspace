@@ -6,8 +6,15 @@
     <!-- 01: Header row -->
     <div class="card-line">
       <span class="line-num">01</span>
-      <div class="line-content flex items-center justify-between">
-        <div class="flex flex-wrap items-center gap-2">
+      <div class="line-content flex items-baseline justify-between">
+        <div class="flex flex-wrap items-baseline gap-2">
+          <h3 id="agent-{{ agent.id }}-heading" class="flex items-baseline gap-0.5">
+            <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
+          </h3>
+          <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="uptime text-muted text-xs hidden sm:inline whitespace-nowrap">{{ agent.uptime }}</span>
           {% if agent.is_active %}
             <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
                   role="status">ACTIVE</span>
@@ -15,10 +22,7 @@
             <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted"
                   role="status">IDLE</span>
           {% endif %}
-          <h3 id="agent-{{ agent.id }}-heading" class="text-cyan text-sm font-mono truncate max-w-[140px] sm:max-w-none">#{{ agent.session_uuid }}</h3>
-          <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>
         </div>
-        <span class="uptime text-muted text-xs hidden sm:inline whitespace-nowrap">up {{ agent.uptime }}</span>
       </div>
     </div>
     <!-- 02: State strip (clickable - focuses iTerm) -->

@@ -103,6 +103,12 @@ def save_config():
         400: Validation errors
         500: Save failed
     """
+    if request.headers.get("X-Confirm-Destructive") != "true":
+        return jsonify({
+            "status": "error",
+            "message": "Config write requires X-Confirm-Destructive header",
+        }), 403
+
     if not request.is_json:
         return jsonify({
             "status": "error",
@@ -188,6 +194,12 @@ def restart_server():
         200: Restart initiated
         500: Script not found or launch failed
     """
+    if request.headers.get("X-Confirm-Destructive") != "true":
+        return jsonify({
+            "status": "error",
+            "message": "Server restart requires X-Confirm-Destructive header",
+        }), 403
+
     app_root = Path(current_app.config.get("APP_ROOT", "."))
     script = app_root / "restart_server.sh"
 

@@ -60,6 +60,8 @@ def mock_project_with_agents(mock_project):
     active_agent.state.value = "idle"
     active_agent.started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     active_agent.ended_at = None
+    active_agent.last_seen_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    active_agent.priority_score = 50
 
     ended_agent = MagicMock()
     ended_agent.id = 2
@@ -67,6 +69,8 @@ def mock_project_with_agents(mock_project):
     ended_agent.state.value = "idle"
     ended_agent.started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     ended_agent.ended_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    ended_agent.last_seen_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    ended_agent.priority_score = None
 
     mock_project.agents = [active_agent, ended_agent]
     return mock_project
@@ -210,8 +214,67 @@ class TestGetProject:
         assert response.status_code == 404
 
     def test_get_success(self, client, mock_db, mock_project_with_agents):
-        """Test successful project retrieval with agents."""
+        """Test successful project retrieval with agents and metrics."""
         mock_db.session.get.return_value = mock_project_with_agents
+        agents = mock_project_with_agents.agents
+
+        # The endpoint now makes multiple db.session.query() calls:
+        # 1) Agent query for pagination
+        # 2) Turn stats query (turn_count, frustration_avg)
+        # 3) Avg turn time subquery + outer query
+        # Use side_effect to handle each call in sequence
+
+        # Agent pagination query chain
+        # By default include_ended=false, so there's an extra .filter() for ended_at
+        agent_query = MagicMock()
+        agent_filter = MagicMock()
+        agent_query.filter.return_value = agent_filter
+        agent_filter2 = MagicMock()
+        agent_filter.filter.return_value = agent_filter2
+        agent_order = MagicMock()
+        agent_filter2.order_by.return_value = agent_order
+        agent_order.count.return_value = len(agents)
+        agent_order.offset.return_value.limit.return_value.all.return_value = agents
+
+        # Active agent count query
+        active_count_query = MagicMock()
+        active_count_filter = MagicMock()
+        active_count_query.filter.return_value = active_count_filter
+        active_count_filter.count.return_value = 2
+
+        # Turn stats query chain (returns rows with agent_id, turn_count, frustration_avg)
+        turn_stats_row = MagicMock()
+        turn_stats_row.agent_id = 1
+        turn_stats_row.turn_count = 5
+        turn_stats_row.frustration_avg = 3.2
+        turn_stats_query = MagicMock()
+        turn_stats_query.join.return_value = turn_stats_query
+        turn_stats_query.filter.return_value = turn_stats_query
+        turn_stats_query.group_by.return_value = turn_stats_query
+        turn_stats_query.all.return_value = [turn_stats_row]
+
+        # Avg turn time subquery + outer query
+        avg_time_subquery = MagicMock()
+        avg_time_subquery.join.return_value = avg_time_subquery
+        avg_time_subquery.filter.return_value = avg_time_subquery
+        avg_time_subquery.group_by.return_value = avg_time_subquery
+        avg_time_subquery.subquery.return_value = MagicMock()
+        avg_time_subquery.subquery.return_value.c = MagicMock()
+
+        avg_time_outer_row = MagicMock()
+        avg_time_outer_row.agent_id = 1
+        avg_time_outer_row.avg_turn_time = 45.3
+        avg_time_outer_query = MagicMock()
+        avg_time_outer_query.group_by.return_value = avg_time_outer_query
+        avg_time_outer_query.all.return_value = [avg_time_outer_row]
+
+        mock_db.session.query.side_effect = [
+            agent_query,           # Agent pagination
+            active_count_query,    # Active agent count
+            turn_stats_query,      # Turn stats
+            avg_time_subquery,     # Avg turn time subquery
+            avg_time_outer_query,  # Avg turn time outer query
+        ]
 
         response = client.get("/api/projects/1")
         assert response.status_code == 200
@@ -220,16 +283,51 @@ class TestGetProject:
         assert data["name"] == "test-project"
         assert "agents" in data
         assert len(data["agents"]) == 2
+        assert "agents_pagination" in data
+        assert data["agents_pagination"]["total"] == 2
+        assert data["active_agent_count"] == 2
+
+        # Verify agent metrics fields are present
+        agent1 = data["agents"][0]
+        assert "turn_count" in agent1
+        assert "frustration_avg" in agent1
+        assert "avg_turn_time" in agent1
+        assert agent1["turn_count"] == 5
+        assert agent1["frustration_avg"] == 3.2
+        assert agent1["avg_turn_time"] == 45.3
 
     def test_get_includes_inference_fields(self, client, mock_db, mock_project):
         """Test that get response includes inference fields."""
         mock_db.session.get.return_value = mock_project
+
+        # Mock the paginated agents query chain (empty agents - no metrics queries needed)
+        agent_query = MagicMock()
+        agent_filter = MagicMock()
+        agent_query.filter.return_value = agent_filter
+        agent_filter2 = MagicMock()
+        agent_filter.filter.return_value = agent_filter2
+        agent_order = MagicMock()
+        agent_filter2.order_by.return_value = agent_order
+        agent_order.count.return_value = 0
+        agent_order.offset.return_value.limit.return_value.all.return_value = []
+
+        # Active agent count query
+        active_count_query = MagicMock()
+        active_count_filter = MagicMock()
+        active_count_query.filter.return_value = active_count_filter
+        active_count_filter.count.return_value = 0
+
+        mock_db.session.query.side_effect = [
+            agent_query,        # Agent pagination
+            active_count_query, # Active agent count
+        ]
 
         response = client.get("/api/projects/1")
         data = response.get_json()
         assert "inference_paused" in data
         assert "inference_paused_at" in data
         assert "inference_paused_reason" in data
+        assert data["active_agent_count"] == 0
 
 
 class TestUpdateProject:
@@ -570,3 +668,129 @@ class TestSSEBroadcasting:
             call_args = mock_broadcast.call_args
             assert call_args[0][0] == "project_settings_changed"
             assert call_args[0][1]["project_id"] == 1
+
+
+class TestGetAgentTasks:
+    """Tests for GET /api/agents/<id>/tasks."""
+
+    def test_not_found(self, client, mock_db):
+        """Test 404 when agent doesn't exist."""
+        mock_db.session.get.return_value = None
+
+        response = client.get("/api/agents/999/tasks")
+        assert response.status_code == 404
+
+    def test_tasks_returned_ascending(self, client, mock_db):
+        """Test tasks are returned in ascending order (oldest first)."""
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_db.session.get.return_value = mock_agent
+
+        task1 = MagicMock()
+        task1.id = 10
+        task1.state.value = "complete"
+        task1.instruction = "First task"
+        task1.completion_summary = "Done"
+        task1.started_at = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+        task1.completed_at = datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc)
+
+        task2 = MagicMock()
+        task2.id = 11
+        task2.state.value = "processing"
+        task2.instruction = "Second task"
+        task2.completion_summary = None
+        task2.started_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        task2.completed_at = None
+
+        # Mock the query chain
+        query_mock = MagicMock()
+        mock_db.session.query.return_value = query_mock
+        filter_mock = MagicMock()
+        query_mock.filter.return_value = filter_mock
+        order_mock = MagicMock()
+        filter_mock.order_by.return_value = order_mock
+        order_mock.all.return_value = [task1, task2]  # ascending order
+
+        # Mock turn count queries
+        count_mock = MagicMock()
+        count_query = MagicMock()
+        count_query.filter.return_value = count_query
+        count_query.scalar.return_value = 3
+        mock_db.session.query.side_effect = [query_mock, count_query, count_query]
+
+        # Re-set so the first call returns the task query
+        mock_db.session.query.reset_mock(side_effect=True)
+        mock_db.session.query.return_value = query_mock
+
+        # For turn count calls, use a simpler approach
+        with patch("src.claude_headspace.routes.projects.func") as mock_func:
+            mock_func.count.return_value = MagicMock()
+            count_q = MagicMock()
+            count_q.filter.return_value.scalar.return_value = 3
+            mock_db.session.query.side_effect = [query_mock, count_q, count_q]
+
+            response = client.get("/api/agents/1/tasks")
+            assert response.status_code == 200
+            data = response.get_json()
+            assert len(data) == 2
+            assert data[0]["id"] == 10  # First (oldest) task
+            assert data[1]["id"] == 11  # Second (newest) task
+            assert data[0]["turn_count"] == 3
+
+    def test_agent_metrics_in_get_project(self, client, mock_db, mock_project_with_agents):
+        """Test that agent metrics fields are present in get_project response."""
+        mock_db.session.get.return_value = mock_project_with_agents
+        agents = mock_project_with_agents.agents
+
+        # Agent pagination query (with ended_at filter)
+        agent_query = MagicMock()
+        agent_filter = MagicMock()
+        agent_query.filter.return_value = agent_filter
+        agent_filter2 = MagicMock()
+        agent_filter.filter.return_value = agent_filter2
+        agent_order = MagicMock()
+        agent_filter2.order_by.return_value = agent_order
+        agent_order.count.return_value = len(agents)
+        agent_order.offset.return_value.limit.return_value.all.return_value = agents
+
+        # Active agent count query
+        active_count_query = MagicMock()
+        active_count_filter = MagicMock()
+        active_count_query.filter.return_value = active_count_filter
+        active_count_filter.count.return_value = 2
+
+        # Turn stats - no results (empty metrics)
+        turn_stats_query = MagicMock()
+        turn_stats_query.join.return_value = turn_stats_query
+        turn_stats_query.filter.return_value = turn_stats_query
+        turn_stats_query.group_by.return_value = turn_stats_query
+        turn_stats_query.all.return_value = []
+
+        # Avg turn time subquery + outer query - no results
+        avg_time_subquery = MagicMock()
+        avg_time_subquery.join.return_value = avg_time_subquery
+        avg_time_subquery.filter.return_value = avg_time_subquery
+        avg_time_subquery.group_by.return_value = avg_time_subquery
+        avg_time_subquery.subquery.return_value = MagicMock()
+        avg_time_subquery.subquery.return_value.c = MagicMock()
+
+        avg_time_outer_query = MagicMock()
+        avg_time_outer_query.group_by.return_value = avg_time_outer_query
+        avg_time_outer_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [
+            agent_query, active_count_query, turn_stats_query, avg_time_subquery, avg_time_outer_query
+        ]
+
+        response = client.get("/api/projects/1")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # All agents should have metrics fields with defaults
+        for agent_data in data["agents"]:
+            assert "turn_count" in agent_data
+            assert "frustration_avg" in agent_data
+            assert "avg_turn_time" in agent_data
+            assert agent_data["turn_count"] == 0
+            assert agent_data["frustration_avg"] is None
+            assert agent_data["avg_turn_time"] is None

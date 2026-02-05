@@ -117,6 +117,7 @@ class TestOverallMetricsAPI:
         assert "window" in data
         assert "current" in data
         assert "history" in data
+        assert "daily_totals" in data
         assert data["window"] == "day"
 
     @patch("claude_headspace.routes.activity.db")

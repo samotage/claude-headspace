@@ -7,6 +7,7 @@ from claude_headspace.models.turn import TurnActor, TurnIntent
 from unittest.mock import MagicMock
 
 from claude_headspace.services.intent_detector import (
+    BARE_AFFIRMATIVES,
     BLOCKED_PATTERNS,
     COMPLETION_OPENER_PATTERNS,
     COMPLETION_PATTERNS,
@@ -14,12 +15,14 @@ from claude_headspace.services.intent_detector import (
     END_OF_TASK_HANDOFF_PATTERNS,
     END_OF_TASK_SOFT_CLOSE_PATTERNS,
     END_OF_TASK_SUMMARY_PATTERNS,
+    PLAN_APPROVAL_PATTERN,
     QUESTION_PATTERNS,
     IntentResult,
     _detect_completion_opener,
     _detect_end_of_task,
     _extract_tail,
     _infer_completion_classification,
+    _is_confirmation,
     _strip_code_blocks,
     detect_agent_intent,
     detect_intent,
@@ -181,9 +184,15 @@ class TestDetectUserIntent:
         assert result.confidence == 1.0
 
     def test_user_command_from_processing(self):
-        """User turn from PROCESSING state should be COMMAND (interruption)."""
+        """Substantive user turn from PROCESSING state should be COMMAND (interruption)."""
         result = detect_user_intent("Stop that, do this instead.", TaskState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
+
+    def test_user_confirmation_from_processing(self):
+        """Confirmation during PROCESSING should be ANSWER (not a new command)."""
+        result = detect_user_intent("Yes", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.ANSWER
+        assert result.confidence == 0.9
 
     def test_user_command_from_commanded(self):
         """User turn from COMMANDED state should be COMMAND."""
@@ -542,7 +551,7 @@ class TestExpandedCompletionPatterns:
 
     def test_made_following_changes(self):
         result = detect_agent_intent("I've made the following changes:\n- Updated config\n- Fixed bug")
-        assert result.intent == TurnIntent.COMPLETION
+        assert result.intent == TurnIntent.END_OF_TASK
 
     def test_all_tests_passing(self):
         result = detect_agent_intent("All tests are passing.")
@@ -1398,6 +1407,13 @@ class TestGitSuccessPatterns:
         )
         assert result.intent == TurnIntent.COMPLETION
 
+    def test_committed_hash_and_pushed(self):
+        """'Committed <hash> and pushed to <branch>' should detect as completion."""
+        result = detect_agent_intent(
+            "Committed 8b58cab and pushed to development."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
     def test_working_tree_clean(self):
         """'Working tree clean' should detect as completion."""
         result = detect_agent_intent("Working tree clean.")
@@ -1474,3 +1490,225 @@ class TestBlockedPatternFalsePositives:
         )
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.COMPLETION
+
+
+class TestConfirmationDetection:
+    """Tests for _is_confirmation helper and confirmation detection in detect_user_intent."""
+
+    # _is_confirmation unit tests
+
+    def test_bare_affirmative_yes(self):
+        """'yes' should be detected as confirmation."""
+        assert _is_confirmation("yes") is True
+
+    def test_bare_affirmative_y(self):
+        """'y' should be detected as confirmation."""
+        assert _is_confirmation("y") is True
+
+    def test_bare_affirmative_ok(self):
+        """'ok' should be detected as confirmation."""
+        assert _is_confirmation("ok") is True
+
+    def test_bare_affirmative_sure(self):
+        """'sure' should be detected as confirmation."""
+        assert _is_confirmation("sure") is True
+
+    def test_bare_affirmative_go_ahead(self):
+        """'go ahead' should be detected as confirmation."""
+        assert _is_confirmation("go ahead") is True
+
+    def test_bare_affirmative_lgtm(self):
+        """'LGTM' should be detected as confirmation (case insensitive)."""
+        assert _is_confirmation("LGTM") is True
+
+    def test_bare_affirmative_with_period(self):
+        """'Yes.' should be detected as confirmation (trailing punctuation stripped)."""
+        assert _is_confirmation("Yes.") is True
+
+    def test_bare_affirmative_with_exclamation(self):
+        """'OK!' should be detected as confirmation."""
+        assert _is_confirmation("OK!") is True
+
+    def test_plan_approval_clear_context(self):
+        """Plan approval 'Yes, clear context and auto-accept edits' should be confirmation."""
+        assert _is_confirmation("Yes, clear context and auto-accept edits") is True
+
+    def test_plan_approval_manually_approve(self):
+        """Plan approval 'Yes, manually approve each edit' should be confirmation."""
+        assert _is_confirmation("Yes, manually approve each edit") is True
+
+    def test_substantive_command_not_confirmation(self):
+        """'Fix the bug' should NOT be confirmation."""
+        assert _is_confirmation("Fix the bug") is False
+
+    def test_stop_command_not_confirmation(self):
+        """'Stop that, do this instead' should NOT be confirmation."""
+        assert _is_confirmation("Stop that, do this instead") is False
+
+    def test_empty_text_not_confirmation(self):
+        """Empty string should NOT be confirmation."""
+        assert _is_confirmation("") is False
+
+    # detect_user_intent integration tests
+
+    def test_yes_during_processing_is_answer(self):
+        """'yes' during PROCESSING should be ANSWER."""
+        result = detect_user_intent("yes", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.ANSWER
+        assert result.confidence == 0.9
+        assert result.matched_pattern == "confirmation"
+
+    def test_plan_approval_during_processing_is_answer(self):
+        """Plan approval text during PROCESSING should be ANSWER."""
+        result = detect_user_intent(
+            "Yes, clear context and auto-accept edits", TaskState.PROCESSING
+        )
+        assert result.intent == TurnIntent.ANSWER
+
+    def test_substantive_command_during_processing_is_command(self):
+        """'Fix the bug' during PROCESSING should still be COMMAND."""
+        result = detect_user_intent("Fix the bug in login", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_confirmation_during_idle_is_command(self):
+        """'yes' during IDLE should be COMMAND (confirmation only applies during PROCESSING)."""
+        result = detect_user_intent("yes", TaskState.IDLE)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_confirmation_during_complete_is_command(self):
+        """'yes' during COMPLETE should be COMMAND."""
+        result = detect_user_intent("yes", TaskState.COMPLETE)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_none_text_during_processing_is_command(self):
+        """None text during PROCESSING should be COMMAND (not matched as confirmation)."""
+        result = detect_user_intent(None, TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND
+
+    def test_empty_text_during_processing_is_command(self):
+        """Empty text during PROCESSING should be COMMAND."""
+        result = detect_user_intent("", TaskState.PROCESSING)
+        assert result.intent == TurnIntent.COMMAND
+
+
+class TestCompletionOverridesFollowUpQuestion:
+    """Tests that completed tasks with follow-up questions are COMPLETION, not QUESTION.
+
+    When an agent finishes its work and asks a follow-up question about
+    optional additional work, the task IS complete. The follow-up question
+    is about starting a NEW potential task, not continuing the current one.
+    """
+
+    def test_completion_with_followup_question(self):
+        """Completed task + follow-up question → COMPLETION, not QUESTION."""
+        text = (
+            "All tests passed. Would you like me to also update the docs?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_committed_and_pushed_with_followup(self):
+        """Git commit + follow-up → COMPLETION."""
+        text = (
+            "Committed 8b58cab and pushed to development. "
+            "The remaining unstaged changes are from prior work. "
+            "Would you like me to clean those up too?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_test_results_with_followup(self):
+        """Test results + follow-up → COMPLETION."""
+        text = (
+            "Ran 12 card_state tests (all passed) and 50 dashboard "
+            "route tests (49 passed, 1 pre-existing failure).\n"
+            "Would you like me to investigate the failing test?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_done_with_offer_for_more(self):
+        """'Done' + offer for additional work → COMPLETION."""
+        text = (
+            "I've finished implementing the feature. "
+            "Do you want me to add more test coverage?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_continuation_question_still_wins(self):
+        """'Should I proceed/continue' still wins over completion (continuation guard)."""
+        result = detect_agent_intent("I'm done. Should I continue?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_genuine_question_no_completion(self):
+        """Pure question with no completion evidence → QUESTION."""
+        result = detect_agent_intent(
+            "I have some concerns about the approach. "
+            "Would you like me to explain the trade-offs?"
+        )
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_intermediate_question_then_completion(self):
+        """Intermediate question followed by completion in multi-message transcript."""
+        text = (
+            "I need to check something first. Should I use approach A?\n\n"
+            "OK, I used approach A. Here's what I changed:\n"
+            "- Updated config.py\n"
+            "- Fixed the login flow\n"
+            "- Added tests\n\n"
+            "All 12 tests passed. Committed and pushed to development."
+        )
+        result = detect_agent_intent(text)
+        # END_OF_TASK or COMPLETION both indicate task is done
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_real_world_commit_push_completion(self):
+        """Real-world commit+push output should be COMPLETION."""
+        text = (
+            "Committed 8b58cab and pushed to development. "
+            "The remaining unstaged changes are from prior work, "
+            "unrelated to this task."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestNewCompletionPatterns:
+    """Tests for newly added completion patterns."""
+
+    def test_ran_tests_report(self):
+        """'Ran 12 tests' should detect as COMPLETION."""
+        result = detect_agent_intent("Ran 12 tests successfully.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ran_tests_with_name(self):
+        """'Ran 12 card_state tests' should detect as COMPLETION."""
+        result = detect_agent_intent(
+            "Ran 12 card_state tests (all passed)."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_parenthetical_all_passed(self):
+        """'(all passed)' should detect as COMPLETION."""
+        result = detect_agent_intent(
+            "Ran 50 dashboard route tests (all passed)."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_tests_passed_no_count(self):
+        """'all tests passed' without count should detect as COMPLETION."""
+        result = detect_agent_intent("All tests passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_tests_pass_no_count(self):
+        """'all tests pass' without count should detect as COMPLETION."""
+        result = detect_agent_intent("All tests pass.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_made_following_changes_is_eot(self):
+        """'I've made the following changes:' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "I've made the following changes:\n- Fixed bug\n- Updated tests"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
