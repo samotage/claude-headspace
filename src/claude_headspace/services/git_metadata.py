@@ -67,7 +67,8 @@ class GitMetadata:
                 if slash_idx < 0:
                     return None
                 path = after_proto[slash_idx + 1:]
-            except Exception:
+            except Exception as e:
+                logger.warning(f"GitHub URL parsing failed: {e}")
                 return None
 
         # Strip .git suffix and leading/trailing slashes

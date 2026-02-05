@@ -1056,7 +1056,8 @@
                     document.getElementById('project-form-description').value = p.description || '';
                     document.getElementById('project-form-modal').classList.remove('hidden');
                     document.getElementById('project-form-name').focus();
-                });
+                })
+                .catch(function(err) { console.warn('ProjectShow: Failed to load project for edit', err); });
         },
 
         closeFormModal: function() {
@@ -1499,7 +1500,8 @@
                     if (data.action === 'updated') {
                         fetch('/api/projects/' + projectId)
                             .then(function(r) { return r.json(); })
-                            .then(function(p) { self._updateMetadataDisplay(p); });
+                            .then(function(p) { self._updateMetadataDisplay(p); })
+                            .catch(function(err) { console.warn('ProjectShow: SSE project refresh failed', err); });
                     } else if (data.action === 'deleted') {
                         window.location.href = '/projects';
                     }
@@ -1570,7 +1572,8 @@
                                 self._fetchAndRenderTasks(parseInt(agentId));
                             }
                         });
-                    });
+                    })
+                    .catch(function(err) { console.warn('ProjectShow: accordion refresh failed', err); });
             }
 
             // Refresh task accordions if expanded

@@ -271,8 +271,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             event_writer = app.extensions.get("event_writer")
             if event_writer:
                 event_writer.stop()
-        except Exception:
-            pass  # Ignore errors during shutdown
+        except Exception as e:
+            logger.warning(f"Error during shutdown cleanup: {e}")
 
     # Register context processor for cache busting
     @app.context_processor

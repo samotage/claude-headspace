@@ -483,7 +483,7 @@ class SummarisationService:
             broadcaster.broadcast(event_type, data)
             logger.debug(f"Broadcast {event_type} for entity {entity_id}")
         except Exception as e:
-            logger.debug(f"Failed to broadcast summary update (non-fatal): {e}")
+            logger.warning(f"Failed to broadcast summary update (non-fatal): {e}")
 
     @staticmethod
     def _get_prior_task_context(turn) -> str:
@@ -515,7 +515,8 @@ class SummarisationService:
             if prior.completion_summary:
                 parts.append(f"Prior outcome: {prior.completion_summary}")
             return "\n".join(parts) + "\n\n"
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch prior task context: {e}")
             return ""
 
     @staticmethod
@@ -702,4 +703,4 @@ class SummarisationService:
             if monitor:
                 monitor.recalculate(turn)
         except Exception as e:
-            logger.debug(f"Headspace recalculation failed (non-fatal): {e}")
+            logger.warning(f"Headspace recalculation failed (non-fatal): {e}")

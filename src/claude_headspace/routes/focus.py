@@ -184,8 +184,8 @@ def dismiss_agent(agent_id: int):
             "reason": "dismissed",
             "timestamp": now.isoformat(),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Dismiss broadcast failed: {e}")
 
     return jsonify({
         "status": "ok",

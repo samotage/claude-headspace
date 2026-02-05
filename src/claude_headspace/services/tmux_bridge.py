@@ -361,7 +361,7 @@ def capture_pane(
         )
         return result.stdout.decode("utf-8", errors="replace")
     except Exception as e:
-        logger.debug(f"capture-pane failed for {pane_id}: {e}")
+        logger.warning(f"capture-pane failed for {pane_id}: {e}")
         return ""
 
 
@@ -397,5 +397,5 @@ def list_panes(
         return panes
 
     except Exception as e:
-        logger.debug(f"list-panes failed: {e}")
+        logger.warning(f"list-panes failed: {e}")
         return []

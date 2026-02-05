@@ -56,8 +56,8 @@ def get_instruction_for_notification(task, max_length: int = 120) -> str | None:
                 text = (t.text or "").strip()
                 if text:
                     return text[:max_length - 3] + "..." if len(text) > max_length else text
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to extract instruction for notification: {e}")
     return None
 
 
@@ -196,8 +196,8 @@ class TaskLifecycleManager:
                         if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                             question_text = t.summary or t.text
                             break
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to extract question text: {e}")
 
                 notification_service.notify_awaiting_input(
                     agent_id=str(task.agent_id),

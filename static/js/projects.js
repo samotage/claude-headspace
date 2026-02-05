@@ -356,7 +356,9 @@
             var el = document.getElementById('project-form-description');
             if (!el) return;
             el.style.height = 'auto';
-            var minHeight = parseFloat(getComputedStyle(el).lineHeight) * 4 + parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
+            var lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+            if (isNaN(lineHeight)) lineHeight = 20;
+            var minHeight = lineHeight * 4 + parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
             el.style.height = Math.max(el.scrollHeight, minHeight) + 'px';
         }
     };

@@ -87,6 +87,7 @@
             case 'AWAITING_INPUT':
                 return 'AWAITING_INPUT';
             default:
+                console.warn('stateToKanbanColumn: unknown state:', state);
                 return 'IDLE';
         }
     }
@@ -669,6 +670,7 @@
      */
     function handleCardRefresh(data, eventType) {
         var agentId = parseInt(data.id);
+        if (isNaN(agentId)) return;
         var state = data.state;
         var reason = data.reason || '';
 
@@ -1225,7 +1227,7 @@
                     else frustEl.classList.add('text-green');
                 }
             })
-            .catch(function() {});
+            .catch(function(err) { console.warn('Headspace fetch failed:', err); });
     }
 
     /**

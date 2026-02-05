@@ -356,6 +356,7 @@
                     } else {
                         value = parseInt(value, 10);
                     }
+                    if (isNaN(value)) value = 0;
                 }
 
                 data[section][field] = value;

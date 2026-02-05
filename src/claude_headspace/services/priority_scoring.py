@@ -283,8 +283,8 @@ class PriorityScoringService:
                     wp = load_waypoint(agent.project.path)
                     if wp.exists:
                         waypoint_next = self._extract_section(wp.content, "Next Up")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Waypoint section extraction failed: {e}")
 
             agent_lines.append(
                 f"- Agent ID: {agent.id}\n"

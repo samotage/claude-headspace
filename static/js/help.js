@@ -397,7 +397,7 @@
                     btn.style.borderColor = 'rgba(255,255,255,0.2)';
                 }, 1500);
             }
-        });
+        }).catch(function(err) { console.warn('Clipboard copy failed:', err); });
     }
 
     // Close doc viewer on Escape key

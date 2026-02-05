@@ -1,5 +1,6 @@
 """Dashboard route for agent monitoring."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, render_template, request
@@ -21,6 +22,8 @@ from ..services.card_state import (
     get_task_summary,
     is_agent_active,
 )
+
+logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -434,8 +437,8 @@ def _get_dashboard_activity_metrics() -> dict | None:
             )
             if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
                 immediate_frustration = round(latest_snapshot.frustration_rolling_10, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Headspace snapshot query failed: {e}")
 
         return {
             "total_turns": total_turns,
@@ -444,7 +447,8 @@ def _get_dashboard_activity_metrics() -> dict | None:
             "active_agents": distinct_agents,
             "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
         }
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Activity bar computation failed: {e}")
         return None
 
 

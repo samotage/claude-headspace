@@ -74,7 +74,7 @@ def _backfill_tmux_pane(agent, tmux_pane: str | None) -> None:
         if availability:
             availability.register_agent(agent.id, tmux_pane)
     except RuntimeError:
-        pass
+        logger.debug("No app context for commander_availability")
 
 
 @hooks_bp.route("/hook/session-start", methods=["POST"])
@@ -133,8 +133,8 @@ def hook_session_start():
                         "project_id": correlation.agent.project_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Session created broadcast failed: {e}")
 
             return jsonify({
                 "status": "ok",

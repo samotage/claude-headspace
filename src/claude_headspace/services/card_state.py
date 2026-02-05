@@ -28,6 +28,7 @@ def _get_dashboard_config() -> dict:
         config = current_app.config.get("APP_CONFIG", {})
         return config.get("dashboard", {})
     except RuntimeError:
+        logger.debug("No app context for dashboard config, using defaults")
         return {}  # No app context (unit tests without mocking)
 
 

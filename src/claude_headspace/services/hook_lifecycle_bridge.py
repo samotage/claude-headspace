@@ -62,7 +62,7 @@ class HookLifecycleBridge:
         except RuntimeError:
             logger.debug("No Flask app context for priority scoring trigger")
         except Exception as e:
-            logger.debug(f"Priority scoring trigger failed (non-fatal): {e}")
+            logger.warning(f"Priority scoring trigger failed (non-fatal): {e}")
 
     def process_user_prompt_submit(
         self,

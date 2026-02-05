@@ -128,7 +128,7 @@ def _get_lifecycle_manager() -> TaskLifecycleManager:
         from flask import current_app
         event_writer = current_app.extensions.get("event_writer")
     except RuntimeError:
-        pass
+        logger.debug("No app context for event_writer")
     return TaskLifecycleManager(
         session=db.session,
         event_writer=event_writer,
@@ -141,8 +141,8 @@ def _trigger_priority_scoring() -> None:
         service = current_app.extensions.get("priority_scoring_service")
         if service:
             service.trigger_scoring()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Priority scoring trigger failed: {e}")
 
 
 def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, message: str | None = None) -> None:
@@ -158,8 +158,8 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
             "message": message,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"State change broadcast failed: {e}")
 
 
 def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
@@ -174,8 +174,8 @@ def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
             "task_id": task.id if task else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Turn created broadcast failed: {e}")
 
 
 def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> str:
@@ -210,8 +210,8 @@ def _extract_transcript_content(agent: Agent) -> str:
         result = read_transcript_file(agent.transcript_path)
         if result.success and result.text:
             return result.text
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
     return ""
 
 
@@ -226,8 +226,8 @@ def _send_notification(agent: Agent, task, turn_text: str | None) -> None:
             task_instruction=get_instruction_for_notification(task),
             turn_text=turn_text,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Notification send failed: {e}")
 
 
 def _send_completion_notification(agent: Agent, task) -> None:
@@ -280,7 +280,7 @@ def process_session_start(
                 if availability:
                     availability.register_agent(agent.id, tmux_pane_id)
             except RuntimeError:
-                pass
+                logger.debug("No app context for commander_availability")
 
         db.session.commit()
         broadcast_card_refresh(agent, "session_start")
@@ -322,8 +322,8 @@ def process_session_end(
                 "session_uuid": str(agent.session_uuid),
                 "timestamp": now.isoformat(),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Session ended broadcast failed: {e}")
 
         logger.info(f"hook_event: type=session_end, agent_id={agent.id}, session_id={claude_session_id}")
         return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=TaskState.COMPLETE.value)
@@ -376,8 +376,8 @@ def process_user_prompt_submit(
                     "task_id": result.task.id if result.task else None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Turn created broadcast failed: {e}")
 
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "

@@ -621,6 +621,7 @@
     _formatTimestamp: function (isoString) {
       if (!isoString) return "-";
       var date = new Date(isoString);
+      if (isNaN(date.getTime())) return isoString;
       return date.toLocaleString("en-US", {
         year: "numeric",
         month: "2-digit",
