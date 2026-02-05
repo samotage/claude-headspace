@@ -63,7 +63,7 @@ class TestBuildCardState:
             "is_active", "uptime", "last_seen",
             "state", "state_info", "task_summary", "task_instruction",
             "task_completion_summary", "priority", "priority_reason",
-            "project_name", "project_id",
+            "project_name", "project_slug", "project_id",
         }
         assert set(result.keys()) == expected_keys
 
@@ -129,6 +129,42 @@ class TestBuildCardState:
 
         assert result["priority"] == 85
         assert result["priority_reason"] == "High alignment"
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_complete_state_includes_turn_count_and_elapsed(self, mock_config):
+        """COMPLETE state includes turn_count and elapsed for condensed card."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.COMPLETE
+        mock_task.instruction = "Fix the bug"
+        mock_task.completion_summary = "Bug fixed"
+        mock_task.started_at = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
+        mock_task.completed_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        mock_task.turns = [MagicMock(), MagicMock(), MagicMock()]
+
+        agent = _make_agent(state=TaskState.IDLE)
+        agent.tasks = [mock_task]
+
+        result = build_card_state(agent)
+
+        assert result["state"] == "COMPLETE"
+        assert result["turn_count"] == 3
+        assert "1h" in result["elapsed"]
+        assert "turn_count" in result
+        assert "elapsed" in result
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_non_complete_state_excludes_turn_count_and_elapsed(self, mock_config):
+        """Non-COMPLETE states should not include turn_count or elapsed."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+
+        agent = _make_agent(state=TaskState.IDLE)
+
+        result = build_card_state(agent)
+
+        assert "turn_count" not in result
+        assert "elapsed" not in result
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_state_serialised_as_string(self, mock_config):

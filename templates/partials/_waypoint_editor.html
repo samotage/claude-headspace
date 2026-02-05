@@ -206,7 +206,7 @@
 
     async function loadProjectsList() {
         try {
-            const response = await fetch('/api/projects');
+            const response = await fetch('/api/waypoint/projects');
             const data = await response.json();
 
             const select = document.getElementById('waypoint-project-select');

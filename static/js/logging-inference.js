@@ -323,7 +323,7 @@
       this._hideClearConfirm();
 
       try {
-        const response = await fetch(CALLS_API, { method: "DELETE" });
+        const response = await fetch(CALLS_API, { method: "DELETE", headers: { "X-Confirm-Destructive": "true" } });
         if (response.ok) {
           this.currentPage = 1;
           this._loadFilters();

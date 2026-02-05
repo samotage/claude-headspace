@@ -143,9 +143,9 @@ class HeadspaceMonitor:
                 # Prune old snapshots
                 self._prune_snapshots(now)
 
-                # Broadcast SSE updates
-                prev_state = self._last_state
+                # Update state tracking under lock before broadcasting
                 with self._lock:
+                    prev_state = self._last_state
                     self._last_state = state
 
                 if state != prev_state:
@@ -309,6 +309,13 @@ class HeadspaceMonitor:
         elif rolling_30min is not None:
             avg = rolling_30min
 
+        # Track sustained state timing BEFORE checks so duration is correct
+        with self._lock:
+            if state != self._last_state:
+                self._sustained_state_since = now
+            elif self._sustained_state_since is None:
+                self._sustained_state_since = now
+
         alert_type = None
 
         # Absolute spike: single turn >= 8
@@ -356,13 +363,6 @@ class HeadspaceMonitor:
                     duration = (now - self._sustained_state_since).total_seconds() / 60
                     if duration >= 30:
                         alert_type = "time_based"
-
-        # Track sustained state timing
-        with self._lock:
-            if state != self._last_state:
-                self._sustained_state_since = now
-            elif self._sustained_state_since is None:
-                self._sustained_state_since = now
 
         if alert_type:
             with self._lock:

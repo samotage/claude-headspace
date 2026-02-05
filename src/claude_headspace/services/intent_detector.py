@@ -79,7 +79,7 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:I'?ve made the following changes:)",
     r"(?i)(?:all tests are passing)",
     r"(?i)(?:the PR is ready for review)",
-    r"(?i)(?:committed to branch|committed and pushed|changes have been pushed)",
+    r"(?i)(?:committed\s+\w*\s*and pushed|committed to (?:branch|development|main|master|\w+)|changes have been pushed)",
     r"(?i)(?:here'?s a summary of what was done)",
     # Artifact creation/delivery (e.g. "PRD created at docs/...", "File written to src/...")
     r"(?i)(?:(?:file|prd|test|config|migration|template|document|spec|schema|script|module)\s+)?(?:created|written|saved|generated) (?:at|to|in) (?:\/|\.\/|\w)",
@@ -90,6 +90,12 @@ COMPLETION_PATTERNS = [
     r"(?i)(?:\d+ passed)",
     # Broader test-passing patterns (e.g. "all 26 tests — all passing")
     r"(?i)\ball passing\b",
+    # "all tests passed" / "all tests pass" without requiring count after "all"
+    r"(?i)\ball tests? pass(?:ed|ing|es)?\b",
+    # Parenthetical all-pass (e.g. "(all passed)")
+    r"(?i)\(all passed\)",
+    # Test execution reports (e.g. "Ran 12 tests", "Ran 12 card_state tests (all passed)")
+    r"(?i)(?:ran \d+ [\w\s]*?tests?)",
     # Git success indicators
     r"(?i)working tree clean",
     # Claude Code CLI completion marker (✻ Cooked for 1m 33s)
@@ -117,6 +123,10 @@ END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?i)(?:\d+ (?:prompts?|files?|tests?|assertions?|functions?) (?:updated|changed|modified|added|removed|fixed|created))",
     # Numbered change summaries with adjective-first format (e.g. "6 new files", "8 modified files")
     r"(?i)(?:\d+ (?:new|modified|changed|updated|created|deleted|added|removed) (?:files?|tests?|prompts?|functions?|endpoints?|routes?|models?|templates?|migrations?|modules?))",
+    # Common summary headers (e.g. "I've made the following changes:")
+    r"(?i)(?:I'?ve made the following (?:changes|updates|modifications):)",
+    # Standalone "Changes made:" header
+    r"(?im)^changes made:\s*$",
 ]
 
 # End-of-task: soft-close offers (open-ended, work is done)
@@ -359,11 +369,25 @@ def detect_agent_intent(
         return eot_result
 
     # Phase 1: Match against tail (high confidence)
-    for patterns, intent in [
-        (QUESTION_PATTERNS, TurnIntent.QUESTION),
-        (BLOCKED_PATTERNS, TurnIntent.QUESTION),
-        (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
-    ]:
+    # When not continuing, check COMPLETION before QUESTION so that
+    # a completed task with a follow-up question (e.g. "All tests passed.
+    # Would you like me to also update the docs?") is correctly classified
+    # as COMPLETION rather than QUESTION.  When has_continuation is True,
+    # the agent is explicitly mid-work, so QUESTION takes priority.
+    if has_continuation:
+        phase1_order = [
+            (QUESTION_PATTERNS, TurnIntent.QUESTION),
+            (BLOCKED_PATTERNS, TurnIntent.QUESTION),
+            (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
+        ]
+    else:
+        phase1_order = [
+            (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
+            (QUESTION_PATTERNS, TurnIntent.QUESTION),
+            (BLOCKED_PATTERNS, TurnIntent.QUESTION),
+        ]
+
+    for patterns, intent in phase1_order:
         matched = _match_patterns(tail, patterns)
         if matched:
             logger.debug(f"Detected {intent.value} intent in tail: pattern={matched}")
@@ -381,8 +405,8 @@ def detect_agent_intent(
         )
         return opener_result
 
-    # Phase 2: End-of-task on full text (lower confidence)
-    full_tail = _extract_tail(cleaned, max_lines=30)
+    # Phase 2: End-of-task on full text (lower confidence, wider window)
+    full_tail = _extract_tail(cleaned, max_lines=50)
     eot_full = _detect_end_of_task(full_tail, has_continuation)
     if eot_full:
         eot_full.confidence = max(0.6, eot_full.confidence - 0.2)
@@ -392,11 +416,21 @@ def detect_agent_intent(
         return eot_full
 
     # Phase 3: Match against full cleaned text (contextual confidence)
-    for patterns, intent in [
-        (QUESTION_PATTERNS, TurnIntent.QUESTION),
-        (BLOCKED_PATTERNS, TurnIntent.QUESTION),
-        (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
-    ]:
+    # Same COMPLETION-first logic as Phase 1 when not continuing.
+    if has_continuation:
+        phase3_order = [
+            (QUESTION_PATTERNS, TurnIntent.QUESTION),
+            (BLOCKED_PATTERNS, TurnIntent.QUESTION),
+            (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
+        ]
+    else:
+        phase3_order = [
+            (COMPLETION_PATTERNS, TurnIntent.COMPLETION),
+            (QUESTION_PATTERNS, TurnIntent.QUESTION),
+            (BLOCKED_PATTERNS, TurnIntent.QUESTION),
+        ]
+
+    for patterns, intent in phase3_order:
         matched = _match_patterns(cleaned, patterns)
         if matched:
             logger.debug(

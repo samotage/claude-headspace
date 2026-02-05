@@ -124,17 +124,14 @@ def reset_receiver_state() -> None:
 
 def _get_lifecycle_manager() -> TaskLifecycleManager:
     event_writer = None
-    summarisation_service = None
     try:
         from flask import current_app
         event_writer = current_app.extensions.get("event_writer")
-        summarisation_service = current_app.extensions.get("summarisation_service")
     except RuntimeError:
         pass
     return TaskLifecycleManager(
         session=db.session,
         event_writer=event_writer,
-        summarisation_service=summarisation_service,
     )
 
 
@@ -504,9 +501,7 @@ def _handle_awaiting_input(
             logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing task)")
             return HookEventResult(success=True, agent_id=agent.id)
 
-        current_task.state = TaskState.AWAITING_INPUT
-
-        # Build question text and create turn
+        # Build question text and create turn BEFORE state transition
         question_text = None
         if tool_name is not None or tool_input is not None:
             # pre_tool_use / permission_request: always create turn
@@ -532,8 +527,12 @@ def _handle_awaiting_input(
                         intent=TurnIntent.QUESTION, text=question_text,
                     ))
 
-        # OS notification
-        _send_notification(agent, current_task, turn_text=question_text or message or title)
+        # Use lifecycle manager for state transition (writes event + sends notification)
+        lifecycle = _get_lifecycle_manager()
+        lifecycle.update_task_state(
+            current_task, TaskState.AWAITING_INPUT,
+            trigger=event_type_str, confidence=1.0,
+        )
 
         db.session.commit()
         broadcast_card_refresh(agent, event_type_str)
@@ -608,6 +607,13 @@ def process_post_tool_use(
         current_task = lifecycle.get_current_task(agent)
 
         if not current_task:
+            # Guard: don't infer a task for ended/reaped agents
+            if agent.ended_at is not None:
+                db.session.commit()
+                broadcast_card_refresh(agent, "post_tool_use")
+                logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, skipped (agent ended)")
+                return HookEventResult(success=True, agent_id=agent.id)
+
             # Guard: don't infer a task if the previous one just completed
             # (tail-end tool activity after session_end/stop)
             from ..models.task import Task

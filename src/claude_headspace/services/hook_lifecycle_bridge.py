@@ -45,18 +45,10 @@ class HookLifecycleBridge:
         self._event_writer = event_writer
 
     def _get_lifecycle_manager(self) -> TaskLifecycleManager:
-        """Create a TaskLifecycleManager with event writer and summarisation service."""
-        summarisation_service = None
-        try:
-            from flask import current_app
-            summarisation_service = current_app.extensions.get("summarisation_service")
-        except RuntimeError:
-            logger.debug("No Flask app context for summarisation service lookup")
-
+        """Create a TaskLifecycleManager with event writer."""
         return TaskLifecycleManager(
             session=db.session,
             event_writer=self._event_writer,
-            summarisation_service=summarisation_service,
         )
 
     @staticmethod

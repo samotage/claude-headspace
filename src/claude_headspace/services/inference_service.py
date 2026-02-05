@@ -179,7 +179,7 @@ class InferenceService:
         except Exception as e:
             logger.error(f"Failed to log inference call: {e}")
         finally:
-            if session and self._independent_engine:
+            if session:
                 session.close()
 
     def _broadcast_inference_call(self, payload: dict) -> None:
@@ -365,9 +365,11 @@ class InferenceService:
         Returns:
             Dictionary with usage statistics
         """
+        owns_session = False
         if not db_session:
             if self._log_session_factory:
                 db_session = self._log_session_factory()
+                owns_session = True
             else:
                 return {"error": "No database session available"}
 
@@ -416,3 +418,6 @@ class InferenceService:
         except Exception as e:
             logger.error(f"Failed to fetch usage stats: {e}")
             return {"error": str(e)}
+        finally:
+            if owns_session and db_session:
+                db_session.close()

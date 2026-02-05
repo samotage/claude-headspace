@@ -33,7 +33,7 @@
 
             <!-- Brain Reboot -->
             <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="openBrainReboot({{ project.id }}, '{{ project.name }}', '{{ project.slug }}')"
+                    onclick="openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})"
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>

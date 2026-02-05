@@ -149,9 +149,21 @@ class TestGetConfigAPI:
 class TestSaveConfigAPI:
     """Tests for POST /api/config."""
 
+    def test_save_config_requires_confirm_header(self, client):
+        """Should reject requests without X-Confirm-Destructive header."""
+        response = client.post("/api/config", data="not json")
+
+        assert response.status_code == 403
+        data = response.get_json()
+        assert "X-Confirm-Destructive" in data["message"]
+
     def test_save_config_requires_json(self, client):
         """Should require JSON content type."""
-        response = client.post("/api/config", data="not json")
+        response = client.post(
+            "/api/config",
+            data="not json",
+            headers={"X-Confirm-Destructive": "true"},
+        )
 
         assert response.status_code == 400
         data = response.get_json()
@@ -163,6 +175,7 @@ class TestSaveConfigAPI:
             "/api/config",
             data="invalid json",
             content_type="application/json",
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         assert response.status_code == 400
@@ -182,6 +195,7 @@ class TestSaveConfigAPI:
         response = client.post(
             "/api/config",
             json={"server": {"port": "abc"}},
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         assert response.status_code == 400
@@ -204,6 +218,7 @@ class TestSaveConfigAPI:
         response = client.post(
             "/api/config",
             json={"server": {"port": 5050}},
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         assert response.status_code == 200
@@ -226,6 +241,7 @@ class TestSaveConfigAPI:
         response = client.post(
             "/api/config",
             json={"server": {"port": 5050}},
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         assert response.status_code == 500
@@ -254,6 +270,7 @@ class TestValidationErrorResponse:
         response = client.post(
             "/api/config",
             json={"server": {"port": "abc"}},
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         assert response.status_code == 400
@@ -273,6 +290,7 @@ class TestValidationErrorResponse:
         response = client.post(
             "/api/config",
             json={"server": {"port": "abc"}},
+            headers={"X-Confirm-Destructive": "true"},
         )
 
         data = response.get_json()
@@ -285,6 +303,15 @@ class TestValidationErrorResponse:
 class TestRestartServer:
     """Tests for POST /api/config/restart."""
 
+    def test_restart_requires_confirm_header(self, client, app):
+        """Should reject requests without X-Confirm-Destructive header."""
+        with app.app_context():
+            response = client.post("/api/config/restart")
+
+        assert response.status_code == 403
+        data = response.get_json()
+        assert "X-Confirm-Destructive" in data["message"]
+
     @patch("src.claude_headspace.routes.config.subprocess.Popen")
     def test_restart_success(self, mock_popen, client, app, tmp_path):
         """Should launch restart_server.sh and return 200."""
@@ -294,7 +321,10 @@ class TestRestartServer:
         script.chmod(0o755)
 
         with app.app_context():
-            response = client.post("/api/config/restart")
+            response = client.post(
+                "/api/config/restart",
+                headers={"X-Confirm-Destructive": "true"},
+            )
 
         assert response.status_code == 200
         data = response.get_json()
@@ -306,7 +336,10 @@ class TestRestartServer:
         """Should return 500 when restart_server.sh doesn't exist."""
         # tmp_path has no script file
         with app.app_context():
-            response = client.post("/api/config/restart")
+            response = client.post(
+                "/api/config/restart",
+                headers={"X-Confirm-Destructive": "true"},
+            )
 
         assert response.status_code == 500
         data = response.get_json()
@@ -323,7 +356,10 @@ class TestRestartServer:
         mock_popen.side_effect = OSError("Permission denied")
 
         with app.app_context():
-            response = client.post("/api/config/restart")
+            response = client.post(
+                "/api/config/restart",
+                headers={"X-Confirm-Destructive": "true"},
+            )
 
         assert response.status_code == 500
         data = response.get_json()

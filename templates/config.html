@@ -409,6 +409,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-Confirm-Destructive': 'true',
                 },
                 body: JSON.stringify(data),
             });
@@ -457,7 +458,7 @@
             });
 
             try {
-                const res = await fetch('/api/config/restart', { method: 'POST' });
+                const res = await fetch('/api/config/restart', { method: 'POST', headers: { 'X-Confirm-Destructive': 'true' } });
                 if (!res.ok) {
                     const data = await res.json();
                     showToast(data.message || 'Failed to restart server', 'error');

@@ -17,22 +17,10 @@ def mock_session():
 
 
 @pytest.fixture
-def mock_summarisation():
-    service = MagicMock()
-    return service
-
-
-@pytest.fixture
-def manager(mock_session, mock_summarisation):
+def manager(mock_session):
     return TaskLifecycleManager(
         session=mock_session,
-        summarisation_service=mock_summarisation,
     )
-
-
-@pytest.fixture
-def manager_no_summarisation(mock_session):
-    return TaskLifecycleManager(session=mock_session)
 
 
 @pytest.fixture
@@ -80,11 +68,11 @@ class TestTurnSummarisationTrigger:
             turn_reqs = [r for r in result.pending_summarisations if r.type == "turn"]
             assert len(turn_reqs) == 1
 
-    def test_no_summarisation_without_service(self, manager_no_summarisation, mock_session, mock_agent):
+    def test_no_summarisation_without_service(self, manager, mock_session, mock_agent):
         """When no summarisation service is provided, should not error."""
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
-        result = manager_no_summarisation.process_turn(mock_agent, TurnActor.USER, "Do something")
+        result = manager.process_turn(mock_agent, TurnActor.USER, "Do something")
 
         assert result.success is True
         # pending_summarisations should still be populated (they're model objects, not service calls)

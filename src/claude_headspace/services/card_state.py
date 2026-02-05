@@ -37,7 +37,10 @@ def get_effective_state(agent: Agent) -> TaskState | str:
 
     Priority:
     1. Stale PROCESSING detection (safety net for lost commits/server restarts)
-    2. Model state from the database
+    2. Recently completed task detection (agent.state returns IDLE when
+       get_current_task() filters out COMPLETE tasks, but the agent should
+       display as COMPLETE until a new task starts)
+    3. Model state from the database
 
     Args:
         agent: The agent to check
@@ -53,15 +56,18 @@ def get_effective_state(agent: Agent) -> TaskState | str:
     # of AWAITING_INPUT (amber) to distinguish genuine input requests.
     if model_state == TaskState.PROCESSING and agent.ended_at is None:
         dashboard_config = _get_dashboard_config()
-        threshold = dashboard_config.get("stale_processing_seconds")
-        if threshold is None:
-            raise RuntimeError(
-                "Missing required config: dashboard.stale_processing_seconds. "
-                "Set it in config.yaml or via DASHBOARD_STALE_PROCESSING_SECONDS env var."
-            )
+        threshold = dashboard_config.get("stale_processing_seconds", 600)
         elapsed = (datetime.now(timezone.utc) - agent.last_seen_at).total_seconds()
         if elapsed > threshold:
             return TIMED_OUT
+
+    # agent.state returns IDLE when get_current_task() filters out COMPLETE
+    # tasks, but the most recent task may have just completed. Report COMPLETE
+    # so card_refresh SSE events place the card in the correct Kanban column.
+    if model_state == TaskState.IDLE and agent.tasks:
+        most_recent = agent.tasks[0]  # ordered by started_at desc
+        if most_recent.state == TaskState.COMPLETE:
+            return TaskState.COMPLETE
 
     return model_state
 
@@ -351,6 +357,51 @@ def get_state_info(state: TaskState | str) -> dict:
     )
 
 
+def _get_task_turn_count(agent: Agent) -> int:
+    """Get turn count for the agent's most recent completed task.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Number of turns in the most recent completed task, or 0
+    """
+    if not agent.tasks:
+        return 0
+    for task in agent.tasks:
+        if task.state == TaskState.COMPLETE:
+            return len(task.turns) if hasattr(task, "turns") else 0
+    return 0
+
+
+def _get_task_elapsed(agent: Agent) -> str | None:
+    """Get elapsed time string for the agent's most recent completed task.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Elapsed time string like "2h 15m", "5m", "<1m", or None
+    """
+    if not agent.tasks:
+        return None
+    for task in agent.tasks:
+        if task.state == TaskState.COMPLETE:
+            if task.started_at and task.completed_at:
+                delta = task.completed_at - task.started_at
+                total_seconds = int(delta.total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                if hours > 0:
+                    return f"{hours}h {minutes}m"
+                elif minutes > 0:
+                    return f"{minutes}m"
+                else:
+                    return "<1m"
+            return None
+    return None
+
+
 def build_card_state(agent: Agent) -> dict:
     """Build the full card state dict for an agent.
 
@@ -367,7 +418,7 @@ def build_card_state(agent: Agent) -> dict:
     state_name = effective_state if isinstance(effective_state, str) else effective_state.name
 
     truncated_uuid = str(agent.session_uuid)[:8]
-    return {
+    card = {
         "id": agent.id,
         "session_uuid": truncated_uuid,
         "hero_chars": truncated_uuid[:2],
@@ -386,6 +437,14 @@ def build_card_state(agent: Agent) -> dict:
         "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
     }
+
+    # Include turn count and elapsed time for completed tasks (used by
+    # the condensed completed-task card in the Kanban COMPLETE column)
+    if state_name == "COMPLETE":
+        card["turn_count"] = _get_task_turn_count(agent)
+        card["elapsed"] = _get_task_elapsed(agent)
+
+    return card
 
 
 def broadcast_card_refresh(agent: Agent, reason: str) -> None:

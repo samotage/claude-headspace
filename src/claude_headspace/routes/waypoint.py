@@ -196,8 +196,8 @@ def post_waypoint(project_id: int):
         }), 500
 
 
-@waypoint_bp.route("/api/projects", methods=["GET"])
-def list_projects():
+@waypoint_bp.route("/api/waypoint/projects", methods=["GET"])
+def list_projects_for_waypoint():
     """
     List all projects for the waypoint editor dropdown.
 

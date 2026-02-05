@@ -5,6 +5,7 @@
     let currentWindow = 'day';
     let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
     let sseSource = null;
+    var _refreshDebounce = null;
 
     // Frustration thresholds from config (injected by template)
     var THRESHOLDS = global.FRUSTRATION_THRESHOLDS || { yellow: 4, red: 7 };
@@ -21,6 +22,35 @@
     var RATE_LABELS = { day: 'Turns / Hour', week: 'Turns / Day', month: 'Turns / Day' };
 
     /**
+     * Fetch with retry and exponential backoff.
+     * Returns the parsed JSON response, or null after all retries fail.
+     */
+    function _fetchWithRetry(url, maxRetries, baseDelayMs) {
+        maxRetries = maxRetries || 3;
+        baseDelayMs = baseDelayMs || 1000;
+        var attempt = 0;
+
+        function doFetch() {
+            return fetch(url).then(function(res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).catch(function(err) {
+                attempt++;
+                if (attempt >= maxRetries) {
+                    console.error('Fetch failed after ' + maxRetries + ' attempts: ' + url, err);
+                    return null;
+                }
+                var delay = baseDelayMs * Math.pow(2, attempt - 1);
+                return new Promise(function(resolve) {
+                    setTimeout(function() { resolve(doFetch()); }, delay);
+                });
+            });
+        }
+
+        return doFetch();
+    }
+
+    /**
      * Compute frustration level (green/yellow/red) from a numeric average.
      */
     function _levelFromAvg(avg) {
@@ -34,9 +64,9 @@
         init: function() {
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+            this._initSSE();
             if (HEADSPACE_ENABLED) {
                 this._initFrustrationWidget();
-                this._initSSE();
             }
         },
 
@@ -200,13 +230,12 @@
         },
 
         loadOverallMetrics: function() {
-            fetch('/api/metrics/overall?' + this._apiParams())
-                .then(function(res) { return res.json(); })
+            _fetchWithRetry('/api/metrics/overall?' + this._apiParams())
                 .then(function(data) {
                     var overallEmpty = document.getElementById('overall-empty');
                     var overallMetrics = document.getElementById('overall-metrics');
 
-                    if (!data.history || data.history.length === 0) {
+                    if (!data || !data.history || data.history.length === 0) {
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
@@ -231,16 +260,11 @@
                         data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
 
                     ActivityPage._renderChart(data.history);
-                })
-                .catch(function(err) {
-                    console.error('Failed to load overall metrics:', err);
                 });
         },
 
         loadProjectMetrics: function() {
-            // First fetch list of projects, then fetch metrics for each
-            fetch('/api/projects')
-                .then(function(res) { return res.json(); })
+            _fetchWithRetry('/api/projects')
                 .then(function(projects) {
                     var container = document.getElementById('project-metrics-container');
                     var loading = document.getElementById('projects-loading');
@@ -262,10 +286,9 @@
                     if (overallAgentsEl) overallAgentsEl.textContent = liveAgentTotal;
 
                     var promises = projects.map(function(p) {
-                        return fetch('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
-                            .then(function(res) { return res.json(); })
+                        return _fetchWithRetry('/api/metrics/projects/' + p.id + '?' + ActivityPage._apiParams())
                             .then(function(metrics) {
-                                return { project: p, metrics: metrics };
+                                return { project: p, metrics: metrics || { history: [] } };
                             });
                     });
 
@@ -275,23 +298,22 @@
                         results.forEach(function(r) {
                             if ((r.metrics.history && r.metrics.history.length > 0) || (r.project.agent_count > 0)) {
                                 agentPromises.push(
-                                    fetch('/api/projects/' + r.project.id)
-                                        .then(function(res) { return res.json(); })
+                                    _fetchWithRetry('/api/projects/' + r.project.id)
                                         .then(function(detail) {
+                                            if (!detail) { r.agents = []; return; }
                                             var activeAgents = (detail.agents || [])
                                                 .filter(function(a) { return !a.ended_at; });
                                             var aPromises = activeAgents
                                                 .map(function(a) {
-                                                    return fetch('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
-                                                        .then(function(res) { return res.json(); })
+                                                    return _fetchWithRetry('/api/metrics/agents/' + a.id + '?' + ActivityPage._apiParams())
                                                         .then(function(metrics) {
-                                                            return { agent: a, metrics: metrics };
+                                                            return { agent: a, metrics: metrics || { history: [] } };
                                                         });
                                                 });
                                             return Promise.all(aPromises);
                                         })
                                         .then(function(agentData) {
-                                            r.agents = agentData;
+                                            if (agentData) r.agents = agentData;
                                         })
                                 );
                             } else {
@@ -305,10 +327,6 @@
                     }).then(function(results) {
                         ActivityPage._renderProjectPanels(results);
                     });
-                })
-                .catch(function(err) {
-                    console.error('Failed to load project metrics:', err);
-                    document.getElementById('projects-loading').classList.add('hidden');
                 });
         },
 
@@ -380,11 +398,16 @@
         },
 
         /**
-         * Get per-bucket max frustration for chart.
-         * Uses max_frustration (peak score) when available, falls back to
-         * per-bucket average for historical data without max tracked.
-         * Returns null for buckets with no scored turns (creates line gaps).
+         * Get per-bucket average frustration (total / count).
+         * Returns null for buckets with no scored turns.
          */
+        _bucketFrustrationAvg: function(h) {
+            if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
+                return null;
+            }
+            return h.total_frustration / h.frustration_turn_count;
+        },
+
         _bucketFrustration: function(h) {
             if (h.max_frustration != null) return h.max_frustration;
             if (h.total_frustration == null || !h.frustration_turn_count || h.frustration_turn_count === 0) {
@@ -681,17 +704,53 @@
                 });
         },
 
+        /**
+         * Debounced refresh of all activity data.
+         * Coalesces rapid SSE events into a single re-fetch.
+         */
+        _debouncedRefresh: function() {
+            if (_refreshDebounce) return;
+            _refreshDebounce = setTimeout(function() {
+                _refreshDebounce = null;
+                // Only refresh if viewing the current period (not historical)
+                if (windowOffset === 0) {
+                    ActivityPage.loadOverallMetrics();
+                    ActivityPage.loadProjectMetrics();
+                }
+            }, 3000);
+        },
+
         _initSSE: function() {
             if (sseSource) return;
-            sseSource = new EventSource('/api/events/stream?types=headspace_update');
-            sseSource.addEventListener('headspace_update', function(e) {
-                try {
-                    var data = JSON.parse(e.data);
-                    ActivityPage._updateWidgetValues(data);
-                } catch (err) {
-                    console.error('Failed to parse headspace SSE:', err);
-                }
+
+            var sseTypes = 'turn_detected,turn_created,activity_update';
+            if (HEADSPACE_ENABLED) {
+                sseTypes += ',headspace_update';
+            }
+            sseSource = new EventSource('/api/events/stream?types=' + sseTypes);
+
+            // Real-time activity updates: debounce-refresh on new turns or aggregation
+            sseSource.addEventListener('turn_detected', function() {
+                ActivityPage._debouncedRefresh();
             });
+            sseSource.addEventListener('turn_created', function() {
+                ActivityPage._debouncedRefresh();
+            });
+            sseSource.addEventListener('activity_update', function() {
+                ActivityPage._debouncedRefresh();
+            });
+
+            if (HEADSPACE_ENABLED) {
+                sseSource.addEventListener('headspace_update', function(e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        ActivityPage._updateWidgetValues(data);
+                    } catch (err) {
+                        console.error('Failed to parse headspace SSE:', err);
+                    }
+                });
+            }
+
             // Close on page unload to free connection slot
             window.addEventListener('beforeunload', function() {
                 if (sseSource) {

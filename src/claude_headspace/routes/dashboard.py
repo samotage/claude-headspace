@@ -278,10 +278,22 @@ def _prepare_kanban_data(
 
                 if current_task is None or state_name in ("IDLE", "COMPLETE"):
                     # Agent is idle (or just completed a task — completed tasks
-                    # are added as condensed accordion cards by the loop below)
+                    # are added as condensed accordion cards by the loop below).
+                    # Override display state to IDLE so the card renders correctly.
+                    idle_data = agent_data
+                    if state_name == "COMPLETE":
+                        idle_data = {
+                            **agent_data,
+                            "state": TaskState.IDLE,
+                            "state_name": "IDLE",
+                            "state_info": get_state_info(TaskState.IDLE),
+                            "task_summary": "No active task",
+                            "task_instruction": None,
+                            "task_completion_summary": None,
+                        }
                     state_columns["IDLE"].append({
                         "type": "agent",
-                        "agent": agent_data,
+                        "agent": idle_data,
                     })
                 else:
                     # Agent has active task - goes in the state's column
@@ -562,8 +574,10 @@ def dashboard():
             projects, project_data, objective and objective.priority_enabled
         )
 
-    # Fetch overall activity metrics for the activity bar
-    activity_metrics = _get_dashboard_activity_metrics()
+    # Activity metrics are fetched client-side via JS to use the browser's
+    # local timezone for "today" boundaries (matching the activity page).
+    # Server-side computation used UTC midnight which gave wrong results
+    # for non-UTC timezones.
 
     return render_template(
         "dashboard.html",
@@ -574,5 +588,5 @@ def dashboard():
         priority_sorted_agents=priority_sorted_agents,
         objective=objective,
         kanban_data=kanban_data,
-        activity_metrics=activity_metrics,
+        activity_metrics=None,
     )

@@ -259,10 +259,25 @@ class ActivityAggregator:
                     f"Aggregation pass: agents={stats['agents']}, "
                     f"projects={stats['projects']}, overall={stats['overall']}"
                 )
+                self._broadcast_activity_update(stats)
             else:
                 logger.debug("Aggregation pass: no activity found")
 
             return stats
+
+    def _broadcast_activity_update(self, stats: dict) -> None:
+        """Broadcast an SSE event so the activity page refreshes in real-time."""
+        try:
+            from .broadcaster import get_broadcaster
+
+            broadcaster = get_broadcaster()
+            broadcaster.broadcast("activity_update", {
+                "agents_updated": stats.get("agents", 0),
+                "projects_updated": stats.get("projects", 0),
+                "overall_updated": stats.get("overall", 0),
+            })
+        except Exception as e:
+            logger.debug(f"Failed to broadcast activity update (non-fatal): {e}")
 
     def prune_old_records(self) -> int:
         """Delete ActivityMetric records older than the configured retention period.

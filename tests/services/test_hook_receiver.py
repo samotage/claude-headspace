@@ -30,6 +30,7 @@ def mock_agent():
     agent = MagicMock()
     agent.id = 1
     agent.last_seen_at = datetime.now(timezone.utc)
+    agent.ended_at = None
     agent.state.value = "idle"
     agent.get_current_task.return_value = None
     return agent
@@ -387,10 +388,10 @@ class TestProcessNotification:
         process_notification(mock_agent, "session-123")
         mock_db.session.commit.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
     def test_notification_sends_os_notification_on_transition(
-        self, mock_db, mock_send_notif, mock_agent, fresh_state
+        self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
     ):
         from claude_headspace.models.task import TaskState
 
@@ -398,9 +399,13 @@ class TestProcessNotification:
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
         mock_task.instruction = "Fix auth bug"
+        mock_task.turns = []
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
+
+        mock_lifecycle = MagicMock()
+        mock_get_lifecycle.return_value = mock_lifecycle
 
         result = process_notification(
             mock_agent, "session-123",
@@ -408,7 +413,10 @@ class TestProcessNotification:
         )
 
         assert result.state_changed is True
-        mock_send_notif.assert_called_once()
+        mock_lifecycle.update_task_state.assert_called_once_with(
+            mock_task, TaskState.AWAITING_INPUT,
+            trigger="notification", confidence=1.0,
+        )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -488,18 +496,22 @@ class TestProcessPreToolUse:
         assert fresh_state.last_event_type == HookEventType.PRE_TOOL_USE
         assert fresh_state.events_received == 1
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_sends_os_notification_on_transition(self, mock_db, mock_send_notif, mock_agent, fresh_state):
+    def test_sends_os_notification_on_transition(self, mock_db, mock_get_lifecycle, mock_agent, fresh_state):
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
         mock_task.instruction = "Implement dark mode"
+        mock_task.turns = []
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
+
+        mock_lifecycle = MagicMock()
+        mock_get_lifecycle.return_value = mock_lifecycle
 
         tool_input = {
             "questions": [{"question": "Which approach do you prefer?", "header": "Approach", "options": [], "multiSelect": False}]
@@ -510,7 +522,10 @@ class TestProcessPreToolUse:
         )
 
         assert result.state_changed is True
-        mock_send_notif.assert_called_once()
+        mock_lifecycle.update_task_state.assert_called_once_with(
+            mock_task, TaskState.AWAITING_INPUT,
+            trigger="pre_tool_use", confidence=1.0,
+        )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -574,18 +589,22 @@ class TestProcessPermissionRequest:
         assert fresh_state.last_event_type == HookEventType.PERMISSION_REQUEST
         assert fresh_state.events_received == 1
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_sends_os_notification_on_transition(self, mock_db, mock_send_notif, mock_agent, fresh_state):
+    def test_sends_os_notification_on_transition(self, mock_db, mock_get_lifecycle, mock_agent, fresh_state):
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
         mock_task.id = 10
         mock_task.instruction = "Add user auth"
+        mock_task.turns = []
         mock_agent.get_current_task.return_value = mock_task
         mock_agent.name = "test-agent"
         mock_agent.project.name = "test-project"
+
+        mock_lifecycle = MagicMock()
+        mock_get_lifecycle.return_value = mock_lifecycle
 
         result = process_permission_request(
             mock_agent, "session-123",
@@ -593,7 +612,10 @@ class TestProcessPermissionRequest:
         )
 
         assert result.state_changed is True
-        mock_send_notif.assert_called_once()
+        mock_lifecycle.update_task_state.assert_called_once_with(
+            mock_task, TaskState.AWAITING_INPUT,
+            trigger="permission_request", confidence=1.0,
+        )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
     @patch("claude_headspace.services.hook_receiver.db")

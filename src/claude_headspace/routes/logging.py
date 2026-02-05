@@ -164,9 +164,14 @@ def clear_events():
     """
     Delete all events.
 
+    Requires X-Confirm-Destructive: true header to prevent accidental calls.
+
     Returns:
         JSON with count of deleted events
     """
+    if request.headers.get("X-Confirm-Destructive") != "true":
+        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+
     try:
         count = db.session.query(Event).count()
         db.session.query(Event).delete()
@@ -491,9 +496,14 @@ def clear_inference_calls():
     """
     Delete all inference call records.
 
+    Requires X-Confirm-Destructive: true header to prevent accidental calls.
+
     Returns:
         JSON with count of deleted records
     """
+    if request.headers.get("X-Confirm-Destructive") != "true":
+        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+
     try:
         count = db.session.query(InferenceCall).count()
         db.session.query(InferenceCall).delete()

@@ -18,12 +18,7 @@
             <div class="activity-bar-label">Agents</div>
         </div>
         <div class="activity-bar-card">
-            <div class="activity-bar-value" id="activity-bar-frustration"
-                 {% if activity_metrics and activity_metrics.frustration is not none %}
-                    {% if activity_metrics.frustration >= 7 %}class="activity-bar-value text-red"
-                    {% elif activity_metrics.frustration >= 4 %}class="activity-bar-value text-amber"
-                    {% else %}class="activity-bar-value text-green"{% endif %}
-                 {% endif %}>
+            <div class="activity-bar-value {% if activity_metrics and activity_metrics.frustration is not none %}{% if activity_metrics.frustration >= 7 %}text-red{% elif activity_metrics.frustration >= 4 %}text-amber{% else %}text-green{% endif %}{% endif %}" id="activity-bar-frustration">
                 {{ activity_metrics.frustration if activity_metrics and activity_metrics.frustration is not none else '--' }}
             </div>
             <div class="activity-bar-label">Frustration</div>

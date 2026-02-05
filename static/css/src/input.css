@@ -461,6 +461,7 @@ body::after {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 20px;
+    text-align: center;
 }
 
 .metric-card-label {

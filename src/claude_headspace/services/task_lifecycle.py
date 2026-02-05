@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -73,11 +73,9 @@ class TaskLifecycleManager:
         self,
         session: Session,
         event_writer: Optional[EventWriter] = None,
-        summarisation_service: Optional[Any] = None,
     ) -> None:
         self._session = session
         self._event_writer = event_writer
-        self._summarisation_service = summarisation_service
         self._pending_summarisations: list[SummarisationRequest] = []
 
     def get_pending_summarisations(self) -> list[SummarisationRequest]:
@@ -356,7 +354,7 @@ class TaskLifecycleManager:
                     intent=intent_result,
                     event_written=self._event_writer is not None,
                     new_task_created=True,
-                    pending_summarisations=self._pending_summarisations,
+                    pending_summarisations=list(self._pending_summarisations),
                 )
 
         # No active task and not a user command - nothing to do
@@ -417,7 +415,7 @@ class TaskLifecycleManager:
             transition=transition_result,
             intent=intent_result,
             event_written=self._event_writer is not None,
-            pending_summarisations=self._pending_summarisations,
+            pending_summarisations=list(self._pending_summarisations),
         )
 
     def _write_transition_event(

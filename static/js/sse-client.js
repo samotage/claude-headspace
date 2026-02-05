@@ -40,7 +40,6 @@
       this.eventSource = null;
       this.state = ConnectionState.DISCONNECTED;
       this.reconnectAttempts = 0;
-      this.lastEventId = null;
       this.handlers = new Map();
       this.stateChangeCallbacks = [];
 
@@ -136,11 +135,6 @@
      */
     _onMessage(event) {
       try {
-        // Update last event ID
-        if (event.lastEventId) {
-          this.lastEventId = event.lastEventId;
-        }
-
         // Parse event data
         const data = JSON.parse(event.data);
 
@@ -157,12 +151,6 @@
     _dispatchEvent(eventType, data) {
       // Call type-specific handlers
       const typeHandlers = this.handlers.get(eventType);
-      console.log('[DEBUG] _dispatchEvent:', {
-        eventType: eventType,
-        hasTypeHandlers: !!typeHandlers,
-        handlerCount: typeHandlers ? typeHandlers.size : 0,
-        registeredTypes: Array.from(this.handlers.keys()),
-      });
       if (typeHandlers) {
         typeHandlers.forEach((handler) => {
           try {
@@ -340,13 +328,6 @@
      */
     isConnected() {
       return this.state === ConnectionState.CONNECTED;
-    }
-
-    /**
-     * Get last received event ID
-     */
-    getLastEventId() {
-      return this.lastEventId;
     }
   }
 

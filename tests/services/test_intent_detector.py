@@ -551,7 +551,7 @@ class TestExpandedCompletionPatterns:
 
     def test_made_following_changes(self):
         result = detect_agent_intent("I've made the following changes:\n- Updated config\n- Fixed bug")
-        assert result.intent == TurnIntent.COMPLETION
+        assert result.intent == TurnIntent.END_OF_TASK
 
     def test_all_tests_passing(self):
         result = detect_agent_intent("All tests are passing.")
@@ -1407,6 +1407,13 @@ class TestGitSuccessPatterns:
         )
         assert result.intent == TurnIntent.COMPLETION
 
+    def test_committed_hash_and_pushed(self):
+        """'Committed <hash> and pushed to <branch>' should detect as completion."""
+        result = detect_agent_intent(
+            "Committed 8b58cab and pushed to development."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
     def test_working_tree_clean(self):
         """'Working tree clean' should detect as completion."""
         result = detect_agent_intent("Working tree clean.")
@@ -1582,3 +1589,126 @@ class TestConfirmationDetection:
         """Empty text during PROCESSING should be COMMAND."""
         result = detect_user_intent("", TaskState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
+
+
+class TestCompletionOverridesFollowUpQuestion:
+    """Tests that completed tasks with follow-up questions are COMPLETION, not QUESTION.
+
+    When an agent finishes its work and asks a follow-up question about
+    optional additional work, the task IS complete. The follow-up question
+    is about starting a NEW potential task, not continuing the current one.
+    """
+
+    def test_completion_with_followup_question(self):
+        """Completed task + follow-up question → COMPLETION, not QUESTION."""
+        text = (
+            "All tests passed. Would you like me to also update the docs?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_committed_and_pushed_with_followup(self):
+        """Git commit + follow-up → COMPLETION."""
+        text = (
+            "Committed 8b58cab and pushed to development. "
+            "The remaining unstaged changes are from prior work. "
+            "Would you like me to clean those up too?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_test_results_with_followup(self):
+        """Test results + follow-up → COMPLETION."""
+        text = (
+            "Ran 12 card_state tests (all passed) and 50 dashboard "
+            "route tests (49 passed, 1 pre-existing failure).\n"
+            "Would you like me to investigate the failing test?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_done_with_offer_for_more(self):
+        """'Done' + offer for additional work → COMPLETION."""
+        text = (
+            "I've finished implementing the feature. "
+            "Do you want me to add more test coverage?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_continuation_question_still_wins(self):
+        """'Should I proceed/continue' still wins over completion (continuation guard)."""
+        result = detect_agent_intent("I'm done. Should I continue?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_genuine_question_no_completion(self):
+        """Pure question with no completion evidence → QUESTION."""
+        result = detect_agent_intent(
+            "I have some concerns about the approach. "
+            "Would you like me to explain the trade-offs?"
+        )
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_intermediate_question_then_completion(self):
+        """Intermediate question followed by completion in multi-message transcript."""
+        text = (
+            "I need to check something first. Should I use approach A?\n\n"
+            "OK, I used approach A. Here's what I changed:\n"
+            "- Updated config.py\n"
+            "- Fixed the login flow\n"
+            "- Added tests\n\n"
+            "All 12 tests passed. Committed and pushed to development."
+        )
+        result = detect_agent_intent(text)
+        # END_OF_TASK or COMPLETION both indicate task is done
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+
+    def test_real_world_commit_push_completion(self):
+        """Real-world commit+push output should be COMPLETION."""
+        text = (
+            "Committed 8b58cab and pushed to development. "
+            "The remaining unstaged changes are from prior work, "
+            "unrelated to this task."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+
+class TestNewCompletionPatterns:
+    """Tests for newly added completion patterns."""
+
+    def test_ran_tests_report(self):
+        """'Ran 12 tests' should detect as COMPLETION."""
+        result = detect_agent_intent("Ran 12 tests successfully.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ran_tests_with_name(self):
+        """'Ran 12 card_state tests' should detect as COMPLETION."""
+        result = detect_agent_intent(
+            "Ran 12 card_state tests (all passed)."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_parenthetical_all_passed(self):
+        """'(all passed)' should detect as COMPLETION."""
+        result = detect_agent_intent(
+            "Ran 50 dashboard route tests (all passed)."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_tests_passed_no_count(self):
+        """'all tests passed' without count should detect as COMPLETION."""
+        result = detect_agent_intent("All tests passed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_all_tests_pass_no_count(self):
+        """'all tests pass' without count should detect as COMPLETION."""
+        result = detect_agent_intent("All tests pass.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_made_following_changes_is_eot(self):
+        """'I've made the following changes:' should be END_OF_TASK."""
+        result = detect_agent_intent(
+            "I've made the following changes:\n- Fixed bug\n- Updated tests"
+        )
+        assert result.intent == TurnIntent.END_OF_TASK
