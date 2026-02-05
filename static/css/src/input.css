@@ -223,6 +223,7 @@ body::after {
 
 .line-content {
     flex: 1;
+    min-width: 0;
     padding: 4px 8px;
     min-height: 24px;
 }

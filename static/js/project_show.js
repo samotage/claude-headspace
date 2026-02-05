@@ -965,7 +965,27 @@
                     return;
                 }
                 var data = await response.json();
-                var archives = data.archives || [];
+                // Flatten grouped archives dict into flat array
+                var archivesByType = data.archives || {};
+                var archives = [];
+                if (Array.isArray(archivesByType)) {
+                    // Handle if backend ever returns flat array
+                    archives = archivesByType;
+                } else {
+                    Object.keys(archivesByType).forEach(function(artifactType) {
+                        (archivesByType[artifactType] || []).forEach(function(item) {
+                            archives.push({
+                                artifact: artifactType,
+                                filename: item.filename,
+                                timestamp: item.timestamp
+                            });
+                        });
+                    });
+                }
+                // Sort by timestamp descending
+                archives.sort(function(a, b) {
+                    return (b.timestamp || '').localeCompare(a.timestamp || '');
+                });
                 if (archives.length === 0) {
                     container.innerHTML = '<p class="text-muted italic text-sm">No archived artifacts yet.</p>';
                     return;
@@ -1606,6 +1626,8 @@
         },
 
         _renderMarkdown: function(text) {
+            // Strip HTML comments before processing
+            text = text.replace(/<!--[\s\S]*?-->/g, '');
             // Basic markdown rendering: headers, bold, italic, code blocks, lists, links
             var html = CHUtils.escapeHtml(text);
 
