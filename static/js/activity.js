@@ -228,14 +228,7 @@
                     document.getElementById('overall-avg-time').textContent =
                         avgTime != null ? avgTime.toFixed(1) + 's' : '--';
                     document.getElementById('overall-active-agents').textContent =
-                        data.current ? (data.current.active_agents || 0) : 0;
-
-                    // Frustration: display average instead of sum
-                    var frustAvg = ActivityPage._computeFrustrationAvg(data.history);
-                    var frustEl = document.getElementById('overall-frustration');
-                    frustEl.textContent = ActivityPage._formatFrustAvg(frustAvg);
-                    var level = _levelFromAvg(frustAvg);
-                    frustEl.className = 'metric-card-value ' + (frustAvg != null ? FRUST_COLORS[level].text : 'text-muted');
+                        data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
 
                     ActivityPage._renderChart(data.history);
                 })

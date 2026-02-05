@@ -59,16 +59,17 @@
 
     /**
      * Map an agent state string to the Kanban column data-kanban-state value.
-     * Matches the Python _prepare_kanban_data() logic:
-     *   IDLE, COMPLETE -> 'IDLE'
+     *   IDLE -> 'IDLE'
+     *   COMPLETE -> 'COMPLETE'
      *   COMMANDED, PROCESSING, TIMED_OUT -> 'PROCESSING'
      *   AWAITING_INPUT -> 'AWAITING_INPUT'
      */
     function stateToKanbanColumn(state) {
         switch (state) {
             case 'IDLE':
-            case 'COMPLETE':
                 return 'IDLE';
+            case 'COMPLETE':
+                return 'COMPLETE';
             case 'COMMANDED':
             case 'PROCESSING':
             case 'TIMED_OUT':
@@ -87,7 +88,7 @@
     function moveCardToColumn(agentId, newState, projectId) {
         if (!isKanbanView()) return;
 
-        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        var card = findAgentCard(agentId);
         if (!card) return;
 
         var targetColName = stateToKanbanColumn(newState);
@@ -459,7 +460,7 @@
 
         // In Kanban view, remove the card from DOM instead of full reload
         if (isKanbanView()) {
-            var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+            var card = findAgentCard(agentId);
             if (card) {
                 var column = card.closest('[data-kanban-state]');
                 var body = column ? column.querySelector('.kanban-column-body') : null;
@@ -612,6 +613,66 @@
     }
 
     /**
+     * Build a condensed completed-task accordion element for the COMPLETE column.
+     * Matches the server-side template in _kanban_view.html.
+     */
+    function buildCompletedTaskCard(data) {
+        var details = document.createElement('details');
+        details.className = 'kanban-completed-task bg-elevated rounded-lg border border-green/20 overflow-hidden';
+        details.setAttribute('data-agent-id', data.id);
+
+        var instruction = data.task_instruction || 'Task';
+        var completionSummary = data.task_completion_summary || data.task_summary || 'Completed';
+        var heroChars = data.hero_chars || '';
+        var heroTrail = data.hero_trail || '';
+        var turnCount = data.turn_count != null ? data.turn_count : 0;
+        var elapsed = data.elapsed || '';
+        var turnLabel = turnCount === 1 ? 'turn' : 'turns';
+        var elapsedStr = elapsed ? ' \u00b7 ' + elapsed : '';
+
+        details.innerHTML =
+            '<summary class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-hover transition-colors">' +
+                '<span class="text-xs text-muted">&#9654;</span>' +
+                '<span class="flex items-baseline gap-0.5">' +
+                    '<span class="agent-hero text-sm">' + heroChars + '</span>' +
+                    '<span class="agent-hero-trail">' + heroTrail + '</span>' +
+                '</span>' +
+                '<span class="task-instruction text-primary text-sm font-medium truncate flex-1" title="' + instruction.replace(/"/g, '&quot;') + '">' + instruction + '</span>' +
+            '</summary>' +
+            '<div class="card-editor border-t border-green/10">' +
+                '<div class="card-line">' +
+                    '<span class="line-num">01</span>' +
+                    '<div class="line-content">' +
+                        '<p class="task-instruction text-primary text-sm font-medium">' + instruction + '</p>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-line">' +
+                    '<span class="line-num">02</span>' +
+                    '<div class="line-content">' +
+                        '<p class="task-summary text-green text-sm italic">' + completionSummary + '</p>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-line">' +
+                    '<span class="line-num">03</span>' +
+                    '<div class="line-content">' +
+                        '<span class="text-muted text-xs">' + turnCount + ' ' + turnLabel + elapsedStr + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        return details;
+    }
+
+    /**
+     * Find an agent's card element — may be an <article> (full card) or
+     * a <details> (condensed completed-task card).
+     */
+    function findAgentCard(agentId) {
+        return document.querySelector('article[data-agent-id="' + agentId + '"]') ||
+               document.querySelector('details[data-agent-id="' + agentId + '"]');
+    }
+
+    /**
      * Handle card_refresh events — authoritative full card state from server.
      * Updates all visible fields on the agent card in one shot.
      */
@@ -624,13 +685,86 @@
 
         console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
 
-        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        var card = findAgentCard(agentId);
 
         // If card not found, a new agent may have appeared — reload to render it
         if (!card) {
             if (reason === 'session_start' || reason === 'session_reactivated') {
                 safeDashboardReload();
             }
+            return;
+        }
+
+        var isCondensed = card.tagName === 'DETAILS';
+
+        // Condensed completed-task card transitioning to a non-COMPLETE state
+        // means a new task started — reload to get the full agent card template
+        if (isCondensed && state !== 'COMPLETE') {
+            safeDashboardReload();
+            return;
+        }
+
+        // Full agent card transitioning to COMPLETE in Kanban view —
+        // replace with the condensed completed-task accordion
+        if (!isCondensed && state === 'COMPLETE' && isKanbanView()) {
+            var oldState = agentStates.get(agentId);
+            agentStates.set(agentId, state);
+
+            var condensedCard = buildCompletedTaskCard(data);
+
+            // Find the target COMPLETE column
+            var projectSection = card.closest('[data-project-id]');
+            var sourceColumn = card.closest('[data-kanban-state]');
+
+            if (projectSection) {
+                var completeColumn = projectSection.querySelector('[data-kanban-state="COMPLETE"]');
+                var completeBody = completeColumn ? completeColumn.querySelector('.kanban-column-body') : null;
+
+                if (completeBody) {
+                    // Remove empty placeholder if present
+                    var placeholder = completeBody.querySelector('p.text-muted.italic');
+                    if (placeholder) placeholder.remove();
+
+                    // Insert the condensed card at the top of the COMPLETE column
+                    completeBody.insertBefore(condensedCard, completeBody.firstChild);
+                }
+
+                // Remove the old full card from its source column
+                card.remove();
+
+                // Update source column: add empty placeholder if now empty
+                if (sourceColumn) {
+                    var sourceBody = sourceColumn.querySelector('.kanban-column-body');
+                    if (sourceBody) {
+                        var remaining = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+                        if (remaining.length === 0) {
+                            var colName = sourceColumn.getAttribute('data-kanban-state');
+                            if (colName !== 'COMPLETE') {
+                                var emptyLabels = {
+                                    'IDLE': 'idle',
+                                    'PROCESSING': 'processing',
+                                    'AWAITING_INPUT': 'input needed'
+                                };
+                                var emptyPlaceholder = document.createElement('p');
+                                emptyPlaceholder.className = 'text-muted text-xs italic px-2';
+                                emptyPlaceholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                                sourceBody.appendChild(emptyPlaceholder);
+                            }
+                        }
+                    }
+                    updateColumnCount(sourceColumn);
+                }
+
+                if (completeColumn) updateColumnCount(completeColumn);
+                highlightMovedCard(condensedCard);
+            }
+
+            // Recalculate header counts and project dots
+            updateStatusCounts();
+            var projectId = data.project_id;
+            if (projectId) updateProjectStateDots(projectId);
+
+            document.dispatchEvent(new CustomEvent('sse:card_refresh', { detail: data }));
             return;
         }
 
@@ -938,24 +1072,25 @@
         fetch('/api/metrics/overall')
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                if (!data.current) return;
-                var c = data.current;
+                // Use daily_totals for full-day aggregation
+                var totals = data.daily_totals;
+                if (!totals) return;
 
                 var turnsEl = document.getElementById('activity-bar-turns');
-                if (turnsEl) turnsEl.textContent = c.turn_count || 0;
+                if (turnsEl) turnsEl.textContent = totals.total_turns || 0;
 
                 var rateEl = document.getElementById('activity-bar-rate');
-                if (rateEl) rateEl.textContent = c.turn_count || '--';
+                if (rateEl) rateEl.textContent = totals.turn_rate || '--';
 
                 var avgEl = document.getElementById('activity-bar-avg-time');
-                if (avgEl) avgEl.textContent = c.avg_turn_time_seconds != null ? c.avg_turn_time_seconds.toFixed(1) + 's' : '--';
+                if (avgEl) avgEl.textContent = totals.avg_turn_time_seconds != null ? totals.avg_turn_time_seconds.toFixed(1) + 's' : '--';
 
                 var agentsEl = document.getElementById('activity-bar-agents');
-                if (agentsEl) agentsEl.textContent = c.active_agents || 0;
+                if (agentsEl) agentsEl.textContent = totals.active_agents || 0;
 
                 var frustEl = document.getElementById('activity-bar-frustration');
                 if (frustEl) {
-                    var frustVal = c.frustration_avg;
+                    var frustVal = totals.frustration_avg;
                     frustEl.textContent = frustVal != null ? frustVal.toFixed(1) : '--';
                     frustEl.className = 'activity-bar-value';
                     if (frustVal != null) {

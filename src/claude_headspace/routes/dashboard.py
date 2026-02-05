@@ -1,6 +1,6 @@
 """Dashboard route for agent monitoring."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, render_template, request
 from sqlalchemy.orm import selectinload
@@ -277,7 +277,8 @@ def _prepare_kanban_data(
                 state_name = effective_state if isinstance(effective_state, str) else effective_state.name
 
                 if current_task is None or state_name in ("IDLE", "COMPLETE"):
-                    # Agent is idle or completed - goes in IDLE column with full card
+                    # Agent is idle (or just completed a task — completed tasks
+                    # are added as condensed accordion cards by the loop below)
                     state_columns["IDLE"].append({
                         "type": "agent",
                         "agent": agent_data,
@@ -294,40 +295,42 @@ def _prepare_kanban_data(
                         "state": state_name,
                     })
 
-                # Add completed tasks to COMPLETE column
+                # Add all completed tasks to COMPLETE column as condensed accordion cards
                 if agent.tasks:
                     for task in agent.tasks:
-                        if task.state == TaskState.COMPLETE:
-                            completion_summary = task.completion_summary
-                            if not completion_summary and task.turns:
-                                last_turn = task.turns[-1]
-                                completion_summary = last_turn.summary or (
-                                    last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
-                                )
-                            # Compute elapsed time
-                            elapsed = None
-                            if task.started_at and task.completed_at:
-                                delta = task.completed_at - task.started_at
-                                total_seconds = int(delta.total_seconds())
-                                hours = total_seconds // 3600
-                                minutes = (total_seconds % 3600) // 60
-                                if hours > 0:
-                                    elapsed = f"{hours}h {minutes}m"
-                                elif minutes > 0:
-                                    elapsed = f"{minutes}m"
-                                else:
-                                    elapsed = "<1m"
+                        if task.state != TaskState.COMPLETE:
+                            continue
 
-                            state_columns["COMPLETE"].append({
-                                "type": "completed_task",
-                                "agent": agent_data,
-                                "task_id": task.id,
-                                "completion_summary": completion_summary or "Completed",
-                                "instruction": task.instruction or "Task",
-                                "completed_at": task.completed_at,
-                                "turn_count": len(task.turns),
-                                "elapsed": elapsed,
-                            })
+                        completion_summary = task.completion_summary
+                        if not completion_summary and task.turns:
+                            last_turn = task.turns[-1]
+                            completion_summary = last_turn.summary or (
+                                last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
+                            )
+                        # Compute elapsed time
+                        elapsed = None
+                        if task.started_at and task.completed_at:
+                            delta = task.completed_at - task.started_at
+                            total_seconds = int(delta.total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            if hours > 0:
+                                elapsed = f"{hours}h {minutes}m"
+                            elif minutes > 0:
+                                elapsed = f"{minutes}m"
+                            else:
+                                elapsed = "<1m"
+
+                        state_columns["COMPLETE"].append({
+                            "type": "completed_task",
+                            "agent": agent_data,
+                            "task_id": task.id,
+                            "completion_summary": completion_summary or "Completed",
+                            "instruction": task.instruction or "Task",
+                            "completed_at": task.completed_at,
+                            "turn_count": len(task.turns),
+                            "elapsed": elapsed,
+                        })
 
         # Apply priority ordering within columns
         if priority_enabled:
@@ -348,30 +351,64 @@ def _prepare_kanban_data(
 
 
 def _get_dashboard_activity_metrics() -> dict | None:
-    """Fetch overall activity metrics for the dashboard activity bar.
+    """Fetch daily activity metrics for the dashboard activity bar.
 
-    Returns the most recent overall ActivityMetric or None.
+    Aggregates ALL overall ActivityMetric buckets for the current day
+    (midnight UTC to now) to show full-day totals.
     Also includes immediate frustration from HeadspaceMonitor.
     """
     from ..models.activity_metric import ActivityMetric
     from ..models.headspace_snapshot import HeadspaceSnapshot
 
     try:
-        # Get the most recent overall metric
-        latest = (
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Get ALL overall metrics for today
+        today_metrics = (
             db.session.query(ActivityMetric)
-            .filter(ActivityMetric.is_overall == True)
-            .order_by(ActivityMetric.bucket_start.desc())
-            .first()
+            .filter(
+                ActivityMetric.is_overall == True,
+                ActivityMetric.bucket_start >= today_start,
+            )
+            .order_by(ActivityMetric.bucket_start.asc())
+            .all()
         )
 
-        if not latest:
+        if not today_metrics:
             return None
 
-        # Calculate frustration average from the metric
-        frustration_avg = None
-        if latest.total_frustration and latest.frustration_turn_count and latest.frustration_turn_count > 0:
-            frustration_avg = round(latest.total_frustration / latest.frustration_turn_count, 1)
+        # Aggregate daily totals
+        total_turns = sum(m.turn_count or 0 for m in today_metrics)
+
+        # Weighted average turn time across all buckets
+        weighted_time_sum = 0.0
+        weighted_time_count = 0
+        for m in today_metrics:
+            if m.avg_turn_time_seconds is not None and m.turn_count and m.turn_count >= 2:
+                weight = m.turn_count - 1  # number of deltas
+                weighted_time_sum += m.avg_turn_time_seconds * weight
+                weighted_time_count += weight
+        avg_turn_time = (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+
+        # Count distinct agents active today from agent-level metrics
+        distinct_agents = (
+            db.session.query(db.func.count(db.func.distinct(ActivityMetric.agent_id)))
+            .filter(
+                ActivityMetric.agent_id.isnot(None),
+                ActivityMetric.bucket_start >= today_start,
+            )
+            .scalar()
+        ) or 0
+
+        # Turn rate: total turns / hours elapsed today (at least 1 hour)
+        hours_elapsed = max((now - today_start).total_seconds() / 3600, 1.0)
+        turn_rate = round(total_turns / hours_elapsed, 1)
+
+        # Frustration: aggregate across all buckets
+        total_frustration = sum(m.total_frustration or 0 for m in today_metrics)
+        total_frust_turns = sum(m.frustration_turn_count or 0 for m in today_metrics)
+        frustration_avg = round(total_frustration / total_frust_turns, 1) if total_frust_turns > 0 else None
 
         # Try to get immediate frustration (last 10 turns) from headspace
         immediate_frustration = None
@@ -386,17 +423,11 @@ def _get_dashboard_activity_metrics() -> dict | None:
         except Exception:
             pass
 
-        # Calculate turn rate
-        turn_rate = None
-        if latest.turn_count:
-            # Bucket is hourly, so turn_count is turns in that hour
-            turn_rate = latest.turn_count
-
         return {
-            "total_turns": latest.turn_count or 0,
+            "total_turns": total_turns,
             "turn_rate": turn_rate,
-            "avg_turn_time": round(latest.avg_turn_time_seconds, 1) if latest.avg_turn_time_seconds else None,
-            "active_agents": latest.active_agents or 0,
+            "avg_turn_time": round(avg_turn_time, 1) if avg_turn_time else None,
+            "active_agents": distinct_agents,
             "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
         }
     except Exception:
