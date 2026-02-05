@@ -234,6 +234,21 @@
         },
 
         /**
+         * Compute peak frustration from history (max of all bucket max_frustration values).
+         */
+        _computePeakFrustration: function(history) {
+            var peak = null;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.max_frustration != null) {
+                        peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                    }
+                });
+            }
+            return peak;
+        },
+
+        /**
          * Format a frustration average for display (1 decimal place).
          */
         _formatFrustAvg: function(avg) {
@@ -641,9 +656,9 @@
                     var totalTurns = ActivityPage._sumTurns(history);
                     var rate = ActivityPage._computeRate(totalTurns);
                     var avgTime = ActivityPage._weightedAvgTime(history);
-                    var projFrustAvg = ActivityPage._computeFrustrationAvg(history);
-                    var projLevel = _levelFromAvg(projFrustAvg);
-                    var projColor = projFrustAvg != null ? FRUST_COLORS[projLevel].text : 'text-muted';
+                    var projPeak = ActivityPage._computePeakFrustration(history);
+                    var projLevel = _levelFromAvg(projPeak);
+                    var projColor = projPeak != null ? FRUST_COLORS[projLevel].text : 'text-muted';
 
                     html += '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
@@ -660,8 +675,8 @@
                         '<div class="metric-card-value text-green">' + (r.project.agent_count || 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
-                        '<div class="metric-card-label">Frustration (Imm.)</div></div></div>';
+                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projPeak) + '</div>' +
+                        '<div class="metric-card-label">Peak Frust.</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
@@ -686,15 +701,15 @@
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
-                            var agentFrustAvg = ActivityPage._computeFrustrationAvg(agentHistory);
-                            var agentLevel = _levelFromAvg(agentFrustAvg);
-                            var agentFrustColor = agentFrustAvg != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
+                            var agentPeak = ActivityPage._computePeakFrustration(agentHistory);
+                            var agentLevel = _levelFromAvg(agentPeak);
+                            var agentFrustColor = agentPeak != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
                             html += '<div class="agent-metric-stats">' +
                                 '<span><span class="stat-value">' + agentTurns + '</span><span class="stat-label">turns</span></span>';
                             if (agentAvg != null) {
                                 html += '<span><span class="stat-value">' + agentAvg.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
-                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentFrustAvg) + '</span><span class="stat-label">frust</span></span>';
+                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentPeak) + '</span><span class="stat-label">peak frust</span></span>';
                             html += '</div>';
                         } else {
                             html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
