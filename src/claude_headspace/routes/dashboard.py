@@ -298,7 +298,7 @@ def _prepare_kanban_data(
                 else:
                     # Agent has active task - goes in the state's column
                     # COMMANDED is a transitory state; display in PROCESSING column
-                    col_name = "PROCESSING" if state_name == "COMMANDED" else state_name
+                    col_name = "PROCESSING" if state_name in ("COMMANDED", "TIMED_OUT") else state_name
                     state_columns[col_name].append({
                         "type": "task",
                         "agent": agent_data,

@@ -12,10 +12,13 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
-.claude/settings.json
-.claude/settings.local.json
-.claude/skills/
-.codex/skills/
+# Symlinked proprietary directories (claude_headspace_support)
+.claude
+.codex
+.cursor
+.github
+_bmad
+orch
 
 # OS
 .DS_Store
@@ -36,10 +39,6 @@ data/logs/
 
 # User config overrides (optional)
 config.local.yaml
-
-# Orchestration runtime data (user-specific)
-orch/working/
-orch/log/
 
 # Project data files (user-specific, use project.yaml.example as template)
 data/projects/*
