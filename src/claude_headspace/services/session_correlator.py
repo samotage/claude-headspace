@@ -95,6 +95,27 @@ def _cache_cleanup() -> None:
         _cleanup_stale_cache_entries()
 
 
+def _reactivate_if_ended(agent: Agent) -> bool:
+    """Clear ended_at if the agent was reaped/ended, reactivating it.
+
+    Called when a hook arrives for a previously-ended agent, proving the
+    Claude Code session is still alive.
+
+    Returns True if the agent was reactivated.
+    """
+    if agent.ended_at is None:
+        return False
+
+    agent.ended_at = None
+    agent.last_seen_at = datetime.now(timezone.utc)
+    db.session.commit()
+    logger.info(
+        f"Reactivated ended agent {agent.id} (session_uuid={agent.session_uuid}) "
+        f"— hook arrived for previously reaped/ended agent"
+    )
+    return True
+
+
 def _is_rejected_directory(path: str) -> bool:
     """
     Check if a path is a known non-project directory that should be rejected.
@@ -217,6 +238,7 @@ def correlate_session(
     if cached is not None:
         agent = db.session.get(Agent, cached.agent_id)
         if agent:
+            _reactivate_if_ended(agent)
             logger.debug(
                 f"Session {claude_session_id} matched to agent {cached.agent_id} via cache"
             )
@@ -236,6 +258,7 @@ def correlate_session(
         .first()
     )
     if agent:
+        _reactivate_if_ended(agent)
         # Re-populate the in-memory cache
         _cache_set(claude_session_id, agent.id)
         logger.debug(
@@ -279,18 +302,9 @@ def correlate_session(
                         f"{f', replacing {old_id}' if old_id else ''}"
                     )
 
-                # Reactivate if the agent was ended (CLI session restarted
-                # Claude Code — same session_uuid, new claude session_id)
-                if agent.ended_at is not None:
-                    agent.ended_at = None
-                    agent.last_seen_at = datetime.now(timezone.utc)
-                    dirty = True
-                    logger.info(
-                        f"Reactivated ended agent {agent.id} for new "
-                        f"claude session {claude_session_id}"
-                    )
-
-                if dirty:
+                # Reactivate if ended; _reactivate_if_ended commits
+                # (which also flushes any claude_session_id change above)
+                if not _reactivate_if_ended(agent) and dirty:
                     db.session.commit()
 
                 # Cache for fast path on subsequent hooks

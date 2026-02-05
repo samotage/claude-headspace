@@ -160,15 +160,22 @@
 
         /**
          * Compute turn rate from total turns based on window.
-         * Day: turns/hour, Week/Month: turns/day.
+         * Day: turns/hour (elapsed hours), Week/Month: turns/day (elapsed days).
+         * Uses actual elapsed time so incomplete periods are accurate.
          */
         _computeRate: function(totalTurns) {
+            var periodStart = this._periodStart(windowOffset);
+            var periodEnd = this._periodStart(windowOffset + 1);
+            var now = new Date();
+            var effectiveEnd = now < periodEnd ? now : periodEnd;
+
             if (currentWindow === 'day') {
-                return totalTurns / 24;
+                var hoursElapsed = Math.max((effectiveEnd - periodStart) / (1000 * 60 * 60), 1);
+                return totalTurns / hoursElapsed;
             }
             // week/month: turns per day
-            var days = currentWindow === 'week' ? 7 : 30;
-            return totalTurns / days;
+            var daysElapsed = Math.max((effectiveEnd - periodStart) / (1000 * 60 * 60 * 24), 1);
+            return totalTurns / daysElapsed;
         },
 
         _formatRate: function(rate) {

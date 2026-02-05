@@ -63,6 +63,7 @@ class TestBuildCardState:
             "is_active", "uptime", "last_seen",
             "state", "state_info", "task_summary", "task_instruction",
             "task_completion_summary", "priority", "priority_reason",
+            "turn_count", "elapsed",
             "project_name", "project_slug", "project_id",
         }
         assert set(result.keys()) == expected_keys
@@ -155,16 +156,18 @@ class TestBuildCardState:
         assert "elapsed" in result
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
-    def test_non_complete_state_excludes_turn_count_and_elapsed(self, mock_config):
-        """Non-COMPLETE states should not include turn_count or elapsed."""
+    def test_idle_state_includes_turn_count_and_elapsed(self, mock_config):
+        """All states include turn_count and elapsed (0/None for IDLE with no task)."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
         agent = _make_agent(state=TaskState.IDLE)
 
         result = build_card_state(agent)
 
-        assert "turn_count" not in result
-        assert "elapsed" not in result
+        assert "turn_count" in result
+        assert "elapsed" in result
+        assert result["turn_count"] == 0
+        assert result["elapsed"] is None
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_state_serialised_as_string(self, mock_config):

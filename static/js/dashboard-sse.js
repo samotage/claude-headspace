@@ -729,6 +729,11 @@
                     taskSummary.classList.remove('text-green');
                     taskSummary.classList.add('text-secondary');
                 }
+                // Hide line 04 and task stats for IDLE reset
+                var line04Row = card.querySelector('.card-line-04');
+                if (line04Row) line04Row.style.display = 'none';
+                var statsEl = card.querySelector('.task-stats');
+                if (statsEl) statsEl.style.display = 'none';
 
                 // 3. Move the agent card to the IDLE column
                 var idleColumn = projectSection.querySelector('[data-kanban-state="IDLE"]');
@@ -832,29 +837,77 @@
             if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
         }
 
-        // Line 04: task summary / completion summary
+        // Line 04: task summary / completion summary (hidden when redundant with line 03)
+        var line04Row = card.querySelector('.card-line-04');
         var taskSummary = card.querySelector('.task-summary');
-        if (taskSummary) {
-            if ((state === 'COMPLETE' || state === 'IDLE') && data.task_completion_summary) {
-                taskSummary.textContent = data.task_completion_summary;
-                taskSummary.classList.remove('text-secondary');
-                taskSummary.classList.add('text-green');
-            } else {
-                taskSummary.textContent = data.task_summary || '';
-                taskSummary.classList.remove('text-green');
-                taskSummary.classList.add('text-secondary');
-            }
-            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+        var line04Text = '';
+        var isGreen = false;
+        if ((state === 'COMPLETE' || state === 'IDLE') && data.task_completion_summary) {
+            line04Text = data.task_completion_summary;
+            isGreen = true;
+        } else {
+            line04Text = data.task_summary || '';
         }
 
-        // Footer: priority score and reason
-        var scoreBadge = card.querySelector('.border-t .font-mono');
+        var line03Text = data.task_instruction || 'No active task';
+        var shouldShow04 = line04Text && line04Text !== line03Text;
+
+        if (shouldShow04) {
+            if (!line04Row) {
+                // Create line 04 row if it doesn't exist (was hidden on initial render)
+                var cardEditor = card.querySelector('.card-editor');
+                if (cardEditor) {
+                    var newRow = document.createElement('div');
+                    newRow.className = 'card-line card-line-04';
+                    newRow.innerHTML = '<span class="line-num">04</span>' +
+                        '<div class="line-content">' +
+                        '<p class="task-summary text-sm italic ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
+                        window.CHUtils.escapeHtml(line04Text) + '</p></div>';
+                    cardEditor.appendChild(newRow);
+                }
+            } else {
+                line04Row.style.display = '';
+                if (taskSummary) {
+                    taskSummary.textContent = line04Text;
+                    if (isGreen) {
+                        taskSummary.classList.remove('text-secondary');
+                        taskSummary.classList.add('text-green');
+                    } else {
+                        taskSummary.classList.remove('text-green');
+                        taskSummary.classList.add('text-secondary');
+                    }
+                    if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+                }
+            }
+        } else if (line04Row) {
+            line04Row.style.display = 'none';
+        }
+
+        // Footer: priority score and task stats (turns + elapsed)
+        var scoreBadge = card.querySelector('.priority-score');
         if (scoreBadge && data.priority != null) {
             scoreBadge.textContent = data.priority;
         }
-        var reasonEl = card.querySelector('.border-t .italic');
-        if (reasonEl && data.priority_reason) {
-            reasonEl.textContent = '// ' + data.priority_reason.substring(0, 60);
+        var statsEl = card.querySelector('.task-stats');
+        var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
+        if (turnCount > 0) {
+            var turnLabel = turnCount === 1 ? 'turn' : 'turns';
+            var elapsedStr = data.elapsed ? ' \u00b7 ' + window.CHUtils.escapeHtml(data.elapsed) : '';
+            if (statsEl) {
+                statsEl.textContent = turnCount + ' ' + turnLabel + (data.elapsed ? ' \u00b7 ' + data.elapsed : '');
+                statsEl.style.display = '';
+            } else {
+                // Create stats element if it doesn't exist
+                var footer = card.querySelector('.border-t.border-border');
+                if (footer) {
+                    var newStats = document.createElement('span');
+                    newStats.className = 'task-stats text-muted text-xs';
+                    newStats.textContent = turnCount + ' ' + turnLabel + (data.elapsed ? ' \u00b7 ' + data.elapsed : '');
+                    footer.appendChild(newStats);
+                }
+            }
+        } else if (statsEl) {
+            statsEl.style.display = 'none';
         }
 
         // Update tracked state and move card if state changed
@@ -1083,8 +1136,9 @@
                 var totalTurns = 0;
                 history.forEach(function(h) { totalTurns += (h.turn_count || 0); });
 
-                // Rate: turns / 24 (same as activity.js _computeRate for day window)
-                var rate = totalTurns / 24;
+                // Rate: turns / elapsed hours today
+                var hoursElapsed = Math.max((now - since) / (1000 * 60 * 60), 1);
+                var rate = totalTurns / hoursElapsed;
 
                 // Weighted average turn time (same as activity.js _weightedAvgTime)
                 var totalTime = 0, totalPairs = 0;

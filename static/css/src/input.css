@@ -929,6 +929,111 @@ body::after {
     }
 }
 
+/* Config help popover */
+.config-help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border-bright);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    flex-shrink: 0;
+    vertical-align: middle;
+    margin-left: 6px;
+    padding: 0;
+}
+
+.config-help-icon:hover,
+.config-help-icon:focus-visible {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: rgba(86, 212, 221, 0.08);
+    outline: none;
+}
+
+.config-help-icon[aria-expanded="true"] {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: rgba(86, 212, 221, 0.12);
+}
+
+.config-help-popover {
+    position: fixed;
+    background: #252530;
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 400px;
+    min-width: 200px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    z-index: 600;
+    pointer-events: auto;
+}
+
+.config-popover-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    text-transform: capitalize;
+}
+
+.config-popover-desc {
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.config-popover-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.config-popover-meta strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.config-popover-link {
+    margin-top: 4px;
+    font-size: 0.75rem;
+}
+
+.config-popover-link a {
+    color: var(--cyan);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.config-popover-link a:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .config-help-popover {
+        max-width: calc(100vw - 24px);
+    }
+}
+
 /* iOS smooth scrolling for overflow containers */
 .overflow-x-auto,
 .overflow-y-auto {

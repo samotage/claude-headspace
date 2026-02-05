@@ -30,6 +30,11 @@
     function initHelp() {
         loadTopics();
 
+        // Scroll to anchor on initial page load (after content renders)
+        if (window.location.hash) {
+            setTimeout(function() { scrollToAnchor(window.location.hash); }, 500);
+        }
+
         // Focus search on / key
         document.addEventListener('keydown', function(e) {
             if (e.key === '/' && !isInputFocused()) {
@@ -101,15 +106,21 @@
             // Update TOC active state
             renderTOC(helpState.topics);
 
-            // Update URL without reload
+            // Update URL without reload (preserve hash if present)
             if (window.history && window.history.replaceState) {
-                window.history.replaceState(null, '', '/help/' + slug);
+                var hash = window.location.hash || '';
+                window.history.replaceState(null, '', '/help/' + slug + hash);
             }
 
             // Clear search
             var searchInput = document.getElementById('help-search-input');
             if (searchInput) {
                 searchInput.value = '';
+            }
+
+            // Scroll to anchor if present
+            if (window.location.hash) {
+                setTimeout(function() { scrollToAnchor(window.location.hash); }, 100);
             }
 
         } catch (error) {
@@ -208,6 +219,37 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    function slugify(text) {
+        return text.toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim();
+    }
+
+    function scrollToAnchor(hash) {
+        if (!hash) return;
+        var id = hash.replace('#', '');
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight
+        el.style.transition = 'background-color 0.3s ease';
+        el.style.backgroundColor = 'rgba(86, 212, 221, 0.15)';
+        el.style.borderRadius = '4px';
+        el.style.padding = '2px 6px';
+        el.style.marginLeft = '-6px';
+        setTimeout(function() {
+            el.style.backgroundColor = 'transparent';
+            setTimeout(function() {
+                el.style.transition = '';
+                el.style.borderRadius = '';
+                el.style.padding = '';
+                el.style.marginLeft = '';
+            }, 300);
+        }, 2000);
+    }
+
     function renderMarkdown(markdown) {
         // Simple markdown to HTML rendering
         var html = markdown
@@ -232,10 +274,19 @@
             })
             // Inline code
             .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-surface rounded text-cyan text-sm">$1</code>')
-            // Headers
-            .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-primary mt-6 mb-2">$1</h3>')
-            .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-primary mt-8 mb-3">$1</h2>')
-            .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-primary mb-4">$1</h1>')
+            // Headers (with slugified id attributes for anchor linking)
+            .replace(/^### (.+)$/gm, function(match, title) {
+                var id = slugify(title);
+                return '<h3 id="' + id + '" class="text-lg font-semibold text-primary mt-6 mb-2">' + title + '</h3>';
+            })
+            .replace(/^## (.+)$/gm, function(match, title) {
+                var id = slugify(title);
+                return '<h2 id="' + id + '" class="text-xl font-bold text-primary mt-8 mb-3">' + title + '</h2>';
+            })
+            .replace(/^# (.+)$/gm, function(match, title) {
+                var id = slugify(title);
+                return '<h1 id="' + id + '" class="text-2xl font-bold text-primary mb-4">' + title + '</h1>';
+            })
             // Bold and italic
             .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold">$1</strong>')
             .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')

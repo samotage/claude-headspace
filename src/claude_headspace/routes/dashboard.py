@@ -10,6 +10,8 @@ from ..models import Agent, Project, Task, TaskState
 from ..models.objective import Objective
 from ..services.card_state import (
     TIMED_OUT,
+    _get_current_task_elapsed,
+    _get_current_task_turn_count,
     format_last_seen,
     format_uptime,
     get_effective_state,
@@ -519,6 +521,8 @@ def dashboard():
                 "task_completion_summary": get_task_completion_summary(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
+                "turn_count": _get_current_task_turn_count(agent),
+                "elapsed": _get_current_task_elapsed(agent),
                 "project_name": project.name,
                 "project_slug": project.slug,
                 "project_id": project.id,
