@@ -10,9 +10,9 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 5 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
+This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 7 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
 
-**Epic 5 Goal:** Enable remote session interaction via dashboard input, provide comprehensive project detail pages with hierarchical data exploration, and improve frustration metrics display.
+**Epic 5 Goal:** Enable remote session interaction via dashboard input, provide comprehensive project detail pages with hierarchical data exploration, improve frustration metrics display, restructure the dashboard for better usability, and create a self-documenting configuration system.
 
 **Epic 5 Value Proposition:**
 
@@ -22,8 +22,10 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - **Object Tree** — Drill into the complete hierarchy of agents, tasks, and turns with frustration score highlighting
 - **Embedded Metrics** — Activity data scoped to a specific project with day/week/month navigation
 - **Frustration Display** — Average-based frustration metrics and multi-window frustration state widget
+- **Dashboard Restructure** — Agent hero identity system, task-based Kanban layout, and real-time activity metrics on the dashboard
+- **Config Help System** — Full config.yaml/UI parity with contextual help icons, popovers, and expanded documentation
 
-**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction. The tmux Bridge provides a proven, reliable transport mechanism after the initial commander socket approach proved incompatible with Claude Code's Ink-based TUI.
+**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction. The tmux Bridge provides a proven, reliable transport mechanism after the initial commander socket approach proved incompatible with Claude Code's Ink-based TUI. The Dashboard Restructure introduces a universally-understood Kanban task-flow view, while the Config Help System ensures every setting is visible, editable, and explained.
 
 **Success Criteria:**
 
@@ -39,6 +41,12 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - SSE events update accordion data in real-time
 - Activity page frustration shows average (0-10) instead of raw sum
 - Frustration state widget shows immediate/short-term/session rolling averages
+- Agents displayed with two-character hero identity (first two hex chars large)
+- Kanban view as default with task lifecycle state columns
+- Overall activity metrics visible on dashboard below menu bar
+- Every config.yaml field editable via config UI (except openrouter.pricing)
+- Help icons on all config sections and fields with popovers
+- Deep-link anchors on help page for direct field documentation access
 
 **Architectural Foundation:** Builds on Epic 4's project controls (pause/resume), activity monitoring (metrics infrastructure), and archive system (timestamped versions). Also leverages Epic 3's inference service, summarisation, and priority scoring.
 
@@ -55,6 +63,8 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 | E5-S3    | Project show page with object tree and metrics    | `project-show-tree`          | ui/           | 3      | P2       |
 | E5-S4    | Replace commander socket with tmux send-keys      | `tmux-bridge`                | bridge/       | 4      | P1       |
 | E5-S5    | Activity page frustration display improvements    | `activity-frustration`       | ui/           | 5      | P2       |
+| E5-S6    | Dashboard restructure with hero style and Kanban  | `dashboard-restructure`      | ui/           | 6      | P2       |
+| E5-S7    | Configuration help system and UI parity           | `config-help-system`         | ui/           | 7      | P2       |
 
 ---
 
@@ -721,9 +731,224 @@ headspace:
 
 ---
 
+### Sprint 6: Dashboard Restructure (E5-S6) — DONE
+
+**Goal:** Introduce agent hero identity system, task-based Kanban layout, and real-time activity metrics on the dashboard.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E5-S5 complete (activity frustration display), existing dashboard infrastructure
+
+**Deliverables:**
+
+**Agent Hero Style:**
+
+- Agent identity displays first two hex characters prominently (large text), remaining characters smaller trailing behind
+- Remove `#` prefix from all agent identity displays
+- Hero style applied across: dashboard cards, project agent lists, activity page sections, logging tables, filter dropdowns
+- Active indicator moved to far right of card header, preceded by uptime display
+- Logging agent filter dropdown format: `0a - 0a5510d4` (hero chars, separator, full truncated UUID)
+
+**Kanban Layout:**
+
+- New "Kanban" sort option as first/default sort mode
+- Tasks organised into columns by lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE
+- Idle agents (no active tasks) displayed in IDLE column as full agent cards
+- Same agent can appear in multiple columns simultaneously (one per task)
+- Priority-based ordering within columns when prioritisation enabled
+- Multiple projects display as horizontal sections with own state columns
+- Completed tasks render as collapsed accordions in scrollable COMPLETE column
+- Completed tasks retained until parent agent reaped
+
+**Activity Metrics on Dashboard:**
+
+- Overall activity metrics bar below menu, above state summary
+- Metrics: Total Turns, Turns/Hour, Avg Turn Time, Active Agents, Frustration (immediate)
+- Real-time SSE updates on every turn
+- Frustration changed to immediate (last 10 turns) on dashboard and activity page
+
+**Subsystem Requiring PRD:**
+
+6. `dashboard-restructure` — Agent hero style, Kanban layout, dashboard activity metrics
+
+**PRD Location:** `docs/prds/ui/done/e5-s6-dashboard-restructure-prd.md`
+
+**Stories:**
+
+- E5-S6: Dashboard restructure with hero style and Kanban
+
+**Technical Decisions Made:**
+
+- Two-character hero identity extracted from session UUID start — **decided**
+- Kanban as default view (replaces current agent-centric layout) — **decided**
+- Frustration metric changed to immediate (last 10 turns) across all views — **decided**
+- Same agent can appear in multiple Kanban columns — **decided**
+
+**Dashboard Card Header (Updated):**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  0A5510d4   claude-headspace                    3h 24m  ● Active    │
+├─────────────────────────────────────────────────────────────────────┤
+│  [Task instruction or summary content...]                           │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Kanban View Layout:**
+
+```
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  [Activity Metrics Bar: Turns: 142 | Turns/Hr: 8.2 | Avg: 3.2m | ...]         │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  INPUT NEEDED: 1  │  WORKING: 3  │  IDLE: 2                                   │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌──────────────┐  ┌─────────┐       │
+│  │  IDLE   │  │COMMANDED│  │PROCESSING│  │AWAITING_INPUT│  │ COMPLETE│       │
+│  ├─────────┤  ├─────────┤  ├──────────┤  ├──────────────┤  ├─────────┤       │
+│  │ [agent] │  │ [task]  │  │ [task]   │  │ [task]       │  │ ▶ task  │       │
+│  │ [agent] │  │         │  │ [task]   │  │              │  │ ▶ task  │       │
+│  │         │  │         │  │          │  │              │  │ ▶ task  │       │
+│  └─────────┘  └─────────┘  └──────────┘  └──────────────┘  └─────────┘       │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Risks:**
+
+- Kanban view layout complexity on smaller viewports
+- High task volume could create dense layouts
+- SSE event frequency for real-time metric updates
+
+**Acceptance Criteria:**
+
+- [x] Agents displayed with two-character hero identity (first two hex chars large)
+- [x] `#` prefix removed from all agent ID displays
+- [x] Hero style applied consistently across dashboard, projects, activity, logging
+- [x] Logging agent filter dropdowns use format: `0a - 0a5510d4`
+- [x] Kanban view available and is first/default sort option
+- [x] Tasks appear in correct lifecycle state columns
+- [x] Idle agents in dedicated IDLE column
+- [x] Completed tasks collapse to accordions in scrollable COMPLETE column
+- [x] Priority ordering within columns when enabled
+- [x] Multiple projects display as horizontal sections
+- [x] Activity metrics bar visible below menu
+- [x] Dashboard metrics update in real-time via SSE
+- [x] Frustration metric shows immediate (last 10 turns)
+
+---
+
+### Sprint 7: Configuration Help System (E5-S7) — DONE
+
+**Goal:** Close config.yaml/UI parity gap and add contextual help system with icons, popovers, and expanded documentation.
+
+**Duration:** 1 week  
+**Dependencies:** E5-S6 complete, existing config page infrastructure
+
+**Deliverables:**
+
+**Config/UI Parity:**
+
+- Expose `tmux_bridge` section: `health_check_interval`, `subprocess_timeout`, `text_enter_delay_ms`
+- Expose `dashboard` section: `stale_processing_seconds`, `active_timeout_minutes`
+- Expose `archive` section: `enabled`, `retention.policy`, `retention.keep_last_n`, `retention.days`
+- Expose missing `openrouter` fields: `retry.base_delay_seconds`, `retry.max_delay_seconds`, `priority_scoring.debounce_seconds`
+- Expose missing `headspace` flow detection fields: `flow_detection.min_turn_rate`, `flow_detection.max_frustration`, `flow_detection.min_duration_minutes`
+- Add `commander` section to config.yaml with explicit defaults
+
+**Help Icons:**
+
+- Clickable info icon on every config section header
+- Clickable info icon on every config field label
+- Icons visually subtle (muted colour), non-competing with labels
+
+**Popover Component:**
+
+- Field popover: practical description, default value, valid range, "Learn more" link
+- Section popover: section description, "Learn more" link
+- Only one popover visible at a time
+- Dismissible: click outside, Escape key, or click icon again
+- Smart positioning to avoid viewport overflow
+
+**Deep-Link Anchors:**
+
+- Help page supports anchor-based deep-linking (e.g., `/help/configuration#headspace`)
+- Target section highlights on anchor navigation
+- "Learn more" links use corresponding anchor URLs
+
+**Documentation:**
+
+- `docs/help/configuration.md` updated with per-field documentation
+- Each field: what it controls, when to change it, consequences of incorrect values
+- Each section: introductory paragraph explaining purpose
+
+**Subsystem Requiring PRD:**
+
+7. `config-help-system` — Config/UI parity, help icons, popovers, documentation
+
+**PRD Location:** `docs/prds/ui/done/e5-s7-config-help-system-prd.md`
+
+**Stories:**
+
+- E5-S7: Configuration help system and UI parity
+
+**Technical Decisions Made:**
+
+- Vanilla JS popover implementation (no framework) — **decided**
+- Single popover visible at a time (opening closes others) — **decided**
+- openrouter.pricing excluded from UI (dynamic map) — **decided**
+- Anchor-based deep-linking for help page sections — **decided**
+
+**Config Page Help System:**
+
+```
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  HEADSPACE ⓘ                                                                  │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  enabled ⓘ                    [x] Enabled                                     │
+│                                                                               │
+│  yellow_threshold ⓘ           [ 4 ]                                           │
+│                                     ┌─────────────────────────────────┐       │
+│  red_threshold ⓘ              [ 7 ] │ Frustration score threshold for │       │
+│                                     │ yellow warning state.            │       │
+│  session_rolling_window ⓘ     [180] │                                  │       │
+│                                     │ Default: 4                       │       │
+│                                     │ Range: 1-10                      │       │
+│                                     │                                  │       │
+│                                     │ Learn more →                     │       │
+│                                     └─────────────────────────────────┘       │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Risks:**
+
+- Popover positioning edge cases on varied viewport sizes
+- Documentation maintenance burden as config evolves
+- Help content accuracy drift over time
+
+**Acceptance Criteria:**
+
+- [x] Every config.yaml field (except openrouter.pricing) editable in UI
+- [x] `tmux_bridge`, `dashboard`, `archive` sections exposed
+- [x] Missing `openrouter` and `headspace` fields exposed
+- [x] Help icon on every section header
+- [x] Help icon on every field label
+- [x] Clicking help icon opens popover with description, default, range, link
+- [x] Only one popover visible at a time
+- [x] Popovers dismissible via click outside, Escape, or icon click
+- [x] "Learn more" links navigate to `/help/configuration#section`
+- [x] Help page supports anchor-based deep-linking
+- [x] Target section highlights on anchor navigation
+- [x] `docs/help/configuration.md` contains per-field documentation
+- [x] Documentation covers: what, when to change, consequences
+
+---
+
 ## Subsystems Requiring OpenSpec PRDs
 
-The following 5 subsystems have PRDs created. Each PRD was validated before implementation.
+The following 7 subsystems have PRDs created. Each PRD was validated before implementation.
 
 ### PRD Directory Structure
 
@@ -731,9 +956,12 @@ The following 5 subsystems have PRDs created. Each PRD was validated before impl
 docs/prds/
 ├── bridge/
 │   ├── done/
-│   │   └── e5-s1-input-bridge-prd.md        # DONE
-│   └── e5-s4-tmux-bridge-prd.md             # In Progress
+│   │   ├── e5-s1-input-bridge-prd.md        # DONE
+│   │   └── e5-s4-tmux-bridge-prd.md         # DONE
 └── ui/
+    ├── done/
+    │   ├── e5-s6-dashboard-restructure-prd.md     # DONE
+    │   └── e5-s7-config-help-system-prd.md        # DONE
     ├── e5-s2-project-show-core-prd.md       # Draft
     ├── e5-s3-project-show-tree-and-metrics-prd.md  # Draft
     └── e5-s5-activity-frustration-display-prd.md   # Pending
@@ -1068,6 +1296,118 @@ headspace:
 
 ---
 
+### 6. Dashboard Restructure
+
+**Subsystem ID:** `dashboard-restructure`  
+**Sprint:** E5-S6  
+**Priority:** P2  
+**PRD Location:** `docs/prds/ui/done/e5-s6-dashboard-restructure-prd.md`
+
+**Scope:**
+
+- Agent hero style identity (two-character emphasis + trailing smaller chars)
+- Hero style across all views: dashboard, projects, activity, logging
+- Kanban layout as default view with task lifecycle state columns
+- Idle agents column, completed tasks as accordions
+- Overall activity metrics bar on dashboard
+- Real-time SSE updates for dashboard metrics
+- Frustration changed to immediate (last 10 turns) everywhere
+
+**Key Requirements:**
+
+- Must display first two hex characters prominently, remainder smaller
+- Must remove `#` prefix from all agent ID displays
+- Must add Kanban as first/default sort option
+- Must organise tasks into lifecycle state columns
+- Must show idle agents in dedicated column
+- Must display completed tasks as collapsible accordions
+- Must show activity metrics bar below menu
+- Must update metrics in real-time via SSE
+- Must change frustration display to immediate (last 10 turns)
+
+**OpenSpec Spec:** `openspec/specs/dashboard-restructure/spec.md`
+
+**Related Files:**
+
+- `templates/dashboard.html` (update — hero style, Kanban layout, metrics bar)
+- `templates/partials/_agent_card.html` (update — hero style, header reorder)
+- `templates/partials/_kanban_column.html` (new)
+- `templates/partials/_task_card.html` (new)
+- `templates/activity.html` (update — hero style, immediate frustration)
+- `templates/projects.html` (update — hero style)
+- `templates/logging.html` (update — hero style, filter format)
+- `static/js/dashboard.js` (update — Kanban rendering, SSE handling)
+- `static/js/activity.js` (update — immediate frustration)
+- `static/css/src/input.css` (update — hero style classes)
+
+**Dependencies:** E5-S5 complete, existing dashboard infrastructure
+
+**Acceptance Tests:**
+
+- Agents displayed with two-character hero identity
+- Kanban view is default with task columns
+- Tasks appear in correct lifecycle state column
+- Completed tasks collapse to accordions
+- Activity metrics visible below menu
+- Metrics update in real-time via SSE
+- Frustration shows immediate (last 10 turns)
+
+---
+
+### 7. Config Help System
+
+**Subsystem ID:** `config-help-system`  
+**Sprint:** E5-S7  
+**Priority:** P2  
+**PRD Location:** `docs/prds/ui/done/e5-s7-config-help-system-prd.md`
+
+**Scope:**
+
+- Expose all missing config.yaml fields in UI (tmux_bridge, dashboard, archive, openrouter, headspace flow detection)
+- Add commander section to config.yaml with explicit defaults
+- Help icon on every config section header
+- Help icon on every config field label
+- Popover component with description, default, range, learn more link
+- Deep-link anchors on help page
+- Expanded per-field documentation
+
+**Key Requirements:**
+
+- Must expose every config.yaml field in UI (except openrouter.pricing)
+- Must add clickable help icon to every section header
+- Must add clickable help icon to every field label
+- Must show popover with: description, default, range (numeric), learn more link
+- Must support only one popover visible at a time
+- Must dismiss popovers via click outside, Escape, or icon click
+- Must support anchor-based deep-linking on help page
+- Must include per-field documentation: what, when, consequences
+
+**OpenSpec Spec:** `openspec/specs/config-help-system/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/services/config_editor.py` (update — add missing sections to schema)
+- `templates/config.html` (update — add help icons, popover containers)
+- `templates/partials/_config_form.html` (update — section/field help icons)
+- `static/js/config.js` (update — popover logic)
+- `static/js/popover.js` (new — popover component)
+- `static/js/help.js` (update — anchor deep-link handling)
+- `docs/help/configuration.md` (update — per-field documentation)
+- `config.yaml` (update — add commander section with defaults)
+
+**Dependencies:** E5-S6 complete, existing config page infrastructure
+
+**Acceptance Tests:**
+
+- All config.yaml fields editable in UI
+- Help icons on all sections and fields
+- Popovers show description, default, range, link
+- Only one popover visible at a time
+- Deep-link anchors work on help page
+- Documentation covers all fields
+
+---
+
 ## Sprint Dependencies & Critical Path
 
 ```
@@ -1080,7 +1420,7 @@ headspace:
        │       │
        │       └──▶ E5-S3 (Project Show Tree & Metrics)
        │
-       └──▶ E5-S4 (tmux Bridge) ←── IN PROGRESS
+       └──▶ E5-S4 (tmux Bridge) ←── DONE
                │
                └──▶ [Input Bridge Complete]
 
@@ -1088,26 +1428,34 @@ headspace:
        │
        └──▶ E5-S5 (Activity Frustration Display)
                │
-               └──▶ [Epic 5 Complete]
+               └──▶ E5-S6 (Dashboard Restructure) ←── DONE
+                       │
+                       └──▶ E5-S7 (Config Help System) ←── DONE
+                               │
+                               └──▶ [Epic 5 Complete]
 ```
 
-**Critical Path:** Epic 4 → E5-S1 → E5-S4 (for Input Bridge functionality)
+**Critical Path:** Epic 4 → E5-S1 → E5-S4 → [Input Bridge Complete]
 
 **Parallel Tracks:**
 
 - E5-S2/E5-S3 (Project Show) are independent of E5-S4 (tmux Bridge) — can run in parallel
 - E5-S5 (Activity Frustration) is independent of E5-S2/E5-S3/E5-S4 — depends only on E4-S3 and E4-S4
-- E5-S4 is a transport fix for E5-S1 — must complete for Input Bridge to actually work
+- E5-S4 is a transport fix for E5-S1 — completed, Input Bridge now functional
+- E5-S6 (Dashboard Restructure) depends on E5-S5 (uses immediate frustration metric)
+- E5-S7 (Config Help System) depends on E5-S6 (sequential UI polish)
 
 **Recommended Sequence:**
 
 1. E5-S1 (Input Bridge) — establishes respond pipeline (DONE)
-2. E5-S4 (tmux Bridge) — fixes transport layer (IN PROGRESS)
+2. E5-S4 (tmux Bridge) — fixes transport layer (DONE)
 3. E5-S2 (Project Show Core) — creates the show page foundation
 4. E5-S3 (Project Show Tree & Metrics) — adds data exploration and metrics
 5. E5-S5 (Activity Frustration Display) — improves frustration metrics
+6. E5-S6 (Dashboard Restructure) — hero style, Kanban, dashboard metrics (DONE)
+7. E5-S7 (Config Help System) — config parity, help icons, documentation (DONE)
 
-**Total Duration:** 5-7 weeks
+**Total Duration:** 7-9 weeks
 
 ---
 
@@ -1281,6 +1629,102 @@ headspace:
 - New 3-hour rolling window added to HeadspaceSnapshot
 - Widget provides at-a-glance frustration state
 - Users can distinguish temporary spikes from sustained frustration
+
+---
+
+### Decision 10: Two-Character Hero Identity from Session UUID
+
+**Decision:** Agent identity displays first two hex characters of session UUID prominently, with remaining characters rendered smaller.
+
+**Rationale:**
+
+- Two characters provide 256 unique combinations — sufficient for typical session counts
+- Prominent display creates visual personality for agents
+- Remaining characters available for disambiguation when needed
+- Consistent with logging filter format: `0a - 0a5510d4`
+
+**Impact:**
+
+- Agents are instantly recognizable across all views
+- `#` prefix removed from all displays (cleaner appearance)
+- Dashboard, projects, activity, and logging all use hero style
+
+---
+
+### Decision 11: Kanban as Default Dashboard View
+
+**Decision:** The Kanban task-flow view becomes the default (first) sort option, replacing the agent-centric layout.
+
+**Rationale:**
+
+- Kanban is a universally understood task-flow metaphor
+- Maps directly to task lifecycle states (IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE)
+- Shows where work is flowing, not just which agents exist
+- Same agent can appear in multiple columns (one per task)
+
+**Impact:**
+
+- Users see task progress at a glance
+- Idle agents have dedicated column
+- Completed tasks accumulate in scrollable accordion column
+- Multiple projects display as horizontal sections
+
+---
+
+### Decision 12: Immediate Frustration Metric (Last 10 Turns)
+
+**Decision:** Frustration metrics on dashboard and activity page now show immediate frustration (last 10 turns) instead of aggregated/averaged values.
+
+**Rationale:**
+
+- Immediate frustration reflects current state, not historical average
+- Aligns with headspace monitoring's rolling-10 window
+- More actionable — shows if user is frustrated right now
+- Consistent across dashboard metrics bar and activity page sections
+
+**Impact:**
+
+- Breaking change to frustration display interpretation
+- All sections (overall, project, agent) use immediate metric
+- Dashboard activity bar shows same metric as headspace
+
+---
+
+### Decision 13: Single Popover Visibility
+
+**Decision:** Only one help popover can be visible at a time on the config page.
+
+**Rationale:**
+
+- Multiple overlapping popovers would create visual clutter
+- Opening a new popover implicitly closes the previous one
+- Simpler mental model for users
+- Easier to implement positioning logic
+
+**Impact:**
+
+- Clean, uncluttered config page even with many help icons
+- Users focus on one field explanation at a time
+- Consistent UX pattern throughout config page
+
+---
+
+### Decision 14: Anchor-Based Deep-Linking for Help
+
+**Decision:** Help page supports anchor-based URLs (e.g., `/help/configuration#headspace`) that scroll to and highlight the target section.
+
+**Rationale:**
+
+- Standard web pattern for deep-linking to page sections
+- Enables "Learn more" links in popovers to navigate directly
+- Target highlighting orients user to the relevant content
+- Simple implementation without complex routing
+
+**Impact:**
+
+- Help popovers can link directly to relevant documentation
+- External bookmarks can target specific config sections
+- Users land on exactly the information they need
 
 ---
 
@@ -1483,6 +1927,90 @@ headspace:
 
 ---
 
+### Risk 10: Kanban Layout Complexity on Small Viewports
+
+**Risk:** Five-column Kanban layout may be difficult to use on tablet or narrow viewports.
+
+**Impact:** Medium (reduces usability on smaller screens)
+
+**Mitigation:**
+
+- Horizontal scroll for columns on narrow viewports
+- Responsive breakpoints collapse to fewer visible columns
+- Alternative list view remains available via sort toggle
+- NFR2 specifies tablet (768px) as minimum supported width
+
+**Monitoring:** User feedback on mobile/tablet experience
+
+---
+
+### Risk 11: High Task Volume Dense Layouts
+
+**Risk:** Projects with many concurrent tasks could create dense, hard-to-read Kanban columns.
+
+**Impact:** Low (expected typical load is <20 tasks)
+
+**Mitigation:**
+
+- Scrollable columns for overflow
+- Completed tasks collapse to accordions
+- Priority ordering surfaces important tasks at top
+- Pagination pattern available if needed (like accordion lazy loading)
+
+**Monitoring:** Track max concurrent tasks per project
+
+---
+
+### Risk 12: Immediate Frustration Metric Interpretation
+
+**Risk:** Users accustomed to aggregated frustration may be confused by switch to immediate (last 10 turns).
+
+**Impact:** Low (new metric is more actionable once understood)
+
+**Mitigation:**
+
+- Tooltip on frustration values explaining "last 10 turns"
+- Consistent across all views (dashboard, activity, headspace)
+- Aligns with existing headspace rolling-10 window
+
+**Monitoring:** User feedback on metric clarity
+
+---
+
+### Risk 13: Popover Positioning Edge Cases
+
+**Risk:** Help popovers may overflow viewport on edge cases (field near screen edge, very small viewport).
+
+**Impact:** Low (affects minority of use cases)
+
+**Mitigation:**
+
+- Smart positioning logic that flips popover direction
+- FR14 specifies popovers must avoid viewport overflow
+- Test at minimum supported viewport width (640px)
+- Fall back to centered modal if positioning fails
+
+**Monitoring:** Track popover positioning errors in JS console
+
+---
+
+### Risk 14: Documentation Maintenance Burden
+
+**Risk:** Per-field configuration documentation must be maintained as config schema evolves.
+
+**Impact:** Medium (documentation can drift out of sync)
+
+**Mitigation:**
+
+- Documentation co-located in CONFIG_SCHEMA (description field)
+- Help page generated/validated from schema where possible
+- Documentation updates included in config change PRDs
+- Regular audit as part of Epic planning
+
+**Monitoring:** Track undocumented config fields
+
+---
+
 ## Success Metrics
 
 From Epic 5 Acceptance Criteria:
@@ -1620,9 +2148,59 @@ From Epic 5 Acceptance Criteria:
 
 ---
 
+### Test Case 7: Dashboard Restructure
+
+**Setup:** Dashboard with multiple active agents across projects, some with active tasks, some idle.
+
+**Success:**
+
+- ✅ Agent cards display two-character hero identity (large) + trailing chars (small)
+- ✅ No `#` prefix on any agent ID displays
+- ✅ Hero style appears on dashboard, projects, activity, logging pages
+- ✅ Logging agent filter dropdown shows format: `0a - 0a5510d4`
+- ✅ Card header shows: Hero Identity, Project, Uptime, Active indicator (right-aligned)
+- ✅ Kanban view is first/default sort option
+- ✅ Tasks appear in correct lifecycle state columns (IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE)
+- ✅ Idle agents (no tasks) appear in IDLE column
+- ✅ Same agent can appear in multiple columns simultaneously
+- ✅ Completed tasks collapse to accordions in scrollable COMPLETE column
+- ✅ Priority ordering within columns when prioritisation enabled
+- ✅ Multiple projects display as horizontal sections
+- ✅ Activity metrics bar visible below menu bar
+- ✅ Metrics show: Total Turns, Turns/Hr, Avg Turn Time, Active Agents, Frustration
+- ✅ Dashboard metrics update in real-time via SSE
+- ✅ Frustration shows immediate (last 10 turns) value
+
+---
+
+### Test Case 8: Configuration Help System
+
+**Setup:** Config page with all sections expanded, help page available.
+
+**Success:**
+
+- ✅ `tmux_bridge` section visible with all fields
+- ✅ `dashboard` section visible with all fields
+- ✅ `archive` section visible with all fields
+- ✅ Missing `openrouter` fields visible (retry, priority_scoring)
+- ✅ Missing `headspace` flow detection fields visible
+- ✅ Every section header has clickable help icon
+- ✅ Every field label has clickable help icon
+- ✅ Clicking help icon opens popover
+- ✅ Popover shows: description, default value, range (numeric), "Learn more" link
+- ✅ Only one popover visible at a time (opening new closes previous)
+- ✅ Popover dismisses on: click outside, Escape key, click icon again
+- ✅ "Learn more" link navigates to `/help/configuration#section`
+- ✅ Help page scrolls to target section on anchor navigation
+- ✅ Target section highlights briefly on anchor navigation
+- ✅ `docs/help/configuration.md` contains all field documentation
+- ✅ Documentation includes: what field does, when to change, consequences
+
+---
+
 ## Recommended PRD Generation Order
 
-All 5 PRDs have been generated. Implementation order:
+All 7 PRDs have been generated. Implementation order:
 
 ### Phase 1: Input Bridge — DONE
 
@@ -1632,11 +2210,11 @@ All 5 PRDs have been generated. Implementation order:
 
 ---
 
-### Phase 2: tmux Bridge — IN PROGRESS
+### Phase 2: tmux Bridge — DONE
 
-2. **tmux-bridge** (`docs/prds/bridge/e5-s4-tmux-bridge-prd.md`) — Replace commander socket with tmux send-keys
+2. **tmux-bridge** (`docs/prds/bridge/done/e5-s4-tmux-bridge-prd.md`) — Replace commander socket with tmux send-keys
 
-**Rationale:** Fixes transport layer — commander socket doesn't work with Claude Code's Ink TUI. Must complete for Input Bridge to function.
+**Rationale:** Fixes transport layer — commander socket doesn't work with Claude Code's Ink TUI. Completed, Input Bridge now functional.
 
 ---
 
@@ -1661,6 +2239,22 @@ All 5 PRDs have been generated. Implementation order:
 5. **activity-frustration** (`docs/prds/ui/e5-s5-activity-frustration-display-prd.md`) — Average-based frustration display, frustration state widget
 
 **Rationale:** Improves frustration metrics interpretation on activity page, adds at-a-glance frustration state.
+
+---
+
+### Phase 6: Dashboard Restructure — DONE
+
+6. **dashboard-restructure** (`docs/prds/ui/done/e5-s6-dashboard-restructure-prd.md`) — Agent hero style, Kanban layout, dashboard activity metrics
+
+**Rationale:** Introduces agent visual identity system, task-flow Kanban view, and surfaces key metrics on the dashboard.
+
+---
+
+### Phase 7: Configuration Help System — DONE
+
+7. **config-help-system** (`docs/prds/ui/done/e5-s7-config-help-system-prd.md`) — Config/UI parity, help icons, popovers, documentation
+
+**Rationale:** Closes configuration visibility gap, adds self-documenting help system for all settings.
 
 ---
 
@@ -1692,6 +2286,7 @@ Epic 5 Sprint 1 (Input Bridge) is Phase 1 of the Voice Bridge vision. Future pha
 | ------- | ---------- | --------------- | ----------------------------------------------- |
 | 1.0     | 2026-02-04 | PM Agent (John) | Initial detailed roadmap for Epic 5 (3 sprints) |
 | 1.1     | 2026-02-04 | PM Agent (John) | Added E5-S4 (tmux Bridge) and E5-S5 (Activity Frustration Display), now 5 sprints |
+| 1.2     | 2026-02-05 | PM Agent (John) | Added E5-S6 (Dashboard Restructure) and E5-S7 (Config Help System), now 7 sprints |
 
 ---
 
