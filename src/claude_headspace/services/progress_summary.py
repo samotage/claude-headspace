@@ -11,10 +11,10 @@ from .git_analyzer import GitAnalyzer, GitAnalysisResult, GitAnalyzerError
 from .inference_service import InferenceService, InferenceServiceError
 from .prompt_registry import build_prompt
 
-logger = logging.getLogger(__name__)
+from .path_constants import BRAIN_REBOOT_DIR as SUMMARY_DIR
+from .path_constants import SUMMARY_FILENAME
 
-SUMMARY_DIR = "docs/brain_reboot"
-SUMMARY_FILENAME = "progress_summary.md"
+logger = logging.getLogger(__name__)
 
 
 class ProgressSummaryService:

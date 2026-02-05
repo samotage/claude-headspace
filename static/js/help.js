@@ -208,12 +208,6 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function escapeHtml(text) {
-        var div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     function renderMarkdown(markdown) {
         // Simple markdown to HTML rendering
         var html = markdown
@@ -250,7 +244,7 @@
                 if (url.startsWith('doc:')) {
                     // Document viewer link
                     var docId = url.slice(4);
-                    return '<a href="#" onclick="openDocViewer(\'' + escapeHtml(docId) + '\'); return false;" class="inline-flex items-center gap-1 text-cyan hover:underline cursor-pointer">' +
+                    return '<a href="#" onclick="openDocViewer(\'' + CHUtils.escapeHtml(docId) + '\'); return false;" class="inline-flex items-center gap-1 text-cyan hover:underline cursor-pointer">' +
                         '<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
                         text + '</a>';
                 } else if (url.startsWith('http')) {

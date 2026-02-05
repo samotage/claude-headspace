@@ -313,7 +313,7 @@
                 var stateClass = ProjectShow._stateColorClass(stateValue);
 
                 var agentHeroHtml = uuid8
-                    ? '<span class="agent-hero">' + ProjectShow._escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ProjectShow._escapeHtml(uuid8.substring(2)) + '</span>'
+                    ? '<span class="agent-hero">' + CHUtils.escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(uuid8.substring(2)) + '</span>'
                     : 'Agent ' + agent.id;
 
                 html += '<div class="accordion-agent-row ' + rowClass + '">';
@@ -321,7 +321,7 @@
 
                 // Arrow + state badge
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '" style="flex-shrink:0">&#9654;</span>';
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
 
                 // UUID hero/trail
                 html += '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
@@ -440,9 +440,9 @@
                 // Header row (clickable, expands turns)
                 html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleTaskTurns(' + taskId + ', ' + agentId + ')">';
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="task-arrow-' + taskId + '">&#9654;</span>';
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + ProjectShow._escapeHtml(stateValue.toUpperCase()) + '</span>';
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
                 if (displayText) {
-                    html += '<span class="text-sm text-primary font-medium truncate flex-1">' + ProjectShow._escapeHtml(displayText) + '</span>';
+                    html += '<span class="text-sm text-primary font-medium truncate flex-1">' + CHUtils.escapeHtml(displayText) + '</span>';
                 }
                 html += '</div>';
 
@@ -450,12 +450,12 @@
                 html += '<div class="card-editor border-t-0 rounded-t-none border ' + borderColor + ' border-t-0 rounded-b-lg">';
                 // Line 01: Full instruction
                 html += '<div class="card-line"><span class="line-num">01</span><div class="line-content">';
-                html += '<p class="task-instruction text-primary text-sm font-medium">' + ProjectShow._escapeHtml(instruction || 'No instruction') + '</p>';
+                html += '<p class="task-instruction text-primary text-sm font-medium">' + CHUtils.escapeHtml(instruction || 'No instruction') + '</p>';
                 html += '</div></div>';
                 // Line 02: Completion summary or in-progress indicator
                 html += '<div class="card-line"><span class="line-num">02</span><div class="line-content">';
                 if (isComplete && summary) {
-                    html += '<p class="task-summary text-green text-sm italic">' + ProjectShow._escapeHtml(summary) + '</p>';
+                    html += '<p class="task-summary text-green text-sm italic">' + CHUtils.escapeHtml(summary) + '</p>';
                 } else if (isComplete) {
                     html += '<p class="text-green text-sm italic">Completed</p>';
                 } else {
@@ -549,9 +549,9 @@
 
                 html += '<div class="' + rowClass + '">';
                 html += '<div class="flex items-center gap-2">';
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + actorClass + ' bg-surface">' + ProjectShow._escapeHtml(actorValue.toUpperCase()) + '</span>';
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + actorClass + ' bg-surface">' + CHUtils.escapeHtml(actorValue.toUpperCase()) + '</span>';
                 if (intentValue) {
-                    html += '<span class="text-xs text-muted">' + ProjectShow._escapeHtml(intentValue) + '</span>';
+                    html += '<span class="text-xs text-muted">' + CHUtils.escapeHtml(intentValue) + '</span>';
                 }
                 if (frustration != null) {
                     var frustClass = frustration >= THRESHOLDS.red ? 'text-red' : (frustration >= THRESHOLDS.yellow ? 'text-amber' : 'text-green');
@@ -562,7 +562,7 @@
                 }
                 html += '</div>';
                 if (summary) {
-                    html += '<p class="text-xs text-secondary mt-1">' + ProjectShow._escapeHtml(summary) + '</p>';
+                    html += '<p class="text-xs text-secondary mt-1">' + CHUtils.escapeHtml(summary) + '</p>';
                 }
                 html += '</div>';
             });
@@ -974,8 +974,8 @@
                 var html = '<div class="space-y-2">';
                 archives.forEach(function(archive) {
                     html += '<div class="flex items-center gap-3 p-3 bg-surface rounded border border-border">';
-                    html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-cyan/10 text-cyan">' + ProjectShow._escapeHtml(archive.artifact || archive.type || 'artifact') + '</span>';
-                    html += '<span class="text-sm text-secondary flex-1">' + ProjectShow._escapeHtml(archive.timestamp || '') + '</span>';
+                    html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-cyan/10 text-cyan">' + CHUtils.escapeHtml(archive.artifact || archive.type || 'artifact') + '</span>';
+                    html += '<span class="text-sm text-secondary flex-1">' + CHUtils.escapeHtml(archive.timestamp || '') + '</span>';
                     if (archive.artifact && archive.timestamp) {
                         html += '<a href="/api/projects/' + projectId + '/archives/' +
                             encodeURIComponent(archive.artifact) + '/' +
@@ -1104,8 +1104,8 @@
             if (githubEl) {
                 if (data.github_repo) {
                     githubEl.innerHTML = 'GitHub: <a href="https://github.com/' +
-                        this._escapeHtml(data.github_repo) + '" target="_blank" rel="noopener" class="text-cyan hover:underline">' +
-                        this._escapeHtml(data.github_repo) + '</a>';
+                        CHUtils.escapeHtml(data.github_repo) + '" target="_blank" rel="noopener" class="text-cyan hover:underline">' +
+                        CHUtils.escapeHtml(data.github_repo) + '</a>';
                 } else {
                     githubEl.innerHTML = 'GitHub: <span class="text-muted">Not set</span>';
                 }
@@ -1253,7 +1253,7 @@
                     // Update branch
                     var branchEl = document.getElementById('project-branch');
                     if (branchEl) {
-                        branchEl.innerHTML = 'Branch: <span class="text-primary">' + this._escapeHtml(data.current_branch || 'Unknown') + '</span>';
+                        branchEl.innerHTML = 'Branch: <span class="text-primary">' + CHUtils.escapeHtml(data.current_branch || 'Unknown') + '</span>';
                     }
                 }
             } catch (e) {
@@ -1607,7 +1607,7 @@
 
         _renderMarkdown: function(text) {
             // Basic markdown rendering: headers, bold, italic, code blocks, lists, links
-            var html = this._escapeHtml(text);
+            var html = CHUtils.escapeHtml(text);
 
             // Code blocks (triple backtick)
             html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code>$2</code></pre>');
@@ -1655,12 +1655,6 @@
             if (days < 30) return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
             var months = Math.floor(days / 30);
             return months + ' month' + (months !== 1 ? 's' : '') + ' ago';
-        },
-
-        _escapeHtml: function(text) {
-            var div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
     };
 

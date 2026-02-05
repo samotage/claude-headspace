@@ -14,12 +14,12 @@ from claude_headspace.services.config_editor import (
     SectionSchema,
     ValidationError,
     ValidationResult,
-    flatten_openrouter,
+    flatten_nested_sections,
     get_config_schema,
     load_config_file,
     merge_with_defaults,
     save_config_file,
-    unflatten_openrouter,
+    unflatten_nested_sections,
     validate_config,
 )
 
@@ -30,7 +30,7 @@ class TestConfigSchema:
     def test_schema_has_all_sections(self):
         """Schema should have all expected sections."""
         section_names = [s.name for s in CONFIG_SCHEMA]
-        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "commander", "notifications", "activity", "openrouter"]
+        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "commander", "notifications", "activity", "headspace", "openrouter"]
         assert section_names == expected
 
     def test_each_section_has_title(self):
@@ -315,7 +315,7 @@ class TestPasswordSecurity:
 
 
 class TestFlattenUnflatten:
-    """Tests for flatten_openrouter and unflatten_openrouter."""
+    """Tests for flatten_nested_sections and unflatten_nested_sections."""
 
     def test_flatten_nested_to_dot_notation(self):
         """Should convert nested dicts to dot-notation keys."""
@@ -333,7 +333,7 @@ class TestFlattenUnflatten:
                 },
             }
         }
-        result = flatten_openrouter(config)
+        result = flatten_nested_sections(config)
 
         assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
         assert result["openrouter"]["timeout"] == 30
@@ -357,7 +357,7 @@ class TestFlattenUnflatten:
                 "cache.ttl_seconds": 300,
             }
         }
-        result = unflatten_openrouter(config)
+        result = unflatten_nested_sections(config)
 
         assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
         assert result["openrouter"]["timeout"] == 30
@@ -394,33 +394,33 @@ class TestFlattenUnflatten:
         import copy
         expected = copy.deepcopy(original)
 
-        flatten_openrouter(original)
-        unflatten_openrouter(original)
+        flatten_nested_sections(original)
+        unflatten_nested_sections(original)
 
         assert original == expected
 
     def test_flatten_no_openrouter_section(self):
         """Should handle missing openrouter section gracefully."""
         config = {"server": {"port": 5050}}
-        result = flatten_openrouter(config)
+        result = flatten_nested_sections(config)
         assert result == {"server": {"port": 5050}}
 
     def test_unflatten_no_openrouter_section(self):
         """Should handle missing openrouter section gracefully."""
         config = {"server": {"port": 5050}}
-        result = unflatten_openrouter(config)
+        result = unflatten_nested_sections(config)
         assert result == {"server": {"port": 5050}}
 
     def test_flatten_modifies_in_place(self):
         """Flatten should modify the dict in place and return it."""
         config = {"openrouter": {"models": {"turn": "haiku"}}}
-        result = flatten_openrouter(config)
+        result = flatten_nested_sections(config)
         assert result is config
 
     def test_unflatten_modifies_in_place(self):
         """Unflatten should modify the dict in place and return it."""
         config = {"openrouter": {"models.turn": "haiku"}}
-        result = unflatten_openrouter(config)
+        result = unflatten_nested_sections(config)
         assert result is config
 
 

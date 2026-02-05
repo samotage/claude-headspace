@@ -591,8 +591,8 @@
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
                         '<h3 class="text-xs font-semibold uppercase tracking-wider mb-2">' +
-                        '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
-                        ActivityPage._escapeHtml(r.project.name) + '</a></h3>' +
+                        '<a href="/projects/' + CHUtils.escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                        CHUtils.escapeHtml(r.project.name) + '</a></h3>' +
                         '<p class="text-muted text-sm">No activity data yet.</p></div>';
                 });
                 empty.classList.add('hidden');
@@ -614,8 +614,8 @@
 
                 var history = r.metrics.history || [];
                 var html = '<h3 class="text-xs font-semibold uppercase tracking-wider mb-3">' +
-                    '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
-                    ActivityPage._escapeHtml(r.project.name) + '</a></h3>';
+                    '<a href="/projects/' + CHUtils.escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                    CHUtils.escapeHtml(r.project.name) + '</a></h3>';
 
                 if (history.length > 0) {
                     var totalTurns = ActivityPage._sumTurns(history);
@@ -659,7 +659,7 @@
                             ? ad.agent.session_uuid.substring(0, 8)
                             : '';
                         var agentHeroHtml = agentUuid8
-                            ? '<span class="agent-hero">' + ActivityPage._escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ActivityPage._escapeHtml(agentUuid8.substring(2)) + '</span>'
+                            ? '<span class="agent-hero">' + CHUtils.escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(agentUuid8.substring(2)) + '</span>'
                             : 'Agent ' + ad.agent.id;
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
@@ -782,12 +782,6 @@
                 });
             }
             return { total: total, turns: turns };
-        },
-
-        _escapeHtml: function(str) {
-            var div = document.createElement('div');
-            div.appendChild(document.createTextNode(str || ''));
-            return div.innerHTML;
         }
     };
 

@@ -8,12 +8,12 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..services.config_editor import (
-    flatten_openrouter,
+    flatten_nested_sections,
     get_config_schema,
     load_config_file,
     merge_with_defaults,
     save_config_file,
-    unflatten_openrouter,
+    unflatten_nested_sections,
     validate_config,
 )
 
@@ -28,7 +28,7 @@ def config_page():
     # Load current config from file (not env vars)
     config = load_config_file()
     # Flatten nested openrouter keys for the flat section[field] editor
-    flatten_openrouter(config)
+    flatten_nested_sections(config)
     config = merge_with_defaults(config)
 
     # Get schema for form generation
@@ -63,7 +63,7 @@ def get_config():
         # Load from file only (no env vars)
         config = load_config_file()
         # Flatten nested openrouter keys for the flat section[field] editor
-        flatten_openrouter(config)
+        flatten_nested_sections(config)
         config = merge_with_defaults(config)
 
         # Get schema for field metadata
@@ -145,7 +145,7 @@ def save_config():
     config = merge_with_defaults(config)
 
     # Unflatten dot-notation openrouter keys back to nested dicts for YAML
-    unflatten_openrouter(config)
+    unflatten_nested_sections(config)
 
     # Preserve non-schema sections and fields from the original file
     original = load_config_file()

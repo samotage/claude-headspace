@@ -69,8 +69,8 @@
                 var slug = p.slug || '';
 
                 return '<tr class="border-b border-border">' +
-                    '<td class="py-3 pr-4 font-medium"><a href="/projects/' + ProjectsPage._escapeHtml(slug) + '" class="text-cyan hover:underline">' + ProjectsPage._escapeHtml(p.name) + '</a></td>' +
-                    '<td class="py-3 pr-4 text-secondary text-xs font-mono truncate max-w-[200px]" title="' + ProjectsPage._escapeHtml(p.path) + '">' + ProjectsPage._escapeHtml(p.path) + '</td>' +
+                    '<td class="py-3 pr-4 font-medium"><a href="/projects/' + CHUtils.escapeHtml(slug) + '" class="text-cyan hover:underline">' + CHUtils.escapeHtml(p.name) + '</a></td>' +
+                    '<td class="py-3 pr-4 text-secondary text-xs font-mono truncate max-w-[200px]" title="' + CHUtils.escapeHtml(p.path) + '">' + CHUtils.escapeHtml(p.path) + '</td>' +
                     '<td class="py-3 pr-4 text-center text-secondary">' + p.agent_count + '</td>' +
                     '<td class="py-3 pr-4"><span class="' + pausedClass + ' text-xs font-medium">' + pausedLabel + '</span></td>' +
                 '</tr>';
@@ -358,12 +358,6 @@
             el.style.height = 'auto';
             var minHeight = parseFloat(getComputedStyle(el).lineHeight) * 4 + parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
             el.style.height = Math.max(el.scrollHeight, minHeight) + 'px';
-        },
-
-        _escapeHtml: function(text) {
-            var div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
     };
 

@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .path_constants import BRAIN_REBOOT_DIR, WAYPOINT_FILENAME
+
 if TYPE_CHECKING:
     from .archive_service import ArchiveService
 
@@ -66,7 +68,7 @@ def get_waypoint_path(project_path: str | Path) -> Path:
     Returns:
         Path to the waypoint file
     """
-    return Path(project_path) / "docs" / "brain_reboot" / "waypoint.md"
+    return Path(project_path) / BRAIN_REBOOT_DIR / WAYPOINT_FILENAME
 
 
 def load_waypoint(project_path: str | Path) -> WaypointResult:

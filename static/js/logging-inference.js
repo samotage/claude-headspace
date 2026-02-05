@@ -652,15 +652,6 @@
     },
 
     /**
-     * Escape HTML special characters for safe innerHTML use
-     */
-    _escapeHtml: function (text) {
-      var div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    },
-
-    /**
      * Set text content with optional search term highlighting.
      * When search is active, uses innerHTML with <mark> tags.
      * Otherwise uses textContent for safety.
@@ -670,9 +661,9 @@
         element.textContent = text || "";
         return;
       }
-      var escaped = this._escapeHtml(text);
+      var escaped = CHUtils.escapeHtml(text);
       var searchTerm = this.filters.search;
-      var escapedTerm = this._escapeHtml(searchTerm);
+      var escapedTerm = CHUtils.escapeHtml(searchTerm);
       var regex = new RegExp("(" + escapedTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
       element.innerHTML = escaped.replace(regex, '<mark class="bg-amber/40 text-primary rounded px-0.5">$1</mark>');
 
