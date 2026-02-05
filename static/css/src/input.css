@@ -187,10 +187,11 @@ body::after {
 }
 
 .line-num {
-    width: 40px;
+    width: 34px;
     flex-shrink: 0;
     text-align: right;
-    padding-right: 12px;
+    padding-left: 4px;
+    padding-right: 6px;
     font-size: 0.75rem;
     color: var(--text-muted);
     opacity: 0.5;
@@ -198,9 +199,31 @@ body::after {
     border-right: 1px solid var(--border);
 }
 
+/* Priority score badge — color-coded by score range */
+.priority-score[data-priority] {
+    background: rgba(100, 100, 120, 0.25);
+    color: rgba(160, 160, 180, 0.7);
+}
+.priority-score.priority-low {
+    background: rgba(100, 100, 120, 0.25);
+    color: rgba(160, 160, 180, 0.7);
+}
+.priority-score.priority-mid {
+    background: rgba(99, 140, 210, 0.25);
+    color: rgb(130, 170, 230);
+}
+.priority-score.priority-high {
+    background: rgba(220, 170, 50, 0.3);
+    color: rgb(235, 195, 80);
+}
+.priority-score.priority-top {
+    background: rgba(50, 205, 100, 0.25);
+    color: rgb(80, 220, 120);
+}
+
 .line-content {
     flex: 1;
-    padding: 4px 12px;
+    padding: 4px 8px;
     min-height: 24px;
 }
 

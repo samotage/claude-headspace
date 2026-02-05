@@ -95,8 +95,8 @@
   </div>
   {% endif %}
   <!-- Priority + task stats footer -->
-  <div class="flex items-center gap-3 px-3 py-2 border-t border-border">
-    <span class="priority-score px-1.5 py-0.5 text-[10px] font-mono rounded-sm bg-muted/10 text-muted/60">{{ agent.priority }}</span>
+  <div class="flex items-center gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
+    <span class="priority-score px-1.5 py-0.5 text-[11px] font-mono font-medium rounded-sm" data-priority="{{ agent.priority }}">{{ agent.priority }}</span>
     {% if agent.turn_count and agent.turn_count > 0 %}
       <span class="task-stats text-muted text-xs">{{ agent.turn_count }} turn{{ 's' if agent.turn_count != 1 else '' }}{% if agent.elapsed %} · {{ agent.elapsed }}{% endif %}</span>
     {% endif %}

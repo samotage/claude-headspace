@@ -18,6 +18,16 @@
 (function(global) {
     'use strict';
 
+    function applyPriorityTier(badge, score) {
+        badge.classList.remove('priority-low', 'priority-mid', 'priority-high', 'priority-top');
+        var s = parseInt(score, 10) || 0;
+        if (s >= 76) badge.classList.add('priority-top');
+        else if (s >= 51) badge.classList.add('priority-high');
+        else if (s >= 26) badge.classList.add('priority-mid');
+        else badge.classList.add('priority-low');
+        badge.setAttribute('data-priority', s);
+    }
+
     // State info mapping (matches Python get_state_info)
     const STATE_INFO = {
         'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle - ready for task' },
@@ -577,9 +587,11 @@
             if (!card) return;
 
             // Update priority score badge
-            var scoreBadge = card.querySelector('.border-t .font-mono');
+            var scoreBadge = card.querySelector('.priority-score');
             if (scoreBadge) {
-                scoreBadge.textContent = score != null ? score : 50;
+                var s = score != null ? score : 50;
+                scoreBadge.textContent = s;
+                applyPriorityTier(scoreBadge, s);
             }
 
             // Update priority reason
@@ -887,6 +899,7 @@
         var scoreBadge = card.querySelector('.priority-score');
         if (scoreBadge && data.priority != null) {
             scoreBadge.textContent = data.priority;
+            applyPriorityTier(scoreBadge, data.priority);
         }
         var statsEl = card.querySelector('.task-stats');
         var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
@@ -1072,6 +1085,10 @@
             const state = card.getAttribute('data-state');
             if (agentId && state) {
                 agentStates.set(parseInt(agentId), state);
+            }
+            var badge = card.querySelector('.priority-score');
+            if (badge) {
+                applyPriorityTier(badge, badge.textContent);
             }
         });
     }
