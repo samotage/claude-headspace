@@ -8,20 +8,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..config import get_value
-
-logger = logging.getLogger(__name__)
-
-ARCHIVE_DIR = "docs/brain_reboot/archive"
-BRAIN_REBOOT_DIR = "docs/brain_reboot"
-
-VALID_ARTIFACT_TYPES = ("waypoint", "progress_summary", "brain_reboot")
-
-# Regex to parse archive filenames: {artifact}_{YYYY-MM-DD_HH-MM-SS}.md
-ARCHIVE_FILENAME_RE = re.compile(
-    r"^(waypoint|progress_summary|brain_reboot)_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.md$"
+from .path_constants import (
+    ARCHIVE_DIR,
+    ARCHIVE_FILENAME_RE,
+    BRAIN_REBOOT_DIR,
+    TIMESTAMP_FORMAT,
+    VALID_ARTIFACT_TYPES,
 )
 
-TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
+logger = logging.getLogger(__name__)
 
 
 class ArchiveService:

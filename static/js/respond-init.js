@@ -36,8 +36,8 @@
                     showWidget(widget);
                 }
             })
-            .catch(function() {
-                // Silently fail - widget stays hidden
+            .catch(function(err) {
+                console.warn('Respond availability check failed:', err);
             });
     }
 

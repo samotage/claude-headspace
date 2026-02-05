@@ -1,5 +1,6 @@
 """Logging API endpoints and page route."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
@@ -11,6 +12,8 @@ from ..models.event import Event, EventType
 from ..models.inference_call import InferenceCall
 from ..models.project import Project
 from ..models.turn import Turn
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_ACTIVE_TIMEOUT_MINUTES = 5
 
@@ -156,6 +159,7 @@ def get_events():
         )
 
     except Exception as e:
+        logger.exception("Failed to fetch events")
         return jsonify({"error": "Failed to fetch events"}), 500
 
 
@@ -178,6 +182,7 @@ def clear_events():
         db.session.commit()
         return jsonify({"deleted": count})
     except Exception as e:
+        logger.exception("Failed to clear events")
         db.session.rollback()
         return jsonify({"error": "Failed to clear events"}), 500
 
@@ -249,6 +254,7 @@ def get_event_filters():
         )
 
     except Exception as e:
+        logger.exception("Failed to fetch event filter options")
         return jsonify({"error": "Failed to fetch filter options"}), 500
 
 
@@ -418,6 +424,7 @@ def get_inference_calls():
         )
 
     except Exception as e:
+        logger.exception("Failed to fetch inference calls")
         return jsonify({"error": "Failed to fetch inference calls"}), 500
 
 
@@ -488,6 +495,7 @@ def get_inference_call_filters():
         )
 
     except Exception as e:
+        logger.exception("Failed to fetch inference filter options")
         return jsonify({"error": "Failed to fetch filter options"}), 500
 
 
@@ -510,5 +518,6 @@ def clear_inference_calls():
         db.session.commit()
         return jsonify({"deleted": count})
     except Exception as e:
+        logger.exception("Failed to clear inference calls")
         db.session.rollback()
         return jsonify({"error": "Failed to clear inference calls"}), 500

@@ -24,7 +24,8 @@ def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        dt = datetime.fromisoformat(value)
+        # Python 3.10 fromisoformat doesn't support 'Z' suffix
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
@@ -192,7 +193,7 @@ def overall_metrics():
         current = history[-1] if history else None
 
         # Compute daily totals aggregated across all buckets in the window
-        daily_totals = _compute_daily_totals(history, cutoff)
+        daily_totals = _compute_daily_totals(history, cutoff, cutoff_end)
 
         return jsonify({
             "window": window,
@@ -206,7 +207,11 @@ def overall_metrics():
         return jsonify({"error": "Failed to get overall metrics"}), 500
 
 
-def _compute_daily_totals(metrics: list[ActivityMetric], cutoff: datetime) -> dict:
+def _compute_daily_totals(
+    metrics: list[ActivityMetric],
+    cutoff: datetime,
+    cutoff_end: datetime | None = None,
+) -> dict:
     """Aggregate metrics across all hourly buckets into daily totals."""
     if not metrics:
         return {
@@ -239,9 +244,11 @@ def _compute_daily_totals(metrics: list[ActivityMetric], cutoff: datetime) -> di
         .scalar()
     ) or 0
 
-    # Turn rate: total turns / hours elapsed
+    # Turn rate: total turns / actual elapsed hours
+    # Use min(now, cutoff_end) so incomplete periods use real elapsed time
     now = datetime.now(timezone.utc)
-    hours_elapsed = max((now - cutoff).total_seconds() / 3600, 1.0)
+    effective_end = min(now, cutoff_end) if cutoff_end else now
+    hours_elapsed = max((effective_end - cutoff).total_seconds() / 3600, 1.0)
     turn_rate = round(total_turns / hours_elapsed, 1)
 
     # Frustration average

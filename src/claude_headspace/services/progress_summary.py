@@ -11,17 +11,17 @@ from .git_analyzer import GitAnalyzer, GitAnalysisResult, GitAnalyzerError
 from .inference_service import InferenceService, InferenceServiceError
 from .prompt_registry import build_prompt
 
-logger = logging.getLogger(__name__)
+from .path_constants import BRAIN_REBOOT_DIR as SUMMARY_DIR
+from .path_constants import SUMMARY_FILENAME
 
-SUMMARY_DIR = "docs/brain_reboot"
-SUMMARY_FILENAME = "progress_summary.md"
+logger = logging.getLogger(__name__)
 
 
 class ProgressSummaryService:
     """Generates narrative progress summaries from git commit history via LLM inference.
 
     Orchestrates GitAnalyzer + InferenceService + file I/O.
-    Writes progress_summary.md to target project's docs/brain_reboot/ directory.
+    Writes progress_summary.md to target project's brain_reboot/ directory.
     """
 
     def __init__(self, inference_service: InferenceService, app=None, archive_service=None):

@@ -170,7 +170,8 @@ class OpenRouterClient:
                 timeout=5,
             )
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Health check failed: {e}")
             return False
 
     @staticmethod

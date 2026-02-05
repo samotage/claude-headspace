@@ -1,5 +1,6 @@
 """Dashboard route for agent monitoring."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, render_template, request
@@ -10,6 +11,8 @@ from ..models import Agent, Project, Task, TaskState
 from ..models.objective import Objective
 from ..services.card_state import (
     TIMED_OUT,
+    _get_current_task_elapsed,
+    _get_current_task_turn_count,
     format_last_seen,
     format_uptime,
     get_effective_state,
@@ -19,6 +22,8 @@ from ..services.card_state import (
     get_task_summary,
     is_agent_active,
 )
+
+logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -298,7 +303,7 @@ def _prepare_kanban_data(
                 else:
                     # Agent has active task - goes in the state's column
                     # COMMANDED is a transitory state; display in PROCESSING column
-                    col_name = "PROCESSING" if state_name == "COMMANDED" else state_name
+                    col_name = "PROCESSING" if state_name in ("COMMANDED", "TIMED_OUT") else state_name
                     state_columns[col_name].append({
                         "type": "task",
                         "agent": agent_data,
@@ -432,8 +437,8 @@ def _get_dashboard_activity_metrics() -> dict | None:
             )
             if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
                 immediate_frustration = round(latest_snapshot.frustration_rolling_10, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Headspace snapshot query failed: {e}")
 
         return {
             "total_turns": total_turns,
@@ -442,7 +447,8 @@ def _get_dashboard_activity_metrics() -> dict | None:
             "active_agents": distinct_agents,
             "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
         }
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Activity bar computation failed: {e}")
         return None
 
 
@@ -467,7 +473,7 @@ def dashboard():
     projects = (
         db.session.query(Project)
         .options(
-            selectinload(Project.agents).selectinload(Agent.tasks).selectinload(Task.turns)
+            selectinload(Project.agents).selectinload(Agent.tasks)
         )
         .order_by(Project.name)
         .all()
@@ -519,6 +525,8 @@ def dashboard():
                 "task_completion_summary": get_task_completion_summary(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
+                "turn_count": _get_current_task_turn_count(agent),
+                "elapsed": _get_current_task_elapsed(agent),
                 "project_name": project.name,
                 "project_slug": project.slug,
                 "project_id": project.id,

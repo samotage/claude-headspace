@@ -117,7 +117,7 @@ class TestGetWaypoint:
             content="# My Waypoint",
             exists=True,
             template=False,
-            path="/path/to/project/docs/brain_reboot/waypoint.md",
+            path="/path/to/project/brain_reboot/waypoint.md",
             last_modified=datetime(2026, 1, 29, 10, 30, tzinfo=timezone.utc),
         )
 
@@ -148,7 +148,7 @@ class TestGetWaypoint:
             content=DEFAULT_TEMPLATE,
             exists=False,
             template=True,
-            path="/path/to/project/docs/brain_reboot/waypoint.md",
+            path="/path/to/project/brain_reboot/waypoint.md",
             last_modified=None,
         )
 
@@ -295,7 +295,7 @@ class TestPostWaypoint:
             archived=False,
             archive_path=None,
             last_modified=None,
-            error="Permission denied: /path/to/project/docs/brain_reboot/waypoint.md",
+            error="Permission denied: /path/to/project/brain_reboot/waypoint.md",
         )
 
         response = client.post(

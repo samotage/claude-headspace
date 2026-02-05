@@ -6,12 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import get_value
+from .path_constants import BRAIN_REBOOT_DIR, SUMMARY_FILENAME, WAYPOINT_FILENAME
 
 logger = logging.getLogger(__name__)
-
-BRAIN_REBOOT_DIR = "docs/brain_reboot"
-WAYPOINT_FILENAME = "waypoint.md"
-SUMMARY_FILENAME = "progress_summary.md"
 
 
 class BrainRebootService:

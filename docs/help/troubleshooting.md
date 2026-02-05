@@ -161,7 +161,7 @@ Common issues and how to resolve them.
 **Solutions:**
 1. Check that you have write permission to the project directory
 2. Verify the project path is accessible (not on network drive that's unmounted)
-3. Try creating the `docs/brain_reboot/` directory manually
+3. Try creating the `brain_reboot/` directory manually
 
 ### Conflict detected unexpectedly
 

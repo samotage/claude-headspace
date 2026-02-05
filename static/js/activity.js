@@ -4,7 +4,6 @@
     let chart = null;
     let currentWindow = 'day';
     let windowOffset = 0;  // 0 = current period, -1 = previous, etc.
-    let sseSource = null;
     var _refreshDebounce = null;
 
     // Frustration thresholds from config (injected by template)
@@ -99,6 +98,12 @@
             this._updateNav();
             this.loadOverallMetrics();
             this.loadProjectMetrics();
+            if (HEADSPACE_ENABLED) {
+                if (currentWindow === 'day' && windowOffset === 0) {
+                    this._initFrustrationWidget();
+                }
+                // Historical frustration is updated inside loadOverallMetrics callback
+            }
         },
 
         /**
@@ -161,15 +166,22 @@
 
         /**
          * Compute turn rate from total turns based on window.
-         * Day: turns/hour, Week/Month: turns/day.
+         * Day: turns/hour (elapsed hours), Week/Month: turns/day (elapsed days).
+         * Uses actual elapsed time so incomplete periods are accurate.
          */
         _computeRate: function(totalTurns) {
+            var periodStart = this._periodStart(windowOffset);
+            var periodEnd = this._periodStart(windowOffset + 1);
+            var now = new Date();
+            var effectiveEnd = now < periodEnd ? now : periodEnd;
+
             if (currentWindow === 'day') {
-                return totalTurns / 24;
+                var hoursElapsed = Math.max((effectiveEnd - periodStart) / (1000 * 60 * 60), 1);
+                return totalTurns / hoursElapsed;
             }
             // week/month: turns per day
-            var days = currentWindow === 'week' ? 7 : 30;
-            return totalTurns / days;
+            var daysElapsed = Math.max((effectiveEnd - periodStart) / (1000 * 60 * 60 * 24), 1);
+            return totalTurns / daysElapsed;
         },
 
         _formatRate: function(rate) {
@@ -222,6 +234,21 @@
         },
 
         /**
+         * Compute peak frustration from history (max of all bucket max_frustration values).
+         */
+        _computePeakFrustration: function(history) {
+            var peak = null;
+            if (history) {
+                history.forEach(function(h) {
+                    if (h.max_frustration != null) {
+                        peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                    }
+                });
+            }
+            return peak;
+        },
+
+        /**
          * Format a frustration average for display (1 decimal place).
          */
         _formatFrustAvg: function(avg) {
@@ -239,6 +266,9 @@
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
+                        if (HEADSPACE_ENABLED && !(currentWindow === 'day' && windowOffset === 0)) {
+                            ActivityPage._updateFrustrationFromHistory([]);
+                        }
                         return;
                     }
 
@@ -260,6 +290,10 @@
                         data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
 
                     ActivityPage._renderChart(data.history);
+
+                    if (HEADSPACE_ENABLED && !(currentWindow === 'day' && windowOffset === 0)) {
+                        ActivityPage._updateFrustrationFromHistory(data.history);
+                    }
                 });
         },
 
@@ -592,8 +626,8 @@
                 results.forEach(function(r) {
                     container.innerHTML += '<div class="border-b border-border py-4 last:border-0">' +
                         '<h3 class="text-xs font-semibold uppercase tracking-wider mb-2">' +
-                        '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
-                        ActivityPage._escapeHtml(r.project.name) + '</a></h3>' +
+                        '<a href="/projects/' + CHUtils.escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                        CHUtils.escapeHtml(r.project.name) + '</a></h3>' +
                         '<p class="text-muted text-sm">No activity data yet.</p></div>';
                 });
                 empty.classList.add('hidden');
@@ -615,16 +649,16 @@
 
                 var history = r.metrics.history || [];
                 var html = '<h3 class="text-xs font-semibold uppercase tracking-wider mb-3">' +
-                    '<a href="/projects/' + ActivityPage._escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
-                    ActivityPage._escapeHtml(r.project.name) + '</a></h3>';
+                    '<a href="/projects/' + CHUtils.escapeHtml(r.project.slug) + '" class="text-cyan hover:text-primary text-glow-cyan transition-colors">' +
+                    CHUtils.escapeHtml(r.project.name) + '</a></h3>';
 
                 if (history.length > 0) {
                     var totalTurns = ActivityPage._sumTurns(history);
                     var rate = ActivityPage._computeRate(totalTurns);
                     var avgTime = ActivityPage._weightedAvgTime(history);
-                    var projFrustAvg = ActivityPage._computeFrustrationAvg(history);
-                    var projLevel = _levelFromAvg(projFrustAvg);
-                    var projColor = projFrustAvg != null ? FRUST_COLORS[projLevel].text : 'text-muted';
+                    var projPeak = ActivityPage._computePeakFrustration(history);
+                    var projLevel = _levelFromAvg(projPeak);
+                    var projColor = projPeak != null ? FRUST_COLORS[projLevel].text : 'text-muted';
 
                     html += '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">' +
                         '<div class="metric-card-sm">' +
@@ -641,8 +675,8 @@
                         '<div class="metric-card-value text-green">' + (r.project.agent_count || 0) + '</div>' +
                         '<div class="metric-card-label">Agents</div></div>' +
                         '<div class="metric-card-sm">' +
-                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projFrustAvg) + '</div>' +
-                        '<div class="metric-card-label">Frustration (Imm.)</div></div></div>';
+                        '<div class="metric-card-value ' + projColor + '">' + ActivityPage._formatFrustAvg(projPeak) + '</div>' +
+                        '<div class="metric-card-label">Peak Frust.</div></div></div>';
                 } else {
                     html += '<p class="text-muted text-sm mb-3">No activity data for this project.</p>';
                 }
@@ -660,22 +694,22 @@
                             ? ad.agent.session_uuid.substring(0, 8)
                             : '';
                         var agentHeroHtml = agentUuid8
-                            ? '<span class="agent-hero">' + ActivityPage._escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + ActivityPage._escapeHtml(agentUuid8.substring(2)) + '</span>'
+                            ? '<span class="agent-hero">' + CHUtils.escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(agentUuid8.substring(2)) + '</span>'
                             : 'Agent ' + ad.agent.id;
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
                         if (agentHistory.length > 0) {
                             var agentTurns = ActivityPage._sumTurns(agentHistory);
                             var agentAvg = ActivityPage._weightedAvgTime(agentHistory);
-                            var agentFrustAvg = ActivityPage._computeFrustrationAvg(agentHistory);
-                            var agentLevel = _levelFromAvg(agentFrustAvg);
-                            var agentFrustColor = agentFrustAvg != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
+                            var agentPeak = ActivityPage._computePeakFrustration(agentHistory);
+                            var agentLevel = _levelFromAvg(agentPeak);
+                            var agentFrustColor = agentPeak != null ? FRUST_COLORS[agentLevel].text : 'text-muted';
                             html += '<div class="agent-metric-stats">' +
                                 '<span><span class="stat-value">' + agentTurns + '</span><span class="stat-label">turns</span></span>';
                             if (agentAvg != null) {
                                 html += '<span><span class="stat-value">' + agentAvg.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
                             }
-                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentFrustAvg) + '</span><span class="stat-label">frust</span></span>';
+                            html += '<span><span class="stat-value ' + agentFrustColor + '">' + ActivityPage._formatFrustAvg(agentPeak) + '</span><span class="stat-label">peak frust</span></span>';
                             html += '</div>';
                         } else {
                             html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
@@ -698,10 +732,70 @@
                 .then(function(data) {
                     if (!data.enabled || !data.current) return;
                     ActivityPage._updateWidgetValues(data.current);
+                    // Restore live labels
+                    ActivityPage._setLabel('frust-peak-today-label', 'Max Today');
+                    ActivityPage._setLabel('frust-peak-today-sublabel', 'Peak score');
+                    ActivityPage._setLabel('frust-immediate-label', 'Immediate');
+                    ActivityPage._setLabel('frust-immediate-sublabel', 'Last 10 turns');
+                    ActivityPage._setLabel('frust-shortterm-label', 'Short-term');
+                    ActivityPage._setLabel('frust-shortterm-sublabel', 'Last 30 min');
+                    ActivityPage._setLabel('frust-session-label', 'Session');
+                    ActivityPage._setLabel('frust-session-sublabel', 'Last ' + (data.current.session_window_minutes || 180) + ' min');
                 })
                 .catch(function(err) {
                     console.error('Failed to load headspace state:', err);
                 });
+        },
+
+        _updateFrustrationFromHistory: function(history) {
+            if (!history || history.length === 0) {
+                // No data — show dashes for all
+                this._setIndicator('frust-peak-today-value', null);
+                this._setIndicator('frust-immediate-value', null);
+                this._setIndicator('frust-shortterm-value', null);
+                this._setIndicator('frust-session-value', null);
+                this._setLabel('frust-peak-today-label', 'Peak');
+                this._setLabel('frust-peak-today-sublabel', 'No data');
+                this._setLabel('frust-immediate-label', 'Average');
+                this._setLabel('frust-immediate-sublabel', 'No data');
+                this._setLabel('frust-shortterm-label', 'Short-term');
+                this._setLabel('frust-shortterm-sublabel', 'N/A (historical)');
+                this._setLabel('frust-session-label', 'Session');
+                this._setLabel('frust-session-sublabel', 'N/A (historical)');
+                return;
+            }
+
+            // Peak: max of all bucket max_frustration values
+            var peak = null;
+            history.forEach(function(h) {
+                if (h.max_frustration != null) {
+                    peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                }
+            });
+
+            // Average: total_frustration / frustration_turn_count across all buckets
+            var avg = this._computeFrustrationAvg(history);
+
+            // Update values
+            this._setIndicator('frust-peak-today-value', peak);
+            this._setIndicator('frust-immediate-value', avg);
+            this._setIndicator('frust-shortterm-value', null);
+            this._setIndicator('frust-session-value', null);
+
+            // Update labels for historical view
+            this._setLabel('frust-peak-today-label', 'Peak');
+            this._setLabel('frust-peak-today-sublabel', 'Max in period');
+            this._setLabel('frust-immediate-label', 'Average');
+            this._setLabel('frust-immediate-sublabel', 'Period average');
+            this._setLabel('frust-shortterm-label', 'Short-term');
+            this._setLabel('frust-shortterm-sublabel', 'N/A (historical)');
+            this._setLabel('frust-session-label', 'Session');
+            this._setLabel('frust-session-sublabel', 'N/A (historical)');
+        },
+
+        _setLabel: function(elementId, text) {
+            var el = document.getElementById(elementId);
+            if (el) el.textContent = text;
         },
 
         /**
@@ -721,43 +815,32 @@
         },
 
         _initSSE: function() {
-            if (sseSource) return;
-
-            var sseTypes = 'turn_detected,turn_created,activity_update';
-            if (HEADSPACE_ENABLED) {
-                sseTypes += ',headspace_update';
+            // Use the shared SSE connection from header-sse.js
+            var client = window.headerSSEClient;
+            if (!client) {
+                console.warn('Shared SSE client not available (headerSSEClient)');
+                return;
             }
-            sseSource = new EventSource('/api/events/stream?types=' + sseTypes);
 
             // Real-time activity updates: debounce-refresh on new turns or aggregation
-            sseSource.addEventListener('turn_detected', function() {
+            client.on('turn_detected', function() {
                 ActivityPage._debouncedRefresh();
             });
-            sseSource.addEventListener('turn_created', function() {
+            client.on('turn_created', function() {
                 ActivityPage._debouncedRefresh();
             });
-            sseSource.addEventListener('activity_update', function() {
+            client.on('activity_update', function() {
                 ActivityPage._debouncedRefresh();
             });
 
             if (HEADSPACE_ENABLED) {
-                sseSource.addEventListener('headspace_update', function(e) {
-                    try {
-                        var data = JSON.parse(e.data);
+                client.on('headspace_update', function(data) {
+                    // Only update frustration widget from SSE when viewing today
+                    if (currentWindow === 'day' && windowOffset === 0) {
                         ActivityPage._updateWidgetValues(data);
-                    } catch (err) {
-                        console.error('Failed to parse headspace SSE:', err);
                     }
                 });
             }
-
-            // Close on page unload to free connection slot
-            window.addEventListener('beforeunload', function() {
-                if (sseSource) {
-                    sseSource.close();
-                    sseSource = null;
-                }
-            });
         },
 
         _updateWidgetValues: function(state) {
@@ -797,12 +880,6 @@
                 });
             }
             return { total: total, turns: turns };
-        },
-
-        _escapeHtml: function(str) {
-            var div = document.createElement('div');
-            div.appendChild(document.createTextNode(str || ''));
-            return div.innerHTML;
         }
     };
 

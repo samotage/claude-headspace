@@ -430,8 +430,13 @@
       const typeCell = document.createElement("td");
       typeCell.className = "px-4 py-3 text-sm";
       const typeBadge = document.createElement("span");
-      typeBadge.className = this._getEventTypeBadgeClass(event.event_type);
-      typeBadge.textContent = event.event_type;
+      if (event.event_type) {
+        typeBadge.className = this._getEventTypeBadgeClass(event.event_type);
+        typeBadge.textContent = event.event_type;
+      } else {
+        typeBadge.className = "px-2 py-1 rounded text-xs font-medium bg-surface text-muted";
+        typeBadge.textContent = "unknown";
+      }
       typeCell.appendChild(typeBadge);
       row.appendChild(typeCell);
 
@@ -443,7 +448,15 @@
         const truncated = event.message.length > 80 ? event.message.substring(0, 80) + "..." : event.message;
         messageCell.textContent = actorLabel ? actorLabel + ": " + truncated : truncated;
       } else {
-        messageCell.textContent = "-";
+        // Fall back to a description based on event_type
+        var fallback = this._getEventFallbackMessage(event.event_type);
+        if (fallback) {
+          messageCell.textContent = fallback;
+          messageCell.classList.add("text-muted", "italic");
+          messageCell.classList.remove("text-secondary");
+        } else {
+          messageCell.textContent = "-";
+        }
       }
       row.appendChild(messageCell);
 
@@ -488,6 +501,27 @@
         default:
           return baseClass + " bg-surface text-secondary";
       }
+    },
+
+    /**
+     * Get fallback message for events without turn data
+     */
+    _getEventFallbackMessage: function (eventType) {
+      var messages = {
+        "session_discovered": "Session started",
+        "session_ended": "Session ended",
+        "session_end": "Session ended",
+        "hook_received": "Hook event received",
+        "notification": "Notification sent",
+        "state_transition": "State changed",
+        "objective_changed": "Objective updated",
+        "permission_request": "Permission requested",
+        "pre_tool_use": "Tool use started",
+        "post_tool_use": "Tool use completed",
+        "stop": "Agent stopped",
+        "user_prompt_submit": "User prompt submitted"
+      };
+      return messages[eventType] || null;
     },
 
     /**
@@ -550,6 +584,7 @@
     _formatTimestamp: function (isoString) {
       if (!isoString) return "-";
       const date = new Date(isoString);
+      if (isNaN(date.getTime())) return isoString;
       return date.toLocaleString("en-US", {
         year: "numeric",
         month: "2-digit",

@@ -28,6 +28,7 @@ def _get_dashboard_config() -> dict:
         config = current_app.config.get("APP_CONFIG", {})
         return config.get("dashboard", {})
     except RuntimeError:
+        logger.debug("No app context for dashboard config, using defaults")
         return {}  # No app context (unit tests without mocking)
 
 
@@ -402,6 +403,62 @@ def _get_task_elapsed(agent: Agent) -> str | None:
     return None
 
 
+def _get_current_task_turn_count(agent: Agent) -> int:
+    """Get turn count for the agent's current or most recent task.
+
+    Works for any task state (active or completed).
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Number of turns in the current/most recent task, or 0
+    """
+    current_task = agent.get_current_task()
+    if current_task and hasattr(current_task, "turns"):
+        return len(current_task.turns)
+    # Fall back to most recent task (may be COMPLETE)
+    if agent.tasks:
+        task = agent.tasks[0]
+        return len(task.turns) if hasattr(task, "turns") else 0
+    return 0
+
+
+def _get_current_task_elapsed(agent: Agent) -> str | None:
+    """Get elapsed time string for the agent's current or most recent task.
+
+    For active tasks, computes time since task.started_at until now.
+    For completed tasks, computes time from started_at to completed_at.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        Elapsed time string like "2h 15m", "5m", "<1m", or None
+    """
+    current_task = agent.get_current_task()
+    task = current_task or (agent.tasks[0] if agent.tasks else None)
+    if not task or not task.started_at:
+        return None
+
+    if task.completed_at:
+        delta = task.completed_at - task.started_at
+    else:
+        delta = datetime.now(timezone.utc) - task.started_at
+
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 0:
+        total_seconds = 0
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    elif minutes > 0:
+        return f"{minutes}m"
+    else:
+        return "<1m"
+
+
 def build_card_state(agent: Agent) -> dict:
     """Build the full card state dict for an agent.
 
@@ -438,11 +495,10 @@ def build_card_state(agent: Agent) -> dict:
         "project_id": agent.project_id,
     }
 
-    # Include turn count and elapsed time for completed tasks (used by
-    # the condensed completed-task card in the Kanban COMPLETE column)
-    if state_name == "COMPLETE":
-        card["turn_count"] = _get_task_turn_count(agent)
-        card["elapsed"] = _get_task_elapsed(agent)
+    # Include turn count and elapsed time for all states (used by
+    # the agent card footer and condensed completed-task card)
+    card["turn_count"] = _get_current_task_turn_count(agent)
+    card["elapsed"] = _get_current_task_elapsed(agent)
 
     return card
 

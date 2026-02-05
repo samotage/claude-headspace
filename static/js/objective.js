@@ -458,15 +458,6 @@
             }
 
             this.priorityToggle.title = enabled ? 'Disable priority scoring' : 'Enable priority scoring';
-        },
-
-        /**
-         * Escape HTML to prevent XSS
-         */
-        _escapeHtml: function(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
     };
 

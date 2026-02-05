@@ -82,7 +82,18 @@
                 <fieldset class="cfg-card bg-elevated rounded-lg border border-border">
                     {# ── Section header ── #}
                     <div class="px-5 py-3 border-b border-border flex items-center justify-between">
-                        <legend class="text-sm font-semibold text-cyan uppercase tracking-wider">{{ section.title }}</legend>
+                        <div class="flex items-center">
+                            <legend class="text-sm font-semibold text-cyan uppercase tracking-wider">{{ section.title }}</legend>
+                            <button type="button"
+                                    class="config-help-icon"
+                                    data-help-type="section"
+                                    data-section-title="{{ section.title }}"
+                                    data-section-description="{{ section.section_description or '' }}"
+                                    data-help-url="/help/configuration#{{ section.name | replace('_', '-') }}"
+                                    aria-expanded="false"
+                                    aria-label="Help for {{ section.title }} section"
+                                    tabindex="0">i</button>
+                        </div>
                         <span class="text-xs text-muted">{{ section.fields | length }} fields</span>
                     </div>
 
@@ -117,6 +128,18 @@
                                     {% if field.required %}<span class="text-amber">*</span>{% endif %}
                                 </label>
                                 <button type="button"
+                                        class="config-help-icon"
+                                        data-help-type="field"
+                                        data-field-name="{{ field.name }}"
+                                        data-help-text="{{ field.help_text or field.description }}"
+                                        data-default="{{ field.default if field.default is not none else '' }}"
+                                        {% if field.min is defined %}data-min="{{ field.min }}"{% endif %}
+                                        {% if field.max is defined %}data-max="{{ field.max }}"{% endif %}
+                                        data-help-url="/help/configuration#{{ section.name | replace('_', '-') }}"
+                                        aria-expanded="false"
+                                        aria-label="Help for {{ field.name | replace('_', ' ') }}"
+                                        tabindex="0">i</button>
+                                <button type="button"
                                         id="{{ section.name }}-{{ field.name }}"
                                         class="toggle-btn relative w-12 h-6 rounded-full transition-colors {% if config[section.name][field.name] %}bg-cyan{% else %}bg-surface border border-border{% endif %}"
                                         data-value="{{ 'true' if config[section.name][field.name] else 'false' }}"
@@ -146,6 +169,18 @@
                                        class="text-sm text-secondary">
                                     {{ field.name | replace("_", " ") }}{% if field.required %}<span class="text-amber ml-1">*</span>{% endif %}
                                 </label>
+                                <button type="button"
+                                        class="config-help-icon"
+                                        data-help-type="field"
+                                        data-field-name="{{ field.name }}"
+                                        data-help-text="{{ field.help_text or field.description }}"
+                                        data-default="{{ field.default if field.default is not none else '' }}"
+                                        {% if field.min is defined %}data-min="{{ field.min }}"{% endif %}
+                                        {% if field.max is defined %}data-max="{{ field.max }}"{% endif %}
+                                        data-help-url="/help/configuration#{{ section.name | replace('_', '-') }}"
+                                        aria-expanded="false"
+                                        aria-label="Help for {{ field.name | replace('_', ' ') }}"
+                                        tabindex="0">i</button>
                             </div>
 
                             <div class="cfg-input">
@@ -235,6 +270,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/config-help.js"></script>
 <script>
 (function() {
     const form = document.getElementById('config-form');
@@ -320,6 +356,7 @@
                     } else {
                         value = parseInt(value, 10);
                     }
+                    if (isNaN(value)) value = 0;
                 }
 
                 data[section][field] = value;

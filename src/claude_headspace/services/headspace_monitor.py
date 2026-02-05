@@ -225,9 +225,11 @@ class HeadspaceMonitor:
         return float(count)
 
     def _calc_peak_today(self) -> float | None:
-        """Return the highest frustration_score from any USER turn today."""
+        """Return the highest frustration_score from any USER turn today (local time)."""
         from sqlalchemy import func
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        local_now = datetime.now().astimezone()
+        local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = local_midnight.astimezone(timezone.utc)
         result = (
             db.session.query(func.max(Turn.frustration_score))
             .filter(

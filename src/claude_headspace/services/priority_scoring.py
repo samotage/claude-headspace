@@ -20,6 +20,7 @@ class PriorityScoringService:
         self._app = app
         self._debounce_timer: threading.Timer | None = None
         self._debounce_lock = threading.Lock()
+        self._scoring_lock = threading.Lock()
 
         ps_config = (config or {}).get("openrouter", {}).get("priority_scoring", {})
         self._debounce_seconds = ps_config.get("debounce_seconds", 5.0)
@@ -27,12 +28,25 @@ class PriorityScoringService:
     def score_all_agents(self, db_session) -> dict:
         """Score all active agents in a single batch inference call.
 
+        Uses _scoring_lock to prevent concurrent scoring runs from
+        overlapping and overwriting each other's results.
+
         Args:
             db_session: SQLAlchemy database session
 
         Returns:
             Dict with scored agents list, count, and context_type
         """
+        if not self._scoring_lock.acquire(blocking=False):
+            logger.debug("Scoring already in progress, skipping")
+            return {"scored": 0, "agents": [], "context_type": "skipped"}
+        try:
+            return self._score_all_agents_impl(db_session)
+        finally:
+            self._scoring_lock.release()
+
+    def _score_all_agents_impl(self, db_session) -> dict:
+        """Internal implementation of score_all_agents."""
         from ..models.agent import Agent
         from ..models.objective import Objective
         from ..models.project import Project
@@ -269,8 +283,8 @@ class PriorityScoringService:
                     wp = load_waypoint(agent.project.path)
                     if wp.exists:
                         waypoint_next = self._extract_section(wp.content, "Next Up")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Waypoint section extraction failed: {e}")
 
             agent_lines.append(
                 f"- Agent ID: {agent.id}\n"

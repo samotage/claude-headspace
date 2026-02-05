@@ -86,6 +86,7 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
             try:
                 data = json.loads(line)
             except json.JSONDecodeError:
+                logger.warning("Malformed JSON line in transcript, skipping")
                 continue
 
             entry_type = data.get("type")
@@ -146,6 +147,7 @@ def read_new_entries_from_position(
             try:
                 data = json.loads(line)
             except json.JSONDecodeError:
+                logger.warning("Malformed JSON line in transcript, skipping")
                 continue
 
             role, text = _extract_text(data)

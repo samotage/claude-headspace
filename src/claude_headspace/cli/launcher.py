@@ -68,7 +68,8 @@ def get_server_url() -> str:
                     host = config.get("server", {}).get("host", "127.0.0.1")
                     port = config.get("server", {}).get("port", 5055)
                     return f"http://{host}:{port}"
-            except Exception:
+            except Exception as e:
+                logging.debug(f"Config parse failed for {config_path}: {e}")
                 continue
 
     # Default

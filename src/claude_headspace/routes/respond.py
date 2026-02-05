@@ -226,5 +226,5 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "task_id": agent.get_current_task().id if agent.get_current_task() else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Response broadcast failed: {e}")

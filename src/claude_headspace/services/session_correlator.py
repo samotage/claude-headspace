@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from typing import NamedTuple
@@ -53,11 +54,12 @@ class CacheEntry(NamedTuple):
 # (gunicorn with multiple workers), each process has its own cache.
 # For production, replace with Redis or database-backed cache.
 _session_cache: dict[str, CacheEntry] = {}
+_session_cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 3600  # 1 hour
 
 
 def _cleanup_stale_cache_entries() -> None:
-    """Remove cache entries older than TTL."""
+    """Remove cache entries older than TTL. Must be called with _session_cache_lock held."""
     now = time.time()
     stale_keys = [
         key for key, entry in _session_cache.items()
@@ -67,6 +69,51 @@ def _cleanup_stale_cache_entries() -> None:
         del _session_cache[key]
     if stale_keys:
         logger.debug(f"Cleaned up {len(stale_keys)} stale cache entries")
+
+
+def _cache_get(key: str) -> CacheEntry | None:
+    """Thread-safe cache lookup."""
+    with _session_cache_lock:
+        return _session_cache.get(key)
+
+
+def _cache_set(key: str, agent_id: int) -> None:
+    """Thread-safe cache write."""
+    with _session_cache_lock:
+        _session_cache[key] = CacheEntry(agent_id, time.time())
+
+
+def _cache_delete(key: str) -> None:
+    """Thread-safe cache removal."""
+    with _session_cache_lock:
+        _session_cache.pop(key, None)
+
+
+def _cache_cleanup() -> None:
+    """Thread-safe cache cleanup."""
+    with _session_cache_lock:
+        _cleanup_stale_cache_entries()
+
+
+def _reactivate_if_ended(agent: Agent) -> bool:
+    """Clear ended_at if the agent was reaped/ended, reactivating it.
+
+    Called when a hook arrives for a previously-ended agent, proving the
+    Claude Code session is still alive.
+
+    Returns True if the agent was reactivated.
+    """
+    if agent.ended_at is None:
+        return False
+
+    agent.ended_at = None
+    agent.last_seen_at = datetime.now(timezone.utc)
+    db.session.commit()
+    logger.info(
+        f"Reactivated ended agent {agent.id} (session_uuid={agent.session_uuid}) "
+        f"— hook arrived for previously reaped/ended agent"
+    )
+    return True
 
 
 def _is_rejected_directory(path: str) -> bool:
@@ -183,16 +230,17 @@ def correlate_session(
                     and not previously seen)
     """
     # Cleanup stale cache entries periodically
-    _cleanup_stale_cache_entries()
+    _cache_cleanup()
 
     # Strategy 1: Check in-memory session cache — working_directory is ignored
     # for already-known sessions. The project was determined at first contact.
-    if claude_session_id in _session_cache:
-        agent_id = _session_cache[claude_session_id].agent_id
-        agent = db.session.get(Agent, agent_id)
+    cached = _cache_get(claude_session_id)
+    if cached is not None:
+        agent = db.session.get(Agent, cached.agent_id)
         if agent:
+            _reactivate_if_ended(agent)
             logger.debug(
-                f"Session {claude_session_id} matched to agent {agent_id} via cache"
+                f"Session {claude_session_id} matched to agent {cached.agent_id} via cache"
             )
             return CorrelationResult(
                 agent=agent,
@@ -200,7 +248,7 @@ def correlate_session(
                 correlation_method="session_id",
             )
         # Agent no longer exists, remove from cache
-        del _session_cache[claude_session_id]
+        _cache_delete(claude_session_id)
 
     # Strategy 2: Check database by claude_session_id — this survives server
     # restarts where the in-memory cache is lost
@@ -210,8 +258,9 @@ def correlate_session(
         .first()
     )
     if agent:
+        _reactivate_if_ended(agent)
         # Re-populate the in-memory cache
-        _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
+        _cache_set(claude_session_id, agent.id)
         logger.debug(
             f"Session {claude_session_id} matched to agent {agent.id} via DB lookup"
         )
@@ -253,24 +302,13 @@ def correlate_session(
                         f"{f', replacing {old_id}' if old_id else ''}"
                     )
 
-                # Reactivate if the agent was ended (CLI session restarted
-                # Claude Code — same session_uuid, new claude session_id)
-                if agent.ended_at is not None:
-                    agent.ended_at = None
-                    agent.last_seen_at = datetime.now(timezone.utc)
-                    dirty = True
-                    logger.info(
-                        f"Reactivated ended agent {agent.id} for new "
-                        f"claude session {claude_session_id}"
-                    )
-
-                if dirty:
+                # Reactivate if ended; _reactivate_if_ended commits
+                # (which also flushes any claude_session_id change above)
+                if not _reactivate_if_ended(agent) and dirty:
                     db.session.commit()
 
                 # Cache for fast path on subsequent hooks
-                _session_cache[claude_session_id] = CacheEntry(
-                    agent.id, time.time()
-                )
+                _cache_set(claude_session_id, agent.id)
                 logger.debug(
                     f"Session {claude_session_id} matched to agent {agent.id} "
                     f"via headspace_session_id {headspace_session_id}"
@@ -317,7 +355,7 @@ def correlate_session(
                 db.session.commit()
 
                 # Cache the session ID -> agent mapping
-                _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
+                _cache_set(claude_session_id, agent.id)
                 logger.debug(
                     f"Session {claude_session_id} matched to agent {agent.id} "
                     f"via working directory {resolved_directory} (claimed)"
@@ -343,7 +381,7 @@ def correlate_session(
     )
 
     # Cache the new mapping
-    _session_cache[claude_session_id] = CacheEntry(agent.id, time.time())
+    _cache_set(claude_session_id, agent.id)
 
     logger.info(
         f"Created new agent {agent.id} for session {claude_session_id} "
@@ -398,8 +436,8 @@ def _create_agent_for_session(
 
 def clear_session_cache() -> None:
     """Clear the session correlation cache."""
-    global _session_cache
-    _session_cache = {}
+    with _session_cache_lock:
+        _session_cache.clear()
     logger.debug("Session correlation cache cleared")
 
 
@@ -413,7 +451,7 @@ def get_cached_agent_id(claude_session_id: str) -> int | None:
     Returns:
         Agent ID if cached, None otherwise
     """
-    entry = _session_cache.get(claude_session_id)
+    entry = _cache_get(claude_session_id)
     return entry.agent_id if entry else None
 
 
@@ -425,5 +463,5 @@ def cache_session_mapping(claude_session_id: str, agent_id: int) -> None:
         claude_session_id: The Claude Code session ID
         agent_id: The agent database ID
     """
-    _session_cache[claude_session_id] = CacheEntry(agent_id, time.time())
+    _cache_set(claude_session_id, agent_id)
     logger.debug(f"Cached session {claude_session_id} -> agent {agent_id}")

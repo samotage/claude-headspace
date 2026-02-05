@@ -18,6 +18,11 @@ from src.claude_headspace.services.git_analyzer import (
 )
 
 
+def _full_hash(short: str) -> str:
+    """Pad a short hash to 40 hex chars (matching real git SHA-1 length)."""
+    return (short + "0" * 40)[:40]
+
+
 @pytest.fixture
 def config():
     return {
@@ -181,16 +186,19 @@ class TestAnalyzeScopeLastN:
     def test_last_n_scope(self, mock_run, analyzer, tmp_path):
         # First call: is_git_repo
         # Second call: git log
-        # Third call: diff-tree (per commit)
+        # Third call: batch file-changed lookup (git log --no-walk --name-only --format=%H)
+        h = _full_hash("abc123")
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(
                 args=[], returncode=0,
-                stdout=_make_log_entry("abc123", "Add feature", "Alice", "2026-01-30T10:00:00+00:00"),
+                stdout=_make_log_entry(h, "Add feature", "Alice", "2026-01-30T10:00:00+00:00"),
                 stderr="",
             ),
             subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="src/app.py\nREADME.md\n", stderr=""
+                args=[], returncode=0,
+                stdout=f"{h}\nsrc/app.py\nREADME.md\n",
+                stderr="",
             ),
         ]
 
@@ -198,7 +206,7 @@ class TestAnalyzeScopeLastN:
 
         assert result.total_commit_count == 1
         assert result.scope_used == "last_n"
-        assert result.commits[0].hash == "abc123"
+        assert result.commits[0].hash == h
         assert "src/app.py" in result.unique_files_changed
         assert "Alice" in result.unique_authors
 
@@ -221,14 +229,15 @@ class TestAnalyzeScopeSinceLast:
     @patch("subprocess.run")
     def test_since_last_with_timestamp(self, mock_run, analyzer, tmp_path):
         since = datetime(2026, 1, 28, 0, 0, 0, tzinfo=timezone.utc)
+        h = _full_hash("abc123")
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(
                 args=[], returncode=0,
-                stdout=_make_log_entry("abc123", "Recent commit", "Alice", "2026-01-30T10:00:00+00:00"),
+                stdout=_make_log_entry(h, "Recent commit", "Alice", "2026-01-30T10:00:00+00:00"),
                 stderr="",
             ),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="file.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=f"{h}\nfile.py\n", stderr=""),
         ]
 
         result = analyzer.analyze(tmp_path, scope="since_last", since_timestamp=since)
@@ -252,14 +261,15 @@ class TestAnalyzeScopeTimeBased:
 
     @patch("subprocess.run")
     def test_time_based_scope(self, mock_run, analyzer, tmp_path):
+        h = _full_hash("abc123")
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(
                 args=[], returncode=0,
-                stdout=_make_log_entry("abc123", "Recent", "Alice", "2026-01-30T10:00:00+00:00"),
+                stdout=_make_log_entry(h, "Recent", "Alice", "2026-01-30T10:00:00+00:00"),
                 stderr="",
             ),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="file.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=f"{h}\nfile.py\n", stderr=""),
         ]
 
         result = analyzer.analyze(tmp_path, scope="time_based", days=14)
@@ -274,18 +284,18 @@ class TestMaxCommitCap:
 
     @patch("subprocess.run")
     def test_truncation_when_over_cap(self, mock_run, small_cap_analyzer, tmp_path):
+        hashes = [_full_hash(f"hash{i}") for i in range(5)]
         entries = _make_log_output(*[
-            _make_log_entry(f"hash{i}", f"Commit {i}", "Alice", f"2026-01-{30-i:02d}T10:00:00+00:00")
+            _make_log_entry(hashes[i], f"Commit {i}", "Alice", f"2026-01-{30-i:02d}T10:00:00+00:00")
             for i in range(5)
         ])
 
+        # Batch file lookup returns files for the 3 kept commits (cap=3)
+        batch_output = f"{hashes[0]}\na.py\n\n{hashes[1]}\nb.py\n\n{hashes[2]}\nc.py\n"
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=entries, stderr=""),
-            # 3 diff-tree calls (cap=3)
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="a.py\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="b.py\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="c.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=batch_output, stderr=""),
         ]
 
         result = small_cap_analyzer.analyze(tmp_path, scope="last_n", last_n=10)
@@ -295,12 +305,13 @@ class TestMaxCommitCap:
 
     @patch("subprocess.run")
     def test_no_truncation_under_cap(self, mock_run, analyzer, tmp_path):
-        entries = _make_log_entry("hash1", "Single", "Alice", "2026-01-30T10:00:00+00:00")
+        h = _full_hash("hash1")
+        entries = _make_log_entry(h, "Single", "Alice", "2026-01-30T10:00:00+00:00")
 
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=entries, stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="file.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=f"{h}\nfile.py\n", stderr=""),
         ]
 
         result = analyzer.analyze(tmp_path, scope="last_n", last_n=5)
@@ -347,11 +358,12 @@ class TestEdgeCases:
 
     @patch("subprocess.run")
     def test_files_changed_failure_returns_empty_list(self, mock_run, analyzer, tmp_path):
+        h = _full_hash("abc123")
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(
                 args=[], returncode=0,
-                stdout=_make_log_entry("abc123", "Commit", "Alice", "2026-01-30T10:00:00+00:00"),
+                stdout=_make_log_entry(h, "Commit", "Alice", "2026-01-30T10:00:00+00:00"),
                 stderr="",
             ),
             subprocess.CompletedProcess(
@@ -369,16 +381,18 @@ class TestDateRange:
 
     @patch("subprocess.run")
     def test_date_range_set_correctly(self, mock_run, analyzer, tmp_path):
+        ha = _full_hash("aaa")
+        hb = _full_hash("bbb")
         entries = _make_log_output(
-            _make_log_entry("aaa", "Newest", "Alice", "2026-01-31T10:00:00+00:00"),
-            _make_log_entry("bbb", "Oldest", "Bob", "2026-01-25T08:00:00+00:00"),
+            _make_log_entry(ha, "Newest", "Alice", "2026-01-31T10:00:00+00:00"),
+            _make_log_entry(hb, "Oldest", "Bob", "2026-01-25T08:00:00+00:00"),
         )
 
+        batch_output = f"{ha}\na.py\n\n{hb}\nb.py\n"
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=entries, stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="a.py\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="b.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=batch_output, stderr=""),
         ]
 
         result = analyzer.analyze(tmp_path, scope="last_n")
@@ -391,18 +405,20 @@ class TestUniqueAggregation:
 
     @patch("subprocess.run")
     def test_unique_files_and_authors(self, mock_run, analyzer, tmp_path):
+        ha = _full_hash("aaa")
+        hb = _full_hash("bbb")
+        hc = _full_hash("ccc")
         entries = _make_log_output(
-            _make_log_entry("aaa", "Commit 1", "Alice", "2026-01-31T10:00:00+00:00"),
-            _make_log_entry("bbb", "Commit 2", "Alice", "2026-01-30T10:00:00+00:00"),
-            _make_log_entry("ccc", "Commit 3", "Bob", "2026-01-29T10:00:00+00:00"),
+            _make_log_entry(ha, "Commit 1", "Alice", "2026-01-31T10:00:00+00:00"),
+            _make_log_entry(hb, "Commit 2", "Alice", "2026-01-30T10:00:00+00:00"),
+            _make_log_entry(hc, "Commit 3", "Bob", "2026-01-29T10:00:00+00:00"),
         )
 
+        batch_output = f"{ha}\nshared.py\na.py\n\n{hb}\nshared.py\nb.py\n\n{hc}\nshared.py\nc.py\n"
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="true\n", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=entries, stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="shared.py\na.py\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="shared.py\nb.py\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="shared.py\nc.py\n", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=batch_output, stderr=""),
         ]
 
         result = analyzer.analyze(tmp_path, scope="last_n")

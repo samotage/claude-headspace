@@ -306,7 +306,8 @@ def _infer_completion_classification(
             "D": IntentResult(TurnIntent.QUESTION, 0.85),
         }
         return mapping.get(letter)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"LLM intent classification failed: {e}")
         return None
 
 

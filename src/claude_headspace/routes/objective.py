@@ -334,7 +334,7 @@ def toggle_priority():
             broadcaster = get_broadcaster()
             broadcaster.broadcast("priority_toggle", {"priority_enabled": enabled})
         except Exception:
-            logger.debug("Failed to broadcast priority_toggle (non-fatal)")
+            logger.warning("Failed to broadcast priority_toggle (non-fatal)")
 
         # If re-enabled, trigger immediate scoring
         if enabled:
@@ -345,7 +345,7 @@ def toggle_priority():
                 if scoring_service:
                     scoring_service.trigger_scoring_immediate()
             except Exception:
-                logger.debug("Failed to trigger immediate scoring (non-fatal)")
+                logger.warning("Failed to trigger immediate scoring (non-fatal)")
 
         return jsonify({"priority_enabled": objective.priority_enabled})
 

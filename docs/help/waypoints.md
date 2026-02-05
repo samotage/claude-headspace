@@ -4,7 +4,7 @@ Waypoints are markdown files that define the path ahead for each project. They'r
 
 ## What is a Waypoint?
 
-A waypoint lives at `docs/brain_reboot/waypoint.md` in each project. It contains four sections:
+A waypoint lives at `brain_reboot/waypoint.md` in each project. It contains four sections:
 
 - **Next Up** - Immediate next steps
 - **Upcoming** - Coming soon
@@ -32,7 +32,7 @@ A waypoint lives at `docs/brain_reboot/waypoint.md` in each project. It contains
 
 When you save a waypoint:
 
-1. The current waypoint is archived to `docs/brain_reboot/archive/`
+1. The current waypoint is archived to `brain_reboot/archive/`
 2. Archive filename includes date: `waypoint_2026-01-29.md`
 3. Multiple saves per day get counters: `waypoint_2026-01-29_2.md`
 4. Your new content replaces the waypoint
