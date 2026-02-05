@@ -99,7 +99,7 @@
             this.loadOverallMetrics();
             this.loadProjectMetrics();
             if (HEADSPACE_ENABLED) {
-                if (windowOffset === 0) {
+                if (currentWindow === 'day' && windowOffset === 0) {
                     this._initFrustrationWidget();
                 }
                 // Historical frustration is updated inside loadOverallMetrics callback
@@ -251,7 +251,7 @@
                         overallEmpty.classList.remove('hidden');
                         overallMetrics.classList.add('hidden');
                         ActivityPage._renderChart([]);
-                        if (HEADSPACE_ENABLED && windowOffset !== 0) {
+                        if (HEADSPACE_ENABLED && !(currentWindow === 'day' && windowOffset === 0)) {
                             ActivityPage._updateFrustrationFromHistory([]);
                         }
                         return;
@@ -276,7 +276,7 @@
 
                     ActivityPage._renderChart(data.history);
 
-                    if (HEADSPACE_ENABLED && windowOffset !== 0) {
+                    if (HEADSPACE_ENABLED && !(currentWindow === 'day' && windowOffset === 0)) {
                         ActivityPage._updateFrustrationFromHistory(data.history);
                     }
                 });
@@ -820,8 +820,8 @@
 
             if (HEADSPACE_ENABLED) {
                 client.on('headspace_update', function(data) {
-                    // Only update frustration widget from SSE when viewing current period
-                    if (windowOffset === 0) {
+                    // Only update frustration widget from SSE when viewing today
+                    if (currentWindow === 'day' && windowOffset === 0) {
                         ActivityPage._updateWidgetValues(data);
                     }
                 });
