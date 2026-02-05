@@ -19,7 +19,7 @@ The combined document can be copied to clipboard or exported to the project file
 2. A slider pane opens and generates the document automatically
 3. Review the content
 4. Click **Copy to Clipboard** to copy the markdown
-5. Click **Export** to write it to the project's `docs/brain_reboot/` directory
+5. Click **Export** to write it to the project's `brain_reboot/` directory
 
 ### From the Project Show Page
 
@@ -46,7 +46,7 @@ On the brain reboot slider, click **Regenerate Progress Summary** at the bottom 
 
 ## Export
 
-Exporting writes files to the project's `docs/brain_reboot/` directory:
+Exporting writes files to the project's `brain_reboot/` directory:
 
 - `waypoint.md` - Current waypoint
 - `progress_summary.md` - Latest progress summary

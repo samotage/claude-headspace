@@ -47,7 +47,7 @@ def _make_project(tmp_path, project_id=1, name="Test Project"):
 
 
 def _write_waypoint(tmp_path, content="# Waypoint\n\n## Next Up\n\n- Task 1\n"):
-    wp_dir = tmp_path / "docs" / "brain_reboot"
+    wp_dir = tmp_path / "brain_reboot"
     wp_dir.mkdir(parents=True, exist_ok=True)
     (wp_dir / "waypoint.md").write_text(content, encoding="utf-8")
 
@@ -55,7 +55,7 @@ def _write_waypoint(tmp_path, content="# Waypoint\n\n## Next Up\n\n- Task 1\n"):
 def _write_summary(tmp_path, content=None):
     if content is None:
         content = "---\ngenerated_at: 2026-01-30\nscope: last_n\n---\n\nRecent work included bug fixes and feature additions."
-    summary_dir = tmp_path / "docs" / "brain_reboot"
+    summary_dir = tmp_path / "brain_reboot"
     summary_dir.mkdir(parents=True, exist_ok=True)
     (summary_dir / "progress_summary.md").write_text(content, encoding="utf-8")
 
@@ -225,7 +225,7 @@ class TestExport:
         assert result["success"] is True
         assert result["error"] is None
 
-        exported = (tmp_path / "docs" / "brain_reboot" / "brain_reboot.md").read_text()
+        exported = (tmp_path / "brain_reboot" / "brain_reboot.md").read_text()
         assert exported == content
 
     def test_creates_directory(self, service, tmp_path):
@@ -234,11 +234,11 @@ class TestExport:
 
         result = service.export(project, content)
         assert result["success"] is True
-        assert (tmp_path / "docs" / "brain_reboot").is_dir()
+        assert (tmp_path / "brain_reboot").is_dir()
 
     def test_overwrites_existing(self, service, tmp_path):
         project = _make_project(tmp_path)
-        br_dir = tmp_path / "docs" / "brain_reboot"
+        br_dir = tmp_path / "brain_reboot"
         br_dir.mkdir(parents=True, exist_ok=True)
         (br_dir / "brain_reboot.md").write_text("old content")
 
@@ -249,7 +249,7 @@ class TestExport:
 
     def test_permission_error(self, service, tmp_path):
         project = _make_project(tmp_path)
-        br_dir = tmp_path / "docs" / "brain_reboot"
+        br_dir = tmp_path / "brain_reboot"
         br_dir.mkdir(parents=True, exist_ok=True)
 
         # Make directory read-only
@@ -281,7 +281,7 @@ class TestExport:
         result = service.export(project, "# Brain Reboot")
 
         assert result["success"] is True
-        exported = (tmp_path / "docs" / "brain_reboot" / "brain_reboot.md").read_text()
+        exported = (tmp_path / "brain_reboot" / "brain_reboot.md").read_text()
         assert exported == "# Brain Reboot"
 
     def test_export_without_archive_service(self, mock_app, tmp_path):
@@ -306,7 +306,7 @@ class TestExport:
         project = _make_project(tmp_path)
 
         svc.export(project, "content")
-        assert (tmp_path / "docs" / "brain_reboot" / "custom_reboot.md").exists()
+        assert (tmp_path / "brain_reboot" / "custom_reboot.md").exists()
 
 
 class TestGetLastGenerated:

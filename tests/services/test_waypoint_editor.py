@@ -25,12 +25,12 @@ class TestGetWaypointPath:
     def test_returns_correct_path(self):
         """Should return path to waypoint.md."""
         path = get_waypoint_path("/projects/myapp")
-        assert path == Path("/projects/myapp/docs/brain_reboot/waypoint.md")
+        assert path == Path("/projects/myapp/brain_reboot/waypoint.md")
 
     def test_handles_path_object(self):
         """Should handle Path objects."""
         path = get_waypoint_path(Path("/projects/myapp"))
-        assert path == Path("/projects/myapp/docs/brain_reboot/waypoint.md")
+        assert path == Path("/projects/myapp/brain_reboot/waypoint.md")
 
 
 class TestLoadWaypoint:
@@ -51,7 +51,7 @@ class TestLoadWaypoint:
         """Should return file content when waypoint exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create waypoint file
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# My Waypoint")
@@ -66,7 +66,7 @@ class TestLoadWaypoint:
     def test_includes_modification_time(self):
         """Should include last modification time."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Test")
@@ -107,7 +107,7 @@ class TestSaveWaypoint:
         """Should delegate archiving to the archive service."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create existing waypoint
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Old Content")
@@ -130,7 +130,7 @@ class TestSaveWaypoint:
     def test_no_archive_without_service(self):
         """Should skip archiving when no archive service provided."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Old Content")
@@ -144,7 +144,7 @@ class TestSaveWaypoint:
     def test_archive_failure_non_blocking(self):
         """Should continue saving even if archive fails."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Old Content")
@@ -181,7 +181,7 @@ class TestSaveWaypoint:
         """Should detect conflict when mtime doesn't match."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create existing waypoint
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Original")
@@ -206,7 +206,7 @@ class TestSaveWaypoint:
         """Should save when mtime matches expected."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create existing waypoint
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Original")
@@ -283,7 +283,7 @@ class TestAtomicWrite:
         """Should use atomic write (temp file then rename)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create initial waypoint
-            waypoint_dir = Path(tmpdir) / "docs" / "brain_reboot"
+            waypoint_dir = Path(tmpdir) / "brain_reboot"
             waypoint_dir.mkdir(parents=True)
             waypoint_file = waypoint_dir / "waypoint.md"
             waypoint_file.write_text("# Original")

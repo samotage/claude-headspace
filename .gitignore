@@ -50,6 +50,10 @@ data/session_state.yaml
 data/state.yaml
 .coverage
 
+# Brain reboot artifacts (user-specific)
+brain_reboot/*
+!brain_reboot/.gitkeep
+
 # E2E test screenshots
 tests/e2e/screenshots/
 

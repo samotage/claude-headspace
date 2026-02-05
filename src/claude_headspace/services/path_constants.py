@@ -7,8 +7,8 @@ brain_reboot, progress_summary, waypoint_editor, and archive_service.
 import re
 
 # Relative directory within target project repos
-BRAIN_REBOOT_DIR = "docs/brain_reboot"
-ARCHIVE_DIR = "docs/brain_reboot/archive"
+BRAIN_REBOOT_DIR = "brain_reboot"
+ARCHIVE_DIR = "brain_reboot/archive"
 
 # Artifact filenames
 WAYPOINT_FILENAME = "waypoint.md"

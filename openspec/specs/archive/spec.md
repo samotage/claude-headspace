@@ -22,7 +22,7 @@ The system SHALL provide a centralized archive service that archives brain_reboo
 
 #### Scenario: Archive directory auto-creation
 
-- **WHEN** an archive operation is triggered and `{project_path}/docs/brain_reboot/archive/` does not exist
+- **WHEN** an archive operation is triggered and `{project_path}/brain_reboot/archive/` does not exist
 - **THEN** the directory SHALL be created automatically
 
 #### Scenario: Archive operation failure (best-effort)

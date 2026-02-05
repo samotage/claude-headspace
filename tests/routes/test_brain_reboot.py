@@ -158,7 +158,7 @@ class TestExportEndpoint:
         }
         mock_service.export.return_value = {
             "success": True,
-            "path": "/tmp/test/docs/brain_reboot/brain_reboot.md",
+            "path": "/tmp/test/brain_reboot/brain_reboot.md",
             "error": None,
         }
 
@@ -191,7 +191,7 @@ class TestExportEndpoint:
         }
         mock_service.export.return_value = {
             "success": False,
-            "path": "/tmp/test/docs/brain_reboot/brain_reboot.md",
+            "path": "/tmp/test/brain_reboot/brain_reboot.md",
             "error": "Permission denied",
         }
 

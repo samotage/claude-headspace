@@ -28,7 +28,7 @@ The system SHALL load waypoint content from project directories.
 
 Given a project with an existing waypoint
 When the waypoint is loaded
-Then content is returned from `<project.path>/docs/brain_reboot/waypoint.md`
+Then content is returned from `<project.path>/brain_reboot/waypoint.md`
 And the file's modification time is recorded
 
 #### Scenario: Waypoint missing
@@ -98,7 +98,7 @@ And the content is written to `waypoint.md`
 
 #### Scenario: Directory creation
 
-Given the `docs/brain_reboot/` directory does not exist
+Given the `brain_reboot/` directory does not exist
 When the user saves
 Then the directory structure is created
 And the archive subdirectory is created

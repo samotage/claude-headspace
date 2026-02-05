@@ -21,7 +21,7 @@ class ProgressSummaryService:
     """Generates narrative progress summaries from git commit history via LLM inference.
 
     Orchestrates GitAnalyzer + InferenceService + file I/O.
-    Writes progress_summary.md to target project's docs/brain_reboot/ directory.
+    Writes progress_summary.md to target project's brain_reboot/ directory.
     """
 
     def __init__(self, inference_service: InferenceService, app=None, archive_service=None):
