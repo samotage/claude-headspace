@@ -464,8 +464,12 @@ def process_user_prompt_submit(
 
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
-        broadcast_card_refresh(agent, "user_prompt_submit")
+        # Execute summarisations BEFORE the first card refresh so that the
+        # instruction (and turn summary) are already persisted when the card
+        # JSON is built.  Previously the card refresh fired first, producing
+        # a card with instruction=None on line 03.
         _execute_pending_summarisations(pending)
+        broadcast_card_refresh(agent, "user_prompt_submit")
 
         new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
         _broadcast_state_change(agent, "user_prompt_submit", new_state, message=prompt_text)

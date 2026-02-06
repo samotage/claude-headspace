@@ -256,7 +256,7 @@ def get_task_instruction(agent: Agent) -> str | None:
 
     current_task = agent.get_current_task()
     if current_task and current_task.instruction:
-        logger.debug(
+        logger.info(
             f"get_task_instruction: agent={agent.id}, "
             f"task={current_task.id}, state={current_task.state.value}, "
             f"instruction={current_task.instruction!r:.60}"
@@ -265,7 +265,7 @@ def get_task_instruction(agent: Agent) -> str | None:
 
     # Check most recent task (any state) for instruction
     if agent.tasks and agent.tasks[0].instruction:
-        logger.debug(
+        logger.info(
             f"get_task_instruction: agent={agent.id}, "
             f"fallback to tasks[0]={agent.tasks[0].id}, "
             f"state={agent.tasks[0].state.value}, "
@@ -640,6 +640,6 @@ def broadcast_card_refresh(agent: Agent, reason: str) -> None:
         card["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         get_broadcaster().broadcast("card_refresh", card)
-        logger.debug(f"Broadcast card_refresh for agent {agent.id}: {reason}")
+        logger.info(f"Broadcast card_refresh for agent {agent.id}: reason={reason}, instruction={card.get('task_instruction', 'N/A')!r:.60}")
     except Exception as e:
-        logger.debug(f"card_refresh broadcast failed (non-fatal): {e}")
+        logger.info(f"card_refresh broadcast failed (non-fatal): {e}")

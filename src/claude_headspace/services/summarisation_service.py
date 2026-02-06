@@ -402,7 +402,7 @@ class SummarisationService:
             if db_session:
                 db_session.add(task)
                 db_session.commit()
-            logger.debug(f"Slash command bypass for task {task.id}: {task.instruction!r}")
+            logger.info(f"Slash command bypass for task {task.id}: {task.instruction!r}")
             return task.instruction
 
         # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
@@ -551,7 +551,7 @@ class SummarisationService:
             if agent:
                 broadcast_card_refresh(agent, reason)
         except Exception as e:
-            logger.debug(f"card_refresh for agent {agent_id} failed (non-fatal): {e}")
+            logger.info(f"card_refresh for agent {agent_id} failed (non-fatal): {e}")
 
     def _broadcast_summary_update(
         self,
@@ -579,7 +579,7 @@ class SummarisationService:
                 data.update(extra)
 
             broadcaster.broadcast(event_type, data)
-            logger.debug(f"Broadcast {event_type} for entity {entity_id}")
+            logger.info(f"Broadcast {event_type} for entity {entity_id}")
         except Exception as e:
             logger.warning(f"Failed to broadcast summary update (non-fatal): {e}")
 
