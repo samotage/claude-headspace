@@ -510,11 +510,17 @@ def get_question_options(agent: Agent) -> dict | None:
     if not current_task.turns:
         return None
 
+    # First pass: find any recent AGENT QUESTION turn with actual tool_input.
+    # The stop hook may have created a newer Turn without tool_input that
+    # shadows the original structured options — search past it.
     for turn in reversed(current_task.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if turn.tool_input:
                 return turn.tool_input
-            # No structured options stored — fallback for permission requests
+
+    # Second pass: fallback for permission requests (most recent QUESTION turn)
+    for turn in reversed(current_task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if _is_permission_question(turn.text):
                 return _default_permission_options(turn.text or "Permission needed")
             return None

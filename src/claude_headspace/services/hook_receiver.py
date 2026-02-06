@@ -506,6 +506,26 @@ def process_stop(
             logger.info(f"hook_event: type=stop, agent_id={agent.id}, no active task")
             return HookEventResult(success=True, agent_id=agent.id)
 
+        # Guard: if an interactive tool (AskUserQuestion, ExitPlanMode) has
+        # already set AWAITING_INPUT via pre_tool_use, the stop hook fires
+        # BETWEEN pre_tool_use and post_tool_use while Claude waits for user
+        # input.  Processing the transcript here would either create a new
+        # Turn without tool_input (shadowing the structured options) or
+        # complete the task entirely — both destroy the respond widget.
+        if current_task.state == TaskState.AWAITING_INPUT:
+            awaiting_tool = _awaiting_tool_for_agent.get(agent.id)
+            if awaiting_tool:
+                db.session.commit()
+                broadcast_card_refresh(agent, "stop")
+                logger.info(
+                    f"hook_event: type=stop, agent_id={agent.id}, "
+                    f"preserved AWAITING_INPUT (active interactive tool: {awaiting_tool})"
+                )
+                return HookEventResult(
+                    success=True, agent_id=agent.id,
+                    new_state="AWAITING_INPUT",
+                )
+
         # Extract transcript and detect intent
         agent_text = _extract_transcript_content(agent)
 
@@ -619,6 +639,19 @@ def _handle_awaiting_input(
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
             structured_options = _extract_structured_options(tool_name, tool_input)
+            # For ExitPlanMode, synthesize default approval options
+            if structured_options is None and tool_name == "ExitPlanMode":
+                question_text = "Approve plan and proceed?"
+                structured_options = {
+                    "questions": [{
+                        "question": question_text,
+                        "options": [
+                            {"label": "Yes", "description": "Approve the plan and begin implementation"},
+                            {"label": "No", "description": "Reject and stay in plan mode"},
+                        ],
+                    }],
+                    "source": "exit_plan_mode_default",
+                }
             # For permission_request, try capturing options + context from the tmux pane
             if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
                 structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
