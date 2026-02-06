@@ -285,6 +285,28 @@ class TestReapOnce:
 
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
+    def test_stale_pane_reaps_older_agent(self, mock_db, mock_check, reaper):
+        """Two agents share same pane ID, pane exists → older agent reaped as stale_pane."""
+        old_agent = _make_agent(agent_id=1, iterm_pane_id="pty-shared")
+        new_agent = _make_agent(agent_id=2, iterm_pane_id="pty-shared")
+
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            old_agent, new_agent
+        ]
+        mock_check.return_value = PaneStatus.FOUND
+
+        result = reaper.reap_once()
+
+        assert result.checked == 2
+        assert result.reaped == 1
+        assert result.skipped_alive == 1
+        assert result.details[0].agent_id == 1
+        assert result.details[0].reason == "stale_pane"
+        assert old_agent.ended_at is not None
+        assert new_agent.ended_at is None
+
+    @patch(PATCH_CHECK_PANE)
+    @patch(PATCH_DB)
     def test_no_commit_when_nothing_reaped(self, mock_db, mock_check, reaper):
         """db.session.commit() should not be called if nothing was reaped."""
         agent = _make_agent(iterm_pane_id="pty-123")
