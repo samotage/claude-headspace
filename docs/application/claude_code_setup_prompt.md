@@ -163,7 +163,8 @@ Verify the hooks were installed correctly:
 cat ~/.claude/settings.json | jq '.hooks | keys'
 ```
 
-Expected output should include: SessionStart, SessionEnd, Stop, Notification, UserPromptSubmit
+Expected output should include all 8 event types:
+SessionStart, SessionEnd, Stop, Notification, UserPromptSubmit, PostToolUse, PreToolUse, PermissionRequest
 
 Also verify the hook commands reference the correct script:
 ```bash
@@ -171,6 +172,20 @@ cat ~/.claude/settings.json | jq '.hooks.SessionStart[0].hooks[0].command'
 ```
 
 It MUST be an absolute path (starting with /) pointing to `notify-headspace.sh`.
+
+Verify PreToolUse has matchers for interactive tools (not a catch-all):
+```bash
+cat ~/.claude/settings.json | jq '[.hooks.PreToolUse[].matcher]'
+```
+
+Expected output: `["AskUserQuestion", "ExitPlanMode", "EnterPlanMode"]`
+
+Verify PostToolUse and PermissionRequest use catch-all matchers:
+```bash
+cat ~/.claude/settings.json | jq '.hooks.PostToolUse[0].matcher, .hooks.PermissionRequest[0].matcher'
+```
+
+Expected output: two empty strings (`""`) — these must fire for ALL tools.
 
 ## Step 5: Symlink the claude-headspace CLI and ensure PATH access (REQUIRED)
 
@@ -292,7 +307,7 @@ Claude Headspace Setup Results
 ==============================
 [PASS/FAIL] PostgreSQL running and claude_headspace database exists
 [PASS/FAIL] Hook script installed at ~/.claude/hooks/notify-headspace.sh
-[PASS/FAIL] Hooks configured in ~/.claude/settings.json (5 events)
+[PASS/FAIL] Hooks configured in ~/.claude/settings.json (8 event types)
 [PASS/FAIL] claude-headspace CLI symlinked to $USER_BIN
 [PASS/FAIL/MANUAL] PATH configured (bin directory in PATH or shell config updated)
 [PASS/FAIL] ~/.claude/projects/ accessible

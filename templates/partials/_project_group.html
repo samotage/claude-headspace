@@ -43,7 +43,7 @@
         <!-- Active agent count + actions -->
         <div class="flex items-center gap-2">
             <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})"
+                    onclick='event.stopPropagation(); openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})'
                     title="Generate brain reboot context document">
                 Brain Reboot
             </button>

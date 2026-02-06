@@ -23,6 +23,8 @@ def app():
         "tmux_bridge": {
             "subprocess_timeout": 5,
             "text_enter_delay_ms": 100,
+            "sequential_delay_ms": 150,
+            "select_other_delay_ms": 500,
         }
     }
     return app
@@ -374,6 +376,223 @@ class TestRespondToAgent:
         assert response.status_code == 400
         data = response.get_json()
         assert data["error_type"] == "missing_text"
+
+
+class TestSelectMode:
+    """Tests for POST /api/respond/<agent_id> with mode=select."""
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_option_0_sends_enter_only(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Select index 0 sends just Enter (already highlighted)."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "select", "option_index": 0},
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["mode"] == "select"
+
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_option_2_sends_down_down_enter(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Select index 2 sends Down, Down, Enter."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "select", "option_index": 2},
+        )
+
+        assert response.status_code == 200
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Down", "Down", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_creates_turn_with_marker_text(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Select mode records a descriptive marker as turn text."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        client.post("/api/respond/1", json={"mode": "select", "option_index": 1})
+
+        mock_db.session.add.assert_called_once()
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.text == "[selected option 1]"
+
+    def test_select_invalid_index_negative(self, client, mock_db, mock_agent):
+        """Negative option_index returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "select", "option_index": -1},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_option_index"
+
+    def test_select_missing_index(self, client, mock_db, mock_agent):
+        """Missing option_index returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "select"},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_option_index"
+
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_tmux_failure(self, mock_bridge, client, mock_db, mock_agent):
+        """tmux failure in select mode returns error."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="Pane not found",
+            latency_ms=5,
+        )
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "select", "option_index": 0},
+        )
+
+        assert response.status_code == 503
+
+
+class TestOtherMode:
+    """Tests for POST /api/respond/<agent_id> with mode=other."""
+
+    @patch("src.claude_headspace.routes.respond.time")
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_other_navigates_then_types(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, mock_time, client, mock_db, mock_agent, mock_task_awaiting
+    ):
+        """Other mode navigates to Other option then types text."""
+        mock_db.session.get.return_value = mock_agent
+        mock_time.time.side_effect = [0, 0.1]  # start_time, final latency
+        mock_time.sleep = MagicMock()  # don't actually sleep
+
+        # Set up task with 2 structured options
+        from src.claude_headspace.models.turn import TurnActor, TurnIntent
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.tool_input = {
+            "questions": [{
+                "question": "Which?",
+                "options": [
+                    {"label": "A", "description": "Option A"},
+                    {"label": "B", "description": "Option B"},
+                ],
+            }]
+        }
+        mock_task_awaiting.turns = [mock_turn]
+
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=30)
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "other", "text": "custom answer"},
+        )
+
+        assert response.status_code == 200
+        # Navigate: Down × 2 (num_options) + Enter
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Down", "Down", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+        # Wait, then type text
+        mock_time.sleep.assert_called_with(0.5)  # select_other_delay_ms=500
+        mock_bridge.send_text.assert_called_once_with(
+            pane_id="%5",
+            text="custom answer",
+            timeout=5,
+            text_enter_delay_ms=100,
+        )
+
+    def test_other_missing_text(self, client, mock_db, mock_agent):
+        """Other mode with no text returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "other", "text": ""},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "missing_text"
+
+
+class TestInvalidMode:
+    """Tests for POST /api/respond/<agent_id> with invalid mode."""
+
+    def test_invalid_mode(self, client, mock_db, mock_agent):
+        """Unknown mode returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "invalid", "text": "hello"},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_mode"
+
+
+class TestLegacyTextMode:
+    """Verify legacy mode (no explicit mode field) still works."""
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_legacy_text_without_mode(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Request without mode field defaults to text mode."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post(
+            "/api/respond/1",
+            json={"text": "hello"},
+        )
+
+        assert response.status_code == 200
+        mock_bridge.send_text.assert_called_once()
 
 
 class TestCheckAvailability:

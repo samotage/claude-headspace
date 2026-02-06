@@ -29,39 +29,107 @@ def _get_tmux_bridge():
     return current_app.extensions.get("tmux_bridge")
 
 
+def _count_options(task) -> int:
+    """Count the number of options in the most recent QUESTION turn's tool_input."""
+    if not task or not task.turns:
+        return 0
+    for turn in reversed(task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            if turn.tool_input and isinstance(turn.tool_input, dict):
+                questions = turn.tool_input.get("questions")
+                if questions and isinstance(questions, list) and len(questions) > 0:
+                    options = questions[0].get("options", [])
+                    return len(options) if isinstance(options, list) else 0
+            return 0
+    return 0
+
+
+def _tmux_error_response(result, agent_id):
+    """Build error response for tmux bridge failures."""
+    if result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND:
+        status_code = 503
+    elif result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED:
+        status_code = 503
+    elif result.error_type == TmuxBridgeErrorType.TIMEOUT:
+        status_code = 502
+    else:
+        status_code = 502
+
+    logger.warning(
+        f"respond_failed: agent_id={agent_id}, error={result.error_type}, "
+        f"message={result.error_message}, latency_ms={result.latency_ms}"
+    )
+
+    return jsonify({
+        "status": "error",
+        "error_type": result.error_type.value if result.error_type else "unknown",
+        "message": result.error_message,
+        "latency_ms": result.latency_ms,
+    }), status_code
+
+
 @respond_bp.route("/api/respond/<int:agent_id>", methods=["POST"])
 def respond_to_agent(agent_id: int):
-    """Send a text response to a Claude Code session via tmux send-keys.
+    """Send a response to a Claude Code session via tmux.
 
-    Validates that the agent exists, is in AWAITING_INPUT state, and has a
-    reachable tmux pane. On success, creates a Turn record and triggers
-    the AWAITING_INPUT -> PROCESSING state transition.
+    Supports three modes:
+    - text (default/legacy): Send literal text + Enter
+    - select: Navigate AskUserQuestion options with arrow keys
+    - other: Select "Other" option then type custom text
 
     Args:
         agent_id: Database ID of the agent
 
     Request body:
-        {"text": "response text"}
+        Text mode:   {"text": "response text"} or {"mode": "text", "text": "..."}
+        Select mode: {"mode": "select", "option_index": 0}
+        Other mode:  {"mode": "other", "text": "custom input"}
 
     Returns:
         200: Response sent successfully
-        400: Missing text or no pane ID
+        400: Invalid request
         404: Agent not found
         409: Agent not in AWAITING_INPUT state
-        502: tmux send failed
-        503: tmux pane unavailable
+        502/503: tmux send failed
     """
     start_time = time.time()
 
     # Parse request body
     data = request.get_json(silent=True) or {}
-    text = data.get("text", "").strip()
-    if not text:
+    mode = data.get("mode", "text")
+
+    if mode not in ("text", "select", "other"):
         return jsonify({
             "status": "error",
-            "error_type": "missing_text",
-            "message": "Response text is required.",
+            "error_type": "invalid_mode",
+            "message": f"Invalid mode '{mode}'. Must be 'text', 'select', or 'other'.",
         }), 400
+
+    # Validate mode-specific parameters
+    if mode == "text":
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({
+                "status": "error",
+                "error_type": "missing_text",
+                "message": "Response text is required.",
+            }), 400
+    elif mode == "select":
+        option_index = data.get("option_index")
+        if option_index is None or not isinstance(option_index, int) or option_index < 0:
+            return jsonify({
+                "status": "error",
+                "error_type": "invalid_option_index",
+                "message": "option_index must be a non-negative integer.",
+            }), 400
+    elif mode == "other":
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({
+                "status": "error",
+                "error_type": "missing_text",
+                "message": "Text is required for 'other' mode.",
+            }), 400
 
     # Lookup agent
     agent = db.session.get(Agent, agent_id)
@@ -95,68 +163,84 @@ def respond_to_agent(agent_id: int):
     bridge_config = config.get("tmux_bridge", {})
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
     text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
+    sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
+    select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)
 
-    # Send text via tmux bridge
-    result = tmux_bridge.send_text(
-        pane_id=agent.tmux_pane_id,
-        text=text,
-        timeout=subprocess_timeout,
-        text_enter_delay_ms=text_enter_delay_ms,
-    )
+    # Execute the appropriate tmux action based on mode
+    if mode == "text":
+        result = tmux_bridge.send_text(
+            pane_id=agent.tmux_pane_id,
+            text=text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+        )
+        record_text = text
+
+    elif mode == "select":
+        # Build key sequence: Down × option_index, then Enter
+        keys = ["Down"] * option_index + ["Enter"]
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+        )
+        record_text = f"[selected option {option_index}]"
+
+    elif mode == "other":
+        # Navigate to "Other" (last item) then type custom text
+        num_options = _count_options(current_task)
+        # "Other" is always appended after all options by AskUserQuestion
+        keys = ["Down"] * num_options + ["Enter"]
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+        )
+        if result.success:
+            # Wait for the "Other" text input to appear
+            time.sleep(select_other_delay_ms / 1000.0)
+            # Type the custom text
+            result = tmux_bridge.send_text(
+                pane_id=agent.tmux_pane_id,
+                text=text,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+            )
+        record_text = text
 
     if not result.success:
-        # Map error types to HTTP status codes
-        if result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND:
-            status_code = 503
-        elif result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED:
-            status_code = 503
-        elif result.error_type == TmuxBridgeErrorType.TIMEOUT:
-            status_code = 502
-        else:
-            status_code = 502
-
-        logger.warning(
-            f"respond_failed: agent_id={agent_id}, error={result.error_type}, "
-            f"message={result.error_message}, latency_ms={result.latency_ms}"
-        )
-
-        return jsonify({
-            "status": "error",
-            "error_type": result.error_type.value if result.error_type else "unknown",
-            "message": result.error_message,
-            "latency_ms": result.latency_ms,
-        }), status_code
+        return _tmux_error_response(result, agent_id)
 
     # Success: create Turn record and transition state
     try:
-        # Create USER ANSWER turn
         turn = Turn(
             task_id=current_task.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
-            text=text,
+            text=record_text,
         )
         db.session.add(turn)
 
-        # Transition state: AWAITING_INPUT -> PROCESSING
         current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
         db.session.commit()
 
-        # Broadcast state change
         broadcast_card_refresh(agent, "respond")
-        _broadcast_state_change(agent, text)
+        _broadcast_state_change(agent, record_text)
 
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(
-            f"respond_success: agent_id={agent_id}, text_length={len(text)}, "
-            f"latency_ms={latency_ms}"
+            f"respond_success: agent_id={agent_id}, mode={mode}, "
+            f"text_length={len(record_text)}, latency_ms={latency_ms}"
         )
 
         return jsonify({
             "status": "ok",
             "agent_id": agent_id,
+            "mode": mode,
             "new_state": TaskState.PROCESSING.value,
             "latency_ms": latency_ms,
         }), 200

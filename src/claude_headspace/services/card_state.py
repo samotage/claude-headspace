@@ -459,6 +459,33 @@ def _get_current_task_elapsed(agent: Agent) -> str | None:
         return "<1m"
 
 
+def get_question_options(agent: Agent) -> dict | None:
+    """Get structured AskUserQuestion options for an agent in AWAITING_INPUT state.
+
+    Finds the most recent AGENT QUESTION turn's tool_input field, which
+    contains the full AskUserQuestion structure (questions with options).
+
+    Args:
+        agent: The agent
+
+    Returns:
+        The tool_input dict if available, None otherwise
+    """
+    from ..models.turn import TurnActor, TurnIntent
+
+    current_task = agent.get_current_task()
+    if not current_task or current_task.state != TaskState.AWAITING_INPUT:
+        return None
+
+    if not current_task.turns:
+        return None
+
+    for turn in reversed(current_task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            return turn.tool_input
+    return None
+
+
 def build_card_state(agent: Agent) -> dict:
     """Build the full card state dict for an agent.
 
@@ -499,6 +526,11 @@ def build_card_state(agent: Agent) -> dict:
     # the agent card footer and condensed completed-task card)
     card["turn_count"] = _get_current_task_turn_count(agent)
     card["elapsed"] = _get_current_task_elapsed(agent)
+
+    # Include structured question options for AWAITING_INPUT cards
+    options = get_question_options(agent)
+    if options:
+        card["question_options"] = options
 
     return card
 

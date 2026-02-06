@@ -571,6 +571,12 @@
                     interaction: { intersect: false, mode: 'index' },
                     plugins: {
                         tooltip: {
+                            titleFont: { size: 16 },
+                            bodyFont: { size: 15 },
+                            boxWidth: 15,
+                            boxHeight: 15,
+                            boxPadding: 8,
+                            padding: 12,
                             callbacks: {
                                 title: function(items) {
                                     if (!items.length) return '';

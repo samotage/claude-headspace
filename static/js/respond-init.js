@@ -42,32 +42,112 @@
     }
 
     /**
-     * Show a respond widget and populate quick-action buttons.
+     * Show a respond widget and populate buttons.
+     * When structured question_options are available (from AskUserQuestion),
+     * renders labeled option buttons with descriptions. Otherwise falls
+     * back to regex-parsed numbered options from question text.
      */
     function showWidget(widget) {
         var agentId = parseInt(widget.getAttribute('data-agent-id'), 10);
         var questionText = widget.getAttribute('data-question-text') || '';
+        var questionOptionsRaw = widget.getAttribute('data-question-options');
+        var questionOptions = null;
 
-        // Parse and render quick-action buttons
+        if (questionOptionsRaw) {
+            try { questionOptions = JSON.parse(questionOptionsRaw); } catch(e) { /* ignore */ }
+        }
+
         var optionsContainer = widget.querySelector('.respond-options');
+        var formContainer = widget.querySelector('.respond-form');
+
         if (optionsContainer && global.RespondAPI) {
-            var options = global.RespondAPI.parseOptions(questionText);
             optionsContainer.innerHTML = '';
 
-            if (options.length > 0) {
-                options.forEach(function(opt) {
+            // Check for structured AskUserQuestion options
+            var structuredOptions = null;
+            if (questionOptions && questionOptions.questions &&
+                questionOptions.questions.length > 0) {
+                var q = questionOptions.questions[0];
+                if (q.options && q.options.length > 0) {
+                    structuredOptions = q.options;
+                }
+            }
+
+            if (structuredOptions) {
+                // Render structured option buttons
+                structuredOptions.forEach(function(opt, index) {
                     var btn = document.createElement('button');
                     btn.type = 'button';
-                    btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
-                    btn.textContent = opt.number + '. ' + opt.label;
+                    btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                    var label = document.createElement('span');
+                    label.className = 'font-medium';
+                    label.textContent = opt.label;
+                    btn.appendChild(label);
+                    if (opt.description) {
+                        var desc = document.createElement('span');
+                        desc.className = 'text-muted ml-2';
+                        desc.textContent = opt.description;
+                        btn.appendChild(desc);
+                    }
                     btn.onclick = function() {
-                        global.RespondAPI.sendOption(agentId, opt.number);
+                        global.RespondAPI.sendSelect(agentId, index);
                     };
                     optionsContainer.appendChild(btn);
                 });
+
+                // Add "Other..." button that reveals the text input
+                var otherBtn = document.createElement('button');
+                otherBtn.type = 'button';
+                otherBtn.className = 'respond-option-btn px-3 py-1.5 text-xs rounded border border-border text-muted hover:text-amber hover:border-amber/40 transition-colors';
+                otherBtn.textContent = 'Other...';
+                otherBtn.onclick = function() {
+                    if (formContainer) {
+                        formContainer.style.display = '';
+                        var input = formContainer.querySelector('.respond-text-input');
+                        if (input) input.focus();
+                    }
+                };
+                optionsContainer.appendChild(otherBtn);
+                optionsContainer.style.display = '';
+
+                // Hide text input by default for structured options
+                if (formContainer) {
+                    formContainer.style.display = 'none';
+                    // Re-wire form submit to use "other" mode
+                    formContainer.onsubmit = function(event) {
+                        event.preventDefault();
+                        var input = formContainer.querySelector('.respond-text-input');
+                        if (!input || !input.value.trim()) return;
+                        var val = input.value.trim();
+                        input.value = '';
+                        input.disabled = true;
+                        global.RespondAPI.sendOther(agentId, val).then(function(success) {
+                            input.disabled = false;
+                            if (!success) input.value = val;
+                            input.focus();
+                        });
+                    };
+                }
             } else {
-                // No options parsed - hide the options container
-                optionsContainer.style.display = 'none';
+                // Fallback: regex-parsed numbered options from question text
+                var options = global.RespondAPI.parseOptions(questionText);
+                if (options.length > 0) {
+                    options.forEach(function(opt) {
+                        var btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                        btn.textContent = opt.number + '. ' + opt.label;
+                        btn.onclick = function() {
+                            global.RespondAPI.sendOption(agentId, opt.number);
+                        };
+                        optionsContainer.appendChild(btn);
+                    });
+                    optionsContainer.style.display = '';
+                } else {
+                    optionsContainer.style.display = 'none';
+                }
+                // Show text input for legacy mode
+                if (formContainer) formContainer.style.display = '';
             }
         }
 

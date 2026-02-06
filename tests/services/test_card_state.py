@@ -14,6 +14,7 @@ from claude_headspace.services.card_state import (
     format_last_seen,
     format_uptime,
     get_effective_state,
+    get_question_options,
     get_state_info,
     get_task_completion_summary,
     get_task_instruction,
@@ -233,3 +234,110 @@ class TestBroadcastCardRefresh:
         agent = _make_agent()
         # Should not raise even without any mocking
         broadcast_card_refresh(agent, "test")
+
+
+class TestGetQuestionOptions:
+    """Tests for get_question_options()."""
+
+    def test_returns_tool_input_for_awaiting_input(self):
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        tool_input = {
+            "questions": [{
+                "question": "Which database?",
+                "options": [
+                    {"label": "PostgreSQL", "description": "Relational"},
+                    {"label": "MongoDB", "description": "Document"},
+                ],
+            }]
+        }
+
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.tool_input = tool_input
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [mock_turn]
+
+        agent = _make_agent(state=TaskState.AWAITING_INPUT)
+        agent.get_current_task.return_value = mock_task
+
+        result = get_question_options(agent)
+        assert result == tool_input
+
+    def test_returns_none_when_not_awaiting_input(self):
+        agent = _make_agent(state=TaskState.PROCESSING)
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        agent.get_current_task.return_value = mock_task
+
+        result = get_question_options(agent)
+        assert result is None
+
+    def test_returns_none_when_no_task(self):
+        agent = _make_agent()
+        agent.get_current_task.return_value = None
+
+        result = get_question_options(agent)
+        assert result is None
+
+    def test_returns_none_when_turn_has_no_tool_input(self):
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.tool_input = None
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [mock_turn]
+
+        agent = _make_agent(state=TaskState.AWAITING_INPUT)
+        agent.get_current_task.return_value = mock_task
+
+        result = get_question_options(agent)
+        assert result is None
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_build_card_state_includes_question_options(self, mock_config):
+        from claude_headspace.models.turn import TurnActor, TurnIntent
+
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+
+        tool_input = {
+            "questions": [{
+                "question": "Which?",
+                "options": [{"label": "A", "description": "Option A"}],
+            }]
+        }
+
+        mock_turn = MagicMock()
+        mock_turn.actor = TurnActor.AGENT
+        mock_turn.intent = TurnIntent.QUESTION
+        mock_turn.tool_input = tool_input
+        mock_turn.summary = None
+        mock_turn.text = "Which?"
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+        mock_task.turns = [mock_turn]
+        mock_task.instruction = "Test task"
+        mock_task.completion_summary = None
+        mock_task.started_at = None
+
+        agent = _make_agent(state=TaskState.AWAITING_INPUT)
+        agent.get_current_task.return_value = mock_task
+
+        result = build_card_state(agent)
+        assert result["question_options"] == tool_input
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_build_card_state_omits_question_options_when_none(self, mock_config):
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+
+        agent = _make_agent(state=TaskState.IDLE)
+        result = build_card_state(agent)
+        assert "question_options" not in result

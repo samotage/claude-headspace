@@ -4,6 +4,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -55,6 +56,7 @@ class Turn(db.Model):
         DateTime(timezone=True), nullable=True
     )
     frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tool_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="turns")

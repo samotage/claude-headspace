@@ -10,7 +10,9 @@ from claude_headspace.services.hook_receiver import (
     HookEventType,
     HookMode,
     HookReceiverState,
+    _awaiting_tool_for_agent,
     _extract_question_text,
+    _extract_structured_options,
     configure_receiver,
     get_receiver_state,
     process_notification,
@@ -45,6 +47,7 @@ def fresh_state():
     state.last_event_type = None
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
+    _awaiting_tool_for_agent.clear()
     yield state
 
 
@@ -697,6 +700,107 @@ class TestExtractQuestionText:
         assert result == "Permission needed: Bash"
 
 
+class TestExtractStructuredOptions:
+    def test_returns_tool_input_for_ask_user_question_with_options(self):
+        tool_input = {
+            "questions": [{
+                "question": "Which database?",
+                "header": "Database",
+                "options": [
+                    {"label": "PostgreSQL", "description": "Relational DB"},
+                    {"label": "MongoDB", "description": "Document DB"},
+                ],
+                "multiSelect": False,
+            }]
+        }
+        result = _extract_structured_options("AskUserQuestion", tool_input)
+        assert result == tool_input
+
+    def test_returns_none_for_non_ask_user_question(self):
+        result = _extract_structured_options("Bash", {"command": "ls"})
+        assert result is None
+
+    def test_returns_none_for_none_tool_name(self):
+        result = _extract_structured_options(None, {"questions": []})
+        assert result is None
+
+    def test_returns_none_for_empty_questions(self):
+        result = _extract_structured_options("AskUserQuestion", {"questions": []})
+        assert result is None
+
+    def test_returns_none_for_no_options(self):
+        tool_input = {
+            "questions": [{
+                "question": "Which?",
+                "options": [],
+            }]
+        }
+        result = _extract_structured_options("AskUserQuestion", tool_input)
+        assert result is None
+
+    def test_returns_none_for_none_tool_input(self):
+        result = _extract_structured_options("AskUserQuestion", None)
+        assert result is None
+
+    def test_returns_none_for_non_dict_tool_input(self):
+        result = _extract_structured_options("AskUserQuestion", "string")
+        assert result is None
+
+
+class TestPreToolUseTurnToolInput:
+    """Test that pre_tool_use stores tool_input on Turn for AskUserQuestion."""
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_stores_tool_input_on_turn(self, mock_db, mock_agent, fresh_state):
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        tool_input = {
+            "questions": [{
+                "question": "Which approach?",
+                "header": "Approach",
+                "options": [
+                    {"label": "Option A", "description": "Desc A"},
+                    {"label": "Option B", "description": "Desc B"},
+                ],
+                "multiSelect": False,
+            }]
+        }
+
+        result = process_pre_tool_use(
+            mock_agent, "session-123",
+            tool_name="AskUserQuestion", tool_input=tool_input,
+        )
+
+        assert result.success is True
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.tool_input == tool_input
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_tool_input_none_for_non_ask_user_question(self, mock_db, mock_agent, fresh_state):
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash", tool_input={"command": "ls"},
+        )
+
+        assert result.success is True
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.tool_input is None
+
+
 class TestPreToolUseTurnCreation:
     @patch("claude_headspace.services.hook_receiver.db")
     def test_creates_agent_question_turn_with_ask_user_question(self, mock_db, mock_agent, fresh_state):
@@ -840,6 +944,7 @@ class TestStopTurnBroadcast:
         mock_turn.actor = TurnActor.AGENT
         mock_turn.intent = TurnIntent.QUESTION
         mock_turn.text = "Do you want to proceed?"
+        mock_turn.tool_input = None  # Real Turn model defaults to None
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
@@ -861,7 +966,9 @@ class TestStopTurnBroadcast:
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
-        mock_broadcast_turn.assert_called_once_with(mock_agent, "Do you want to proceed?", mock_task)
+        mock_broadcast_turn.assert_called_once_with(
+            mock_agent, "Do you want to proceed?", mock_task, tool_input=None,
+        )
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
@@ -1076,3 +1183,75 @@ class TestProcessPostToolUse:
         assert result.success is True
         # Should have called process_turn (resume)
         mock_lifecycle.process_turn.assert_called_once()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_preserves_awaiting_when_different_tool(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use for a different tool than the one that triggered AWAITING_INPUT
+        should preserve AWAITING_INPUT (e.g. Task completing while Bash awaits permission)."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = mock_task
+
+        # Simulate: permission_request(Bash) set the awaiting tool
+        _awaiting_tool_for_agent[mock_agent.id] = "Bash"
+
+        # Now a Task sub-agent completes — should NOT resume
+        result = process_post_tool_use(mock_agent, "session-123", tool_name="Task")
+
+        assert result.success is True
+        assert result.new_state == TaskState.AWAITING_INPUT.value
+        mock_lifecycle.process_turn.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_post_tool_use_resumes_when_matching_tool(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+        """post_tool_use for the same tool that triggered AWAITING_INPUT should resume."""
+        from claude_headspace.models.task import TaskState
+        from claude_headspace.services.task_lifecycle import TurnProcessingResult
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.AWAITING_INPUT
+
+        mock_lifecycle = MagicMock()
+        mock_get_lm.return_value = mock_lifecycle
+        mock_lifecycle.get_current_task.return_value = mock_task
+
+        result_task = MagicMock()
+        result_task.state = TaskState.PROCESSING
+        mock_lifecycle.process_turn.return_value = TurnProcessingResult(
+            success=True, task=result_task,
+        )
+        mock_lifecycle.get_pending_summarisations.return_value = []
+
+        # Simulate: permission_request(Bash) set the awaiting tool
+        _awaiting_tool_for_agent[mock_agent.id] = "Bash"
+
+        # post_tool_use(Bash) — user approved, should resume
+        result = process_post_tool_use(mock_agent, "session-123", tool_name="Bash")
+
+        assert result.success is True
+        mock_lifecycle.process_turn.assert_called_once()
+        # Tracking should be cleared
+        assert mock_agent.id not in _awaiting_tool_for_agent
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_pre_tool_use_non_interactive_no_state_change(self, mock_db, mock_agent, fresh_state):
+        """pre_tool_use for non-interactive tools (Read, Grep, etc.) should NOT change state."""
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_agent.get_current_task.return_value = mock_task
+
+        result = process_pre_tool_use(mock_agent, "session-123", tool_name="Read")
+
+        assert result.success is True
+        # State should NOT have changed
+        assert mock_task.state == TaskState.PROCESSING
+        assert result.state_changed is False

@@ -20,6 +20,7 @@ from ..services.card_state import (
     get_task_completion_summary,
     get_task_instruction,
     get_task_summary,
+    get_question_options,
     is_agent_active,
 )
 
@@ -529,6 +530,7 @@ def dashboard():
                 "priority_reason": agent.priority_reason,
                 "turn_count": _get_current_task_turn_count(agent),
                 "elapsed": _get_current_task_elapsed(agent),
+                "question_options": get_question_options(agent),
                 "project_name": project.name,
                 "project_slug": project.slug,
                 "project_id": project.id,

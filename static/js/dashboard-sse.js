@@ -660,15 +660,18 @@
      * Matches the server-rendered widget in _agent_card.html.
      * Starts hidden — respond-init.js handles visibility after commander availability check.
      */
-    function buildRespondWidget(agentId, questionText) {
+    function buildRespondWidget(agentId, questionText, questionOptions) {
         var widget = document.createElement('div');
         widget.className = 'respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5';
         widget.setAttribute('data-agent-id', agentId);
         widget.setAttribute('data-question-text', questionText || '');
+        if (questionOptions) {
+            widget.setAttribute('data-question-options', JSON.stringify(questionOptions));
+        }
         widget.style.display = 'none';
 
         widget.innerHTML =
-            '<div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>' +
+            '<div class="respond-options flex flex-col gap-1.5 mb-2"></div>' +
             '<form class="respond-form flex gap-2"' +
             ' onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, ' +
             parseInt(agentId, 10) + '); return false;">' +
@@ -931,13 +934,19 @@
         var existingWidget = card.querySelector('.respond-widget');
         if (state === 'AWAITING_INPUT') {
             if (existingWidget) {
-                // Update question text on existing widget (server-rendered or previously injected)
+                // Update question text and options on existing widget
                 existingWidget.setAttribute('data-question-text', data.task_summary || '');
+                if (data.question_options) {
+                    existingWidget.setAttribute('data-question-options', JSON.stringify(data.question_options));
+                }
             } else {
                 // Inject widget between card-editor and footer
                 var footer = card.querySelector('.border-t.border-border');
                 if (footer) {
-                    card.insertBefore(buildRespondWidget(agentId, data.task_summary || ''), footer);
+                    card.insertBefore(
+                        buildRespondWidget(agentId, data.task_summary || '', data.question_options || null),
+                        footer
+                    );
                 }
             }
         } else if (existingWidget) {

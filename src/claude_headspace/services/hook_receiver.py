@@ -23,11 +23,19 @@ logger = logging.getLogger(__name__)
 
 # Tools where post_tool_use should NOT resume from AWAITING_INPUT
 # because user interaction happens AFTER the tool completes
-USER_INTERACTIVE_TOOLS = {"ExitPlanMode"}
+USER_INTERACTIVE_TOOLS = {"ExitPlanMode", "AskUserQuestion", "EnterPlanMode"}
+
+# Tools where pre_tool_use should transition to AWAITING_INPUT
+# (user interaction happens AFTER the tool completes, not via permission_request)
+PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode", "EnterPlanMode"}
 
 # Don't infer a new task from post_tool_use if the previous task
 # completed less than this many seconds ago (tail-end tool activity).
 INFERRED_TASK_COOLDOWN_SECONDS = 30
+
+# Track which tool triggered AWAITING_INPUT per agent, so post_tool_use
+# only resumes when the matching tool completes (not unrelated tools).
+_awaiting_tool_for_agent: dict[int, str | None] = {}
 
 
 # --- Data types ---
@@ -118,6 +126,7 @@ def configure_receiver(
 def reset_receiver_state() -> None:
     global _receiver_state
     _receiver_state = HookReceiverState()
+    _awaiting_tool_for_agent.clear()
 
 
 # --- Internal helpers ---
@@ -162,10 +171,10 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None) -> None:
     try:
         from .broadcaster import get_broadcaster
-        get_broadcaster().broadcast("turn_created", {
+        payload = {
             "agent_id": agent.id,
             "project_id": agent.project_id,
             "text": text,
@@ -173,7 +182,10 @@ def _broadcast_turn_created(agent: Agent, text: str, task) -> None:
             "intent": "question",
             "task_id": task.id if task else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        if tool_input:
+            payload["tool_input"] = tool_input
+        get_broadcaster().broadcast("turn_created", payload)
     except Exception as e:
         logger.warning(f"Turn created broadcast failed: {e}")
 
@@ -188,6 +200,23 @@ def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> st
     if tool_name:
         return f"Permission needed: {tool_name}"
     return "Awaiting input"
+
+
+def _extract_structured_options(tool_name: str | None, tool_input: dict | None) -> dict | None:
+    """Extract structured AskUserQuestion data for storage in Turn.tool_input.
+
+    Returns the full tool_input dict when the tool is AskUserQuestion and
+    contains valid questions with options. Returns None otherwise.
+    """
+    if tool_name != "AskUserQuestion" or not tool_input or not isinstance(tool_input, dict):
+        return None
+    questions = tool_input.get("questions")
+    if not questions or not isinstance(questions, list) or len(questions) == 0:
+        return None
+    q = questions[0]
+    if not isinstance(q, dict) or not q.get("options"):
+        return None
+    return tool_input
 
 
 def _execute_pending_summarisations(pending: list) -> None:
@@ -302,6 +331,7 @@ def process_session_end(
         now = datetime.now(timezone.utc)
         agent.last_seen_at = now
         agent.ended_at = now
+        _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
 
         lifecycle = _get_lifecycle_manager()
         current_task = lifecycle.get_current_task(agent)
@@ -342,6 +372,7 @@ def process_user_prompt_submit(
     state.record_event(HookEventType.USER_PROMPT_SUBMIT)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+        _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
 
         lifecycle = _get_lifecycle_manager()
         result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=prompt_text)
@@ -474,7 +505,7 @@ def process_stop(
         if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task)
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
                     break
 
         logger.info(
@@ -517,12 +548,15 @@ def _handle_awaiting_input(
 
         # Build question text and create turn BEFORE state transition
         question_text = None
+        structured_options = None
         if tool_name is not None or tool_input is not None:
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
+            structured_options = _extract_structured_options(tool_name, tool_input)
             db.session.add(Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
+                tool_input=structured_options,
             ))
         elif message or title:
             # notification: dedup against recent pre_tool_use turn
@@ -548,18 +582,24 @@ def _handle_awaiting_input(
             trigger=event_type_str, confidence=1.0,
         )
 
+        # Track which tool triggered AWAITING_INPUT so post_tool_use only
+        # resumes when the matching tool completes (not unrelated tools)
+        if tool_name:
+            _awaiting_tool_for_agent[agent.id] = tool_name
+
         db.session.commit()
         broadcast_card_refresh(agent, event_type_str)
 
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
         if question_text:
-            _broadcast_turn_created(agent, question_text, current_task)
+            _broadcast_turn_created(agent, question_text, current_task, tool_input=structured_options)
         elif current_task.turns:
             # Broadcast existing turn (dedup case: pre_tool_use fired first)
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task)
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
+
                     break
 
         logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, AWAITING_INPUT")
@@ -589,10 +629,28 @@ def process_pre_tool_use(
     tool_name: str | None = None,
     tool_input: dict | None = None,
 ) -> HookEventResult:
-    return _handle_awaiting_input(
-        agent, HookEventType.PRE_TOOL_USE, "pre_tool_use",
-        tool_name=tool_name, tool_input=tool_input,
-    )
+    # Only transition to AWAITING_INPUT for known interactive tools
+    # (where user interaction happens AFTER the tool completes).
+    # For all other tools, pre_tool_use is just activity — no state change.
+    if tool_name in PRE_TOOL_USE_INTERACTIVE:
+        return _handle_awaiting_input(
+            agent, HookEventType.PRE_TOOL_USE, "pre_tool_use",
+            tool_name=tool_name, tool_input=tool_input,
+        )
+
+    # Non-interactive tool: lightweight update only (no state change)
+    receiver_state = get_receiver_state()
+    receiver_state.record_event(HookEventType.PRE_TOOL_USE)
+    try:
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+        broadcast_card_refresh(agent, "pre_tool_use")
+        logger.debug(f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, no state change")
+        return HookEventResult(success=True, agent_id=agent.id)
+    except Exception as e:
+        logger.exception(f"Error processing pre_tool_use: {e}")
+        db.session.rollback()
+        return HookEventResult(success=False, error_message=str(e))
 
 
 def process_permission_request(
@@ -670,8 +728,8 @@ def process_post_tool_use(
             return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=TaskState.PROCESSING.value)
 
         if current_task.state == TaskState.AWAITING_INPUT and tool_name in USER_INTERACTIVE_TOOLS:
-            # Interactive tools (e.g. ExitPlanMode) fire post_tool_use before the user
-            # sees the dialog, so we must preserve AWAITING_INPUT state
+            # Interactive tools (e.g. ExitPlanMode, AskUserQuestion) fire post_tool_use
+            # before the user sees the dialog, so we must preserve AWAITING_INPUT state
             db.session.commit()
             broadcast_card_refresh(agent, "post_tool_use")
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
@@ -680,7 +738,23 @@ def process_post_tool_use(
                                    new_state=TaskState.AWAITING_INPUT.value)
 
         if current_task.state == TaskState.AWAITING_INPUT:
-            # Resume: user answered
+            # Only resume if the completing tool matches the one that triggered
+            # AWAITING_INPUT. Otherwise a parallel/unrelated tool completion
+            # would incorrectly clear the pending user interaction.
+            awaiting_tool = _awaiting_tool_for_agent.get(agent.id)
+            if awaiting_tool and tool_name != awaiting_tool:
+                # Different tool completed — preserve AWAITING_INPUT
+                db.session.commit()
+                broadcast_card_refresh(agent, "post_tool_use")
+                logger.info(
+                    f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                    f"preserved AWAITING_INPUT (awaiting={awaiting_tool}, got={tool_name})"
+                )
+                return HookEventResult(success=True, agent_id=agent.id,
+                                       new_state=TaskState.AWAITING_INPUT.value)
+
+            # Resume: matching tool completed (or no tracking) — user answered
+            _awaiting_tool_for_agent.pop(agent.id, None)
             result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=None)
             if result.success:
                 _trigger_priority_scoring()
