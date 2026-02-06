@@ -772,11 +772,15 @@
                 return;
             }
 
-            // Peak: max of all bucket max_frustration values
+            // Peak: max of all bucket max_frustration values, tracking timestamp
             var peak = null;
+            var peakAt = null;
             history.forEach(function(h) {
                 if (h.max_frustration != null) {
-                    peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                    if (peak == null || h.max_frustration > peak) {
+                        peak = h.max_frustration;
+                        peakAt = h.max_frustration_at;
+                    }
                 }
             });
 
@@ -791,7 +795,7 @@
 
             // Update labels for historical view
             this._setLabel('frust-peak-today-label', 'Peak');
-            this._setLabel('frust-peak-today-sublabel', 'Max in period');
+            this._setLabel('frust-peak-today-sublabel', this._formatPeakTime(peakAt));
             this._setLabel('frust-immediate-label', 'Average');
             this._setLabel('frust-immediate-sublabel', 'Period average');
             this._setLabel('frust-shortterm-label', 'Short-term');
@@ -807,13 +811,26 @@
 
         /**
          * Format an ISO timestamp into "HH:MM, X ago" for the peak frustration sublabel.
+         * For dates beyond today, prefixes with short day name: "Wed 14:15, 3 days ago".
          * Returns "Peak score" as fallback when no timestamp is available.
          */
         _formatPeakTime: function(isoString) {
             if (!isoString) return 'Peak score';
             var d = new Date(isoString);
             if (isNaN(d.getTime())) return 'Peak score';
+
             var time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+            // Check if the date is today
+            var now = new Date();
+            var isToday = d.getFullYear() === now.getFullYear() &&
+                          d.getMonth() === now.getMonth() &&
+                          d.getDate() === now.getDate();
+
+            // Prefix with short day name if not today
+            var dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            var prefix = isToday ? '' : dayNames[d.getDay()] + ' ';
+
             var diffMs = Date.now() - d.getTime();
             var diffMin = Math.floor(diffMs / 60000);
             var ago;
@@ -821,11 +838,24 @@
                 ago = 'just now';
             } else if (diffMin < 60) {
                 ago = diffMin + (diffMin === 1 ? ' minute ago' : ' minutes ago');
-            } else {
+            } else if (diffMin < 1440) {
                 var hours = Math.round(diffMin / 60);
                 ago = hours + (hours === 1 ? ' hour ago' : ' hours ago');
+            } else {
+                var days = Math.floor(diffMin / 1440);
+                if (days === 1) {
+                    ago = 'yesterday';
+                } else if (days < 7) {
+                    ago = days + ' days ago';
+                } else if (days < 28) {
+                    var weeks = Math.round(days / 7);
+                    ago = weeks + (weeks === 1 ? ' week ago' : ' weeks ago');
+                } else {
+                    var months = Math.round(days / 30);
+                    ago = months + (months === 1 ? ' month ago' : ' months ago');
+                }
             }
-            return time + ', ' + ago;
+            return prefix + time + ', ' + ago;
         },
 
         /**
