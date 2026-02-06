@@ -30,16 +30,15 @@
                 {% endif %}
             </div>
 
-            <!-- Brain Reboot -->
-            <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick='openBrainReboot({{ kproject.id }}, {{ kproject.name|tojson }}, {{ kproject.slug|tojson }})'
-                    title="Generate brain reboot context document">
-                Brain Reboot
-            </button>
-        </div>
-        <!-- Active count -->
-        <div class="mt-1 ml-[42px]">
-            <span class="text-xs font-mono text-cyan">{{ kproject.active_count }} active agent{{ 's' if kproject.active_count != 1 else '' }}</span>
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-mono text-muted">{{ kproject.active_count }} active agent{{ 's' if kproject.active_count != 1 else '' }}</span>
+                <!-- Brain Reboot -->
+                <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick='openBrainReboot({{ kproject.id }}, {{ kproject.name|tojson }}, {{ kproject.slug|tojson }})'
+                        title="Generate brain reboot context document">
+                    Brain Reboot
+                </button>
+            </div>
         </div>
     </div>
 

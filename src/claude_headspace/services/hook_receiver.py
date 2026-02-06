@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 # Tools where post_tool_use should NOT resume from AWAITING_INPUT
 # because user interaction happens AFTER the tool completes
-USER_INTERACTIVE_TOOLS = {"ExitPlanMode", "AskUserQuestion", "EnterPlanMode"}
+USER_INTERACTIVE_TOOLS = {"ExitPlanMode", "AskUserQuestion"}
 
 # Tools where pre_tool_use should transition to AWAITING_INPUT
 # (user interaction happens AFTER the tool completes, not via permission_request)
-PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode", "EnterPlanMode"}
+PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode"}
 
 # Don't infer a new task from post_tool_use if the previous task
 # completed less than this many seconds ago (tail-end tool activity).

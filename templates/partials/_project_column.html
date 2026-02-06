@@ -6,7 +6,7 @@
     <div class="p-4 bg-elevated border-b border-cyan/20"
          style="box-shadow: 0 1px 8px rgba(86,212,221,0.08);">
         <!-- Heading row: dots + project name + brain reboot -->
-        <div class="flex items-center justify-between">
+        <div class="flex items-start justify-between">
             <div class="flex items-center gap-3">
                 <!-- State indicator dots -->
                 <div class="flex items-center gap-1.5">
@@ -31,16 +31,15 @@
                 {% endif %}
             </div>
 
-            <!-- Brain Reboot -->
-            <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick='openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})'
-                    title="Generate brain reboot context document">
-                Brain Reboot
-            </button>
-        </div>
-        <!-- Active count -->
-        <div class="mt-1 ml-[42px]">
-            <span class="text-xs font-mono text-cyan">{{ project.active_count }} active agent{{ 's' if project.active_count != 1 else '' }}</span>
+            <div class="flex flex-col items-end gap-0.5">
+                <!-- Brain Reboot -->
+                <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick='openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})'
+                        title="Generate brain reboot context document">
+                    Brain Reboot
+                </button>
+                <span class="text-xs font-mono text-muted">{{ project.active_count }} active agent{{ 's' if project.active_count != 1 else '' }}</span>
+            </div>
         </div>
     </div>
 
