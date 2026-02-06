@@ -256,11 +256,42 @@ def get_task_instruction(agent: Agent) -> str | None:
 
     current_task = agent.get_current_task()
     if current_task and current_task.instruction:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"task={current_task.id}, state={current_task.state.value}, "
+            f"instruction={current_task.instruction!r:.60}"
+        )
         return current_task.instruction
 
     # Check most recent task (any state) for instruction
     if agent.tasks and agent.tasks[0].instruction:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"fallback to tasks[0]={agent.tasks[0].id}, "
+            f"state={agent.tasks[0].state.value}, "
+            f"instruction={agent.tasks[0].instruction!r:.60}"
+        )
         return agent.tasks[0].instruction
+
+    # Debug: log why we fell through
+    if current_task:
+        logger.info(
+            f"get_task_instruction: agent={agent.id}, "
+            f"task={current_task.id}, state={current_task.state.value}, "
+            f"instruction=None (not yet generated)"
+        )
+    elif agent.tasks:
+        logger.info(
+            f"get_task_instruction: agent={agent.id}, "
+            f"no current_task, tasks[0]={agent.tasks[0].id}, "
+            f"state={agent.tasks[0].state.value}, "
+            f"instruction={agent.tasks[0].instruction!r}"
+        )
+    else:
+        logger.info(
+            f"get_task_instruction: agent={agent.id}, "
+            f"no current_task, no tasks"
+        )
 
     # Fall back to first USER COMMAND turn's raw text
     task = current_task or (agent.tasks[0] if agent.tasks else None)

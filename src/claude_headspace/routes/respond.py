@@ -226,6 +226,11 @@ def respond_to_agent(agent_id: int):
         current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
+        # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
+        # don't incorrectly preserve AWAITING_INPUT state
+        from ..services.hook_receiver import _awaiting_tool_for_agent
+        _awaiting_tool_for_agent.pop(agent_id, None)
+
         db.session.commit()
 
         broadcast_card_refresh(agent, "respond")

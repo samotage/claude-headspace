@@ -278,7 +278,64 @@ ls -la ~/.claude/projects/ 2>/dev/null
 If the directory doesn't exist, that's OK — Claude Code creates it on first session.
 If it exists, confirm the current user has read permission on it and its contents.
 
-## Step 7: Verify the Headspace server (OPTIONAL)
+## Step 7: Configure global Claude Code instructions (REQUIRED)
+
+Tell the user: "Setting up global Claude Code instructions in ~/.claude/CLAUDE.md. This file is loaded into every Claude Code session on your machine. It configures a task completion signal so agents clearly indicate when work is done."
+
+Check if ~/.claude/CLAUDE.md already exists:
+```bash
+test -f ~/.claude/CLAUDE.md && echo "EXISTS" || echo "NOT_FOUND"
+```
+
+If EXISTS, check whether the task completion signal section is already present:
+```bash
+grep -q "Task Completion Signal" ~/.claude/CLAUDE.md && echo "ALREADY_CONFIGURED" || echo "NEEDS_UPDATE"
+```
+
+If ALREADY_CONFIGURED, skip this step — the instruction is already in place.
+
+If NOT_FOUND or NEEDS_UPDATE, append the following content to ~/.claude/CLAUDE.md (create the file if it doesn't exist):
+
+```markdown
+# Global Claude Code Instructions
+
+## Task Completion Signal
+
+**IMPORTANT: This marker is machine-parsed by monitoring software. It MUST appear at the end of every completed response.**
+
+When you have finished responding to the user's request, output this marker as the very last thing in your response:
+
+---
+TASK COMPLETE — <1-2 sentence summary of what was done>
+---
+
+If tests were run, include the result:
+
+---
+TASK COMPLETE — <summary>. Tests: <N> passed.
+---
+
+**When to include it:** Every response where you have finished the work the user asked for. This includes answering questions, running commands, writing code, fixing bugs, research — anything where the user's request is fulfilled.
+
+**When to NOT include it:** Only when you are asking the user a clarifying question or waiting for their input before you can proceed. If the task isn't done because you need more information, don't include it.
+
+**Examples:**
+- User asks "what time is it?" and you answer -> TASK COMPLETE
+- User asks "fix the login bug" and you fix it -> TASK COMPLETE
+- User asks "add a feature" and you need to ask which approach -> NO (you're asking a question)
+- User asks "explain this code" and you explain it -> TASK COMPLETE
+- You're mid-conversation clarifying requirements -> NO (not done yet)
+```
+
+If the file already existed and NEEDS_UPDATE, append only the "## Task Completion Signal" section
+(not the "# Global Claude Code Instructions" heading) to avoid duplicate top-level headings.
+
+Verify the content was written:
+```bash
+grep "Task Completion Signal" ~/.claude/CLAUDE.md
+```
+
+## Step 8: Verify the Headspace server (OPTIONAL)
 
 Tell the user: "Checking whether the Headspace server is running on localhost:5055. This step is optional — hooks work fine even when the server is offline."
 
@@ -298,7 +355,7 @@ Do NOT send a test hook event (e.g. to `/hook/session-start`). Test events creat
 phantom agents on the dashboard that never receive a session-end and persist forever.
 Connectivity is sufficiently verified by the health check above.
 
-## Step 8: Report results
+## Step 9: Report results
 
 Print a summary checklist:
 
@@ -311,6 +368,7 @@ Claude Headspace Setup Results
 [PASS/FAIL] claude-headspace CLI symlinked to $USER_BIN
 [PASS/FAIL/MANUAL] PATH configured (bin directory in PATH or shell config updated)
 [PASS/FAIL] ~/.claude/projects/ accessible
+[PASS/FAIL] Global Claude Code instructions configured (~/.claude/CLAUDE.md)
 [PASS/SKIP] tmux installed (optional, enables respond from dashboard)
 [PASS/SKIP] terminal-notifier installed (optional)
 [PASS/SKIP] Headspace server reachable (health check, optional)

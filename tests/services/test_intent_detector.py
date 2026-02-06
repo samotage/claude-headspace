@@ -1398,6 +1398,55 @@ class TestCookedCompletionMarker:
         assert result.intent == TurnIntent.COMPLETION
 
 
+class TestTaskCompleteMarker:
+    """Tests for TASK COMPLETE structured completion marker."""
+
+    def test_task_complete_marker_basic(self):
+        """'TASK COMPLETE — <summary>' should detect as completion."""
+        result = detect_agent_intent(
+            "---\nTASK COMPLETE — Returned current Unix timestamp.\n---"
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_with_tests(self):
+        """'TASK COMPLETE — <summary>. Tests: N passed.' should detect as completion."""
+        result = detect_agent_intent(
+            "---\nTASK COMPLETE — Fixed login bug. Tests: 12 passed.\n---"
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_inline(self):
+        """TASK COMPLETE marker without surrounding --- lines should still detect."""
+        result = detect_agent_intent(
+            "TASK COMPLETE — Added the new endpoint and updated tests."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_at_end_of_long_response(self):
+        """TASK COMPLETE marker at end of a long agent response should detect as completion."""
+        lines = ["Working on the implementation..."] * 20
+        lines.append("---")
+        lines.append("TASK COMPLETE — Implemented feature and ran all tests.")
+        lines.append("---")
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_with_regular_dash(self):
+        """TASK COMPLETE with regular dash should also detect."""
+        result = detect_agent_intent(
+            "TASK COMPLETE - Updated the configuration."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_case_insensitive(self):
+        """TASK COMPLETE should match case-insensitively."""
+        result = detect_agent_intent(
+            "Task Complete — Refactored the service layer."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+
 class TestGitSuccessPatterns:
     """Tests for git commit/push completion patterns."""
 
@@ -1863,3 +1912,75 @@ class TestTrailingQuestionGuard:
         # With (?m), $ matches end-of-line so this should still detect
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.QUESTION
+
+
+class TestTaskCompleteMarkerInFullResponse:
+    """Tests that TASK COMPLETE marker is detected as COMPLETION in realistic full responses.
+
+    Regression tests for task 1057: a joke response with embedded question marks
+    (inside the joke text) was not being detected as COMPLETION despite ending
+    with the TASK COMPLETE marker. The task stayed in AWAITING_INPUT instead of
+    transitioning to COMPLETE.
+    """
+
+    def test_joke_response_with_task_complete_marker(self):
+        """Full joke response ending with TASK COMPLETE marker should be COMPLETION.
+
+        This is the exact scenario that caused task 1057 to stay in AWAITING_INPUT:
+        a joke containing embedded question marks followed by the TASK COMPLETE marker.
+        """
+        text = (
+            "Here's an absurdist one:\n"
+            "\n"
+            "A horse walks into a bar. The bartender asks, \"Why the long face?\" "
+            "The horse says, \"I just realized I'm a metaphor for existential dread.\" "
+            "The bartender nods, turns into a lamp, and nobody is surprised because "
+            "the bar was actually a dream being had by a potato.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Delivered an absurdist joke after asking the user's preference.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )
+
+    def test_one_liner_joke_with_task_complete_marker(self):
+        """One-liner joke with TASK COMPLETE marker should be COMPLETION."""
+        text = (
+            "Here's a one-liner for you:\n"
+            "\n"
+            "I told my suitcase there would be no vacation this year "
+            "\u2014 now I'm dealing with emotional baggage.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Delivered a one-liner joke after asking the user's preference.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )
+
+    def test_response_with_embedded_questions_and_task_complete(self):
+        """Response containing question marks in quoted text + TASK COMPLETE should be COMPLETION.
+
+        The embedded question marks (inside quotes) must not override the TASK COMPLETE
+        marker at the end via the trailing question guard or question patterns.
+        """
+        text = (
+            "The function checks if the user asked \"are you sure?\" before proceeding.\n"
+            "I've updated the validation logic to handle this edge case.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Updated validation logic for quoted question handling.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )

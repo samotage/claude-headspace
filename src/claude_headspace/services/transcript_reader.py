@@ -79,6 +79,8 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
 
         # Walk backwards, collecting assistant texts until we hit a user message
         parts: list[str] = []
+        logger.debug(f"TRANSCRIPT_READ: walking backwards through {len(lines)} lines from {transcript_path}")
+        lines_scanned = 0
         for line in reversed(lines):
             line = line.strip()
             if not line:
@@ -90,10 +92,24 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
                 continue
 
             entry_type = data.get("type")
+            lines_scanned += 1
 
-            # User message marks the start of the current turn — stop collecting
+            # User message with content marks the start of the current turn — stop collecting.
+            # Only skip user entries with NO content at all (truly empty turn boundary
+            # markers). User entries with string content (prompts), tool_result blocks,
+            # or any other content are real turn boundaries.
             if entry_type == "user":
-                break
+                msg = data.get("message", {})
+                content = msg.get("content") if isinstance(msg, dict) else None
+                has_content = bool(
+                    (isinstance(content, str) and content.strip())
+                    or (isinstance(content, list) and len(content) > 0)
+                )
+                if has_content:
+                    logger.debug(f"TRANSCRIPT_READ: hit user entry with content after scanning {lines_scanned} lines, collected {len(parts)} parts")
+                    break
+                logger.debug(f"TRANSCRIPT_READ: skipping empty user entry at scan line {lines_scanned}")
+                continue
 
             if entry_type != "assistant":
                 continue
@@ -101,8 +117,10 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
             _role, text = _extract_text(data)
             if text:
                 parts.append(text)
+                logger.debug(f"TRANSCRIPT_READ: collected assistant text ({len(text)} chars): {repr(text[:100])}")
 
         if not parts:
+            logger.debug(f"TRANSCRIPT_READ: no assistant text found after scanning {lines_scanned} lines")
             return TranscriptReadResult(success=True, text="")
 
         # Reverse to restore chronological order

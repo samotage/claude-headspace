@@ -67,6 +67,8 @@ BLOCKED_PATTERNS = [
 
 # Regex patterns for completion detection
 COMPLETION_PATTERNS = [
+    # TASK COMPLETE marker (structured completion signal from CLAUDE.md instructions)
+    r"(?i)TASK COMPLETE\s*[—\-–]",    
     # Direct completion phrases
     r"(?i)^(?:done|complete|finished|all (?:done|set|finished))[\.!\s]*$",
     # Task completion phrases
@@ -388,9 +390,12 @@ def detect_agent_intent(
     Returns:
         IntentResult with detected intent and confidence
     """
+    text_preview = repr(text[:120]) if text else "None"
+    logger.debug(f"AGENT_INTENT called: text={text_preview}")
+
     # Handle missing/empty text - default to progress
     if not text or not text.strip():
-        logger.debug("Empty/missing text, defaulting to PROGRESS")
+        logger.debug("AGENT_INTENT result: PROGRESS (empty text)")
         return IntentResult(
             intent=TurnIntent.PROGRESS,
             confidence=0.5,
@@ -581,7 +586,15 @@ def detect_intent(
     Returns:
         IntentResult with detected intent and confidence
     """
+    text_preview = repr(text[:120]) if text else "None"
+    logger.info(
+        f"INTENT_DETECT called: actor={actor.value}, state={current_state.value}, text={text_preview}"
+    )
     if actor == TurnActor.USER:
-        return detect_user_intent(text, current_state)
+        result = detect_user_intent(text, current_state)
     else:
-        return detect_agent_intent(text)
+        result = detect_agent_intent(text)
+    logger.info(
+        f"INTENT_DETECT result: intent={result.intent.value}, confidence={result.confidence}, pattern={result.matched_pattern}"
+    )
+    return result

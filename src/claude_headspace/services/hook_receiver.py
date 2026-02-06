@@ -22,8 +22,12 @@ from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_inst
 logger = logging.getLogger(__name__)
 
 # Tools where post_tool_use should NOT resume from AWAITING_INPUT
-# because user interaction happens AFTER the tool completes
-USER_INTERACTIVE_TOOLS = {"ExitPlanMode", "AskUserQuestion"}
+# because user interaction happens AFTER the tool completes.
+# NOTE: AskUserQuestion is intentionally excluded — its post_tool_use
+# fires AFTER the user answers the dialog, so we should resume to PROCESSING.
+# ExitPlanMode is different: post_tool_use fires after the plan is shown
+# but BEFORE the user approves/rejects (approval comes as a new user prompt).
+USER_INTERACTIVE_TOOLS = {"ExitPlanMode"}
 
 # Tools where pre_tool_use should transition to AWAITING_INPUT
 # (user interaction happens AFTER the tool completes, not via permission_request)
@@ -298,10 +302,16 @@ def _execute_pending_summarisations(pending: list) -> None:
 
 def _extract_transcript_content(agent: Agent) -> str:
     if not agent.transcript_path:
+        logger.debug(f"TRANSCRIPT_EXTRACT agent={agent.id}: no transcript_path")
         return ""
     try:
         from .transcript_reader import read_transcript_file
         result = read_transcript_file(agent.transcript_path)
+        logger.debug(
+            f"TRANSCRIPT_EXTRACT agent={agent.id}: success={result.success}, "
+            f"text_len={len(result.text) if result.text else 0}, "
+            f"error={result.error}"
+        )
         if result.success and result.text:
             return result.text
     except Exception as e:
@@ -526,8 +536,17 @@ def process_stop(
                     new_state="AWAITING_INPUT",
                 )
 
-        # Extract transcript and detect intent
+        # Extract transcript and detect intent.
+        # Claude Code may fire the stop hook before flushing the final assistant
+        # response to the JSONL file.  Retry after a short delay if empty.
+        import time
         agent_text = _extract_transcript_content(agent)
+        if not agent_text:
+            time.sleep(0.75)
+            agent_text = _extract_transcript_content(agent)
+            if not agent_text:
+                time.sleep(1.0)
+                agent_text = _extract_transcript_content(agent)
 
         try:
             from flask import current_app
@@ -870,8 +889,8 @@ def process_post_tool_use(
             return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=TaskState.PROCESSING.value)
 
         if current_task.state == TaskState.AWAITING_INPUT and tool_name in USER_INTERACTIVE_TOOLS:
-            # Interactive tools (e.g. ExitPlanMode, AskUserQuestion) fire post_tool_use
-            # before the user sees the dialog, so we must preserve AWAITING_INPUT state
+            # ExitPlanMode fires post_tool_use after showing the plan but before the
+            # user approves/rejects — preserve AWAITING_INPUT until user_prompt_submit
             db.session.commit()
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
                         f"preserved AWAITING_INPUT for interactive tool {tool_name}")
