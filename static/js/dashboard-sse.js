@@ -656,6 +656,33 @@
     }
 
     /**
+     * Build a respond widget element for AWAITING_INPUT state.
+     * Matches the server-rendered widget in _agent_card.html.
+     * Starts hidden — respond-init.js handles visibility after commander availability check.
+     */
+    function buildRespondWidget(agentId, questionText) {
+        var widget = document.createElement('div');
+        widget.className = 'respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5';
+        widget.setAttribute('data-agent-id', agentId);
+        widget.setAttribute('data-question-text', questionText || '');
+        widget.style.display = 'none';
+
+        widget.innerHTML =
+            '<div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>' +
+            '<form class="respond-form flex gap-2"' +
+            ' onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, ' +
+            parseInt(agentId, 10) + '); return false;">' +
+                '<input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"' +
+                ' placeholder="Type a response..." autocomplete="off">' +
+                '<button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded ' +
+                'bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">' +
+                'Send</button>' +
+            '</form>';
+
+        return widget;
+    }
+
+    /**
      * Find an agent's card element — may be an <article> (full card) or
      * a <details> (condensed completed-task card).
      */
@@ -743,6 +770,9 @@
                     taskSummary.classList.remove('text-green');
                     taskSummary.classList.add('text-secondary');
                 }
+                // Remove respond widget if present (agent was AWAITING_INPUT -> COMPLETE)
+                var resetWidget = card.querySelector('.respond-widget');
+                if (resetWidget) resetWidget.remove();
                 // Hide line 04 and task stats for IDLE reset
                 var line04Row = card.querySelector('.card-line-04');
                 if (line04Row) line04Row.style.display = 'none';
@@ -895,6 +925,23 @@
             }
         } else if (line04Row) {
             line04Row.style.display = 'none';
+        }
+
+        // Respond widget: inject for AWAITING_INPUT, remove otherwise
+        var existingWidget = card.querySelector('.respond-widget');
+        if (state === 'AWAITING_INPUT') {
+            if (existingWidget) {
+                // Update question text on existing widget (server-rendered or previously injected)
+                existingWidget.setAttribute('data-question-text', data.task_summary || '');
+            } else {
+                // Inject widget between card-editor and footer
+                var footer = card.querySelector('.border-t.border-border');
+                if (footer) {
+                    card.insertBefore(buildRespondWidget(agentId, data.task_summary || ''), footer);
+                }
+            }
+        } else if (existingWidget) {
+            existingWidget.remove();
         }
 
         // Footer: priority score and task stats (turns + elapsed)
