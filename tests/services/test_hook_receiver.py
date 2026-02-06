@@ -13,6 +13,7 @@ from claude_headspace.services.hook_receiver import (
     _awaiting_tool_for_agent,
     _extract_question_text,
     _extract_structured_options,
+    _synthesize_permission_options,
     configure_receiver,
     get_receiver_state,
     process_notification,
@@ -1255,3 +1256,155 @@ class TestProcessPostToolUse:
         # State should NOT have changed
         assert mock_task.state == TaskState.PROCESSING
         assert result.state_changed is False
+
+
+class TestSynthesizePermissionOptions:
+    """Tests for _synthesize_permission_options function."""
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    def test_returns_options_when_pane_available(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.return_value = [
+            {"label": "Yes"},
+            {"label": "No"},
+        ]
+
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls"})
+
+        assert result is not None
+        assert result["source"] == "permission_pane_capture"
+        assert len(result["questions"]) == 1
+        assert result["questions"][0]["question"] == "Permission needed: Bash"
+        assert result["questions"][0]["options"] == [
+            {"label": "Yes"},
+            {"label": "No"},
+        ]
+
+    def test_returns_none_without_tmux_pane_id(self, mock_agent):
+        mock_agent.tmux_pane_id = None
+
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls"})
+
+        assert result is None
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    def test_returns_none_on_capture_failure(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.return_value = None
+
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls"})
+
+        assert result is None
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    def test_returns_none_on_exception(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.side_effect = RuntimeError("tmux error")
+
+        result = _synthesize_permission_options(mock_agent, "Bash", None)
+
+        assert result is None
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    def test_question_text_with_no_tool_name(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.return_value = [
+            {"label": "Yes"},
+            {"label": "No"},
+        ]
+
+        result = _synthesize_permission_options(mock_agent, None, None)
+
+        assert result["questions"][0]["question"] == "Permission needed"
+
+
+class TestPermissionPaneCapture:
+    """Integration tests for permission pane capture in the hook flow."""
+
+    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_permission_request_uses_synthesized_options(
+        self, mock_db, mock_synthesize, mock_agent, fresh_state
+    ):
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_task.turns = []
+        mock_agent.get_current_task.return_value = mock_task
+
+        synthesized = {
+            "questions": [{
+                "question": "Permission needed: Bash",
+                "options": [{"label": "Yes"}, {"label": "No"}],
+            }],
+            "source": "permission_pane_capture",
+        }
+        mock_synthesize.return_value = synthesized
+
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash", tool_input={"command": "npm install"},
+        )
+
+        assert result.success is True
+        assert result.state_changed is True
+        # Verify the synthesized options were stored on the Turn
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.tool_input == synthesized
+
+    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_permission_request_falls_back_when_synthesis_returns_none(
+        self, mock_db, mock_synthesize, mock_agent, fresh_state
+    ):
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_task.turns = []
+        mock_agent.get_current_task.return_value = mock_task
+
+        mock_synthesize.return_value = None
+
+        result = process_permission_request(
+            mock_agent, "session-123",
+            tool_name="Bash", tool_input={"command": "ls"},
+        )
+
+        assert result.success is True
+        # Turn created but without structured options
+        mock_db.session.add.assert_called_once()
+        added_turn = mock_db.session.add.call_args[0][0]
+        assert added_turn.tool_input is None
+
+    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_pre_tool_use_does_not_call_synthesize(
+        self, mock_db, mock_synthesize, mock_agent, fresh_state
+    ):
+        from claude_headspace.models.task import TaskState
+
+        mock_task = MagicMock()
+        mock_task.state = TaskState.PROCESSING
+        mock_task.id = 10
+        mock_agent.get_current_task.return_value = mock_task
+
+        process_pre_tool_use(
+            mock_agent, "session-123",
+            tool_name="AskUserQuestion",
+            tool_input={
+                "questions": [{
+                    "question": "Which?",
+                    "options": [{"label": "A"}, {"label": "B"}],
+                    "header": "Choice",
+                    "multiSelect": False,
+                }]
+            },
+        )
+
+        # _synthesize_permission_options should NOT be called for pre_tool_use
+        mock_synthesize.assert_not_called()

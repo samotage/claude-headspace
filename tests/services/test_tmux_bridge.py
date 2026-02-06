@@ -12,8 +12,10 @@ from claude_headspace.services.tmux_bridge import (
     TmuxBridgeErrorType,
     _classify_subprocess_error,
     capture_pane,
+    capture_permission_options,
     check_health,
     list_panes,
+    parse_permission_options,
     send_keys,
     send_text,
 )
@@ -340,3 +342,141 @@ class TestListPanes:
         result = list_panes()
 
         assert result == []
+
+
+class TestParsePermissionOptions:
+    """Tests for parse_permission_options function."""
+
+    def test_two_options(self):
+        text = "  1. Yes\n  2. No\n"
+        result = parse_permission_options(text)
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+
+    def test_three_options(self):
+        text = (
+            "  1. Yes\n"
+            "  2. Yes, and don't ask again\n"
+            "  3. No\n"
+        )
+        result = parse_permission_options(text)
+        assert result == [
+            {"label": "Yes"},
+            {"label": "Yes, and don't ask again"},
+            {"label": "No"},
+        ]
+
+    def test_arrow_indicator(self):
+        text = (
+            "❯ 1. Yes\n"
+            "  2. Yes, and don't ask again\n"
+            "  3. No\n"
+        )
+        result = parse_permission_options(text)
+        assert result == [
+            {"label": "Yes"},
+            {"label": "Yes, and don't ask again"},
+            {"label": "No"},
+        ]
+
+    def test_greater_than_indicator(self):
+        text = "> 1. Yes\n  2. No\n"
+        result = parse_permission_options(text)
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+
+    def test_ansi_escape_codes_stripped(self):
+        text = (
+            "\x1b[36m  1. Yes\x1b[0m\n"
+            "\x1b[36m  2. No\x1b[0m\n"
+        )
+        result = parse_permission_options(text)
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+
+    def test_empty_text(self):
+        assert parse_permission_options("") is None
+
+    def test_none_text(self):
+        assert parse_permission_options(None) is None
+
+    def test_no_options_found(self):
+        text = "Some random output\nNo numbered items here\n"
+        assert parse_permission_options(text) is None
+
+    def test_single_option_returns_none(self):
+        text = "  1. Yes\n"
+        assert parse_permission_options(text) is None
+
+    def test_non_sequential_numbering_returns_none(self):
+        text = "  2. Option A\n  3. Option B\n"
+        assert parse_permission_options(text) is None
+
+    def test_options_among_other_content(self):
+        text = (
+            "Do you want to proceed?\n"
+            "\n"
+            "  1. Yes\n"
+            "  2. Yes, and don't ask again\n"
+            "  3. No\n"
+            "\n"
+        )
+        result = parse_permission_options(text)
+        assert result == [
+            {"label": "Yes"},
+            {"label": "Yes, and don't ask again"},
+            {"label": "No"},
+        ]
+
+    def test_labels_are_trimmed(self):
+        text = "  1. Yes   \n  2. No   \n"
+        result = parse_permission_options(text)
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+
+
+class TestCapturePermissionOptions:
+    """Tests for capture_permission_options function."""
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_success_on_first_attempt(self, mock_capture):
+        mock_capture.return_value = "  1. Yes\n  2. No\n"
+
+        result = capture_permission_options("%5", retry_delay_ms=0)
+
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+        assert mock_capture.call_count == 1
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_retry_on_empty_pane(self, mock_capture):
+        mock_capture.side_effect = [
+            "",  # First attempt: empty
+            "  1. Yes\n  2. No\n",  # Second attempt: success
+        ]
+
+        result = capture_permission_options("%5", retry_delay_ms=0)
+
+        assert result == [{"label": "Yes"}, {"label": "No"}]
+        assert mock_capture.call_count == 2
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_all_attempts_fail(self, mock_capture):
+        mock_capture.return_value = "some random text\n"
+
+        result = capture_permission_options("%5", max_attempts=3, retry_delay_ms=0)
+
+        assert result is None
+        assert mock_capture.call_count == 3
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_retry_on_no_options_then_success(self, mock_capture):
+        mock_capture.side_effect = [
+            "Loading...\n",  # No options yet
+            "Loading...\n",  # Still no options
+            "  1. Yes\n  2. Yes, and don't ask again\n  3. No\n",  # Options rendered
+        ]
+
+        result = capture_permission_options("%5", max_attempts=3, retry_delay_ms=0)
+
+        assert result == [
+            {"label": "Yes"},
+            {"label": "Yes, and don't ask again"},
+            {"label": "No"},
+        ]
+        assert mock_capture.call_count == 3

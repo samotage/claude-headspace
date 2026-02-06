@@ -7,6 +7,7 @@ as genuine keyboard input.
 """
 
 import logging
+import re
 import subprocess
 import time
 from enum import Enum
@@ -363,6 +364,77 @@ def capture_pane(
     except Exception as e:
         logger.warning(f"capture-pane failed for {pane_id}: {e}")
         return ""
+
+
+def parse_permission_options(pane_text: str) -> list[dict[str, str]] | None:
+    """Parse numbered permission options from tmux pane content.
+
+    Matches lines like:
+      1. Yes
+      ❯ 2. Yes, and don't ask again
+        3. No
+
+    Args:
+        pane_text: Raw captured pane text (may contain ANSI escape codes)
+
+    Returns:
+        List of {"label": "..."} dicts if >= 2 sequential options found, else None
+    """
+    if not pane_text:
+        return None
+
+    # Strip ANSI escape codes
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", pane_text)
+
+    # Match numbered option lines (with optional arrow indicator prefix)
+    pattern = r"^\s*(?:[❯›>]\s*)?(\d+)\.\s+(.+?)\s*$"
+    matches = re.findall(pattern, clean, re.MULTILINE)
+
+    if len(matches) < 2:
+        return None
+
+    # Validate sequential numbering starting from 1
+    for i, (num_str, _label) in enumerate(matches):
+        if int(num_str) != i + 1:
+            return None
+
+    return [{"label": label} for _num, label in matches]
+
+
+def capture_permission_options(
+    pane_id: str,
+    max_attempts: int = 3,
+    retry_delay_ms: int = 200,
+    capture_lines: int = 30,
+) -> list[dict[str, str]] | None:
+    """Capture tmux pane content and parse permission dialog options.
+
+    Retries to handle the race condition where the hook fires before
+    the dialog has fully rendered in the terminal.
+
+    Args:
+        pane_id: The tmux pane ID
+        max_attempts: Number of capture+parse attempts
+        retry_delay_ms: Delay in ms between attempts
+        capture_lines: Number of pane lines to capture
+
+    Returns:
+        List of {"label": "..."} dicts if options found, else None
+    """
+    for attempt in range(max_attempts):
+        pane_text = capture_pane(pane_id, lines=capture_lines)
+        options = parse_permission_options(pane_text)
+        if options is not None:
+            logger.debug(
+                f"Parsed {len(options)} permission options from pane {pane_id} "
+                f"(attempt {attempt + 1})"
+            )
+            return options
+        if attempt < max_attempts - 1:
+            time.sleep(retry_delay_ms / 1000.0)
+
+    logger.debug(f"No permission options found in pane {pane_id} after {max_attempts} attempts")
+    return None
 
 
 def list_panes(

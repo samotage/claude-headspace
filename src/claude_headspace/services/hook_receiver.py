@@ -219,6 +219,45 @@ def _extract_structured_options(tool_name: str | None, tool_input: dict | None) 
     return tool_input
 
 
+def _synthesize_permission_options(
+    agent: Agent,
+    tool_name: str | None,
+    tool_input: dict | None,
+) -> dict | None:
+    """Capture permission dialog options from tmux pane and build AskUserQuestion-compatible dict.
+
+    When a permission-request hook fires, the actual numbered options (e.g. "1. Yes / 2. No")
+    are rendered in the terminal but not included in the hook payload. This function captures
+    the tmux pane content, parses the options, and wraps them in the same format that
+    AskUserQuestion uses so the existing button-rendering pipeline works unchanged.
+
+    Returns None if the agent has no tmux_pane_id or if capture/parse fails.
+    """
+    if not agent.tmux_pane_id:
+        return None
+
+    try:
+        from . import tmux_bridge
+        options = tmux_bridge.capture_permission_options(agent.tmux_pane_id)
+    except Exception as e:
+        logger.warning(f"Permission option capture failed for agent {agent.id}: {e}")
+        return None
+
+    if not options:
+        return None
+
+    # Build question text from tool_name context
+    question_text = f"Permission needed: {tool_name}" if tool_name else "Permission needed"
+
+    return {
+        "questions": [{
+            "question": question_text,
+            "options": options,
+        }],
+        "source": "permission_pane_capture",
+    }
+
+
 def _execute_pending_summarisations(pending: list) -> None:
     if not pending:
         return
@@ -553,6 +592,9 @@ def _handle_awaiting_input(
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
             structured_options = _extract_structured_options(tool_name, tool_input)
+            # For permission_request, try capturing options from the tmux pane
+            if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
+                structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
             db.session.add(Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
