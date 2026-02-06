@@ -263,6 +263,29 @@ body::after {
     color: var(--red);
 }
 
+/* Bridge indicator — connected terminals icon */
+.bridge-indicator {
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+}
+.bridge-icon {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -3px;
+    color: rgba(115, 224, 190, 0.9);
+    line-height: 1;
+    position: relative;
+    top: -2px;
+    text-shadow: 0 0 6px rgba(115, 224, 190, 0.5);
+    animation: bridge-glow 3s ease-in-out infinite;
+}
+@keyframes bridge-glow {
+    0%, 100% { text-shadow: 0 0 6px rgba(115, 224, 190, 0.3); }
+    50% { text-shadow: 0 0 10px rgba(115, 224, 190, 0.7); }
+}
+
 /* Card text truncation — 3-line clamp with ellipsis */
 .task-instruction,
 .task-summary {

@@ -459,11 +459,41 @@ def _get_current_task_elapsed(agent: Agent) -> str | None:
         return "<1m"
 
 
+def _is_permission_question(text: str | None) -> bool:
+    """Check if question text looks like a permission request summary."""
+    if not text or not isinstance(text, str):
+        return False
+    # Permission summarizer outputs like "Bash: ls /foo", "Read: src/file.py",
+    # "Permission needed: Bash", "Permission: ToolName", or generic waiting text
+    permission_prefixes = (
+        "Bash:", "Read:", "Write:", "Edit:", "Glob:", "Grep:",
+        "NotebookEdit:", "WebFetch:", "WebSearch:",
+        "Permission needed:", "Permission:",
+    )
+    return text.startswith(permission_prefixes) or text == "Claude is waiting for your input"
+
+
+def _default_permission_options(question_text: str) -> dict:
+    """Build default Yes/No structured options for permission requests."""
+    return {
+        "questions": [{
+            "question": question_text,
+            "options": [
+                {"label": "Yes", "description": "Allow this action"},
+                {"label": "No", "description": "Deny this action"},
+            ],
+        }],
+        "source": "card_state_fallback",
+    }
+
+
 def get_question_options(agent: Agent) -> dict | None:
     """Get structured AskUserQuestion options for an agent in AWAITING_INPUT state.
 
     Finds the most recent AGENT QUESTION turn's tool_input field, which
     contains the full AskUserQuestion structure (questions with options).
+    Falls back to default Yes/No options for permission-type questions
+    when no structured options were stored on the turn.
 
     Args:
         agent: The agent
@@ -482,7 +512,12 @@ def get_question_options(agent: Agent) -> dict | None:
 
     for turn in reversed(current_task.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
-            return turn.tool_input
+            if turn.tool_input:
+                return turn.tool_input
+            # No structured options stored — fallback for permission requests
+            if _is_permission_question(turn.text):
+                return _default_permission_options(turn.text or "Permission needed")
+            return None
     return None
 
 
@@ -531,6 +566,21 @@ def build_card_state(agent: Agent) -> dict:
     options = get_question_options(agent)
     if options:
         card["question_options"] = options
+
+    # Bridge connectivity: cache first, live check fallback
+    card["is_bridge_connected"] = False
+    if agent.tmux_pane_id:
+        try:
+            commander = current_app.extensions.get("commander_availability")
+            if commander:
+                available = commander.is_available(agent.id)
+                if not available:
+                    available = commander.check_agent(
+                        agent.id, agent.tmux_pane_id
+                    )
+                card["is_bridge_connected"] = available
+        except RuntimeError:
+            pass  # No app context (unit tests)
 
     return card
 

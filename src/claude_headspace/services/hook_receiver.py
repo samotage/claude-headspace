@@ -725,13 +725,35 @@ def process_pre_tool_use(
             tool_name=tool_name, tool_input=tool_input,
         )
 
-    # Non-interactive tool: lightweight update only (no state change)
+    # Non-interactive tool: lightweight update, but recover stale AWAITING_INPUT.
+    # If the agent is running a non-interactive tool, it's clearly not waiting
+    # for user input. This recovers from lost post_tool_use hooks (e.g. server
+    # restart killed the process before the hook could be received).
     receiver_state = get_receiver_state()
     receiver_state.record_event(HookEventType.PRE_TOOL_USE)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        current_task = agent.get_current_task()
+        if current_task and current_task.state == TaskState.AWAITING_INPUT:
+            lifecycle = _get_lifecycle_manager()
+            lifecycle.update_task_state(
+                task=current_task, to_state=TaskState.PROCESSING,
+                trigger="hook:pre_tool_use:stale_awaiting_recovery",
+                confidence=0.9,
+            )
+            _awaiting_tool_for_agent.pop(agent.id, None)
+            db.session.commit()
+            broadcast_card_refresh(agent, "pre_tool_use_recovery")
+            _broadcast_state_change(agent, "pre_tool_use", TaskState.PROCESSING.value)
+            logger.info(
+                f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, "
+                f"recovered stale AWAITING_INPUT → PROCESSING"
+            )
+            return HookEventResult(success=True, agent_id=agent.id,
+                                   state_changed=True, new_state=TaskState.PROCESSING.value)
+
         db.session.commit()
-        broadcast_card_refresh(agent, "pre_tool_use")
         logger.debug(f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, no state change")
         return HookEventResult(success=True, agent_id=agent.id)
     except Exception as e:
@@ -818,7 +840,6 @@ def process_post_tool_use(
             # Interactive tools (e.g. ExitPlanMode, AskUserQuestion) fire post_tool_use
             # before the user sees the dialog, so we must preserve AWAITING_INPUT state
             db.session.commit()
-            broadcast_card_refresh(agent, "post_tool_use")
             logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
                         f"preserved AWAITING_INPUT for interactive tool {tool_name}")
             return HookEventResult(success=True, agent_id=agent.id,
@@ -866,7 +887,6 @@ def process_post_tool_use(
 
         # Already PROCESSING/COMMANDED — no-op
         db.session.commit()
-        broadcast_card_refresh(agent, "post_tool_use")
         logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, no-op (state={current_task.state.value})")
         return HookEventResult(success=True, agent_id=agent.id, new_state=current_task.state.value)
     except Exception as e:

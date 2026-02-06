@@ -848,6 +848,21 @@
                 statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
             }
         }
+        // Bridge indicator: show/hide based on is_bridge_connected
+        if (data.is_bridge_connected != null) {
+            var bridgeEl = card.querySelector('.bridge-indicator');
+            var badgeContainer = statusBadge ? statusBadge.parentElement : null;
+            if (data.is_bridge_connected && !bridgeEl && badgeContainer) {
+                bridgeEl = document.createElement('span');
+                bridgeEl.className = 'bridge-indicator';
+                bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
+                bridgeEl.setAttribute('aria-label', 'Bridge connected');
+                bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                badgeContainer.insertBefore(bridgeEl, statusBadge);
+            } else if (!data.is_bridge_connected && bridgeEl) {
+                bridgeEl.remove();
+            }
+        }
         var lastSeenEl = card.querySelector('.last-seen');
         if (lastSeenEl && data.last_seen) {
             lastSeenEl.textContent = data.last_seen;
@@ -1303,6 +1318,28 @@
      */
     function handleCommanderAvailability(data, eventType) {
         console.log('Commander availability:', data.agent_id, 'available:', data.available);
+
+        // Toggle bridge indicator on the agent card
+        var agentId = data.agent_id;
+        var card = findAgentCard(agentId);
+        if (card) {
+            var bridgeEl = card.querySelector('.bridge-indicator');
+            if (data.available && !bridgeEl) {
+                var statusBadge = card.querySelector('.status-badge');
+                var container = statusBadge ? statusBadge.parentElement : null;
+                if (container) {
+                    bridgeEl = document.createElement('span');
+                    bridgeEl.className = 'bridge-indicator';
+                    bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
+                    bridgeEl.setAttribute('aria-label', 'Bridge connected');
+                    bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                    container.insertBefore(bridgeEl, statusBadge);
+                }
+            } else if (!data.available && bridgeEl) {
+                bridgeEl.remove();
+            }
+        }
+
         document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
     }
 

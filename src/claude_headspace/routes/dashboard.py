@@ -536,6 +536,18 @@ def dashboard():
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
+            # Bridge connectivity — use cache, fall back to live check
+            is_bridge = False
+            if agent.tmux_pane_id:
+                commander = current_app.extensions.get("commander_availability")
+                if commander:
+                    is_bridge = commander.is_available(agent.id)
+                    if not is_bridge:
+                        is_bridge = commander.check_agent(
+                            agent.id, agent.tmux_pane_id
+                        )
+            agent_dict["is_bridge_connected"] = is_bridge
+
             agents_data.append(agent_dict)
             agent_data_map[agent.id] = agent_dict
             all_agents_data.append(agent_dict)
