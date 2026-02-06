@@ -9,6 +9,7 @@ variables for hooks integration.
 import argparse
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -364,6 +365,50 @@ class SessionManager:
             cleanup_session(self.server_url, self.session_uuid)
 
 
+def _wrap_in_tmux(args: argparse.Namespace) -> int:
+    """
+    Re-execute the CLI inside a new tmux session.
+
+    Called when --bridge is requested but $TMUX_PANE is not set.
+    Uses os.execvp to replace the current process with tmux,
+    which runs the same CLI command inside a new session.
+
+    Args:
+        args: Parsed command line arguments (unused, kept for signature consistency)
+
+    Returns:
+        EXIT_ERROR if tmux is not installed (execvp does not return on success)
+    """
+    if not shutil.which("tmux"):
+        print(
+            "Error: tmux is not installed. Install it with: brew install tmux",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    project_info = get_project_info()
+    session_name = f"hs-{project_info.name}-{uuid.uuid4().hex[:8]}"
+
+    # Resolve the CLI entry point for re-execution
+    cli_path = shutil.which("claude-headspace") or sys.argv[0]
+
+    print(f"Starting tmux session: {session_name}")
+
+    try:
+        os.execvp(
+            "tmux",
+            ["tmux", "new-session", "-s", session_name, "-c", project_info.path, "--"]
+            + [cli_path]
+            + sys.argv[1:],
+        )
+    except OSError as e:
+        print(f"Error: Failed to start tmux session: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # execvp does not return on success; this is unreachable
+    return EXIT_ERROR  # pragma: no cover
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     """
     Handle the 'start' command.
@@ -374,6 +419,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     Returns:
         Exit code
     """
+    # Auto-wrap in tmux for bridge mode
+    if getattr(args, "bridge", False) and not os.environ.get("TMUX_PANE"):
+        return _wrap_in_tmux(args)
+
     # Get server URL
     server_url = get_server_url()
     print(f"Server: {server_url}")
