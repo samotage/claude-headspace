@@ -424,6 +424,20 @@ def process_stop(
             project_id=agent.project_id, agent_id=agent.id,
         )
 
+        logger.info(
+            f"hook_event: type=stop, agent_id={agent.id}, "
+            f"transcript_len={len(agent_text) if agent_text else 0}, "
+            f"intent={intent_result.intent.value}, "
+            f"confidence={intent_result.confidence}, "
+            f"pattern={intent_result.matched_pattern!r}"
+        )
+        if agent_text:
+            tail_lines = [l for l in agent_text.splitlines() if l.strip()][-5:]
+            logger.debug(
+                f"hook_event: type=stop, agent_id={agent.id}, "
+                f"tail_5_lines={tail_lines!r}"
+            )
+
         if intent_result.intent == TurnIntent.QUESTION:
             turn = Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,

@@ -293,7 +293,10 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(404)
     def not_found_error(error):
-        return render_template("errors/404.html"), 404
+        return render_template(
+            "errors/404.html",
+            status_counts={"input_needed": 0, "working": 0, "idle": 0},
+        ), 404
 
     @app.errorhandler(500)
     def internal_error(error):
