@@ -91,6 +91,7 @@ class HeadspaceMonitor:
                 .first()
             )
             if not snapshot:
+                peak_score, peak_at = self._calc_peak_today()
                 return {
                     "state": "green",
                     "frustration_rolling_10": None,
@@ -99,7 +100,8 @@ class HeadspaceMonitor:
                     "is_flow_state": False,
                     "flow_duration_minutes": None,
                     "alert_suppressed": self._is_suppressed(),
-                    "peak_frustration_today": self._calc_peak_today(),
+                    "peak_frustration_today": peak_score,
+                    "peak_frustration_today_at": peak_at.isoformat() if peak_at else None,
                     "timestamp": None,
                 }
             return self._snapshot_to_dict(snapshot)
@@ -224,22 +226,24 @@ class HeadspaceMonitor:
         )
         return float(count)
 
-    def _calc_peak_today(self) -> float | None:
-        """Return the highest frustration_score from any USER turn today (local time)."""
-        from sqlalchemy import func
+    def _calc_peak_today(self) -> tuple[float, datetime] | tuple[None, None]:
+        """Return the highest frustration_score and its timestamp from any USER turn today."""
         local_now = datetime.now().astimezone()
         local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_start = local_midnight.astimezone(timezone.utc)
-        result = (
-            db.session.query(func.max(Turn.frustration_score))
+        turn = (
+            db.session.query(Turn)
             .filter(
                 Turn.actor == TurnActor.USER,
                 Turn.frustration_score.isnot(None),
                 Turn.timestamp >= today_start,
             )
-            .scalar()
+            .order_by(Turn.frustration_score.desc())
+            .first()
         )
-        return float(result) if result is not None else None
+        if turn is None:
+            return None, None
+        return float(turn.frustration_score), turn.timestamp
 
     def _determine_state(self, rolling_10: float | None, rolling_30min: float | None) -> str:
         """Determine traffic light state from rolling averages."""
@@ -432,6 +436,7 @@ class HeadspaceMonitor:
         try:
             from .broadcaster import get_broadcaster
             broadcaster = get_broadcaster()
+            peak_score, peak_at = self._calc_peak_today()
             broadcaster.broadcast("headspace_update", {
                 "state": snapshot.state,
                 "frustration_rolling_10": snapshot.frustration_rolling_10,
@@ -439,7 +444,8 @@ class HeadspaceMonitor:
                 "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
                 "is_flow_state": snapshot.is_flow_state,
                 "flow_duration_minutes": snapshot.flow_duration_minutes,
-                "peak_frustration_today": self._calc_peak_today(),
+                "peak_frustration_today": peak_score,
+                "peak_frustration_today_at": peak_at.isoformat() if peak_at else None,
             })
         except Exception as e:
             logger.debug(f"Failed to broadcast headspace update (non-fatal): {e}")
@@ -479,6 +485,7 @@ class HeadspaceMonitor:
             logger.debug(f"Failed to broadcast flow message (non-fatal): {e}")
 
     def _snapshot_to_dict(self, snapshot: HeadspaceSnapshot) -> dict:
+        peak_score, peak_at = self._calc_peak_today()
         return {
             "state": snapshot.state,
             "frustration_rolling_10": snapshot.frustration_rolling_10,
@@ -490,6 +497,7 @@ class HeadspaceMonitor:
             "last_alert_at": snapshot.last_alert_at.isoformat() if snapshot.last_alert_at else None,
             "alert_count_today": snapshot.alert_count_today,
             "alert_suppressed": self._is_suppressed(),
-            "peak_frustration_today": self._calc_peak_today(),
+            "peak_frustration_today": peak_score,
+            "peak_frustration_today_at": peak_at.isoformat() if peak_at else None,
             "timestamp": snapshot.timestamp.isoformat() if snapshot.timestamp else None,
         }

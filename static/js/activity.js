@@ -740,7 +740,8 @@
                     ActivityPage._updateWidgetValues(data.current);
                     // Restore live labels
                     ActivityPage._setLabel('frust-peak-today-label', 'Max Today');
-                    ActivityPage._setLabel('frust-peak-today-sublabel', 'Peak score');
+                    ActivityPage._setLabel('frust-peak-today-sublabel',
+                        ActivityPage._formatPeakTime(data.current.peak_frustration_today_at));
                     ActivityPage._setLabel('frust-immediate-label', 'Immediate');
                     ActivityPage._setLabel('frust-immediate-sublabel', 'Last 10 turns');
                     ActivityPage._setLabel('frust-shortterm-label', 'Short-term');
@@ -805,6 +806,29 @@
         },
 
         /**
+         * Format an ISO timestamp into "HH:MM, X ago" for the peak frustration sublabel.
+         * Returns "Peak score" as fallback when no timestamp is available.
+         */
+        _formatPeakTime: function(isoString) {
+            if (!isoString) return 'Peak score';
+            var d = new Date(isoString);
+            if (isNaN(d.getTime())) return 'Peak score';
+            var time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            var diffMs = Date.now() - d.getTime();
+            var diffMin = Math.floor(diffMs / 60000);
+            var ago;
+            if (diffMin < 1) {
+                ago = 'just now';
+            } else if (diffMin < 60) {
+                ago = diffMin + (diffMin === 1 ? ' minute ago' : ' minutes ago');
+            } else {
+                var hours = Math.round(diffMin / 60);
+                ago = hours + (hours === 1 ? ' hour ago' : ' hours ago');
+            }
+            return time + ', ' + ago;
+        },
+
+        /**
          * Debounced refresh of all activity data.
          * Coalesces rapid SSE events into a single re-fetch.
          */
@@ -854,6 +878,8 @@
             this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
             this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
             this._setIndicator('frust-peak-today-value', state.peak_frustration_today);
+            this._setLabel('frust-peak-today-sublabel',
+                this._formatPeakTime(state.peak_frustration_today_at));
         },
 
         _setIndicator: function(elementId, value) {
