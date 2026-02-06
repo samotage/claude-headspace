@@ -785,9 +785,11 @@ def process_post_tool_use(
             # would incorrectly clear the pending user interaction.
             awaiting_tool = _awaiting_tool_for_agent.get(agent.id)
             if awaiting_tool and tool_name != awaiting_tool:
-                # Different tool completed — preserve AWAITING_INPUT
+                # Different tool completed — preserve AWAITING_INPUT.
+                # Don't broadcast card_refresh here: nothing changed, and doing so
+                # floods the SSE stream when an agent uses many tools while a
+                # user-interactive tool (AskUserQuestion) is pending.
                 db.session.commit()
-                broadcast_card_refresh(agent, "post_tool_use")
                 logger.info(
                     f"hook_event: type=post_tool_use, agent_id={agent.id}, "
                     f"preserved AWAITING_INPUT (awaiting={awaiting_tool}, got={tool_name})"
