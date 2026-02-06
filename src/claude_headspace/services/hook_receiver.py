@@ -197,6 +197,11 @@ def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> st
             q = questions[0]
             if isinstance(q, dict) and q.get("question"):
                 return q["question"]
+        # Non-AskUserQuestion tool_input with raw params (e.g. {"command": "..."})
+        # Use permission summarizer for a meaningful description
+        if tool_name and tool_name != "AskUserQuestion" and not questions:
+            from .permission_summarizer import summarize_permission_command
+            return summarize_permission_command(tool_name, tool_input)
     if tool_name:
         return f"Permission needed: {tool_name}"
     return "Awaiting input"
@@ -224,12 +229,15 @@ def _synthesize_permission_options(
     tool_name: str | None,
     tool_input: dict | None,
 ) -> dict | None:
-    """Capture permission dialog options from tmux pane and build AskUserQuestion-compatible dict.
+    """Capture permission dialog context from tmux pane and build AskUserQuestion-compatible dict.
 
     When a permission-request hook fires, the actual numbered options (e.g. "1. Yes / 2. No")
     are rendered in the terminal but not included in the hook payload. This function captures
-    the tmux pane content, parses the options, and wraps them in the same format that
-    AskUserQuestion uses so the existing button-rendering pipeline works unchanged.
+    the tmux pane content, parses the options and command context, and wraps them in the same
+    format that AskUserQuestion uses so the existing button-rendering pipeline works unchanged.
+
+    Also generates a meaningful summary (e.g. "Bash: curl from localhost:5055") instead of
+    the generic "Permission needed: Bash" using pattern matching on the tool_input.
 
     Returns None if the agent has no tmux_pane_id or if capture/parse fails.
     """
@@ -238,24 +246,42 @@ def _synthesize_permission_options(
 
     try:
         from . import tmux_bridge
-        options = tmux_bridge.capture_permission_options(agent.tmux_pane_id)
+        pane_context = tmux_bridge.capture_permission_context(agent.tmux_pane_id)
     except Exception as e:
-        logger.warning(f"Permission option capture failed for agent {agent.id}: {e}")
+        logger.warning(f"Permission context capture failed for agent {agent.id}: {e}")
         return None
 
+    if not pane_context:
+        return None
+
+    options = pane_context.get("options")
     if not options:
         return None
 
-    # Build question text from tool_name context
-    question_text = f"Permission needed: {tool_name}" if tool_name else "Permission needed"
+    # Generate meaningful summary using permission summarizer
+    from .permission_summarizer import summarize_permission_command, classify_safety
+    question_text = summarize_permission_command(tool_name, tool_input, pane_context)
+    safety = classify_safety(tool_name, tool_input)
 
-    return {
+    # Build command context for future auto-responder
+    command_context = {}
+    if pane_context.get("command"):
+        command_context["command"] = pane_context["command"]
+    if pane_context.get("description"):
+        command_context["description"] = pane_context["description"]
+
+    result = {
         "questions": [{
             "question": question_text,
             "options": options,
         }],
         "source": "permission_pane_capture",
+        "safety": safety,
     }
+    if command_context:
+        result["command_context"] = command_context
+
+    return result
 
 
 def _execute_pending_summarisations(pending: list) -> None:
@@ -588,13 +614,22 @@ def _handle_awaiting_input(
         # Build question text and create turn BEFORE state transition
         question_text = None
         structured_options = None
+        permission_summary_needed = False
         if tool_name is not None or tool_input is not None:
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
             structured_options = _extract_structured_options(tool_name, tool_input)
-            # For permission_request, try capturing options from the tmux pane
+            # For permission_request, try capturing options + context from the tmux pane
             if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
                 structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
+                # Use the synthesized question text (from permission summarizer) if available
+                if structured_options:
+                    synth_questions = structured_options.get("questions", [])
+                    if synth_questions and synth_questions[0].get("question"):
+                        question_text = synth_questions[0]["question"]
+                    # Check if LLM fallback needed (generic summary)
+                    if question_text and question_text.startswith("Permission:"):
+                        permission_summary_needed = True
             db.session.add(Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
@@ -642,6 +677,16 @@ def _handle_awaiting_input(
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
 
+                    break
+
+        # Queue LLM fallback for generic permission summaries
+        if permission_summary_needed and current_task.turns:
+            for t in reversed(current_task.turns):
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                    from .task_lifecycle import SummarisationRequest
+                    _execute_pending_summarisations([
+                        SummarisationRequest(type="permission_summary", turn=t),
+                    ])
                     break
 
         logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, AWAITING_INPUT")

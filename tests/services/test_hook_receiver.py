@@ -649,7 +649,8 @@ class TestProcessPermissionRequest:
         assert result.state_changed is True
         mock_db.session.add.assert_called_once()
         added_turn = mock_db.session.add.call_args[0][0]
-        assert added_turn.text == "Permission needed: Bash"
+        # Permission summarizer generates meaningful text instead of generic "Permission needed: Bash"
+        assert added_turn.text == "Bash: rm test"
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -667,7 +668,7 @@ class TestProcessPermissionRequest:
         mock_broadcast_turn.assert_called_once()
         call_args = mock_broadcast_turn.call_args[0]
         assert call_args[0] == mock_agent
-        assert call_args[1] == "Permission needed: Bash"
+        assert call_args[1] == "Permission needed: Bash"  # No tool_input, falls back to generic
 
 
 class TestExtractQuestionText:
@@ -680,9 +681,9 @@ class TestExtractQuestionText:
         result = _extract_question_text("AskUserQuestion", tool_input)
         assert result == "Which database should we use?"
 
-    def test_fallback_to_tool_name(self):
-        result = _extract_question_text("Bash", {"command": "ls"})
-        assert result == "Permission needed: Bash"
+    def test_raw_tool_input_uses_permission_summarizer(self):
+        result = _extract_question_text("Bash", {"command": "git status"})
+        assert result == "Bash: git status"
 
     def test_fallback_no_tool_name(self):
         result = _extract_question_text(None, None)
@@ -1261,24 +1262,28 @@ class TestProcessPostToolUse:
 class TestSynthesizePermissionOptions:
     """Tests for _synthesize_permission_options function."""
 
-    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
-    def test_returns_options_when_pane_available(self, mock_capture, mock_agent):
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
+    def test_returns_options_with_summary_when_pane_available(self, mock_capture, mock_agent):
         mock_agent.tmux_pane_id = "%5"
-        mock_capture.return_value = [
-            {"label": "Yes"},
-            {"label": "No"},
-        ]
+        mock_capture.return_value = {
+            "tool_type": "Bash command",
+            "command": "ls -la",
+            "description": None,
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        }
 
-        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls"})
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls -la"})
 
         assert result is not None
         assert result["source"] == "permission_pane_capture"
         assert len(result["questions"]) == 1
-        assert result["questions"][0]["question"] == "Permission needed: Bash"
+        # Permission summarizer generates a meaningful summary
+        assert result["questions"][0]["question"] == "Bash: ls"
         assert result["questions"][0]["options"] == [
             {"label": "Yes"},
             {"label": "No"},
         ]
+        assert "safety" in result
 
     def test_returns_none_without_tmux_pane_id(self, mock_agent):
         mock_agent.tmux_pane_id = None
@@ -1287,7 +1292,7 @@ class TestSynthesizePermissionOptions:
 
         assert result is None
 
-    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
     def test_returns_none_on_capture_failure(self, mock_capture, mock_agent):
         mock_agent.tmux_pane_id = "%5"
         mock_capture.return_value = None
@@ -1296,7 +1301,7 @@ class TestSynthesizePermissionOptions:
 
         assert result is None
 
-    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
     def test_returns_none_on_exception(self, mock_capture, mock_agent):
         mock_agent.tmux_pane_id = "%5"
         mock_capture.side_effect = RuntimeError("tmux error")
@@ -1305,17 +1310,51 @@ class TestSynthesizePermissionOptions:
 
         assert result is None
 
-    @patch("claude_headspace.services.tmux_bridge.capture_permission_options")
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
     def test_question_text_with_no_tool_name(self, mock_capture, mock_agent):
         mock_agent.tmux_pane_id = "%5"
-        mock_capture.return_value = [
-            {"label": "Yes"},
-            {"label": "No"},
-        ]
+        mock_capture.return_value = {
+            "tool_type": None,
+            "command": None,
+            "description": None,
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        }
 
         result = _synthesize_permission_options(mock_agent, None, None)
 
         assert result["questions"][0]["question"] == "Permission needed"
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
+    def test_includes_safety_classification(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.return_value = {
+            "tool_type": "Bash command",
+            "command": "rm -rf /tmp/test",
+            "description": None,
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        }
+
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "rm -rf /tmp/test"})
+
+        assert result is not None
+        assert result["safety"] == "destructive"
+
+    @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
+    def test_includes_command_context(self, mock_capture, mock_agent):
+        mock_agent.tmux_pane_id = "%5"
+        mock_capture.return_value = {
+            "tool_type": "Bash command",
+            "command": "curl http://localhost:5055",
+            "description": "Check dashboard",
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        }
+
+        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "curl http://localhost:5055"})
+
+        assert result is not None
+        assert "command_context" in result
+        assert result["command_context"]["command"] == "curl http://localhost:5055"
+        assert result["command_context"]["description"] == "Check dashboard"
 
 
 class TestPermissionPaneCapture:
@@ -1336,10 +1375,11 @@ class TestPermissionPaneCapture:
 
         synthesized = {
             "questions": [{
-                "question": "Permission needed: Bash",
+                "question": "Bash: npm install",
                 "options": [{"label": "Yes"}, {"label": "No"}],
             }],
             "source": "permission_pane_capture",
+            "safety": "safe_write",
         }
         mock_synthesize.return_value = synthesized
 

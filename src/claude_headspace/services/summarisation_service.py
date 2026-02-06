@@ -209,6 +209,98 @@ class SummarisationService:
 
         return summary
 
+    def summarise_permission(self, turn, db_session=None) -> str | None:
+        """Generate a summary for a permission request turn via LLM.
+
+        Extracts tool_name and command from the turn's context (tool_input or text)
+        and generates a concise summary like "Bash: curl from localhost".
+
+        Args:
+            turn: Turn model instance with text containing the permission question
+            db_session: Database session for persisting the summary
+
+        Returns:
+            The summary text, or None if generation failed or skipped
+        """
+        if turn.summary:
+            return turn.summary
+
+        if not self._inference.is_available:
+            logger.debug("Inference service unavailable, skipping permission summarisation")
+            return None
+
+        # Extract tool name and command from the turn context
+        tool_name = "Unknown"
+        command = ""
+        description_line = ""
+
+        # Parse from tool_input (synthesized permission context)
+        tool_input = turn.tool_input
+        if tool_input and isinstance(tool_input, dict):
+            # Get tool name from the question text
+            questions = tool_input.get("questions", [])
+            if questions and isinstance(questions, list):
+                q_text = questions[0].get("question", "")
+                if q_text and ":" in q_text:
+                    tool_name = q_text.split(":")[0].strip()
+
+            # Get command from command_context
+            cmd_ctx = tool_input.get("command_context", {})
+            if cmd_ctx:
+                command = cmd_ctx.get("command", "")
+                desc = cmd_ctx.get("description", "")
+                if desc:
+                    description_line = f"Description: {desc}\n"
+
+        # Fallback: parse from turn text
+        if not command and turn.text:
+            command = turn.text
+
+        if not command:
+            logger.debug(f"No command content for permission summary, turn {turn.id}")
+            return None
+
+        input_text = build_prompt(
+            "permission_summary",
+            tool_name=tool_name,
+            command=command,
+            description_line=description_line,
+        )
+
+        # Get entity associations
+        task_id = turn.task_id if turn.task_id else None
+        agent_id = None
+        project_id = None
+        if hasattr(turn, "task") and turn.task:
+            agent_id = turn.task.agent_id if hasattr(turn.task, "agent_id") else None
+            if hasattr(turn.task, "agent") and turn.task.agent:
+                project_id = turn.task.agent.project_id if hasattr(turn.task.agent, "project_id") else None
+
+        try:
+            result = self._inference.infer(
+                level="turn",
+                purpose="summarise_permission",
+                input_text=input_text,
+                project_id=project_id,
+                agent_id=agent_id,
+                task_id=task_id,
+                turn_id=turn.id,
+            )
+
+            summary = self._clean_response(result.text)
+            turn.summary = summary
+            turn.summary_generated_at = datetime.now(timezone.utc)
+
+            if db_session:
+                db_session.add(turn)
+                db_session.commit()
+
+            return summary
+
+        except (InferenceServiceError, Exception) as e:
+            logger.error(f"Permission summarisation failed for turn {turn.id}: {e}")
+            return None
+
     def summarise_task(self, task, db_session=None) -> str | None:
         """Generate a completion summary for a completed task.
 
@@ -436,6 +528,12 @@ class SummarisationService:
                             extra={"is_completion": True},
                         )
                         self._broadcast_card_refresh_for_agent(agent_id, db_session, "task_summary_updated")
+
+                elif req.type == "permission_summary" and req.turn:
+                    summary = self.summarise_permission(req.turn, db_session=db_session)
+                    if summary:
+                        agent_id = req.turn.task.agent_id if req.turn.task else None
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "permission_summary_updated")
 
             except Exception as e:
                 logger.warning(f"Pending summarisation failed for {req.type} (non-fatal): {e}")

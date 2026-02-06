@@ -159,6 +159,19 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Output ONLY the description — no preamble, labels, or commentary."
     ),
 
+    # --- Permission summary ---
+    "permission_summary": (
+        "Tool: {tool_name}\n"
+        "Command: {command}\n"
+        "{description_line}"
+        "\n"
+        "Write a ~10 token summary of what this permission request will do. "
+        "Format: '{tool_name}: [concise action]'. "
+        "Examples: 'Bash: read HTML from localhost', 'Bash: list files in src/', "
+        "'Read: check test config', 'Bash: install npm packages'. "
+        "Output ONLY the summary."
+    ),
+
     # --- Classification: completion ---
     "completion_classification": (
         "Classify this agent output. Is the agent:\n"
