@@ -67,7 +67,7 @@ And the session proceeds without pane ID
 
 ### Requirement: POST /api/sessions Endpoint
 
-The system SHALL provide an endpoint to register sessions.
+The system SHALL provide an endpoint to register sessions. The endpoint SHALL accept an optional `tmux_pane_id` field in the request body, store it on the Agent model at creation time, and register the agent with the `CommanderAvailability` service immediately.
 
 #### Scenario: Session registration success
 
@@ -89,6 +89,18 @@ Given a project path already in the database
 When POST /api/sessions is called
 Then the existing Project is used
 And a new Agent record is created
+
+#### Scenario: Registration with tmux_pane_id via API
+
+- **WHEN** the registration payload includes `tmux_pane_id`
+- **THEN** the value is stored on `agent.tmux_pane_id`
+- **AND** `commander_availability.register_agent(agent.id, tmux_pane_id)` is called
+
+#### Scenario: Registration without tmux_pane_id via API
+
+- **WHEN** the registration payload does not include `tmux_pane_id`
+- **THEN** `agent.tmux_pane_id` is NULL
+- **AND** no availability registration occurs (hook backfill remains as fallback)
 
 ### Requirement: DELETE /api/sessions/<uuid> Endpoint
 
@@ -120,7 +132,7 @@ And CLAUDE_HEADSPACE_SESSION_ID is set to the session UUID
 
 ### Requirement: Claude Code Launch
 
-The system SHALL launch the Claude CLI as a child process.
+The system SHALL launch the Claude CLI as a child process. The `launch_claude()` function SHALL always construct the command as `["claude"] + claude_args`.
 
 #### Scenario: Claude CLI found
 
@@ -140,6 +152,12 @@ And exit code 3 is returned
 Given the user provides additional arguments
 When `claude-headspace start -- --model opus` is run
 Then the arguments are passed to the claude command
+
+#### Scenario: Always direct launch
+
+- **WHEN** `launch_claude()` is called
+- **THEN** the command is always `["claude"] + claude_args`
+- **AND** no wrapper binary is ever used
 
 ### Requirement: Session Cleanup on Exit
 
@@ -195,4 +213,40 @@ And exit code 1 indicates general error
 And exit code 2 indicates server unreachable
 And exit code 3 indicates claude CLI not found
 And exit code 4 indicates registration failed
+
+### Requirement: tmux Pane Detection in CLI
+
+The CLI launcher SHALL detect tmux pane presence via the `$TMUX_PANE` environment variable when the `--bridge` flag is passed.
+
+#### Scenario: Inside tmux with --bridge
+
+- **WHEN** `claude-headspace start --bridge` is run inside a tmux pane
+- **THEN** the CLI outputs `Input Bridge: available (tmux pane %N)` to stdout
+- **AND** the tmux pane ID is included in the session registration payload
+
+#### Scenario: Outside tmux with --bridge
+
+- **WHEN** `claude-headspace start --bridge` is run outside a tmux session
+- **THEN** the CLI outputs `Input Bridge: unavailable (not in tmux session)` to stderr as a warning
+- **AND** the session still launches successfully without a pane ID
+
+#### Scenario: Without --bridge flag
+
+- **WHEN** `claude-headspace start` is run without `--bridge`
+- **THEN** no bridge detection or bridge-related output occurs
+- **AND** Claude Code launches with monitoring only
+
+### Requirement: Session Registration with tmux_pane_id
+
+The `register_session()` CLI function SHALL accept an optional `tmux_pane_id` parameter and include it in the registration payload when provided.
+
+#### Scenario: Registration includes pane ID
+
+- **WHEN** `register_session()` is called with a `tmux_pane_id`
+- **THEN** the HTTP POST payload includes `tmux_pane_id`
+
+#### Scenario: Registration without pane ID
+
+- **WHEN** `register_session()` is called without a `tmux_pane_id`
+- **THEN** the HTTP POST payload does not include `tmux_pane_id`
 

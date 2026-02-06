@@ -362,6 +362,8 @@ def _prepare_kanban_data(
             "slug": proj_data["slug"],
             "columns": state_columns,
             "staleness": proj_data.get("staleness"),
+            "state_flags": proj_data.get("state_flags", {}),
+            "active_count": proj_data.get("active_count", 0),
         })
 
     return kanban_projects

@@ -21,10 +21,10 @@ from src.claude_headspace.cli.launcher import (
     SessionManager,
     cleanup_session,
     create_parser,
-    detect_claudec,
     get_iterm_pane_id,
     get_project_info,
     get_server_url,
+    get_tmux_pane_id,
     launch_claude,
     main,
     register_session,
@@ -180,20 +180,27 @@ class TestVerifyClaudeCli:
             assert verify_claude_cli() is False
 
 
-class TestDetectClaudec:
-    """Tests for detect_claudec function."""
+class TestGetTmuxPaneId:
+    """Tests for get_tmux_pane_id function."""
 
-    def test_claudec_found(self):
-        """Test when claudec is found in PATH."""
-        with patch("shutil.which", return_value="/usr/local/bin/claudec"):
-            result = detect_claudec()
-        assert result == "/usr/local/bin/claudec"
+    def test_in_tmux(self):
+        """Test when running in a tmux pane."""
+        with patch.dict(os.environ, {"TMUX_PANE": "%5"}):
+            pane_id = get_tmux_pane_id()
+        assert pane_id == "%5"
 
-    def test_claudec_not_found(self):
-        """Test when claudec is not in PATH."""
-        with patch("shutil.which", return_value=None):
-            result = detect_claudec()
-        assert result is None
+    def test_not_in_tmux(self):
+        """Test when not running in tmux."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("TMUX_PANE", None)
+            pane_id = get_tmux_pane_id()
+        assert pane_id is None
+
+    def test_empty_tmux_pane(self):
+        """Test when TMUX_PANE is set but empty."""
+        with patch.dict(os.environ, {"TMUX_PANE": ""}):
+            pane_id = get_tmux_pane_id()
+        assert pane_id is None
 
 
 class TestValidatePrerequisites:
@@ -314,6 +321,67 @@ class TestRegisterSession:
         assert data is None
         assert "Invalid request" in error
 
+    def test_registration_with_tmux_pane_id(self):
+        """Test that tmux_pane_id is included in payload when provided."""
+        session_uuid = uuid.uuid4()
+        project_info = ProjectInfo("test-project", "/path/to/project", "main")
+
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                status_code=201,
+                json=lambda: {
+                    "status": "created",
+                    "agent_id": 1,
+                    "session_uuid": str(session_uuid),
+                    "project_id": 1,
+                    "project_name": "test-project",
+                },
+            )
+
+            success, data, error = register_session(
+                "http://localhost:5055",
+                session_uuid,
+                project_info,
+                "pane123",
+                tmux_pane_id="%5",
+            )
+
+        assert success is True
+        # Verify tmux_pane_id was in the POST payload
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs[1]["json"]
+        assert payload["tmux_pane_id"] == "%5"
+
+    def test_registration_without_tmux_pane_id(self):
+        """Test that tmux_pane_id is not in payload when not provided."""
+        session_uuid = uuid.uuid4()
+        project_info = ProjectInfo("test-project", "/path/to/project", "main")
+
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                status_code=201,
+                json=lambda: {
+                    "status": "created",
+                    "agent_id": 1,
+                    "session_uuid": str(session_uuid),
+                    "project_id": 1,
+                    "project_name": "test-project",
+                },
+            )
+
+            success, data, error = register_session(
+                "http://localhost:5055",
+                session_uuid,
+                project_info,
+                "pane123",
+            )
+
+        assert success is True
+        # Verify tmux_pane_id was NOT in the POST payload
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs[1]["json"]
+        assert "tmux_pane_id" not in payload
+
     def test_registration_connection_error(self):
         """Test connection error during registration."""
         session_uuid = uuid.uuid4()
@@ -403,46 +471,16 @@ class TestLaunchClaude:
 
         assert exit_code == 1
 
-    def test_launch_with_claudec(self):
-        """Test launch wraps claude with claudec when path provided."""
+    def test_launch_no_extra_args(self):
+        """Test launch with no extra args uses bare claude command."""
         with patch("subprocess.call") as mock_call:
             mock_call.return_value = 0
 
-            exit_code = launch_claude(
-                ["--model", "opus"],
-                {"PATH": "/usr/bin"},
-                claudec_path="/usr/local/bin/claudec",
-            )
+            exit_code = launch_claude([], {"PATH": "/usr/bin"})
 
         assert exit_code == 0
         call_args = mock_call.call_args
-        assert call_args[0][0] == ["/usr/local/bin/claudec", "claude", "--model", "opus"]
-
-    def test_launch_with_claudec_no_extra_args(self):
-        """Test launch with claudec and no extra claude args."""
-        with patch("subprocess.call") as mock_call:
-            mock_call.return_value = 0
-
-            exit_code = launch_claude(
-                [], {"PATH": "/usr/bin"}, claudec_path="/usr/local/bin/claudec"
-            )
-
-        assert exit_code == 0
-        call_args = mock_call.call_args
-        assert call_args[0][0] == ["/usr/local/bin/claudec", "claude"]
-
-    def test_launch_claudec_none_falls_back(self):
-        """Test that claudec_path=None uses bare claude command."""
-        with patch("subprocess.call") as mock_call:
-            mock_call.return_value = 0
-
-            exit_code = launch_claude(
-                ["--model", "opus"], {"PATH": "/usr/bin"}, claudec_path=None
-            )
-
-        assert exit_code == 0
-        call_args = mock_call.call_args
-        assert call_args[0][0] == ["claude", "--model", "opus"]
+        assert call_args[0][0] == ["claude"]
 
 
 class TestSessionManager:
@@ -611,8 +649,176 @@ class TestMain:
                             ),
                         ):
                             with patch(
-                                "src.claude_headspace.cli.launcher.detect_claudec",
-                                return_value=None,
+                                "src.claude_headspace.cli.launcher.setup_environment",
+                                return_value={"PATH": "/usr/bin"},
+                            ):
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.SessionManager"
+                                ) as MockManager:
+                                    mock_manager = MagicMock()
+                                    MockManager.return_value.__enter__ = MagicMock(
+                                        return_value=mock_manager
+                                    )
+                                    MockManager.return_value.__exit__ = MagicMock(
+                                        return_value=False
+                                    )
+
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.launch_claude",
+                                        return_value=0,
+                                    ):
+                                        exit_code = main(["start"])
+
+        assert exit_code == EXIT_SUCCESS
+
+    def test_start_command_with_bridge_in_tmux(self, capsys):
+        """Test start command with --bridge inside tmux detects pane."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_server_url",
+            return_value="http://localhost:5055",
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.validate_prerequisites",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_project_info",
+                    return_value=ProjectInfo("test", "/test", "main"),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                        return_value="pane123",
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                            return_value="%5",
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.register_session",
+                                return_value=(
+                                    True,
+                                    {"agent_id": 1, "project_name": "test"},
+                                    None,
+                                ),
+                            ) as mock_register:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.setup_environment",
+                                    return_value={"PATH": "/usr/bin"},
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.SessionManager"
+                                    ) as MockManager:
+                                        mock_manager = MagicMock()
+                                        MockManager.return_value.__enter__ = MagicMock(
+                                            return_value=mock_manager
+                                        )
+                                        MockManager.return_value.__exit__ = MagicMock(
+                                            return_value=False
+                                        )
+
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.launch_claude",
+                                            return_value=0,
+                                        ):
+                                            exit_code = main(["start", "--bridge"])
+
+        assert exit_code == EXIT_SUCCESS
+        # Verify register_session received tmux_pane_id
+        mock_register.assert_called_once()
+        call_kwargs = mock_register.call_args
+        assert call_kwargs[1]["tmux_pane_id"] == "%5"
+        # Verify output mentions Input Bridge available with pane ID
+        captured = capsys.readouterr()
+        assert "Input Bridge: available (tmux pane %5)" in captured.out
+
+    def test_start_command_with_bridge_outside_tmux(self, capsys):
+        """Test start command with --bridge outside tmux shows warning."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_server_url",
+            return_value="http://localhost:5055",
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.validate_prerequisites",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_project_info",
+                    return_value=ProjectInfo("test", "/test", "main"),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                        return_value="pane123",
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                            return_value=None,
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.register_session",
+                                return_value=(
+                                    True,
+                                    {"agent_id": 1, "project_name": "test"},
+                                    None,
+                                ),
+                            ) as mock_register:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.setup_environment",
+                                    return_value={"PATH": "/usr/bin"},
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.SessionManager"
+                                    ) as MockManager:
+                                        mock_manager = MagicMock()
+                                        MockManager.return_value.__enter__ = MagicMock(
+                                            return_value=mock_manager
+                                        )
+                                        MockManager.return_value.__exit__ = MagicMock(
+                                            return_value=False
+                                        )
+
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.launch_claude",
+                                            return_value=0,
+                                        ):
+                                            exit_code = main(["start", "--bridge"])
+
+        assert exit_code == EXIT_SUCCESS
+        # Verify register_session received no tmux_pane_id
+        mock_register.assert_called_once()
+        call_kwargs = mock_register.call_args
+        assert call_kwargs[1]["tmux_pane_id"] is None
+        # Verify stderr warning about unavailable bridge
+        captured = capsys.readouterr()
+        assert "Input Bridge: unavailable (not in tmux session)" in captured.err
+
+    def test_start_command_without_bridge_skips_tmux_detection(self, capsys):
+        """Test that start without --bridge does not detect tmux."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_server_url",
+            return_value="http://localhost:5055",
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.validate_prerequisites",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_project_info",
+                    return_value=ProjectInfo("test", "/test", "main"),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                        return_value="pane123",
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                        ) as mock_tmux:
+                            with patch(
+                                "src.claude_headspace.cli.launcher.register_session",
+                                return_value=(
+                                    True,
+                                    {"agent_id": 1, "project_name": "test"},
+                                    None,
+                                ),
                             ):
                                 with patch(
                                     "src.claude_headspace.cli.launcher.setup_environment",
@@ -636,120 +842,9 @@ class TestMain:
                                             exit_code = main(["start"])
 
         assert exit_code == EXIT_SUCCESS
-
-    def test_start_command_with_bridge_flag(self, capsys):
-        """Test start command with --bridge flag enables claudec."""
-        with patch(
-            "src.claude_headspace.cli.launcher.get_server_url",
-            return_value="http://localhost:5055",
-        ):
-            with patch(
-                "src.claude_headspace.cli.launcher.validate_prerequisites",
-                return_value=(True, None),
-            ):
-                with patch(
-                    "src.claude_headspace.cli.launcher.get_project_info",
-                    return_value=ProjectInfo("test", "/test", "main"),
-                ):
-                    with patch(
-                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
-                        return_value="pane123",
-                    ):
-                        with patch(
-                            "src.claude_headspace.cli.launcher.register_session",
-                            return_value=(
-                                True,
-                                {"agent_id": 1, "project_name": "test"},
-                                None,
-                            ),
-                        ):
-                            with patch(
-                                "src.claude_headspace.cli.launcher.detect_claudec",
-                                return_value="/usr/local/bin/claudec",
-                            ):
-                                with patch(
-                                    "src.claude_headspace.cli.launcher.setup_environment",
-                                    return_value={"PATH": "/usr/bin"},
-                                ):
-                                    with patch(
-                                        "src.claude_headspace.cli.launcher.SessionManager"
-                                    ) as MockManager:
-                                        mock_manager = MagicMock()
-                                        MockManager.return_value.__enter__ = MagicMock(
-                                            return_value=mock_manager
-                                        )
-                                        MockManager.return_value.__exit__ = MagicMock(
-                                            return_value=False
-                                        )
-
-                                        with patch(
-                                            "src.claude_headspace.cli.launcher.launch_claude",
-                                            return_value=0,
-                                        ) as mock_launch:
-                                            exit_code = main(["start", "--bridge"])
-
-        assert exit_code == EXIT_SUCCESS
-        # Verify launch_claude received claudec_path
-        mock_launch.assert_called_once()
-        call_kwargs = mock_launch.call_args
-        assert call_kwargs[1]["claudec_path"] == "/usr/local/bin/claudec"
-        # Verify output mentions Input Bridge enabled
+        # get_tmux_pane_id should not be called without --bridge
+        mock_tmux.assert_not_called()
+        # No bridge-related output
         captured = capsys.readouterr()
-        assert "Input Bridge: enabled" in captured.out
-
-    def test_start_command_without_bridge_skips_claudec(self, capsys):
-        """Test that start without --bridge does not use claudec."""
-        with patch(
-            "src.claude_headspace.cli.launcher.get_server_url",
-            return_value="http://localhost:5055",
-        ):
-            with patch(
-                "src.claude_headspace.cli.launcher.validate_prerequisites",
-                return_value=(True, None),
-            ):
-                with patch(
-                    "src.claude_headspace.cli.launcher.get_project_info",
-                    return_value=ProjectInfo("test", "/test", "main"),
-                ):
-                    with patch(
-                        "src.claude_headspace.cli.launcher.get_iterm_pane_id",
-                        return_value="pane123",
-                    ):
-                        with patch(
-                            "src.claude_headspace.cli.launcher.register_session",
-                            return_value=(
-                                True,
-                                {"agent_id": 1, "project_name": "test"},
-                                None,
-                            ),
-                        ):
-                            with patch(
-                                "src.claude_headspace.cli.launcher.detect_claudec",
-                            ) as mock_detect:
-                                with patch(
-                                    "src.claude_headspace.cli.launcher.setup_environment",
-                                    return_value={"PATH": "/usr/bin"},
-                                ):
-                                    with patch(
-                                        "src.claude_headspace.cli.launcher.SessionManager"
-                                    ) as MockManager:
-                                        mock_manager = MagicMock()
-                                        MockManager.return_value.__enter__ = MagicMock(
-                                            return_value=mock_manager
-                                        )
-                                        MockManager.return_value.__exit__ = MagicMock(
-                                            return_value=False
-                                        )
-
-                                        with patch(
-                                            "src.claude_headspace.cli.launcher.launch_claude",
-                                            return_value=0,
-                                        ) as mock_launch:
-                                            exit_code = main(["start"])
-
-        assert exit_code == EXIT_SUCCESS
-        # detect_claudec should not be called without --bridge
-        mock_detect.assert_not_called()
-        # launch_claude should receive claudec_path=None
-        call_kwargs = mock_launch.call_args
-        assert call_kwargs[1]["claudec_path"] is None
+        assert "Input Bridge" not in captured.out
+        assert "Input Bridge" not in captured.err
