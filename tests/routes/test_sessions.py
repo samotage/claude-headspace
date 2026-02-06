@@ -144,6 +144,68 @@ class TestCreateSession:
                 assert data["status"] == "created"
                 assert data["project_id"] == mock_project.id
 
+    def test_creates_session_with_tmux_pane_id(self, app, client, mock_db, mock_project):
+        """Test creating session with tmux_pane_id stores it on Agent."""
+        session_uuid = str(uuid.uuid4())
+
+        mock_availability = MagicMock()
+        app.extensions["commander_availability"] = mock_availability
+
+        with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
+            with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
+                MockProject.query.filter_by.return_value.first.return_value = mock_project
+
+                mock_agent = MagicMock()
+                mock_agent.id = 1
+                MockAgent.return_value = mock_agent
+                MockAgent.query.filter_by.return_value.first.return_value = None
+
+                response = client.post(
+                    "/api/sessions",
+                    json={
+                        "session_uuid": session_uuid,
+                        "project_path": "/path/to/project",
+                        "tmux_pane_id": "%5",
+                    },
+                )
+
+                assert response.status_code == 201
+                # Verify Agent was created with tmux_pane_id
+                MockAgent.assert_called_once()
+                call_kwargs = MockAgent.call_args[1]
+                assert call_kwargs["tmux_pane_id"] == "%5"
+                # Verify availability registration
+                mock_availability.register_agent.assert_called_once_with(
+                    mock_agent.id, "%5"
+                )
+
+    def test_creates_session_without_tmux_pane_id(self, client, mock_db, mock_project):
+        """Test creating session without tmux_pane_id is backward compatible."""
+        session_uuid = str(uuid.uuid4())
+
+        with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
+            with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
+                MockProject.query.filter_by.return_value.first.return_value = mock_project
+
+                mock_agent = MagicMock()
+                mock_agent.id = 1
+                MockAgent.return_value = mock_agent
+                MockAgent.query.filter_by.return_value.first.return_value = None
+
+                response = client.post(
+                    "/api/sessions",
+                    json={
+                        "session_uuid": session_uuid,
+                        "project_path": "/path/to/project",
+                    },
+                )
+
+                assert response.status_code == 201
+                # Verify Agent was created with tmux_pane_id=None
+                MockAgent.assert_called_once()
+                call_kwargs = MockAgent.call_args[1]
+                assert call_kwargs["tmux_pane_id"] is None
+
     def test_duplicate_session_uuid(self, client, mock_db, mock_agent):
         """Test error when session_uuid already exists."""
         session_uuid = str(mock_agent.session_uuid)

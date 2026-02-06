@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from ..database import db
 from ..models.agent import Agent
@@ -40,6 +40,7 @@ def create_session():
         - project_path: Absolute path to the project directory
         - working_directory: Current working directory (usually same as project_path)
         - iterm_pane_id: Optional iTerm2 pane identifier
+        - tmux_pane_id: Optional tmux pane identifier for input bridge
         - project_name: Optional project name (defaults to directory name)
         - current_branch: Optional git branch name
 
@@ -67,6 +68,7 @@ def create_session():
     project_path = data["project_path"]
     working_directory = data.get("working_directory", project_path)
     iterm_pane_id = data.get("iterm_pane_id")
+    tmux_pane_id = data.get("tmux_pane_id")
     project_name = data.get("project_name")
     current_branch = data.get("current_branch")
 
@@ -101,6 +103,7 @@ def create_session():
             session_uuid=session_uuid,
             project_id=project.id,
             iterm_pane_id=iterm_pane_id,
+            tmux_pane_id=tmux_pane_id,
             started_at=datetime.now(timezone.utc),
             last_seen_at=datetime.now(timezone.utc),
         )
@@ -109,8 +112,15 @@ def create_session():
 
         logger.info(
             f"Created session {session_uuid} for project {project.name} "
-            f"(agent_id={agent.id}, iterm_pane_id={iterm_pane_id})"
+            f"(agent_id={agent.id}, iterm_pane_id={iterm_pane_id}, "
+            f"tmux_pane_id={tmux_pane_id})"
         )
+
+        # Register with availability tracker if tmux pane is provided
+        if tmux_pane_id:
+            commander_availability = current_app.extensions.get("commander_availability")
+            if commander_availability:
+                commander_availability.register_agent(agent.id, tmux_pane_id)
 
         # Broadcast to SSE clients so dashboard updates in real-time
         _broadcast_session_event(agent, "session_created")
