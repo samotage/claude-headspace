@@ -3,6 +3,9 @@
  * Provides generate, display, clipboard, and export functionality.
  */
 
+(function() {
+    'use strict';
+
 var brainRebootState = {
     projectId: null,
     projectName: null,
@@ -64,7 +67,7 @@ function openBrainReboot(projectId, projectName, projectSlug) {
     document.addEventListener('keydown', brainRebootKeyHandler);
 
     // Generate brain reboot
-    fetch('/api/projects/' + projectId + '/brain-reboot', {
+    CHUtils.apiFetch('/api/projects/' + projectId + '/brain-reboot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
@@ -99,7 +102,7 @@ function openBrainReboot(projectId, projectName, projectSlug) {
         })
         .catch(function(err) {
             if (contentEl) {
-                contentEl.innerHTML = '<p class="text-red text-sm">Error: ' + escapeHtmlBR(err.message) + '</p>';
+                contentEl.innerHTML = '<p class="text-red text-sm">Error: ' + CHUtils.escapeHtml(err.message) + '</p>';
             }
         });
 }
@@ -158,7 +161,7 @@ function exportBrainReboot() {
         btn.textContent = 'Exporting...';
     }
 
-    fetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot/export', {
+    CHUtils.apiFetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
@@ -206,54 +209,7 @@ function exportBrainReboot() {
 function renderBrainRebootContent(contentEl, data) {
     if (!contentEl || !data || !data.content) return;
 
-    // Convert markdown-like content to HTML paragraphs
-    var lines = data.content.split('\n');
-    var html = '';
-    var inList = false;
-
-    lines.forEach(function(line) {
-        var trimmed = line.trim();
-
-        if (trimmed === '') {
-            if (inList) {
-                html += '</ul>';
-                inList = false;
-            }
-            return;
-        }
-
-        if (trimmed.startsWith('# ')) {
-            html += '<h1 class="text-primary text-2xl font-display mb-3">' + escapeHtmlBR(trimmed.substring(2)) + '</h1>';
-        } else if (trimmed.startsWith('## ')) {
-            html += '<h2 class="text-primary text-xl font-display mt-6 mb-2">' + escapeHtmlBR(trimmed.substring(3)) + '</h2>';
-        } else if (trimmed.startsWith('### ')) {
-            html += '<h3 class="text-secondary text-lg font-medium mt-4 mb-2">' + escapeHtmlBR(trimmed.substring(4)) + '</h3>';
-        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-            if (!inList) {
-                html += '<ul class="list-disc pl-5 space-y-1 text-secondary text-base">';
-                inList = true;
-            }
-            html += '<li>' + escapeHtmlBR(trimmed.substring(2)) + '</li>';
-        } else if (trimmed.startsWith('---')) {
-            html += '<hr class="border-border my-4">';
-        } else if (trimmed.startsWith('_') && trimmed.endsWith('_')) {
-            html += '<p class="text-muted text-base italic mt-4">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
-        } else if (trimmed.startsWith('*') && trimmed.endsWith('*')) {
-            html += '<p class="text-muted text-base italic">' + escapeHtmlBR(trimmed.slice(1, -1)) + '</p>';
-        } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-            html += '<p class="text-primary text-base font-medium">' + escapeHtmlBR(trimmed.slice(2, -2)) + '</p>';
-        } else if (trimmed.startsWith('Generated:')) {
-            html += '<p class="text-muted text-sm mb-4">' + escapeHtmlBR(trimmed) + '</p>';
-        } else {
-            html += '<p class="text-secondary text-base leading-relaxed mb-2">' + escapeHtmlBR(trimmed) + '</p>';
-        }
-    });
-
-    if (inList) {
-        html += '</ul>';
-    }
-
-    contentEl.innerHTML = html;
+    contentEl.innerHTML = CHUtils.renderMarkdown(data.content);
 
     // Add "Generate/Regenerate Progress Summary" button
     var btnWrap = document.createElement('div');
@@ -282,7 +238,7 @@ function generateProgressSummary(btn) {
     if (btnWrap) btnWrap.insertBefore(statusMsg, btn);
 
     // Use time_based scope to force full regeneration (since_last returns empty if no new commits)
-    fetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
+    CHUtils.apiFetch('/api/projects/' + brainRebootState.projectId + '/progress-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scope: 'time_based' })
@@ -306,7 +262,7 @@ function generateProgressSummary(btn) {
             // Update status message while refreshing
             if (statusMsg) statusMsg.textContent = 'Refreshing brain reboot...';
 
-            return fetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot', {
+            return CHUtils.apiFetch('/api/projects/' + brainRebootState.projectId + '/brain-reboot', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -364,8 +320,10 @@ function generateProgressSummary(btn) {
         });
 }
 
-function escapeHtmlBR(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+    // Export globals for template onclick handlers
+    window.openBrainReboot = openBrainReboot;
+    window.closeBrainReboot = closeBrainReboot;
+    window.copyBrainReboot = copyBrainReboot;
+    window.exportBrainReboot = exportBrainReboot;
+
+})();

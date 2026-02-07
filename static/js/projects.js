@@ -149,7 +149,7 @@
             }
 
             try {
-                var response = await fetch(API_ENDPOINT + '/' + projectId + '/detect-metadata', {
+                var response = await CHUtils.apiFetch(API_ENDPOINT + '/' + projectId + '/detect-metadata', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -214,7 +214,7 @@
                 var url = isEdit ? API_ENDPOINT + '/' + projectId : API_ENDPOINT;
                 var method = isEdit ? 'PUT' : 'POST';
 
-                var response = await fetch(url, {
+                var response = await CHUtils.apiFetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -287,7 +287,7 @@
             if (!deleteTargetId) return;
 
             try {
-                var response = await fetch(API_ENDPOINT + '/' + deleteTargetId, {
+                var response = await CHUtils.apiFetch(API_ENDPOINT + '/' + deleteTargetId, {
                     method: 'DELETE'
                 });
 
@@ -310,7 +310,7 @@
          */
         togglePause: async function(projectId, currentPaused) {
             try {
-                var response = await fetch(API_ENDPOINT + '/' + projectId + '/settings', {
+                var response = await CHUtils.apiFetch(API_ENDPOINT + '/' + projectId + '/settings', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ inference_paused: !currentPaused })

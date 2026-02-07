@@ -214,7 +214,7 @@
     function handleCardRefresh(data) {
         // After a card refresh (which replaces card HTML), re-initialize any
         // respond widgets that appeared
-        setTimeout(initRespondWidgets, 100);
+        requestAnimationFrame(function() { requestAnimationFrame(initRespondWidgets); });
     }
 
     // Initialize on DOM ready

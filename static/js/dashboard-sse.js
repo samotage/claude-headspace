@@ -42,12 +42,22 @@
     let agentStates = new Map();
 
     /**
-     * Safe reload that defers if a ConfirmDialog is open.
-     * Prevents SSE-triggered reloads from flashing/dismissing confirm dialogs.
+     * Safe reload that defers if a ConfirmDialog is open or a respond widget
+     * input is focused (FE-H3). Prevents SSE-triggered reloads from
+     * flashing/dismissing dialogs or losing typed responses.
      */
     function safeDashboardReload() {
         if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
             console.log('SSE reload deferred — ConfirmDialog is open');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
+        // Defer reload if a respond widget input is focused
+        var active = document.activeElement;
+        if (active && active.closest && active.closest('.respond-widget')) {
+            console.log('SSE reload deferred — respond widget input is focused');
             window._sseReloadDeferred = function() {
                 window.location.reload();
             };
@@ -226,15 +236,18 @@
         });
 
         // Handle agent state changes
+        // Canonical: state_transition | Aliases: state_changed, agent_state_changed
         client.on('state_changed', handleStateTransition);
         client.on('state_transition', handleStateTransition);
         client.on('agent_state_changed', handleStateTransition);
 
         // Handle turn created
+        // Canonical: turn_detected | Alias: turn_created
         client.on('turn_detected', handleTurnCreated);
         client.on('turn_created', handleTurnCreated);
 
         // Handle agent activity
+        // Canonical: agent_activity | Alias: agent_updated
         client.on('agent_updated', handleAgentActivity);
         client.on('agent_activity', handleAgentActivity);
 
@@ -1222,24 +1235,13 @@
                 var history = data.history || [];
                 if (history.length === 0) return;
 
-                // Sum turns from history (same as activity.js _sumTurns)
-                var totalTurns = 0;
-                history.forEach(function(h) { totalTurns += (h.turn_count || 0); });
+                var totalTurns = CHUtils.sumTurns(history);
 
                 // Rate: turns / elapsed hours today
                 var hoursElapsed = Math.max((now - since) / (1000 * 60 * 60), 1);
                 var rate = totalTurns / hoursElapsed;
 
-                // Weighted average turn time (same as activity.js _weightedAvgTime)
-                var totalTime = 0, totalPairs = 0;
-                history.forEach(function(h) {
-                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
-                        var pairs = h.turn_count - 1;
-                        totalTime += h.avg_turn_time_seconds * pairs;
-                        totalPairs += pairs;
-                    }
-                });
-                var avgTime = totalPairs > 0 ? totalTime / totalPairs : null;
+                var avgTime = CHUtils.weightedAvgTime(history);
 
                 // Active agents from daily_totals
                 var activeAgents = data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
@@ -1264,12 +1266,8 @@
                 // Frustration from activity metrics (fallback if headspace unavailable)
                 var frustEl = document.getElementById('activity-bar-frustration');
                 if (frustEl) {
-                    var totalFrust = 0, totalFrustTurns = 0;
-                    history.forEach(function(h) {
-                        if (h.total_frustration != null) totalFrust += h.total_frustration;
-                        if (h.frustration_turn_count != null) totalFrustTurns += h.frustration_turn_count;
-                    });
-                    var frustAvg = totalFrustTurns > 0 ? totalFrust / totalFrustTurns : null;
+                    var frustSums = CHUtils.sumFrustrationHistory(history);
+                    var frustAvg = frustSums.turns > 0 ? frustSums.total / frustSums.turns : null;
                     frustEl.textContent = frustAvg != null ? frustAvg.toFixed(1) : '--';
                     frustEl.className = 'activity-bar-value';
                     if (frustAvg != null) {
