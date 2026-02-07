@@ -202,9 +202,38 @@ if ! command -v jq &> /dev/null; then
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT post-tool-use"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT pre-tool-use"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$NOTIFY_SCRIPT pre-tool-use"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterPlanMode",
         "hooks": [
           {
             "type": "command",
@@ -266,7 +295,9 @@ NOTIFICATION_HOOKS=$(jq -n \
 
 PRE_TOOL_USE_HOOKS=$(jq -n \
     --argjson ask "$(build_matched_hook_entry 'pre-tool-use' 'AskUserQuestion')" \
-    '[$ask]')
+    --argjson exit_plan "$(build_matched_hook_entry 'pre-tool-use' 'ExitPlanMode')" \
+    --argjson enter_plan "$(build_matched_hook_entry 'pre-tool-use' 'EnterPlanMode')" \
+    '[$ask, $exit_plan, $enter_plan]')
 
 PERMISSION_REQUEST_HOOKS=$(jq -n \
     --argjson catchall "$(build_matched_hook_entry 'permission-request' '')" \
@@ -294,6 +325,8 @@ HOOKS_OBJ=$(jq -n \
 
 # Update settings.json
 # Merge new hooks into existing settings, preserving non-headspace hooks
+cp "$SETTINGS_FILE" "${SETTINGS_FILE}.bak"
+log_info "Backed up settings to ${SETTINGS_FILE}.bak"
 TMP_FILE=$(mktemp)
 
 if jq -e '.hooks' "$SETTINGS_FILE" > /dev/null 2>&1; then
@@ -333,7 +366,7 @@ log_info ""
 log_info "Installation complete!"
 log_info ""
 log_info "Hooks installed for events:"
-jq -r '.hooks | to_entries[] | select(.value | any(.hooks[]?; .command | contains("notify-headspace"))) | "  \(.key)"' "$SETTINGS_FILE"
+jq -r '.hooks | to_entries[] | select(.value | map(.hooks[]? | select(.command | contains("notify-headspace"))) | length > 0) | "  \(.key)"' "$SETTINGS_FILE"
 log_info ""
 log_info "To verify hooks are working:"
 log_info "  1. Start a new Claude Code session"

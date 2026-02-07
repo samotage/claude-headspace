@@ -1,14 +1,45 @@
 <!-- Kanban View: Tasks grouped by lifecycle state -->
 {% for kproject in kanban_data %}
-<section class="mb-8" data-project-id="{{ kproject.id }}">
-    <!-- Project header -->
-    <div class="flex items-center gap-3 mb-3">
-        <h2 class="font-semibold font-display text-xl"><a href="/projects/{{ kproject.slug }}" class="text-cyan hover:text-primary text-glow-cyan transition-colors">{{ kproject.name }}</a></h2>
-        {% if kproject.staleness and kproject.staleness.tier == 'stale' %}
-            <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
-        {% elif kproject.staleness and kproject.staleness.tier == 'aging' %}
-            <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-amber/20 text-amber">Aging</span>
-        {% endif %}
+<section class="mb-8 bg-surface rounded-lg border border-border overflow-hidden" data-project-id="{{ kproject.id }}">
+    <!-- Column header -->
+    <div class="p-4 bg-elevated border-b border-cyan/20"
+         style="box-shadow: 0 1px 8px rgba(86,212,221,0.08);">
+        <!-- Heading row: dots + project name + brain reboot -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <!-- State indicator dots -->
+                <div class="flex items-center gap-1.5">
+                    <span class="state-dot w-3 h-3 rounded-full bg-amber
+                        {% if not kproject.state_flags.has_input_needed %}opacity-25{% endif %}"
+                        role="status" aria-label="Input needed"></span>
+                    <span class="state-dot w-3 h-3 rounded-full bg-blue
+                        {% if not kproject.state_flags.has_working %}opacity-25{% endif %}"
+                        role="status" aria-label="Working"></span>
+                    <span class="state-dot w-3 h-3 rounded-full bg-green
+                        {% if not kproject.state_flags.has_idle %}opacity-25{% endif %}"
+                        role="status" aria-label="Idle"></span>
+                </div>
+
+                <h2 class="font-semibold font-display text-xl">
+                    <a href="/projects/{{ kproject.slug }}" class="text-cyan hover:text-primary text-glow-cyan transition-colors">{{ kproject.name }}</a>
+                </h2>
+                {% if kproject.staleness and kproject.staleness.tier == 'stale' %}
+                    <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-red/20 text-red">Needs Reboot</span>
+                {% elif kproject.staleness and kproject.staleness.tier == 'aging' %}
+                    <span class="px-1.5 py-0.5 text-xs font-medium rounded bg-amber/20 text-amber">Aging</span>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-mono text-muted">{{ kproject.active_count }} active agent{{ 's' if kproject.active_count != 1 else '' }}</span>
+                <!-- Brain Reboot -->
+                <button class="px-3 py-1 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick='openBrainReboot({{ kproject.id }}, {{ kproject.name|tojson }}, {{ kproject.slug|tojson }})'
+                        title="Generate brain reboot context document">
+                    Brain Reboot
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- State columns -->

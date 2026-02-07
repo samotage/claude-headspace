@@ -420,16 +420,66 @@ def _create_agent_for_session(
             f"Register this project at the /projects management page before starting a session."
         )
 
-    # Create agent with persistent claude_session_id
-    agent = Agent(
-        session_uuid=uuid4(),
-        claude_session_id=claude_session_id,
-        project_id=project.id,
-        started_at=datetime.now(timezone.utc),
-        last_seen_at=datetime.now(timezone.utc),
-    )
-    db.session.add(agent)
-    db.session.commit()
+    # Create agent with persistent claude_session_id.
+    # Use INSERT ... ON CONFLICT DO UPDATE on claude_session_id to handle
+    # race conditions where concurrent hooks for the same session both try
+    # to create an agent simultaneously (SRV-C4).
+    now = datetime.now(timezone.utc)
+    new_uuid = uuid4()
+
+    try:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(Agent).values(
+            session_uuid=new_uuid,
+            claude_session_id=claude_session_id,
+            project_id=project.id,
+            started_at=now,
+            last_seen_at=now,
+        )
+        # If claude_session_id already exists (race), just update last_seen_at
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["claude_session_id"],
+            set_={"last_seen_at": now},
+        )
+        result = db.session.execute(stmt)
+        db.session.commit()
+
+        # Fetch the agent (either newly created or existing from race)
+        agent = (
+            db.session.query(Agent)
+            .filter(Agent.claude_session_id == claude_session_id)
+            .first()
+        )
+        if not agent:
+            raise RuntimeError(f"Agent not found after upsert for session {claude_session_id}")
+
+    except Exception as e:
+        # Graceful fallback: if ON CONFLICT fails (e.g. no unique constraint
+        # on claude_session_id yet — Agent D creates it separately), fall
+        # back to the original insert-and-retry pattern.
+        db.session.rollback()
+
+        # Check if another process created it in the meantime
+        agent = (
+            db.session.query(Agent)
+            .filter(Agent.claude_session_id == claude_session_id)
+            .first()
+        )
+        if agent:
+            logger.info(f"Agent already created by concurrent request for session {claude_session_id}")
+            return agent, project
+
+        # No race — create normally
+        agent = Agent(
+            session_uuid=new_uuid,
+            claude_session_id=claude_session_id,
+            project_id=project.id,
+            started_at=now,
+            last_seen_at=now,
+        )
+        db.session.add(agent)
+        db.session.commit()
 
     return agent, project
 

@@ -20,6 +20,7 @@ from claude_headspace.services.intent_detector import (
     IntentResult,
     _detect_completion_opener,
     _detect_end_of_task,
+    _detect_trailing_question,
     _extract_tail,
     _infer_completion_classification,
     _is_confirmation,
@@ -38,7 +39,7 @@ class TestDetectAgentIntent:
         """Question mark at end should detect as question."""
         result = detect_agent_intent("Would you like me to continue?")
         assert result.intent == TurnIntent.QUESTION
-        assert result.confidence == 1.0
+        assert result.confidence >= 0.95
 
     def test_would_you_like_phrase(self):
         """'Would you like' phrase should detect as question."""
@@ -1397,6 +1398,55 @@ class TestCookedCompletionMarker:
         assert result.intent == TurnIntent.COMPLETION
 
 
+class TestTaskCompleteMarker:
+    """Tests for TASK COMPLETE structured completion marker."""
+
+    def test_task_complete_marker_basic(self):
+        """'TASK COMPLETE — <summary>' should detect as completion."""
+        result = detect_agent_intent(
+            "---\nTASK COMPLETE — Returned current Unix timestamp.\n---"
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_with_tests(self):
+        """'TASK COMPLETE — <summary>. Tests: N passed.' should detect as completion."""
+        result = detect_agent_intent(
+            "---\nTASK COMPLETE — Fixed login bug. Tests: 12 passed.\n---"
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_inline(self):
+        """TASK COMPLETE marker without surrounding --- lines should still detect."""
+        result = detect_agent_intent(
+            "TASK COMPLETE — Added the new endpoint and updated tests."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_at_end_of_long_response(self):
+        """TASK COMPLETE marker at end of a long agent response should detect as completion."""
+        lines = ["Working on the implementation..."] * 20
+        lines.append("---")
+        lines.append("TASK COMPLETE — Implemented feature and ran all tests.")
+        lines.append("---")
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_marker_with_regular_dash(self):
+        """TASK COMPLETE with regular dash should also detect."""
+        result = detect_agent_intent(
+            "TASK COMPLETE - Updated the configuration."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_task_complete_case_insensitive(self):
+        """TASK COMPLETE should match case-insensitively."""
+        result = detect_agent_intent(
+            "Task Complete — Refactored the service layer."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+
 class TestGitSuccessPatterns:
     """Tests for git commit/push completion patterns."""
 
@@ -1712,3 +1762,225 @@ class TestNewCompletionPatterns:
             "I've made the following changes:\n- Fixed bug\n- Updated tests"
         )
         assert result.intent == TurnIntent.END_OF_TASK
+
+
+class TestTrailingQuestionGuard:
+    """Tests for Phase 0.5 trailing question guard.
+
+    The guard detects conversational questions at the end of agent output
+    that would otherwise be misclassified as COMPLETION because completion
+    patterns match earlier in the message body.
+    """
+
+    def test_pure_conversational_question(self):
+        """Pure conversational question → QUESTION."""
+        result = detect_agent_intent("Want me to check if the server is up?")
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_multi_line_response_ending_with_question(self):
+        """Multi-line response ending with question → QUESTION."""
+        text = (
+            "I've looked at the configuration and the settings seem correct.\n"
+            "The database is configured properly.\n"
+            "Want me to check if the server is up?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_completion_deep_in_body_question_at_end(self):
+        """Completion evidence deep in body, question at tail → QUESTION.
+
+        This is the core scenario: the agent's output contains completion-like
+        text (e.g. test results) earlier in a long message, but the final
+        lines are a question. The completion evidence must be pushed outside
+        the 15-line tail window so Phase 0 (END_OF_TASK) doesn't fire first.
+        """
+        # Build enough lines to push "All 12 tests passed" out of the tail
+        lines = [
+            "I've updated the configuration files.",
+            "All 12 tests passed.",
+            "The migration ran successfully.",
+        ]
+        # Add filler lines to push completion evidence out of 15-line tail
+        lines.extend([f"Updated file_{i}.py with new config." for i in range(15)])
+        lines.extend([
+            "",
+            "I noticed the deployment config is outdated.",
+            "Should I update it as well?",
+        ])
+        text = "\n".join(lines)
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_completion_plus_question_in_same_trailing_window(self):
+        """Completion + question in same 3-line window → still COMPLETION.
+
+        When both completion evidence AND a question are in the trailing
+        window, the guard skips and lets Phase 1 handle it (preserving
+        existing 'completion overrides follow-up question' behavior).
+        """
+        text = "All tests passed. Would you like me to also update the docs?"
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_soft_close_still_end_of_task(self):
+        """Soft-close offers → still END_OF_TASK (guard skips)."""
+        text = (
+            "I've applied all the changes.\n"
+            "Let me know if you'd like any adjustments."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.END_OF_TASK
+
+    def test_trailing_blocked_pattern(self):
+        """Blocked/error pattern at tail → QUESTION."""
+        text = (
+            "I tried to access the deployment server.\n"
+            "The connection was established.\n"
+            "I couldn't locate the configuration file."
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.QUESTION
+
+    def test_unit_returns_none_with_continuation(self):
+        """Unit: _detect_trailing_question returns None when has_continuation=True."""
+        result = _detect_trailing_question(
+            "Want me to check the server?", has_continuation=True
+        )
+        assert result is None
+
+    def test_unit_returns_none_for_empty_tail(self):
+        """Unit: _detect_trailing_question returns None for empty tail."""
+        result = _detect_trailing_question("", has_continuation=False)
+        assert result is None
+
+    def test_unit_returns_question_for_trailing_question(self):
+        """Unit: _detect_trailing_question returns QUESTION for trailing question."""
+        tail = (
+            "Some progress text.\n"
+            "More details here.\n"
+            "Want me to check the server?"
+        )
+        result = _detect_trailing_question(tail, has_continuation=False)
+        assert result is not None
+        assert result.intent == TurnIntent.QUESTION
+        assert result.confidence == 0.95
+
+    def test_unit_skips_when_completion_in_trailing_window(self):
+        """Unit: guard skips when COMPLETION pattern is in trailing window."""
+        tail = "All tests passed. Want me to continue?"
+        result = _detect_trailing_question(tail, has_continuation=False)
+        assert result is None
+
+    def test_unit_skips_when_soft_close_in_trailing_window(self):
+        """Unit: guard skips when soft-close pattern is in trailing window."""
+        tail = "Let me know if you'd like any adjustments."
+        result = _detect_trailing_question(tail, has_continuation=False)
+        assert result is None
+
+    def test_existing_completion_override_still_works(self):
+        """Existing TestCompletionOverridesFollowUpQuestion cases still pass.
+
+        The trailing question guard must NOT break the existing behavior where
+        completion + follow-up question → COMPLETION.
+        """
+        # Committed and pushed with follow-up
+        text = (
+            "Committed 8b58cab and pushed to development. "
+            "The remaining unstaged changes are from prior work. "
+            "Would you like me to clean those up too?"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION
+
+        # Test results with follow-up
+        text2 = (
+            "Ran 12 card_state tests (all passed) and 50 dashboard "
+            "route tests (49 passed, 1 pre-existing failure).\n"
+            "Would you like me to investigate the failing test?"
+        )
+        result2 = detect_agent_intent(text2)
+        assert result2.intent == TurnIntent.COMPLETION
+
+    def test_question_mark_multiline_flag(self):
+        """(?m) flag on QUESTION_PATTERNS[0] matches ? at end-of-line, not just end-of-string."""
+        text = (
+            "Should I update the deployment config?\n"
+            "Here are the details of what changed."
+        )
+        # The question mark is at end of line 1 (not end of string)
+        # With (?m), $ matches end-of-line so this should still detect
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.QUESTION
+
+
+class TestTaskCompleteMarkerInFullResponse:
+    """Tests that TASK COMPLETE marker is detected as COMPLETION in realistic full responses.
+
+    Regression tests for task 1057: a joke response with embedded question marks
+    (inside the joke text) was not being detected as COMPLETION despite ending
+    with the TASK COMPLETE marker. The task stayed in AWAITING_INPUT instead of
+    transitioning to COMPLETE.
+    """
+
+    def test_joke_response_with_task_complete_marker(self):
+        """Full joke response ending with TASK COMPLETE marker should be COMPLETION.
+
+        This is the exact scenario that caused task 1057 to stay in AWAITING_INPUT:
+        a joke containing embedded question marks followed by the TASK COMPLETE marker.
+        """
+        text = (
+            "Here's an absurdist one:\n"
+            "\n"
+            "A horse walks into a bar. The bartender asks, \"Why the long face?\" "
+            "The horse says, \"I just realized I'm a metaphor for existential dread.\" "
+            "The bartender nods, turns into a lamp, and nobody is surprised because "
+            "the bar was actually a dream being had by a potato.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Delivered an absurdist joke after asking the user's preference.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )
+
+    def test_one_liner_joke_with_task_complete_marker(self):
+        """One-liner joke with TASK COMPLETE marker should be COMPLETION."""
+        text = (
+            "Here's a one-liner for you:\n"
+            "\n"
+            "I told my suitcase there would be no vacation this year "
+            "\u2014 now I'm dealing with emotional baggage.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Delivered a one-liner joke after asking the user's preference.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )
+
+    def test_response_with_embedded_questions_and_task_complete(self):
+        """Response containing question marks in quoted text + TASK COMPLETE should be COMPLETION.
+
+        The embedded question marks (inside quotes) must not override the TASK COMPLETE
+        marker at the end via the trailing question guard or question patterns.
+        """
+        text = (
+            "The function checks if the user asked \"are you sure?\" before proceeding.\n"
+            "I've updated the validation logic to handle this edge case.\n"
+            "\n"
+            "---\n"
+            "TASK COMPLETE \u2014 Updated validation logic for quoted question handling.\n"
+            "---"
+        )
+        result = detect_agent_intent(text)
+        assert result.intent == TurnIntent.COMPLETION, (
+            f"Expected COMPLETION but got {result.intent.value} "
+            f"(pattern={result.matched_pattern})"
+        )

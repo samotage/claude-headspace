@@ -160,14 +160,15 @@ def verify_claude_cli() -> bool:
         return False
 
 
-def detect_claudec() -> str | None:
+def get_tmux_pane_id() -> str | None:
     """
-    Detect whether claudec (claude-commander) is available in PATH.
+    Get the tmux pane ID from environment.
 
     Returns:
-        Full path to claudec binary, or None if not found
+        tmux pane ID (e.g., "%0", "%5") if running in tmux, None otherwise
     """
-    return shutil.which("claudec")
+    pane_id = os.environ.get("TMUX_PANE")
+    return pane_id if pane_id else None
 
 
 def validate_prerequisites(server_url: str) -> tuple[bool, str | None]:
@@ -204,6 +205,8 @@ def register_session(
     session_uuid: uuid.UUID,
     project_info: ProjectInfo,
     iterm_pane_id: str | None,
+    *,
+    tmux_pane_id: str | None = None,
 ) -> tuple[bool, dict | None, str | None]:
     """
     Register a session with the Flask server.
@@ -213,6 +216,7 @@ def register_session(
         session_uuid: UUID for this session
         project_info: Project information
         iterm_pane_id: Optional iTerm pane ID
+        tmux_pane_id: Optional tmux pane ID for input bridge
 
     Returns:
         Tuple of (success, response_data, error_message)
@@ -227,6 +231,9 @@ def register_session(
 
     if iterm_pane_id:
         payload["iterm_pane_id"] = iterm_pane_id
+
+    if tmux_pane_id:
+        payload["tmux_pane_id"] = tmux_pane_id
 
     try:
         response = requests.post(
@@ -289,27 +296,18 @@ def setup_environment(server_url: str, session_uuid: uuid.UUID) -> dict:
     return env
 
 
-def launch_claude(
-    claude_args: list[str], env: dict, claudec_path: str | None = None
-) -> int:
+def launch_claude(claude_args: list[str], env: dict) -> int:
     """
     Launch Claude Code as a child process.
-
-    If claudec_path is provided, wraps claude with claudec for Input Bridge
-    support (PTY + commander socket).
 
     Args:
         claude_args: Additional arguments to pass to claude
         env: Environment variables
-        claudec_path: Path to claudec binary, or None to launch claude directly
 
     Returns:
         Exit code from claude process
     """
-    if claudec_path:
-        cmd = [claudec_path, "claude"] + claude_args
-    else:
-        cmd = ["claude"] + claude_args
+    cmd = ["claude"] + claude_args
     logger.info(f"Launching: {' '.join(cmd)}")
 
     try:
@@ -367,6 +365,50 @@ class SessionManager:
             cleanup_session(self.server_url, self.session_uuid)
 
 
+def _wrap_in_tmux(args: argparse.Namespace) -> int:
+    """
+    Re-execute the CLI inside a new tmux session.
+
+    Called when --bridge is requested but $TMUX_PANE is not set.
+    Uses os.execvp to replace the current process with tmux,
+    which runs the same CLI command inside a new session.
+
+    Args:
+        args: Parsed command line arguments (unused, kept for signature consistency)
+
+    Returns:
+        EXIT_ERROR if tmux is not installed (execvp does not return on success)
+    """
+    if not shutil.which("tmux"):
+        print(
+            "Error: tmux is not installed. Install it with: brew install tmux",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    project_info = get_project_info()
+    session_name = f"hs-{project_info.name}-{uuid.uuid4().hex[:8]}"
+
+    # Resolve the CLI entry point for re-execution
+    cli_path = shutil.which("claude-headspace") or sys.argv[0]
+
+    print(f"Starting tmux session: {session_name}")
+
+    try:
+        os.execvp(
+            "tmux",
+            ["tmux", "new-session", "-s", session_name, "-c", project_info.path, "--"]
+            + [cli_path]
+            + sys.argv[1:],
+        )
+    except OSError as e:
+        print(f"Error: Failed to start tmux session: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # execvp does not return on success; this is unreachable
+    return EXIT_ERROR  # pragma: no cover
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     """
     Handle the 'start' command.
@@ -377,6 +419,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     Returns:
         Exit code
     """
+    # Auto-wrap in tmux for bridge mode
+    if getattr(args, "bridge", False) and not os.environ.get("TMUX_PANE"):
+        return _wrap_in_tmux(args)
+
     # Get server URL
     server_url = get_server_url()
     print(f"Server: {server_url}")
@@ -400,13 +446,26 @@ def cmd_start(args: argparse.Namespace) -> int:
     # Get iTerm pane ID
     iterm_pane_id = get_iterm_pane_id()
 
+    # Detect tmux pane for Input Bridge (opt-in via --bridge)
+    tmux_pane_id = None
+    if getattr(args, "bridge", False):
+        tmux_pane_id = get_tmux_pane_id()
+        if tmux_pane_id:
+            print(f"Input Bridge: available (tmux pane {tmux_pane_id})")
+        else:
+            print(
+                "Input Bridge: unavailable (not in tmux session)",
+                file=sys.stderr,
+            )
+
     # Generate session UUID
     session_uuid = uuid.uuid4()
     print(f"Session: {session_uuid}")
 
     # Register session
     success, response_data, error = register_session(
-        server_url, session_uuid, project_info, iterm_pane_id
+        server_url, session_uuid, project_info, iterm_pane_id,
+        tmux_pane_id=tmux_pane_id,
     )
 
     if not success:
@@ -415,21 +474,12 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     print(f"Registered agent #{response_data['agent_id']}")
 
-    # Detect claudec for Input Bridge (opt-in via --bridge)
-    claudec_path = None
-    if getattr(args, "bridge", False):
-        claudec_path = detect_claudec()
-        if claudec_path:
-            print("Input Bridge: enabled (claudec detected)")
-        else:
-            print("Input Bridge: unavailable (claudec not found)", file=sys.stderr)
-
     # Set up environment
     env = setup_environment(server_url, session_uuid)
 
     # Launch claude with session management
     with SessionManager(server_url, session_uuid):
-        exit_code = launch_claude(args.claude_args, env, claudec_path=claudec_path)
+        exit_code = launch_claude(args.claude_args, env)
 
     print(f"Session ended (exit code: {exit_code})")
     return EXIT_SUCCESS if exit_code == 0 else exit_code
@@ -453,7 +503,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--bridge",
         action="store_true",
         default=False,
-        help="Enable Input Bridge (wrap claude with claudec for dashboard responses)",
+        help="Enable tmux-based Input Bridge for responding to agents from the dashboard",
     )
     start_parser.add_argument(
         "claude_args",

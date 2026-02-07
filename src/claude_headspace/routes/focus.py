@@ -81,9 +81,8 @@ def focus_agent(agent_id: int):
             latency_ms=int((time.time() - start_time) * 1000),
         )
         return jsonify({
-            "status": "error",
-            "error_type": "agent_not_found",
-            "message": f"Agent with ID {agent_id} not found.",
+            "error": f"Agent with ID {agent_id} not found.",
+            "detail": "agent_not_found",
         }), 404
 
     fallback_path = _get_fallback_path(agent)
@@ -100,12 +99,10 @@ def focus_agent(agent_id: int):
             latency_ms=latency_ms,
         )
         return jsonify({
-            "status": "error",
-            "error_type": "pane_not_found",
-            "message": "This agent does not have an iTerm pane ID. "
-            "It may have been created before the launcher script was used.",
+            "error": "This agent does not have an iTerm pane ID.",
+            "detail": "pane_not_found",
             "fallback_path": fallback_path,
-        }), 500
+        }), 400
 
     # Attempt to focus the pane
     result: FocusResult = focus_iterm_pane(pane_id)
@@ -132,9 +129,8 @@ def focus_agent(agent_id: int):
             status_code = 500  # Still a server-side issue, not client error
 
         return jsonify({
-            "status": "error",
-            "error_type": result.error_type.value if result.error_type else "unknown",
-            "message": result.error_message,
+            "error": result.error_message,
+            "detail": result.error_type.value if result.error_type else "unknown",
             "fallback_path": fallback_path,
         }), status_code
 
@@ -159,20 +155,23 @@ def dismiss_agent(agent_id: int):
 
     if agent is None:
         return jsonify({
-            "status": "error",
-            "message": f"Agent {agent_id} not found",
+            "error": f"Agent {agent_id} not found",
         }), 404
 
     if agent.ended_at is not None:
         return jsonify({
-            "status": "error",
-            "message": "Agent already ended",
+            "error": "Agent already ended",
         }), 409
 
-    now = datetime.now(timezone.utc)
-    agent.ended_at = now
-    agent.last_seen_at = now
-    db.session.commit()
+    try:
+        now = datetime.now(timezone.utc)
+        agent.ended_at = now
+        agent.last_seen_at = now
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to dismiss agent %s", agent_id)
+        return jsonify({"error": "Failed to dismiss agent"}), 500
 
     logger.info(f"Agent {agent_id} dismissed from dashboard")
 

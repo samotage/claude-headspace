@@ -1,11 +1,9 @@
 """Pytest fixtures for Claude Headspace tests."""
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
 
 from claude_headspace.app import create_app
 from claude_headspace.config import load_config
@@ -59,27 +57,7 @@ def _force_test_database():
 
 
 @pytest.fixture
-def temp_config():
-    """Create a temporary config file."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        config = {
-            "server": {
-                "host": "127.0.0.1",
-                "port": 5050,
-                "debug": False,
-            },
-            "logging": {
-                "level": "DEBUG",
-                "file": "logs/test.log",
-            },
-        }
-        yaml.dump(config, f)
-        yield f.name
-    os.unlink(f.name)
-
-
-@pytest.fixture
-def app(temp_config):
+def app():
     """Create a Flask application for testing."""
     # Change to a temp directory that has templates
     original_cwd = os.getcwd()

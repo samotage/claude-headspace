@@ -10,8 +10,8 @@ import yaml
 # Default configuration values
 DEFAULTS = {
     "server": {
-        "host": "127.0.0.1",
-        "port": 5050,
+        "host": "0.0.0.0",
+        "port": 5055,
         "debug": False,
     },
     "logging": {
@@ -64,12 +64,29 @@ DEFAULTS = {
         "rate_limit_seconds": 5,
         "dashboard_url": "http://localhost:5055",
     },
+    "activity": {
+        "enabled": True,
+        "interval_seconds": 300,
+        "retention_days": 3000,
+    },
+    "commander": {
+        "health_check_interval": 30,
+        "socket_timeout": 2,
+        "socket_path_prefix": "/tmp/claudec-",
+    },
+    "tmux_bridge": {
+        "health_check_interval": 30,
+        "subprocess_timeout": 5,
+        "text_enter_delay_ms": 100,
+        "sequential_delay_ms": 150,
+        "select_other_delay_ms": 500,
+    },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "timeout": 30,
         "models": {
-            "turn": "anthropic/claude-3-haiku",
-            "task": "anthropic/claude-3-haiku",
+            "turn": "anthropic/claude-haiku-4.5",
+            "task": "anthropic/claude-haiku-4.5",
             "project": "anthropic/claude-3.5-sonnet",
             "objective": "anthropic/claude-3.5-sonnet",
         },
@@ -349,6 +366,6 @@ def get_notifications_config(config: dict) -> dict:
             config, "notifications", "rate_limit_seconds", default=5
         ),
         "dashboard_url": get_value(
-            config, "notifications", "dashboard_url", default="http://localhost:5050"
+            config, "notifications", "dashboard_url", default="http://localhost:5055"
         ),
     }

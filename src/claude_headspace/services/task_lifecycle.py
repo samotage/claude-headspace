@@ -176,6 +176,29 @@ class TaskLifecycleManager:
             True if the update was successful
         """
         from_state = task.state
+
+        # Validate through state machine (log-only for now — allow the
+        # transition regardless so callers like session_end forced-completion
+        # still work, but flag unexpected paths)
+        from .state_machine import validate_transition as _validate
+        # Build a synthetic actor/intent for validation
+        _actor_map = {
+            "hook:user_prompt_submit": (TurnActor.USER, TurnIntent.COMMAND),
+            "hook:stop:question_detected": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "hook:pre_tool_use:stale_awaiting_recovery": (TurnActor.AGENT, TurnIntent.PROGRESS),
+        }
+        _actor, _intent = _actor_map.get(trigger, (TurnActor.AGENT, TurnIntent.PROGRESS))
+        if to_state == TaskState.AWAITING_INPUT:
+            _intent = TurnIntent.QUESTION
+        elif to_state == TaskState.COMPLETE:
+            _intent = TurnIntent.COMPLETION
+        _vr = _validate(from_state, _actor, _intent)
+        if not _vr.valid:
+            logger.warning(
+                f"State transition not in VALID_TRANSITIONS (allowing anyway): "
+                f"{from_state.value} -> {to_state.value} trigger={trigger} reason={_vr.reason}"
+            )
+
         task.state = to_state
 
         logger.debug(f"Task id={task.id} state updated: {from_state.value} -> {to_state.value}")
@@ -244,6 +267,16 @@ class TaskLifecycleManager:
             True if the task was completed successfully
         """
         from_state = task.state
+
+        # Validate through state machine (log-only — forced completions like
+        # session_end must still proceed even if the transition is unusual)
+        _vr = validate_transition(from_state, TurnActor.AGENT, intent)
+        if not _vr.valid:
+            logger.warning(
+                f"complete_task: transition not in VALID_TRANSITIONS (allowing anyway): "
+                f"{from_state.value} -> COMPLETE trigger={trigger} reason={_vr.reason}"
+            )
+
         task.state = TaskState.COMPLETE
         task.completed_at = datetime.now(timezone.utc)
 

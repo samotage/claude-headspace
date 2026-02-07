@@ -693,34 +693,15 @@
         },
 
         _sumTurns: function(history) {
-            var total = 0;
-            if (history) history.forEach(function(h) { total += (h.turn_count || 0); });
-            return total;
+            return CHUtils.sumTurns(history);
         },
 
         _weightedAvgTime: function(history) {
-            var totalTime = 0, totalPairs = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
-                        var pairs = h.turn_count - 1;
-                        totalTime += h.avg_turn_time_seconds * pairs;
-                        totalPairs += pairs;
-                    }
-                });
-            }
-            return totalPairs > 0 ? totalTime / totalPairs : null;
+            return CHUtils.weightedAvgTime(history);
         },
 
         _sumFrustrationHistory: function(history) {
-            var total = 0, turns = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.total_frustration != null) total += h.total_frustration;
-                    if (h.frustration_turn_count != null) turns += h.frustration_turn_count;
-                });
-            }
-            return { total: total, turns: turns };
+            return CHUtils.sumFrustrationHistory(history);
         },
 
         _frustrationLevel: function(totalFrustration, turnCount) {
@@ -732,69 +713,11 @@
         },
 
         _aggregateByDay: function(history) {
-            var dayMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.toLocaleDateString('en-CA');
-                if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
-                }
-                dayMap[key].turn_count += h.turn_count;
-                if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
-                if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
-                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
-                if (bucketMax != null) {
-                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
-                        ? Math.max(dayMap[key].max_frustration, bucketMax)
-                        : bucketMax;
-                }
-            });
-            return Object.keys(dayMap).sort().map(function(k) {
-                var entry = dayMap[k];
-                if (entry.total_frustration === 0) entry.total_frustration = null;
-                if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
-                return entry;
-            });
+            return CHUtils.aggregateByDay(history);
         },
 
         _fillHourlyGaps: function(history) {
-            if (history.length < 2) return history;
-            var bucketMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.getFullYear() + '-' +
-                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(d.getDate()).padStart(2, '0') + 'T' +
-                    String(d.getHours()).padStart(2, '0');
-                bucketMap[key] = h;
-            });
-            var first = new Date(history[0].bucket_start);
-            var last = new Date(history[history.length - 1].bucket_start);
-            first.setMinutes(0, 0, 0);
-            last.setMinutes(0, 0, 0);
-            var result = [];
-            var cursor = new Date(first);
-            while (cursor <= last) {
-                var key = cursor.getFullYear() + '-' +
-                    String(cursor.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(cursor.getDate()).padStart(2, '0') + 'T' +
-                    String(cursor.getHours()).padStart(2, '0');
-                if (bucketMap[key]) {
-                    result.push(bucketMap[key]);
-                } else {
-                    result.push({
-                        bucket_start: cursor.toISOString(),
-                        turn_count: 0,
-                        avg_turn_time_seconds: null,
-                        active_agents: null,
-                        total_frustration: null,
-                        frustration_turn_count: null,
-                        max_frustration: null
-                    });
-                }
-                cursor = new Date(cursor.getTime() + 3600000);
-            }
-            return result;
+            return CHUtils.fillHourlyGaps(history);
         },
 
         _renderMetricsChart: function(history) {
@@ -896,6 +819,12 @@
                     interaction: { intersect: false, mode: 'index' },
                     plugins: {
                         tooltip: {
+                            titleFont: { size: 16 },
+                            bodyFont: { size: 15 },
+                            boxWidth: 15,
+                            boxHeight: 15,
+                            boxPadding: 8,
+                            padding: 12,
                             callbacks: {
                                 title: function(items) {
                                     if (!items.length) return '';
@@ -1082,7 +1011,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId, {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1161,7 +1090,7 @@
 
         confirmDelete: async function() {
             try {
-                var response = await fetch('/api/projects/' + projectId, {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId, {
                     method: 'DELETE'
                 });
 
@@ -1182,7 +1111,7 @@
             var isPaused = btn && btn.textContent.trim().startsWith('Resume');
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/settings', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/settings', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ inference_paused: !isPaused })
@@ -1227,7 +1156,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/detect-metadata', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/detect-metadata', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1258,7 +1187,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/detect-metadata', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/detect-metadata', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1300,7 +1229,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/brain-reboot', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/brain-reboot', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1329,7 +1258,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/brain-reboot/export', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/brain-reboot/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1374,7 +1303,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/progress-summary', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/progress-summary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1451,7 +1380,7 @@
             }
 
             try {
-                var response = await fetch('/api/projects/' + projectId + '/waypoint', {
+                var response = await CHUtils.apiFetch('/api/projects/' + projectId + '/waypoint', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1629,41 +1558,7 @@
         },
 
         _renderMarkdown: function(text) {
-            // Strip HTML comments before processing
-            text = text.replace(/<!--[\s\S]*?-->/g, '');
-            // Basic markdown rendering: headers, bold, italic, code blocks, lists, links
-            var html = CHUtils.escapeHtml(text);
-
-            // Code blocks (triple backtick)
-            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code>$2</code></pre>');
-
-            // Inline code
-            html = html.replace(/`([^`]+)`/g, '<code class="bg-surface px-1 rounded text-xs">$1</code>');
-
-            // Headers
-            html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-primary mt-4 mb-2">$1</h3>');
-            html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-primary mt-4 mb-2">$1</h2>');
-            html = html.replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-primary mt-4 mb-2">$1</h1>');
-
-            // Bold and italic
-            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-            // Unordered lists
-            html = html.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
-            html = html.replace(/(<li.*<\/li>\n?)+/g, '<ul class="list-disc mb-2">$&</ul>');
-
-            // Links
-            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-cyan hover:underline" target="_blank" rel="noopener">$1</a>');
-
-            // Line breaks (double newline -> paragraph)
-            html = html.replace(/\n\n/g, '</p><p class="mb-2">');
-            html = '<p class="mb-2">' + html + '</p>';
-
-            // Clean up empty paragraphs
-            html = html.replace(/<p class="mb-2"><\/p>/g, '');
-
-            return html;
+            return CHUtils.renderMarkdown(text);
         },
 
         _timeAgo: function(dateString) {

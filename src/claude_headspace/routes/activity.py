@@ -72,6 +72,7 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "frustration_turn_count": m.frustration_turn_count,
         "frustration_avg": frustration_avg,
         "max_frustration": m.max_frustration,
+        "max_frustration_at": m.max_frustration_at.isoformat() if m.max_frustration_at else None,
     }
 
 

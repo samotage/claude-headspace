@@ -7,6 +7,7 @@ as genuine keyboard input.
 """
 
 import logging
+import re
 import subprocess
 import time
 from enum import Enum
@@ -363,6 +364,217 @@ def capture_pane(
     except Exception as e:
         logger.warning(f"capture-pane failed for {pane_id}: {e}")
         return ""
+
+
+def parse_permission_options(pane_text: str) -> list[dict[str, str]] | None:
+    """Parse numbered permission options from tmux pane content.
+
+    Matches lines like:
+      1. Yes
+      ❯ 2. Yes, and don't ask again
+        3. No
+
+    Args:
+        pane_text: Raw captured pane text (may contain ANSI escape codes)
+
+    Returns:
+        List of {"label": "..."} dicts if >= 2 sequential options found, else None
+    """
+    if not pane_text:
+        return None
+
+    # Strip ANSI escape codes
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", pane_text)
+
+    # Match numbered option lines (with optional arrow indicator prefix)
+    pattern = r"^\s*(?:[❯›>]\s*)?(\d+)\.\s+(.+?)\s*$"
+    matches = re.findall(pattern, clean, re.MULTILINE)
+
+    if len(matches) < 2:
+        return None
+
+    # Validate sequential numbering starting from 1
+    for i, (num_str, _label) in enumerate(matches):
+        if int(num_str) != i + 1:
+            return None
+
+    return [{"label": label} for _num, label in matches]
+
+
+def parse_permission_context(pane_text: str) -> dict | None:
+    """Parse the full permission dialog block from tmux pane content.
+
+    Extracts the tool type header, command text, description, and options from
+    a Claude Code permission dialog that looks like:
+
+        Bash command
+
+          curl -s http://localhost:5055/dashboard | sed -n '630,645p'
+          Check state-bar HTML around line 634
+
+        Do you want to proceed?
+        ❯ 1. Yes
+          2. No
+
+    Args:
+        pane_text: Raw captured pane text (may contain ANSI escape codes)
+
+    Returns:
+        Dict with "tool_type", "command", "description", "options" keys, or None
+    """
+    if not pane_text:
+        return None
+
+    # Strip ANSI escape codes
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", pane_text)
+
+    # Parse options first — if no options, this isn't a permission dialog
+    options = parse_permission_options(pane_text)
+    if not options:
+        return None
+
+    # Find the "Do you want to proceed?" line (or similar prompt)
+    prompt_pattern = r"^\s*(Do you want to (?:proceed|allow|continue)\??|Allow this .*\??)\s*$"
+    prompt_match = re.search(prompt_pattern, clean, re.MULTILINE | re.IGNORECASE)
+
+    # Find tool type header — a line like "Bash command", "Read file", etc.
+    # The header is typically a short line (< 40 chars) before the command block
+    tool_type = None
+    command_text = None
+    description = None
+
+    # Look for known tool header patterns
+    header_pattern = r"^\s*((?:Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|NotebookEdit)\s+\w*)\s*$"
+    header_match = re.search(header_pattern, clean, re.MULTILINE | re.IGNORECASE)
+
+    if header_match:
+        tool_type = header_match.group(1).strip()
+        header_end = header_match.end()
+
+        # The command block is indented text between the header and the prompt
+        if prompt_match:
+            block_text = clean[header_end:prompt_match.start()]
+        else:
+            # No prompt found — take text up to the first option line
+            first_option_match = re.search(r"^\s*(?:[❯›>]\s*)?\d+\.\s+", clean[header_end:], re.MULTILINE)
+            if first_option_match:
+                block_text = clean[header_end:header_end + first_option_match.start()]
+            else:
+                block_text = ""
+
+        # Parse the block: indented lines are command/description
+        block_lines = [line.strip() for line in block_text.strip().splitlines() if line.strip()]
+
+        if block_lines:
+            # First non-empty line(s) are the command, last line may be description
+            # Heuristic: if last line looks like a description (starts with uppercase,
+            # no special command chars), treat it as description
+            if len(block_lines) >= 2 and _looks_like_description(block_lines[-1]):
+                command_text = "\n".join(block_lines[:-1])
+                description = block_lines[-1]
+            else:
+                command_text = "\n".join(block_lines)
+
+    return {
+        "tool_type": tool_type,
+        "command": command_text,
+        "description": description,
+        "options": options,
+    }
+
+
+def _looks_like_description(line: str) -> bool:
+    """Heuristic: check if a line looks like a human-readable description.
+
+    Descriptions typically:
+    - Start with an uppercase letter
+    - Don't start with common command prefixes (/, -, $, etc.)
+    - Don't contain shell operators (|, >, &&)
+    """
+    if not line:
+        return False
+    first_char = line[0]
+    if first_char in ("/", "-", "$", ".", "~", "{", "[", "(", "'", '"', "`"):
+        return False
+    if any(op in line for op in ("|", "&&", ">>", "<<", "$(", "${")):
+        return False
+    # Starts with uppercase letter — likely description
+    return first_char.isupper()
+
+
+def capture_permission_options(
+    pane_id: str,
+    max_attempts: int = 3,
+    retry_delay_ms: int = 200,
+    capture_lines: int = 30,
+) -> list[dict[str, str]] | None:
+    """Capture tmux pane content and parse permission dialog options.
+
+    Retries to handle the race condition where the hook fires before
+    the dialog has fully rendered in the terminal.
+
+    Args:
+        pane_id: The tmux pane ID
+        max_attempts: Number of capture+parse attempts
+        retry_delay_ms: Delay in ms between attempts
+        capture_lines: Number of pane lines to capture
+
+    Returns:
+        List of {"label": "..."} dicts if options found, else None
+    """
+    for attempt in range(max_attempts):
+        pane_text = capture_pane(pane_id, lines=capture_lines)
+        options = parse_permission_options(pane_text)
+        if options is not None:
+            logger.debug(
+                f"Parsed {len(options)} permission options from pane {pane_id} "
+                f"(attempt {attempt + 1})"
+            )
+            return options
+        if attempt < max_attempts - 1:
+            time.sleep(retry_delay_ms / 1000.0)
+
+    logger.debug(f"No permission options found in pane {pane_id} after {max_attempts} attempts")
+    return None
+
+
+def capture_permission_context(
+    pane_id: str,
+    max_attempts: int = 3,
+    retry_delay_ms: int = 200,
+    capture_lines: int = 30,
+) -> dict | None:
+    """Capture tmux pane content and parse the full permission dialog context.
+
+    Like capture_permission_options but returns the full context dict including
+    the command text and description, not just the options list.
+
+    Retries to handle the race condition where the hook fires before
+    the dialog has fully rendered in the terminal.
+
+    Args:
+        pane_id: The tmux pane ID
+        max_attempts: Number of capture+parse attempts
+        retry_delay_ms: Delay in ms between attempts
+        capture_lines: Number of pane lines to capture
+
+    Returns:
+        Dict with "tool_type", "command", "description", "options" keys, or None
+    """
+    for attempt in range(max_attempts):
+        pane_text = capture_pane(pane_id, lines=capture_lines)
+        context = parse_permission_context(pane_text)
+        if context is not None:
+            logger.debug(
+                f"Parsed permission context from pane {pane_id} "
+                f"(attempt {attempt + 1}): tool_type={context.get('tool_type')}"
+            )
+            return context
+        if attempt < max_attempts - 1:
+            time.sleep(retry_delay_ms / 1000.0)
+
+    logger.debug(f"No permission context found in pane {pane_id} after {max_attempts} attempts")
+    return None
 
 
 def list_panes(

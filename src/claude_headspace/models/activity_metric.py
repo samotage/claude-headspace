@@ -52,6 +52,9 @@ class ActivityMetric(db.Model):
     max_frustration: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
     )
+    max_frustration_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,

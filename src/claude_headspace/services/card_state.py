@@ -178,7 +178,7 @@ def _get_completed_task_summary(task) -> str:
     return "Summarising..."
 
 
-def get_task_summary(agent: Agent) -> str:
+def get_task_summary(agent: Agent, _current_task=None) -> str:
     """
     Get task summary for an agent.
 
@@ -199,7 +199,7 @@ def get_task_summary(agent: Agent) -> str:
     """
     from ..models.turn import TurnActor, TurnIntent
 
-    current_task = agent.get_current_task()
+    current_task = _current_task if _current_task is not None else agent.get_current_task()
     if current_task is None:
         # Check if most recent task is COMPLETE (eager-loaded, ordered by started_at desc)
         if agent.tasks and agent.tasks[0].state == TaskState.COMPLETE:
@@ -239,7 +239,7 @@ def get_task_summary(agent: Agent) -> str:
     return "No active task"
 
 
-def get_task_instruction(agent: Agent) -> str | None:
+def get_task_instruction(agent: Agent, _current_task=None) -> str | None:
     """
     Get the task instruction for an agent's current or most recent task.
 
@@ -254,13 +254,44 @@ def get_task_instruction(agent: Agent) -> str | None:
     """
     from ..models.turn import TurnActor, TurnIntent
 
-    current_task = agent.get_current_task()
+    current_task = _current_task if _current_task is not None else agent.get_current_task()
     if current_task and current_task.instruction:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"task={current_task.id}, state={current_task.state.value}, "
+            f"instruction={current_task.instruction!r:.60}"
+        )
         return current_task.instruction
 
     # Check most recent task (any state) for instruction
     if agent.tasks and agent.tasks[0].instruction:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"fallback to tasks[0]={agent.tasks[0].id}, "
+            f"state={agent.tasks[0].state.value}, "
+            f"instruction={agent.tasks[0].instruction!r:.60}"
+        )
         return agent.tasks[0].instruction
+
+    # Debug: log why we fell through
+    if current_task:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"task={current_task.id}, state={current_task.state.value}, "
+            f"instruction=None (not yet generated)"
+        )
+    elif agent.tasks:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"no current_task, tasks[0]={agent.tasks[0].id}, "
+            f"state={agent.tasks[0].state.value}, "
+            f"instruction={agent.tasks[0].instruction!r}"
+        )
+    else:
+        logger.debug(
+            f"get_task_instruction: agent={agent.id}, "
+            f"no current_task, no tasks"
+        )
 
     # Fall back to first USER COMMAND turn's raw text
     task = current_task or (agent.tasks[0] if agent.tasks else None)
@@ -403,7 +434,7 @@ def _get_task_elapsed(agent: Agent) -> str | None:
     return None
 
 
-def _get_current_task_turn_count(agent: Agent) -> int:
+def _get_current_task_turn_count(agent: Agent, _current_task=None) -> int:
     """Get turn count for the agent's current or most recent task.
 
     Works for any task state (active or completed).
@@ -414,7 +445,7 @@ def _get_current_task_turn_count(agent: Agent) -> int:
     Returns:
         Number of turns in the current/most recent task, or 0
     """
-    current_task = agent.get_current_task()
+    current_task = _current_task if _current_task is not None else agent.get_current_task()
     if current_task and hasattr(current_task, "turns"):
         return len(current_task.turns)
     # Fall back to most recent task (may be COMPLETE)
@@ -424,7 +455,7 @@ def _get_current_task_turn_count(agent: Agent) -> int:
     return 0
 
 
-def _get_current_task_elapsed(agent: Agent) -> str | None:
+def _get_current_task_elapsed(agent: Agent, _current_task=None) -> str | None:
     """Get elapsed time string for the agent's current or most recent task.
 
     For active tasks, computes time since task.started_at until now.
@@ -436,7 +467,7 @@ def _get_current_task_elapsed(agent: Agent) -> str | None:
     Returns:
         Elapsed time string like "2h 15m", "5m", "<1m", or None
     """
-    current_task = agent.get_current_task()
+    current_task = _current_task if _current_task is not None else agent.get_current_task()
     task = current_task or (agent.tasks[0] if agent.tasks else None)
     if not task or not task.started_at:
         return None
@@ -459,6 +490,74 @@ def _get_current_task_elapsed(agent: Agent) -> str | None:
         return "<1m"
 
 
+def _is_permission_question(text: str | None) -> bool:
+    """Check if question text looks like a permission request summary."""
+    if not text or not isinstance(text, str):
+        return False
+    # Permission summarizer outputs like "Bash: ls /foo", "Read: src/file.py",
+    # "Permission needed: Bash", "Permission: ToolName", or generic waiting text
+    permission_prefixes = (
+        "Bash:", "Read:", "Write:", "Edit:", "Glob:", "Grep:",
+        "NotebookEdit:", "WebFetch:", "WebSearch:",
+        "Permission needed:", "Permission:",
+    )
+    return text.startswith(permission_prefixes) or text == "Claude is waiting for your input"
+
+
+def _default_permission_options(question_text: str) -> dict:
+    """Build default Yes/No structured options for permission requests."""
+    return {
+        "questions": [{
+            "question": question_text,
+            "options": [
+                {"label": "Yes", "description": "Allow this action"},
+                {"label": "No", "description": "Deny this action"},
+            ],
+        }],
+        "source": "card_state_fallback",
+    }
+
+
+def get_question_options(agent: Agent, _current_task=None) -> dict | None:
+    """Get structured AskUserQuestion options for an agent in AWAITING_INPUT state.
+
+    Finds the most recent AGENT QUESTION turn's tool_input field, which
+    contains the full AskUserQuestion structure (questions with options).
+    Falls back to default Yes/No options for permission-type questions
+    when no structured options were stored on the turn.
+
+    Args:
+        agent: The agent
+
+    Returns:
+        The tool_input dict if available, None otherwise
+    """
+    from ..models.turn import TurnActor, TurnIntent
+
+    current_task = _current_task if _current_task is not None else agent.get_current_task()
+    if not current_task or current_task.state != TaskState.AWAITING_INPUT:
+        return None
+
+    if not current_task.turns:
+        return None
+
+    # First pass: find any recent AGENT QUESTION turn with actual tool_input.
+    # The stop hook may have created a newer Turn without tool_input that
+    # shadows the original structured options — search past it.
+    for turn in reversed(current_task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            if turn.tool_input:
+                return turn.tool_input
+
+    # Second pass: fallback for permission requests (most recent QUESTION turn)
+    for turn in reversed(current_task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            if _is_permission_question(turn.text):
+                return _default_permission_options(turn.text or "Permission needed")
+            return None
+    return None
+
+
 def build_card_state(agent: Agent) -> dict:
     """Build the full card state dict for an agent.
 
@@ -471,6 +570,9 @@ def build_card_state(agent: Agent) -> dict:
     Returns:
         Dictionary with all card-visible fields, state serialised to string
     """
+    # Cache current_task lookup to avoid repeated N+1 calls
+    current_task = agent.get_current_task()
+
     effective_state = get_effective_state(agent)
     state_name = effective_state if isinstance(effective_state, str) else effective_state.name
 
@@ -485,8 +587,8 @@ def build_card_state(agent: Agent) -> dict:
         "last_seen": format_last_seen(agent.last_seen_at),
         "state": state_name,
         "state_info": get_state_info(effective_state),
-        "task_summary": get_task_summary(agent),
-        "task_instruction": get_task_instruction(agent),
+        "task_summary": get_task_summary(agent, _current_task=current_task),
+        "task_instruction": get_task_instruction(agent, _current_task=current_task),
         "task_completion_summary": get_task_completion_summary(agent),
         "priority": agent.priority_score if agent.priority_score is not None else 50,
         "priority_reason": agent.priority_reason,
@@ -497,8 +599,28 @@ def build_card_state(agent: Agent) -> dict:
 
     # Include turn count and elapsed time for all states (used by
     # the agent card footer and condensed completed-task card)
-    card["turn_count"] = _get_current_task_turn_count(agent)
-    card["elapsed"] = _get_current_task_elapsed(agent)
+    card["turn_count"] = _get_current_task_turn_count(agent, _current_task=current_task)
+    card["elapsed"] = _get_current_task_elapsed(agent, _current_task=current_task)
+
+    # Include structured question options for AWAITING_INPUT cards
+    options = get_question_options(agent, _current_task=current_task)
+    if options:
+        card["question_options"] = options
+
+    # Bridge connectivity: cache first, live check fallback
+    card["is_bridge_connected"] = False
+    if agent.tmux_pane_id:
+        try:
+            commander = current_app.extensions.get("commander_availability")
+            if commander:
+                available = commander.is_available(agent.id)
+                if not available:
+                    available = commander.check_agent(
+                        agent.id, agent.tmux_pane_id
+                    )
+                card["is_bridge_connected"] = available
+        except RuntimeError:
+            pass  # No app context (unit tests)
 
     return card
 
@@ -521,6 +643,6 @@ def broadcast_card_refresh(agent: Agent, reason: str) -> None:
         card["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         get_broadcaster().broadcast("card_refresh", card)
-        logger.debug(f"Broadcast card_refresh for agent {agent.id}: {reason}")
+        logger.debug(f"Broadcast card_refresh for agent {agent.id}: reason={reason}, instruction={card.get('task_instruction', 'N/A')!r:.60}")
     except Exception as e:
-        logger.debug(f"card_refresh broadcast failed (non-fatal): {e}")
+        logger.info(f"card_refresh broadcast failed (non-fatal): {e}")

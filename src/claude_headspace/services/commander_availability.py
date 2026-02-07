@@ -6,6 +6,7 @@ availability changes via SSE so the dashboard can show/hide the input widget.
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from . import tmux_bridge
@@ -178,22 +179,35 @@ class CommanderAvailability:
 
             self._stop_event.wait(self._health_check_interval)
 
+    def _check_single_agent(self, agent_id: int, pane_id: str) -> None:
+        """Check health for a single agent."""
+        try:
+            health = tmux_bridge.check_health(
+                pane_id,
+                timeout=self._subprocess_timeout,
+            )
+            self._update_availability(agent_id, health.available)
+        except Exception as e:
+            logger.debug(
+                f"Health check failed for agent {agent_id} (non-fatal): {e}"
+            )
+            self._update_availability(agent_id, False)
+
     def _check_all_agents(self) -> None:
-        """Check health for all registered agents."""
+        """Check health for all registered agents in parallel."""
         with self._lock:
             agents_to_check = dict(self._pane_ids)
 
-        for agent_id, pane_id in agents_to_check.items():
-            if self._stop_event.is_set():
-                break
-            try:
-                health = tmux_bridge.check_health(
-                    pane_id,
-                    timeout=self._subprocess_timeout,
-                )
-                self._update_availability(agent_id, health.available)
-            except Exception as e:
-                logger.debug(
-                    f"Health check failed for agent {agent_id} (non-fatal): {e}"
-                )
-                self._update_availability(agent_id, False)
+        if not agents_to_check:
+            return
+
+        with ThreadPoolExecutor(max_workers=min(5, len(agents_to_check))) as pool:
+            futures = {
+                pool.submit(self._check_single_agent, agent_id, pane_id): agent_id
+                for agent_id, pane_id in agents_to_check.items()
+            }
+            for future in as_completed(futures):
+                if self._stop_event.is_set():
+                    break
+                # Exceptions are already handled inside _check_single_agent
+                future.result()

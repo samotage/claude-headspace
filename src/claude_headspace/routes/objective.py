@@ -204,10 +204,7 @@ def get_objective_history():
         # Validate parameters
         if page < 1:
             page = 1
-        if per_page < 1:
-            per_page = 10
-        if per_page > 100:
-            per_page = 100
+        per_page = max(1, min(per_page, 100))
 
         # Get total count
         total = db.session.query(ObjectiveHistory).count()

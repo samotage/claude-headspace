@@ -86,7 +86,71 @@
         },
 
         /**
-         * Handle a quick-action button click
+         * Select a structured AskUserQuestion option via arrow keys
+         * @param {number} agentId - The agent ID
+         * @param {number} optionIndex - Zero-based option index
+         * @returns {Promise<boolean>} True if sent successfully
+         */
+        sendSelect: async function(agentId, optionIndex) {
+            if (!agentId) return false;
+
+            try {
+                var response = await fetch(RESPOND_ENDPOINT + '/' + agentId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'select', option_index: optionIndex })
+                });
+                var data = await response.json();
+                if (response.ok && data.status === 'ok') {
+                    this._showSuccessFeedback(agentId);
+                    return true;
+                } else {
+                    this._handleError(data, agentId);
+                    return false;
+                }
+            } catch (error) {
+                console.error('RespondAPI: Select request failed', error);
+                if (global.Toast) {
+                    global.Toast.error('Could not send selection', 'Network error');
+                }
+                return false;
+            }
+        },
+
+        /**
+         * Select "Other" and type custom text
+         * @param {number} agentId - The agent ID
+         * @param {string} text - Custom text to type
+         * @returns {Promise<boolean>} True if sent successfully
+         */
+        sendOther: async function(agentId, text) {
+            if (!agentId || !text || !text.trim()) return false;
+
+            try {
+                var response = await fetch(RESPOND_ENDPOINT + '/' + agentId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'other', text: text.trim() })
+                });
+                var data = await response.json();
+                if (response.ok && data.status === 'ok') {
+                    this._showSuccessFeedback(agentId);
+                    return true;
+                } else {
+                    this._handleError(data, agentId);
+                    return false;
+                }
+            } catch (error) {
+                console.error('RespondAPI: Other request failed', error);
+                if (global.Toast) {
+                    global.Toast.error('Could not send response', 'Network error');
+                }
+                return false;
+            }
+        },
+
+        /**
+         * Handle a quick-action button click (legacy numbered options)
          * @param {number} agentId - The agent ID
          * @param {string} optionNumber - The option number to send
          */

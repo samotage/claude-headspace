@@ -20,6 +20,7 @@ from ..services.card_state import (
     get_task_completion_summary,
     get_task_instruction,
     get_task_summary,
+    get_question_options,
     is_agent_active,
 )
 
@@ -230,7 +231,8 @@ def count_active_agents(agents: list[Agent]) -> int:
 
 
 def _prepare_kanban_data(
-    projects: list, project_data: list, priority_enabled: bool
+    projects: list, project_data: list, priority_enabled: bool,
+    projects_by_id: dict | None = None,
 ) -> list:
     """Prepare Kanban board data grouped by project and task state.
 
@@ -250,16 +252,15 @@ def _prepare_kanban_data(
     columns = ["IDLE", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
     kanban_projects = []
 
+    if projects_by_id is None:
+        projects_by_id = {p.id: p for p in projects}
+
     for proj_data in project_data:
         if not proj_data["agents"]:
             continue
 
         # Find matching Project model
-        project_model = None
-        for p in projects:
-            if p.id == proj_data["id"]:
-                project_model = p
-                break
+        project_model = projects_by_id.get(proj_data["id"])
 
         state_columns = {col: [] for col in columns}
 
@@ -362,6 +363,8 @@ def _prepare_kanban_data(
             "slug": proj_data["slug"],
             "columns": state_columns,
             "staleness": proj_data.get("staleness"),
+            "state_flags": proj_data.get("state_flags", {}),
+            "active_count": proj_data.get("active_count", 0),
         })
 
     return kanban_projects
@@ -432,7 +435,7 @@ def _get_dashboard_activity_metrics() -> dict | None:
         try:
             latest_snapshot = (
                 db.session.query(HeadspaceSnapshot)
-                .order_by(HeadspaceSnapshot.created_at.desc())
+                .order_by(HeadspaceSnapshot.timestamp.desc())
                 .first()
             )
             if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
@@ -527,11 +530,24 @@ def dashboard():
                 "priority_reason": agent.priority_reason,
                 "turn_count": _get_current_task_turn_count(agent),
                 "elapsed": _get_current_task_elapsed(agent),
+                "question_options": get_question_options(agent),
                 "project_name": project.name,
                 "project_slug": project.slug,
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
+            # Bridge connectivity — use cache, fall back to live check
+            is_bridge = False
+            if agent.tmux_pane_id:
+                commander = current_app.extensions.get("commander_availability")
+                if commander:
+                    is_bridge = commander.is_available(agent.id)
+                    if not is_bridge:
+                        is_bridge = commander.check_agent(
+                            agent.id, agent.tmux_pane_id
+                        )
+            agent_dict["is_bridge_connected"] = is_bridge
+
             agents_data.append(agent_dict)
             agent_data_map[agent.id] = agent_dict
             all_agents_data.append(agent_dict)
@@ -576,10 +592,12 @@ def dashboard():
             project["agents"] = sort_agents_by_priority(project["agents"])
 
     # Prepare Kanban data (group by task lifecycle state per project)
+    projects_by_id = {p.id: p for p in projects}
     kanban_data = []
     if sort_mode == "kanban":
         kanban_data = _prepare_kanban_data(
-            projects, project_data, objective and objective.priority_enabled
+            projects, project_data, objective and objective.priority_enabled,
+            projects_by_id=projects_by_id,
         )
 
     # Activity metrics are fetched client-side via JS to use the browser's

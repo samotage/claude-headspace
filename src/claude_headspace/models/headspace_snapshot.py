@@ -33,10 +33,6 @@ class HeadspaceSnapshot(db.Model):
         DateTime(timezone=True), nullable=True
     )
     alert_count_today: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
 
     def __repr__(self) -> str:
         return f"<HeadspaceSnapshot id={self.id} state={self.state} ts={self.timestamp}>"

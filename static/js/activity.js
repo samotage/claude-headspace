@@ -192,30 +192,18 @@
 
         /**
          * Sum all turns across a history array.
+         * Delegates to CHUtils.sumTurns.
          */
         _sumTurns: function(history) {
-            var total = 0;
-            if (history) {
-                history.forEach(function(h) { total += (h.turn_count || 0); });
-            }
-            return total;
+            return CHUtils.sumTurns(history);
         },
 
         /**
          * Compute weighted average turn time across history.
+         * Delegates to CHUtils.weightedAvgTime.
          */
         _weightedAvgTime: function(history) {
-            var totalTime = 0, totalPairs = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
-                        var pairs = h.turn_count - 1;
-                        totalTime += h.avg_turn_time_seconds * pairs;
-                        totalPairs += pairs;
-                    }
-                });
-            }
-            return totalPairs > 0 ? totalTime / totalPairs : null;
+            return CHUtils.weightedAvgTime(history);
         },
 
         /**
@@ -364,71 +352,18 @@
                 });
         },
 
+        /**
+         * Fill hourly gaps in history. Delegates to CHUtils.fillHourlyGaps.
+         */
         _fillHourlyGaps: function(history) {
-            if (history.length < 2) return history;
-            var bucketMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.getFullYear() + '-' +
-                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(d.getDate()).padStart(2, '0') + 'T' +
-                    String(d.getHours()).padStart(2, '0');
-                bucketMap[key] = h;
-            });
-            var first = new Date(history[0].bucket_start);
-            var last = new Date(history[history.length - 1].bucket_start);
-            first.setMinutes(0, 0, 0);
-            last.setMinutes(0, 0, 0);
-            var result = [];
-            var cursor = new Date(first);
-            while (cursor <= last) {
-                var key = cursor.getFullYear() + '-' +
-                    String(cursor.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(cursor.getDate()).padStart(2, '0') + 'T' +
-                    String(cursor.getHours()).padStart(2, '0');
-                if (bucketMap[key]) {
-                    result.push(bucketMap[key]);
-                } else {
-                    result.push({
-                        bucket_start: cursor.toISOString(),
-                        turn_count: 0,
-                        avg_turn_time_seconds: null,
-                        active_agents: null,
-                        total_frustration: null,
-                        frustration_turn_count: null,
-                        max_frustration: null
-                    });
-                }
-                cursor = new Date(cursor.getTime() + 3600000);
-            }
-            return result;
+            return CHUtils.fillHourlyGaps(history);
         },
 
+        /**
+         * Aggregate history by day. Delegates to CHUtils.aggregateByDay.
+         */
         _aggregateByDay: function(history) {
-            var dayMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.toLocaleDateString('en-CA');
-                if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
-                }
-                dayMap[key].turn_count += h.turn_count;
-                if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
-                if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
-                // Track max across all buckets in the day
-                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
-                if (bucketMax != null) {
-                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
-                        ? Math.max(dayMap[key].max_frustration, bucketMax)
-                        : bucketMax;
-                }
-            });
-            return Object.keys(dayMap).sort().map(function(k) {
-                var entry = dayMap[k];
-                if (entry.total_frustration === 0) entry.total_frustration = null;
-                if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
-                return entry;
-            });
+            return CHUtils.aggregateByDay(history);
         },
 
         /**
@@ -571,6 +506,12 @@
                     interaction: { intersect: false, mode: 'index' },
                     plugins: {
                         tooltip: {
+                            titleFont: { size: 16 },
+                            bodyFont: { size: 15 },
+                            boxWidth: 15,
+                            boxHeight: 15,
+                            boxPadding: 8,
+                            padding: 12,
                             callbacks: {
                                 title: function(items) {
                                     if (!items.length) return '';
@@ -734,7 +675,8 @@
                     ActivityPage._updateWidgetValues(data.current);
                     // Restore live labels
                     ActivityPage._setLabel('frust-peak-today-label', 'Max Today');
-                    ActivityPage._setLabel('frust-peak-today-sublabel', 'Peak score');
+                    ActivityPage._setLabel('frust-peak-today-sublabel',
+                        ActivityPage._formatPeakTime(data.current.peak_frustration_today_at));
                     ActivityPage._setLabel('frust-immediate-label', 'Immediate');
                     ActivityPage._setLabel('frust-immediate-sublabel', 'Last 10 turns');
                     ActivityPage._setLabel('frust-shortterm-label', 'Short-term');
@@ -765,11 +707,15 @@
                 return;
             }
 
-            // Peak: max of all bucket max_frustration values
+            // Peak: max of all bucket max_frustration values, tracking timestamp
             var peak = null;
+            var peakAt = null;
             history.forEach(function(h) {
                 if (h.max_frustration != null) {
-                    peak = peak != null ? Math.max(peak, h.max_frustration) : h.max_frustration;
+                    if (peak == null || h.max_frustration > peak) {
+                        peak = h.max_frustration;
+                        peakAt = h.max_frustration_at;
+                    }
                 }
             });
 
@@ -784,7 +730,7 @@
 
             // Update labels for historical view
             this._setLabel('frust-peak-today-label', 'Peak');
-            this._setLabel('frust-peak-today-sublabel', 'Max in period');
+            this._setLabel('frust-peak-today-sublabel', this._formatPeakTime(peakAt));
             this._setLabel('frust-immediate-label', 'Average');
             this._setLabel('frust-immediate-sublabel', 'Period average');
             this._setLabel('frust-shortterm-label', 'Short-term');
@@ -796,6 +742,55 @@
         _setLabel: function(elementId, text) {
             var el = document.getElementById(elementId);
             if (el) el.textContent = text;
+        },
+
+        /**
+         * Format an ISO timestamp into "HH:MM, X ago" for the peak frustration sublabel.
+         * For dates beyond today, prefixes with short day name: "Wed 14:15, 3 days ago".
+         * Returns "Peak score" as fallback when no timestamp is available.
+         */
+        _formatPeakTime: function(isoString) {
+            if (!isoString) return 'Peak score';
+            var d = new Date(isoString);
+            if (isNaN(d.getTime())) return 'Peak score';
+
+            var time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+            // Check if the date is today
+            var now = new Date();
+            var isToday = d.getFullYear() === now.getFullYear() &&
+                          d.getMonth() === now.getMonth() &&
+                          d.getDate() === now.getDate();
+
+            // Prefix with short day name if not today
+            var dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            var prefix = isToday ? '' : dayNames[d.getDay()] + ' ';
+
+            var diffMs = Date.now() - d.getTime();
+            var diffMin = Math.floor(diffMs / 60000);
+            var ago;
+            if (diffMin < 1) {
+                ago = 'just now';
+            } else if (diffMin < 60) {
+                ago = diffMin + (diffMin === 1 ? ' minute ago' : ' minutes ago');
+            } else if (diffMin < 1440) {
+                var hours = Math.round(diffMin / 60);
+                ago = hours + (hours === 1 ? ' hour ago' : ' hours ago');
+            } else {
+                var days = Math.floor(diffMin / 1440);
+                if (days === 1) {
+                    ago = 'yesterday';
+                } else if (days < 7) {
+                    ago = days + ' days ago';
+                } else if (days < 28) {
+                    var weeks = Math.round(days / 7);
+                    ago = weeks + (weeks === 1 ? ' week ago' : ' weeks ago');
+                } else {
+                    var months = Math.round(days / 30);
+                    ago = months + (months === 1 ? ' month ago' : ' months ago');
+                }
+            }
+            return prefix + time + ', ' + ago;
         },
 
         /**
@@ -848,6 +843,8 @@
             this._setIndicator('frust-shortterm-value', state.frustration_rolling_30min);
             this._setIndicator('frust-session-value', state.frustration_rolling_3hr);
             this._setIndicator('frust-peak-today-value', state.peak_frustration_today);
+            this._setLabel('frust-peak-today-sublabel',
+                this._formatPeakTime(state.peak_frustration_today_at));
         },
 
         _setIndicator: function(elementId, value) {
@@ -871,15 +868,11 @@
             return _levelFromAvg(avg);
         },
 
+        /**
+         * Sum frustration history. Delegates to CHUtils.sumFrustrationHistory.
+         */
         _sumFrustrationHistory: function(history) {
-            var total = 0, turns = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.total_frustration != null) total += h.total_frustration;
-                    if (h.frustration_turn_count != null) turns += h.frustration_turn_count;
-                });
-            }
-            return { total: total, turns: turns };
+            return CHUtils.sumFrustrationHistory(history);
         }
     };
 

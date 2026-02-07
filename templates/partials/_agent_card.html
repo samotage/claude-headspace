@@ -13,8 +13,13 @@
           </h3>
           <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>
         </div>
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-2">
           <span class="uptime text-muted text-xs hidden sm:inline whitespace-nowrap">{{ agent.uptime }}</span>
+          {% if agent.is_bridge_connected %}
+            <span class="bridge-indicator" title="Bridge connected — tmux pane active" aria-label="Bridge connected">
+              <span class="bridge-icon">▸◂</span>
+            </span>
+          {% endif %}
           {% if agent.is_active %}
             <span class="status-badge px-2 py-0.5 text-xs font-medium rounded bg-green/20 text-green"
                   role="status">ACTIVE</span>
@@ -81,6 +86,7 @@
   <div class="respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5"
        data-agent-id="{{ agent.id }}"
        data-question-text="{{ agent.task_summary|e }}"
+       {% if agent.question_options %}data-question-options='{{ agent.question_options|tojson }}'{% endif %}
        style="display:none;">
     <div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>
     <form class="respond-form flex gap-2"

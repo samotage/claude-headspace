@@ -827,16 +827,16 @@ select.form-well {
   margin-left: 0.25rem;
 }
 
+.ml-2 {
+  margin-left: 0.5rem;
+}
+
 .ml-4 {
   margin-left: 1rem;
 }
 
 .ml-6 {
   margin-left: 1.5rem;
-}
-
-.ml-\[42px\] {
-  margin-left: 42px;
 }
 
 .ml-auto {
@@ -1160,6 +1160,10 @@ select.form-well {
 
 .items-start {
   align-items: flex-start;
+}
+
+.items-end {
+  align-items: flex-end;
 }
 
 .items-center {
@@ -2163,6 +2167,37 @@ body::after {
   color: var(--red);
 }
 
+/* Bridge indicator — connected terminals icon */
+
+.bridge-indicator {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.bridge-icon {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -3px;
+  color: rgba(115, 224, 190, 0.9);
+  line-height: 1;
+  position: relative;
+  top: -2px;
+  text-shadow: 0 0 6px rgba(115, 224, 190, 0.5);
+  animation: bridge-glow 3s ease-in-out infinite;
+}
+
+@keyframes bridge-glow {
+  0%, 100% {
+    text-shadow: 0 0 6px rgba(115, 224, 190, 0.3);
+  }
+
+  50% {
+    text-shadow: 0 0 10px rgba(115, 224, 190, 0.7);
+  }
+}
+
 /* Card text truncation — 3-line clamp with ellipsis */
 
 .task-instruction,
@@ -3004,6 +3039,10 @@ body::after {
   border-color: rgb(224 176 115 / var(--tw-border-opacity, 1));
 }
 
+.hover\:border-amber\/40:hover {
+  border-color: rgb(224 176 115 / 0.4);
+}
+
 .hover\:border-border:hover {
   --tw-border-opacity: 1;
   border-color: rgb(37 37 48 / var(--tw-border-opacity, 1));
@@ -3083,6 +3122,11 @@ body::after {
 
 .hover\:bg-red\/90:hover {
   background-color: rgb(224 115 115 / 0.9);
+}
+
+.hover\:text-amber:hover {
+  --tw-text-opacity: 1;
+  color: rgb(224 176 115 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-cyan:hover {

@@ -70,9 +70,37 @@ sequenceDiagram
     Flask-->>Hook: 200 {status: ok}
     Hook-->>CC: exit 0
 
-    Note over User,Dash: Phase 4: Claude Responds (Turn Complete)
+    Note over User,Dash: Phase 4a: Tool Use Cycles (PROCESSING ↔ AWAITING_INPUT)
 
-    CC->>CC: Process prompt...<br/>generate response
+    CC->>CC: Process prompt...<br/>agent works on task
+
+    CC->>Hook: Hook fires: pre-tool-use<br/>(stdin: {session_id, tool_name})
+    Hook->>Flask: POST /hook/pre-tool-use<br/>{session_id, tool_name, headspace_session_id}
+    Flask->>Flask: SessionCorrelator → resolve Agent
+    Note over Flask: If tool is AskUserQuestion/ExitPlanMode:<br/>Transition PROCESSING → AWAITING_INPUT
+    Flask->>DB: Update Agent.last_seen_at
+    Flask->>SSE: Broadcast "state_changed"<br/>{agent_id, new_state=AWAITING_INPUT}
+    SSE-->>Dash: SSE event → card shows AWAITING_INPUT
+    Flask-->>Hook: 200 {status: ok}
+    Hook-->>CC: exit 0
+
+    CC-->>User: Display question / permission request
+
+    User->>CC: Provide answer / approve permission
+
+    CC->>Hook: Hook fires: post-tool-use<br/>(stdin: {session_id, tool_name})
+    Hook->>Flask: POST /hook/post-tool-use<br/>{session_id, tool_name, headspace_session_id}
+    Flask->>Flask: SessionCorrelator → resolve Agent
+    Note over Flask: Transition AWAITING_INPUT → PROCESSING
+    Flask->>DB: Update Agent.last_seen_at
+    Flask->>SSE: Broadcast "state_changed"<br/>{agent_id, new_state=PROCESSING}
+    SSE-->>Dash: SSE event → card shows PROCESSING
+    Flask-->>Hook: 200 {status: ok}
+    Hook-->>CC: exit 0
+
+    Note over User,Dash: Phase 4b: Claude Responds (Turn Complete)
+
+    CC->>CC: Complete response
 
     CC->>Hook: Hook fires: stop<br/>(stdin: {session_id})
     Hook->>Flask: POST /hook/stop<br/>{session_id, headspace_session_id}
@@ -164,7 +192,7 @@ erDiagram
         int id PK
         int task_id FK
         enum actor "USER or AGENT"
-        enum intent "COMMAND ANSWER QUESTION COMPLETION PROGRESS"
+        enum intent "COMMAND ANSWER QUESTION COMPLETION PROGRESS END_OF_TASK"
         text text
         datetime timestamp
     }
@@ -188,9 +216,11 @@ stateDiagram-v2
     [*] --> IDLE : Task created
     IDLE --> COMMANDED : user-prompt-submit hook
     COMMANDED --> PROCESSING : immediate transition
-    PROCESSING --> COMPLETE : stop hook
-    PROCESSING --> AWAITING_INPUT : notification hook (input needed)
-    AWAITING_INPUT --> COMMANDED : user-prompt-submit hook
+    PROCESSING --> COMPLETE : stop hook (completion)
+    PROCESSING --> AWAITING_INPUT : pre-tool-use hook (AskUserQuestion/ExitPlanMode)
+    AWAITING_INPUT --> PROCESSING : post-tool-use hook (user answered)
+    AWAITING_INPUT --> COMMANDED : user-prompt-submit hook (new command)
+    AWAITING_INPUT --> COMPLETE : session-end (forced completion)
     COMPLETE --> [*]
 ```
 

@@ -145,7 +145,7 @@ Each Turn represents one exchange in the conversation.
 Turn
 ├── actor: user | agent
 ├── text: (the content of the turn)
-├── intent: command | answer | question | completion | progress
+├── intent: command | answer | question | completion | progress | end_of_task
 └── timestamp
 ```
 
@@ -159,6 +159,7 @@ Turn
 - `question` - agent asks user for clarification
 - `progress` - agent reports intermediate progress
 - `completion` - agent signals task is done (ends the Task)
+- `end_of_task` - agent explicitly signals end of task (also ends the Task)
 
 ### 4.4 Turn Intent to Task State Mapping
 
@@ -168,10 +169,15 @@ Turn
 | commanded | agent | progress | processing |
 | commanded | agent | question | awaiting_input |
 | commanded | agent | completion | complete |
+| commanded | agent | end_of_task | complete |
 | processing | agent | progress | processing |
 | processing | agent | question | awaiting_input |
 | processing | agent | completion | complete |
+| processing | agent | end_of_task | complete |
+| processing | user | answer | processing |
 | awaiting_input | user | answer | processing |
+| awaiting_input | agent | completion | complete |
+| awaiting_input | agent | end_of_task | complete |
 | complete | - | - | idle (task ends) |
 
 ### 4.5 Task Lifecycle Summary
@@ -236,7 +242,7 @@ Objective (global singleton)
                                                  ├── actor: user | agent
                                                  ├── text
                                                  ├── intent: command | answer | question 
-                                                 │           | completion | progress
+                                                 │           | completion | progress | end_of_task
                                                  ├── timestamp
                                                  │
                                                  └── triggers → InferenceCall (0:N)
@@ -308,7 +314,7 @@ When artifacts are updated, the previous version is moved to the `archive/` dire
 | **task** | A unit of work initiated by a user command and completed by an agent completion. |
 | **turn** | A single exchange in a task conversation - either user or agent speaking. |
 | **actor** | Who is speaking in a turn: `user` or `agent`. |
-| **intent** | The purpose of a turn: `command`, `answer`, `question`, `progress`, `completion`. |
+| **intent** | The purpose of a turn: `command`, `answer`, `question`, `progress`, `completion`, `end_of_task`. |
 | **text** | The content of a turn. |
 | **brain_reboot** | A view combining waypoint and progress_summary to rapidly restore mental context. |
 | **waypoint** | The path ahead - next_up, upcoming, later, not_now. |

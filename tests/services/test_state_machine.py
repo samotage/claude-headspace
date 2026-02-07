@@ -144,10 +144,11 @@ class TestGetValidTransitionsFrom:
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
         transitions = get_valid_transitions_from(TaskState.AWAITING_INPUT)
-        assert len(transitions) == 1
-        actor, intent, to_state = transitions[0]
-        assert actor == TurnActor.USER
-        assert intent == TurnIntent.ANSWER
+        assert len(transitions) == 3  # USER ANSWER, AGENT COMPLETION, AGENT END_OF_TASK
+        intents = {(a.value, i.value) for a, i, _ in transitions}
+        assert ("user", "answer") in intents
+        assert ("agent", "completion") in intents
+        assert ("agent", "end_of_task") in intents
 
     def test_get_from_complete(self):
         """Get valid transitions from COMPLETE state (should be empty)."""

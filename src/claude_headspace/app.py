@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 
 from . import __version__
 from .config import load_config, get_value, get_database_url, get_notifications_config
@@ -274,10 +274,42 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         except Exception as e:
             logger.warning(f"Error during shutdown cleanup: {e}")
 
-    # Register context processor for cache busting
+    # Compute cache bust once at startup (not per-render)
+    app.config["CACHE_BUST"] = int(time.time())
+
+    # CSRF protection
+    from itsdangerous import URLSafeTimedSerializer
+    csrf_serializer = URLSafeTimedSerializer(app.config.get("SECRET_KEY") or "dev-secret-key")
+
     @app.context_processor
-    def inject_cache_bust():
-        return {"cache_bust": int(time.time())}
+    def inject_template_globals():
+        token = csrf_serializer.dumps("csrf-token", salt="csrf-salt")
+        return {
+            "cache_bust": app.config["CACHE_BUST"],
+            "csrf_token": token,
+        }
+
+    # CSRF exempt paths (hooks and SSE)
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream")
+
+    @app.before_request
+    def verify_csrf_token():
+        if app.config.get("TESTING"):
+            return None
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        # Exempt hook endpoints and SSE
+        for prefix in _CSRF_EXEMPT_PREFIXES:
+            if request.path.startswith(prefix):
+                return None
+        token = request.headers.get("X-CSRF-Token")
+        if not token:
+            return jsonify({"error": "Missing CSRF token"}), 403
+        try:
+            csrf_serializer.loads(token, salt="csrf-salt", max_age=3600)
+        except Exception:
+            return jsonify({"error": "Invalid or expired CSRF token"}), 403
+        return None
 
     # Register error handlers
     register_error_handlers(app)
@@ -293,7 +325,10 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(404)
     def not_found_error(error):
-        return render_template("errors/404.html"), 404
+        return render_template(
+            "errors/404.html",
+            status_counts={"input_needed": 0, "working": 0, "idle": 0},
+        ), 404
 
     @app.errorhandler(500)
     def internal_error(error):

@@ -28,7 +28,7 @@ class ReapDetail:
 
     agent_id: int
     session_uuid: str
-    reason: str  # "pane_not_found" or "inactivity_timeout"
+    reason: str  # "pane_not_found", "inactivity_timeout", or "stale_pane"
 
 
 @dataclass
@@ -145,6 +145,13 @@ class AgentReaper:
                 .all()
             )
 
+            # Build pane ownership: pane_id → newest agent.id (highest id = most recent)
+            pane_owners: dict[str, int] = {}
+            for a in agents:
+                if a.iterm_pane_id:
+                    if a.iterm_pane_id not in pane_owners or a.id > pane_owners[a.iterm_pane_id]:
+                        pane_owners[a.iterm_pane_id] = a.id
+
             for agent in agents:
                 result.checked += 1
 
@@ -159,8 +166,12 @@ class AgentReaper:
                     status = check_pane_exists(agent.iterm_pane_id)
 
                     if status == PaneStatus.FOUND:
-                        result.skipped_alive += 1
-                        continue
+                        # Pane exists — but does this agent own it?
+                        if pane_owners.get(agent.iterm_pane_id) != agent.id:
+                            reap_reason = "stale_pane"
+                        else:
+                            result.skipped_alive += 1
+                            continue
                     elif status == PaneStatus.NOT_FOUND:
                         reap_reason = "pane_not_found"
                     elif status == PaneStatus.ITERM_NOT_RUNNING:

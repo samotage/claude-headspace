@@ -42,12 +42,22 @@
     let agentStates = new Map();
 
     /**
-     * Safe reload that defers if a ConfirmDialog is open.
-     * Prevents SSE-triggered reloads from flashing/dismissing confirm dialogs.
+     * Safe reload that defers if a ConfirmDialog is open or a respond widget
+     * input is focused (FE-H3). Prevents SSE-triggered reloads from
+     * flashing/dismissing dialogs or losing typed responses.
      */
     function safeDashboardReload() {
         if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
             console.log('SSE reload deferred — ConfirmDialog is open');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
+        // Defer reload if a respond widget input is focused
+        var active = document.activeElement;
+        if (active && active.closest && active.closest('.respond-widget')) {
+            console.log('SSE reload deferred — respond widget input is focused');
             window._sseReloadDeferred = function() {
                 window.location.reload();
             };
@@ -226,15 +236,18 @@
         });
 
         // Handle agent state changes
+        // Canonical: state_transition | Aliases: state_changed, agent_state_changed
         client.on('state_changed', handleStateTransition);
         client.on('state_transition', handleStateTransition);
         client.on('agent_state_changed', handleStateTransition);
 
         // Handle turn created
+        // Canonical: turn_detected | Alias: turn_created
         client.on('turn_detected', handleTurnCreated);
         client.on('turn_created', handleTurnCreated);
 
         // Handle agent activity
+        // Canonical: agent_activity | Alias: agent_updated
         client.on('agent_updated', handleAgentActivity);
         client.on('agent_activity', handleAgentActivity);
 
@@ -656,6 +669,36 @@
     }
 
     /**
+     * Build a respond widget element for AWAITING_INPUT state.
+     * Matches the server-rendered widget in _agent_card.html.
+     * Starts hidden — respond-init.js handles visibility after commander availability check.
+     */
+    function buildRespondWidget(agentId, questionText, questionOptions) {
+        var widget = document.createElement('div');
+        widget.className = 'respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5';
+        widget.setAttribute('data-agent-id', agentId);
+        widget.setAttribute('data-question-text', questionText || '');
+        if (questionOptions) {
+            widget.setAttribute('data-question-options', JSON.stringify(questionOptions));
+        }
+        widget.style.display = 'none';
+
+        widget.innerHTML =
+            '<div class="respond-options flex flex-col gap-1.5 mb-2"></div>' +
+            '<form class="respond-form flex gap-2"' +
+            ' onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, ' +
+            parseInt(agentId, 10) + '); return false;">' +
+                '<input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"' +
+                ' placeholder="Type a response..." autocomplete="off">' +
+                '<button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded ' +
+                'bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">' +
+                'Send</button>' +
+            '</form>';
+
+        return widget;
+    }
+
+    /**
      * Find an agent's card element — may be an <article> (full card) or
      * a <details> (condensed completed-task card).
      */
@@ -743,6 +786,9 @@
                     taskSummary.classList.remove('text-green');
                     taskSummary.classList.add('text-secondary');
                 }
+                // Remove respond widget if present (agent was AWAITING_INPUT -> COMPLETE)
+                var resetWidget = card.querySelector('.respond-widget');
+                if (resetWidget) resetWidget.remove();
                 // Hide line 04 and task stats for IDLE reset
                 var line04Row = card.querySelector('.card-line-04');
                 if (line04Row) line04Row.style.display = 'none';
@@ -813,6 +859,21 @@
             } else {
                 statusBadge.textContent = 'IDLE';
                 statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
+            }
+        }
+        // Bridge indicator: show/hide based on is_bridge_connected
+        if (data.is_bridge_connected != null) {
+            var bridgeEl = card.querySelector('.bridge-indicator');
+            var badgeContainer = statusBadge ? statusBadge.parentElement : null;
+            if (data.is_bridge_connected && !bridgeEl && badgeContainer) {
+                bridgeEl = document.createElement('span');
+                bridgeEl.className = 'bridge-indicator';
+                bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
+                bridgeEl.setAttribute('aria-label', 'Bridge connected');
+                bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                badgeContainer.insertBefore(bridgeEl, statusBadge);
+            } else if (!data.is_bridge_connected && bridgeEl) {
+                bridgeEl.remove();
             }
         }
         var lastSeenEl = card.querySelector('.last-seen');
@@ -895,6 +956,29 @@
             }
         } else if (line04Row) {
             line04Row.style.display = 'none';
+        }
+
+        // Respond widget: inject for AWAITING_INPUT, remove otherwise
+        var existingWidget = card.querySelector('.respond-widget');
+        if (state === 'AWAITING_INPUT') {
+            if (existingWidget) {
+                // Update question text and options on existing widget
+                existingWidget.setAttribute('data-question-text', data.task_summary || '');
+                if (data.question_options) {
+                    existingWidget.setAttribute('data-question-options', JSON.stringify(data.question_options));
+                }
+            } else {
+                // Inject widget between card-editor and footer
+                var footer = card.querySelector('.border-t.border-border');
+                if (footer) {
+                    card.insertBefore(
+                        buildRespondWidget(agentId, data.task_summary || '', data.question_options || null),
+                        footer
+                    );
+                }
+            }
+        } else if (existingWidget) {
+            existingWidget.remove();
         }
 
         // Footer: priority score and task stats (turns + elapsed)
@@ -1151,24 +1235,13 @@
                 var history = data.history || [];
                 if (history.length === 0) return;
 
-                // Sum turns from history (same as activity.js _sumTurns)
-                var totalTurns = 0;
-                history.forEach(function(h) { totalTurns += (h.turn_count || 0); });
+                var totalTurns = CHUtils.sumTurns(history);
 
                 // Rate: turns / elapsed hours today
                 var hoursElapsed = Math.max((now - since) / (1000 * 60 * 60), 1);
                 var rate = totalTurns / hoursElapsed;
 
-                // Weighted average turn time (same as activity.js _weightedAvgTime)
-                var totalTime = 0, totalPairs = 0;
-                history.forEach(function(h) {
-                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
-                        var pairs = h.turn_count - 1;
-                        totalTime += h.avg_turn_time_seconds * pairs;
-                        totalPairs += pairs;
-                    }
-                });
-                var avgTime = totalPairs > 0 ? totalTime / totalPairs : null;
+                var avgTime = CHUtils.weightedAvgTime(history);
 
                 // Active agents from daily_totals
                 var activeAgents = data.daily_totals ? (data.daily_totals.active_agents || 0) : 0;
@@ -1193,12 +1266,8 @@
                 // Frustration from activity metrics (fallback if headspace unavailable)
                 var frustEl = document.getElementById('activity-bar-frustration');
                 if (frustEl) {
-                    var totalFrust = 0, totalFrustTurns = 0;
-                    history.forEach(function(h) {
-                        if (h.total_frustration != null) totalFrust += h.total_frustration;
-                        if (h.frustration_turn_count != null) totalFrustTurns += h.frustration_turn_count;
-                    });
-                    var frustAvg = totalFrustTurns > 0 ? totalFrust / totalFrustTurns : null;
+                    var frustSums = CHUtils.sumFrustrationHistory(history);
+                    var frustAvg = frustSums.turns > 0 ? frustSums.total / frustSums.turns : null;
                     frustEl.textContent = frustAvg != null ? frustAvg.toFixed(1) : '--';
                     frustEl.className = 'activity-bar-value';
                     if (frustAvg != null) {
@@ -1247,6 +1316,28 @@
      */
     function handleCommanderAvailability(data, eventType) {
         console.log('Commander availability:', data.agent_id, 'available:', data.available);
+
+        // Toggle bridge indicator on the agent card
+        var agentId = data.agent_id;
+        var card = findAgentCard(agentId);
+        if (card) {
+            var bridgeEl = card.querySelector('.bridge-indicator');
+            if (data.available && !bridgeEl) {
+                var statusBadge = card.querySelector('.status-badge');
+                var container = statusBadge ? statusBadge.parentElement : null;
+                if (container) {
+                    bridgeEl = document.createElement('span');
+                    bridgeEl.className = 'bridge-indicator';
+                    bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
+                    bridgeEl.setAttribute('aria-label', 'Bridge connected');
+                    bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                    container.insertBefore(bridgeEl, statusBadge);
+                }
+            } else if (!data.available && bridgeEl) {
+                bridgeEl.remove();
+            }
+        }
+
         document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
     }
 

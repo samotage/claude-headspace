@@ -41,21 +41,23 @@
         </div>
 
         <!-- Active agent count + actions -->
-        <div class="flex items-center gap-2">
-            <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
-                    onclick="event.stopPropagation(); openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})"
-                    title="Generate brain reboot context document">
-                Brain Reboot
-            </button>
-            <span class="text-secondary text-sm">
-                [{{ project.active_count }} active]
-            </span>
-            <span class="text-muted">
-                <svg class="w-4 h-4 transform transition-transform project-chevron"
-                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                     aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
+        <div class="flex flex-col items-end gap-0.5">
+            <div class="flex items-center gap-2">
+                <button class="px-2 py-0.5 text-xs font-medium rounded border border-cyan/30 text-cyan hover:bg-cyan/10 transition-colors"
+                        onclick='event.stopPropagation(); openBrainReboot({{ project.id }}, {{ project.name|tojson }}, {{ project.slug|tojson }})'
+                        title="Generate brain reboot context document">
+                    Brain Reboot
+                </button>
+                <span class="text-muted">
+                    <svg class="w-4 h-4 transform transition-transform project-chevron"
+                         fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                         aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </span>
+            </div>
+            <span class="text-muted text-xs font-mono">
+                {{ project.active_count }} active agent{{ 's' if project.active_count != 1 else '' }}
             </span>
         </div>
     </div>

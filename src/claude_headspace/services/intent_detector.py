@@ -29,8 +29,9 @@ def _extract_tail(text: str, max_lines: int = 15) -> str:
 
 # Regex patterns for question detection
 QUESTION_PATTERNS = [
-    # Direct question mark at end (but not in code blocks or URLs)
-    r"(?<![`\"\'/])\?\s*$",
+    # Direct question mark at end of line (but not in code blocks or URLs)
+    # (?m) makes $ match end-of-line, not just end-of-string
+    r"(?m)(?<![`\"\'/])\?\s*$",
     # Common question phrases
     r"(?i)^(?:would you like|should i|do you want|can i|shall i|may i)",
     r"(?i)(?:would you like|should i|do you want|can i|shall i|may i)[\s\S]*\?\s*$",
@@ -66,6 +67,8 @@ BLOCKED_PATTERNS = [
 
 # Regex patterns for completion detection
 COMPLETION_PATTERNS = [
+    # TASK COMPLETE marker (structured completion signal from CLAUDE.md instructions)
+    r"(?i)TASK COMPLETE\s*[—\-–]",    
     # Direct completion phrases
     r"(?i)^(?:done|complete|finished|all (?:done|set|finished))[\.!\s]*$",
     # Task completion phrases
@@ -240,6 +243,53 @@ def _detect_end_of_task(tail: str, has_continuation: bool) -> Optional[IntentRes
     return None
 
 
+def _detect_trailing_question(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+    """
+    Detect a trailing question in the last 3 non-empty lines of the tail.
+
+    This "Phase 0.5" guard catches conversational questions at the end of
+    agent output that would otherwise be swallowed by COMPLETION patterns
+    matching earlier in the tail.
+
+    The guard SKIPS (returns None) when:
+      - The trailing window itself contains a COMPLETION pattern (preserves
+        existing "completion + follow-up question" → COMPLETION behavior)
+      - The trailing window contains a soft-close pattern (END_OF_TASK
+        should handle these)
+
+    Returns IntentResult with QUESTION intent at 0.95 confidence, or None.
+    """
+    if has_continuation:
+        return None
+
+    # Extract last 3 non-empty lines
+    trailing_lines = [line for line in tail.splitlines() if line.strip()][-3:]
+    if not trailing_lines:
+        return None
+    trailing_window = "\n".join(trailing_lines)
+
+    # Skip if trailing window contains COMPLETION evidence
+    if _match_patterns(trailing_window, COMPLETION_PATTERNS):
+        return None
+
+    # Skip if trailing window contains soft-close (let END_OF_TASK handle)
+    if _match_patterns(trailing_window, END_OF_TASK_SOFT_CLOSE_PATTERNS):
+        return None
+
+    # Check for QUESTION or BLOCKED patterns in the trailing window
+    matched = _match_patterns(trailing_window, QUESTION_PATTERNS)
+    if not matched:
+        matched = _match_patterns(trailing_window, BLOCKED_PATTERNS)
+    if matched:
+        return IntentResult(
+            intent=TurnIntent.QUESTION,
+            confidence=0.95,
+            matched_pattern=matched,
+        )
+
+    return None
+
+
 def _detect_completion_opener(tail: str, has_continuation: bool) -> Optional[IntentResult]:
     """
     Detect completion opener at the start of the tail.
@@ -340,9 +390,12 @@ def detect_agent_intent(
     Returns:
         IntentResult with detected intent and confidence
     """
+    text_preview = repr(text[:120]) if text else "None"
+    logger.debug(f"AGENT_INTENT called: text={text_preview}")
+
     # Handle missing/empty text - default to progress
     if not text or not text.strip():
-        logger.debug("Empty/missing text, defaulting to PROGRESS")
+        logger.debug("AGENT_INTENT result: PROGRESS (empty text)")
         return IntentResult(
             intent=TurnIntent.PROGRESS,
             confidence=0.5,
@@ -368,6 +421,16 @@ def detect_agent_intent(
             f"Detected END_OF_TASK intent in tail: pattern={eot_result.matched_pattern}"
         )
         return eot_result
+
+    # Phase 0.5: Trailing question guard — catches conversational questions
+    # at the tail end that would otherwise be swallowed by COMPLETION patterns
+    # matching earlier in the full tail.
+    trailing_q = _detect_trailing_question(tail, has_continuation)
+    if trailing_q:
+        logger.debug(
+            f"Detected trailing QUESTION in tail: pattern={trailing_q.matched_pattern}"
+        )
+        return trailing_q
 
     # Phase 1: Match against tail (high confidence)
     # When not continuing, check COMPLETION before QUESTION so that
@@ -523,7 +586,15 @@ def detect_intent(
     Returns:
         IntentResult with detected intent and confidence
     """
+    text_preview = repr(text[:120]) if text else "None"
+    logger.debug(
+        f"INTENT_DETECT called: actor={actor.value}, state={current_state.value}, text={text_preview}"
+    )
     if actor == TurnActor.USER:
-        return detect_user_intent(text, current_state)
+        result = detect_user_intent(text, current_state)
     else:
-        return detect_agent_intent(text)
+        result = detect_agent_intent(text)
+    logger.debug(
+        f"INTENT_DETECT result: intent={result.intent.value}, confidence={result.confidence}, pattern={result.matched_pattern}"
+    )
+    return result

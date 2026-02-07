@@ -58,10 +58,7 @@ def get_events():
         # Validate parameters
         if page < 1:
             page = 1
-        if per_page < 1:
-            per_page = 50
-        if per_page > 100:
-            per_page = 100
+        per_page = max(1, min(per_page, 100))
 
         # Build base query
         query = db.session.query(Event)
@@ -327,10 +324,7 @@ def get_inference_calls():
 
         if page < 1:
             page = 1
-        if per_page < 1:
-            per_page = 50
-        if per_page > 100:
-            per_page = 100
+        per_page = max(1, min(per_page, 100))
 
         query = db.session.query(InferenceCall)
 
