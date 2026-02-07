@@ -81,7 +81,7 @@ class TestListProjects:
 
     def test_list_empty(self, client, mock_db):
         """Test listing when no projects exist."""
-        mock_db.session.query.return_value.order_by.return_value.all.return_value = []
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = []
 
         response = client.get("/api/projects")
         assert response.status_code == 200
@@ -89,7 +89,7 @@ class TestListProjects:
 
     def test_list_with_projects(self, client, mock_db, mock_project_with_agents):
         """Test listing projects with agent counts."""
-        mock_db.session.query.return_value.order_by.return_value.all.return_value = [
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [
             mock_project_with_agents
         ]
 
@@ -103,7 +103,7 @@ class TestListProjects:
 
     def test_list_includes_all_fields(self, client, mock_db, mock_project):
         """Test that list response includes required fields."""
-        mock_db.session.query.return_value.order_by.return_value.all.return_value = [mock_project]
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [mock_project]
 
         response = client.get("/api/projects")
         data = response.get_json()[0]
@@ -702,40 +702,25 @@ class TestGetAgentTasks:
         task2.started_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
         task2.completed_at = None
 
-        # Mock the query chain
-        query_mock = MagicMock()
-        mock_db.session.query.return_value = query_mock
-        filter_mock = MagicMock()
-        query_mock.filter.return_value = filter_mock
-        order_mock = MagicMock()
-        filter_mock.order_by.return_value = order_mock
-        order_mock.all.return_value = [task1, task2]  # ascending order
+        # Mock the task query chain
+        task_query_mock = MagicMock()
+        task_query_mock.filter.return_value.order_by.return_value.all.return_value = [task1, task2]
 
-        # Mock turn count queries
-        count_mock = MagicMock()
-        count_query = MagicMock()
-        count_query.filter.return_value = count_query
-        count_query.scalar.return_value = 3
-        mock_db.session.query.side_effect = [query_mock, count_query, count_query]
+        # Mock the batch turn count query (GROUP BY)
+        turn_count_row_1 = MagicMock()
+        turn_count_row_1.__getitem__ = lambda self, idx: [10, 3][idx]
+        turn_count_query = MagicMock()
+        turn_count_query.filter.return_value.group_by.return_value.all.return_value = [turn_count_row_1]
 
-        # Re-set so the first call returns the task query
-        mock_db.session.query.reset_mock(side_effect=True)
-        mock_db.session.query.return_value = query_mock
+        mock_db.session.query.side_effect = [task_query_mock, turn_count_query]
 
-        # For turn count calls, use a simpler approach
-        with patch("src.claude_headspace.routes.projects.func") as mock_func:
-            mock_func.count.return_value = MagicMock()
-            count_q = MagicMock()
-            count_q.filter.return_value.scalar.return_value = 3
-            mock_db.session.query.side_effect = [query_mock, count_q, count_q]
-
-            response = client.get("/api/agents/1/tasks")
-            assert response.status_code == 200
-            data = response.get_json()
-            assert len(data) == 2
-            assert data[0]["id"] == 10  # First (oldest) task
-            assert data[1]["id"] == 11  # Second (newest) task
-            assert data[0]["turn_count"] == 3
+        response = client.get("/api/agents/1/tasks")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data) == 2
+        assert data[0]["id"] == 10  # First (oldest) task
+        assert data[1]["id"] == 11  # Second (newest) task
+        assert data[0]["turn_count"] == 3
 
     def test_agent_metrics_in_get_project(self, client, mock_db, mock_project_with_agents):
         """Test that agent metrics fields are present in get_project response."""

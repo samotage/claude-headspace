@@ -73,9 +73,9 @@ class TestFocusAgent:
 
         assert response.status_code == 404
         data = response.get_json()
-        assert data["status"] == "error"
-        assert data["error_type"] == "agent_not_found"
-        assert "999" in data["message"]
+        assert "error" in data
+        assert data["detail"] == "agent_not_found"
+        assert "999" in data["error"]
 
     def test_agent_no_pane_id(self, client, mock_db, mock_agent_no_pane):
         """Test error when agent has no pane ID."""
@@ -83,10 +83,10 @@ class TestFocusAgent:
 
         response = client.post("/api/focus/2")
 
-        assert response.status_code == 500
+        assert response.status_code == 400
         data = response.get_json()
-        assert data["status"] == "error"
-        assert data["error_type"] == "pane_not_found"
+        assert "error" in data
+        assert data["detail"] == "pane_not_found"
         assert "fallback_path" in data
         assert data["fallback_path"] == "/path/to/project"
 
@@ -124,9 +124,9 @@ class TestFocusAgent:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert data["status"] == "error"
-        assert data["error_type"] == "permission_denied"
-        assert data["message"] == "Permission denied"
+        assert "error" in data
+        assert data["detail"] == "permission_denied"
+        assert data["error"] == "Permission denied"
         assert data["fallback_path"] == "/path/to/project"
 
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
@@ -144,8 +144,8 @@ class TestFocusAgent:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert data["status"] == "error"
-        assert data["error_type"] == "pane_not_found"
+        assert "error" in data
+        assert data["detail"] == "pane_not_found"
         assert "fallback_path" in data
 
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
@@ -163,7 +163,7 @@ class TestFocusAgent:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert data["error_type"] == "iterm_not_running"
+        assert data["detail"] == "iterm_not_running"
 
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
     def test_focus_timeout(self, mock_focus, client, mock_db, mock_agent):
@@ -180,7 +180,7 @@ class TestFocusAgent:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert data["error_type"] == "timeout"
+        assert data["detail"] == "timeout"
 
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
     def test_focus_unknown_error(self, mock_focus, client, mock_db, mock_agent):
@@ -197,7 +197,7 @@ class TestFocusAgent:
 
         assert response.status_code == 500
         data = response.get_json()
-        assert data["error_type"] == "unknown"
+        assert data["detail"] == "unknown"
 
     def test_focus_agent_without_project(self, client, mock_db):
         """Test focus when agent has no project."""
@@ -209,7 +209,7 @@ class TestFocusAgent:
 
         response = client.post("/api/focus/1")
 
-        assert response.status_code == 500
+        assert response.status_code == 400
         data = response.get_json()
         # fallback_path should be None when no project
         assert data["fallback_path"] is None
