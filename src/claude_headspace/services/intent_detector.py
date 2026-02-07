@@ -587,14 +587,14 @@ def detect_intent(
         IntentResult with detected intent and confidence
     """
     text_preview = repr(text[:120]) if text else "None"
-    logger.info(
+    logger.debug(
         f"INTENT_DETECT called: actor={actor.value}, state={current_state.value}, text={text_preview}"
     )
     if actor == TurnActor.USER:
         result = detect_user_intent(text, current_state)
     else:
         result = detect_agent_intent(text)
-    logger.info(
+    logger.debug(
         f"INTENT_DETECT result: intent={result.intent.value}, confidence={result.confidence}, pattern={result.matched_pattern}"
     )
     return result

@@ -165,6 +165,7 @@ class SummarisationService:
             if hasattr(turn.task, "agent") and turn.task.agent:
                 project_id = turn.task.agent.project_id if hasattr(turn.task.agent, "project_id") else None
 
+        # Step 1: Inference call
         try:
             result = self._inference.infer(
                 level="turn",
@@ -175,32 +176,38 @@ class SummarisationService:
                 task_id=task_id,
                 turn_id=turn.id,
             )
+        except (InferenceServiceError, Exception) as e:
+            logger.error(f"Turn summarisation inference failed for turn {turn.id}: {e}")
+            return None
 
-            # Parse response: try JSON for frustration-aware prompts, fallback to plain text
-            summary = None
-            frustration_score = None
-
+        # Step 2: Parse response
+        summary = None
+        frustration_score = None
+        try:
             if use_frustration_prompt:
                 summary, frustration_score = self._parse_frustration_response(result.text)
             else:
                 summary = self._clean_response(result.text)
+        except Exception as e:
+            logger.error(f"Turn summarisation parse failed for turn {turn.id}: {e}")
+            # Fall back to raw text
+            summary = self._clean_response(result.text) if result and result.text else None
 
-            # Persist summary to turn model
-            turn.summary = summary
-            turn.summary_generated_at = datetime.now(timezone.utc)
-            if frustration_score is not None:
-                turn.frustration_score = frustration_score
+        # Step 3: Persist whatever succeeded
+        if summary:
+            try:
+                turn.summary = summary
+                turn.summary_generated_at = datetime.now(timezone.utc)
+                if frustration_score is not None:
+                    turn.frustration_score = frustration_score
 
-            if db_session:
-                db_session.add(turn)
-                db_session.commit()
+                if db_session:
+                    db_session.add(turn)
+                    db_session.commit()
+            except Exception as e:
+                logger.error(f"Turn summarisation persist failed for turn {turn.id}: {e}")
 
-        except (InferenceServiceError, Exception) as e:
-            logger.error(f"Turn summarisation failed for turn {turn.id}: {e}")
-            return None
-
-        # Trigger headspace recalculation after successful summarisation (outside
-        # the main try block so failures here don't lose the summary result)
+        # Trigger headspace recalculation after successful summarisation
         if frustration_score is not None:
             try:
                 self._trigger_headspace_recalculation(turn)

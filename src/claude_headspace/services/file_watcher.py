@@ -45,6 +45,7 @@ class FileWatcher:
         inactivity_timeout: int = 5400,
         debounce_interval: float = 0.5,
         awaiting_input_timeout: float = DEFAULT_AWAITING_INPUT_TIMEOUT,
+        app: Any = None,
     ) -> None:
         """
         Initialize the file watcher.
@@ -61,6 +62,7 @@ class FileWatcher:
         self._inactivity_timeout = inactivity_timeout
         self._debounce_interval = debounce_interval
         self._awaiting_input_timeout = awaiting_input_timeout
+        self._app = app
 
         self._registry = SessionRegistry()
         self._git_metadata = GitMetadata()
@@ -79,6 +81,9 @@ class FileWatcher:
         # Debouncing state
         self._pending_files: dict[str, float] = {}
         self._debounce_lock = threading.Lock()
+
+        # Watchdog watches per session (for cleanup on unregister)
+        self._watches: dict[UUID, object] = {}  # session_uuid -> ObservedWatch
 
         # Content pipeline: transcript monitoring
         self._transcript_positions: dict[int, int] = {}  # agent_id -> file byte position
@@ -200,6 +205,14 @@ class FileWatcher:
         # Remove parser
         self._parsers.pop(session_uuid, None)
 
+        # Unschedule the watchdog handler to prevent handler accumulation
+        watch = self._watches.pop(session_uuid, None)
+        if watch and self._observer:
+            try:
+                self._observer.unschedule(watch)
+            except Exception:
+                pass  # Observer may already be stopped
+
         result = self._registry.unregister_session(session_uuid)
         if result:
             logger.info(f"Session unregistered: {session_uuid}")
@@ -244,7 +257,8 @@ class FileWatcher:
             jsonl_path=jsonl_path,
             file_watcher=self,
         )
-        self._observer.schedule(handler, directory, recursive=False)
+        watch = self._observer.schedule(handler, directory, recursive=False)
+        self._watches[session_uuid] = watch
 
     def _polling_loop(self) -> None:
         """Background polling loop for inactivity checks and fallback polling."""
@@ -459,8 +473,11 @@ class FileWatcher:
         )
 
         try:
-            from flask import current_app
-            inference_service = current_app.extensions.get("inference_service")
+            if not self._app:
+                logger.debug("No Flask app reference for inference classification")
+                return
+            with self._app.app_context():
+                inference_service = self._app.extensions.get("inference_service")
             if not inference_service:
                 logger.debug("No inference service available for question classification")
                 return
@@ -609,6 +626,7 @@ def init_file_watcher(app: Any, config: dict) -> FileWatcher:
         awaiting_input_timeout=fw_config.get(
             "awaiting_input_timeout", DEFAULT_AWAITING_INPUT_TIMEOUT
         ),
+        app=app,
     )
 
     app.extensions["file_watcher"] = watcher

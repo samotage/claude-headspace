@@ -74,7 +74,14 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
 
     try:
+        # Reverse-read strategy: only read the last 64KB instead of the whole file
+        _TAIL_SIZE = 64 * 1024
+        file_size = os.path.getsize(transcript_path)
         with open(transcript_path, "r") as f:
+            start_pos = max(0, file_size - _TAIL_SIZE)
+            if start_pos > 0:
+                f.seek(start_pos)
+                f.readline()  # Skip partial line at seek boundary
             lines = f.readlines()
 
         # Walk backwards, collecting assistant texts until we hit a user message

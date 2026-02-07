@@ -33,7 +33,7 @@ FLOW_MESSAGES_DEFAULT = [
     "{turns} turns, low frustration. You're cooking.",
 ]
 
-RETENTION_DAYS_DEFAULT = 7
+RETENTION_DAYS_DEFAULT = 90
 
 
 class HeadspaceMonitor:

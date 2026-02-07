@@ -521,6 +521,9 @@ def save_config_file(
             # Atomic rename
             os.replace(temp_path, path)
 
+            # Restrict file permissions (config may contain passwords)
+            os.chmod(path, 0o600)
+
             # Log success without sensitive data
             logger.info(f"Configuration saved to {path}")
             return True, None

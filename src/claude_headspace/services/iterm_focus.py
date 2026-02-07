@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 # Timeout for AppleScript execution (seconds)
 APPLESCRIPT_TIMEOUT = 2
 
+# Cache for pane existence checks (pane_id -> (PaneStatus, timestamp))
+_pane_cache: dict[str, tuple] = {}
+_PANE_CACHE_TTL = 30  # seconds
+
 
 class FocusErrorType(str, Enum):
     """Error types for focus operations."""
@@ -295,6 +299,8 @@ def check_pane_exists(pane_id: str) -> PaneStatus:
     Does NOT activate iTerm2 or focus any windows. Safe to call
     from background threads (e.g., the agent reaper).
 
+    Uses an in-memory cache with 30s TTL to avoid redundant AppleScript calls.
+
     Args:
         pane_id: The iTerm2 session identifier
 
@@ -303,6 +309,13 @@ def check_pane_exists(pane_id: str) -> PaneStatus:
     """
     if not pane_id:
         return PaneStatus.NOT_FOUND
+
+    # Check cache first
+    cached = _pane_cache.get(pane_id)
+    if cached:
+        cached_status, cached_at = cached
+        if (time.time() - cached_at) < _PANE_CACHE_TTL:
+            return cached_status
 
     script = _build_check_applescript(pane_id)
 
@@ -317,16 +330,20 @@ def check_pane_exists(pane_id: str) -> PaneStatus:
         if result.returncode == 0:
             stdout = result.stdout.strip()
             if stdout == "FOUND":
-                return PaneStatus.FOUND
+                status = PaneStatus.FOUND
             elif stdout == "ITERM_NOT_RUNNING":
-                return PaneStatus.ITERM_NOT_RUNNING
+                status = PaneStatus.ITERM_NOT_RUNNING
             else:
-                return PaneStatus.NOT_FOUND
+                status = PaneStatus.NOT_FOUND
+            _pane_cache[pane_id] = (status, time.time())
+            return status
 
         # Parse error output
         stderr_lower = result.stderr.lower()
         if "application isn't running" in stderr_lower or "can't get application" in stderr_lower:
-            return PaneStatus.ITERM_NOT_RUNNING
+            status = PaneStatus.ITERM_NOT_RUNNING
+            _pane_cache[pane_id] = (status, time.time())
+            return status
 
         logger.warning(f"Pane check failed for {pane_id}: {result.stderr.strip()}")
         return PaneStatus.ERROR

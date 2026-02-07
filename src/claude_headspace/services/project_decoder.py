@@ -12,6 +12,11 @@ def decode_project_path(folder_name: str) -> str:
     - The leading slash becomes a leading dash
     - Subsequent slashes become dashes
 
+    Note: This encoding is lossy — path components containing literal dashes
+    (e.g., /my-project/) are indistinguishable from directory separators after
+    encoding. This is a Claude Code upstream limitation; there is no escaping
+    mechanism in the folder naming convention.
+
     Args:
         folder_name: Folder name from ~/.claude/projects/
 
