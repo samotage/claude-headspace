@@ -1,8 +1,12 @@
 """Hook receiver API endpoints for Claude Code integration."""
 
 import logging
+import os
+import threading
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
+from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
@@ -25,6 +29,43 @@ from ..services.session_correlator import correlate_session
 logger = logging.getLogger(__name__)
 
 hooks_bp = Blueprint("hooks", __name__)
+
+
+# --- SRV-C7: IP-based rate limiting for hook endpoints ---
+
+_rate_limit_lock = threading.Lock()
+_rate_limit_counters: dict[str, list[float]] = defaultdict(list)
+RATE_LIMIT_MAX_REQUESTS = 60  # per window
+RATE_LIMIT_WINDOW_SECONDS = 60  # sliding window
+
+
+def _check_rate_limit(ip: str) -> bool:
+    """Check if an IP has exceeded the rate limit. Returns True if allowed."""
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    with _rate_limit_lock:
+        timestamps = _rate_limit_counters[ip]
+        # Prune old entries
+        _rate_limit_counters[ip] = [t for t in timestamps if t > cutoff]
+        if len(_rate_limit_counters[ip]) >= RATE_LIMIT_MAX_REQUESTS:
+            return False
+        _rate_limit_counters[ip].append(now)
+        return True
+
+
+def rate_limited(f):
+    """Decorator that applies IP-based rate limiting to hook endpoints."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        ip = request.remote_addr or "unknown"
+        if not _check_rate_limit(ip):
+            logger.warning(f"Rate limit exceeded for IP {ip} on {request.path}")
+            return jsonify({
+                "status": "error",
+                "message": "Rate limit exceeded. Max 60 requests per minute.",
+            }), 429
+        return f(*args, **kwargs)
+    return decorated
 
 
 def _validate_hook_payload(required_fields: list[str]) -> tuple[dict | None, str | None]:
@@ -78,6 +119,7 @@ def _backfill_tmux_pane(agent, tmux_pane: str | None) -> None:
 
 
 @hooks_bp.route("/hook/session-start", methods=["POST"])
+@rate_limited
 def hook_session_start():
     """
     Handle Claude Code session start hook.
@@ -110,6 +152,14 @@ def hook_session_start():
     headspace_session_id = data.get("headspace_session_id")
     transcript_path = data.get("transcript_path")
     tmux_pane = data.get("tmux_pane")
+
+    # SRV-C7: Validate working_directory is a real path
+    if working_directory and not os.path.isdir(working_directory):
+        logger.warning(f"session-start: invalid working_directory: {working_directory}")
+        return jsonify({
+            "status": "error",
+            "message": f"working_directory is not a valid directory: {working_directory}",
+        }), 400
 
     try:
         # Correlate session to agent
@@ -159,6 +209,7 @@ def hook_session_start():
 
 
 @hooks_bp.route("/hook/session-end", methods=["POST"])
+@rate_limited
 def hook_session_end():
     """
     Handle Claude Code session end hook.
@@ -219,6 +270,7 @@ def hook_session_end():
 
 
 @hooks_bp.route("/hook/user-prompt-submit", methods=["POST"])
+@rate_limited
 def hook_user_prompt_submit():
     """
     Handle Claude Code user prompt submit hook.
@@ -280,6 +332,7 @@ def hook_user_prompt_submit():
 
 
 @hooks_bp.route("/hook/stop", methods=["POST"])
+@rate_limited
 def hook_stop():
     """
     Handle Claude Code stop (turn complete) hook.
@@ -343,6 +396,7 @@ def hook_stop():
 
 
 @hooks_bp.route("/hook/notification", methods=["POST"])
+@rate_limited
 def hook_notification():
     """
     Handle Claude Code notification hook.
@@ -413,6 +467,7 @@ def hook_notification():
 
 
 @hooks_bp.route("/hook/post-tool-use", methods=["POST"])
+@rate_limited
 def hook_post_tool_use():
     """
     Handle Claude Code PostToolUse hook.
@@ -487,6 +542,7 @@ def hook_post_tool_use():
 
 
 @hooks_bp.route("/hook/pre-tool-use", methods=["POST"])
+@rate_limited
 def hook_pre_tool_use():
     """
     Handle Claude Code PreToolUse hook.
@@ -555,6 +611,7 @@ def hook_pre_tool_use():
 
 
 @hooks_bp.route("/hook/permission-request", methods=["POST"])
+@rate_limited
 def hook_permission_request():
     """
     Handle Claude Code PermissionRequest hook.

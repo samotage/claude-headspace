@@ -131,8 +131,8 @@ def respond_to_agent(agent_id: int):
                 "message": "Text is required for 'other' mode.",
             }), 400
 
-    # Lookup agent
-    agent = db.session.get(Agent, agent_id)
+    # Lookup agent with row lock to prevent concurrent state mutations (SRV-C1)
+    agent = db.session.get(Agent, agent_id, with_for_update=True)
     if agent is None:
         return jsonify({
             "status": "error",
@@ -223,7 +223,15 @@ def respond_to_agent(agent_id: int):
         )
         db.session.add(turn)
 
-        current_task.state = TaskState.PROCESSING
+        from ..services.state_machine import validate_transition
+        from ..models.turn import TurnIntent as _TurnIntent
+        _vr = validate_transition(current_task.state, TurnActor.USER, _TurnIntent.ANSWER)
+        if _vr.valid:
+            current_task.state = _vr.to_state
+        else:
+            # Fallback: force PROCESSING (respond always means user answered)
+            logger.warning(f"respond: invalid transition {current_task.state.value} -> PROCESSING, forcing")
+            current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
         # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
