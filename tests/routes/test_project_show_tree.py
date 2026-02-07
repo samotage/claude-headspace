@@ -57,11 +57,13 @@ class TestGetAgentTasks:
         mock_task.started_at = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
         mock_task.completed_at = None
 
+        # First query: tasks (filter -> order_by -> all -> [mock_task])
+        # Second query: turn counts (filter -> group_by -> all -> [(task_id, count)])
         query_mock = MagicMock()
         query_mock.filter.return_value = query_mock
         query_mock.order_by.return_value = query_mock
-        query_mock.all.return_value = [mock_task]
-        query_mock.scalar.return_value = 5  # turn count
+        query_mock.group_by.return_value = query_mock
+        query_mock.all.side_effect = [[mock_task], [(10, 5)]]  # tasks, then turn counts
         mock_db.session.query.return_value = query_mock
 
         resp = client.get("/api/agents/1/tasks")

@@ -135,7 +135,7 @@ class TestSlugInApiResponses:
 
     def test_list_includes_slug(self, client, mock_db, mock_project):
         """Test that list response includes slug field."""
-        mock_db.session.query.return_value.order_by.return_value.all.return_value = [mock_project]
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [mock_project]
 
         response = client.get("/api/projects")
         data = response.get_json()
