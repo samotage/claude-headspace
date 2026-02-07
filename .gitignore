@@ -37,7 +37,8 @@ data/logs/
 # Claude Headspace state files (created at runtime)
 .claude-headspace-*.json
 
-# User config overrides (optional)
+# User config (local, use config.example.yaml as template)
+config.yaml
 config.local.yaml
 
 # Project data files (user-specific, use project.yaml.example as template)

@@ -62,7 +62,30 @@ Set:
 
 Print all detected paths and confirm they look correct before proceeding.
 
-## Step 2: Check prerequisites (REQUIRED)
+## Step 2: Bootstrap config.yaml (REQUIRED)
+
+Tell the user: "Checking for config.yaml — this file holds all server, database, and service settings. It's git-ignored so your local settings stay local."
+
+Check if config.yaml already exists in the repo root:
+```bash
+test -f $REPO_DIR/config.yaml && echo "EXISTS" || echo "NOT_FOUND"
+```
+
+If EXISTS, skip this step — the config is already in place.
+
+If NOT_FOUND, copy from the example:
+```bash
+cp $REPO_DIR/config.example.yaml $REPO_DIR/config.yaml
+```
+
+Verify:
+```bash
+test -f $REPO_DIR/config.yaml && echo "CONFIG_OK" || echo "CONFIG_FAIL"
+```
+
+If CONFIG_FAIL, STOP and report: "Failed to create config.yaml from config.example.yaml."
+
+## Step 3: Check prerequisites (REQUIRED)
 
 Tell the user: "Checking that required tools are installed — PostgreSQL, curl, jq, Python 3.10+, tmux, and the Claude Code CLI. Also checking for terminal-notifier (optional, for macOS desktop notifications). All read-only checks."
 
@@ -117,7 +140,7 @@ which claude
 ```
 If not found, STOP and report that Claude Code must be installed first.
 
-## Step 3: Create PostgreSQL database (REQUIRED)
+## Step 4: Create PostgreSQL database (REQUIRED)
 
 Tell the user: "Checking whether the 'claude_headspace' PostgreSQL database exists, and creating it if not. This is where the dashboard stores session data."
 
@@ -140,7 +163,7 @@ psql -d claude_headspace -c "SELECT 1;" 2>&1
 
 If this verification fails, report the error and STOP.
 
-## Step 4: Install hooks using install-hooks.sh (REQUIRED)
+## Step 5: Install hooks using install-hooks.sh (REQUIRED)
 
 Tell the user: "Running the hook installer script. This copies notify-headspace.sh into ~/.claude/hooks/ and adds hook entries to ~/.claude/settings.json so every Claude Code session sends lifecycle events to the Headspace server. Existing non-headspace hooks are preserved."
 
@@ -187,7 +210,7 @@ cat ~/.claude/settings.json | jq '.hooks.PostToolUse[0].matcher, .hooks.Permissi
 
 Expected output: two empty strings (`""`) — these must fire for ALL tools.
 
-## Step 5: Symlink the claude-headspace CLI and ensure PATH access (REQUIRED)
+## Step 6: Symlink the claude-headspace CLI and ensure PATH access (REQUIRED)
 
 Tell the user: "Making the claude-headspace CLI available system-wide by creating a symlink in your bin directory. This lets you launch monitored sessions with 'claude-headspace start' from anywhere."
 
@@ -201,12 +224,12 @@ Verify it's accessible:
 which claude-headspace
 ```
 
-If `which` finds it, this step is done — move on to Step 6.
+If `which` finds it, this step is done — move on to Step 7.
 
 If `which` does NOT find it (or if USER_BIN_IN_PATH was "no" from Step 1), the bin directory
 is not in the shell's PATH. You MUST fix this before continuing:
 
-### Step 5b: Add bin directory to PATH
+### Step 6b: Add bin directory to PATH
 
 Tell the user: "Your bin directory ($USER_BIN) is not in your shell's PATH, so the
 claude-headspace command won't be found. I need to add it to one of your shell config files.
@@ -224,7 +247,7 @@ If NO config files are found, tell the user:
 to your shell's startup file:
   export PATH="$USER_BIN:$PATH"
 Then open a new terminal or source the file."
-Mark this step as a manual action and continue to Step 6.
+Mark this step as a manual action and continue to Step 7.
 
 If config files ARE found, present them to the user as a numbered list and ask which
 one to use. For example:
@@ -244,7 +267,7 @@ grep -q "export PATH=\"$USER_BIN" "$SHELL_CONFIG" 2>/dev/null && echo "ALREADY_P
 If ALREADY_PRESENT:
 Tell the user: "The PATH entry already exists in $SHELL_CONFIG. You may need to open
 a new terminal or run: source $SHELL_CONFIG"
-Continue to Step 6.
+Continue to Step 7.
 
 If NOT_PRESENT, append the PATH export to the chosen file:
 ```bash
@@ -265,7 +288,7 @@ tail -3 "$SHELL_CONFIG"
 
 The last 3 lines should show the comment and export line that were just added.
 
-## Step 6: Verify ~/.claude/projects/ access (REQUIRED)
+## Step 7: Verify ~/.claude/projects/ access (REQUIRED)
 
 Tell the user: "Checking that ~/.claude/projects/ is readable. The Headspace server reads Claude Code session JSONL files from this directory to track sessions. Read-only check."
 
@@ -278,7 +301,7 @@ ls -la ~/.claude/projects/ 2>/dev/null
 If the directory doesn't exist, that's OK — Claude Code creates it on first session.
 If it exists, confirm the current user has read permission on it and its contents.
 
-## Step 7: Configure global Claude Code instructions (REQUIRED)
+## Step 8: Configure global Claude Code instructions (REQUIRED)
 
 Tell the user: "Setting up global Claude Code instructions in ~/.claude/CLAUDE.md. This file is loaded into every Claude Code session on your machine. It configures a task completion signal so agents clearly indicate when work is done."
 
@@ -335,7 +358,7 @@ Verify the content was written:
 grep "Task Completion Signal" ~/.claude/CLAUDE.md
 ```
 
-## Step 8: Verify the Headspace server (OPTIONAL)
+## Step 9: Verify the Headspace server (OPTIONAL)
 
 Tell the user: "Checking whether the Headspace server is running on localhost:5055. This step is optional — hooks work fine even when the server is offline."
 
@@ -355,13 +378,14 @@ Do NOT send a test hook event (e.g. to `/hook/session-start`). Test events creat
 phantom agents on the dashboard that never receive a session-end and persist forever.
 Connectivity is sufficiently verified by the health check above.
 
-## Step 9: Report results
+## Step 10: Report results
 
 Print a summary checklist:
 
 ```
 Claude Headspace Setup Results
 ==============================
+[PASS/FAIL] config.yaml bootstrapped from config.example.yaml
 [PASS/FAIL] PostgreSQL running and claude_headspace database exists
 [PASS/FAIL] Hook script installed at ~/.claude/hooks/notify-headspace.sh
 [PASS/FAIL] Hooks configured in ~/.claude/settings.json (8 event types)

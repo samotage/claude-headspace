@@ -3,7 +3,7 @@ server:
   port: 5055
   debug: true
 logging:
-  level: INFO
+  level: DEBUG
   file: logs/app.log
 database:
   host: localhost
@@ -25,6 +25,11 @@ event_system:
   write_retry_delay_ms: 100
   max_restarts_per_minute: 5
   shutdown_timeout_seconds: 2
+reaper:
+  enabled: true
+  interval_seconds: 60
+  inactivity_timeout_seconds: 300
+  grace_period_seconds: 300
 sse:
   heartbeat_interval_seconds: 30
   max_connections: 100
@@ -38,8 +43,19 @@ tmux_bridge:
   health_check_interval: 30
   subprocess_timeout: 5
   text_enter_delay_ms: 100
-  sequential_delay_ms: 150
-  select_other_delay_ms: 500
+dashboard:
+  stale_processing_seconds: 600
+  active_timeout_minutes: 60
+archive:
+  enabled: true
+  retention:
+    policy: keep_all
+    keep_last_n: 10
+    days: 90
+commander:
+  health_check_interval: 30
+  socket_timeout: 2
+  socket_path_prefix: /tmp/claudec-
 notifications:
   enabled: true
   sound: true
@@ -48,6 +64,18 @@ activity:
   enabled: true
   interval_seconds: 300
   retention_days: 3000
+headspace:
+  enabled: true
+  thresholds:
+    yellow: 4
+    red: 7
+  session_rolling_window_minutes: 180
+  alert_cooldown_minutes: 10
+  snapshot_retention_days: 7
+  flow_detection:
+    min_turn_rate: 6
+    max_frustration: 3
+    min_duration_minutes: 15
 openrouter:
   base_url: https://openrouter.ai/api/v1
   timeout: 30
@@ -64,10 +92,10 @@ openrouter:
     ttl_seconds: 300
   retry:
     max_attempts: 1
-    base_delay_seconds: 1.0
-    max_delay_seconds: 30.0
+    base_delay_seconds: 1
+    max_delay_seconds: 30
   priority_scoring:
-    debounce_seconds: 5.0
+    debounce_seconds: 5
   pricing:
     anthropic/claude-3-haiku:
       input_per_million: 0.25
@@ -75,33 +103,3 @@ openrouter:
     anthropic/claude-3.5-sonnet:
       input_per_million: 3.0
       output_per_million: 15.0
-dashboard:
-  stale_processing_seconds: 600
-  active_timeout_minutes: 60
-reaper:
-  enabled: true
-  interval_seconds: 60
-  inactivity_timeout_seconds: 300
-  grace_period_seconds: 300
-headspace:
-  enabled: true
-  thresholds:
-    yellow: 4
-    red: 7
-  session_rolling_window_minutes: 180
-  alert_cooldown_minutes: 10
-  snapshot_retention_days: 7
-  flow_detection:
-    min_turn_rate: 6
-    max_frustration: 3
-    min_duration_minutes: 15
-commander:
-  health_check_interval: 30
-  socket_timeout: 2
-  socket_path_prefix: /tmp/claudec-
-archive:
-  enabled: true
-  retention:
-    policy: keep_all
-    keep_last_n: 10
-    days: 90

@@ -309,29 +309,6 @@
         }
     }
 
-    function copyCodeBlock(id) {
-        var codeEl = document.getElementById(id);
-        if (!codeEl) return;
-
-        var text = codeEl.textContent;
-        navigator.clipboard.writeText(text).then(function() {
-            // Find the button that triggered this
-            var container = codeEl.closest('div[style*="position:relative"]');
-            var btn = container ? container.querySelector('button') : null;
-            if (btn) {
-                var original = btn.textContent;
-                btn.textContent = 'Copied!';
-                btn.style.color = '#22d3ee';
-                btn.style.borderColor = '#22d3ee';
-                setTimeout(function() {
-                    btn.textContent = original;
-                    btn.style.color = '#999';
-                    btn.style.borderColor = 'rgba(255,255,255,0.2)';
-                }, 1500);
-            }
-        }).catch(function(err) { console.warn('Clipboard copy failed:', err); });
-    }
-
     // Close doc viewer on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
