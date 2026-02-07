@@ -391,11 +391,11 @@ def detect_agent_intent(
         IntentResult with detected intent and confidence
     """
     text_preview = repr(text[:120]) if text else "None"
-    logger.debug(f"AGENT_INTENT called: text={text_preview}")
+    logger.info(f"AGENT_INTENT called: text={text_preview}")
 
     # Handle missing/empty text - default to progress
     if not text or not text.strip():
-        logger.debug("AGENT_INTENT result: PROGRESS (empty text)")
+        logger.info("AGENT_INTENT result: PROGRESS (empty text)")
         return IntentResult(
             intent=TurnIntent.PROGRESS,
             confidence=0.5,
@@ -518,7 +518,7 @@ def detect_agent_intent(
             return inferred
 
     # Default to progress with lower confidence since no pattern matched
-    logger.debug("No pattern matched, defaulting to PROGRESS")
+    logger.info("No pattern matched, defaulting to PROGRESS")
     return IntentResult(
         intent=TurnIntent.PROGRESS,
         confidence=0.5,
@@ -587,14 +587,14 @@ def detect_intent(
         IntentResult with detected intent and confidence
     """
     text_preview = repr(text[:120]) if text else "None"
-    logger.debug(
+    logger.info(
         f"INTENT_DETECT called: actor={actor.value}, state={current_state.value}, text={text_preview}"
     )
     if actor == TurnActor.USER:
         result = detect_user_intent(text, current_state)
     else:
         result = detect_agent_intent(text)
-    logger.debug(
+    logger.info(
         f"INTENT_DETECT result: intent={result.intent.value}, confidence={result.confidence}, pattern={result.matched_pattern}"
     )
     return result

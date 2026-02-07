@@ -372,17 +372,18 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
     task_id = current_task.id
     project_id = agent.project_id
 
+    # Capture Flask app reference BEFORE starting thread
+    # (current_app is not available inside background threads)
+    try:
+        from flask import current_app
+        app = current_app._get_current_object()
+    except RuntimeError:
+        logger.warning("Cannot schedule deferred stop: no app context available")
+        return
+
     def _deferred_check():
         import time
         time.sleep(1.5)  # Wait for Claude Code to flush transcript
-
-        try:
-            from flask import current_app
-            app = current_app._get_current_object()
-        except RuntimeError:
-            # No app context — try to get it from the agent's module
-            logger.warning("Deferred stop: no app context, skipping re-check")
-            return
 
         with app.app_context():
             try:
@@ -396,6 +397,10 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                     return
 
                 agent_text = _extract_transcript_content(agent_obj)
+                logger.info(
+                    f"deferred_stop: agent_id={agent_id}, "
+                    f"transcript_retry: len={len(agent_text) if agent_text else 0}"
+                )
                 if not agent_text:
                     # Still empty — complete with no transcript
                     lifecycle = _get_lifecycle_manager()
@@ -409,11 +414,7 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                     logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
                     return
 
-                try:
-                    from flask import current_app as _ca
-                    inference_service = _ca.extensions.get("inference_service")
-                except RuntimeError:
-                    inference_service = None
+                inference_service = app.extensions.get("inference_service")
 
                 intent_result = detect_agent_intent(
                     agent_text, inference_service=inference_service,
@@ -656,6 +657,11 @@ def process_stop(
         # deferred re-check on a background thread instead of blocking the
         # Flask request handler.
         agent_text = _extract_transcript_content(agent)
+        logger.info(
+            f"hook_event: type=stop, agent_id={agent.id}, "
+            f"transcript_extracted: len={len(agent_text) if agent_text else 0}, "
+            f"empty={not agent_text}"
+        )
         if not agent_text:
             # Defer transcript extraction: complete the request now and
             # schedule a background re-check after a short delay.
