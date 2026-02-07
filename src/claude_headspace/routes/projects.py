@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models.agent import Agent
@@ -70,7 +71,12 @@ def _broadcast_project_event(event_type: str, data: dict) -> None:
 def list_projects():
     """List all registered projects with agent counts."""
     try:
-        projects = db.session.query(Project).order_by(Project.created_at.desc()).all()
+        projects = (
+            db.session.query(Project)
+            .options(selectinload(Project.agents))
+            .order_by(Project.created_at.desc())
+            .all()
+        )
 
         result = []
         for p in projects:
@@ -173,7 +179,7 @@ def get_project(project_id: int):
         # Paginated agents, ordered by last_seen_at descending
         page = request.args.get("agents_page", 1, type=int)
         per_page = request.args.get("agents_per_page", 10, type=int)
-        per_page = min(per_page, 100)  # cap
+        per_page = max(1, min(per_page, 100))
         include_ended = request.args.get("include_ended", "false").lower() == "true"
 
         agents_query = (
@@ -598,9 +604,20 @@ def get_agent_tasks(agent_id: int):
             .all()
         )
 
+        # Batch turn counts in a single query
+        task_ids = [t.id for t in tasks]
+        turn_counts = {}
+        if task_ids:
+            rows = (
+                db.session.query(Turn.task_id, func.count(Turn.id))
+                .filter(Turn.task_id.in_(task_ids))
+                .group_by(Turn.task_id)
+                .all()
+            )
+            turn_counts = {row[0]: row[1] for row in rows}
+
         result = []
         for t in tasks:
-            turn_count = db.session.query(func.count(Turn.id)).filter(Turn.task_id == t.id).scalar()
             result.append({
                 "id": t.id,
                 "state": t.state.value if hasattr(t.state, "value") else str(t.state),
@@ -608,7 +625,7 @@ def get_agent_tasks(agent_id: int):
                 "completion_summary": t.completion_summary,
                 "started_at": t.started_at.isoformat() if t.started_at else None,
                 "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-                "turn_count": turn_count,
+                "turn_count": turn_counts.get(t.id, 0),
             })
 
         return jsonify(result), 200

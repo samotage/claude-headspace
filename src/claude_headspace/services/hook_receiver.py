@@ -359,6 +359,116 @@ def _send_completion_notification(agent: Agent, task) -> None:
         logger.warning(f"Completion notification failed (non-fatal): {e}")
 
 
+# --- Deferred stop handler (INT-H1: non-blocking transcript retry) ---
+
+def _schedule_deferred_stop(agent: Agent, current_task) -> None:
+    """Schedule a background thread to retry transcript extraction after a delay.
+
+    Instead of blocking the Flask request handler with time.sleep(), this
+    spawns a daemon thread that waits, re-reads the transcript, and applies
+    the appropriate state transition within a fresh app context.
+    """
+    agent_id = agent.id
+    task_id = current_task.id
+    project_id = agent.project_id
+
+    def _deferred_check():
+        import time
+        time.sleep(1.5)  # Wait for Claude Code to flush transcript
+
+        try:
+            from flask import current_app
+            app = current_app._get_current_object()
+        except RuntimeError:
+            # No app context — try to get it from the agent's module
+            logger.warning("Deferred stop: no app context, skipping re-check")
+            return
+
+        with app.app_context():
+            try:
+                from ..models.task import Task
+                task = db.session.get(Task, task_id)
+                if not task or task.state == TaskState.COMPLETE:
+                    return  # Already completed by another hook
+
+                agent_obj = db.session.get(Agent, agent_id)
+                if not agent_obj:
+                    return
+
+                agent_text = _extract_transcript_content(agent_obj)
+                if not agent_text:
+                    # Still empty — complete with no transcript
+                    lifecycle = _get_lifecycle_manager()
+                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+                    _trigger_priority_scoring()
+                    pending = lifecycle.get_pending_summarisations()
+                    db.session.commit()
+                    broadcast_card_refresh(agent_obj, "stop_deferred")
+                    _execute_pending_summarisations(pending)
+                    _send_completion_notification(agent_obj, task)
+                    logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
+                    return
+
+                try:
+                    from flask import current_app as _ca
+                    inference_service = _ca.extensions.get("inference_service")
+                except RuntimeError:
+                    inference_service = None
+
+                intent_result = detect_agent_intent(
+                    agent_text, inference_service=inference_service,
+                    project_id=project_id, agent_id=agent_id,
+                )
+
+                lifecycle = _get_lifecycle_manager()
+                if intent_result.intent == TurnIntent.QUESTION:
+                    from ..models.turn import Turn as _Turn
+                    turn = _Turn(
+                        task_id=task.id, actor=TurnActor.AGENT,
+                        intent=TurnIntent.QUESTION, text=agent_text,
+                    )
+                    db.session.add(turn)
+                    lifecycle.update_task_state(
+                        task=task, to_state=TaskState.AWAITING_INPUT,
+                        trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
+                    )
+                elif intent_result.intent == TurnIntent.END_OF_TASK:
+                    lifecycle.complete_task(
+                        task=task, trigger="hook:stop:deferred_end_of_task",
+                        agent_text=agent_text, intent=TurnIntent.END_OF_TASK,
+                    )
+                else:
+                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=agent_text)
+
+                _trigger_priority_scoring()
+                pending = lifecycle.get_pending_summarisations()
+                db.session.commit()
+                broadcast_card_refresh(agent_obj, "stop_deferred")
+                _execute_pending_summarisations(pending)
+
+                if task.state == TaskState.COMPLETE:
+                    _send_completion_notification(agent_obj, task)
+                if task.state == TaskState.AWAITING_INPUT and task.turns:
+                    for t in reversed(task.turns):
+                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                            _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input)
+                            break
+
+                logger.info(
+                    f"deferred_stop: agent_id={agent_id}, "
+                    f"new_state={task.state.value}, intent={intent_result.intent.value}"
+                )
+            except Exception as e:
+                logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+
+    t = threading.Thread(target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}")
+    t.start()
+
+
 # --- Hook processors ---
 
 def process_session_start(
@@ -542,15 +652,24 @@ def process_stop(
 
         # Extract transcript and detect intent.
         # Claude Code may fire the stop hook before flushing the final assistant
-        # response to the JSONL file.  Retry after a short delay if empty.
-        import time
+        # response to the JSONL file.  If empty on first read, schedule a
+        # deferred re-check on a background thread instead of blocking the
+        # Flask request handler.
         agent_text = _extract_transcript_content(agent)
         if not agent_text:
-            time.sleep(0.75)
-            agent_text = _extract_transcript_content(agent)
-            if not agent_text:
-                time.sleep(1.0)
-                agent_text = _extract_transcript_content(agent)
+            # Defer transcript extraction: complete the request now and
+            # schedule a background re-check after a short delay.
+            _schedule_deferred_stop(agent, current_task)
+            db.session.commit()
+            broadcast_card_refresh(agent, "stop")
+            logger.info(
+                f"hook_event: type=stop, agent_id={agent.id}, "
+                f"transcript empty — deferred re-check scheduled"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                new_state=current_task.state.value,
+            )
 
         try:
             from flask import current_app

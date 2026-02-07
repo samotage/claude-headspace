@@ -40,6 +40,9 @@ VALID_TRANSITIONS: dict[tuple[TaskState, TurnActor, TurnIntent], TaskState] = {
     (TaskState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
     # From AWAITING_INPUT: User answers and agent resumes
     (TaskState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
+    # From AWAITING_INPUT: Agent completes while awaiting (session_end forced completion)
+    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
+    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
     # Special case: User command while awaiting input starts NEW task
     # This is handled specially in validate_transition()
 }

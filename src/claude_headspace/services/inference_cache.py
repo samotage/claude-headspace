@@ -25,16 +25,18 @@ class CacheEntry:
 
 
 class InferenceCache:
-    """Thread-safe in-memory cache keyed by content hash."""
+    """Thread-safe in-memory cache keyed by content hash with LRU eviction."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, max_size: int = 500):
         cache_config = config.get("openrouter", {}).get("cache", {})
         self.enabled = cache_config.get("enabled", True)
         self.ttl_seconds = cache_config.get("ttl_seconds", 300)
+        self.max_size = max_size
         self._cache: dict[str, CacheEntry] = {}
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
+        self._insert_count = 0
 
     def get(self, input_hash: str) -> CacheEntry | None:
         """Look up a cached result by input hash.
@@ -76,6 +78,18 @@ class InferenceCache:
 
         with self._lock:
             self._cache[input_hash] = entry
+            self._insert_count += 1
+
+            # LRU eviction: remove oldest entry when at capacity
+            if len(self._cache) > self.max_size:
+                oldest_key = min(self._cache, key=lambda k: self._cache[k].cached_at)
+                del self._cache[oldest_key]
+
+            # Periodic expired entry eviction (every 100 inserts)
+            if self._insert_count % 100 == 0:
+                expired_keys = [k for k, v in self._cache.items() if v.is_expired]
+                for key in expired_keys:
+                    del self._cache[key]
 
     def clear(self) -> None:
         """Clear all cached entries."""
@@ -97,6 +111,7 @@ class InferenceCache:
             return {
                 "enabled": self.enabled,
                 "ttl_seconds": self.ttl_seconds,
+                "max_size": self.max_size,
                 "size": len(self._cache),
                 "hits": self._hits,
                 "misses": self._misses,

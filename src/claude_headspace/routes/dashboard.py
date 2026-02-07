@@ -231,7 +231,8 @@ def count_active_agents(agents: list[Agent]) -> int:
 
 
 def _prepare_kanban_data(
-    projects: list, project_data: list, priority_enabled: bool
+    projects: list, project_data: list, priority_enabled: bool,
+    projects_by_id: dict | None = None,
 ) -> list:
     """Prepare Kanban board data grouped by project and task state.
 
@@ -251,16 +252,15 @@ def _prepare_kanban_data(
     columns = ["IDLE", "PROCESSING", "AWAITING_INPUT", "COMPLETE"]
     kanban_projects = []
 
+    if projects_by_id is None:
+        projects_by_id = {p.id: p for p in projects}
+
     for proj_data in project_data:
         if not proj_data["agents"]:
             continue
 
         # Find matching Project model
-        project_model = None
-        for p in projects:
-            if p.id == proj_data["id"]:
-                project_model = p
-                break
+        project_model = projects_by_id.get(proj_data["id"])
 
         state_columns = {col: [] for col in columns}
 
@@ -435,7 +435,7 @@ def _get_dashboard_activity_metrics() -> dict | None:
         try:
             latest_snapshot = (
                 db.session.query(HeadspaceSnapshot)
-                .order_by(HeadspaceSnapshot.created_at.desc())
+                .order_by(HeadspaceSnapshot.timestamp.desc())
                 .first()
             )
             if latest_snapshot and latest_snapshot.frustration_rolling_10 is not None:
@@ -592,10 +592,12 @@ def dashboard():
             project["agents"] = sort_agents_by_priority(project["agents"])
 
     # Prepare Kanban data (group by task lifecycle state per project)
+    projects_by_id = {p.id: p for p in projects}
     kanban_data = []
     if sort_mode == "kanban":
         kanban_data = _prepare_kanban_data(
-            projects, project_data, objective and objective.priority_enabled
+            projects, project_data, objective and objective.priority_enabled,
+            projects_by_id=projects_by_id,
         )
 
     # Activity metrics are fetched client-side via JS to use the browser's

@@ -192,30 +192,18 @@
 
         /**
          * Sum all turns across a history array.
+         * Delegates to CHUtils.sumTurns.
          */
         _sumTurns: function(history) {
-            var total = 0;
-            if (history) {
-                history.forEach(function(h) { total += (h.turn_count || 0); });
-            }
-            return total;
+            return CHUtils.sumTurns(history);
         },
 
         /**
          * Compute weighted average turn time across history.
+         * Delegates to CHUtils.weightedAvgTime.
          */
         _weightedAvgTime: function(history) {
-            var totalTime = 0, totalPairs = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.avg_turn_time_seconds != null && h.turn_count >= 2) {
-                        var pairs = h.turn_count - 1;
-                        totalTime += h.avg_turn_time_seconds * pairs;
-                        totalPairs += pairs;
-                    }
-                });
-            }
-            return totalPairs > 0 ? totalTime / totalPairs : null;
+            return CHUtils.weightedAvgTime(history);
         },
 
         /**
@@ -364,71 +352,18 @@
                 });
         },
 
+        /**
+         * Fill hourly gaps in history. Delegates to CHUtils.fillHourlyGaps.
+         */
         _fillHourlyGaps: function(history) {
-            if (history.length < 2) return history;
-            var bucketMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.getFullYear() + '-' +
-                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(d.getDate()).padStart(2, '0') + 'T' +
-                    String(d.getHours()).padStart(2, '0');
-                bucketMap[key] = h;
-            });
-            var first = new Date(history[0].bucket_start);
-            var last = new Date(history[history.length - 1].bucket_start);
-            first.setMinutes(0, 0, 0);
-            last.setMinutes(0, 0, 0);
-            var result = [];
-            var cursor = new Date(first);
-            while (cursor <= last) {
-                var key = cursor.getFullYear() + '-' +
-                    String(cursor.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(cursor.getDate()).padStart(2, '0') + 'T' +
-                    String(cursor.getHours()).padStart(2, '0');
-                if (bucketMap[key]) {
-                    result.push(bucketMap[key]);
-                } else {
-                    result.push({
-                        bucket_start: cursor.toISOString(),
-                        turn_count: 0,
-                        avg_turn_time_seconds: null,
-                        active_agents: null,
-                        total_frustration: null,
-                        frustration_turn_count: null,
-                        max_frustration: null
-                    });
-                }
-                cursor = new Date(cursor.getTime() + 3600000);
-            }
-            return result;
+            return CHUtils.fillHourlyGaps(history);
         },
 
+        /**
+         * Aggregate history by day. Delegates to CHUtils.aggregateByDay.
+         */
         _aggregateByDay: function(history) {
-            var dayMap = {};
-            history.forEach(function(h) {
-                var d = new Date(h.bucket_start);
-                var key = d.toLocaleDateString('en-CA');
-                if (!dayMap[key]) {
-                    dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
-                }
-                dayMap[key].turn_count += h.turn_count;
-                if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
-                if (h.frustration_turn_count != null) dayMap[key].frustration_turn_count += h.frustration_turn_count;
-                // Track max across all buckets in the day
-                var bucketMax = h.max_frustration != null ? h.max_frustration : null;
-                if (bucketMax != null) {
-                    dayMap[key].max_frustration = dayMap[key].max_frustration != null
-                        ? Math.max(dayMap[key].max_frustration, bucketMax)
-                        : bucketMax;
-                }
-            });
-            return Object.keys(dayMap).sort().map(function(k) {
-                var entry = dayMap[k];
-                if (entry.total_frustration === 0) entry.total_frustration = null;
-                if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
-                return entry;
-            });
+            return CHUtils.aggregateByDay(history);
         },
 
         /**
@@ -933,15 +868,11 @@
             return _levelFromAvg(avg);
         },
 
+        /**
+         * Sum frustration history. Delegates to CHUtils.sumFrustrationHistory.
+         */
         _sumFrustrationHistory: function(history) {
-            var total = 0, turns = 0;
-            if (history) {
-                history.forEach(function(h) {
-                    if (h.total_frustration != null) total += h.total_frustration;
-                    if (h.frustration_turn_count != null) turns += h.frustration_turn_count;
-                });
-            }
-            return { total: total, turns: turns };
+            return CHUtils.sumFrustrationHistory(history);
         }
     };
 

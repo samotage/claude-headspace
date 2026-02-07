@@ -490,10 +490,19 @@ class TestCreateAgentForSessionRejectsUnregistered:
         mock_project.id = 1
         mock_project.name = "registered-project"
 
-        mock_db.session.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_agent = MagicMock()
+        mock_agent.id = 42
+
+        # The function uses pg_insert upsert first, then queries for the agent.
+        # query().filter().first() calls: project lookup, then agent fetch after upsert
+        mock_db.session.query.return_value.filter.return_value.first.side_effect = [
+            mock_project,  # project lookup
+            mock_agent,    # agent fetch after upsert
+        ]
 
         agent, project = _create_agent_for_session("session-123", "/registered/path")
 
         assert project == mock_project
-        mock_db.session.add.assert_called()
+        assert agent == mock_agent
+        mock_db.session.execute.assert_called()  # pg_insert upsert
         mock_db.session.commit.assert_called()

@@ -103,7 +103,7 @@
             const constraints = this.constraintsInput ? this.constraintsInput.value.trim() : '';
 
             try {
-                const response = await fetch(API_ENDPOINT, {
+                const response = await CHUtils.apiFetch(API_ENDPOINT, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -221,7 +221,7 @@
             button.textContent = '[...]';
 
             try {
-                var response = await fetch(DELETE_HISTORY_ENDPOINT + id, {
+                var response = await CHUtils.apiFetch(DELETE_HISTORY_ENDPOINT + id, {
                     method: 'DELETE'
                 });
 
@@ -411,7 +411,7 @@
             this._updateToggleUI(newEnabled);
 
             try {
-                var response = await fetch(PRIORITY_ENDPOINT, {
+                var response = await CHUtils.apiFetch(PRIORITY_ENDPOINT, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ enabled: newEnabled })

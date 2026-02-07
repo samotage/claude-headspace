@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,10 @@ class SSEClient:
     client_id: str
     connected_at: datetime
     last_event_at: Optional[datetime] = None
-    event_queue: Queue = field(default_factory=Queue)
+    event_queue: Queue = field(default_factory=lambda: Queue(maxsize=1000))
     filters: dict = field(default_factory=dict)
     failed_writes: int = 0
+    dropped_events: int = 0
     is_active: bool = True
 
     def matches_filter(self, event_type: str, payload: dict) -> bool:
@@ -188,9 +189,16 @@ class Broadcaster:
         now = datetime.now(timezone.utc)
         for client in clients_snapshot:
             if client.is_active and client.matches_filter(event_type, data):
-                client.event_queue.put(event)
-                client.last_event_at = now
-                sent_count += 1
+                try:
+                    client.event_queue.put_nowait(event)
+                    client.last_event_at = now
+                    sent_count += 1
+                except Full:
+                    client.dropped_events += 1
+                    logger.warning(
+                        f"Client {client.client_id} queue full, dropped event "
+                        f"(total dropped: {client.dropped_events})"
+                    )
 
         logger.debug(f"Broadcast: type={event_type}, id={event_id}, sent_to={sent_count}")
         return sent_count
@@ -255,9 +263,10 @@ _broadcaster_lock = threading.Lock()
 def get_broadcaster() -> Broadcaster:
     """Get the global broadcaster instance."""
     global _broadcaster
-    if _broadcaster is None:
-        raise RuntimeError("Broadcaster not initialized. Call init_broadcaster first.")
-    return _broadcaster
+    with _broadcaster_lock:
+        if _broadcaster is None:
+            raise RuntimeError("Broadcaster not initialized. Call init_broadcaster first.")
+        return _broadcaster
 
 
 def init_broadcaster(config: Optional[dict] = None) -> Broadcaster:

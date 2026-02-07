@@ -183,17 +183,20 @@ class NotificationService:
 
 # Global notification service instance
 _notification_service: NotificationService | None = None
+_notification_lock = threading.Lock()
 
 
 def get_notification_service() -> NotificationService:
     """Get the global notification service instance."""
     global _notification_service
-    if _notification_service is None:
-        _notification_service = NotificationService()
-    return _notification_service
+    with _notification_lock:
+        if _notification_service is None:
+            _notification_service = NotificationService()
+        return _notification_service
 
 
 def configure_notification_service(preferences: NotificationPreferences) -> None:
     """Configure the global notification service."""
     global _notification_service
-    _notification_service = NotificationService(preferences)
+    with _notification_lock:
+        _notification_service = NotificationService(preferences)

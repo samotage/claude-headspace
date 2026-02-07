@@ -315,6 +315,11 @@ class TestBuildCheckApplescript:
 class TestCheckPaneExists:
     """Tests for check_pane_exists function."""
 
+    def setup_method(self):
+        """Clear the pane cache before each test."""
+        import claude_headspace.services.iterm_focus as itf
+        itf._pane_cache.clear()
+
     def test_empty_pane_id(self):
         assert check_pane_exists("") == PaneStatus.NOT_FOUND
 

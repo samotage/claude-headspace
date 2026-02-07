@@ -2,7 +2,7 @@
 
 **AI-powered Claude Code session monitoring dashboard -- the only tool with frustration detection, flow state tracking, and agent priority scoring.**
 
-Monitor and manage all your Claude Code agents from a single web dashboard. See what each agent is working on, who needs input, which sessions are stuck -- and respond to agents directly via tmux, without switching terminal tabs or just click on the agent to open their iTerm2 directly. Spec-driven, production-grade software with 80+ tests and full observability.
+Monitor and manage all your Claude Code agents from a single web dashboard. See what each agent is working on, who needs input, which sessions are stuck -- and respond to agents directly via tmux, without switching terminal tabs or just click on the agent to open their iTerm2 directly. Spec-driven, production-grade software with 85+ test files and full observability.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/flask-3.0+-green)
@@ -234,10 +234,10 @@ Events arrive in <100ms (vs 2-second polling). State transitions are 100% accura
 
 Claude Headspace is spec-driven, production-grade software -- not a weekend prototype or vibe-coded experiment.
 
-- **166 commits** with structured PRD-driven development and [OpenSpec](openspec/) change management
-- **81 test files** across 4 tiers: unit, route, integration (real PostgreSQL), and E2E (Playwright browser tests)
-- **21 database migrations** via Alembic with full schema evolution
-- **38 service modules** with dependency injection via Flask extensions
+- **210+ commits** with structured PRD-driven development and [OpenSpec](openspec/) change management
+- **85+ test files** across 4 tiers: unit, route, integration (real PostgreSQL), and E2E (Playwright browser tests)
+- **24 database migrations** via Alembic with full schema evolution
+- **40 service modules** with dependency injection via Flask extensions
 - **34 OpenSpec specifications** tracking every feature from proposal to implementation
 - **Full configuration system** with YAML config, environment overrides, and a config editor UI
 - **Comprehensive logging** with audit trail, inference call tracking, and event history

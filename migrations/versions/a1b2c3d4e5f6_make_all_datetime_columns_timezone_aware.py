@@ -32,9 +32,6 @@ COLUMNS_TO_ALTER = [
 
 
 def upgrade():
-    # Add the ended_at column to agents (added in model but missing migration)
-    op.add_column('agents', sa.Column('ended_at', sa.DateTime(timezone=True), nullable=True))
-
     for table, column, nullable in COLUMNS_TO_ALTER:
         op.alter_column(
             table,
@@ -55,6 +52,3 @@ def downgrade():
             type_=sa.DateTime(),
             existing_nullable=nullable,
         )
-
-    # Remove the ended_at column from agents
-    op.drop_column('agents', 'ended_at')
