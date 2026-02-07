@@ -26,7 +26,7 @@
             }
 
             try {
-                const response = await fetch(`${FOCUS_ENDPOINT}/${agentId}`, {
+                const response = await CHUtils.apiFetch(`${FOCUS_ENDPOINT}/${agentId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -89,7 +89,7 @@
          */
         dismissAgent: async function(agentId) {
             try {
-                const response = await fetch(`/api/agents/${agentId}/dismiss`, {
+                const response = await CHUtils.apiFetch(`/api/agents/${agentId}/dismiss`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });

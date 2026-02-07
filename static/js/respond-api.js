@@ -58,7 +58,7 @@
             }
 
             try {
-                var response = await fetch(RESPOND_ENDPOINT + '/' + agentId, {
+                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text.trim() })
@@ -95,7 +95,7 @@
             if (!agentId) return false;
 
             try {
-                var response = await fetch(RESPOND_ENDPOINT + '/' + agentId, {
+                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode: 'select', option_index: optionIndex })
@@ -127,7 +127,7 @@
             if (!agentId || !text || !text.trim()) return false;
 
             try {
-                var response = await fetch(RESPOND_ENDPOINT + '/' + agentId, {
+                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode: 'other', text: text.trim() })
@@ -223,7 +223,7 @@
             }
 
             var errorType = data.error_type || '';
-            var message = data.message || 'Unknown error';
+            var message = data.message || data.error || 'Unknown error';
 
             if (errorType === 'wrong_state') {
                 global.Toast.show('warning',

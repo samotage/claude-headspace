@@ -483,6 +483,12 @@ class SummarisationService:
         # Track the last COMMAND turn summary so instruction requests can reuse it
         last_command_turn_summary = None
 
+        # Check if batch contains an instruction request — if so, suppress
+        # intermediate card_refresh from turn summaries to avoid a flicker
+        # where the card briefly shows "No instruction" before the instruction
+        # summary arrives.
+        has_instruction_request = any(r.type == "instruction" for r in requests)
+
         for req in requests:
             try:
                 if req.type == "turn" and req.turn:
@@ -502,7 +508,8 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
-                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
+                        if not has_instruction_request:
+                            self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
 
                 elif req.type == "instruction" and req.task:
                     instruction = self.summarise_instruction(

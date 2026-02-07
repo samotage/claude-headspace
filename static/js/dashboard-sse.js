@@ -759,6 +759,8 @@
                 if (completeBody) {
                     var placeholder = completeBody.querySelector('p.text-muted.italic');
                     if (placeholder) placeholder.remove();
+                    var existingCondensed = completeBody.querySelector('details[data-agent-id="' + agentId + '"]');
+                    if (existingCondensed) existingCondensed.remove();
                     completeBody.insertBefore(condensedCard, completeBody.firstChild);
                 }
 
