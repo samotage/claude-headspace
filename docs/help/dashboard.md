@@ -63,6 +63,7 @@ Use the sort controls to change how agents are displayed:
 
 - **By Project** (default) - Groups agents under their projects
 - **By Priority** - Flat list sorted by priority score
+- **Kanban** - Groups agents by state (Input Needed, Working, Idle)
 
 ## Real-Time Updates
 

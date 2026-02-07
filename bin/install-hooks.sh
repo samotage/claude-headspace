@@ -325,6 +325,8 @@ HOOKS_OBJ=$(jq -n \
 
 # Update settings.json
 # Merge new hooks into existing settings, preserving non-headspace hooks
+cp "$SETTINGS_FILE" "${SETTINGS_FILE}.bak"
+log_info "Backed up settings to ${SETTINGS_FILE}.bak"
 TMP_FILE=$(mktemp)
 
 if jq -e '.hooks' "$SETTINGS_FILE" > /dev/null 2>&1; then
