@@ -145,12 +145,15 @@ class AgentReaper:
                 .all()
             )
 
-            # Build pane ownership: pane_id → newest agent.id (highest id = most recent)
-            pane_owners: dict[str, int] = {}
+            # Build pane ownership: pane_key → newest agent.id (highest id = most recent)
+            # Use (iterm_pane_id, tmux_pane_id) as key so agents in different
+            # tmux panes within the same iTerm window are treated as separate owners.
+            pane_owners: dict[tuple[str, str | None], int] = {}
             for a in agents:
                 if a.iterm_pane_id:
-                    if a.iterm_pane_id not in pane_owners or a.id > pane_owners[a.iterm_pane_id]:
-                        pane_owners[a.iterm_pane_id] = a.id
+                    key = (a.iterm_pane_id, a.tmux_pane_id)
+                    if key not in pane_owners or a.id > pane_owners[key]:
+                        pane_owners[key] = a.id
 
             for agent in agents:
                 result.checked += 1
@@ -167,7 +170,8 @@ class AgentReaper:
 
                     if status == PaneStatus.FOUND:
                         # Pane exists — but does this agent own it?
-                        if pane_owners.get(agent.iterm_pane_id) != agent.id:
+                        pane_key = (agent.iterm_pane_id, agent.tmux_pane_id)
+                        if pane_owners.get(pane_key) != agent.id:
                             reap_reason = "stale_pane"
                         else:
                             result.skipped_alive += 1

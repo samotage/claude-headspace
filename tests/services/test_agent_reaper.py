@@ -26,6 +26,7 @@ PATCH_BROADCASTER = "claude_headspace.services.broadcaster.get_broadcaster"
 def _make_agent(
     agent_id=1,
     iterm_pane_id=None,
+    tmux_pane_id=None,
     started_at=None,
     last_seen_at=None,
     ended_at=None,
@@ -37,6 +38,7 @@ def _make_agent(
     agent.id = agent_id
     agent.session_uuid = uuid4()
     agent.iterm_pane_id = iterm_pane_id
+    agent.tmux_pane_id = tmux_pane_id
     agent.started_at = started_at or (now - timedelta(minutes=30))
     agent.last_seen_at = last_seen_at or (now - timedelta(minutes=10))
     agent.ended_at = ended_at
@@ -304,6 +306,46 @@ class TestReapOnce:
         assert result.details[0].reason == "stale_pane"
         assert old_agent.ended_at is not None
         assert new_agent.ended_at is None
+
+    @patch(PATCH_CHECK_PANE)
+    @patch(PATCH_DB)
+    def test_different_tmux_panes_same_iterm_pane_both_survive(self, mock_db, mock_check, reaper):
+        """Two agents share same iTerm pane but have different tmux panes → both survive."""
+        agent_a = _make_agent(agent_id=1, iterm_pane_id="pty-shared", tmux_pane_id="%0")
+        agent_b = _make_agent(agent_id=2, iterm_pane_id="pty-shared", tmux_pane_id="%1")
+
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent_a, agent_b
+        ]
+        mock_check.return_value = PaneStatus.FOUND
+
+        result = reaper.reap_once()
+
+        assert result.checked == 2
+        assert result.reaped == 0
+        assert result.skipped_alive == 2
+        assert agent_a.ended_at is None
+        assert agent_b.ended_at is None
+
+    @patch(PATCH_CHECK_PANE)
+    @patch(PATCH_DB)
+    def test_same_tmux_pane_same_iterm_pane_reaps_older(self, mock_db, mock_check, reaper):
+        """Two agents share same iTerm pane AND same tmux pane → older agent reaped."""
+        old_agent = _make_agent(agent_id=1, iterm_pane_id="pty-shared", tmux_pane_id="%0")
+        new_agent = _make_agent(agent_id=2, iterm_pane_id="pty-shared", tmux_pane_id="%0")
+
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            old_agent, new_agent
+        ]
+        mock_check.return_value = PaneStatus.FOUND
+
+        result = reaper.reap_once()
+
+        assert result.checked == 2
+        assert result.reaped == 1
+        assert result.skipped_alive == 1
+        assert result.details[0].agent_id == 1
+        assert result.details[0].reason == "stale_pane"
 
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
