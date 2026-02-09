@@ -2081,6 +2081,82 @@ class Task(Base):
 
 ---
 
+### Decision 15: Environment Variable for tmux Pane Detection
+
+**Decision:** CLI detects tmux pane via `os.environ.get("TMUX_PANE")` — a simple environment variable read with no subprocess invocation.
+
+**Rationale:**
+
+- `$TMUX_PANE` is set automatically by tmux in every pane
+- Environment variable read is effectively instant (no shell out)
+- Faster than previous `shutil.which("claudec")` approach
+- No external binary dependency
+
+**Impact:**
+
+- CLI startup time unaffected by bridge detection
+- Works reliably in any tmux pane
+- Clean separation from subprocess-based tmux commands used server-side
+
+---
+
+### Decision 16: Warn but Don't Block Outside tmux
+
+**Decision:** When `--bridge` is passed outside a tmux session, the CLI prints a warning but still launches Claude Code successfully.
+
+**Rationale:**
+
+- Monitoring functionality works regardless of tmux
+- Users may intentionally run without bridge (monitoring only)
+- Blocking would break existing workflows
+- Warning message informs user that input bridge is unavailable
+
+**Impact:**
+
+- Existing user workflows not broken
+- Clear feedback about reduced functionality
+- Input widget won't appear on dashboard for this session
+
+---
+
+### Decision 17: No Character Limit on Full Text Fields
+
+**Decision:** The `full_command` and `full_output` fields on Task have no hard character limit — they use PostgreSQL `TEXT` type which handles arbitrary length.
+
+**Rationale:**
+
+- Agent responses can be very long (multi-file edits, detailed explanations)
+- Truncating would defeat the purpose of full capture
+- PostgreSQL TEXT efficiently handles varying sizes
+- Storage is cheap; capturing complete output is valuable
+
+**Impact:**
+
+- Database can grow with very long outputs (acceptable trade-off)
+- No loss of information for long agent responses
+- Full text available for any review scenario
+
+---
+
+### Decision 18: On-Demand Loading for Full Text
+
+**Decision:** Full text fields are NOT included in SSE card_refresh payloads. They are loaded on demand when the user clicks drill-down.
+
+**Rationale:**
+
+- SSE payloads should be lightweight for real-time performance
+- Most users won't drill down on every task
+- On-demand loading keeps card refreshes fast
+- Full text only needed when user explicitly requests it
+
+**Impact:**
+
+- Dashboard remains responsive even with large full text stored
+- Slight delay when drilling down (acceptable, <1 second)
+- API endpoint needed for full text retrieval
+
+---
+
 ## Open Questions
 
 ### 1. Voice Bridge Integration Points
@@ -2364,6 +2440,74 @@ class Task(Base):
 
 ---
 
+### Risk 15: User Alias Confusion After claudec Removal
+
+**Risk:** Users with shell aliases (`clhb = claude-headspace start --bridge`) may expect old claudec behaviour.
+
+**Impact:** Low (aliases still work, just different output)
+
+**Mitigation:**
+
+- Preserve `--bridge` flag short form (aliases continue to work)
+- Output message clearly indicates tmux vs claudec
+- Update documentation and help text
+- One-time migration — users learn new pattern
+
+**Monitoring:** User feedback on CLI output clarity
+
+---
+
+### Risk 16: Input Bridge Unavailable Outside tmux
+
+**Risk:** Users running `--bridge` outside tmux won't have input bridge functionality.
+
+**Impact:** Low (monitoring works, respond widget hidden)
+
+**Mitigation:**
+
+- Clear warning message explains limitation
+- Monitoring functionality works regardless
+- Documentation explains tmux requirement for respond
+- Graceful degradation, not hard failure
+
+**Monitoring:** Track sessions registered without tmux_pane_id
+
+---
+
+### Risk 17: Large Full Text Storage
+
+**Risk:** Very long agent outputs could grow database significantly over time.
+
+**Impact:** Low (TEXT type handles it, storage is cheap)
+
+**Mitigation:**
+
+- PostgreSQL TEXT handles arbitrary length efficiently
+- No aggregation/indexing on full text fields
+- Consider future archive/purge policy for old tasks
+- Storage monitoring as part of standard ops
+
+**Monitoring:** Track average full_output size, database growth rate
+
+---
+
+### Risk 18: Mobile Rendering of Long Full Text
+
+**Risk:** Very long agent outputs may be difficult to read on mobile devices.
+
+**Impact:** Low (scrollable overlay handles it)
+
+**Mitigation:**
+
+- Scrollable overlay with max-height
+- Readable font size for mobile (not scaled down)
+- Touch-friendly dismiss controls
+- Test on iPad and iPhone Safari
+
+**Monitoring:** User feedback on mobile full text experience
+
+---
+
 ## Success Metrics
 
 From Epic 5 Acceptance Criteria:
@@ -2551,9 +2695,52 @@ From Epic 5 Acceptance Criteria:
 
 ---
 
+### Test Case 9: CLI tmux Bridge Alignment
+
+**Setup:** Terminal in tmux pane and terminal outside tmux, CLI installed.
+
+**Success:**
+
+- ✅ `claude-headspace start --bridge` inside tmux shows `Input Bridge: available (tmux pane %N)`
+- ✅ `claude-headspace start --bridge` outside tmux shows `Input Bridge: unavailable (not in tmux session)`
+- ✅ `claude-headspace start` (without `--bridge`) has no bridge detection output
+- ✅ Launches `claude` directly (no claudec wrapper)
+- ✅ Session registration payload includes `tmux_pane_id` when in tmux
+- ✅ Agent record has `tmux_pane_id` immediately after creation
+- ✅ `CommanderAvailability` begins monitoring from session creation
+- ✅ Dashboard respond widget available without waiting for hook backfill
+- ✅ No references to claudec in any CLI help text
+- ✅ Existing shell aliases (`clhb`) continue to work
+- ✅ CLI startup time not perceptibly affected
+
+---
+
+### Test Case 10: Full Command & Output Capture
+
+**Setup:** Agent with completed task, dashboard and project view accessible, mobile device available.
+
+**Success:**
+
+- ✅ Task model has `full_command` field populated with complete user command
+- ✅ Task model has `full_output` field populated with complete agent response
+- ✅ Existing `instruction` and `completion_summary` fields unchanged
+- ✅ Dashboard card tooltip shows drill-down button for instruction
+- ✅ Dashboard card tooltip shows drill-down button for completion summary
+- ✅ Clicking drill-down opens scrollable overlay with full text
+- ✅ Overlay dismissible with click/tap outside or close button
+- ✅ Project view transcript shows full agent output for completed tasks
+- ✅ Full text readable on desktop browser
+- ✅ Full text readable on iPad Safari
+- ✅ Full text readable on iPhone Safari (320px min viewport)
+- ✅ Full text NOT present in SSE card_refresh events
+- ✅ On-demand full text loading responds within 1 second
+- ✅ Very long outputs display correctly (scrollable, no truncation)
+
+---
+
 ## Recommended PRD Generation Order
 
-All 7 PRDs have been generated. Implementation order:
+All 9 PRDs have been generated. Implementation order:
 
 ### Phase 1: Input Bridge — DONE
 
@@ -2611,6 +2798,22 @@ All 7 PRDs have been generated. Implementation order:
 
 ---
 
+### Phase 8: CLI tmux Bridge Alignment — DONE
+
+8. **cli-tmux-bridge** (`docs/prds/bridge/done/e5-s8-cli-tmux-bridge-prd.md`) — Remove claudec, add tmux detection, update session registration
+
+**Rationale:** Aligns CLI launcher with server-side tmux bridge, enabling immediate respond availability from CLI-launched sessions.
+
+---
+
+### Phase 9: Full Command & Output Capture — DONE
+
+9. **full-output-capture** (`docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`) — Full text fields on Task, drill-down UI, mobile-friendly display
+
+**Rationale:** Decouples detailed review from the terminal, enabling mobile access to complete agent work.
+
+---
+
 ## Future Roadmap (Voice Bridge Phases 2-3)
 
 Epic 5 Sprint 1 (Input Bridge) is Phase 1 of the Voice Bridge vision. Future phases are out of scope for Epic 5 but documented here for planning:
@@ -2640,6 +2843,7 @@ Epic 5 Sprint 1 (Input Bridge) is Phase 1 of the Voice Bridge vision. Future pha
 | 1.0     | 2026-02-04 | PM Agent (John) | Initial detailed roadmap for Epic 5 (3 sprints) |
 | 1.1     | 2026-02-04 | PM Agent (John) | Added E5-S4 (tmux Bridge) and E5-S5 (Activity Frustration Display), now 5 sprints |
 | 1.2     | 2026-02-05 | PM Agent (John) | Added E5-S6 (Dashboard Restructure) and E5-S7 (Config Help System), now 7 sprints |
+| 1.3     | 2026-02-09 | PM Agent (John) | Added E5-S8 (CLI tmux Bridge) and E5-S9 (Full Output Capture), now 9 sprints |
 
 ---
 
