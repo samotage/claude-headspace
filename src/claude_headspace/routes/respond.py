@@ -220,11 +220,20 @@ def respond_to_agent(agent_id: int):
 
     # Success: create Turn record and transition state
     try:
+        # Find the most recent QUESTION turn for answer linking
+        answered_turn_id = None
+        if current_task.turns:
+            for t in reversed(current_task.turns):
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                    answered_turn_id = t.id
+                    break
+
         turn = Turn(
             task_id=current_task.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=record_text,
+            answered_by_turn_id=answered_turn_id,
         )
         db.session.add(turn)
 
