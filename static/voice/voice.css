@@ -285,6 +285,14 @@ body {
   min-height: 20px;
 }
 
+.agent-status-message {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  min-height: 20px;
+  margin-top: 8px;
+}
+
 /* --- Question screen --- */
 #screen-question { padding-top: 24px; }
 

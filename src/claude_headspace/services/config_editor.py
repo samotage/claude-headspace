@@ -183,6 +183,23 @@ CONFIG_SCHEMA = [
         ],
     ),
     SectionSchema(
+        name="voice_bridge",
+        title="Voice Bridge",
+        section_description="Voice Bridge is a PWA for hands-free voice interaction with agents from a mobile device. Requires a server restart after changes.",
+        fields=[
+            FieldSchema("enabled", "boolean", "Enable voice bridge services", default=False,
+                         help_text="Enable voice bridge token authentication and voice-friendly response formatting. The /voice page loads regardless, but API responses won't include voice formatting when disabled."),
+            FieldSchema("auth.token", "password", "Bearer token for API authentication", default="",
+                         help_text="Bearer token required for voice bridge API calls. Leave empty for no authentication (only safe on localhost). Set a strong random string when accessing from other devices on your network."),
+            FieldSchema("auth.localhost_bypass", "boolean", "Skip auth for localhost requests", default=True,
+                         help_text="Skip token authentication for requests originating from localhost (127.0.0.1). Convenient for development. Disable to enforce token auth even for local requests."),
+            FieldSchema("rate_limit.requests_per_minute", "integer", "Max API requests per minute", min_value=1, max_value=600, default=60,
+                         help_text="Maximum voice bridge API requests per minute per token. Prevents runaway calls. Default of 60 is generous for normal voice interaction."),
+            FieldSchema("default_verbosity", "string", "Default response verbosity (concise, normal, detailed)", default="concise",
+                         help_text="Server-side default for response detail level. 'concise' gives brief status lines, 'normal' includes summaries, 'detailed' includes full output. The client can override this per-request."),
+        ],
+    ),
+    SectionSchema(
         name="tmux_bridge",
         title="Tmux Bridge",
         section_description="Controls the tmux-based text input bridge that sends responses to Claude Code sessions via tmux send-keys.",
@@ -582,7 +599,7 @@ def _unflatten_section(config: dict, section_name: str) -> None:
     config[section_name] = nested
 
 
-NESTED_SECTIONS = ["openrouter", "headspace", "archive"]
+NESTED_SECTIONS = ["openrouter", "headspace", "archive", "voice_bridge"]
 
 
 def flatten_nested_sections(config: dict) -> dict:

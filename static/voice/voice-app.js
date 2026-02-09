@@ -8,6 +8,7 @@ window.VoiceApp = (function () {
     token: '',
     silenceTimeout: 800,
     doneWord: 'send',
+    autoTarget: false,
     ttsEnabled: true,
     cuesEnabled: true,
     verbosity: 'normal'
@@ -35,6 +36,7 @@ window.VoiceApp = (function () {
       token: s.token || DEFAULTS.token,
       silenceTimeout: s.silenceTimeout || DEFAULTS.silenceTimeout,
       doneWord: s.doneWord || DEFAULTS.doneWord,
+      autoTarget: s.autoTarget !== undefined ? s.autoTarget : DEFAULTS.autoTarget,
       ttsEnabled: s.ttsEnabled !== undefined ? s.ttsEnabled : DEFAULTS.ttsEnabled,
       cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
       verbosity: s.verbosity || DEFAULTS.verbosity
@@ -622,10 +624,20 @@ window.VoiceApp = (function () {
         if (VoiceInput.isListening()) {
           _stopListening();
         } else {
-          // Auto-target if possible
-          var auto = _autoTarget();
-          if (auto) {
-            _showListeningScreen(auto);
+          // Auto-target if enabled
+          if (_settings.autoTarget) {
+            var auto = _autoTarget();
+            if (auto) {
+              _showListeningScreen(auto);
+            }
+          }
+          if (!_targetAgentId) {
+            var agentStatus = document.getElementById('agent-status-message');
+            if (agentStatus) {
+              agentStatus.textContent = 'Select an agent first';
+              setTimeout(function () { agentStatus.textContent = ''; }, 2000);
+            }
+            return;
           }
           _startListening();
         }
@@ -744,6 +756,9 @@ window.VoiceApp = (function () {
     el = document.getElementById('setting-doneword');
     if (el) el.value = _settings.doneWord;
 
+    el = document.getElementById('setting-autotarget');
+    if (el) el.checked = _settings.autoTarget;
+
     el = document.getElementById('setting-tts');
     if (el) el.checked = _settings.ttsEnabled;
 
@@ -767,6 +782,9 @@ window.VoiceApp = (function () {
 
     el = document.getElementById('setting-doneword');
     if (el) setSetting('doneWord', el.value);
+
+    el = document.getElementById('setting-autotarget');
+    if (el) setSetting('autoTarget', el.checked);
 
     el = document.getElementById('setting-tts');
     if (el) setSetting('ttsEnabled', el.checked);

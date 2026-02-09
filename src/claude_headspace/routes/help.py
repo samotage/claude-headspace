@@ -23,14 +23,15 @@ TOPICS = [
     {"slug": "dashboard", "title": "Dashboard", "order": 2},
     {"slug": "projects", "title": "Projects", "order": 3},
     {"slug": "input-bridge", "title": "Input Bridge", "order": 4},
-    {"slug": "objective", "title": "Objective", "order": 5},
-    {"slug": "waypoints", "title": "Waypoints", "order": 6},
-    {"slug": "brain-reboot", "title": "Brain Reboot", "order": 7},
-    {"slug": "activity", "title": "Activity", "order": 8},
-    {"slug": "headspace", "title": "Headspace", "order": 9},
-    {"slug": "logging", "title": "Logging", "order": 10},
-    {"slug": "configuration", "title": "Configuration", "order": 11},
-    {"slug": "troubleshooting", "title": "Troubleshooting", "order": 12},
+    {"slug": "voice-bridge", "title": "Voice Bridge", "order": 5},
+    {"slug": "objective", "title": "Objective", "order": 6},
+    {"slug": "waypoints", "title": "Waypoints", "order": 7},
+    {"slug": "brain-reboot", "title": "Brain Reboot", "order": 8},
+    {"slug": "activity", "title": "Activity", "order": 9},
+    {"slug": "headspace", "title": "Headspace", "order": 10},
+    {"slug": "logging", "title": "Logging", "order": 11},
+    {"slug": "configuration", "title": "Configuration", "order": 12},
+    {"slug": "troubleshooting", "title": "Troubleshooting", "order": 13},
 ]
 
 

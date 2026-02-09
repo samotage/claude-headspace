@@ -251,6 +251,29 @@ commander:
 
 These settings control the [Input Bridge](input-bridge) feature.
 
+### Voice Bridge
+
+Controls the voice bridge PWA for hands-free mobile interaction with agents. Disabled by default.
+
+```yaml
+voice_bridge:
+  enabled: false
+  auth:
+    token: ""
+    localhost_bypass: true
+  rate_limit:
+    requests_per_minute: 60
+  default_verbosity: "concise"
+```
+
+- `enabled` - Enable voice bridge services (token auth and voice-friendly response formatting). The `/voice` page loads regardless, but API responses won't include voice formatting when disabled.
+- `auth.token` - Bearer token required for API calls from the PWA. Leave empty for open access (only safe on localhost). Set a strong random string when accessing from other devices on your network.
+- `auth.localhost_bypass` - Skip token authentication for requests originating from localhost (127.0.0.1). Convenient for development, but disable if you want strict auth everywhere.
+- `rate_limit.requests_per_minute` - Maximum API requests per minute per token. Default of 60 is generous for voice interaction. Lower if concerned about abuse.
+- `default_verbosity` - Server-side default for response detail: `concise`, `normal`, or `detailed`. The client can override this per-request via its settings screen.
+
+See [Voice Bridge](voice-bridge) for full setup and usage instructions.
+
 ### Notifications
 
 macOS desktop notifications via terminal-notifier.

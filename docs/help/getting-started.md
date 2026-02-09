@@ -122,5 +122,6 @@ Click the state bar on any agent card to bring its iTerm window to the foregroun
 
 - [Dashboard Overview](dashboard) - Learn about all dashboard features
 - [Input Bridge](input-bridge) - Respond to prompts from the dashboard
+- [Voice Bridge](voice-bridge) - Hands-free voice interaction from your phone
 - [Set an Objective](objective) - Guide Claude's priorities
 - [Configure Settings](configuration) - Customize your setup

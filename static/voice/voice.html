@@ -42,6 +42,7 @@
   <!-- Screen: Agent List -->
   <div id="screen-agents" class="screen">
     <div id="agent-list"></div>
+    <div id="agent-status-message" class="agent-status-message"></div>
     <!-- Floating mic button -->
     <div style="text-align:center; margin-top:24px;">
       <button id="mic-btn" aria-label="Start listening">&#127908;</button>
@@ -127,6 +128,10 @@
             <option value="over">over</option>
             <option value="done">done</option>
           </select>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Auto-target agent</span>
+          <label class="toggle"><input type="checkbox" id="setting-autotarget"><span class="toggle-track"></span></label>
         </div>
       </div>
 

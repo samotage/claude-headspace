@@ -18,7 +18,6 @@
     window.loadHelpTopic = loadHelpTopic;
     window.openDocViewer = openDocViewer;
     window.closeDocViewer = closeDocViewer;
-    window.copyCodeBlock = copyCodeBlock;
 
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
