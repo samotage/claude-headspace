@@ -577,17 +577,18 @@ def dashboard():
     # Filter out projects with no agents for the Kanban view
     projects_with_agents = [p for p in project_data if p["agents"]]
 
-    # Calculate recommended next agent
-    recommended_next = get_recommended_next(all_agents, agent_data_map)
+    # Get current objective
+    objective = db.session.query(Objective).first()
+    priority_enabled = bool(objective and objective.priority_enabled)
+
+    # Calculate recommended next agent (only when prioritisation is enabled)
+    recommended_next = get_recommended_next(all_agents, agent_data_map) if priority_enabled else None
 
     # Sort agents for priority view
     priority_sorted_agents = sort_agents_by_priority(all_agents_data)
 
-    # Get current objective
-    objective = db.session.query(Objective).first()
-
     # Sort agents within each project by priority when prioritisation is enabled
-    if objective and objective.priority_enabled:
+    if priority_enabled:
         for project in projects_with_agents:
             project["agents"] = sort_agents_by_priority(project["agents"])
 
@@ -596,7 +597,7 @@ def dashboard():
     kanban_data = []
     if sort_mode == "kanban":
         kanban_data = _prepare_kanban_data(
-            projects, project_data, objective and objective.priority_enabled,
+            projects, project_data, priority_enabled,
             projects_by_id=projects_by_id,
         )
 

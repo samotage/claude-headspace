@@ -66,6 +66,21 @@
         window.location.reload();
     }
 
+    // Execute deferred reload when focus leaves a respond widget
+    document.addEventListener('focusout', function(e) {
+        if (!window._sseReloadDeferred) return;
+        if (!e.target || !e.target.closest || !e.target.closest('.respond-widget')) return;
+        // Small delay to allow focus to move to another element within the widget
+        setTimeout(function() {
+            var active = document.activeElement;
+            if (!active || !active.closest || !active.closest('.respond-widget')) {
+                var deferred = window._sseReloadDeferred;
+                window._sseReloadDeferred = null;
+                deferred();
+            }
+        }, 100);
+    });
+
     // ── Kanban card movement utilities ──────────────────────────────
 
     /**

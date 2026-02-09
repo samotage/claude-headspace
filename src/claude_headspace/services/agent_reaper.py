@@ -181,6 +181,19 @@ class AgentReaper:
                     elif status == PaneStatus.ITERM_NOT_RUNNING:
                         # Can't verify via iTerm — fall through to inactivity
                         if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
+                            # Before reaping, check if tmux bridge is alive
+                            if agent.tmux_pane_id:
+                                try:
+                                    commander = self._app.extensions.get("commander_availability")
+                                    if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
+                                        agent.last_seen_at = now
+                                        result.skipped_alive += 1
+                                        logger.debug(
+                                            f"Skipped reap for agent {agent.id}: bridge_alive"
+                                        )
+                                        continue
+                                except Exception:
+                                    logger.debug(f"Commander check failed for agent {agent.id}, proceeding with reap")
                             reap_reason = "inactivity_timeout"
                         else:
                             result.skipped_alive += 1
@@ -192,6 +205,19 @@ class AgentReaper:
                 else:
                     # No pane ID — can only use inactivity timeout
                     if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
+                        # Before reaping, check if tmux bridge is alive
+                        if agent.tmux_pane_id:
+                            try:
+                                commander = self._app.extensions.get("commander_availability")
+                                if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
+                                    agent.last_seen_at = now
+                                    result.skipped_alive += 1
+                                    logger.debug(
+                                        f"Skipped reap for agent {agent.id}: bridge_alive"
+                                    )
+                                    continue
+                            except Exception:
+                                logger.debug(f"Commander check failed for agent {agent.id}, proceeding with reap")
                         reap_reason = "inactivity_timeout"
                     else:
                         result.skipped_alive += 1

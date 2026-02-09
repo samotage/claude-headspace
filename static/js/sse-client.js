@@ -242,6 +242,12 @@
         "turn_summary",
         "card_refresh",
         "error",
+        "instruction_summary",
+        "priority_update",
+        "priority_toggle",
+        "commander_availability",
+        "agent_state_changed",
+        "agent_activity",
       ];
 
       commonTypes.forEach((type) => {

@@ -13,8 +13,10 @@
         <!-- Objective Banner -->
         {% include "partials/_objective_banner.html" %}
 
-        <!-- Recommended Next Panel -->
+        <!-- Recommended Next Panel (only when prioritisation is enabled and there's a recommendation) -->
+        {% if objective and objective.priority_enabled and recommended_next %}
         {% include "partials/_recommended_next.html" %}
+        {% endif %}
 
         <!-- Sort Controls -->
         {% include "partials/_sort_controls.html" %}
