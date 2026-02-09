@@ -208,13 +208,18 @@ def voice_command():
             )
         agent = awaiting[0]
 
-    # Validate agent state
+    # Determine agent state
     current_task = agent.get_current_task()
-    if not current_task or current_task.state != TaskState.AWAITING_INPUT:
-        state_str = current_task.state.value if current_task else "idle"
+    current_state = current_task.state if current_task else None
+    is_answering = current_state == TaskState.AWAITING_INPUT
+    is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
+
+    # Reject if agent is busy (PROCESSING or COMMANDED)
+    if not is_answering and not is_idle:
+        state_str = current_state.value if current_state else "idle"
         return _voice_error(
-            f"Agent is {state_str}, not waiting for input.",
-            "Try again in a moment when the agent needs your input.",
+            f"Agent is {state_str}, not ready for input.",
+            "Try again in a moment when the agent finishes processing.",
             409,
         )
 
@@ -253,33 +258,56 @@ def voice_command():
 
     # Create Turn and transition state
     try:
-        # Find question turn for answer linking
-        answered_turn_id = None
-        if current_task.turns:
-            for t in reversed(current_task.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    answered_turn_id = t.id
-                    break
+        if is_answering:
+            # AWAITING_INPUT: create ANSWER turn on existing task
+            answered_turn_id = None
+            if current_task.turns:
+                for t in reversed(current_task.turns):
+                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                        answered_turn_id = t.id
+                        break
 
-        turn = Turn(
-            task_id=current_task.id,
-            actor=TurnActor.USER,
-            intent=TurnIntent.ANSWER,
-            text=text,
-            answered_by_turn_id=answered_turn_id,
-        )
-        db.session.add(turn)
+            turn = Turn(
+                task_id=current_task.id,
+                actor=TurnActor.USER,
+                intent=TurnIntent.ANSWER,
+                text=text,
+                answered_by_turn_id=answered_turn_id,
+            )
+            db.session.add(turn)
 
-        from ..services.state_machine import validate_transition
-        vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
-        if vr.valid:
-            current_task.state = vr.to_state
+            from ..services.state_machine import validate_transition
+            vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
+            if vr.valid:
+                current_task.state = vr.to_state
+            else:
+                current_task.state = TaskState.PROCESSING
+            new_state = current_task.state
+
+            from ..services.hook_receiver import _awaiting_tool_for_agent
+            _awaiting_tool_for_agent.pop(agent.id, None)
         else:
-            current_task.state = TaskState.PROCESSING
-        agent.last_seen_at = datetime.now(timezone.utc)
+            # IDLE/COMPLETE: create new Task + COMMAND turn
+            new_task = Task(
+                agent_id=agent.id,
+                state=TaskState.COMMANDED,
+                instruction=text,
+                full_command=text,
+                started_at=datetime.now(timezone.utc),
+            )
+            db.session.add(new_task)
+            db.session.flush()  # get task ID
 
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent.id, None)
+            turn = Turn(
+                task_id=new_task.id,
+                actor=TurnActor.USER,
+                intent=TurnIntent.COMMAND,
+                text=text,
+            )
+            db.session.add(turn)
+            new_state = TaskState.COMMANDED
+
+        agent.last_seen_at = datetime.now(timezone.utc)
 
         db.session.commit()
         broadcast_card_refresh(agent, "voice_command")
@@ -293,7 +321,7 @@ def voice_command():
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": TaskState.PROCESSING.value,
+            "new_state": new_state.value,
             "latency_ms": latency_ms,
         }), 200
 

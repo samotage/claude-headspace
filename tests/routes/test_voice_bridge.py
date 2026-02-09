@@ -169,6 +169,25 @@ def mock_agent_no_pane(mock_project):
     return agent
 
 
+@pytest.fixture
+def mock_agent_complete(mock_project):
+    """Agent with COMPLETE task (idle, ready for new command)."""
+    agent = MagicMock()
+    agent.id = 4
+    agent.name = "agent-4"
+    agent.project = mock_project
+    agent.tmux_pane_id = "%7"
+    agent.last_seen_at = datetime.now(timezone.utc)
+    agent.ended_at = None
+
+    task = MagicMock()
+    task.id = 40
+    task.state = TaskState.COMPLETE
+    task.turns = []
+    agent.get_current_task.return_value = task
+    return agent
+
+
 # ──────────────────────────────────────────────────────────────
 # Authentication tests (task 3.8)
 # ──────────────────────────────────────────────────────────────
@@ -391,6 +410,68 @@ class TestVoiceCommand:
         response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
         assert response.status_code == 500
         mock_db.session.rollback.assert_called_once()
+
+
+class TestVoiceCommandToIdle:
+    """Tests for sending commands to idle/complete agents."""
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_command_to_complete_agent(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """Sending a command to a COMPLETE agent creates a new task."""
+        mock_db.session.get.return_value = mock_agent_complete
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post("/api/voice/command", json={"text": "fix the bug", "agent_id": 4})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["agent_id"] == 4
+        assert data["new_state"] == "commanded"
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_command_to_idle_agent_no_task(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+        """Sending a command to an agent with no current task creates a new task."""
+        agent = MagicMock()
+        agent.id = 10
+        agent.name = "agent-10"
+        agent.project = mock_project
+        agent.tmux_pane_id = "%10"
+        agent.last_seen_at = datetime.now(timezone.utc)
+        agent.get_current_task.return_value = None
+
+        mock_db.session.get.return_value = agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post("/api/voice/command", json={"text": "hello", "agent_id": 10})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["new_state"] == "commanded"
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_command_to_complete_creates_task_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """Command to complete agent creates both a Task and a COMMAND Turn."""
+        mock_db.session.get.return_value = mock_agent_complete
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+
+        # Should have called add twice: once for task, once for turn
+        assert mock_db.session.add.call_count == 2
+        task = mock_db.session.add.call_args_list[0][0][0]
+        turn = mock_db.session.add.call_args_list[1][0][0]
+        assert task.state == TaskState.COMMANDED
+        assert task.instruction == "run tests"
+        assert turn.actor == TurnActor.USER
+        assert turn.intent == TurnIntent.COMMAND
+        assert turn.text == "run tests"
+
+    def test_command_to_processing_rejected(self, client, mock_db, mock_agent_processing):
+        """Sending a command to a PROCESSING agent is rejected."""
+        mock_db.session.get.return_value = mock_agent_processing
+        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
+        assert response.status_code == 409
 
 
 class TestAutoTarget:
