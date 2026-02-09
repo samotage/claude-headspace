@@ -10,9 +10,9 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 7 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
+This document serves as the **high-level roadmap and baseline** for Epic 5 implementation. It breaks Epic 5 into 9 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
 
-**Epic 5 Goal:** Enable remote session interaction via dashboard input, provide comprehensive project detail pages with hierarchical data exploration, improve frustration metrics display, restructure the dashboard for better usability, and create a self-documenting configuration system.
+**Epic 5 Goal:** Enable remote session interaction via dashboard input, provide comprehensive project detail pages with hierarchical data exploration, improve frustration metrics display, restructure the dashboard for better usability, create a self-documenting configuration system, align the CLI with tmux bridge transport, and capture full command/output for mobile review.
 
 **Epic 5 Value Proposition:**
 
@@ -24,8 +24,10 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - **Frustration Display** — Average-based frustration metrics and multi-window frustration state widget
 - **Dashboard Restructure** — Agent hero identity system, task-based Kanban layout, and real-time activity metrics on the dashboard
 - **Config Help System** — Full config.yaml/UI parity with contextual help icons, popovers, and expanded documentation
+- **CLI tmux Alignment** — CLI launcher detects tmux pane and includes pane ID in session registration (removes failed claudec)
+- **Full Command/Output Capture** — Store complete user commands and agent responses for drill-down review from any device
 
-**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction. The tmux Bridge provides a proven, reliable transport mechanism after the initial commander socket approach proved incompatible with Claude Code's Ink-based TUI. The Dashboard Restructure introduces a universally-understood Kanban task-flow view, while the Config Help System ensures every setting is visible, editable, and explained.
+**The Differentiator:** Epic 5 closes the interaction loop. Claude Headspace becomes bidirectional — not just passively monitoring agents, but actively responding to them. The Input Bridge is Phase 1 of the Voice Bridge vision, laying the foundation for future voice-controlled agent interaction. The tmux Bridge provides a proven, reliable transport mechanism after the initial commander socket approach proved incompatible with Claude Code's Ink-based TUI. The Dashboard Restructure introduces a universally-understood Kanban task-flow view, while the Config Help System ensures every setting is visible, editable, and explained. The CLI tmux Alignment ensures the primary entry point (`claude-headspace start --bridge`) works seamlessly with the tmux transport. Full Command/Output Capture decouples detailed review from the terminal, enabling mobile access to complete agent work.
 
 **Success Criteria:**
 

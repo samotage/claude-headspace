@@ -622,7 +622,7 @@ class SummarisationService:
             if not prior_tasks:
                 return ""
 
-            prior = prior_tasks[-1]  # Most recent prior task with an instruction
+            prior = prior_tasks[0]  # Most recent prior task with an instruction
             parts = [f"Prior task: {prior.instruction}"]
             if prior.completion_summary:
                 parts.append(f"Prior outcome: {prior.completion_summary}")

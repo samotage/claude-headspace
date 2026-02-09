@@ -213,6 +213,11 @@ def respond_to_agent(agent_id: int):
     if not result.success:
         return _tmux_error_response(result, agent_id)
 
+    # Flag this agent so the upcoming user_prompt_submit hook is skipped
+    # (the respond handler owns the turn creation and state transition).
+    from ..services.hook_receiver import _respond_pending_for_agent
+    _respond_pending_for_agent[agent.id] = time.time()
+
     # Success: create Turn record and transition state
     try:
         turn = Turn(

@@ -41,6 +41,14 @@ INFERRED_TASK_COOLDOWN_SECONDS = 30
 # only resumes when the matching tool completes (not unrelated tools).
 _awaiting_tool_for_agent: dict[int, str | None] = {}
 
+# Track agents that just received a respond via the dashboard tmux bridge.
+# When set, the next user_prompt_submit hook for this agent should be skipped
+# because the respond handler already created the turn and transitioned state.
+_respond_pending_for_agent: dict[int, float] = {}
+
+# How long (seconds) a respond-pending flag remains valid.
+_RESPOND_PENDING_TTL = 10.0
+
 
 # --- Data types ---
 
@@ -557,6 +565,24 @@ def process_user_prompt_submit(
     state = get_receiver_state()
     state.record_event(HookEventType.USER_PROMPT_SUBMIT)
     try:
+        # Check if this prompt was already handled by the dashboard respond handler.
+        # When a user responds via the tmux bridge, the respond handler creates the
+        # turn and transitions AWAITING_INPUT -> PROCESSING.  Claude Code then fires
+        # user_prompt_submit for the same text — skip it to avoid a duplicate task.
+        import time as _time
+        respond_ts = _respond_pending_for_agent.pop(agent.id, None)
+        if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=respond_pending"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
         agent.last_seen_at = datetime.now(timezone.utc)
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
 

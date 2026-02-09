@@ -500,7 +500,7 @@ class TestOtherMode:
     ):
         """Other mode navigates to Other option then types text."""
         mock_db.session.get.return_value = mock_agent
-        mock_time.time.side_effect = [0, 0.1]  # start_time, final latency
+        mock_time.time.side_effect = [0, 0.05, 0.1]  # start_time, respond_pending, final latency
         mock_time.sleep = MagicMock()  # don't actually sleep
 
         # Set up task with 2 structured options
