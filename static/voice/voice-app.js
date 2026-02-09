@@ -235,34 +235,7 @@ window.VoiceApp = (function () {
       if (projEl) projEl.textContent = data.project || '';
 
       _chatAgentState = data.agent_state;
-
-      // Render task instruction as first command bubble
-      if (data.task_instruction) {
-        var instrTurn = {
-          id: 'task-instruction',
-          actor: 'user',
-          intent: 'command',
-          text: data.task_instruction,
-          timestamp: (data.turns && data.turns.length > 0) ? data.turns[0].timestamp : null
-        };
-        _renderChatBubble(instrTurn, null);
-      }
-
-      // Inject task_completion_summary into completion turns that lack text
-      var turns = data.turns || [];
-      for (var i = 0; i < turns.length; i++) {
-        var turn = turns[i];
-        if (turn.intent === 'completion' && !turn.text && !turn.summary && data.task_completion_summary) {
-          turn.text = data.task_completion_summary;
-        }
-        var prev = null;
-        if (i > 0) {
-          prev = turns[i - 1];
-        } else if (data.task_instruction) {
-          prev = instrTurn;
-        }
-        _renderChatBubble(turn, prev);
-      }
+      _renderTranscriptTurns(data);
       _scrollChatToBottom();
       _updateTypingIndicator();
     }).catch(function () {
@@ -271,6 +244,37 @@ window.VoiceApp = (function () {
     });
 
     showScreen('chat');
+  }
+
+  function _renderTranscriptTurns(data) {
+    // Render task instruction as first command bubble
+    var instrTurn = null;
+    if (data.task_instruction) {
+      instrTurn = {
+        id: 'task-instruction',
+        actor: 'user',
+        intent: 'command',
+        text: data.task_instruction,
+        timestamp: (data.turns && data.turns.length > 0) ? data.turns[0].timestamp : null
+      };
+      _renderChatBubble(instrTurn, null);
+    }
+
+    // Inject task_completion_summary into completion turns that lack text
+    var turns = data.turns || [];
+    for (var i = 0; i < turns.length; i++) {
+      var turn = turns[i];
+      if (turn.intent === 'completion' && !turn.text && !turn.summary && data.task_completion_summary) {
+        turn.text = data.task_completion_summary;
+      }
+      var prev = null;
+      if (i > 0) {
+        prev = turns[i - 1];
+      } else if (instrTurn) {
+        prev = instrTurn;
+      }
+      _renderChatBubble(turn, prev);
+    }
   }
 
   function _renderChatBubble(turn, prevTurn) {
@@ -455,10 +459,7 @@ window.VoiceApp = (function () {
 
     // Refresh transcript to pick up new turns
     VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-      var turns = resp.turns || [];
-      for (var i = 0; i < turns.length; i++) {
-        _renderChatBubble(turns[i], i > 0 ? turns[i - 1] : null);
-      }
+      _renderTranscriptTurns(resp);
       if (resp.agent_state) {
         _chatAgentState = resp.agent_state;
         _updateTypingIndicator();

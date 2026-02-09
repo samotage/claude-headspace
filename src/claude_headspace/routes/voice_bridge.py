@@ -268,62 +268,58 @@ def voice_command():
             voice = {"status_line": f"Command failed: {error_msg}", "results": [], "next_action": "Try again."}
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
+    if is_idle:
+        # IDLE/COMPLETE: just send via tmux — the hook receiver will handle
+        # task creation + turn recording when Claude Code's hooks fire.
+        # Do NOT create a task here (avoids duplication with hook receiver).
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        if formatter:
+            voice = formatter.format_command_result(agent.name, True)
+        else:
+            voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
+
+        return jsonify({
+            "voice": voice,
+            "agent_id": agent.id,
+            "new_state": "commanded",
+            "latency_ms": latency_ms,
+        }), 200
+
+    # AWAITING_INPUT path: create ANSWER turn and transition state
     # Flag respond-pending to prevent duplicate turn from hook
     from ..services.hook_receiver import _respond_pending_for_agent
     _respond_pending_for_agent[agent.id] = time.time()
 
-    # Create Turn and transition state
     try:
-        if is_answering:
-            # AWAITING_INPUT: create ANSWER turn on existing task
-            answered_turn_id = None
-            if current_task.turns:
-                for t in reversed(current_task.turns):
-                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                        answered_turn_id = t.id
-                        break
+        answered_turn_id = None
+        if current_task.turns:
+            for t in reversed(current_task.turns):
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                    answered_turn_id = t.id
+                    break
 
-            turn = Turn(
-                task_id=current_task.id,
-                actor=TurnActor.USER,
-                intent=TurnIntent.ANSWER,
-                text=text,
-                answered_by_turn_id=answered_turn_id,
-            )
-            db.session.add(turn)
+        turn = Turn(
+            task_id=current_task.id,
+            actor=TurnActor.USER,
+            intent=TurnIntent.ANSWER,
+            text=text,
+            answered_by_turn_id=answered_turn_id,
+        )
+        db.session.add(turn)
 
-            from ..services.state_machine import validate_transition
-            vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
-            if vr.valid:
-                current_task.state = vr.to_state
-            else:
-                current_task.state = TaskState.PROCESSING
-            new_state = current_task.state
-
-            from ..services.hook_receiver import _awaiting_tool_for_agent
-            _awaiting_tool_for_agent.pop(agent.id, None)
+        from ..services.state_machine import validate_transition
+        vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
+        if vr.valid:
+            current_task.state = vr.to_state
         else:
-            # IDLE/COMPLETE: create new Task + COMMAND turn
-            new_task = Task(
-                agent_id=agent.id,
-                state=TaskState.COMMANDED,
-                instruction=text,
-                full_command=text,
-                started_at=datetime.now(timezone.utc),
-            )
-            db.session.add(new_task)
-            db.session.flush()  # get task ID
-
-            turn = Turn(
-                task_id=new_task.id,
-                actor=TurnActor.USER,
-                intent=TurnIntent.COMMAND,
-                text=text,
-            )
-            db.session.add(turn)
-            new_state = TaskState.COMMANDED
-
+            current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        from ..services.hook_receiver import _awaiting_tool_for_agent
+        _awaiting_tool_for_agent.pop(agent.id, None)
 
         db.session.commit()
         broadcast_card_refresh(agent, "voice_command")
@@ -337,7 +333,7 @@ def voice_command():
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": new_state.value,
+            "new_state": current_task.state.value,
             "latency_ms": latency_ms,
         }), 200
 

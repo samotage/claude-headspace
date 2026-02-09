@@ -421,12 +421,15 @@ class TestVoiceCommand:
 
 
 class TestVoiceCommandToIdle:
-    """Tests for sending commands to idle/complete agents."""
+    """Tests for sending commands to idle/complete agents.
 
-    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    Idle/complete agents receive commands via tmux only — the hook receiver
+    handles task/turn creation when Claude Code's hooks fire.
+    """
+
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_complete_agent(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
-        """Sending a command to a COMPLETE agent creates a new task."""
+    def test_command_to_complete_agent(self, mock_bridge, client, mock_db, mock_agent_complete):
+        """Sending a command to a COMPLETE agent succeeds."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
@@ -436,10 +439,9 @@ class TestVoiceCommandToIdle:
         assert data["agent_id"] == 4
         assert data["new_state"] == "commanded"
 
-    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_idle_agent_no_task(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
-        """Sending a command to an agent with no current task creates a new task."""
+    def test_command_to_idle_agent_no_task(self, mock_bridge, client, mock_db, mock_project):
+        """Sending a command to an agent with no current task succeeds."""
         agent = MagicMock()
         agent.id = 10
         agent.name = "agent-10"
@@ -456,24 +458,26 @@ class TestVoiceCommandToIdle:
         data = response.get_json()
         assert data["new_state"] == "commanded"
 
-    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_complete_creates_task_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
-        """Command to complete agent creates both a Task and a COMMAND Turn."""
+    def test_idle_command_does_not_create_task(self, mock_bridge, client, mock_db, mock_agent_complete):
+        """Idle path delegates task creation to hook receiver — no db.session.add for Task/Turn."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
 
-        # Should have called add twice: once for task, once for turn
-        assert mock_db.session.add.call_count == 2
-        task = mock_db.session.add.call_args_list[0][0][0]
-        turn = mock_db.session.add.call_args_list[1][0][0]
-        assert task.state == TaskState.COMMANDED
-        assert task.instruction == "run tests"
-        assert turn.actor == TurnActor.USER
-        assert turn.intent == TurnIntent.COMMAND
-        assert turn.text == "run tests"
+        # Should NOT have called add (no Task or Turn created in this path)
+        mock_db.session.add.assert_not_called()
+
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_idle_command_does_not_set_respond_pending(self, mock_bridge, client, mock_db, mock_agent_complete):
+        """Idle path should NOT set respond-pending flag (hook receiver needs to process the prompt)."""
+        mock_db.session.get.return_value = mock_agent_complete
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+            client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+            assert 4 not in pending
 
     def test_command_to_processing_rejected(self, client, mock_db, mock_agent_processing):
         """Sending a command to a PROCESSING agent is rejected."""
