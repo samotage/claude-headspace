@@ -1,10 +1,11 @@
 """Voice bridge API endpoints for voice-driven interaction with agents."""
 
 import logging
+import os
 import time
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from ..database import db
 from ..models.agent import Agent
@@ -96,9 +97,19 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
     }
 
 
+@voice_bridge_bp.route("/voice")
+def serve_voice_app():
+    """Serve the voice bridge PWA entry point."""
+    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
+    static_dir = os.path.normpath(static_dir)
+    return send_from_directory(static_dir, "voice.html")
+
+
 @voice_bridge_bp.before_request
 def voice_auth_check():
-    """Apply token authentication to all voice bridge endpoints."""
+    """Apply token authentication to API endpoints only (not /voice page)."""
+    if request.path == "/voice":
+        return None
     auth = _get_voice_auth()
     if auth:
         return auth.authenticate()
