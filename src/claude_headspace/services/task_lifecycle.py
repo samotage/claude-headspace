@@ -280,6 +280,10 @@ class TaskLifecycleManager:
         task.state = TaskState.COMPLETE
         task.completed_at = datetime.now(timezone.utc)
 
+        # Persist full agent output on the task
+        if agent_text:
+            task.full_output = agent_text
+
         # Create completion turn record with agent text if available
         turn = Turn(
             task_id=task.id,
@@ -361,6 +365,10 @@ class TaskLifecycleManager:
 
                 # Create new task
                 new_task = self.create_task(agent, TaskState.COMMANDED)
+
+                # Persist full command text on the task
+                if text:
+                    new_task.full_command = text
 
                 # Create turn record for the user command
                 turn = Turn(
