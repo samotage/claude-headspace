@@ -49,6 +49,13 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - Every config.yaml field editable via config UI (except openrouter.pricing)
 - Help icons on all config sections and fields with popovers
 - Deep-link anchors on help page for direct field documentation access
+- CLI `--bridge` flag detects tmux pane and reports availability
+- Session registration includes tmux_pane_id from CLI (no hook backfill wait)
+- Full user command text stored on Task model
+- Full agent final message stored on Task model
+- Drill-down buttons on dashboard card tooltips to view full text
+- Full output visible in project view agent transcript
+- Mobile-friendly rendering of full text (iPad, iPhone)
 
 **Architectural Foundation:** Builds on Epic 4's project controls (pause/resume), activity monitoring (metrics infrastructure), and archive system (timestamped versions). Also leverages Epic 3's inference service, summarisation, and priority scoring.
 
@@ -67,6 +74,8 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 | E5-S5    | Activity page frustration display improvements    | `activity-frustration`       | ui/           | 5      | P2       |
 | E5-S6    | Dashboard restructure with hero style and Kanban  | `dashboard-restructure`      | ui/           | 6      | P2       |
 | E5-S7    | Configuration help system and UI parity           | `config-help-system`         | ui/           | 7      | P2       |
+| E5-S8    | CLI launcher tmux bridge alignment                | `cli-tmux-bridge`            | bridge/       | 8      | P1       |
+| E5-S9    | Full command and output capture                   | `full-output-capture`        | core/         | 9      | P2       |
 
 ---
 
@@ -948,9 +957,227 @@ headspace:
 
 ---
 
+### Sprint 8: CLI Launcher tmux Bridge Alignment (E5-S8) — DONE
+
+**Goal:** Replace failed claudec mechanism in CLI launcher with tmux pane detection, aligning the CLI with the server-side tmux bridge.
+
+**Duration:** 1 week  
+**Dependencies:** E5-S4 complete (tmux bridge server-side), E5-S7 complete
+
+**Deliverables:**
+
+**claudec Removal:**
+
+- Remove `detect_claudec()` function and all claudec references from launcher
+- Remove `shutil.which("claudec")` call
+- Always launch `claude` directly (no wrapper binary)
+
+**tmux Pane Detection:**
+
+- New function to detect tmux pane via `$TMUX_PANE` environment variable
+- Returns pane ID (e.g., `%0`, `%5`) if in tmux, or `None` if not
+- When `--bridge` passed, output: `Input Bridge: available (tmux pane %N)` or `Input Bridge: unavailable (not in tmux session)`
+- Warning (not block) when `--bridge` used outside tmux — monitoring still works, input bridge won't
+
+**Session Registration:**
+
+- `register_session()` accepts optional `tmux_pane_id` parameter
+- Include `tmux_pane_id` in registration payload when available
+- `POST /api/sessions` endpoint accepts and stores `tmux_pane_id` on Agent at creation
+- Register agent with `CommanderAvailability` tracker immediately when pane ID provided
+
+**CLI Help Text:**
+
+- Update `--bridge` flag description to reference tmux instead of claudec
+- No references to claudec or commander in any help text
+
+**Subsystem Requiring PRD:**
+
+8. `cli-tmux-bridge` — claudec removal, tmux detection, session registration update
+
+**PRD Location:** `docs/prds/bridge/done/e5-s8-cli-tmux-bridge-prd.md`
+
+**Stories:**
+
+- E5-S8: CLI launcher tmux bridge alignment
+
+**Technical Decisions Made:**
+
+- Simple `os.environ.get("TMUX_PANE")` for detection (no subprocess) — **decided**
+- Backward-compatible registration payload (tmux_pane_id optional) — **decided**
+- Warn but don't block when outside tmux — **decided**
+- Preserve `--bridge` flag short form for existing aliases — **decided**
+
+**Current vs Target Launcher Flow:**
+
+```
+Current:
+get_server_url() → validate_prerequisites() → get_project_info() →
+get_iterm_pane_id() → uuid4() → register_session() →
+[if --bridge: detect_claudec()] → setup_environment() →
+SessionManager context → launch_claude()
+
+Target:
+get_server_url() → validate_prerequisites() → get_project_info() →
+get_iterm_pane_id() → [if --bridge: get_tmux_pane_id()] → uuid4() →
+register_session(tmux_pane_id=...) → setup_environment() →
+SessionManager context → launch_claude()
+```
+
+**Session Registration Payload:**
+
+```json
+{
+  "session_uuid": "...",
+  "project_path": "...",
+  "working_directory": "...",
+  "project_name": "...",
+  "current_branch": "...",
+  "iterm_pane_id": "...",
+  "tmux_pane_id": "%5"
+}
+```
+
+**Risks:**
+
+- Users with shell aliases (`clhb`) may expect old claudec behaviour (documentation needed)
+- Outside tmux, input bridge unavailable but monitoring works
+
+**Acceptance Criteria:**
+
+- [x] `claude-headspace start --bridge` inside tmux shows `Input Bridge: available (tmux pane %N)`
+- [x] `claude-headspace start --bridge` outside tmux shows `Input Bridge: unavailable (not in tmux session)`
+- [x] `claude-headspace start` (without `--bridge`) launches with no bridge detection output
+- [x] Session registration includes `tmux_pane_id` when available
+- [x] Agent record has pane ID immediately after creation (no hook backfill wait)
+- [x] `CommanderAvailability` begins monitoring from session creation
+- [x] No references to claudec, claude-commander, or detect_claudec in launcher
+- [x] Existing user aliases continue to work
+
+---
+
+### Sprint 9: Full Command & Output Capture (E5-S9) — DONE
+
+**Goal:** Extend Task model to persist full user command and full agent output, with drill-down UI on dashboard and project view.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E5-S8 complete, E5-S6 complete (dashboard restructure)
+
+**Deliverables:**
+
+**Task Model Extensions:**
+
+- New field for full user command text (no character limit)
+- New field for full agent final message text (no character limit)
+- Existing summary fields (`instruction`, `completion_summary`) unchanged
+- Migration to add new text columns
+
+**Capture Pipeline:**
+
+- When task created from user command, persist complete command text
+- When task transitions to COMPLETE, persist final agent message text
+- Full text captured at same time as summary generation
+
+**Dashboard Drill-Down UI:**
+
+- Drill-down button in expanded tooltip for instruction line
+- Drill-down button in expanded tooltip for completion summary line
+- Pressing drill-down opens scrollable overlay/modal with full text
+- Full text display readable on mobile viewports (min 320px width)
+
+**Project View Integration:**
+
+- Full agent output visible in agent chat transcript details
+- Accordion or expandable section pattern for full text
+- Consistent with Kanban completed task cards
+
+**Performance Considerations:**
+
+- Full text fields NOT included in SSE card_refresh payloads
+- Full text loaded on demand when user requests drill-down
+- On-demand loading responds within 1 second
+
+**Subsystem Requiring PRD:**
+
+9. `full-output-capture` — Task model fields, capture pipeline, drill-down UI
+
+**PRD Location:** `docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`
+
+**Stories:**
+
+- E5-S9: Full command and output capture
+
+**Technical Decisions Made:**
+
+- No hard character limit on full text fields — **decided**
+- On-demand loading for full text (not broadcast via SSE) — **decided**
+- Existing summaries unchanged (backward compatible) — **decided**
+- Same overlay pattern for instruction and completion drill-down — **decided**
+
+**Data Model Changes:**
+
+```python
+class Task(Base):
+    ...
+    full_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+```
+
+**Dashboard Drill-Down UI:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  0A5510d4   claude-headspace                    3h 24m  ● Active    │
+├─────────────────────────────────────────────────────────────────────┤
+│  Instruction: "Fix the auth bug in login.py"      [View full ▸]     │
+│  Completed: "Fixed auth by updating token..."     [View full ▸]     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+[Drill-down overlay]
+┌─────────────────────────────────────────────────────────────────────┐
+│  Full Agent Response                                         [×]    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  I've fixed the authentication bug in login.py. The issue was      │
+│  that the token validation wasn't checking the expiry timestamp.   │
+│                                                                     │
+│  Changes made:                                                      │
+│  1. Added expiry check in validate_token()                         │
+│  2. Updated token refresh logic in refresh_auth()                  │
+│  3. Added test cases for expired token scenarios                   │
+│                                                                     │
+│  [scrollable if content exceeds viewport]                          │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Risks:**
+
+- Very large outputs could impact database storage (mitigated: TEXT type handles it)
+- Mobile rendering of long text needs careful UX testing
+- Users may expect search within full text (out of scope for this sprint)
+
+**Acceptance Criteria:**
+
+- [x] Task model has field for full user command text
+- [x] Task model has field for full agent final message text
+- [x] Full command persisted when task created
+- [x] Full output persisted when task completes
+- [x] Drill-down button on dashboard card tooltip for instruction
+- [x] Drill-down button on dashboard card tooltip for completion summary
+- [x] Pressing drill-down displays full text in overlay
+- [x] Full output visible in project view transcript
+- [x] Full text display readable on mobile (320px min)
+- [x] Full text NOT included in SSE card_refresh events
+- [x] On-demand loading responds within 1 second
+- [x] Existing summary display unchanged
+
+---
+
 ## Subsystems Requiring OpenSpec PRDs
 
-The following 7 subsystems have PRDs created. Each PRD was validated before implementation.
+The following 9 subsystems have PRDs created. Each PRD was validated before implementation.
 
 ### PRD Directory Structure
 
@@ -959,7 +1186,11 @@ docs/prds/
 ├── bridge/
 │   ├── done/
 │   │   ├── e5-s1-input-bridge-prd.md        # DONE
-│   │   └── e5-s4-tmux-bridge-prd.md         # DONE
+│   │   ├── e5-s4-tmux-bridge-prd.md         # DONE
+│   │   └── e5-s8-cli-tmux-bridge-prd.md     # DONE
+├── core/
+│   └── done/
+│       └── e5-s9-full-command-output-capture-prd.md  # DONE
 └── ui/
     ├── done/
     │   ├── e5-s6-dashboard-restructure-prd.md     # DONE
@@ -1410,6 +1641,118 @@ headspace:
 
 ---
 
+### 8. CLI tmux Bridge
+
+**Subsystem ID:** `cli-tmux-bridge`  
+**Sprint:** E5-S8  
+**Priority:** P1  
+**PRD Location:** `docs/prds/bridge/done/e5-s8-cli-tmux-bridge-prd.md`
+
+**Scope:**
+
+- Remove all claudec detection, wrapping, and references from CLI launcher
+- Repurpose `--bridge` flag for tmux pane detection
+- Detect tmux pane via `$TMUX_PANE` environment variable
+- Include `tmux_pane_id` in session registration payload
+- Update sessions API to accept and store pane ID on Agent
+- Register agent with `CommanderAvailability` at session creation
+- Update CLI help text for tmux
+
+**Key Requirements:**
+
+- Must remove `detect_claudec()` and all claudec references
+- Must always launch `claude` directly (no wrapper)
+- Must detect tmux pane via environment variable (no subprocess)
+- Must include pane ID in registration when available
+- Must warn (not block) when `--bridge` used outside tmux
+- Must preserve `--bridge` flag short form for existing aliases
+- Must update `POST /api/sessions` to accept `tmux_pane_id`
+
+**OpenSpec Spec:** `openspec/specs/cli-tmux-bridge/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/cli/launcher.py` (remove claudec, add tmux detection)
+- `src/claude_headspace/routes/sessions.py` (accept tmux_pane_id)
+- `tests/cli/test_launcher.py` (update tests)
+- `tests/routes/test_sessions.py` (add pane ID tests)
+
+**Dependencies:** E5-S4 complete (tmux bridge server-side)
+
+**Acceptance Tests:**
+
+- CLI inside tmux shows bridge available with pane ID
+- CLI outside tmux shows bridge unavailable (warning, not error)
+- Session registration includes pane ID
+- Agent has pane ID immediately after creation
+- No claudec references remain in code
+
+---
+
+### 9. Full Output Capture
+
+**Subsystem ID:** `full-output-capture`  
+**Sprint:** E5-S9  
+**Priority:** P2  
+**PRD Location:** `docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`
+
+**Scope:**
+
+- Two new text fields on Task model for full command and full output
+- Capture full user command when task created
+- Capture full agent final message when task completes
+- Drill-down buttons on dashboard card tooltips
+- Full output in project view transcript
+- Mobile-friendly full text rendering
+- On-demand loading (not in SSE payloads)
+
+**Key Requirements:**
+
+- Must add `full_command` and `full_output` fields to Task model
+- Must persist complete command text at task creation
+- Must persist complete agent message at task completion
+- Must provide drill-down UI on dashboard tooltips
+- Must display full output in project view transcript
+- Must render full text readably on mobile (320px min)
+- Must NOT include full text in SSE card_refresh events
+- Must load full text on demand within 1 second
+
+**OpenSpec Spec:** `openspec/specs/full-output-capture/spec.md`
+
+**Related Files:**
+
+- `src/claude_headspace/models/task.py` (add full_command, full_output)
+- `src/claude_headspace/services/task_lifecycle.py` (capture full text)
+- `src/claude_headspace/services/summarisation_service.py` (pass full text)
+- `src/claude_headspace/routes/tasks.py` (endpoint for full text retrieval)
+- `templates/partials/_agent_card.html` (drill-down buttons)
+- `templates/partials/_full_text_modal.html` (new)
+- `static/js/dashboard.js` (drill-down handling)
+- `migrations/versions/xxxx_add_task_full_text.py` (new)
+
+**Data Model Changes:**
+
+```python
+class Task(Base):
+    ...
+    full_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+```
+
+**Dependencies:** E5-S8 complete, E5-S6 complete (dashboard restructure)
+
+**Acceptance Tests:**
+
+- Full command stored on task creation
+- Full output stored on task completion
+- Drill-down buttons appear on dashboard card tooltips
+- Drill-down displays full text in overlay
+- Full output visible in project view
+- Mobile rendering readable
+- Full text not in SSE payloads
+
+---
+
 ## Sprint Dependencies & Critical Path
 
 ```
@@ -1424,7 +1767,9 @@ headspace:
        │
        └──▶ E5-S4 (tmux Bridge) ←── DONE
                │
-               └──▶ [Input Bridge Complete]
+               └──▶ E5-S8 (CLI tmux Alignment) ←── DONE
+                       │
+                       └──▶ [Input Bridge Complete]
 
 [E4-S3 + E4-S4 Complete]
        │
@@ -1434,18 +1779,22 @@ headspace:
                        │
                        └──▶ E5-S7 (Config Help System) ←── DONE
                                │
-                               └──▶ [Epic 5 Complete]
+                               └──▶ E5-S9 (Full Output Capture) ←── DONE
+                                       │
+                                       └──▶ [Epic 5 Complete]
 ```
 
-**Critical Path:** Epic 4 → E5-S1 → E5-S4 → [Input Bridge Complete]
+**Critical Path:** Epic 4 → E5-S1 → E5-S4 → E5-S8 → [Input Bridge Complete]
 
 **Parallel Tracks:**
 
-- E5-S2/E5-S3 (Project Show) are independent of E5-S4 (tmux Bridge) — can run in parallel
+- E5-S2/E5-S3 (Project Show) are independent of E5-S4/E5-S8 (tmux Bridge) — can run in parallel
 - E5-S5 (Activity Frustration) is independent of E5-S2/E5-S3/E5-S4 — depends only on E4-S3 and E4-S4
 - E5-S4 is a transport fix for E5-S1 — completed, Input Bridge now functional
 - E5-S6 (Dashboard Restructure) depends on E5-S5 (uses immediate frustration metric)
 - E5-S7 (Config Help System) depends on E5-S6 (sequential UI polish)
+- E5-S8 (CLI tmux Alignment) depends on E5-S4 (server-side tmux bridge must exist)
+- E5-S9 (Full Output Capture) depends on E5-S6 (dashboard restructure for drill-down UI)
 
 **Recommended Sequence:**
 
@@ -1456,8 +1805,10 @@ headspace:
 5. E5-S5 (Activity Frustration Display) — improves frustration metrics
 6. E5-S6 (Dashboard Restructure) — hero style, Kanban, dashboard metrics (DONE)
 7. E5-S7 (Config Help System) — config parity, help icons, documentation (DONE)
+8. E5-S8 (CLI tmux Alignment) — CLI launcher tmux pane detection (DONE)
+9. E5-S9 (Full Output Capture) — full command/output with drill-down UI (DONE)
 
-**Total Duration:** 7-9 weeks
+**Total Duration:** 9-11 weeks
 
 ---
 
