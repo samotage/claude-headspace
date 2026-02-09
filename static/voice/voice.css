@@ -436,7 +436,8 @@ body {
 #screen-chat {
   display: none;
   padding: 0;
-  min-height: 100vh;
+  height: calc(100vh - 52px);
+  overflow: hidden;
   flex-direction: column;
 }
 #screen-chat.active {

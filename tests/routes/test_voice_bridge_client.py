@@ -556,12 +556,20 @@ class TestVoiceRoute:
         app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_api_route_still_requires_auth_from_remote(self, client_with_auth, app_with_auth):
-        """API routes from non-localhost should still trigger auth."""
+        """API routes from public (non-LAN) IPs should still trigger auth."""
+        from unittest.mock import patch
+        with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
+            mock_db.session.query.return_value.filter.return_value.all.return_value = []
+            client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"})
+            app_with_auth.extensions["voice_auth"].authenticate.assert_called()
+
+    def test_api_route_bypasses_auth_from_lan(self, client_with_auth, app_with_auth):
+        """API routes from LAN IPs (192.168.x.x) should bypass auth."""
         from unittest.mock import patch
         with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
             client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"})
-            app_with_auth.extensions["voice_auth"].authenticate.assert_called()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_api_route_bypasses_auth_from_localhost(self, client_with_auth, app_with_auth):
         """API routes from localhost should bypass auth."""

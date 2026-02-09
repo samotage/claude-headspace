@@ -233,9 +233,33 @@ window.VoiceApp = (function () {
       if (projEl) projEl.textContent = data.project || '';
 
       _chatAgentState = data.agent_state;
+
+      // Render task instruction as first command bubble
+      if (data.task_instruction) {
+        var instrTurn = {
+          id: 'task-instruction',
+          actor: 'user',
+          intent: 'command',
+          text: data.task_instruction,
+          timestamp: (data.turns && data.turns.length > 0) ? data.turns[0].timestamp : null
+        };
+        _renderChatBubble(instrTurn, null);
+      }
+
+      // Inject task_completion_summary into completion turns that lack text
       var turns = data.turns || [];
       for (var i = 0; i < turns.length; i++) {
-        _renderChatBubble(turns[i], i > 0 ? turns[i - 1] : null);
+        var turn = turns[i];
+        if (turn.intent === 'completion' && !turn.text && !turn.summary && data.task_completion_summary) {
+          turn.text = data.task_completion_summary;
+        }
+        var prev = null;
+        if (i > 0) {
+          prev = turns[i - 1];
+        } else if (data.task_instruction) {
+          prev = instrTurn;
+        }
+        _renderChatBubble(turn, prev);
       }
       _scrollChatToBottom();
       _updateTypingIndicator();
@@ -287,9 +311,13 @@ window.VoiceApp = (function () {
       html += '<div class="bubble-intent">Command</div>';
     }
 
-    // Text content — prefer summary for agent turns (usually shorter), text for user turns
+    // Text content — fallback chain: text -> summary -> (empty)
     var displayText = turn.text || '';
-    if (!isUser && turn.summary) {
+    if (!displayText && turn.summary) {
+      displayText = turn.summary;
+    }
+    if (!isUser && turn.summary && !turn.text) {
+      // For agent turns with no text, use summary
       displayText = turn.summary;
     }
     if (displayText) {
@@ -505,6 +533,13 @@ window.VoiceApp = (function () {
     // Detect agent_id URL param (from dashboard "Chat" link)
     var urlParams = new URLSearchParams(window.location.search);
     var paramAgentId = urlParams.get('agent_id');
+
+    // When agent_id param is present, use current origin as server
+    // (user navigated here intentionally from dashboard or LAN link)
+    if (paramAgentId && (!_settings.serverUrl || !_settings.token)) {
+      _settings.serverUrl = window.location.origin;
+      _settings.token = 'lan';
+    }
 
     // Localhost: skip setup, use current origin as server URL
     if (_isLocalhost && (!_settings.serverUrl || !_settings.token)) {

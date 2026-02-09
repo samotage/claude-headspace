@@ -105,19 +105,40 @@ def serve_voice_app():
     return send_from_directory(static_dir, "voice.html")
 
 
+def _is_local_or_lan(addr: str) -> bool:
+    """Check if an address is localhost or a private/LAN IP."""
+    if addr in ("127.0.0.1", "::1", "localhost"):
+        return True
+    # Private network ranges (RFC 1918)
+    if addr.startswith("10."):
+        return True
+    if addr.startswith("192.168."):
+        return True
+    if addr.startswith("172."):
+        parts = addr.split(".")
+        if len(parts) >= 2:
+            try:
+                second = int(parts[1])
+                if 16 <= second <= 31:
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
 @voice_bridge_bp.before_request
 def voice_auth_check():
     """Apply token authentication to API endpoints.
 
     Bypasses auth for:
     - The /voice page itself
-    - Any request from localhost (dashboard "Chat" links)
+    - Any request from localhost or LAN IPs (same trust boundary as dashboard)
     """
     if request.path == "/voice":
         return None
-    # Bypass auth for localhost requests (dashboard Chat links)
+    # Bypass auth for localhost and LAN requests
     remote = request.remote_addr or ""
-    if remote in ("127.0.0.1", "::1", "localhost"):
+    if _is_local_or_lan(remote):
         return None
     auth = _get_voice_auth()
     if auth:
@@ -446,6 +467,7 @@ def agent_transcript(agent_id: int):
         "turns": turn_list,
         "agent_state": current_task.state.value,
         "task_instruction": current_task.instruction,
+        "task_completion_summary": current_task.completion_summary,
         "project": agent.project.name if agent.project else "unknown",
         "agent_name": agent.name,
     }), 200

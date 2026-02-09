@@ -177,10 +177,10 @@ class TestVoiceAuth:
     """Test authentication middleware on voice bridge routes."""
 
     def test_auth_called_on_remote_request(self, client_with_auth, app_with_auth, mock_db):
-        """Auth middleware is invoked on non-localhost requests."""
+        """Auth middleware is invoked on non-LAN requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        # Simulate a remote (non-localhost) request
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}):
+        # Simulate a public (non-LAN) request
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"}):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_called()
@@ -192,15 +192,47 @@ class TestVoiceAuth:
         # Test client defaults to 127.0.0.1 — auth should NOT be called
         app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
+    def test_auth_bypassed_on_lan_192_168(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is skipped for 192.168.x.x LAN requests."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}):
+            from src.claude_headspace.routes.voice_bridge import voice_auth_check
+            voice_auth_check()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
+
+    def test_auth_bypassed_on_lan_10(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is skipped for 10.x.x.x LAN requests."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "10.0.0.5"}):
+            from src.claude_headspace.routes.voice_bridge import voice_auth_check
+            voice_auth_check()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
+
+    def test_auth_bypassed_on_lan_172(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is skipped for 172.16-31.x.x LAN requests."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.20.0.1"}):
+            from src.claude_headspace.routes.voice_bridge import voice_auth_check
+            voice_auth_check()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
+
+    def test_auth_not_bypassed_on_172_outside_range(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is NOT skipped for 172.x.x.x outside 16-31 range."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.32.0.1"}):
+            from src.claude_headspace.routes.voice_bridge import voice_auth_check
+            voice_auth_check()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_called()
+
     def test_auth_rejection_returns_error(self, app_with_auth, mock_db):
         """When auth rejects, the endpoint is not reached."""
         from flask import jsonify as flask_jsonify
         with app_with_auth.app_context():
             reject_response = flask_jsonify({"error": "invalid_token", "voice": {"status_line": "Invalid.", "results": [], "next_action": "Fix token."}})
         app_with_auth.extensions["voice_auth"].authenticate.return_value = (reject_response, 401)
-        # Use a non-localhost address to trigger auth
+        # Use a public (non-LAN) address to trigger auth
         with app_with_auth.test_client() as client:
-            response = client.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"})
+            response = client.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"})
         assert response.status_code == 401
 
     def test_no_auth_service_allows_request(self, client, mock_db):
