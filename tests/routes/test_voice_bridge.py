@@ -300,6 +300,14 @@ class TestListSessions:
         call_args = app_with_auth.extensions["voice_formatter"].format_sessions.call_args
         assert call_args[1]["verbosity"] == "detailed"
 
+    def test_settings_includes_auto_target(self, client, mock_db):
+        """Sessions response includes auto_target setting."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        response = client.get("/api/voice/sessions")
+        data = response.get_json()
+        assert "settings" in data
+        assert data["settings"]["auto_target"] is False
+
     def test_stale_agent_excluded(self, client, mock_db, mock_project):
         """Agent with last_seen_at older than timeout is excluded."""
         stale_agent = MagicMock()
@@ -477,6 +485,11 @@ class TestVoiceCommandToIdle:
 class TestAutoTarget:
     """Tests for auto-targeting when agent_id is not specified."""
 
+    @pytest.fixture(autouse=True)
+    def _enable_auto_target(self, app):
+        """Enable auto_target in config for these tests."""
+        app.config["APP_CONFIG"]["voice_bridge"] = {"auto_target": True}
+
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_auto_target_single_awaiting(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
@@ -507,6 +520,14 @@ class TestAutoTarget:
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
         response = client.post("/api/voice/command", json={"text": "yes"})
         assert response.status_code == 409
+
+    def test_auto_target_disabled_returns_400(self, app, client):
+        """When auto_target is disabled, commands without agent_id return 400."""
+        app.config["APP_CONFIG"]["voice_bridge"] = {"auto_target": False}
+        response = client.post("/api/voice/command", json={"text": "yes"})
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "No agent specified" in data["error"]
 
 
 # ──────────────────────────────────────────────────────────────

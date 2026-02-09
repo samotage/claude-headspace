@@ -197,6 +197,8 @@ CONFIG_SCHEMA = [
                          help_text="Maximum voice bridge API requests per minute per token. Prevents runaway calls. Default of 60 is generous for normal voice interaction."),
             FieldSchema("default_verbosity", "string", "Default response verbosity (concise, normal, detailed)", default="concise",
                          help_text="Server-side default for response detail level. 'concise' gives brief status lines, 'normal' includes summaries, 'detailed' includes full output. The client can override this per-request."),
+            FieldSchema("auto_target", "boolean", "Auto-target sole awaiting agent", default=False,
+                         help_text="When enabled, voice commands without an explicit agent_id automatically target the sole awaiting agent. When disabled, the client must always specify which agent to target."),
         ],
     ),
     SectionSchema(

@@ -198,6 +198,7 @@ voice_bridge:
   rate_limit:
     requests_per_minute: 60
   default_verbosity: "concise"
+  auto_target: false
 ```
 
 - `enabled` — Enable the voice bridge services. When disabled, the `/voice` page still loads but API calls will lack voice formatting. Enable to activate token auth and voice-friendly response formatting.
@@ -205,6 +206,7 @@ voice_bridge:
 - `auth.localhost_bypass` — Skip token authentication for requests from localhost (127.0.0.1). Useful for development. Disable if you want to enforce token auth even locally.
 - `rate_limit.requests_per_minute` — Maximum API requests per minute per token. Prevents runaway calls. Default of 60 is generous for voice interaction.
 - `default_verbosity` — Server-side default for response detail level: `concise`, `normal`, or `detailed`. The client can override this per-request via settings.
+- `auto_target` — When enabled, voice commands without an explicit agent_id automatically target the sole awaiting agent. When disabled (default), the user must always select an agent before sending a command. The PWA settings toggle can override this per-device.
 
 ## API Endpoints
 

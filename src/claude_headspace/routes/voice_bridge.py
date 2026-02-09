@@ -161,8 +161,16 @@ def list_sessions():
     else:
         voice = {"status_line": f"{len(agents)} agents active.", "results": [], "next_action": "none"}
 
+    config = current_app.config.get("APP_CONFIG", {})
+    auto_target = config.get("voice_bridge", {}).get("auto_target", False)
+
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({"voice": voice, "agents": agent_dicts, "latency_ms": latency_ms}), 200
+    return jsonify({
+        "voice": voice,
+        "agents": agent_dicts,
+        "settings": {"auto_target": auto_target},
+        "latency_ms": latency_ms,
+    }), 200
 
 
 @voice_bridge_bp.route("/api/voice/command", methods=["POST"])
@@ -184,7 +192,15 @@ def voice_command():
         if not agent:
             return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
     else:
-        # Auto-target: find the single agent awaiting input
+        # Auto-target: find the single agent awaiting input (if enabled)
+        config = current_app.config.get("APP_CONFIG", {})
+        auto_target = config.get("voice_bridge", {}).get("auto_target", False)
+        if not auto_target:
+            return _voice_error(
+                "No agent specified.",
+                "Select an agent first, then send your command.",
+                400,
+            )
         active = _get_active_agents()
         awaiting = [a for a in active if a.get_current_task() and a.get_current_task().state == TaskState.AWAITING_INPUT]
         if len(awaiting) == 0:

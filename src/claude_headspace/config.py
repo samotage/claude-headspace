@@ -159,6 +159,7 @@ DEFAULTS = {
             "requests_per_minute": 60,
         },
         "default_verbosity": "concise",
+        "auto_target": False,
     },
 }
 

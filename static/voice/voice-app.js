@@ -505,6 +505,17 @@ window.VoiceApp = (function () {
   function _refreshAgents() {
     VoiceAPI.getSessions(_settings.verbosity).then(function (data) {
       _renderAgentList(data.agents || []);
+      // Apply server auto_target setting if user hasn't overridden locally
+      if (data.settings && data.settings.auto_target !== undefined) {
+        var stored = null;
+        try {
+          var raw = localStorage.getItem('voice_settings');
+          if (raw) stored = JSON.parse(raw);
+        } catch (e) { /* ignore */ }
+        if (!stored || stored.autoTarget === undefined) {
+          _settings.autoTarget = data.settings.auto_target;
+        }
+      }
     }).catch(function () { /* ignore */ });
   }
 
