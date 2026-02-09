@@ -474,12 +474,14 @@ class TestResolveTaskPrompt:
 
         assert "No instruction recorded" in prompt
 
-    def test_task_prompt_with_no_turns_returns_none(self, service, mock_task):
+    def test_task_prompt_with_no_turns_uses_instruction_fallback(self, service, mock_task):
         mock_task.turns = []
 
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert prompt is None
+        assert prompt is not None
+        assert "Refactor the authentication middleware" in prompt
+        assert "no agent output was captured" in prompt
 
 
 class TestResolveTurnPrompt:
@@ -674,8 +676,8 @@ class TestTaskEmptyFinalTurnFallback:
         assert result == "Task completed successfully."
         mock_inference.infer.assert_called_once()
 
-    def test_all_turns_empty_skips_inference(self, service, mock_inference, mock_task):
-        """When all turns have empty text, skips inference entirely."""
+    def test_all_turns_empty_uses_instruction_fallback(self, service, mock_inference, mock_task):
+        """When all turns have empty text, falls back to instruction-only prompt."""
         mock_task.completion_summary = None
         for t in mock_task.turns:
             t.text = ""
@@ -683,8 +685,10 @@ class TestTaskEmptyFinalTurnFallback:
 
         result = service.summarise_task(mock_task)
 
-        assert result is None
-        mock_inference.infer.assert_not_called()
+        # Should call inference with instruction-only prompt
+        mock_inference.infer.assert_called_once()
+        call_args = mock_inference.infer.call_args
+        assert "no agent output was captured" in call_args.kwargs["input_text"]
 
 
 class TestSSEBroadcast:

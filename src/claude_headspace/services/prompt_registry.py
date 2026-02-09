@@ -89,6 +89,15 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
+    # Task completion when only the instruction is available (no agent output)
+    "task_completion_from_instruction": (
+        "Task: {instruction}\n\n"
+        "The task was completed but no agent output was captured. "
+        "Write a task board entry (~18 tokens) stating what was likely accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
+    ),
+
     # --- Summarisation: instruction ---
     "instruction": (
         "Command: {command_text}\n\n"

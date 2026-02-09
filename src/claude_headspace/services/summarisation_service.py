@@ -692,18 +692,14 @@ class SummarisationService:
                 final_turn_text=final_turn_text,
             )
 
-        # Final turn text is empty — build activity from non-command turns
-        from ..models.turn import TurnIntent
+        # Final turn text is empty — build activity from all turns with content
         activity_lines = []
         for t in turns:
-            intent_val = t.intent.value if hasattr(t.intent, "value") else str(t.intent)
-            # Skip the initial command turn and turns with no text
-            if intent_val == TurnIntent.COMMAND.value:
-                continue
             text = (t.summary or t.text or "").strip()
             if not text:
                 continue
             actor_val = t.actor.value if hasattr(t.actor, "value") else str(t.actor)
+            intent_val = t.intent.value if hasattr(t.intent, "value") else str(t.intent)
             activity_lines.append(f"- [{actor_val}/{intent_val}] {text[:200]}")
 
         if activity_lines:
@@ -714,7 +710,13 @@ class SummarisationService:
                 turn_activity=turn_activity,
             )
 
-        # No turn activity at all — nothing meaningful to summarise
+        # No turn activity — fall back to instruction-only prompt
+        if instruction and instruction != "No instruction recorded":
+            return build_prompt(
+                "task_completion_from_instruction",
+                instruction=instruction,
+            )
+
         return None
 
     @staticmethod
