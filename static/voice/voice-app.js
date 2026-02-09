@@ -16,7 +16,10 @@ window.VoiceApp = (function () {
   var _settings = {};
   var _agents = [];
   var _targetAgentId = null;
-  var _currentScreen = 'setup'; // setup | agents | listening | question | settings
+  var _currentScreen = 'setup'; // setup | agents | listening | question | chat | settings
+  var _chatRenderedTurnIds = new Set();
+  var _chatAgentState = null;
+  var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
 
@@ -215,6 +218,225 @@ window.VoiceApp = (function () {
     }
   }
 
+  // --- Chat screen ---
+
+  function _showChatScreen(agentId) {
+    _targetAgentId = agentId;
+    _chatRenderedTurnIds.clear();
+    var messagesEl = document.getElementById('chat-messages');
+    if (messagesEl) messagesEl.innerHTML = '';
+
+    VoiceAPI.getTranscript(agentId).then(function (data) {
+      var nameEl = document.getElementById('chat-agent-name');
+      var projEl = document.getElementById('chat-project-name');
+      if (nameEl) nameEl.textContent = data.agent_name || 'Agent';
+      if (projEl) projEl.textContent = data.project || '';
+
+      _chatAgentState = data.agent_state;
+      var turns = data.turns || [];
+      for (var i = 0; i < turns.length; i++) {
+        _renderChatBubble(turns[i], i > 0 ? turns[i - 1] : null);
+      }
+      _scrollChatToBottom();
+      _updateTypingIndicator();
+    }).catch(function () {
+      var nameEl = document.getElementById('chat-agent-name');
+      if (nameEl) nameEl.textContent = 'Agent ' + agentId;
+    });
+
+    showScreen('chat');
+  }
+
+  function _renderChatBubble(turn, prevTurn) {
+    if (_chatRenderedTurnIds.has(turn.id)) return;
+    _chatRenderedTurnIds.add(turn.id);
+
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+
+    // Timestamp separator — show if first message or >5 min gap
+    if (turn.timestamp) {
+      var showTimestamp = false;
+      if (!prevTurn) {
+        showTimestamp = true;
+      } else if (prevTurn.timestamp) {
+        var gap = new Date(turn.timestamp) - new Date(prevTurn.timestamp);
+        if (gap > 5 * 60 * 1000) showTimestamp = true;
+      }
+      if (showTimestamp) {
+        var tsEl = document.createElement('div');
+        tsEl.className = 'chat-timestamp';
+        tsEl.textContent = _formatChatTime(turn.timestamp);
+        messagesEl.appendChild(tsEl);
+      }
+    }
+
+    var bubble = document.createElement('div');
+    var isUser = turn.actor === 'user';
+    bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent');
+    bubble.setAttribute('data-turn-id', turn.id);
+
+    var html = '';
+
+    // Intent label for non-obvious intents
+    if (turn.intent === 'question') {
+      html += '<div class="bubble-intent">Question</div>';
+    } else if (turn.intent === 'completion') {
+      html += '<div class="bubble-intent">Completed</div>';
+    } else if (turn.intent === 'command') {
+      html += '<div class="bubble-intent">Command</div>';
+    }
+
+    // Text content — prefer summary for agent turns (usually shorter), text for user turns
+    var displayText = turn.text || '';
+    if (!isUser && turn.summary) {
+      displayText = turn.summary;
+    }
+    if (displayText) {
+      html += '<div class="bubble-text">' + _esc(displayText) + '</div>';
+    }
+
+    // Question options inside the bubble
+    if (turn.intent === 'question') {
+      var opts = turn.question_options;
+      if (!opts && turn.tool_input) {
+        var questions = turn.tool_input.questions;
+        if (questions && questions.length > 0 && questions[0].options) {
+          opts = questions[0].options;
+        }
+      }
+      if (opts && opts.length > 0) {
+        html += '<div class="bubble-options">';
+        for (var i = 0; i < opts.length; i++) {
+          var opt = opts[i];
+          html += '<button class="bubble-option-btn" data-label="' + _esc(opt.label) + '">'
+            + _esc(opt.label)
+            + (opt.description ? '<div class="bubble-option-desc">' + _esc(opt.description) + '</div>' : '')
+            + '</button>';
+        }
+        html += '</div>';
+      }
+    }
+
+    bubble.innerHTML = html;
+
+    // Bind option button clicks
+    var optBtns = bubble.querySelectorAll('.bubble-option-btn');
+    for (var j = 0; j < optBtns.length; j++) {
+      optBtns[j].addEventListener('click', function () {
+        _sendChatCommand(this.getAttribute('data-label'));
+      });
+    }
+
+    messagesEl.appendChild(bubble);
+  }
+
+  function _formatChatTime(isoStr) {
+    var d = new Date(isoStr);
+    var now = new Date();
+    var hours = d.getHours();
+    var minutes = d.getMinutes();
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    var timeStr = hours + ':' + (minutes < 10 ? '0' : '') + minutes + ' ' + ampm;
+
+    // Same day? Just show time. Otherwise show date.
+    if (d.toDateString() === now.toDateString()) {
+      return timeStr;
+    }
+    var yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday ' + timeStr;
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr;
+  }
+
+  function _scrollChatToBottom() {
+    var messagesEl = document.getElementById('chat-messages');
+    if (messagesEl) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }
+
+  function _updateTypingIndicator() {
+    var typingEl = document.getElementById('chat-typing');
+    if (!typingEl) return;
+    var isProcessing = _chatAgentState === 'processing' || _chatAgentState === 'commanded';
+    typingEl.style.display = isProcessing ? 'block' : 'none';
+    if (isProcessing) _scrollChatToBottom();
+  }
+
+  function _sendChatCommand(text) {
+    if (!text || !text.trim()) return;
+
+    // Add user bubble immediately
+    var now = new Date().toISOString();
+    var fakeTurn = {
+      id: 'pending-' + Date.now(),
+      actor: 'user',
+      intent: 'answer',
+      text: text.trim(),
+      timestamp: now
+    };
+
+    var messagesEl = document.getElementById('chat-messages');
+    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
+    var prevTurn = null;
+    if (lastBubble) {
+      prevTurn = { timestamp: now }; // skip timestamp for immediate send
+    }
+    _renderChatBubble(fakeTurn, prevTurn);
+    _scrollChatToBottom();
+
+    // Clear input
+    var input = document.getElementById('chat-text-input');
+    if (input) input.value = '';
+
+    // Show typing indicator (agent will be processing)
+    _chatAgentState = 'processing';
+    _updateTypingIndicator();
+
+    VoiceAPI.sendCommand(text.trim(), _targetAgentId).then(function () {
+      // Command sent — SSE will update state
+    }).catch(function (err) {
+      // Show error as system message
+      var errBubble = document.createElement('div');
+      errBubble.className = 'chat-bubble agent';
+      errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Send failed') + '</div>';
+      if (messagesEl) messagesEl.appendChild(errBubble);
+      _chatAgentState = 'idle';
+      _updateTypingIndicator();
+      _scrollChatToBottom();
+    });
+  }
+
+  function _handleChatSSE(data) {
+    if (_currentScreen !== 'chat') return;
+
+    var agentId = data.agent_id || data.id;
+    if (parseInt(agentId, 10) !== parseInt(_targetAgentId, 10)) return;
+
+    var newState = data.new_state || data.state;
+    if (newState) {
+      _chatAgentState = newState;
+      _updateTypingIndicator();
+    }
+
+    // Refresh transcript to pick up new turns
+    VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+      var turns = resp.turns || [];
+      for (var i = 0; i < turns.length; i++) {
+        _renderChatBubble(turns[i], i > 0 ? turns[i - 1] : null);
+      }
+      if (resp.agent_state) {
+        _chatAgentState = resp.agent_state;
+        _updateTypingIndicator();
+      }
+      _scrollChatToBottom();
+    }).catch(function () { /* ignore */ });
+  }
+
   // --- Command sending ---
 
   function _sendCommand(text) {
@@ -238,6 +460,9 @@ window.VoiceApp = (function () {
   // --- SSE event handling ---
 
   function _handleAgentUpdate(data) {
+    // Update chat screen if active
+    _handleChatSSE(data);
+
     // Re-fetch agent list on any update
     _refreshAgents();
 
@@ -277,6 +502,16 @@ window.VoiceApp = (function () {
   function init() {
     loadSettings();
 
+    // Detect agent_id URL param (from dashboard "Chat" link)
+    var urlParams = new URLSearchParams(window.location.search);
+    var paramAgentId = urlParams.get('agent_id');
+
+    // Localhost: skip setup, use current origin as server URL
+    if (_isLocalhost && (!_settings.serverUrl || !_settings.token)) {
+      _settings.serverUrl = window.location.origin;
+      _settings.token = 'localhost';
+    }
+
     // Check if we have credentials
     if (!_settings.serverUrl || !_settings.token) {
       showScreen('setup');
@@ -288,7 +523,11 @@ window.VoiceApp = (function () {
 
     // Wire up speech input callbacks
     VoiceInput.onResult(function (text) {
-      _sendCommand(text);
+      if (_currentScreen === 'chat') {
+        _sendChatCommand(text);
+      } else {
+        _sendCommand(text);
+      }
     });
 
     VoiceInput.onPartial(function (text) {
@@ -299,6 +538,8 @@ window.VoiceApp = (function () {
     VoiceInput.onStateChange(function (listening) {
       var btn = document.getElementById('mic-btn');
       if (btn) btn.classList.toggle('active', listening);
+      var chatMic = document.getElementById('chat-mic-btn');
+      if (chatMic) chatMic.classList.toggle('active', listening);
     });
 
     // Wire up SSE
@@ -308,6 +549,12 @@ window.VoiceApp = (function () {
 
     // Play ready cue
     VoiceOutput.playCue('ready');
+
+    // If agent_id param present, go directly to chat screen
+    if (paramAgentId) {
+      _showChatScreen(parseInt(paramAgentId, 10));
+      return;
+    }
 
     // Load agents and show list
     _refreshAgents();
@@ -395,7 +642,46 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Back buttons
+    // Chat input form
+    var chatForm = document.getElementById('chat-input-form');
+    if (chatForm) {
+      chatForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var input = document.getElementById('chat-text-input');
+        if (input && input.value.trim()) {
+          _sendChatCommand(input.value);
+        }
+      });
+    }
+
+    // Chat mic button
+    var chatMicBtn = document.getElementById('chat-mic-btn');
+    if (chatMicBtn) {
+      chatMicBtn.addEventListener('click', function () {
+        VoiceOutput.initAudio();
+        if (VoiceInput.isListening()) {
+          _stopListening();
+        } else {
+          _startListening();
+        }
+      });
+    }
+
+    // Chat back button
+    var chatBackBtn = document.querySelector('.chat-back-btn');
+    if (chatBackBtn) {
+      chatBackBtn.addEventListener('click', function () {
+        // If opened from dashboard (agent_id param), go back to dashboard
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('agent_id') && document.referrer) {
+          window.history.back();
+        } else {
+          showScreen('agents');
+        }
+      });
+    }
+
+    // Back buttons (existing screens)
     var backBtns = document.querySelectorAll('.back-btn');
     for (var i = 0; i < backBtns.length; i++) {
       backBtns[i].addEventListener('click', function () {
@@ -478,6 +764,7 @@ window.VoiceApp = (function () {
     _renderAgentList: _renderAgentList,
     _autoTarget: _autoTarget,
     _sendCommand: _sendCommand,
+    _showChatScreen: _showChatScreen,
     _esc: _esc
   };
 })();

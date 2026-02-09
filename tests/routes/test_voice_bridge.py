@@ -176,11 +176,21 @@ def mock_agent_no_pane(mock_project):
 class TestVoiceAuth:
     """Test authentication middleware on voice bridge routes."""
 
-    def test_auth_called_on_request(self, client_with_auth, app_with_auth, mock_db):
-        """Auth middleware is invoked on every request."""
+    def test_auth_called_on_remote_request(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is invoked on non-localhost requests."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        # Simulate a remote (non-localhost) request
+        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}):
+            from src.claude_headspace.routes.voice_bridge import voice_auth_check
+            voice_auth_check()
+            app_with_auth.extensions["voice_auth"].authenticate.assert_called()
+
+    def test_auth_bypassed_on_localhost(self, client_with_auth, app_with_auth, mock_db):
+        """Auth middleware is skipped for localhost requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
         client_with_auth.get("/api/voice/sessions")
-        app_with_auth.extensions["voice_auth"].authenticate.assert_called()
+        # Test client defaults to 127.0.0.1 — auth should NOT be called
+        app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_auth_rejection_returns_error(self, app_with_auth, mock_db):
         """When auth rejects, the endpoint is not reached."""
@@ -188,8 +198,9 @@ class TestVoiceAuth:
         with app_with_auth.app_context():
             reject_response = flask_jsonify({"error": "invalid_token", "voice": {"status_line": "Invalid.", "results": [], "next_action": "Fix token."}})
         app_with_auth.extensions["voice_auth"].authenticate.return_value = (reject_response, 401)
-        client = app_with_auth.test_client()
-        response = client.get("/api/voice/sessions")
+        # Use a non-localhost address to trigger auth
+        with app_with_auth.test_client() as client:
+            response = client.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"})
         assert response.status_code == 401
 
     def test_no_auth_service_allows_request(self, client, mock_db):

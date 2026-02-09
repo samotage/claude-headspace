@@ -69,6 +69,10 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/agents/' + agentId + '/question');
   }
 
+  function getTranscript(agentId) {
+    return _fetch('/api/voice/agents/' + agentId + '/transcript');
+  }
+
   // --- SSE ---
 
   function connectSSE() {
@@ -145,6 +149,7 @@ window.VoiceAPI = (function () {
     sendCommand: sendCommand,
     getOutput: getOutput,
     getQuestion: getQuestion,
+    getTranscript: getTranscript,
     connectSSE: connectSSE,
     disconnectSSE: disconnectSSE
   };

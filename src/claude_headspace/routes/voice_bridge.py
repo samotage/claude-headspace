@@ -107,8 +107,17 @@ def serve_voice_app():
 
 @voice_bridge_bp.before_request
 def voice_auth_check():
-    """Apply token authentication to API endpoints only (not /voice page)."""
+    """Apply token authentication to API endpoints.
+
+    Bypasses auth for:
+    - The /voice page itself
+    - Any request from localhost (dashboard "Chat" links)
+    """
     if request.path == "/voice":
+        return None
+    # Bypass auth for localhost requests (dashboard Chat links)
+    remote = request.remote_addr or ""
+    if remote in ("127.0.0.1", "::1", "localhost"):
         return None
     auth = _get_voice_auth()
     if auth:
@@ -385,3 +394,58 @@ def agent_question(agent_id: int):
 
     latency_ms = int((time.time() - start_time) * 1000)
     return jsonify({"voice": voice, "question": agent_data, "latency_ms": latency_ms}), 200
+
+
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/transcript", methods=["GET"])
+def agent_transcript(agent_id: int):
+    """Get turn-by-turn transcript for an agent's current task."""
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found"}), 404
+
+    current_task = agent.get_current_task()
+    if not current_task:
+        # Fall back to most recent completed task
+        current_task = (
+            db.session.query(Task)
+            .filter(Task.agent_id == agent_id)
+            .order_by(Task.started_at.desc())
+            .first()
+        )
+
+    if not current_task:
+        return jsonify({"turns": [], "agent_state": "idle", "project": agent.project.name if agent.project else "unknown"}), 200
+
+    turns = (
+        db.session.query(Turn)
+        .filter(Turn.task_id == current_task.id)
+        .order_by(Turn.timestamp.asc())
+        .all()
+    )
+
+    turn_list = []
+    for t in turns:
+        # Filter out PROGRESS turns with no meaningful text
+        if t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip()):
+            continue
+        turn_list.append({
+            "id": t.id,
+            "actor": t.actor.value,
+            "intent": t.intent.value,
+            "text": t.text,
+            "summary": t.summary,
+            "timestamp": t.timestamp.isoformat() if t.timestamp else None,
+            "tool_input": t.tool_input,
+            "question_text": t.question_text,
+            "question_options": t.question_options,
+            "question_source_type": t.question_source_type,
+            "answered_by_turn_id": t.answered_by_turn_id,
+        })
+
+    return jsonify({
+        "turns": turn_list,
+        "agent_state": current_task.state.value,
+        "task_instruction": current_task.instruction,
+        "project": agent.project.name if agent.project else "unknown",
+        "agent_name": agent.name,
+    }), 200
