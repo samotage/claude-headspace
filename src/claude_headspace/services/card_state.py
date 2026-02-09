@@ -597,6 +597,10 @@ def build_card_state(agent: Agent) -> dict:
         "project_id": agent.project_id,
     }
 
+    # Include current task ID for on-demand full-text drill-down
+    task_for_id = current_task or (agent.tasks[0] if agent.tasks else None)
+    card["current_task_id"] = task_for_id.id if task_for_id else None
+
     # Include turn count and elapsed time for all states (used by
     # the agent card footer and condensed completed-task card)
     card["turn_count"] = _get_current_task_turn_count(agent, _current_task=current_task)

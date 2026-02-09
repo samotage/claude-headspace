@@ -927,6 +927,23 @@
                 instructionEl.classList.add('text-muted', 'italic');
             }
             if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
+
+            // Update "View full" button for instruction drill-down
+            var line03Content = instructionEl.parentElement;
+            var existingBtn03 = line03Content ? line03Content.querySelector('.full-text-btn') : null;
+            if (data.task_instruction && data.current_task_id) {
+                if (!existingBtn03) {
+                    var btn03 = document.createElement('button');
+                    btn03.type = 'button';
+                    btn03.className = 'full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors';
+                    btn03.title = 'View full command';
+                    btn03.textContent = 'View full';
+                    btn03.onclick = function() { window.FullTextModal && window.FullTextModal.show(data.current_task_id, 'command'); };
+                    line03Content.appendChild(btn03);
+                }
+            } else if (existingBtn03) {
+                existingBtn03.remove();
+            }
         }
 
         // Line 04: task summary / completion summary (hidden when redundant with line 03)
@@ -945,6 +962,10 @@
         var shouldShow04 = line04Text && line04Text !== line03Text;
 
         if (shouldShow04) {
+            var viewFullBtn04Html = '';
+            if (isGreen && data.current_task_id) {
+                viewFullBtn04Html = '<button type="button" class="full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors" title="View full output" onclick="window.FullTextModal && window.FullTextModal.show(' + data.current_task_id + ', \'output\')">View full</button>';
+            }
             if (!line04Row) {
                 // Create line 04 row if it doesn't exist (was hidden on initial render)
                 var cardEditor = card.querySelector('.card-editor');
@@ -952,9 +973,9 @@
                     var newRow = document.createElement('div');
                     newRow.className = 'card-line card-line-04';
                     newRow.innerHTML = '<span class="line-num">04</span>' +
-                        '<div class="line-content">' +
-                        '<p class="task-summary text-sm italic ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
-                        window.CHUtils.escapeHtml(line04Text) + '</p></div>';
+                        '<div class="line-content flex items-baseline justify-between gap-2">' +
+                        '<p class="task-summary text-sm italic flex-1 min-w-0 truncate ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
+                        window.CHUtils.escapeHtml(line04Text) + '</p>' + viewFullBtn04Html + '</div>';
                     cardEditor.appendChild(newRow);
                 }
             } else {
@@ -969,6 +990,22 @@
                         taskSummary.classList.add('text-secondary');
                     }
                     if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+                }
+                // Update "View full" button for completion drill-down
+                var line04Content = line04Row.querySelector('.line-content');
+                var existingBtn04 = line04Content ? line04Content.querySelector('.full-text-btn') : null;
+                if (isGreen && data.current_task_id) {
+                    if (!existingBtn04 && line04Content) {
+                        var btn04 = document.createElement('button');
+                        btn04.type = 'button';
+                        btn04.className = 'full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors';
+                        btn04.title = 'View full output';
+                        btn04.textContent = 'View full';
+                        btn04.onclick = function() { window.FullTextModal && window.FullTextModal.show(data.current_task_id, 'output'); };
+                        line04Content.appendChild(btn04);
+                    }
+                } else if (existingBtn04) {
+                    existingBtn04.remove();
                 }
             }
         } else if (line04Row) {

@@ -536,6 +536,9 @@ def dashboard():
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
+            # Add current task ID for on-demand full-text drill-down
+            _ct = agent.get_current_task()
+            agent_dict["current_task_id"] = _ct.id if _ct else (agent.tasks[0].id if agent.tasks else None)
             # Bridge connectivity — use cache, fall back to live check
             is_bridge = False
             if agent.tmux_pane_id:

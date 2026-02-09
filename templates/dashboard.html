@@ -131,7 +131,7 @@
         {% else %}
             <!-- By Project View: Kanban columns -->
             {% if projects %}
-                <div class="flex flex-col gap-4 pb-4 md:flex-row md:overflow-x-auto" id="project-view"
+                <div class="flex flex-col gap-4 pb-4 md:flex-row md:overflow-x-auto lg:flex-wrap lg:overflow-visible" id="project-view"
                      style="min-height: calc(100vh - 280px);">
                     {% for project in projects %}
                         {% include "partials/_project_column.html" %}
@@ -169,4 +169,6 @@
 <script src="{{ url_for('static', filename='js/card-tooltip.js') }}?v={{ cache_bust }}"></script>
 <!-- Brain Reboot -->
 <script src="{{ url_for('static', filename='js/brain-reboot.js') }}?v={{ cache_bust }}"></script>
+<!-- Full-text drill-down modal -->
+<script src="{{ url_for('static', filename='js/full-text-modal.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

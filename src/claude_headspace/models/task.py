@@ -51,6 +51,8 @@ class Task(db.Model):
     instruction_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    full_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_output: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     agent: Mapped["Agent"] = relationship("Agent", back_populates="tasks")
