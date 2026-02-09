@@ -359,6 +359,32 @@ class TestReapOnce:
 
         mock_db.session.commit.assert_not_called()
 
+    @patch(PATCH_CHECK_PANE)
+    @patch(PATCH_DB)
+    def test_commander_double_check_saves_agent(self, mock_db, mock_check, mock_app):
+        """Agent whose iTerm pane is gone but tmux bridge is alive should be saved."""
+        now = datetime.now(timezone.utc)
+        agent = _make_agent(
+            iterm_pane_id="pty-123",
+            tmux_pane_id="%5",
+            last_seen_at=now - timedelta(minutes=10),
+        )
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_check.return_value = PaneStatus.NOT_FOUND
+
+        # Commander availability says the agent is alive
+        mock_commander = MagicMock()
+        mock_commander.check_agent.return_value = True
+        mock_app.extensions["commander_availability"] = mock_commander
+
+        reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        result = reaper.reap_once()
+
+        assert result.reaped == 0
+        assert result.skipped_alive == 1
+        # last_seen_at should be refreshed
+        assert agent.last_seen_at > now - timedelta(minutes=5)
+
 
 class TestReapAgent:
     """Tests for the _reap_agent method."""

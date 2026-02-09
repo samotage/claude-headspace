@@ -37,6 +37,12 @@ PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode"}
 # completed less than this many seconds ago (tail-end tool activity).
 INFERRED_TASK_COOLDOWN_SECONDS = 30
 
+# ── Module-level state dicts ──────────────────────────────────────────
+# These dicts are in-process singletons. They assume a single-process
+# Flask deployment (no multi-worker gunicorn). If the app were to run
+# with multiple workers, these would need to be moved to Redis or a
+# shared-memory store. reset_receiver_state() clears all of them.
+
 # Track which tool triggered AWAITING_INPUT per agent, so post_tool_use
 # only resumes when the matching tool completes (not unrelated tools).
 _awaiting_tool_for_agent: dict[int, str | None] = {}
@@ -48,6 +54,10 @@ _respond_pending_for_agent: dict[int, float] = {}
 
 # How long (seconds) a respond-pending flag remains valid.
 _RESPOND_PENDING_TTL = 10.0
+
+# Track agents with an in-flight deferred stop thread to prevent duplicate
+# threads from being spawned for the same agent.
+_deferred_stop_pending: set[int] = set()
 
 
 # --- Data types ---
@@ -139,6 +149,8 @@ def reset_receiver_state() -> None:
     global _receiver_state
     _receiver_state = HookReceiverState()
     _awaiting_tool_for_agent.clear()
+    _respond_pending_for_agent.clear()
+    _deferred_stop_pending.clear()
 
 
 # --- Internal helpers ---
@@ -375,10 +387,17 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
     Instead of blocking the Flask request handler with time.sleep(), this
     spawns a daemon thread that waits, re-reads the transcript, and applies
     the appropriate state transition within a fresh app context.
+
+    Uses _deferred_stop_pending to prevent duplicate threads for the same agent.
     """
     agent_id = agent.id
     task_id = current_task.id
     project_id = agent.project_id
+
+    # Dedup: skip if a deferred stop is already in flight for this agent
+    if agent_id in _deferred_stop_pending:
+        logger.info(f"deferred_stop: agent_id={agent_id}, skipped (already pending)")
+        return
 
     # Capture Flask app reference BEFORE starting thread
     # (current_app is not available inside background threads)
@@ -391,91 +410,95 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
 
     def _deferred_check():
         import time
-        time.sleep(1.5)  # Wait for Claude Code to flush transcript
+        try:
+            time.sleep(1.5)  # Wait for Claude Code to flush transcript
 
-        with app.app_context():
-            try:
-                from ..models.task import Task
-                task = db.session.get(Task, task_id)
-                if not task or task.state == TaskState.COMPLETE:
-                    return  # Already completed by another hook
+            with app.app_context():
+                try:
+                    from ..models.task import Task
+                    task = db.session.get(Task, task_id)
+                    if not task or task.state == TaskState.COMPLETE:
+                        return  # Already completed by another hook
 
-                agent_obj = db.session.get(Agent, agent_id)
-                if not agent_obj:
-                    return
+                    agent_obj = db.session.get(Agent, agent_id)
+                    if not agent_obj:
+                        return
 
-                agent_text = _extract_transcript_content(agent_obj)
-                logger.info(
-                    f"deferred_stop: agent_id={agent_id}, "
-                    f"transcript_retry: len={len(agent_text) if agent_text else 0}"
-                )
-                if not agent_text:
-                    # Still empty — complete with no transcript
+                    agent_text = _extract_transcript_content(agent_obj)
+                    logger.info(
+                        f"deferred_stop: agent_id={agent_id}, "
+                        f"transcript_retry: len={len(agent_text) if agent_text else 0}"
+                    )
+                    if not agent_text:
+                        # Still empty — complete with no transcript
+                        lifecycle = _get_lifecycle_manager()
+                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+                        _trigger_priority_scoring()
+                        pending = lifecycle.get_pending_summarisations()
+                        db.session.commit()
+                        broadcast_card_refresh(agent_obj, "stop_deferred")
+                        _execute_pending_summarisations(pending)
+                        _send_completion_notification(agent_obj, task)
+                        logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
+                        return
+
+                    inference_service = app.extensions.get("inference_service")
+
+                    intent_result = detect_agent_intent(
+                        agent_text, inference_service=inference_service,
+                        project_id=project_id, agent_id=agent_id,
+                    )
+
                     lifecycle = _get_lifecycle_manager()
-                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+                    if intent_result.intent == TurnIntent.QUESTION:
+                        from ..models.turn import Turn as _Turn
+                        turn = _Turn(
+                            task_id=task.id, actor=TurnActor.AGENT,
+                            intent=TurnIntent.QUESTION, text=agent_text,
+                            question_text=agent_text,
+                            question_source_type="free_text",
+                        )
+                        db.session.add(turn)
+                        lifecycle.update_task_state(
+                            task=task, to_state=TaskState.AWAITING_INPUT,
+                            trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
+                        )
+                    elif intent_result.intent == TurnIntent.END_OF_TASK:
+                        lifecycle.complete_task(
+                            task=task, trigger="hook:stop:deferred_end_of_task",
+                            agent_text=agent_text, intent=TurnIntent.END_OF_TASK,
+                        )
+                    else:
+                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=agent_text)
+
                     _trigger_priority_scoring()
                     pending = lifecycle.get_pending_summarisations()
                     db.session.commit()
                     broadcast_card_refresh(agent_obj, "stop_deferred")
                     _execute_pending_summarisations(pending)
-                    _send_completion_notification(agent_obj, task)
-                    logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
-                    return
 
-                inference_service = app.extensions.get("inference_service")
+                    if task.state == TaskState.COMPLETE:
+                        _send_completion_notification(agent_obj, task)
+                    if task.state == TaskState.AWAITING_INPUT and task.turns:
+                        for t in reversed(task.turns):
+                            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                                _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input)
+                                break
 
-                intent_result = detect_agent_intent(
-                    agent_text, inference_service=inference_service,
-                    project_id=project_id, agent_id=agent_id,
-                )
-
-                lifecycle = _get_lifecycle_manager()
-                if intent_result.intent == TurnIntent.QUESTION:
-                    from ..models.turn import Turn as _Turn
-                    turn = _Turn(
-                        task_id=task.id, actor=TurnActor.AGENT,
-                        intent=TurnIntent.QUESTION, text=agent_text,
-                        question_text=agent_text,
-                        question_source_type="free_text",
+                    logger.info(
+                        f"deferred_stop: agent_id={agent_id}, "
+                        f"new_state={task.state.value}, intent={intent_result.intent.value}"
                     )
-                    db.session.add(turn)
-                    lifecycle.update_task_state(
-                        task=task, to_state=TaskState.AWAITING_INPUT,
-                        trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
-                    )
-                elif intent_result.intent == TurnIntent.END_OF_TASK:
-                    lifecycle.complete_task(
-                        task=task, trigger="hook:stop:deferred_end_of_task",
-                        agent_text=agent_text, intent=TurnIntent.END_OF_TASK,
-                    )
-                else:
-                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=agent_text)
+                except Exception as e:
+                    logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        finally:
+            _deferred_stop_pending.discard(agent_id)
 
-                _trigger_priority_scoring()
-                pending = lifecycle.get_pending_summarisations()
-                db.session.commit()
-                broadcast_card_refresh(agent_obj, "stop_deferred")
-                _execute_pending_summarisations(pending)
-
-                if task.state == TaskState.COMPLETE:
-                    _send_completion_notification(agent_obj, task)
-                if task.state == TaskState.AWAITING_INPUT and task.turns:
-                    for t in reversed(task.turns):
-                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                            _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input)
-                            break
-
-                logger.info(
-                    f"deferred_stop: agent_id={agent_id}, "
-                    f"new_state={task.state.value}, intent={intent_result.intent.value}"
-                )
-            except Exception as e:
-                logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-
+    _deferred_stop_pending.add(agent_id)
     t = threading.Thread(target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}")
     t.start()
 

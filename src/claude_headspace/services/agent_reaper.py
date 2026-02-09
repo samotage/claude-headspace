@@ -236,6 +236,23 @@ class AgentReaper:
                         result.skipped_alive += 1
                         continue
 
+                # Final double-check: verify commander_availability before reaping.
+                # This catches cases where the initial liveness check failed but
+                # the agent is actually still alive (e.g. stale_pane scenario).
+                if agent.tmux_pane_id and reap_reason != "inactivity_timeout":
+                    try:
+                        commander = self._app.extensions.get("commander_availability")
+                        if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
+                            agent.last_seen_at = now
+                            result.skipped_alive += 1
+                            logger.debug(
+                                f"Skipped reap for agent {agent.id}: "
+                                f"bridge_alive (final double-check, reason={reap_reason})"
+                            )
+                            continue
+                    except Exception:
+                        logger.debug(f"Final commander check failed for agent {agent.id}, proceeding with reap")
+
                 # Reap the agent
                 self._reap_agent(agent, reap_reason, now)
                 result.reaped += 1

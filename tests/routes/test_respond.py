@@ -377,6 +377,25 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["error_type"] == "missing_text"
 
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_commit_failure_does_not_set_respond_pending(
+        self, mock_bridge, client, mock_db, mock_agent
+    ):
+        """Commit failure should NOT set respond-pending flag (flag is post-commit)."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_db.session.commit.side_effect = Exception("DB error")
+
+        from src.claude_headspace.services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent.clear()
+
+        response = client.post("/api/respond/1", json={"text": "hello"})
+
+        assert response.status_code == 500
+        assert 1 not in _respond_pending_for_agent
+
+        _respond_pending_for_agent.clear()
+
 
 class TestSelectMode:
     """Tests for POST /api/respond/<agent_id> with mode=select."""

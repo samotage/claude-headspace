@@ -60,7 +60,7 @@ class DashboardAssertions:
         """Wait for SSE connection indicator to show connected."""
         expect(
             self.page.locator("#connection-indicator .connection-text")
-        ).to_have_text("SSE live", timeout=timeout)
+        ).to_have_text("Live", timeout=timeout)
 
     def assert_agent_card_exists(self, agent_id: int, timeout: int = 10000):
         """Wait for agent card to appear in DOM."""

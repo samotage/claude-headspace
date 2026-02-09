@@ -17,6 +17,8 @@ def setup_logging(config: dict, app_root: Path) -> None:
     """Configure structured logging to console and file."""
     log_level = get_value(config, "logging", "level", default="INFO")
     log_file = get_value(config, "logging", "file", default="logs/app.log")
+    max_bytes = get_value(config, "logging", "max_bytes", default=10_000_000)  # 10MB
+    backup_count = get_value(config, "logging", "backup_count", default=5)
 
     # Ensure logs directory exists
     log_path = app_root / log_file
@@ -39,11 +41,12 @@ def setup_logging(config: dict, app_root: Path) -> None:
                 "stream": "ext://sys.stdout",
             },
             "file": {
-                "class": "logging.FileHandler",
+                "class": "logging.handlers.RotatingFileHandler",
                 "level": log_level,
                 "formatter": "standard",
                 "filename": str(log_path),
-                "mode": "a",
+                "maxBytes": max_bytes,
+                "backupCount": backup_count,
             },
         },
         "root": {

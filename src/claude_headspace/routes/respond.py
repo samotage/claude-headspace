@@ -213,11 +213,6 @@ def respond_to_agent(agent_id: int):
     if not result.success:
         return _tmux_error_response(result, agent_id)
 
-    # Flag this agent so the upcoming user_prompt_submit hook is skipped
-    # (the respond handler owns the turn creation and state transition).
-    from ..services.hook_receiver import _respond_pending_for_agent
-    _respond_pending_for_agent[agent.id] = time.time()
-
     # Success: create Turn record and transition state
     try:
         # Find the most recent QUESTION turn for answer linking
@@ -254,6 +249,12 @@ def respond_to_agent(agent_id: int):
         _awaiting_tool_for_agent.pop(agent_id, None)
 
         db.session.commit()
+
+        # Flag this agent so the upcoming user_prompt_submit hook is skipped
+        # (the respond handler owns the turn creation and state transition).
+        # Set AFTER commit so the flag is never orphaned if the commit fails.
+        from ..services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent[agent.id] = time.time()
 
         broadcast_card_refresh(agent, "respond")
         _broadcast_state_change(agent, record_text)

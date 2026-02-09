@@ -1299,7 +1299,7 @@
                 });
 
                 if (response.ok) {
-                    var data = await response.json();
+                    await response.json();
                     if (btn) btn.textContent = 'Exported!';
                     setTimeout(function() {
                         if (btn) {

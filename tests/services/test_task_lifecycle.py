@@ -178,7 +178,7 @@ class TestTaskLifecycleManagerUnit:
         mock_task.state = TaskState.PROCESSING
         mock_task.completed_at = None
 
-        result = manager.complete_task(mock_task)
+        result = manager.complete_task(mock_task, agent_text="Task completed successfully.")
 
         assert result is True
         assert mock_task.state == TaskState.COMPLETE
@@ -509,12 +509,11 @@ class TestTaskLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.COMPLETION
         assert mock_task.state == TaskState.COMPLETE
 
-        # Verify completion turn was created (via complete_task)
+        # process_turn delegates to complete_task without agent_text (that comes
+        # from the transcript, which only hook_receiver provides). No Turn is
+        # created for empty agent_text — that's correct behavior.
         turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
-        assert len(turn_adds) == 1
-        turn = turn_adds[0][0][0]
-        assert turn.actor == TurnActor.AGENT
-        assert turn.intent == TurnIntent.COMPLETION
+        assert len(turn_adds) == 0
 
     def test_process_turn_user_while_awaiting_treated_as_answer(self, mock_session, mock_event_writer, mock_agent, mock_task):
         """User turn while AWAITING_INPUT is treated as ANSWER (transitions to PROCESSING).
@@ -769,7 +768,7 @@ class TestCompleteTaskSummarisation:
             event_writer=mock_event_writer,
         )
 
-        manager.complete_task(mock_task)
+        manager.complete_task(mock_task, agent_text="Finished refactoring.")
 
         pending = manager.get_pending_summarisations()
         assert len(pending) == 2
@@ -823,6 +822,63 @@ class TestCompleteTaskSummarisation:
         result = manager.complete_task(mock_task)
         assert result is True
         assert mock_task.state == TaskState.COMPLETE
+
+    def test_complete_task_no_turn_for_empty_text(self):
+        """complete_task with empty agent_text should not create a Turn."""
+        mock_session = MagicMock(spec=Session)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test"
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(session=mock_session)
+
+        manager.complete_task(mock_task, agent_text="")
+
+        # No Turn should be added for empty text
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 0
+
+        # Only task_completion summarisation (no turn summarisation)
+        pending = manager.get_pending_summarisations()
+        assert len(pending) == 1
+        assert pending[0].type == "task_completion"
+
+    def test_complete_task_creates_turn_for_nonempty_text(self):
+        """complete_task with non-empty agent_text should create a Turn."""
+        mock_session = MagicMock(spec=Session)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.name = "test"
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.agent_id = 1
+        mock_task.agent = mock_agent
+        mock_task.state = TaskState.PROCESSING
+        mock_task.completed_at = None
+
+        manager = TaskLifecycleManager(session=mock_session)
+
+        manager.complete_task(mock_task, agent_text="All done.")
+
+        # Turn should be added for non-empty text
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+
+        # Both turn and task_completion summarisations queued
+        pending = manager.get_pending_summarisations()
+        assert len(pending) == 2
+        assert pending[0].type == "turn"
+        assert pending[1].type == "task_completion"
 
 
 class TestTurnProcessingResultDataclass:

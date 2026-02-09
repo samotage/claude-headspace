@@ -183,6 +183,8 @@ class Broadcaster:
             event_id = self._event_id_counter
             # Copy client list under lock to avoid holding it during iteration
             clients_snapshot = list(self._clients.values())
+        # Include the event_id in the data payload so clients can detect gaps
+        data["_eid"] = event_id
         event = SSEEvent(event_type=event_type, data=data, event_id=event_id)
 
         sent_count = 0
@@ -197,6 +199,7 @@ class Broadcaster:
                     client.dropped_events += 1
                     logger.warning(
                         f"Client {client.client_id} queue full, dropped event "
+                        f"type={event_type} id={event_id} "
                         f"(total dropped: {client.dropped_events})"
                     )
 

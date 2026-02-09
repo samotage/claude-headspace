@@ -196,7 +196,8 @@ class TaskLifecycleManager:
         if not _vr.valid:
             logger.warning(
                 f"State transition not in VALID_TRANSITIONS (allowing anyway): "
-                f"{from_state.value} -> {to_state.value} trigger={trigger} reason={_vr.reason}"
+                f"{from_state.value} -> {to_state.value} trigger={trigger} "
+                f"agent_id={task.agent_id} task_id={task.id} reason={_vr.reason}"
             )
 
         task.state = to_state
@@ -274,7 +275,8 @@ class TaskLifecycleManager:
         if not _vr.valid:
             logger.warning(
                 f"complete_task: transition not in VALID_TRANSITIONS (allowing anyway): "
-                f"{from_state.value} -> COMPLETE trigger={trigger} reason={_vr.reason}"
+                f"{from_state.value} -> COMPLETE trigger={trigger} "
+                f"agent_id={task.agent_id} task_id={task.id} reason={_vr.reason}"
             )
 
         task.state = TaskState.COMPLETE
@@ -284,15 +286,18 @@ class TaskLifecycleManager:
         if agent_text:
             task.full_output = agent_text
 
-        # Create completion turn record with agent text if available
-        turn = Turn(
-            task_id=task.id,
-            actor=TurnActor.AGENT,
-            intent=intent,
-            text=agent_text or "",
-        )
-        self._session.add(turn)
-        self._session.flush()
+        # Create completion turn record only when there is actual content.
+        # Empty/whitespace-only text produces noisy Turn records that add no value.
+        turn = None
+        if agent_text and agent_text.strip():
+            turn = Turn(
+                task_id=task.id,
+                actor=TurnActor.AGENT,
+                intent=intent,
+                text=agent_text,
+            )
+            self._session.add(turn)
+            self._session.flush()
 
         logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
 
@@ -312,9 +317,10 @@ class TaskLifecycleManager:
             )
 
         # Queue summarisation requests (executed post-commit by caller)
-        self._pending_summarisations.append(
-            SummarisationRequest(type="turn", turn=turn)
-        )
+        if turn:
+            self._pending_summarisations.append(
+                SummarisationRequest(type="turn", turn=turn)
+            )
         self._pending_summarisations.append(
             SummarisationRequest(type="task_completion", task=task)
         )

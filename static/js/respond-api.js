@@ -172,7 +172,6 @@
             input.value = '';
             input.disabled = true;
 
-            var self = this;
             this.sendResponse(agentId, text).then(function(success) {
                 input.disabled = false;
                 if (!success) {

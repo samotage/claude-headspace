@@ -56,7 +56,7 @@ class NotificationService:
         with self._rate_limit_lock:
             now = time.time()
             # Prune stale entries (older than 10x the rate limit window)
-            if len(self._rate_limit_tracker) > 100:
+            if len(self._rate_limit_tracker) > 10:
                 cutoff = now - (self.preferences.rate_limit_seconds * 10)
                 self._rate_limit_tracker = {
                     k: v for k, v in self._rate_limit_tracker.items()

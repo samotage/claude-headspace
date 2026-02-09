@@ -284,15 +284,11 @@ def voice_command():
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": "commanded",
+            "new_state": "idle",
             "latency_ms": latency_ms,
         }), 200
 
     # AWAITING_INPUT path: create ANSWER turn and transition state
-    # Flag respond-pending to prevent duplicate turn from hook
-    from ..services.hook_receiver import _respond_pending_for_agent
-    _respond_pending_for_agent[agent.id] = time.time()
-
     try:
         answered_turn_id = None
         if current_task.turns:
@@ -315,6 +311,13 @@ def voice_command():
         if vr.valid:
             current_task.state = vr.to_state
         else:
+            # Intentional fallback: respond always means user answered, so force
+            # PROCESSING even if the state machine rejects the transition (e.g.
+            # if the task was concurrently modified by another hook).
+            logger.warning(
+                f"voice_bridge: invalid transition {current_task.state.value} -> PROCESSING, "
+                f"forcing (agent_id={agent.id}, task_id={current_task.id})"
+            )
             current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
@@ -322,6 +325,12 @@ def voice_command():
         _awaiting_tool_for_agent.pop(agent.id, None)
 
         db.session.commit()
+
+        # Flag respond-pending AFTER commit to prevent duplicate turn from hook.
+        # Set after commit so the flag is never orphaned if the commit fails.
+        from ..services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent[agent.id] = time.time()
+
         broadcast_card_refresh(agent, "voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)

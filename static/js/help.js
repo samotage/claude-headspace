@@ -218,14 +218,6 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function slugify(text) {
-        return text.toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .trim();
-    }
-
     function scrollToAnchor(hash) {
         if (!hash) return;
         var id = hash.replace('#', '');

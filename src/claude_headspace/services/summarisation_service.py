@@ -682,7 +682,13 @@ class SummarisationService:
         """
         instruction = getattr(task, "instruction", None) or "No instruction recorded"
 
-        turns = task.turns if hasattr(task, "turns") and task.turns else []
+        try:
+            turns = task.turns if hasattr(task, "turns") and task.turns else []
+        except Exception as e:
+            # Guard against DetachedInstanceError when task was loaded in a
+            # different session context (e.g. post-commit summarisation).
+            logger.warning(f"Failed to access task.turns for task {task.id} (defaulting to empty): {e}")
+            turns = []
         final_turn_text = turns[-1].text.strip() if turns and turns[-1].text else ""
 
         if final_turn_text:

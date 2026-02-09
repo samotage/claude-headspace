@@ -247,19 +247,6 @@ window.VoiceApp = (function () {
   }
 
   function _renderTranscriptTurns(data) {
-    // Render task instruction as first command bubble
-    var instrTurn = null;
-    if (data.task_instruction) {
-      instrTurn = {
-        id: 'task-instruction',
-        actor: 'user',
-        intent: 'command',
-        text: data.task_instruction,
-        timestamp: (data.turns && data.turns.length > 0) ? data.turns[0].timestamp : null
-      };
-      _renderChatBubble(instrTurn, null);
-    }
-
     // Inject task_completion_summary into completion turns that lack text
     var turns = data.turns || [];
     for (var i = 0; i < turns.length; i++) {
@@ -267,12 +254,7 @@ window.VoiceApp = (function () {
       if (turn.intent === 'completion' && !turn.text && !turn.summary && data.task_completion_summary) {
         turn.text = data.task_completion_summary;
       }
-      var prev = null;
-      if (i > 0) {
-        prev = turns[i - 1];
-      } else if (instrTurn) {
-        prev = instrTurn;
-      }
+      var prev = i > 0 ? turns[i - 1] : null;
       _renderChatBubble(turn, prev);
     }
   }

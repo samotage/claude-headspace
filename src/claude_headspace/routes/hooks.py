@@ -47,6 +47,10 @@ def _check_rate_limit(ip: str) -> bool:
         timestamps = _rate_limit_counters[ip]
         # Prune old entries
         _rate_limit_counters[ip] = [t for t in timestamps if t > cutoff]
+        # Clean up empty keys to prevent unbounded dict growth
+        if not _rate_limit_counters[ip]:
+            del _rate_limit_counters[ip]
+            return True
         if len(_rate_limit_counters[ip]) >= RATE_LIMIT_MAX_REQUESTS:
             return False
         _rate_limit_counters[ip].append(now)
@@ -103,12 +107,17 @@ def _log_hook_event(event_type: str, session_id: str | None, latency_ms: int) ->
 def _backfill_tmux_pane(agent, tmux_pane: str | None) -> None:
     """Store tmux_pane_id on agent if not yet set (late discovery).
 
+    Flushes (not commits) after setting the pane ID so downstream code
+    within the same request can see the updated value before the final
+    commit in the hook processor.
+
     Also registers the agent with the availability tracker so health
     checks begin immediately.
     """
     if not tmux_pane or agent.tmux_pane_id:
         return
     agent.tmux_pane_id = tmux_pane
+    db.session.flush()
     try:
         from flask import current_app
         availability = current_app.extensions.get("commander_availability")

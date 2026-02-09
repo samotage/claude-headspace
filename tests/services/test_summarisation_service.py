@@ -911,3 +911,25 @@ class TestSlashCommandInstructionBypass:
         service.summarise_instruction(mock_task, "Fix the login page CSS")
 
         mock_inference.infer.assert_called_once()
+
+
+class TestResolveTaskPromptResilience:
+    """Tests for _resolve_task_prompt resilience against DetachedInstanceError."""
+
+    def test_detached_task_turns_graceful_fallback(self, service):
+        """Accessing task.turns raising an exception should fall back to empty turns."""
+        mock_task = MagicMock()
+        mock_task.id = 99
+        mock_task.instruction = "Fix the auth module"
+
+        # Simulate DetachedInstanceError when accessing .turns
+        type(mock_task).turns = property(
+            lambda self: (_ for _ in ()).throw(Exception("DetachedInstanceError"))
+        )
+
+        # Should not raise — falls back to empty turns
+        result = SummarisationService._resolve_task_prompt(mock_task)
+
+        # With instruction but no turns, should return instruction-only prompt
+        assert result is not None
+        assert "Fix the auth module" in result

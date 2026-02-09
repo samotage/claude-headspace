@@ -11,8 +11,11 @@ from claude_headspace.services.hook_receiver import (
     HookMode,
     HookReceiverState,
     _awaiting_tool_for_agent,
+    _deferred_stop_pending,
     _extract_question_text,
     _extract_structured_options,
+    _respond_pending_for_agent,
+    _schedule_deferred_stop,
     _synthesize_permission_options,
     configure_receiver,
     get_receiver_state,
@@ -24,6 +27,7 @@ from claude_headspace.services.hook_receiver import (
     process_stop,
     process_user_prompt_submit,
     process_post_tool_use,
+    reset_receiver_state,
 )
 
 
@@ -49,6 +53,8 @@ def fresh_state():
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
     _awaiting_tool_for_agent.clear()
+    _respond_pending_for_agent.clear()
+    _deferred_stop_pending.clear()
     yield state
 
 
@@ -1448,3 +1454,48 @@ class TestPermissionPaneCapture:
 
         # _synthesize_permission_options should NOT be called for pre_tool_use
         mock_synthesize.assert_not_called()
+
+
+class TestResetReceiverState:
+    """Tests for reset_receiver_state() — clears all module-level state dicts."""
+
+    def test_reset_clears_all_module_dicts(self):
+        """reset_receiver_state should clear all three module-level dicts."""
+        _awaiting_tool_for_agent[99] = "Bash"
+        _respond_pending_for_agent[99] = 1.0
+        _deferred_stop_pending.add(99)
+
+        reset_receiver_state()
+
+        assert len(_awaiting_tool_for_agent) == 0
+        assert len(_respond_pending_for_agent) == 0
+        assert len(_deferred_stop_pending) == 0
+
+    def test_deferred_stop_deduplication(self):
+        """_schedule_deferred_stop should not spawn duplicate threads for the same agent."""
+        from flask import Flask
+
+        mock_agent = MagicMock()
+        mock_agent.id = 42
+        mock_agent.project_id = 1
+
+        mock_task = MagicMock()
+        mock_task.id = 100
+
+        _deferred_stop_pending.clear()
+
+        app = Flask(__name__)
+        with app.app_context():
+            with patch("claude_headspace.services.hook_receiver.threading.Thread") as mock_thread:
+                mock_thread_instance = MagicMock()
+                mock_thread.return_value = mock_thread_instance
+
+                _schedule_deferred_stop(mock_agent, mock_task)
+                assert mock_thread.call_count == 1
+                assert 42 in _deferred_stop_pending
+
+                # Second call with same agent should be deduped
+                _schedule_deferred_stop(mock_agent, mock_task)
+                assert mock_thread.call_count == 1  # Still just 1
+
+        _deferred_stop_pending.clear()

@@ -419,6 +419,18 @@ class TestVoiceCommand:
         assert response.status_code == 500
         mock_db.session.rollback.assert_called_once()
 
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_commit_failure_does_not_set_respond_pending(self, mock_bridge, client, mock_db, mock_agent):
+        """Commit failure should NOT set respond-pending flag (flag is set post-commit)."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_db.session.commit.side_effect = Exception("DB error")
+
+        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+            assert response.status_code == 500
+            assert 1 not in pending
+
 
 class TestVoiceCommandToIdle:
     """Tests for sending commands to idle/complete agents.
@@ -437,7 +449,7 @@ class TestVoiceCommandToIdle:
         assert response.status_code == 200
         data = response.get_json()
         assert data["agent_id"] == 4
-        assert data["new_state"] == "commanded"
+        assert data["new_state"] == "idle"
 
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_command_to_idle_agent_no_task(self, mock_bridge, client, mock_db, mock_project):
@@ -456,7 +468,7 @@ class TestVoiceCommandToIdle:
         response = client.post("/api/voice/command", json={"text": "hello", "agent_id": 10})
         assert response.status_code == 200
         data = response.get_json()
-        assert data["new_state"] == "commanded"
+        assert data["new_state"] == "idle"
 
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_idle_command_does_not_create_task(self, mock_bridge, client, mock_db, mock_agent_complete):
@@ -477,6 +489,19 @@ class TestVoiceCommandToIdle:
 
         with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
             client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+            assert 4 not in pending
+
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_idle_path_returns_idle_state_and_no_respond_pending(self, mock_bridge, client, mock_db, mock_agent_complete):
+        """Idle path should return 'idle' state and NOT set respond-pending flag."""
+        mock_db.session.get.return_value = mock_agent_complete
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+            response = client.post("/api/voice/command", json={"text": "do something", "agent_id": 4})
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["new_state"] == "idle"
             assert 4 not in pending
 
     def test_command_to_processing_rejected(self, client, mock_db, mock_agent_processing):
