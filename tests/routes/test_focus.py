@@ -7,6 +7,7 @@ from flask import Flask
 
 from src.claude_headspace.routes.focus import focus_bp
 from src.claude_headspace.services.iterm_focus import FocusErrorType, FocusResult
+from src.claude_headspace.services.tmux_bridge import TmuxBridgeErrorType, TtyResult
 
 
 @pytest.fixture
@@ -44,20 +45,44 @@ def mock_project():
 
 @pytest.fixture
 def mock_agent(mock_project):
-    """Create a mock agent with pane ID."""
+    """Create a mock agent with iterm pane ID only."""
     agent = MagicMock()
     agent.id = 1
     agent.iterm_pane_id = "pty-12345"
+    agent.tmux_pane_id = None
     agent.project = mock_project
     return agent
 
 
 @pytest.fixture
 def mock_agent_no_pane(mock_project):
-    """Create a mock agent without pane ID."""
+    """Create a mock agent without any pane ID."""
     agent = MagicMock()
     agent.id = 2
     agent.iterm_pane_id = None
+    agent.tmux_pane_id = None
+    agent.project = mock_project
+    return agent
+
+
+@pytest.fixture
+def mock_agent_tmux(mock_project):
+    """Create a mock agent with both tmux and iterm pane IDs."""
+    agent = MagicMock()
+    agent.id = 3
+    agent.iterm_pane_id = "pty-12345"
+    agent.tmux_pane_id = "%29"
+    agent.project = mock_project
+    return agent
+
+
+@pytest.fixture
+def mock_agent_tmux_only(mock_project):
+    """Create a mock agent with tmux pane ID but no iterm pane ID."""
+    agent = MagicMock()
+    agent.id = 4
+    agent.iterm_pane_id = None
+    agent.tmux_pane_id = "%29"
     agent.project = mock_project
     return agent
 
@@ -78,7 +103,7 @@ class TestFocusAgent:
         assert "999" in data["error"]
 
     def test_agent_no_pane_id(self, client, mock_db, mock_agent_no_pane):
-        """Test error when agent has no pane ID."""
+        """Test error when agent has neither iterm nor tmux pane ID."""
         mock_db.session.get.return_value = mock_agent_no_pane
 
         response = client.post("/api/focus/2")
@@ -92,7 +117,7 @@ class TestFocusAgent:
 
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
     def test_focus_success(self, mock_focus, client, mock_db, mock_agent):
-        """Test successful focus operation."""
+        """Test successful focus operation (iterm path)."""
         mock_db.session.get.return_value = mock_agent
         mock_focus.return_value = FocusResult(
             success=True,
@@ -106,6 +131,7 @@ class TestFocusAgent:
         assert data["status"] == "ok"
         assert data["agent_id"] == 1
         assert data["pane_id"] == "pty-12345"
+        assert data["method"] == "iterm"
 
         mock_focus.assert_called_once_with("pty-12345")
 
@@ -204,6 +230,7 @@ class TestFocusAgent:
         agent = MagicMock()
         agent.id = 1
         agent.iterm_pane_id = None
+        agent.tmux_pane_id = None
         agent.project = None
         mock_db.session.get.return_value = agent
 
@@ -213,6 +240,112 @@ class TestFocusAgent:
         data = response.get_json()
         # fallback_path should be None when no project
         assert data["fallback_path"] is None
+
+    def test_focus_neither_pane_id(self, client, mock_db, mock_agent_no_pane):
+        """Test 400 when agent has neither iterm nor tmux pane ID."""
+        mock_db.session.get.return_value = mock_agent_no_pane
+
+        response = client.post("/api/focus/2")
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["detail"] == "pane_not_found"
+
+
+class TestFocusTmux:
+    """Tests for tmux-aware focus routing."""
+
+    @patch("src.claude_headspace.routes.focus.focus_iterm_by_tty")
+    @patch("src.claude_headspace.routes.focus.select_pane")
+    @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
+    def test_focus_tmux_success(
+        self, mock_get_tty, mock_select, mock_focus_tty,
+        client, mock_db, mock_agent_tmux,
+    ):
+        """Test successful tmux focus: TTY resolution + pane select + iTerm focus."""
+        mock_db.session.get.return_value = mock_agent_tmux
+        mock_get_tty.return_value = TtyResult(
+            success=True, tty="/dev/ttys003", session_name="main",
+        )
+        mock_select.return_value = MagicMock(success=True)
+        mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
+
+        response = client.post("/api/focus/3")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["method"] == "tmux"
+
+        mock_get_tty.assert_called_once_with("%29")
+        mock_select.assert_called_once_with("%29")
+        mock_focus_tty.assert_called_once_with("/dev/ttys003")
+
+    @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
+    @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
+    def test_focus_tmux_fallback_to_iterm(
+        self, mock_get_tty, mock_focus_iterm,
+        client, mock_db, mock_agent_tmux,
+    ):
+        """Test fallback to iterm when tmux TTY resolution fails."""
+        mock_db.session.get.return_value = mock_agent_tmux
+        mock_get_tty.return_value = TtyResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="tmux pane %29 not found.",
+        )
+        mock_focus_iterm.return_value = FocusResult(success=True, latency_ms=100)
+
+        response = client.post("/api/focus/3")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["method"] == "tmux_fallback_iterm"
+
+        mock_focus_iterm.assert_called_once_with("pty-12345")
+
+    @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
+    def test_focus_tmux_only_no_iterm(
+        self, mock_get_tty, client, mock_db, mock_agent_tmux_only,
+    ):
+        """Test tmux-only agent with no iterm fallback when TTY resolution fails."""
+        mock_db.session.get.return_value = mock_agent_tmux_only
+        mock_get_tty.return_value = TtyResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="tmux pane %29 not found.",
+        )
+
+        response = client.post("/api/focus/4")
+
+        assert response.status_code == 500
+        data = response.get_json()
+        assert data["detail"] == "pane_not_found"
+        assert data["method"] == "tmux"
+
+    @patch("src.claude_headspace.routes.focus.focus_iterm_by_tty")
+    @patch("src.claude_headspace.routes.focus.select_pane")
+    @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
+    def test_focus_tmux_select_pane_fails_continues(
+        self, mock_get_tty, mock_select, mock_focus_tty,
+        client, mock_db, mock_agent_tmux,
+    ):
+        """Test that iTerm focus proceeds even if tmux select-pane fails."""
+        mock_db.session.get.return_value = mock_agent_tmux
+        mock_get_tty.return_value = TtyResult(
+            success=True, tty="/dev/ttys003", session_name="main",
+        )
+        mock_select.return_value = MagicMock(success=False, error_message="select failed")
+        mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
+
+        response = client.post("/api/focus/3")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        # iTerm focus still proceeded despite select failure
+        mock_focus_tty.assert_called_once_with("/dev/ttys003")
 
 
 class TestFallbackPath:
@@ -232,6 +365,7 @@ class TestFallbackPath:
         agent = MagicMock()
         agent.id = 1
         agent.iterm_pane_id = None
+        agent.tmux_pane_id = None
         agent.project = None
         mock_db.session.get.return_value = agent
 
@@ -247,6 +381,7 @@ class TestFallbackPath:
         agent = MagicMock()
         agent.id = 1
         agent.iterm_pane_id = None
+        agent.tmux_pane_id = None
         agent.project = project
         mock_db.session.get.return_value = agent
 
@@ -305,3 +440,26 @@ class TestFocusEventLogging:
         log_message = mock_logger.info.call_args[0][0]
         assert "agent_id=999" in log_message
         assert "error_type=agent_not_found" in log_message
+
+    @patch("src.claude_headspace.routes.focus.focus_iterm_by_tty")
+    @patch("src.claude_headspace.routes.focus.select_pane")
+    @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
+    @patch("src.claude_headspace.routes.focus.logger")
+    def test_tmux_focus_logged_with_method(
+        self, mock_logger, mock_get_tty, mock_select, mock_focus_tty,
+        client, mock_db, mock_agent_tmux,
+    ):
+        """Test tmux focus logs include method and tmux_pane_id."""
+        mock_db.session.get.return_value = mock_agent_tmux
+        mock_get_tty.return_value = TtyResult(
+            success=True, tty="/dev/ttys003", session_name="main",
+        )
+        mock_select.return_value = MagicMock(success=True)
+        mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
+
+        client.post("/api/focus/3")
+
+        assert mock_logger.info.called
+        log_message = mock_logger.info.call_args[0][0]
+        assert "method=tmux" in log_message
+        assert "tmux_pane_id=%29" in log_message
