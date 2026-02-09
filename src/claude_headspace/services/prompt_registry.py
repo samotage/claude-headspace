@@ -203,6 +203,15 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Is the agent asking the user a question or waiting for user input? "
         "Answer only 'yes' or 'no'."
     ),
+
+    # --- Voice bridge: output formatting ---
+    "voice_format_output": (
+        "Agent: {agent_name}\n"
+        "Recent output:\n{output_text}\n\n"
+        "Rewrite this for spoken delivery. Use short sentences. "
+        "Structure: 1 status line, 1-3 key results, next action (or 'none'). "
+        "Output ONLY the rewritten text — no labels or commentary."
+    ),
 }
 
 

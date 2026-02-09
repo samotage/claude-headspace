@@ -146,6 +146,20 @@ DEFAULTS = {
             "days": 90,
         },
     },
+    "voice_bridge": {
+        "enabled": False,
+        "auth": {
+            "token": "",
+            "localhost_bypass": True,
+        },
+        "network": {
+            "bind_address": "127.0.0.1",
+        },
+        "rate_limit": {
+            "requests_per_minute": 60,
+        },
+        "default_verbosity": "concise",
+    },
 }
 
 # Environment variable mappings

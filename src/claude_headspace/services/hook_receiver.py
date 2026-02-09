@@ -435,6 +435,8 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                     turn = _Turn(
                         task_id=task.id, actor=TurnActor.AGENT,
                         intent=TurnIntent.QUESTION, text=agent_text,
+                        question_text=agent_text,
+                        question_source_type="free_text",
                     )
                     db.session.add(turn)
                     lifecycle.update_task_state(
@@ -732,6 +734,8 @@ def process_stop(
             turn = Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=agent_text or "",
+                question_text=agent_text or "",
+                question_source_type="free_text",
             )
             db.session.add(turn)
             lifecycle.update_task_state(
@@ -813,6 +817,23 @@ def _handle_awaiting_input(
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
             structured_options = _extract_structured_options(tool_name, tool_input)
+            # Determine question source type and voice-friendly options
+            q_source_type = None
+            q_options = None
+            if tool_name == "AskUserQuestion" and structured_options:
+                q_source_type = "ask_user_question"
+                # Extract normalized options for voice bridge
+                questions = structured_options.get("questions", [])
+                if questions and isinstance(questions, list):
+                    q = questions[0] if questions else {}
+                    opts = q.get("options", [])
+                    if opts:
+                        q_options = [
+                            {"label": o.get("label", ""), "description": o.get("description", "")}
+                            for o in opts if isinstance(o, dict)
+                        ]
+            elif event_type_enum == HookEventType.PERMISSION_REQUEST:
+                q_source_type = "permission_request"
             # For ExitPlanMode, synthesize default approval options
             if structured_options is None and tool_name == "ExitPlanMode":
                 question_text = "Approve plan and proceed?"
@@ -826,6 +847,11 @@ def _handle_awaiting_input(
                     }],
                     "source": "exit_plan_mode_default",
                 }
+                q_source_type = "ask_user_question"
+                q_options = [
+                    {"label": "Yes", "description": "Approve the plan and begin implementation"},
+                    {"label": "No", "description": "Reject and stay in plan mode"},
+                ]
             # For permission_request, try capturing options + context from the tmux pane
             if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
                 structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
@@ -834,6 +860,14 @@ def _handle_awaiting_input(
                     synth_questions = structured_options.get("questions", [])
                     if synth_questions and synth_questions[0].get("question"):
                         question_text = synth_questions[0]["question"]
+                    # Extract options for voice bridge
+                    if synth_questions:
+                        opts = synth_questions[0].get("options", [])
+                        if opts:
+                            q_options = [
+                                {"label": o.get("label", ""), "description": o.get("description", "")}
+                                for o in opts if isinstance(o, dict)
+                            ]
                     # Check if LLM fallback needed (generic summary)
                     if question_text and question_text.startswith("Permission:"):
                         permission_summary_needed = True
@@ -841,6 +875,9 @@ def _handle_awaiting_input(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
                 tool_input=structured_options,
+                question_text=question_text,
+                question_options=q_options,
+                question_source_type=q_source_type,
             ))
         elif message or title:
             # notification: dedup against recent pre_tool_use turn
@@ -857,6 +894,8 @@ def _handle_awaiting_input(
                     db.session.add(Turn(
                         task_id=current_task.id, actor=TurnActor.AGENT,
                         intent=TurnIntent.QUESTION, text=question_text,
+                        question_text=question_text,
+                        question_source_type="free_text",
                     ))
 
         # Use lifecycle manager for state transition (writes event + sends notification)
