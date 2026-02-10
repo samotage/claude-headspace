@@ -43,6 +43,59 @@ class ReapResult:
     details: list[ReapDetail] = field(default_factory=list)
 
 
+def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
+    """Check if a `claude` process is running in a tmux pane's process tree.
+
+    Returns:
+        True if claude is running, False if pane exists but no claude,
+        None if we can't determine (pane doesn't exist or error).
+    """
+    import subprocess
+
+    try:
+        # Get the pane's root PID from tmux
+        result = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+
+        pane_pid = None
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == tmux_pane_id:
+                pane_pid = parts[1]
+                break
+
+        if not pane_pid:
+            return None  # Pane doesn't exist in tmux
+
+        # Walk the process tree: check children and grandchildren for 'claude'
+        result = subprocess.run(
+            ["pgrep", "-P", pane_pid, "-la"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().split("\n"):
+            if "claude" in line.lower():
+                return True
+            # Check grandchildren (bridge → claude)
+            parts = line.split()
+            if parts:
+                child_pid = parts[0]
+                grandchild_result = subprocess.run(
+                    ["pgrep", "-P", child_pid, "-la"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for gc_line in grandchild_result.stdout.strip().split("\n"):
+                    if "claude" in gc_line.lower():
+                        return True
+
+        return False  # Pane exists but no claude process
+    except Exception:
+        return None
+
+
 class AgentReaper:
     """Background service that detects and cleans up dead agents.
 
@@ -166,52 +219,34 @@ class AgentReaper:
 
                 reap_reason = None
 
-                if agent.iterm_pane_id:
+                # --- Primary liveness: tmux process tree ---
+                # When the agent has a tmux pane, check if `claude` is
+                # actually running.  This is the definitive signal —
+                # iTerm AppleScript is unreliable and commander can't
+                # distinguish Claude Code from the bridge launcher.
+                if agent.tmux_pane_id:
+                    claude_alive = _is_claude_running_in_pane(agent.tmux_pane_id)
+                    if claude_alive is True:
+                        result.skipped_alive += 1
+                        continue
+                    elif claude_alive is False:
+                        # Pane exists but Claude Code has exited
+                        # (bridge launcher still running)
+                        reap_reason = "claude_exited"
+
+                # --- Fallback: iTerm pane check + inactivity ---
+                if reap_reason is None and agent.iterm_pane_id:
                     status = check_pane_exists(agent.iterm_pane_id)
 
                     if status == PaneStatus.FOUND:
-                        # Pane exists — but does this agent own it?
                         pane_key = (agent.iterm_pane_id, agent.tmux_pane_id)
                         if pane_owners.get(pane_key) != agent.id:
                             reap_reason = "stale_pane"
                         else:
-                            # Check inactivity even when pane exists — active Claude Code
-                            # sessions send hooks regularly which update last_seen_at.
-                            # A gap exceeding timeout means Claude Code exited but the
-                            # bridge process keeps the pane alive.
-                            if agent.last_seen_at is not None and agent.last_seen_at >= inactivity_cutoff:
-                                result.skipped_alive += 1
-                                continue
-                            # Inactive — commander check as second opinion
-                            if agent.tmux_pane_id:
-                                try:
-                                    commander = self._app.extensions.get("commander_availability")
-                                    if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
-                                        agent.last_seen_at = now
-                                        result.skipped_alive += 1
-                                        continue
-                                except Exception:
-                                    pass
-                            reap_reason = "inactivity_timeout"
+                            # iTerm says pane exists — trust it
+                            result.skipped_alive += 1
+                            continue
                     elif status == PaneStatus.NOT_FOUND:
-                        # Pane gone — check inactivity before using commander
-                        # as second opinion. The bridge launcher keeps tmux panes
-                        # alive after Claude Code exits, so commander alone is
-                        # not reliable.
-                        if agent.last_seen_at is not None and agent.last_seen_at >= inactivity_cutoff:
-                            # Recently active — commander as second opinion
-                            if agent.tmux_pane_id:
-                                try:
-                                    commander = self._app.extensions.get("commander_availability")
-                                    if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
-                                        agent.last_seen_at = now
-                                        result.skipped_alive += 1
-                                        logger.debug(
-                                            f"Skipped reap for agent {agent.id}: bridge_alive (pane_not_found)"
-                                        )
-                                        continue
-                                except Exception:
-                                    logger.debug(f"Commander check failed for agent {agent.id}, proceeding with reap")
                         reap_reason = "pane_not_found"
                     elif status == PaneStatus.ITERM_NOT_RUNNING:
                         # Can't verify via iTerm — fall through to inactivity
@@ -221,33 +256,16 @@ class AgentReaper:
                             result.skipped_alive += 1
                             continue
                     else:
-                        # ERROR — don't reap on uncertainty
                         result.skipped_error += 1
                         continue
-                else:
-                    # No pane ID — can only use inactivity timeout
+
+                # --- No pane info at all: inactivity only ---
+                if reap_reason is None:
                     if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                         reap_reason = "inactivity_timeout"
                     else:
                         result.skipped_alive += 1
                         continue
-
-                # Final double-check: verify commander_availability before reaping.
-                # Only for stale_pane — where ownership changed but the agent
-                # may still be alive in a different context.
-                if agent.tmux_pane_id and reap_reason == "stale_pane":
-                    try:
-                        commander = self._app.extensions.get("commander_availability")
-                        if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
-                            agent.last_seen_at = now
-                            result.skipped_alive += 1
-                            logger.debug(
-                                f"Skipped reap for agent {agent.id}: "
-                                f"bridge_alive (final double-check, reason={reap_reason})"
-                            )
-                            continue
-                    except Exception:
-                        logger.debug(f"Final commander check failed for agent {agent.id}, proceeding with reap")
 
                 # Reap the agent
                 self._reap_agent(agent, reap_reason, now)
