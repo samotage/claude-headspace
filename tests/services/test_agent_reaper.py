@@ -366,13 +366,13 @@ class TestReapOnce:
 
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_commander_double_check_saves_agent(self, mock_db, mock_check, mock_app):
-        """Agent whose iTerm pane is gone but tmux bridge is alive should be saved."""
+    def test_commander_saves_recently_active_agent(self, mock_db, mock_check, mock_app):
+        """Recently active agent whose pane is gone but bridge is alive should be saved."""
         now = datetime.now(timezone.utc)
         agent = _make_agent(
             iterm_pane_id="pty-123",
             tmux_pane_id="%5",
-            last_seen_at=now - timedelta(minutes=10),
+            last_seen_at=now - timedelta(minutes=1),  # Recently active
         )
         mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
         mock_check.return_value = PaneStatus.NOT_FOUND
@@ -388,7 +388,30 @@ class TestReapOnce:
         assert result.reaped == 0
         assert result.skipped_alive == 1
         # last_seen_at should be refreshed
-        assert agent.last_seen_at > now - timedelta(minutes=5)
+        assert agent.last_seen_at > now - timedelta(seconds=30)
+
+    @patch(PATCH_CHECK_PANE)
+    @patch(PATCH_DB)
+    def test_commander_does_not_save_inactive_agent(self, mock_db, mock_check, mock_app):
+        """Inactive agent with pane gone should be reaped even if bridge is alive."""
+        now = datetime.now(timezone.utc)
+        agent = _make_agent(
+            iterm_pane_id="pty-123",
+            tmux_pane_id="%5",
+            last_seen_at=now - timedelta(minutes=10),  # Inactive
+        )
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_check.return_value = PaneStatus.NOT_FOUND
+
+        mock_commander = MagicMock()
+        mock_commander.check_agent.return_value = True
+        mock_app.extensions["commander_availability"] = mock_commander
+
+        reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        result = reaper.reap_once()
+
+        assert result.reaped == 1
+        assert result.details[0].reason == "pane_not_found"
 
 
 class TestReapAgent:
@@ -539,6 +562,7 @@ class TestPaneFoundInactivity:
 
 PATCH_EXTRACT_TRANSCRIPT = "claude_headspace.services.agent_reaper._extract_transcript_content"
 PATCH_DETECT_INTENT = "claude_headspace.services.agent_reaper.detect_agent_intent"
+PATCH_GET_LIFECYCLE = "claude_headspace.services.hook_receiver._get_lifecycle_manager"
 
 
 class TestOrphanedTaskCompletion:
@@ -581,10 +605,10 @@ class TestOrphanedTaskCompletion:
         # Mock lifecycle manager
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
-        mock_app.extensions["task_lifecycle"] = mock_lifecycle
 
-        # Mock transcript extraction
-        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value="TASK COMPLETE — did stuff"):
+        # Mock transcript extraction and lifecycle manager creation
+        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value="TASK COMPLETE — did stuff"), \
+             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
 
@@ -629,9 +653,9 @@ class TestOrphanedTaskCompletion:
 
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
-        mock_app.extensions["task_lifecycle"] = mock_lifecycle
 
-        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value=""):
+        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value=""), \
+             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
 
@@ -706,7 +730,6 @@ class TestOrphanedTaskCompletion:
 
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
-        mock_app.extensions["task_lifecycle"] = mock_lifecycle
 
         # Mock intent detection to return END_OF_TASK
         mock_intent_result = MagicMock()
@@ -717,7 +740,8 @@ class TestOrphanedTaskCompletion:
         mock_intent_result.intent = TurnIntent.END_OF_TASK
 
         with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value="---\nTASK COMPLETE — finished work\n---"), \
-             patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result):
+             patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result), \
+             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
 
