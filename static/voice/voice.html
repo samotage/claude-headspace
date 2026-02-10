@@ -89,7 +89,9 @@
         <span id="chat-project-name" class="chat-project-name"></span>
       </div>
     </div>
-    <div id="chat-messages" class="chat-messages"></div>
+    <div id="chat-messages" class="chat-messages">
+      <div id="chat-load-more" class="chat-load-more" style="display:none"></div>
+    </div>
     <div id="chat-typing" class="chat-typing" style="display:none">
       <div class="typing-bubble">
         <span class="typing-dot"></span>
@@ -97,7 +99,10 @@
         <span class="typing-dot"></span>
       </div>
     </div>
-    <div class="chat-input-bar">
+    <div id="chat-ended-banner" class="chat-ended-banner" style="display:none">
+      Agent session has ended
+    </div>
+    <div id="chat-input-area" class="chat-input-bar">
       <form id="chat-input-form" class="chat-input-form">
         <input type="text" id="chat-text-input" class="chat-text-field" placeholder="Message..." autocomplete="off">
         <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send">

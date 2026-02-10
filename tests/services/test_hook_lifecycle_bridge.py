@@ -416,10 +416,10 @@ class TestProcessPostToolUse(TestHookLifecycleBridge):
             )
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
-    def test_noop_when_already_processing(
+    def test_captures_intermediate_when_processing(
         self, mock_db, bridge, mock_agent, mock_task
     ):
-        """PostToolUse should be a no-op when task is already PROCESSING."""
+        """PostToolUse should capture intermediate PROGRESS when PROCESSING."""
         mock_task.state = TaskState.PROCESSING
 
         with patch.object(
@@ -429,12 +429,16 @@ class TestProcessPostToolUse(TestHookLifecycleBridge):
             mock_get_lifecycle.return_value = mock_lifecycle
             mock_lifecycle.get_current_task.return_value = mock_task
 
-            result = bridge.process_post_tool_use(mock_agent, "session-123")
+            with patch.object(
+                bridge, '_capture_intermediate_progress'
+            ) as mock_capture:
+                result = bridge.process_post_tool_use(mock_agent, "session-123")
 
-            assert result.success is True
-            assert result.task is mock_task
-            mock_lifecycle.create_task.assert_not_called()
-            mock_lifecycle.process_turn.assert_not_called()
+                assert result.success is True
+                assert result.task is mock_task
+                mock_lifecycle.create_task.assert_not_called()
+                mock_lifecycle.process_turn.assert_not_called()
+                mock_capture.assert_called_once_with(mock_agent, mock_task)
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
     def test_resumes_from_awaiting_input(
@@ -677,3 +681,158 @@ class TestTurnProcessingResultFields:
 
         assert result.success is False
         assert result.error == "State transition not valid"
+
+
+class TestIntermediateProgressCapture(TestHookLifecycleBridge):
+    """Tests for intermediate PROGRESS turn capture (task 3.1)."""
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_captures_progress_from_transcript(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """_capture_intermediate_progress creates PROGRESS turns from transcript."""
+        mock_agent.transcript_path = "/tmp/transcript.jsonl"
+        mock_task.id = 1
+
+        from claude_headspace.services.transcript_reader import TranscriptEntry
+
+        entries = [
+            TranscriptEntry(type="assistant", role="assistant", content="Working on it..."),
+        ]
+
+        with patch(
+            "claude_headspace.services.hook_receiver._transcript_positions",
+            {1: 0},  # agent_id -> position
+        ), patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {},
+        ) as mock_progress_texts, patch(
+            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+            return_value=(entries, 500),
+        ) as mock_read:
+            bridge._capture_intermediate_progress(mock_agent, mock_task)
+
+            mock_read.assert_called_once_with("/tmp/transcript.jsonl", 0)
+            # Should have added a Turn
+            mock_db.session.add.assert_called_once()
+            added_turn = mock_db.session.add.call_args[0][0]
+            assert added_turn.intent == TurnIntent.PROGRESS
+            assert added_turn.actor == TurnActor.AGENT
+            assert added_turn.text == "Working on it..."
+            # Should track the text for deduplication
+            assert 1 in mock_progress_texts
+            assert "Working on it..." in mock_progress_texts[1]
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_skips_empty_text(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """_capture_intermediate_progress skips empty/whitespace text (task 3.6)."""
+        mock_agent.transcript_path = "/tmp/transcript.jsonl"
+
+        from claude_headspace.services.transcript_reader import TranscriptEntry
+
+        entries = [
+            TranscriptEntry(type="assistant", role="assistant", content="   "),
+            TranscriptEntry(type="assistant", role="assistant", content=""),
+            TranscriptEntry(type="user", role="user", content="hello"),
+        ]
+
+        with patch(
+            "claude_headspace.services.hook_receiver._transcript_positions",
+            {1: 0},
+        ), patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {},
+        ), patch(
+            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+            return_value=(entries, 500),
+        ):
+            bridge._capture_intermediate_progress(mock_agent, mock_task)
+
+            # No turns should be added
+            mock_db.session.add.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_no_capture_without_transcript_path(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """_capture_intermediate_progress does nothing without transcript_path."""
+        mock_agent.transcript_path = None
+
+        bridge._capture_intermediate_progress(mock_agent, mock_task)
+
+        mock_db.session.add.assert_not_called()
+
+    @patch("claude_headspace.services.hook_lifecycle_bridge.db")
+    def test_updates_position_after_read(
+        self, mock_db, bridge, mock_agent, mock_task
+    ):
+        """_capture_intermediate_progress updates position tracking (task 3.7)."""
+        mock_agent.transcript_path = "/tmp/transcript.jsonl"
+
+        from claude_headspace.services.transcript_reader import TranscriptEntry
+
+        positions = {1: 100}
+
+        with patch(
+            "claude_headspace.services.hook_receiver._transcript_positions",
+            positions,
+        ), patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {},
+        ), patch(
+            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+            return_value=([], 600),
+        ):
+            bridge._capture_intermediate_progress(mock_agent, mock_task)
+
+            # Position should be updated
+            assert positions[1] == 600
+
+
+class TestDeduplication(TestHookLifecycleBridge):
+    """Tests for stop hook deduplication (task 3.2)."""
+
+    def test_dedup_strips_matching_text(self, bridge, mock_agent):
+        """_deduplicate_stop_text strips text already captured as PROGRESS."""
+        with patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {1: ["First part", "Second part"]},
+        ):
+            result = bridge._deduplicate_stop_text(
+                mock_agent,
+                "First part Second part Final conclusion",
+            )
+            assert "First part" not in result
+            assert "Second part" not in result
+            assert "Final conclusion" in result
+
+    def test_dedup_returns_full_text_when_no_progress(self, bridge, mock_agent):
+        """_deduplicate_stop_text returns full text when no PROGRESS captured."""
+        with patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {},
+        ):
+            result = bridge._deduplicate_stop_text(mock_agent, "Full text here")
+            assert result == "Full text here"
+
+    def test_dedup_handles_empty_text(self, bridge, mock_agent):
+        """_deduplicate_stop_text handles empty/None text."""
+        with patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            {1: ["some text"]},
+        ):
+            assert bridge._deduplicate_stop_text(mock_agent, "") == ""
+            assert bridge._deduplicate_stop_text(mock_agent, None) is None
+
+    def test_dedup_clears_progress_texts(self, bridge, mock_agent):
+        """_deduplicate_stop_text clears progress texts after dedup."""
+        progress_dict = {1: ["Captured text"]}
+        with patch(
+            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
+            progress_dict,
+        ):
+            bridge._deduplicate_stop_text(mock_agent, "Captured text and more")
+            # Progress texts should be cleared
+            assert 1 not in progress_dict

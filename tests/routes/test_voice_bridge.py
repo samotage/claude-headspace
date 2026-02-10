@@ -767,3 +767,225 @@ class TestTurnModelColumns:
     def test_turn_has_answered_by_relationship(self):
         from src.claude_headspace.models.turn import Turn
         assert hasattr(Turn, "answered_by")
+
+
+# ──────────────────────────────────────────────────────────────
+# Transcript endpoint tests (tasks 3.3, 3.4, 3.5)
+# ──────────────────────────────────────────────────────────────
+
+class TestAgentTranscript:
+    """Tests for GET /api/voice/agents/<agent_id>/transcript."""
+
+    def test_agent_not_found(self, client, mock_db):
+        mock_db.session.get.return_value = None
+        response = client.get("/api/voice/agents/999/transcript")
+        assert response.status_code == 404
+
+    def test_returns_turns_across_tasks(self, client, mock_db, mock_agent):
+        """Transcript returns turns from ALL tasks for agent (task 3.4)."""
+        mock_db.session.get.return_value = mock_agent
+
+        # Mock turns from different tasks
+        mock_task1 = MagicMock()
+        mock_task1.id = 10
+        mock_task1.instruction = "Fix the bug"
+        mock_task1.state = TaskState.COMPLETE
+
+        mock_task2 = MagicMock()
+        mock_task2.id = 20
+        mock_task2.instruction = "Add tests"
+        mock_task2.state = TaskState.PROCESSING
+
+        turn1 = MagicMock()
+        turn1.id = 1
+        turn1.actor = TurnActor.USER
+        turn1.intent = TurnIntent.COMMAND
+        turn1.text = "fix it"
+        turn1.summary = None
+        turn1.timestamp = datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc)
+        turn1.tool_input = None
+        turn1.question_text = None
+        turn1.question_options = None
+        turn1.question_source_type = None
+        turn1.answered_by_turn_id = None
+
+        turn2 = MagicMock()
+        turn2.id = 2
+        turn2.actor = TurnActor.AGENT
+        turn2.intent = TurnIntent.COMPLETION
+        turn2.text = "Fixed"
+        turn2.summary = None
+        turn2.timestamp = datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc)
+        turn2.tool_input = None
+        turn2.question_text = None
+        turn2.question_options = None
+        turn2.question_source_type = None
+        turn2.answered_by_turn_id = None
+
+        # Mock the query chain: query(Turn, Task).join().filter().order_by().limit()
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [(turn2, mock_task2), (turn1, mock_task1)]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data["turns"]) == 2
+        # Each turn should have task metadata
+        assert data["turns"][0]["task_id"] is not None
+        assert data["turns"][0]["task_instruction"] is not None
+        assert data["turns"][0]["task_state"] is not None
+
+    def test_cursor_pagination(self, client, mock_db, mock_agent):
+        """Transcript supports cursor-based pagination (task 3.3)."""
+        mock_db.session.get.return_value = mock_agent
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+
+        response = client.get("/api/voice/agents/1/transcript?before=100&limit=25")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "has_more" in data
+        assert "turns" in data
+
+    def test_has_more_flag(self, client, mock_db, mock_agent):
+        """has_more is true when more turns exist (task 3.3)."""
+        mock_db.session.get.return_value = mock_agent
+
+        # Return limit+1 results to indicate more exist
+        mock_turn = MagicMock()
+        mock_turn.id = 1
+        mock_turn.actor = TurnActor.USER
+        mock_turn.intent = TurnIntent.COMMAND
+        mock_turn.text = "test"
+        mock_turn.summary = None
+        mock_turn.timestamp = datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc)
+        mock_turn.tool_input = None
+        mock_turn.question_text = None
+        mock_turn.question_options = None
+        mock_turn.question_source_type = None
+        mock_turn.answered_by_turn_id = None
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.instruction = "Test"
+        mock_task.state = TaskState.PROCESSING
+
+        # Simulate limit=2 returning 3 results (2+1 extra = has_more)
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [(mock_turn, mock_task)] * 3
+
+        response = client.get("/api/voice/agents/1/transcript?limit=2")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["has_more"] is True
+        assert len(data["turns"]) == 2
+
+    def test_ended_agent_transcript(self, client, mock_db, mock_project):
+        """Ended agent returns full history with agent_ended flag (task 3.5)."""
+        agent = MagicMock()
+        agent.id = 5
+        agent.name = "ended-agent"
+        agent.project = mock_project
+        agent.ended_at = datetime(2026, 2, 10, tzinfo=timezone.utc)
+        agent.get_current_task.return_value = None
+
+        mock_db.session.get.return_value = agent
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+
+        response = client.get("/api/voice/agents/5/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["agent_ended"] is True
+        assert data["agent_state"] == "idle"
+
+    def test_empty_transcript(self, client, mock_db, mock_agent):
+        """Agent with no turns returns empty list."""
+        mock_db.session.get.return_value = mock_agent
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["turns"] == []
+        assert data["has_more"] is False
+
+    def test_filters_empty_progress_turns(self, client, mock_db, mock_agent):
+        """Empty PROGRESS turns are filtered from response."""
+        mock_db.session.get.return_value = mock_agent
+
+        turn = MagicMock()
+        turn.id = 1
+        turn.actor = TurnActor.AGENT
+        turn.intent = TurnIntent.PROGRESS
+        turn.text = "   "  # whitespace-only
+        turn.summary = None
+        turn.timestamp = datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc)
+        turn.tool_input = None
+        turn.question_text = None
+        turn.question_options = None
+        turn.question_source_type = None
+        turn.answered_by_turn_id = None
+
+        mock_task = MagicMock()
+        mock_task.id = 10
+        mock_task.instruction = "Test"
+        mock_task.state = TaskState.PROCESSING
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [(turn, mock_task)]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data["turns"]) == 0
+
+    def test_limit_capped_at_200(self, client, mock_db, mock_agent):
+        """Limit parameter is capped at 200."""
+        mock_db.session.get.return_value = mock_agent
+
+        mock_query = MagicMock()
+        mock_db.session.query.return_value = mock_query
+        mock_query.join.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+
+        client.get("/api/voice/agents/1/transcript?limit=500")
+        # Should have been capped to 201 (200+1 for has_more check)
+        mock_query.limit.assert_called_with(201)

@@ -468,33 +468,44 @@ def agent_question(agent_id: int):
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/transcript", methods=["GET"])
 def agent_transcript(agent_id: int):
-    """Get turn-by-turn transcript for an agent's current task."""
+    """Get agent-lifetime conversation history with cursor-based pagination.
+
+    Query params:
+        before: Turn ID cursor — return turns older than this ID
+        limit: Number of turns to return (default 50, max 200)
+    """
     agent = db.session.get(Agent, agent_id)
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
-    current_task = agent.get_current_task()
-    if not current_task:
-        # Fall back to most recent completed task
-        current_task = (
-            db.session.query(Task)
-            .filter(Task.agent_id == agent_id)
-            .order_by(Task.started_at.desc())
-            .first()
-        )
+    # Parse pagination params
+    before = request.args.get("before", type=int)
+    limit = min(request.args.get("limit", 50, type=int), 200)
 
-    if not current_task:
-        return jsonify({"turns": [], "agent_state": "idle", "project": agent.project.name if agent.project else "unknown"}), 200
-
-    turns = (
-        db.session.query(Turn)
-        .filter(Turn.task_id == current_task.id)
-        .order_by(Turn.timestamp.asc())
-        .all()
+    # Query turns across ALL tasks for this agent
+    query = (
+        db.session.query(Turn, Task)
+        .join(Task, Turn.task_id == Task.id)
+        .filter(Task.agent_id == agent_id)
     )
 
+    if before:
+        query = query.filter(Turn.id < before)
+
+    # Order descending to get most recent first, then reverse for chronological
+    query = query.order_by(Turn.id.desc()).limit(limit + 1)
+    results = query.all()
+
+    # Check if there are more older turns
+    has_more = len(results) > limit
+    if has_more:
+        results = results[:limit]
+
+    # Reverse to chronological order
+    results.reverse()
+
     turn_list = []
-    for t in turns:
+    for t, task in results:
         # Filter out PROGRESS turns with no meaningful text
         if t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip()):
             continue
@@ -510,13 +521,21 @@ def agent_transcript(agent_id: int):
             "question_options": t.question_options,
             "question_source_type": t.question_source_type,
             "answered_by_turn_id": t.answered_by_turn_id,
+            "task_id": task.id,
+            "task_instruction": task.instruction,
+            "task_state": task.state.value,
         })
+
+    # Determine current agent state
+    current_task = agent.get_current_task()
+    agent_state = current_task.state.value if current_task else "idle"
+    agent_ended = agent.ended_at is not None
 
     return jsonify({
         "turns": turn_list,
-        "agent_state": current_task.state.value,
-        "task_instruction": current_task.instruction,
-        "task_completion_summary": current_task.completion_summary,
+        "has_more": has_more,
+        "agent_state": agent_state,
+        "agent_ended": agent_ended,
         "project": agent.project.name if agent.project else "unknown",
         "agent_name": agent.name,
     }), 200

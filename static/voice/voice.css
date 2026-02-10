@@ -691,6 +691,76 @@ body {
 }
 .chat-mic-btn:active { color: var(--accent); }
 
+/* --- Task Separator (2.19) --- */
+.chat-task-separator {
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.chat-task-separator::before,
+.chat-task-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.chat-task-separator span {
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Load More Indicator (2.20) --- */
+.chat-load-more {
+  text-align: center;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.chat-load-more.loading::after {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-dim);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Ended Agent Banner (2.21) --- */
+.chat-ended-banner {
+  text-align: center;
+  padding: 10px 16px;
+  background: var(--card-bg);
+  color: var(--text-dim);
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+
+/* --- Grouped Bubble (2.22) --- */
+.chat-bubble.grouped .grouped-text {
+  display: flex;
+  flex-direction: column;
+}
+.chat-bubble.grouped .group-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 6px 0;
+}
+.chat-bubble.user.grouped .group-divider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 /* --- Responsive --- */
 @media (min-width: 600px) {
   .screen { max-width: 480px; margin: 0 auto; }

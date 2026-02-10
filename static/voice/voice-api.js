@@ -69,8 +69,14 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/agents/' + agentId + '/question');
   }
 
-  function getTranscript(agentId) {
-    return _fetch('/api/voice/agents/' + agentId + '/transcript');
+  function getTranscript(agentId, options) {
+    var params = [];
+    if (options) {
+      if (options.before) params.push('before=' + options.before);
+      if (options.limit) params.push('limit=' + options.limit);
+    }
+    var q = params.length ? '?' + params.join('&') : '';
+    return _fetch('/api/voice/agents/' + agentId + '/transcript' + q);
   }
 
   // --- SSE ---
