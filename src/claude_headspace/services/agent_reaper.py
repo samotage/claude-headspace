@@ -71,44 +71,38 @@ def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
         if not pane_pid:
             return None  # Pane doesn't exist in tmux
 
-        # Get child PIDs, then use `ps` for name — pgrep -la shows argv[0]
-        # which Claude Code sets to its version (e.g. "2.1.34"), not "claude".
-        child_pids_result = subprocess.run(
-            ["pgrep", "-P", pane_pid],
+        # Use `ps` to walk the process tree — macOS `pgrep -P` is unreliable
+        # without specific flags, and pgrep -la shows argv[0] (version number
+        # like "2.1.34") instead of the actual process name "claude".
+        #
+        # `ps -axo pid,ppid,comm` reliably shows all processes with their
+        # parent PID and real command name on macOS.
+        ps_result = subprocess.run(
+            ["ps", "-axo", "pid,ppid,comm"],
             capture_output=True, text=True, timeout=5,
         )
-        child_pids = child_pids_result.stdout.strip().split("\n")
-        child_pids = [p.strip() for p in child_pids if p.strip()]
+        if ps_result.returncode != 0:
+            return None
 
-        if not child_pids:
-            return False  # Pane exists but no child processes
+        # Build parent→children map for pane_pid and its children
+        children: dict[str, list[tuple[str, str]]] = {}  # ppid → [(pid, comm)]
+        for line in ps_result.stdout.strip().split("\n")[1:]:  # skip header
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                pid, ppid, comm = parts[0], parts[1], parts[2]
+                children.setdefault(ppid, []).append((pid, comm))
 
-        # Check children via ps (comm field shows actual process name)
-        for child_pid in child_pids:
-            ps_result = subprocess.run(
-                ["ps", "-p", child_pid, "-o", "comm="],
-                capture_output=True, text=True, timeout=5,
-            )
-            if "claude" in ps_result.stdout.lower():
+        # Check direct children
+        for child_pid, child_comm in children.get(pane_pid, []):
+            if "claude" in child_comm.lower():
                 return True
-
             # Check grandchildren (bridge → claude)
-            gc_pids_result = subprocess.run(
-                ["pgrep", "-P", child_pid],
-                capture_output=True, text=True, timeout=5,
-            )
-            gc_pids = gc_pids_result.stdout.strip().split("\n")
-            gc_pids = [p.strip() for p in gc_pids if p.strip()]
-
-            for gc_pid in gc_pids:
-                gc_ps_result = subprocess.run(
-                    ["ps", "-p", gc_pid, "-o", "comm="],
-                    capture_output=True, text=True, timeout=5,
-                )
-                if "claude" in gc_ps_result.stdout.lower():
+            for gc_pid, gc_comm in children.get(child_pid, []):
+                if "claude" in gc_comm.lower():
                     return True
 
-        return False  # Pane exists but no claude process
+        # Pane exists (we found it in tmux) but no claude in process tree
+        return False if children.get(pane_pid) else False
     except Exception:
         return None
 

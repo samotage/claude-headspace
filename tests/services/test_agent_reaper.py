@@ -707,17 +707,24 @@ class TestOrphanedTaskCompletion:
 class TestIsClaudeRunningInPane:
     """Unit tests for _is_claude_running_in_pane() subprocess logic."""
 
+    def _make_ps_output(self, *entries):
+        """Build a mock ps -axo pid,ppid,comm output.
+
+        Each entry is (pid, ppid, comm). A header line is added automatically.
+        """
+        lines = ["  PID  PPID COMM"]
+        for pid, ppid, comm in entries:
+            lines.append(f"{pid} {ppid} {comm}")
+        return "\n".join(lines) + "\n"
+
     @patch("subprocess.run")
     def test_returns_true_when_ps_shows_claude(self, mock_run):
-        """ps -o comm= shows 'claude' even when pgrep -la shows version number."""
-        # tmux list-panes returns our pane with PID 52807
+        """ps shows claude as child of pane pid."""
         tmux_result = MagicMock(returncode=0, stdout="%5 52807\n%6 99999\n")
-        # pgrep -P 52807 returns child PID 52811
-        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
-        # ps -p 52811 -o comm= returns 'claude'
-        ps_result = MagicMock(returncode=0, stdout="claude\n")
-
-        mock_run.side_effect = [tmux_result, pgrep_result, ps_result]
+        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
+            ("52811", "52807", "claude"),
+        ))
+        mock_run.side_effect = [tmux_result, ps_result]
 
         assert _is_claude_running_in_pane("%5") is True
 
@@ -725,14 +732,10 @@ class TestIsClaudeRunningInPane:
     def test_returns_false_when_no_claude_process(self, mock_run):
         """Pane exists but no claude in process tree."""
         tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        # pgrep -P returns a child PID
-        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
-        # ps shows bash, not claude
-        ps_result = MagicMock(returncode=0, stdout="bash\n")
-        # pgrep grandchildren returns nothing
-        gc_pgrep_result = MagicMock(returncode=1, stdout="\n")
-
-        mock_run.side_effect = [tmux_result, pgrep_result, ps_result, gc_pgrep_result]
+        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
+            ("52811", "52807", "bash"),
+        ))
+        mock_run.side_effect = [tmux_result, ps_result]
 
         assert _is_claude_running_in_pane("%5") is False
 
@@ -756,16 +759,11 @@ class TestIsClaudeRunningInPane:
     def test_finds_claude_in_grandchildren(self, mock_run):
         """Claude found as grandchild (bridge → claude)."""
         tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        # pgrep children returns bridge PID
-        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
-        # ps shows bridge, not claude
-        ps_result = MagicMock(returncode=0, stdout="bash\n")
-        # pgrep grandchildren returns claude PID
-        gc_pgrep_result = MagicMock(returncode=0, stdout="52916\n")
-        # ps grandchild shows claude
-        gc_ps_result = MagicMock(returncode=0, stdout="claude\n")
-
-        mock_run.side_effect = [tmux_result, pgrep_result, ps_result, gc_pgrep_result, gc_ps_result]
+        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
+            ("52811", "52807", "bash"),       # bridge (child)
+            ("52916", "52811", "claude"),      # claude (grandchild)
+        ))
+        mock_run.side_effect = [tmux_result, ps_result]
 
         assert _is_claude_running_in_pane("%5") is True
 
@@ -773,10 +771,11 @@ class TestIsClaudeRunningInPane:
     def test_returns_false_when_no_child_processes(self, mock_run):
         """Pane exists but has no child processes at all."""
         tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        # pgrep returns no children
-        pgrep_result = MagicMock(returncode=1, stdout="\n")
-
-        mock_run.side_effect = [tmux_result, pgrep_result]
+        # No processes with ppid matching pane_pid
+        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
+            ("99999", "1", "launchd"),
+        ))
+        mock_run.side_effect = [tmux_result, ps_result]
 
         assert _is_claude_running_in_pane("%5") is False
 
