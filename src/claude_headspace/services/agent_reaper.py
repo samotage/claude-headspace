@@ -71,25 +71,42 @@ def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
         if not pane_pid:
             return None  # Pane doesn't exist in tmux
 
-        # Walk the process tree: check children and grandchildren for 'claude'
-        result = subprocess.run(
-            ["pgrep", "-P", pane_pid, "-la"],
+        # Get child PIDs, then use `ps` for name — pgrep -la shows argv[0]
+        # which Claude Code sets to its version (e.g. "2.1.34"), not "claude".
+        child_pids_result = subprocess.run(
+            ["pgrep", "-P", pane_pid],
             capture_output=True, text=True, timeout=5,
         )
-        for line in result.stdout.strip().split("\n"):
-            if "claude" in line.lower():
+        child_pids = child_pids_result.stdout.strip().split("\n")
+        child_pids = [p.strip() for p in child_pids if p.strip()]
+
+        if not child_pids:
+            return False  # Pane exists but no child processes
+
+        # Check children via ps (comm field shows actual process name)
+        for child_pid in child_pids:
+            ps_result = subprocess.run(
+                ["ps", "-p", child_pid, "-o", "comm="],
+                capture_output=True, text=True, timeout=5,
+            )
+            if "claude" in ps_result.stdout.lower():
                 return True
+
             # Check grandchildren (bridge → claude)
-            parts = line.split()
-            if parts:
-                child_pid = parts[0]
-                grandchild_result = subprocess.run(
-                    ["pgrep", "-P", child_pid, "-la"],
+            gc_pids_result = subprocess.run(
+                ["pgrep", "-P", child_pid],
+                capture_output=True, text=True, timeout=5,
+            )
+            gc_pids = gc_pids_result.stdout.strip().split("\n")
+            gc_pids = [p.strip() for p in gc_pids if p.strip()]
+
+            for gc_pid in gc_pids:
+                gc_ps_result = subprocess.run(
+                    ["ps", "-p", gc_pid, "-o", "comm="],
                     capture_output=True, text=True, timeout=5,
                 )
-                for gc_line in grandchild_result.stdout.strip().split("\n"):
-                    if "claude" in gc_line.lower():
-                        return True
+                if "claude" in gc_ps_result.stdout.lower():
+                    return True
 
         return False  # Pane exists but no claude process
     except Exception:

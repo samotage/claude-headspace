@@ -10,6 +10,7 @@ from claude_headspace.services.agent_reaper import (
     AgentReaper,
     ReapDetail,
     ReapResult,
+    _is_claude_running_in_pane,
     DEFAULT_GRACE_PERIOD_SECONDS,
     DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
     DEFAULT_INTERVAL_SECONDS,
@@ -701,6 +702,83 @@ class TestOrphanedTaskCompletion:
         assert result.reaped == 1
         call_kwargs = mock_lifecycle.complete_task.call_args[1]
         assert call_kwargs["intent"] == TurnIntent.END_OF_TASK
+
+
+class TestIsClaudeRunningInPane:
+    """Unit tests for _is_claude_running_in_pane() subprocess logic."""
+
+    @patch("subprocess.run")
+    def test_returns_true_when_ps_shows_claude(self, mock_run):
+        """ps -o comm= shows 'claude' even when pgrep -la shows version number."""
+        # tmux list-panes returns our pane with PID 52807
+        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n%6 99999\n")
+        # pgrep -P 52807 returns child PID 52811
+        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
+        # ps -p 52811 -o comm= returns 'claude'
+        ps_result = MagicMock(returncode=0, stdout="claude\n")
+
+        mock_run.side_effect = [tmux_result, pgrep_result, ps_result]
+
+        assert _is_claude_running_in_pane("%5") is True
+
+    @patch("subprocess.run")
+    def test_returns_false_when_no_claude_process(self, mock_run):
+        """Pane exists but no claude in process tree."""
+        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
+        # pgrep -P returns a child PID
+        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
+        # ps shows bash, not claude
+        ps_result = MagicMock(returncode=0, stdout="bash\n")
+        # pgrep grandchildren returns nothing
+        gc_pgrep_result = MagicMock(returncode=1, stdout="\n")
+
+        mock_run.side_effect = [tmux_result, pgrep_result, ps_result, gc_pgrep_result]
+
+        assert _is_claude_running_in_pane("%5") is False
+
+    @patch("subprocess.run")
+    def test_returns_none_when_pane_not_in_tmux(self, mock_run):
+        """Pane ID not found in tmux output."""
+        tmux_result = MagicMock(returncode=0, stdout="%6 99999\n")
+        mock_run.side_effect = [tmux_result]
+
+        assert _is_claude_running_in_pane("%5") is None
+
+    @patch("subprocess.run")
+    def test_returns_none_when_tmux_fails(self, mock_run):
+        """tmux command fails entirely."""
+        tmux_result = MagicMock(returncode=1, stdout="")
+        mock_run.side_effect = [tmux_result]
+
+        assert _is_claude_running_in_pane("%5") is None
+
+    @patch("subprocess.run")
+    def test_finds_claude_in_grandchildren(self, mock_run):
+        """Claude found as grandchild (bridge → claude)."""
+        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
+        # pgrep children returns bridge PID
+        pgrep_result = MagicMock(returncode=0, stdout="52811\n")
+        # ps shows bridge, not claude
+        ps_result = MagicMock(returncode=0, stdout="bash\n")
+        # pgrep grandchildren returns claude PID
+        gc_pgrep_result = MagicMock(returncode=0, stdout="52916\n")
+        # ps grandchild shows claude
+        gc_ps_result = MagicMock(returncode=0, stdout="claude\n")
+
+        mock_run.side_effect = [tmux_result, pgrep_result, ps_result, gc_pgrep_result, gc_ps_result]
+
+        assert _is_claude_running_in_pane("%5") is True
+
+    @patch("subprocess.run")
+    def test_returns_false_when_no_child_processes(self, mock_run):
+        """Pane exists but has no child processes at all."""
+        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
+        # pgrep returns no children
+        pgrep_result = MagicMock(returncode=1, stdout="\n")
+
+        mock_run.side_effect = [tmux_result, pgrep_result]
+
+        assert _is_claude_running_in_pane("%5") is False
 
 
 class TestReapDetail:
