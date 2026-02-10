@@ -20,6 +20,10 @@ window.VoiceApp = (function () {
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat | settings
   var _chatRenderedTurnIds = new Set();
   var _chatAgentState = null;
+  var _chatHasMore = false;
+  var _chatLoadingMore = false;
+  var _chatOldestTurnId = null;
+  var _chatAgentEnded = false;
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
@@ -225,6 +229,10 @@ window.VoiceApp = (function () {
   function _showChatScreen(agentId) {
     _targetAgentId = agentId;
     _chatRenderedTurnIds.clear();
+    _chatHasMore = false;
+    _chatLoadingMore = false;
+    _chatOldestTurnId = null;
+    _chatAgentEnded = false;
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
 
@@ -235,9 +243,13 @@ window.VoiceApp = (function () {
       if (projEl) projEl.textContent = data.project || '';
 
       _chatAgentState = data.agent_state;
+      _chatHasMore = data.has_more || false;
+      _chatAgentEnded = data.agent_ended || false;
       _renderTranscriptTurns(data);
       _scrollChatToBottom();
       _updateTypingIndicator();
+      _updateEndedAgentUI();
+      _updateLoadMoreIndicator();
     }).catch(function () {
       var nameEl = document.getElementById('chat-agent-name');
       if (nameEl) nameEl.textContent = 'Agent ' + agentId;
@@ -246,30 +258,210 @@ window.VoiceApp = (function () {
     showScreen('chat');
   }
 
-  function _renderTranscriptTurns(data) {
-    // Inject task_completion_summary into completion turns that lack text
-    var turns = data.turns || [];
-    for (var i = 0; i < turns.length; i++) {
-      var turn = turns[i];
-      if (turn.intent === 'completion' && !turn.text && !turn.summary && data.task_completion_summary) {
-        turn.text = data.task_completion_summary;
+  function _loadOlderMessages() {
+    if (_chatLoadingMore || !_chatHasMore || !_chatOldestTurnId) return;
+    _chatLoadingMore = true;
+    _updateLoadMoreIndicator();
+
+    var messagesEl = document.getElementById('chat-messages');
+    var prevScrollHeight = messagesEl ? messagesEl.scrollHeight : 0;
+
+    VoiceAPI.getTranscript(_targetAgentId, { before: _chatOldestTurnId, limit: 50 }).then(function (data) {
+      _chatHasMore = data.has_more || false;
+      var turns = data.turns || [];
+      if (turns.length > 0) {
+        // Prepend older turns at top
+        _prependTranscriptTurns(turns);
+        // Preserve scroll position
+        if (messagesEl) {
+          var newScrollHeight = messagesEl.scrollHeight;
+          messagesEl.scrollTop = newScrollHeight - prevScrollHeight;
+        }
       }
-      var prev = i > 0 ? turns[i - 1] : null;
-      _renderChatBubble(turn, prev);
+      _chatLoadingMore = false;
+      _updateLoadMoreIndicator();
+    }).catch(function () {
+      _chatLoadingMore = false;
+      _updateLoadMoreIndicator();
+    });
+  }
+
+  function _updateLoadMoreIndicator() {
+    var indicator = document.getElementById('chat-load-more');
+    if (!indicator) return;
+    if (_chatLoadingMore) {
+      indicator.className = 'chat-load-more loading';
+      indicator.textContent = 'Loading...';
+      indicator.style.display = 'block';
+    } else if (!_chatHasMore && _chatOldestTurnId) {
+      indicator.className = 'chat-load-more done';
+      indicator.textContent = 'Beginning of conversation';
+      indicator.style.display = 'block';
+    } else {
+      indicator.style.display = 'none';
     }
   }
 
-  function _renderChatBubble(turn, prevTurn) {
-    if (_chatRenderedTurnIds.has(turn.id)) return;
-    _chatRenderedTurnIds.add(turn.id);
+  function _updateEndedAgentUI() {
+    var inputArea = document.getElementById('chat-input-area');
+    var endedBanner = document.getElementById('chat-ended-banner');
+    if (_chatAgentEnded) {
+      if (inputArea) inputArea.style.display = 'none';
+      if (endedBanner) endedBanner.style.display = 'block';
+    } else {
+      if (inputArea) inputArea.style.display = '';
+      if (endedBanner) endedBanner.style.display = 'none';
+    }
+  }
 
+  function _renderTranscriptTurns(data) {
+    var turns = data.turns || [];
+    var grouped = _groupTurns(turns);
+    for (var i = 0; i < grouped.length; i++) {
+      var item = grouped[i];
+      var prev = i > 0 ? grouped[i - 1] : null;
+      if (item.type === 'separator') {
+        _renderTaskSeparator(item);
+      } else {
+        _renderChatBubble(item, prev);
+      }
+    }
+  }
+
+  function _prependTranscriptTurns(turns) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
+
+    var grouped = _groupTurns(turns);
+    // Create a fragment with all elements, then prepend
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < grouped.length; i++) {
+      var item = grouped[i];
+      var prev = i > 0 ? grouped[i - 1] : null;
+      if (item.type === 'separator') {
+        var sepEl = _createTaskSeparatorEl(item);
+        frag.appendChild(sepEl);
+      } else {
+        var bubbleEl = _createBubbleEl(item, prev);
+        if (bubbleEl) frag.appendChild(bubbleEl);
+      }
+    }
+    // Insert before load-more indicator or at top
+    var loadMore = document.getElementById('chat-load-more');
+    if (loadMore && loadMore.nextSibling) {
+      messagesEl.insertBefore(frag, loadMore.nextSibling);
+    } else {
+      messagesEl.insertBefore(frag, messagesEl.firstChild);
+    }
+  }
+
+  function _groupTurns(turns) {
+    // Group consecutive agent turns within 2s into single items,
+    // insert task separators between task boundaries
+    var result = [];
+    var currentGroup = null;
+    var lastTaskId = null;
+
+    for (var i = 0; i < turns.length; i++) {
+      var turn = turns[i];
+
+      // Track oldest turn ID for pagination
+      if (!_chatOldestTurnId || turn.id < _chatOldestTurnId) {
+        _chatOldestTurnId = turn.id;
+      }
+
+      // Task boundary separator
+      if (turn.task_id && lastTaskId && turn.task_id !== lastTaskId) {
+        // Flush current group
+        if (currentGroup) { result.push(currentGroup); currentGroup = null; }
+        result.push({
+          type: 'separator',
+          task_instruction: turn.task_instruction || 'New task',
+          task_id: turn.task_id
+        });
+      }
+      lastTaskId = turn.task_id;
+
+      var isUser = turn.actor === 'user';
+      if (isUser) {
+        // User turns always standalone — flush any active group
+        if (currentGroup) { result.push(currentGroup); currentGroup = null; }
+        result.push(turn);
+        continue;
+      }
+
+      // Agent turn — check if it should be grouped with previous
+      if (currentGroup && _shouldGroup(currentGroup, turn)) {
+        // Append text to group
+        var newText = turn.text || turn.summary || '';
+        if (newText) {
+          currentGroup.groupedTexts.push(newText);
+          currentGroup.text = currentGroup.groupedTexts.join('\n');
+        }
+        currentGroup.groupedIds.push(turn.id);
+        // Keep latest timestamp
+        currentGroup.timestamp = turn.timestamp || currentGroup.timestamp;
+      } else {
+        // Flush previous group and start new one
+        if (currentGroup) result.push(currentGroup);
+        currentGroup = Object.assign({}, turn);
+        currentGroup.groupedTexts = [turn.text || turn.summary || ''];
+        currentGroup.groupedIds = [turn.id];
+      }
+    }
+    // Flush final group
+    if (currentGroup) result.push(currentGroup);
+
+    return result;
+  }
+
+  function _shouldGroup(group, turn) {
+    // Only group same-intent agent turns within 2 seconds
+    if (group.actor !== 'agent' || turn.actor !== 'agent') return false;
+    if (group.intent !== turn.intent) return false;
+    if (!group.timestamp || !turn.timestamp) return false;
+    var gap = new Date(turn.timestamp) - new Date(group.timestamp);
+    return gap <= 2000;
+  }
+
+  function _renderTaskSeparator(item) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    messagesEl.appendChild(_createTaskSeparatorEl(item));
+  }
+
+  function _createTaskSeparatorEl(item) {
+    var sep = document.createElement('div');
+    sep.className = 'chat-task-separator';
+    sep.innerHTML = '<span>' + _esc(item.task_instruction) + '</span>';
+    return sep;
+  }
+
+  function _renderChatBubble(turn, prevTurn) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    var el = _createBubbleEl(turn, prevTurn);
+    if (el) messagesEl.appendChild(el);
+  }
+
+  function _createBubbleEl(turn, prevTurn) {
+    // Check all IDs in a group
+    var ids = turn.groupedIds || [turn.id];
+    var allRendered = true;
+    for (var k = 0; k < ids.length; k++) {
+      if (!_chatRenderedTurnIds.has(ids[k])) { allRendered = false; break; }
+    }
+    if (allRendered) return null;
+    for (var k2 = 0; k2 < ids.length; k2++) {
+      _chatRenderedTurnIds.add(ids[k2]);
+    }
+
+    var frag = document.createDocumentFragment();
 
     // Timestamp separator — show if first message or >5 min gap
     if (turn.timestamp) {
       var showTimestamp = false;
-      if (!prevTurn) {
+      if (!prevTurn || prevTurn.type === 'separator') {
         showTimestamp = true;
       } else if (prevTurn.timestamp) {
         var gap = new Date(turn.timestamp) - new Date(prevTurn.timestamp);
@@ -279,13 +471,14 @@ window.VoiceApp = (function () {
         var tsEl = document.createElement('div');
         tsEl.className = 'chat-timestamp';
         tsEl.textContent = _formatChatTime(turn.timestamp);
-        messagesEl.appendChild(tsEl);
+        frag.appendChild(tsEl);
       }
     }
 
     var bubble = document.createElement('div');
     var isUser = turn.actor === 'user';
-    bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent');
+    var isGrouped = turn.groupedTexts && turn.groupedTexts.length > 1;
+    bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent') + (isGrouped ? ' grouped' : '');
     bubble.setAttribute('data-turn-id', turn.id);
 
     var html = '';
@@ -305,11 +498,20 @@ window.VoiceApp = (function () {
       displayText = turn.summary;
     }
     if (!isUser && turn.summary && !turn.text) {
-      // For agent turns with no text, use summary
       displayText = turn.summary;
     }
     if (displayText) {
-      html += '<div class="bubble-text">' + _esc(displayText) + '</div>';
+      if (isGrouped) {
+        // Render grouped texts with separators
+        html += '<div class="bubble-text grouped-text">';
+        for (var g = 0; g < turn.groupedTexts.length; g++) {
+          if (g > 0) html += '<div class="group-divider"></div>';
+          html += '<div>' + _esc(turn.groupedTexts[g]) + '</div>';
+        }
+        html += '</div>';
+      } else {
+        html += '<div class="bubble-text">' + _esc(displayText) + '</div>';
+      }
     }
 
     // Question options inside the bubble
@@ -344,7 +546,8 @@ window.VoiceApp = (function () {
       });
     }
 
-    messagesEl.appendChild(bubble);
+    frag.appendChild(bubble);
+    return frag;
   }
 
   function _formatChatTime(isoStr) {
@@ -356,16 +559,25 @@ window.VoiceApp = (function () {
     hours = hours % 12 || 12;
     var timeStr = hours + ':' + (minutes < 10 ? '0' : '') + minutes + ' ' + ampm;
 
-    // Same day? Just show time. Otherwise show date.
+    // Same day? Just show time.
     if (d.toDateString() === now.toDateString()) {
       return timeStr;
     }
+    // Yesterday
     var yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) {
       return 'Yesterday ' + timeStr;
     }
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr;
+    // This week (within 7 days) — show day-of-week
+    var weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 6);
+    if (d >= weekAgo) {
+      var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return days[d.getDay()] + ' ' + timeStr;
+    }
+    // Older — show date
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + timeStr;
   }
 
   function _scrollChatToBottom() {
@@ -439,12 +651,43 @@ window.VoiceApp = (function () {
       _updateTypingIndicator();
     }
 
-    // Refresh transcript to pick up new turns
+    // Check for ended agent
+    if (data.agent_ended || newState === 'ended') {
+      _chatAgentEnded = true;
+      _updateEndedAgentUI();
+    }
+
+    // Fetch only new turns since last rendered
+    var newestRendered = 0;
+    _chatRenderedTurnIds.forEach(function (id) {
+      if (typeof id === 'number' && id > newestRendered) newestRendered = id;
+    });
+
+    // Fetch recent turns (no cursor = latest)
     VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-      _renderTranscriptTurns(resp);
+      var turns = resp.turns || [];
+      // Filter to only truly new turns
+      var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
+      if (newTurns.length > 0) {
+        var grouped = _groupTurns(newTurns);
+        var messagesEl = document.getElementById('chat-messages');
+        for (var i = 0; i < grouped.length; i++) {
+          var item = grouped[i];
+          var prev = i > 0 ? grouped[i - 1] : null;
+          if (item.type === 'separator') {
+            _renderTaskSeparator(item);
+          } else {
+            _renderChatBubble(item, prev);
+          }
+        }
+      }
       if (resp.agent_state) {
         _chatAgentState = resp.agent_state;
         _updateTypingIndicator();
+      }
+      if (resp.agent_ended) {
+        _chatAgentEnded = true;
+        _updateEndedAgentUI();
       }
       _scrollChatToBottom();
     }).catch(function () { /* ignore */ });
@@ -704,6 +947,16 @@ window.VoiceApp = (function () {
           _stopListening();
         } else {
           _startListening();
+        }
+      });
+    }
+
+    // Scroll-up pagination for chat history
+    var chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) {
+      chatMessages.addEventListener('scroll', function () {
+        if (chatMessages.scrollTop < 50) {
+          _loadOlderMessages();
         }
       });
     }

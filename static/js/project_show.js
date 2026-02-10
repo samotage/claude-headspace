@@ -338,6 +338,9 @@
                 }
                 html += '</div>';
 
+                // Chat link
+                html += '<a href="/voice?agent_id=' + agentId + '" class="text-xs text-cyan hover:underline" style="flex-shrink:0" title="Chat" onclick="event.stopPropagation()">Chat</a>';
+
                 // Last seen / ended badge
                 if (isEnded) {
                     html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';

@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Agent Chat Transcript
 
@@ -36,8 +36,6 @@ The voice bridge transcript endpoint SHALL return an agent-lifetime conversation
 - **AND** SHALL include `agent_ended: true` in the response
 
 ---
-
-## ADDED Requirements
 
 ### Requirement: Real-Time Intermediate Message Capture
 

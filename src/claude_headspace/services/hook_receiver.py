@@ -59,6 +59,17 @@ _RESPOND_PENDING_TTL = 10.0
 # threads from being spawned for the same agent.
 _deferred_stop_pending: set[int] = set()
 
+# Track per-agent transcript file position for incremental reading.
+# Used by intermediate PROGRESS turn capture (post_tool_use) to avoid
+# re-reading content already captured. Reset on session start.
+_transcript_positions: dict[int, int] = {}
+
+# Track text of PROGRESS turns captured during the current agent response.
+# Used by stop hook for deduplication — the final COMPLETION turn should
+# not duplicate text already captured as intermediate PROGRESS turns.
+# Cleared on user_prompt_submit (new response cycle starts).
+_progress_texts_for_agent: dict[int, list[str]] = {}
+
 
 # --- Data types ---
 
@@ -151,6 +162,8 @@ def reset_receiver_state() -> None:
     _awaiting_tool_for_agent.clear()
     _respond_pending_for_agent.clear()
     _deferred_stop_pending.clear()
+    _transcript_positions.clear()
+    _progress_texts_for_agent.clear()
 
 
 # --- Internal helpers ---
@@ -519,6 +532,10 @@ def process_session_start(
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
 
+        # Reset transcript position tracking for new session
+        _transcript_positions.pop(agent.id, None)
+        _progress_texts_for_agent.pop(agent.id, None)
+
         # Store tmux pane ID and register with availability tracker
         if tmux_pane_id:
             agent.tmux_pane_id = tmux_pane_id
@@ -551,6 +568,8 @@ def process_session_end(
         agent.last_seen_at = now
         agent.ended_at = now
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
+        _transcript_positions.pop(agent.id, None)
+        _progress_texts_for_agent.pop(agent.id, None)
 
         lifecycle = _get_lifecycle_manager()
         current_task = lifecycle.get_current_task(agent)
@@ -610,6 +629,7 @@ def process_user_prompt_submit(
 
         agent.last_seen_at = datetime.now(timezone.utc)
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
+        _progress_texts_for_agent.pop(agent.id, None)  # New response cycle
 
         lifecycle = _get_lifecycle_manager()
         result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=prompt_text)

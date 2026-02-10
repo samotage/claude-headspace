@@ -156,6 +156,9 @@ class HookLifecycleBridge:
         # Extract agent response text from transcript before completing
         agent_text = self._extract_transcript_content(agent)
 
+        # Deduplicate: strip text already captured as PROGRESS turns
+        agent_text = self._deduplicate_stop_text(agent, agent_text)
+
         # Check if the agent's last response contains a question or end-of-task
         try:
             from flask import current_app
@@ -262,6 +265,54 @@ class HookLifecycleBridge:
 
         return ""
 
+    @staticmethod
+    def _deduplicate_stop_text(agent: Agent, agent_text: str) -> str:
+        """Remove text already captured as PROGRESS turns from the final stop text.
+
+        Compares normalised versions of the stop text against previously captured
+        PROGRESS texts for this agent. Strips matched portions to avoid duplicate
+        content in the COMPLETION turn.
+
+        Args:
+            agent: The agent whose PROGRESS texts to check
+            agent_text: The full text from the stop hook transcript read
+
+        Returns:
+            The deduplicated text (may be empty if all content was already captured)
+        """
+        if not agent_text:
+            return agent_text
+
+        from .hook_receiver import _progress_texts_for_agent
+
+        progress_texts = _progress_texts_for_agent.get(agent.id, [])
+        if not progress_texts:
+            return agent_text
+
+        # Normalise whitespace for comparison
+        def normalise(s: str) -> str:
+            return " ".join(s.split())
+
+        remaining = agent_text
+        for progress_text in progress_texts:
+            norm_progress = normalise(progress_text)
+            norm_remaining = normalise(remaining)
+            if norm_progress in norm_remaining:
+                # Find the position in the original text (approximate match)
+                # Use normalised comparison but strip from original
+                idx = norm_remaining.find(norm_progress)
+                # Reconstruct: keep text before and after the matched portion
+                # This is approximate since normalisation collapses whitespace
+                before = remaining[:idx] if idx > 0 else ""
+                after_start = idx + len(norm_progress)
+                after = remaining[after_start:] if after_start < len(remaining) else ""
+                remaining = (before + after).strip()
+
+        # Clear the progress texts now that deduplication is done
+        _progress_texts_for_agent.pop(agent.id, None)
+
+        return remaining
+
     def process_post_tool_use(
         self,
         agent: Agent,
@@ -274,7 +325,7 @@ class HookLifecycleBridge:
         1. No active task: tool use is evidence of activity, so create a
            PROCESSING task (handles session resume / missing user_prompt_submit).
         2. AWAITING_INPUT: user answered, resume to PROCESSING.
-        3. Already PROCESSING/COMMANDED: no-op (already tracked).
+        3. Already PROCESSING/COMMANDED: capture intermediate PROGRESS turns.
 
         Args:
             agent: The agent receiving the hook event
@@ -313,7 +364,8 @@ class HookLifecycleBridge:
             )
 
         if current_task.state != TaskState.AWAITING_INPUT:
-            # Already processing or commanded — no-op
+            # Already processing or commanded — capture intermediate text
+            self._capture_intermediate_progress(agent, current_task)
             return TurnProcessingResult(
                 success=True,
                 task=current_task,
@@ -338,6 +390,54 @@ class HookLifecycleBridge:
         )
 
         return result
+
+    def _capture_intermediate_progress(
+        self,
+        agent: Agent,
+        task: Task,
+    ) -> None:
+        """Capture intermediate agent text as PROGRESS turns.
+
+        Reads the transcript incrementally from the last known position
+        and creates PROGRESS turns for any new assistant text blocks.
+        Tracks captured text for later deduplication in process_stop().
+        """
+        if not agent.transcript_path:
+            return
+
+        from .hook_receiver import _transcript_positions, _progress_texts_for_agent
+        from .transcript_reader import read_new_entries_from_position
+
+        position = _transcript_positions.get(agent.id, 0)
+        entries, new_position = read_new_entries_from_position(
+            agent.transcript_path, position,
+        )
+        _transcript_positions[agent.id] = new_position
+
+        for entry in entries:
+            if entry.type != "assistant" or not entry.content:
+                continue
+            text = entry.content.strip()
+            if not text:
+                continue
+
+            turn = Turn(
+                task_id=task.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.PROGRESS,
+                text=text,
+            )
+            db.session.add(turn)
+
+            if agent.id not in _progress_texts_for_agent:
+                _progress_texts_for_agent[agent.id] = []
+            _progress_texts_for_agent[agent.id].append(text)
+
+            logger.debug(
+                f"HookLifecycleBridge: captured PROGRESS turn for "
+                f"agent_id={agent.id}, task_id={task.id}, "
+                f"text_len={len(text)}"
+            )
 
     def process_session_end(
         self,
