@@ -68,6 +68,7 @@ class AgentReaper:
         )
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._pending_summarisations: list = []
 
     def start(self) -> None:
         """Start the reaper background thread."""
@@ -174,8 +175,24 @@ class AgentReaper:
                         if pane_owners.get(pane_key) != agent.id:
                             reap_reason = "stale_pane"
                         else:
-                            result.skipped_alive += 1
-                            continue
+                            # Check inactivity even when pane exists — active Claude Code
+                            # sessions send hooks regularly which update last_seen_at.
+                            # A gap exceeding timeout means Claude Code exited but the
+                            # bridge process keeps the pane alive.
+                            if agent.last_seen_at is not None and agent.last_seen_at >= inactivity_cutoff:
+                                result.skipped_alive += 1
+                                continue
+                            # Inactive — commander check as second opinion
+                            if agent.tmux_pane_id:
+                                try:
+                                    commander = self._app.extensions.get("commander_availability")
+                                    if commander and commander.check_agent(agent.id, agent.tmux_pane_id):
+                                        agent.last_seen_at = now
+                                        result.skipped_alive += 1
+                                        continue
+                                except Exception:
+                                    pass
+                            reap_reason = "inactivity_timeout"
                     elif status == PaneStatus.NOT_FOUND:
                         # Before reaping, check if tmux bridge is alive
                         if agent.tmux_pane_id:
@@ -275,10 +292,20 @@ class AgentReaper:
                 except Exception as e:
                     logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
 
+                # Execute pending summarisations (after commit)
+                if self._pending_summarisations:
+                    try:
+                        from .hook_receiver import _execute_pending_summarisations
+                        _execute_pending_summarisations(self._pending_summarisations)
+                    except Exception as e:
+                        logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
+                    finally:
+                        self._pending_summarisations = []
+
         return result
 
     def _reap_agent(self, agent, reason: str, now: datetime) -> None:
-        """Mark an agent as ended and broadcast the event."""
+        """Mark an agent as ended, complete orphaned tasks, and broadcast."""
         from ..database import db
 
         agent.ended_at = now
@@ -287,6 +314,9 @@ class AgentReaper:
         logger.info(
             f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
         )
+
+        # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
+        self._complete_orphaned_tasks(agent)
 
         # Broadcast session_ended so the dashboard removes the card
         try:
@@ -318,3 +348,79 @@ class AgentReaper:
                 )
         except Exception as e:
             logger.debug(f"Reaper event write failed (non-fatal): {e}")
+
+    def _complete_orphaned_tasks(self, agent) -> None:
+        """Complete non-COMPLETE tasks for a reaped agent.
+
+        Reads the agent's transcript, detects intent, and transitions
+        each orphaned task to COMPLETE via TaskLifecycleManager.
+        """
+        from ..database import db
+        from ..models.task import Task, TaskState
+        from ..models.turn import TurnIntent
+
+        try:
+            active_tasks = (
+                db.session.query(Task)
+                .filter(
+                    Task.agent_id == agent.id,
+                    Task.state.notin_([TaskState.COMPLETE, TaskState.IDLE]),
+                )
+                .order_by(Task.id.desc())
+                .all()
+            )
+
+            if not active_tasks:
+                return
+
+            logger.info(
+                f"Reaper completing {len(active_tasks)} orphaned task(s) "
+                f"for agent {agent.id}"
+            )
+
+            # Read transcript once
+            from .hook_receiver import _extract_transcript_content
+            transcript_text = _extract_transcript_content(agent)
+
+            # Detect intent from transcript
+            intent = TurnIntent.COMPLETION
+            if transcript_text:
+                try:
+                    from .intent_detector import detect_agent_intent
+                    result = detect_agent_intent(transcript_text)
+                    if result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
+                        intent = result.intent
+                except Exception as e:
+                    logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
+
+            # Complete tasks via lifecycle manager
+            lifecycle = self._app.extensions.get("task_lifecycle")
+            if not lifecycle:
+                logger.warning("task_lifecycle not available, cannot complete orphaned tasks")
+                return
+
+            for i, task in enumerate(active_tasks):
+                try:
+                    # Most recent task (i==0) gets transcript text; older ones get empty
+                    text = transcript_text if i == 0 else ""
+                    lifecycle.complete_task(
+                        task=task,
+                        trigger="reaper:orphaned_task",
+                        agent_text=text,
+                        intent=intent,
+                    )
+                    logger.info(
+                        f"Reaper completed task {task.id} (state was {task.state.value})"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to complete orphaned task {task.id}: {e}"
+                    )
+
+            # Collect pending summarisations for post-commit execution
+            pending = lifecycle.get_pending_summarisations()
+            if pending:
+                self._pending_summarisations.extend(pending)
+
+        except Exception as e:
+            logger.warning(f"Orphaned task completion failed for agent {agent.id}: {e}")
