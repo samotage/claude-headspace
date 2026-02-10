@@ -69,8 +69,8 @@ class TestConfigLoading:
             config = load_config(f.name)
         os.unlink(f.name)
 
-        assert config['server']['host'] == '127.0.0.1'
-        assert config['server']['port'] == 5050
+        assert config['server']['host'] == '0.0.0.0'
+        assert config['server']['port'] == 5055
         assert config['server']['debug'] is False
 
     def test_load_yaml_config(self):

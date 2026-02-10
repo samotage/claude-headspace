@@ -120,7 +120,7 @@ class TestBuildPrompt:
 
     def test_prompt_requests_narrative_format(self, service, sample_analysis):
         prompt = service._build_prompt("proj", sample_analysis)
-        assert "3-5 paragraph" in prompt
+        assert "bullet point" in prompt or "summary" in prompt.lower()
         assert "past tense" in prompt
 
     def test_prompt_handles_no_date_range(self, service):

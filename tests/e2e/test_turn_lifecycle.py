@@ -55,7 +55,7 @@ class TestSingleAgentTurnLifecycle:
 
         # SSE updates state without reload
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        dashboard.assert_task_summary_contains(agent_id, "Fix the login bug")
+        dashboard.assert_task_instruction_contains(agent_id, "Fix the login bug")
         dashboard.assert_status_counts(input_needed=0, working=1, idle=0)
         dashboard.capture("processing")
 
@@ -74,10 +74,10 @@ class TestSingleAgentTurnLifecycle:
         hook_client.user_prompt_submit(prompt="Test stop")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
 
-        # Fire stop hook — immediate transition to COMPLETE
+        # Fire stop hook — immediate task completion
         hook_client.stop()
 
-        dashboard.assert_agent_state(agent_id, "COMPLETE", timeout=3000)
+        dashboard.assert_task_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
         dashboard.capture("task_complete")
 

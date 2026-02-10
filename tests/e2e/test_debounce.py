@@ -33,9 +33,9 @@ class TestStopAndNotificationBehaviour:
         hook_client.user_prompt_submit(prompt="Do something")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
 
-        # Fire stop — should immediately go to COMPLETE
+        # Fire stop — should immediately complete the task
         hook_client.stop()
-        dashboard.assert_agent_state(agent_id, "COMPLETE", timeout=3000)
+        dashboard.assert_task_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
         dashboard.capture("stop_immediate_complete")
 
