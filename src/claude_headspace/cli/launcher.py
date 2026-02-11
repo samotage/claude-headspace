@@ -27,6 +27,9 @@ EXIT_SERVER_UNREACHABLE = 2
 EXIT_CLAUDE_NOT_FOUND = 3
 EXIT_REGISTRATION_FAILED = 4
 
+# Sentinel for bridge fallback (tmux not installed but bridge was requested)
+BRIDGE_FALLBACK = -1
+
 # HTTP timeout for API calls (seconds)
 HTTP_TIMEOUT = 2
 
@@ -74,6 +77,36 @@ def get_server_url() -> str:
 
     # Default
     return "http://127.0.0.1:5055"
+
+
+def get_bridge_default() -> bool:
+    """
+    Get the default bridge mode from config.
+
+    Reads ``cli.default_bridge`` from config.yaml using the same
+    3-path search as ``get_server_url()``.
+
+    Returns:
+        True if bridge should be enabled by default (also the fallback
+        when no config is found).
+    """
+    config_paths = [
+        Path.cwd() / "config.yaml",
+        Path(__file__).parent.parent.parent.parent.parent / "config.yaml",
+        Path.home() / ".claude-headspace" / "config.yaml",
+    ]
+
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                    return config.get("cli", {}).get("default_bridge", True)
+            except Exception as e:
+                logging.debug(f"Config parse failed for {config_path}: {e}")
+                continue
+
+    return True
 
 
 def get_project_info() -> ProjectInfo:
@@ -381,10 +414,20 @@ def _wrap_in_tmux(args: argparse.Namespace) -> int:
     """
     if not shutil.which("tmux"):
         print(
-            "Error: tmux is not installed. Install it with: brew install tmux",
+            "\n"
+            "╔══════════════════════════════════════════════════════════════╗\n"
+            "║  WARNING: tmux is not installed                             ║\n"
+            "║                                                             ║\n"
+            "║  The Input Bridge (respond from dashboard) is disabled.     ║\n"
+            "║  Install tmux for the full experience:                      ║\n"
+            "║                                                             ║\n"
+            "║    brew install tmux                                        ║\n"
+            "║                                                             ║\n"
+            "║  Or use --no-bridge to suppress this warning.               ║\n"
+            "╚══════════════════════════════════════════════════════════════╝\n",
             file=sys.stderr,
         )
-        return EXIT_ERROR
+        return BRIDGE_FALLBACK
 
     project_info = get_project_info()
     session_name = f"hs-{project_info.name}-{uuid.uuid4().hex[:8]}"
@@ -419,9 +462,25 @@ def cmd_start(args: argparse.Namespace) -> int:
     Returns:
         Exit code
     """
+    # Resolve bridge mode: --no-bridge > --bridge > config > default (True)
+    no_bridge = getattr(args, "no_bridge", False)
+    explicit_bridge = getattr(args, "bridge", False)
+
+    if no_bridge:
+        bridge_enabled = False
+    elif explicit_bridge:
+        bridge_enabled = True
+    else:
+        bridge_enabled = get_bridge_default()
+
     # Auto-wrap in tmux for bridge mode
-    if getattr(args, "bridge", False) and not os.environ.get("TMUX_PANE"):
-        return _wrap_in_tmux(args)
+    if bridge_enabled and not os.environ.get("TMUX_PANE"):
+        result = _wrap_in_tmux(args)
+        if result == BRIDGE_FALLBACK:
+            # tmux not installed — continue without bridge
+            bridge_enabled = False
+        else:
+            return result
 
     # Get server URL
     server_url = get_server_url()
@@ -446,17 +505,20 @@ def cmd_start(args: argparse.Namespace) -> int:
     # Get iTerm pane ID
     iterm_pane_id = get_iterm_pane_id()
 
-    # Detect tmux pane for Input Bridge (opt-in via --bridge)
+    # Detect tmux pane for Input Bridge
     tmux_pane_id = None
-    if getattr(args, "bridge", False):
+    if bridge_enabled:
         tmux_pane_id = get_tmux_pane_id()
         if tmux_pane_id:
-            print(f"Input Bridge: available (tmux pane {tmux_pane_id})")
+            print(f"Input Bridge: enabled (tmux pane {tmux_pane_id})")
         else:
             print(
                 "Input Bridge: unavailable (not in tmux session)",
                 file=sys.stderr,
             )
+    else:
+        if no_bridge:
+            print("Input Bridge: disabled (--no-bridge)")
 
     # Generate session UUID
     session_uuid = uuid.uuid4()
@@ -503,7 +565,17 @@ def create_parser() -> argparse.ArgumentParser:
         "--bridge",
         action="store_true",
         default=False,
-        help="Enable tmux-based Input Bridge for responding to agents from the dashboard",
+        help=(
+            "(default) Enable tmux-based Input Bridge. This is now the "
+            "default and this flag is kept for backwards compatibility."
+        ),
+    )
+    start_parser.add_argument(
+        "--no-bridge",
+        action="store_true",
+        default=False,
+        dest="no_bridge",
+        help="Disable tmux bridge. Run without dashboard respond capability.",
     )
     start_parser.add_argument(
         "claude_args",

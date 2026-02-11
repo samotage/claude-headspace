@@ -74,6 +74,9 @@ DEFAULTS = {
         "socket_timeout": 2,
         "socket_path_prefix": "/tmp/claudec-",
     },
+    "cli": {
+        "default_bridge": True,
+    },
     "tmux_bridge": {
         "health_check_interval": 30,
         "subprocess_timeout": 5,

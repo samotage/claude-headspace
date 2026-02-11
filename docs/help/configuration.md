@@ -157,6 +157,17 @@ tmux_bridge:
 
 These settings control the [Input Bridge](input-bridge) feature.
 
+### CLI
+
+Controls default behaviour for the `claude-headspace` CLI launcher.
+
+```yaml
+cli:
+  default_bridge: true
+```
+
+- `default_bridge` - When true (default), the CLI launches sessions in tmux with Input Bridge enabled. Set to false to disable bridge mode by default. Can be overridden per-session with `--no-bridge` or `--bridge` flags.
+
 ### Dashboard
 
 Controls dashboard display behaviour.

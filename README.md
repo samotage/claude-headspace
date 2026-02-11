@@ -90,8 +90,8 @@ python run.py
 ### Launch a Monitored Session
 
 ```bash
-claude-headspace start           # Standard session with hooks
-claude-headspace start --bridge  # With tmux bridge (respond from dashboard)
+claude-headspace start              # Session with tmux bridge (default)
+claude-headspace start --no-bridge  # Without tmux bridge
 ```
 
 ### Build CSS (development)
