@@ -39,40 +39,45 @@ def _voice_error(error_type: str, suggestion: str, status_code: int = 400):
 
 
 def _get_active_agents():
-    """Get all active agents (not ended, recently seen)."""
-    config = current_app.config.get("APP_CONFIG", {})
-    timeout_minutes = config.get("dashboard", {}).get("active_timeout_minutes", 5)
-    cutoff = datetime.now(timezone.utc).timestamp() - (timeout_minutes * 60)
-
-    agents = (
+    """Get all active agents (not ended) — matches dashboard behaviour."""
+    return (
         db.session.query(Agent)
-        .filter(
-            Agent.ended_at.is_(None),
-        )
+        .filter(Agent.ended_at.is_(None))
         .all()
     )
-    # Filter by last_seen_at in Python (avoids timezone arithmetic issues in SQL)
-    return [a for a in agents if a.last_seen_at and a.last_seen_at.timestamp() > cutoff]
 
 
 def _agent_to_voice_dict(agent: Agent) -> dict:
     """Convert an agent to a voice-friendly dict."""
+    from ..services.card_state import (
+        get_effective_state,
+        get_state_info,
+        get_task_instruction,
+        get_task_summary,
+        get_task_completion_summary,
+    )
+
     current_task = agent.get_current_task()
-    state = current_task.state.value if current_task else "idle"
+    effective_state = get_effective_state(agent)
+    state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+    state_info = get_state_info(effective_state)
     awaiting = current_task is not None and current_task.state == TaskState.AWAITING_INPUT
 
-    # Get task summary
-    summary = None
-    if current_task:
-        summary = current_task.completion_summary or current_task.instruction
-        if not summary and current_task.turns:
-            for t in reversed(current_task.turns):
-                if t.summary:
-                    summary = t.summary
-                    break
-                if t.text:
-                    summary = t.text[:100]
-                    break
+    # Task details from card_state helpers (consistent with dashboard)
+    task_instruction = get_task_instruction(agent, _current_task=current_task)
+    task_summary = get_task_summary(agent, _current_task=current_task)
+    task_completion_summary = get_task_completion_summary(agent)
+
+    # Turn count for current task
+    turn_count = 0
+    if current_task and current_task.turns:
+        turn_count = len(current_task.turns)
+
+    # Agent identity: hero chars from session UUID (matches dashboard)
+    truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
+    hero_chars = truncated_uuid[:2] if truncated_uuid else ""
+    hero_trail = truncated_uuid[2:] if truncated_uuid else ""
+    project_name = agent.project.name if agent.project else "unknown"
 
     # Time since last activity
     if agent.last_seen_at:
@@ -89,10 +94,17 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
     return {
         "agent_id": agent.id,
         "name": agent.name,
-        "project": agent.project.name if agent.project else "unknown",
-        "state": state,
+        "hero_chars": hero_chars,
+        "hero_trail": hero_trail,
+        "project": project_name,
+        "state": state_name,
+        "state_label": state_info.get("label", state_name),
         "awaiting_input": awaiting,
-        "summary": summary,
+        "task_instruction": task_instruction,
+        "task_summary": task_summary,
+        "task_completion_summary": task_completion_summary,
+        "turn_count": turn_count,
+        "summary": task_summary or task_instruction,
         "last_activity_ago": ago,
     }
 
@@ -296,6 +308,9 @@ def voice_command():
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     answered_turn_id = t.id
                     break
+
+        from ..services.hook_receiver import _mark_question_answered
+        _mark_question_answered(current_task)
 
         turn = Turn(
             task_id=current_task.id,
@@ -531,6 +546,8 @@ def agent_transcript(agent_id: int):
     agent_state = current_task.state.value if current_task else "idle"
     agent_ended = agent.ended_at is not None
 
+    truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
+
     return jsonify({
         "turns": turn_list,
         "has_more": has_more,
@@ -538,4 +555,6 @@ def agent_transcript(agent_id: int):
         "agent_ended": agent_ended,
         "project": agent.project.name if agent.project else "unknown",
         "agent_name": agent.name,
+        "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
+        "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
     }), 200

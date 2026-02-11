@@ -223,6 +223,9 @@ def respond_to_agent(agent_id: int):
                     answered_turn_id = t.id
                     break
 
+        from ..services.hook_receiver import _mark_question_answered
+        _mark_question_answered(current_task)
+
         turn = Turn(
             task_id=current_task.id,
             actor=TurnActor.USER,

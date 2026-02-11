@@ -515,6 +515,7 @@ def _default_permission_options(question_text: str) -> dict:
             ],
         }],
         "source": "card_state_fallback",
+        "status": "pending",
     }
 
 
@@ -541,17 +542,13 @@ def get_question_options(agent: Agent, _current_task=None) -> dict | None:
     if not current_task.turns:
         return None
 
-    # First pass: find any recent AGENT QUESTION turn with actual tool_input.
-    # The stop hook may have created a newer Turn without tool_input that
-    # shadows the original structured options — search past it.
     for turn in reversed(current_task.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if turn.tool_input:
+                if turn.tool_input.get("status") == "complete":
+                    continue  # answered — skip
                 return turn.tool_input
-
-    # Second pass: fallback for permission requests (most recent QUESTION turn)
-    for turn in reversed(current_task.turns):
-        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            # No tool_input: check permission fallback
             if _is_permission_question(turn.text):
                 return _default_permission_options(turn.text or "Permission needed")
             return None
