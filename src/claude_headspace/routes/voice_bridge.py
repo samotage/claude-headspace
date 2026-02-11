@@ -124,6 +124,17 @@ def serve_voice_app():
     return resp
 
 
+@voice_bridge_bp.route("/voice-sw.js")
+def serve_voice_sw():
+    """Serve service worker with broadened scope for /voice page control."""
+    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
+    static_dir = os.path.normpath(static_dir)
+    resp = make_response(send_from_directory(static_dir, "sw.js"))
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 def _is_local_or_lan(addr: str) -> bool:
     """Check if an address is localhost or a private/LAN IP."""
     if addr in ("127.0.0.1", "::1", "localhost"):
@@ -142,6 +153,9 @@ def _is_local_or_lan(addr: str) -> bool:
                     return True
             except ValueError:
                 pass
+    # Tailscale CGNAT range (100.64.0.0/10)
+    if addr.startswith("100."):
+        return True
     return False
 
 
@@ -153,7 +167,7 @@ def voice_auth_check():
     - The /voice page itself
     - Any request from localhost or LAN IPs (same trust boundary as dashboard)
     """
-    if request.path == "/voice":
+    if request.path in ("/voice", "/voice-sw.js"):
         return None
     # Bypass auth for localhost and LAN requests
     remote = request.remote_addr or ""

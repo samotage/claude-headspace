@@ -220,7 +220,7 @@
   <script src="/static/voice/voice-output.js?v=2"></script>
   <script src="/static/voice/voice-app.js?v=2"></script>
   <script>
-    // Trusted network: inject credentials into localStorage BEFORE external JS loads.
+    // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,
     // loadSettings() will find these credentials and skip the setup screen.
     (function () {
@@ -247,7 +247,7 @@
 
     // Register service worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/static/voice/sw.js', { scope: '/static/voice/' })
+      navigator.serviceWorker.register('/voice-sw.js', { scope: '/voice' })
         .catch(function () { /* ignore */ });
     }
   </script>

@@ -512,7 +512,8 @@ class TestVoiceRoute:
         response = client.get("/voice")
         html = response.data.decode()
         assert "serviceWorker" in html
-        assert "sw.js" in html
+        assert "register('/voice-sw.js'" in html
+        assert "scope: '/voice'" in html
 
     def test_voice_route_has_all_screens(self, client):
         response = client.get("/voice")
@@ -578,6 +579,31 @@ class TestVoiceRoute:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
             client_with_auth.get("/api/voice/sessions")  # test client defaults to 127.0.0.1
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
+
+    def test_api_route_bypasses_auth_from_tailscale(self, client_with_auth, app_with_auth):
+        """API routes from Tailscale CGNAT IPs (100.x) should bypass auth."""
+        from unittest.mock import patch
+        with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
+            mock_db.session.query.return_value.filter.return_value.all.return_value = []
+            client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "100.100.1.1"})
+            app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
+
+    def test_voice_sw_route_returns_js(self, client):
+        """The /voice-sw.js route should serve the service worker file."""
+        response = client.get("/voice-sw.js")
+        assert response.status_code == 200
+        assert b"CACHE_NAME" in response.data
+
+    def test_voice_sw_route_has_scope_header(self, client):
+        """The /voice-sw.js route should include Service-Worker-Allowed header."""
+        response = client.get("/voice-sw.js")
+        assert response.headers.get("Service-Worker-Allowed") == "/"
+
+    def test_voice_sw_route_bypasses_auth(self, client_with_auth, app_with_auth):
+        """The /voice-sw.js route should NOT trigger auth check."""
+        response = client_with_auth.get("/voice-sw.js")
+        assert response.status_code == 200
+        app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
 
 # ──────────────────────────────────────────────────────────────

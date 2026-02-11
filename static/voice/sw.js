@@ -1,5 +1,5 @@
 /* Service worker for Claude Headspace Voice PWA */
-const CACHE_NAME = 'voice-bridge-v2';
+const CACHE_NAME = 'voice-bridge-v3';
 const APP_SHELL = [
   '/voice',
   '/static/voice/voice.css',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Network-first for API calls
+  // Network-only for API and hook calls
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/hook/')) {
     e.respondWith(
       fetch(e.request).catch(() =>
@@ -46,8 +46,23 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for static assets
+  // Network-first for navigation (HTML pages) — always get fresh content,
+  // fall back to cache offline. Update cache on success.
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then((resp) => {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          return resp;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (ignoreSearch so ?v=2 matches un-versioned cache keys)
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request))
+    caches.match(e.request, { ignoreSearch: true }).then((cached) => cached || fetch(e.request))
   );
 });
