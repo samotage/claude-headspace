@@ -764,6 +764,7 @@ def process_user_prompt_submit(
         if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
+            broadcast_card_refresh(agent, "user_prompt_submit_respond_pending")
             logger.info(
                 f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
                 f"session_id={claude_session_id}, skipped=respond_pending"

@@ -291,6 +291,7 @@ def voice_command():
         # Do NOT create a task here (avoids duplication with hook receiver).
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
+        broadcast_card_refresh(agent, "voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:

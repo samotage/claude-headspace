@@ -134,6 +134,13 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('state_changed', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onAgentUpdate) _onAgentUpdate(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.addEventListener('turn_created', function (e) {
       try {
         var data = JSON.parse(e.data);

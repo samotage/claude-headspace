@@ -26,6 +26,7 @@ window.VoiceApp = (function () {
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
+  var _chatTranscriptSeq = 0;  // Sequence counter to discard stale transcript responses
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
   var _settingsReturnScreen = 'agents'; // track where settings was opened from
   var _navStack = [];           // Stack of agent IDs for back navigation
@@ -418,6 +419,7 @@ window.VoiceApp = (function () {
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
+    _chatTranscriptSeq = 0;  // Reset and invalidate any in-flight fetches
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
     var bannersEl = document.getElementById('attention-banners');
@@ -442,7 +444,9 @@ window.VoiceApp = (function () {
       _renderAttentionBanners();
     }).catch(function () { /* ignore */ });
 
+    var initSeq = ++_chatTranscriptSeq;
     VoiceAPI.getTranscript(agentId).then(function (data) {
+      if (initSeq !== _chatTranscriptSeq) return; // Stale response — discard
       var nameEl = document.getElementById('chat-agent-name');
       var projEl = document.getElementById('chat-project-name');
       var heroEl = document.getElementById('chat-hero');
@@ -1099,7 +1103,9 @@ window.VoiceApp = (function () {
     });
 
     // Fetch recent turns (no cursor = latest)
+    var sseSeq = ++_chatTranscriptSeq;
     VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+      if (sseSeq !== _chatTranscriptSeq) return; // Stale response — discard
       var turns = resp.turns || [];
       // Filter to only truly new turns, dedup user echoes from chat send
       var newTurns = turns.filter(function (t) {
@@ -1261,12 +1267,23 @@ window.VoiceApp = (function () {
     if (!data.agent_id && !data.id && data.agents && _currentScreen === 'chat' && _targetAgentId) {
       for (var i = 0; i < data.agents.length; i++) {
         if (data.agents[i].agent_id === _targetAgentId) {
+          // Recover from false ended state via polling (agent reappeared in active list)
+          var justRecovered = false;
+          if (_chatAgentEnded && data.agents[i].is_active !== false) {
+            _chatAgentEnded = false;
+            _updateEndedAgentUI();
+            justRecovered = true;
+          }
           var polledState = data.agents[i].state;
-          if (polledState && polledState.toLowerCase() !== (_chatAgentState || '').toLowerCase()) {
-            _chatAgentState = polledState;
-            _updateTypingIndicator();
+          if (justRecovered || (polledState && polledState.toLowerCase() !== (_chatAgentState || '').toLowerCase())) {
+            if (polledState) {
+              _chatAgentState = polledState;
+              _updateTypingIndicator();
+            }
             // Fetch transcript to pick up any new turns
+            var pollSeq = ++_chatTranscriptSeq;
             VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+              if (pollSeq !== _chatTranscriptSeq) return; // Stale response — discard
               var turns = resp.turns || [];
               var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
               if (newTurns.length > 0) {
@@ -1374,7 +1391,9 @@ window.VoiceApp = (function () {
 
     // If chat screen is active, re-fetch transcript to catch missed events
     if (_currentScreen === 'chat' && _targetAgentId) {
+      var reconnSeq = ++_chatTranscriptSeq;
       VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+        if (reconnSeq !== _chatTranscriptSeq) return; // Stale response — discard
         var turns = resp.turns || [];
         var newTurns = turns.filter(function (t) {
           if (_chatRenderedTurnIds.has(t.id)) return false;
