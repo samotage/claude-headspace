@@ -178,15 +178,16 @@
 
         // --- Identity Section ---
         var identityText = [
-            'Agent ID: #' + id.id,
-            'Session UUID: ' + id.session_uuid,
-            'Claude Session: ' + (id.claude_session_id || '\u2014'),
-            'tmux Pane: ' + (id.tmux_pane_id || '\u2014'),
-            'tmux Session: ' + (id.tmux_session_name || '\u2014'),
-            'tmux Alive: ' + (id.tmux_pane_alive ? 'Yes' : 'No'),
-            'Bridge: ' + (id.bridge_available ? 'Connected' : 'Disconnected'),
-            'iTerm Pane: ' + (id.iterm_pane_id || '\u2014'),
-            'Transcript: ' + (id.transcript_path || '\u2014')
+            '## Identity',
+            '- **Agent ID:** #' + id.id,
+            '- **Session UUID:** `' + id.session_uuid + '`',
+            '- **Claude Session:** ' + (id.claude_session_id || '\u2014'),
+            '- **tmux Pane:** ' + (id.tmux_pane_id || '\u2014'),
+            '- **tmux Session:** ' + (id.tmux_session_name || '\u2014'),
+            '- **tmux Alive:** ' + (id.tmux_pane_alive ? 'Yes' : 'No'),
+            '- **Bridge:** ' + (id.bridge_available ? 'Connected' : 'Disconnected'),
+            '- **iTerm Pane:** ' + (id.iterm_pane_id || '\u2014'),
+            '- **Transcript:** ' + (id.transcript_path || '\u2014')
         ].join('\n');
 
         html += '<div class="agent-info-section">';
@@ -206,13 +207,14 @@
         var projectText = '';
         if (proj) {
             projectText = [
-                'Name: ' + proj.name,
-                'Path: ' + proj.path,
-                'Branch: ' + (proj.current_branch || '\u2014'),
-                'GitHub: ' + (proj.github_repo || '\u2014')
+                '## Project',
+                '- **Name:** ' + proj.name,
+                '- **Path:** `' + proj.path + '`',
+                '- **Branch:** ' + (proj.current_branch || '\u2014'),
+                '- **GitHub:** ' + (proj.github_repo || '\u2014')
             ].join('\n');
         } else {
-            projectText = 'No project linked';
+            projectText = '## Project\nNo project linked';
         }
 
         html += '<div class="agent-info-section">';
@@ -229,12 +231,13 @@
 
         // --- Lifecycle Section ---
         var lifecycleText = [
-            'State: ' + life.current_state,
-            'Active: ' + (life.is_active ? 'Yes' : 'No'),
-            'Uptime: ' + (life.uptime || '\u2014'),
-            'Started: ' + formatTimestampPlain(life.started_at),
-            'Last Seen: ' + formatTimestampPlain(life.last_seen_at),
-            'Ended: ' + formatTimestampPlain(life.ended_at)
+            '## Lifecycle',
+            '- **State:** ' + life.current_state,
+            '- **Active:** ' + (life.is_active ? 'Yes' : 'No'),
+            '- **Uptime:** ' + (life.uptime || '\u2014'),
+            '- **Started:** ' + formatTimestampPlain(life.started_at),
+            '- **Last Seen:** ' + formatTimestampPlain(life.last_seen_at),
+            '- **Ended:** ' + formatTimestampPlain(life.ended_at)
         ].join('\n');
 
         html += '<div class="agent-info-section">';
@@ -249,9 +252,10 @@
 
         // --- Priority Section ---
         var priorityText = [
-            'Score: ' + (pri.score !== null ? pri.score : '\u2014'),
-            'Reason: ' + (pri.reason || '\u2014'),
-            'Updated: ' + formatTimestampPlain(pri.updated_at)
+            '## Priority',
+            '- **Score:** ' + (pri.score !== null ? pri.score : '\u2014'),
+            '- **Reason:** ' + (pri.reason || '\u2014'),
+            '- **Updated:** ' + formatTimestampPlain(pri.updated_at)
         ].join('\n');
 
         html += '<div class="agent-info-section">';
@@ -263,19 +267,20 @@
 
         // --- Headspace Section ---
         var headspaceTextLines = [];
+        headspaceTextLines.push('## Headspace');
         if (hs) {
-            headspaceTextLines.push('State: ' + hs.state);
-            headspaceTextLines.push('Frustration (10): ' + (hs.frustration_rolling_10 !== null ? Number(hs.frustration_rolling_10).toFixed(1) : '\u2014'));
-            headspaceTextLines.push('Frustration (30m): ' + (hs.frustration_rolling_30min !== null ? Number(hs.frustration_rolling_30min).toFixed(1) : '\u2014'));
-            headspaceTextLines.push('Frustration (3h): ' + (hs.frustration_rolling_3hr !== null ? Number(hs.frustration_rolling_3hr).toFixed(1) : '\u2014'));
-            headspaceTextLines.push('Flow State: ' + (hs.is_flow_state ? 'Active' + (hs.flow_duration_minutes ? ' (' + hs.flow_duration_minutes + 'm)' : '') : 'No'));
-            headspaceTextLines.push('Turn Rate: ' + (hs.turn_rate_per_hour !== null ? Number(hs.turn_rate_per_hour).toFixed(1) + '/hr' : '\u2014'));
+            headspaceTextLines.push('- **State:** ' + hs.state);
+            headspaceTextLines.push('- **Frustration (10):** ' + (hs.frustration_rolling_10 !== null ? Number(hs.frustration_rolling_10).toFixed(1) : '\u2014'));
+            headspaceTextLines.push('- **Frustration (30m):** ' + (hs.frustration_rolling_30min !== null ? Number(hs.frustration_rolling_30min).toFixed(1) : '\u2014'));
+            headspaceTextLines.push('- **Frustration (3h):** ' + (hs.frustration_rolling_3hr !== null ? Number(hs.frustration_rolling_3hr).toFixed(1) : '\u2014'));
+            headspaceTextLines.push('- **Flow State:** ' + (hs.is_flow_state ? 'Active' + (hs.flow_duration_minutes ? ' (' + hs.flow_duration_minutes + 'm)' : '') : 'No'));
+            headspaceTextLines.push('- **Turn Rate:** ' + (hs.turn_rate_per_hour !== null ? Number(hs.turn_rate_per_hour).toFixed(1) + '/hr' : '\u2014'));
         } else {
             headspaceTextLines.push('No headspace data');
         }
         var fScores = data.frustration_scores || [];
         if (fScores.length > 0) {
-            headspaceTextLines.push('Recent Frustration: ' + fScores.slice(0, 20).map(function(f) { return f.score; }).join(', '));
+            headspaceTextLines.push('- **Recent Frustration:** ' + fScores.slice(0, 20).map(function(f) { return f.score; }).join(', '));
         }
         var headspaceText = headspaceTextLines.join('\n');
 
@@ -309,12 +314,28 @@
 
         // --- Task History Section ---
         var taskTextLines = [];
+        taskTextLines.push('## Task History (' + tasks.length + ')');
         for (var tti = 0; tti < tasks.length; tti++) {
             var tt = tasks[tti];
-            taskTextLines.push('#' + tt.id + ' [' + tt.state + '] ' + (tt.instruction || 'No instruction') + ' (' + tt.turn_count + ' turns)');
-            if (tt.completion_summary) taskTextLines.push('  Completed: ' + tt.completion_summary);
+            taskTextLines.push('');
+            taskTextLines.push('### #' + tt.id + ' [' + tt.state + '] ' + (tt.instruction || 'No instruction'));
+            taskTextLines.push('- **Turns:** ' + tt.turn_count);
+            if (tt.completion_summary) taskTextLines.push('- **Summary:** ' + tt.completion_summary);
+            taskTextLines.push('- **Started:** ' + formatTimestampPlain(tt.started_at) + (tt.completed_at ? ' \u2014 **Completed:** ' + formatTimestampPlain(tt.completed_at) : ''));
+            var ttTurns = tt.turns || [];
+            if (ttTurns.length > 0) {
+                taskTextLines.push('');
+                taskTextLines.push('| ID | Actor | Intent | Time | Frust. |');
+                taskTextLines.push('|----|-------|--------|------|--------|');
+                for (var tui = 0; tui < ttTurns.length; tui++) {
+                    var tu = ttTurns[tui];
+                    var frustVal = (tu.frustration_score !== null && tu.frustration_score !== undefined) ? tu.frustration_score : '\u2014';
+                    taskTextLines.push('| ' + tu.id + ' | ' + tu.actor + ' | ' + tu.intent + ' | ' + formatTimestampPlain(tu.timestamp) + ' | ' + frustVal + ' |');
+                    if (tu.summary) taskTextLines.push('| | *' + tu.summary + '* ||||');
+                }
+            }
         }
-        var taskText = taskTextLines.length > 0 ? taskTextLines.join('\n') : 'No tasks recorded';
+        var taskText = taskTextLines.length > 1 ? taskTextLines.join('\n') : 'No tasks recorded';
 
         html += '<div class="agent-info-section">';
         html += '<div class="agent-info-section-title"><span>Task History (' + tasks.length + ')</span>' + sectionCopyBtn(taskText) + '</div>';
@@ -344,6 +365,7 @@
                 // Turns table
                 var turns = task.turns || [];
                 if (turns.length > 0) {
+                    html += '<div class="text-muted text-[10px] font-mono uppercase mt-2 mb-1">Turns (' + turns.length + ')</div>';
                     html += '<table class="agent-info-turn-table">';
                     html += '<thead><tr><th>ID</th><th>Actor</th><th>Intent</th><th>Time</th><th>Frust.</th></tr></thead>';
                     html += '<tbody>';
