@@ -109,6 +109,18 @@ def send_text(
     start_time = time.time()
 
     try:
+        # Clear any pending autocomplete or partial input first.
+        # Claude Code's interactive prompt has autocomplete that can
+        # intercept typed text (especially /commands), causing the wrong
+        # command to be submitted. Ctrl+C ensures a clean prompt.
+        subprocess.run(
+            ["tmux", "send-keys", "-t", pane_id, "C-c"],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+        time.sleep(text_enter_delay_ms / 1000.0)
+
         # Send literal text (does NOT interpret key names)
         subprocess.run(
             ["tmux", "send-keys", "-t", pane_id, "-l", text],
