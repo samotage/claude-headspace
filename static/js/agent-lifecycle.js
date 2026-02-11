@@ -245,19 +245,17 @@
                 closeCardKebabs();
                 if (!agentId) return;
 
+                var heroLabel = killAction.getAttribute('data-hero') || ('#' + agentId);
                 if (typeof ConfirmDialog !== 'undefined') {
-                    ConfirmDialog.show({
-                        title: 'Shut down agent?',
-                        message: 'This will send /exit to the agent. It will clean up and fire shutdown hooks.',
-                        confirmText: 'Shut down',
-                        cancelText: 'Cancel',
-                        variant: 'danger',
-                        onConfirm: function() {
-                            shutdownAgent(agentId);
-                        }
+                    ConfirmDialog.show(
+                        'Dismiss agent ' + heroLabel + '?',
+                        'This will remove the agent card from the dashboard.',
+                        { confirmText: 'Dismiss', cancelText: 'Cancel' }
+                    ).then(function(confirmed) {
+                        if (confirmed) window.FocusAPI.dismissAgent(agentId);
                     });
-                } else if (confirm('Shut down this agent?')) {
-                    shutdownAgent(agentId);
+                } else if (confirm('Dismiss agent ' + heroLabel + '?')) {
+                    window.FocusAPI.dismissAgent(agentId);
                 }
                 return;
             }

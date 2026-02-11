@@ -1,5 +1,5 @@
 /* Service worker for Claude Headspace Voice PWA */
-const CACHE_NAME = 'voice-bridge-v3';
+const CACHE_NAME = 'voice-bridge-v4';
 const APP_SHELL = [
   '/voice',
   '/static/voice/voice.css',
@@ -61,8 +61,15 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for static assets (ignoreSearch so ?v=2 matches un-versioned cache keys)
+  // Network-first for static assets — always fetch fresh, cache as fallback.
+  // Previous cache-first with ignoreSearch caused stale JS to persist across deploys.
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((cached) => cached || fetch(e.request))
+    fetch(e.request)
+      .then((resp) => {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+        return resp;
+      })
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });
