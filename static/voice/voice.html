@@ -215,11 +215,31 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/voice/voice-api.js"></script>
-  <script src="/static/voice/voice-input.js"></script>
-  <script src="/static/voice/voice-output.js"></script>
-  <script src="/static/voice/voice-app.js"></script>
+  <script src="/static/voice/voice-api.js?v=2"></script>
+  <script src="/static/voice/voice-input.js?v=2"></script>
+  <script src="/static/voice/voice-output.js?v=2"></script>
+  <script src="/static/voice/voice-app.js?v=2"></script>
   <script>
+    // Trusted network: inject credentials into localStorage BEFORE external JS loads.
+    // This is cache-proof — even if voice-app.js is served from browser cache,
+    // loadSettings() will find these credentials and skip the setup screen.
+    (function () {
+      var h = location.hostname;
+      var isLocal = (h === 'localhost' || h === '127.0.0.1' || h === '::1');
+      var isLAN = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(h);
+      var isTailscaleDNS = /\.ts\.net$/.test(h);
+      if (isLocal || isLAN || isTailscaleDNS) {
+        try {
+          var stored = JSON.parse(localStorage.getItem('voice_settings') || '{}');
+          if (!stored.serverUrl || !stored.token) {
+            stored.serverUrl = location.origin;
+            stored.token = isLocal ? 'localhost' : 'lan';
+            localStorage.setItem('voice_settings', JSON.stringify(stored));
+          }
+        } catch (e) { /* ignore */ }
+      }
+    })();
+
     document.addEventListener('DOMContentLoaded', function () {
       VoiceApp.bindEvents();
       VoiceApp.init();

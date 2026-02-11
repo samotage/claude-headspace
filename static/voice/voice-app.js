@@ -1926,6 +1926,18 @@ window.VoiceApp = (function () {
         }
       });
     }
+    // Enter-to-submit on desktop; iOS keeps button-only behaviour
+    if (chatInput) {
+      var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      if (!isIOS) {
+        chatInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatForm.requestSubmit();
+          }
+        });
+      }
+    }
     if (chatInput) {
       // Auto-resize textarea as content grows
       chatInput.addEventListener('input', function () {
