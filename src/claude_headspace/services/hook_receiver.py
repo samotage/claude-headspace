@@ -208,7 +208,7 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None) -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None) -> None:
     try:
         from .broadcaster import get_broadcaster
         payload = {
@@ -218,6 +218,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "actor": "agent",
             "intent": "question",
             "task_id": task.id if task else None,
+            "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if tool_input:
@@ -618,7 +619,7 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                     if task.state == TaskState.AWAITING_INPUT and task.turns:
                         for t in reversed(task.turns):
                             if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                                _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input)
+                                _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input, turn_id=t.id)
                                 break
 
                     logger.info(
@@ -983,7 +984,7 @@ def process_stop(
         if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
                     break
 
         logger.info(
@@ -1026,6 +1027,7 @@ def _handle_awaiting_input(
 
         # Build question text and create turn BEFORE state transition
         question_text = None
+        question_turn = None
         structured_options = None
         permission_summary_needed = False
         if tool_name is not None or tool_input is not None:
@@ -1088,14 +1090,15 @@ def _handle_awaiting_input(
                         permission_summary_needed = True
             if structured_options:
                 structured_options["status"] = "pending"
-            db.session.add(Turn(
+            question_turn = Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
                 tool_input=structured_options,
                 question_text=question_text,
                 question_options=q_options,
                 question_source_type=q_source_type,
-            ))
+            )
+            db.session.add(question_turn)
         elif message or title:
             # notification: dedup against recent pre_tool_use turn
             has_recent = False
@@ -1108,12 +1111,13 @@ def _handle_awaiting_input(
                 question_text = (f"[{title}] " if title else "") + (message or "")
                 question_text = question_text.strip()
                 if question_text:
-                    db.session.add(Turn(
+                    question_turn = Turn(
                         task_id=current_task.id, actor=TurnActor.AGENT,
                         intent=TurnIntent.QUESTION, text=question_text,
                         question_text=question_text,
                         question_source_type="free_text",
-                    ))
+                    )
+                    db.session.add(question_turn)
 
         # Use lifecycle manager for state transition (writes event + sends notification)
         lifecycle = _get_lifecycle_manager()
@@ -1133,13 +1137,14 @@ def _handle_awaiting_input(
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
         if question_text:
-            _broadcast_turn_created(agent, question_text, current_task, tool_input=structured_options)
+            _broadcast_turn_created(agent, question_text, current_task,
+                                    tool_input=structured_options,
+                                    turn_id=question_turn.id if question_turn else None)
         elif current_task.turns:
             # Broadcast existing turn (dedup case: pre_tool_use fired first)
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
-
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
                     break
 
         # Queue LLM fallback for generic permission summaries
