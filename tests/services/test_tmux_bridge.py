@@ -10,14 +10,17 @@ from claude_headspace.services.tmux_bridge import (
     PaneInfo,
     SendResult,
     TmuxBridgeErrorType,
+    TtyResult,
     _classify_subprocess_error,
     capture_pane,
     capture_permission_context,
     capture_permission_options,
     check_health,
+    get_pane_client_tty,
     list_panes,
     parse_permission_context,
     parse_permission_options,
+    select_pane,
     send_keys,
     send_text,
 )
@@ -644,3 +647,215 @@ class TestCapturePermissionContext:
 
         assert result is None
         assert mock_capture.call_count == 3
+
+
+class TestTtyResult:
+    """Tests for TtyResult named tuple."""
+
+    def test_success_result(self):
+        result = TtyResult(success=True, tty="/dev/ttys003", session_name="main")
+        assert result.success is True
+        assert result.tty == "/dev/ttys003"
+        assert result.session_name == "main"
+        assert result.error_type is None
+
+    def test_error_result(self):
+        result = TtyResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="Pane not found",
+        )
+        assert result.success is False
+        assert result.tty is None
+        assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
+
+
+class TestGetPaneClientTty:
+    """Tests for get_pane_client_tty function."""
+
+    def test_no_pane_id(self):
+        result = get_pane_client_tty("")
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
+
+    def test_none_pane_id(self):
+        result = get_pane_client_tty(None)
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_pane_found_with_client(self, mock_run):
+        """Test successful TTY resolution: pane found, client attached."""
+        mock_run.side_effect = [
+            # list-panes: pane found in session "main"
+            MagicMock(
+                returncode=0,
+                stdout=b"%0 other\n%29 main\n%30 work\n",
+            ),
+            # list-clients: client attached
+            MagicMock(
+                returncode=0,
+                stdout=b"/dev/ttys003\n",
+            ),
+        ]
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is True
+        assert result.tty == "/dev/ttys003"
+        assert result.session_name == "main"
+        assert mock_run.call_count == 2
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_no_client_attached(self, mock_run):
+        """Test when pane found but no client attached to session."""
+        mock_run.side_effect = [
+            # list-panes: pane found
+            MagicMock(returncode=0, stdout=b"%29 main\n"),
+            # list-clients: empty output (no client)
+            MagicMock(returncode=0, stdout=b""),
+        ]
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is False
+        assert result.session_name == "main"
+        assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
+        assert "No client attached" in result.error_message
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_pane_not_found(self, mock_run):
+        """Test when pane ID not in list-panes output."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=b"%0 main\n%5 work\n",
+        )
+
+        result = get_pane_client_tty("%99")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
+        assert mock_run.call_count == 1  # Only list-panes, no list-clients
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_tmux_not_installed(self, mock_run):
+        """Test when tmux binary not on PATH."""
+        mock_run.side_effect = FileNotFoundError("tmux not found")
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_list_panes_timeout(self, mock_run):
+        """Test timeout during list-panes."""
+        mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.TIMEOUT
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_list_clients_timeout(self, mock_run):
+        """Test timeout during list-clients (after successful list-panes)."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=b"%29 main\n"),
+            subprocess.TimeoutExpired("tmux", 5),
+        ]
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.TIMEOUT
+        assert result.session_name == "main"
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_list_clients_error(self, mock_run):
+        """Test CalledProcessError during list-clients."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=b"%29 main\n"),
+            subprocess.CalledProcessError(1, "tmux", stderr=b"no such session"),
+        ]
+
+        result = get_pane_client_tty("%29")
+
+        assert result.success is False
+        assert result.session_name == "main"
+        assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
+
+
+class TestSelectPane:
+    """Tests for select_pane function."""
+
+    def test_no_pane_id(self):
+        result = select_pane("")
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
+
+    def test_none_pane_id(self):
+        result = select_pane(None)
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_success(self, mock_run):
+        """Test successful pane selection (select-window + select-pane)."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = select_pane("%29")
+
+        assert result.success is True
+        assert result.latency_ms >= 0
+        assert mock_run.call_count == 2
+
+        # First call: select-window
+        first_call = mock_run.call_args_list[0]
+        assert first_call[0][0] == ["tmux", "select-window", "-t", "%29"]
+
+        # Second call: select-pane
+        second_call = mock_run.call_args_list[1]
+        assert second_call[0][0] == ["tmux", "select-pane", "-t", "%29"]
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_pane_not_found(self, mock_run):
+        """Test when pane doesn't exist."""
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, "tmux", stderr=b"can't find pane: %99"
+        )
+
+        result = select_pane("%99")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_tmux_not_installed(self, mock_run):
+        """Test when tmux binary not on PATH."""
+        mock_run.side_effect = FileNotFoundError()
+
+        result = select_pane("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_timeout(self, mock_run):
+        """Test timeout during pane selection."""
+        mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
+
+        result = select_pane("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.TIMEOUT
+
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_unexpected_error(self, mock_run):
+        """Test unexpected exception during pane selection."""
+        mock_run.side_effect = RuntimeError("something broke")
+
+        result = select_pane("%29")
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.UNKNOWN

@@ -12,8 +12,10 @@ from claude_headspace.services.iterm_focus import (
     PaneStatus,
     _build_applescript,
     _build_check_applescript,
+    _build_tty_applescript,
     _parse_applescript_error,
     check_pane_exists,
+    focus_iterm_by_tty,
     focus_iterm_pane,
 )
 
@@ -369,3 +371,125 @@ class TestCheckPaneExists:
     def test_unexpected_exception_returns_error(self, mock_run):
         mock_run.side_effect = Exception("boom")
         assert check_pane_exists("pty-123") == PaneStatus.ERROR
+
+
+class TestBuildTtyApplescript:
+    """Tests for _build_tty_applescript function."""
+
+    def test_contains_tty_path(self):
+        """Generated AppleScript should contain the TTY path."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert "/dev/ttys003" in script
+
+    def test_uses_exact_tty_equality(self):
+        """Generated AppleScript should match by exact TTY equality, not contains."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert "tty of s is targetTty" in script
+
+    def test_does_not_match_by_unique_id(self):
+        """TTY script should NOT match by unique ID (that's the whole point)."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert "unique ID" not in script
+
+    def test_activates_iterm(self):
+        """Generated AppleScript should activate iTerm."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert 'tell application "iTerm"' in script
+        assert "activate" in script
+
+    def test_selects_session_and_tab(self):
+        """Generated AppleScript should select found session and tab."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert "select t" in script
+        assert "select s" in script
+
+    def test_handles_minimized_window(self):
+        """Generated AppleScript should restore minimized windows."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert "miniaturized" in script
+
+    def test_raises_error_on_not_found(self):
+        """Generated AppleScript should error when pane not found."""
+        script = _build_tty_applescript("/dev/ttys003")
+        assert 'error "Pane not found:' in script
+
+
+class TestFocusItermByTty:
+    """Tests for focus_iterm_by_tty function."""
+
+    def test_empty_tty_returns_error(self):
+        """Test that empty TTY returns an error."""
+        result = focus_iterm_by_tty("")
+        assert result.success is False
+        assert result.error_type == FocusErrorType.PANE_NOT_FOUND
+        assert "No TTY path provided" in result.error_message
+
+    def test_none_tty_returns_error(self):
+        """Test that None TTY returns an error."""
+        result = focus_iterm_by_tty(None)
+        assert result.success is False
+        assert result.error_type == FocusErrorType.PANE_NOT_FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_successful_focus(self, mock_run):
+        """Test successful focus by TTY."""
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        result = focus_iterm_by_tty("/dev/ttys003")
+
+        assert result.success is True
+        assert result.error_type is None
+        assert result.latency_ms >= 0
+
+        mock_run.assert_called_once()
+        args = mock_run.call_args
+        assert args[0][0][0] == "osascript"
+        assert args[1]["timeout"] == APPLESCRIPT_TIMEOUT
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_pane_not_found(self, mock_run):
+        """Test focus when no session matches TTY."""
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stderr="Pane not found: /dev/ttys003",
+        )
+
+        result = focus_iterm_by_tty("/dev/ttys003")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.PANE_NOT_FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_timeout(self, mock_run):
+        """Test focus timeout."""
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="osascript", timeout=APPLESCRIPT_TIMEOUT,
+        )
+
+        result = focus_iterm_by_tty("/dev/ttys003")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.TIMEOUT
+        assert "timed out" in result.error_message
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_osascript_not_found(self, mock_run):
+        """Test when osascript is not found."""
+        mock_run.side_effect = FileNotFoundError("osascript not found")
+
+        result = focus_iterm_by_tty("/dev/ttys003")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.UNKNOWN
+        assert "macOS" in result.error_message
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_unexpected_error(self, mock_run):
+        """Test unexpected exception."""
+        mock_run.side_effect = Exception("Something unexpected")
+
+        result = focus_iterm_by_tty("/dev/ttys003")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.UNKNOWN
+        assert "Something unexpected" in result.error_message

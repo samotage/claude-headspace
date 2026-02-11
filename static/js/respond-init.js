@@ -12,6 +12,162 @@
     var AVAILABILITY_ENDPOINT = '/api/respond';
 
     /**
+     * Map safety classification to color scheme classes.
+     * Safety comes from classify_safety() in permission_summarizer.py.
+     */
+    function getSafetyColors(safety) {
+        switch (safety) {
+            case 'safe_read':
+                return {
+                    btn: 'border-green/40 text-green bg-green/10 hover:bg-green/20',
+                    container: 'border-green/20 bg-green/5',
+                    send: 'bg-green/20 text-green border-green/30 hover:bg-green/30',
+                    label: 'read'
+                };
+            case 'destructive':
+                return {
+                    btn: 'border-red/40 text-red bg-red/10 hover:bg-red/20',
+                    container: 'border-red/20 bg-red/5',
+                    send: 'bg-red/20 text-red border-red/30 hover:bg-red/30',
+                    label: 'destructive'
+                };
+            default:  // safe_write, unknown, missing
+                return {
+                    btn: 'border-amber/40 text-amber bg-amber/10 hover:bg-amber/20',
+                    container: 'border-amber/20 bg-amber/5',
+                    send: 'bg-amber/20 text-amber border-amber/30 hover:bg-amber/30',
+                    label: 'write'
+                };
+        }
+    }
+
+    /**
+     * Render a stacked multi-question form for AskUserQuestion with 2+ questions.
+     * Each question gets its own section with radio (single-select) or checkbox
+     * (multi-select) behavior. A submit button at the bottom is enabled when all
+     * questions are answered.
+     */
+    function _renderMultiQuestionForm(container, questions, agentId, colors) {
+        var form = document.createElement('div');
+        form.className = 'multi-question-form';
+
+        // Track selections: { questionIndex: int|null (single) or Set (multi) }
+        var selections = {};
+
+        questions.forEach(function(q, qIdx) {
+            var isMulti = q.multiSelect === true;
+            selections[qIdx] = isMulti ? new Set() : null;
+
+            var section = document.createElement('div');
+            section.className = 'question-section';
+
+            var header = document.createElement('div');
+            header.className = 'question-section-header';
+            header.textContent = (q.header ? q.header + ': ' : '') + (q.question || '');
+            section.appendChild(header);
+
+            var optionsWrap = document.createElement('div');
+            optionsWrap.className = 'question-section-options';
+
+            var opts = q.options || [];
+            opts.forEach(function(opt, optIdx) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'question-option ' + colors.btn;
+                btn.setAttribute('data-q-idx', qIdx);
+                btn.setAttribute('data-opt-idx', optIdx);
+
+                var label = document.createElement('span');
+                label.className = 'font-medium';
+                label.textContent = opt.label;
+                btn.appendChild(label);
+                if (opt.description) {
+                    var desc = document.createElement('span');
+                    desc.className = 'text-muted ml-2';
+                    desc.textContent = opt.description;
+                    btn.appendChild(desc);
+                }
+
+                btn.onclick = function() {
+                    if (isMulti) {
+                        // Checkbox behavior: toggle
+                        if (selections[qIdx].has(optIdx)) {
+                            selections[qIdx].delete(optIdx);
+                            btn.classList.remove('toggled');
+                        } else {
+                            selections[qIdx].add(optIdx);
+                            btn.classList.add('toggled');
+                        }
+                    } else {
+                        // Radio behavior: deselect siblings, select this
+                        var siblings = optionsWrap.querySelectorAll('.question-option');
+                        for (var s = 0; s < siblings.length; s++) {
+                            siblings[s].classList.remove('selected');
+                        }
+                        btn.classList.add('selected');
+                        selections[qIdx] = optIdx;
+                    }
+                    _updateSubmitButton(submitBtn, selections, questions);
+                };
+
+                optionsWrap.appendChild(btn);
+            });
+
+            section.appendChild(optionsWrap);
+            form.appendChild(section);
+        });
+
+        var submitBtn = document.createElement('button');
+        submitBtn.type = 'button';
+        submitBtn.className = 'multi-submit-btn';
+        submitBtn.textContent = 'Submit All';
+        submitBtn.disabled = true;
+
+        submitBtn.onclick = function() {
+            if (submitBtn.disabled) return;
+            // Build answers array
+            var answers = [];
+            for (var i = 0; i < questions.length; i++) {
+                var isMulti = questions[i].multiSelect === true;
+                if (isMulti) {
+                    answers.push({ option_indices: Array.from(selections[i]).sort() });
+                } else {
+                    answers.push({ option_index: selections[i] });
+                }
+            }
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending...';
+            global.RespondAPI.sendMultiSelect(agentId, answers);
+        };
+
+        form.appendChild(submitBtn);
+        container.appendChild(form);
+    }
+
+    /**
+     * Enable/disable the multi-question submit button based on whether
+     * all questions have at least one selection.
+     */
+    function _updateSubmitButton(btn, selections, questions) {
+        var allAnswered = true;
+        for (var i = 0; i < questions.length; i++) {
+            var isMulti = questions[i].multiSelect === true;
+            if (isMulti) {
+                if (!selections[i] || selections[i].size === 0) {
+                    allAnswered = false;
+                    break;
+                }
+            } else {
+                if (selections[i] === null || selections[i] === undefined) {
+                    allAnswered = false;
+                    break;
+                }
+            }
+        }
+        btn.disabled = !allAnswered;
+    }
+
+    /**
      * Initialize respond widgets on all visible agent cards.
      */
     function initRespondWidgets() {
@@ -57,28 +213,52 @@
             try { questionOptions = JSON.parse(questionOptionsRaw); } catch(e) { /* ignore */ }
         }
 
+        // Extract safety classification and compute color scheme
+        var safety = (questionOptions && questionOptions.safety) || 'unknown';
+        var colors = getSafetyColors(safety);
+
+        // Apply safety colors to the widget container (border-top + background)
+        widget.className = widget.className
+            .replace(/border-(?:amber|green|red)\/20/g, '')
+            .replace(/bg-(?:amber|green|red)\/5/g, '')
+            .trim();
+        widget.classList.add.apply(widget.classList, colors.container.split(' '));
+
         var optionsContainer = widget.querySelector('.respond-options');
         var formContainer = widget.querySelector('.respond-form');
+
+        // Apply safety colors to the Send button
+        var sendBtn = widget.querySelector('.respond-send-btn');
+        if (sendBtn) {
+            sendBtn.className = 'respond-send-btn px-3 py-1 text-xs font-medium rounded border transition-colors ' + colors.send;
+        }
 
         if (optionsContainer && global.RespondAPI) {
             optionsContainer.innerHTML = '';
 
             // Check for structured AskUserQuestion options
             var structuredOptions = null;
+            var allQuestions = null;
             if (questionOptions && questionOptions.questions &&
                 questionOptions.questions.length > 0) {
-                var q = questionOptions.questions[0];
+                allQuestions = questionOptions.questions;
+                var q = allQuestions[0];
                 if (q.options && q.options.length > 0) {
                     structuredOptions = q.options;
                 }
             }
 
-            if (structuredOptions) {
+            // Multi-question form (2+ questions with options)
+            if (allQuestions && allQuestions.length > 1) {
+                _renderMultiQuestionForm(optionsContainer, allQuestions, agentId, colors);
+                optionsContainer.style.display = '';
+                if (formContainer) formContainer.style.display = 'none';
+            } else if (structuredOptions) {
                 // Render structured option buttons
                 structuredOptions.forEach(function(opt, index) {
                     var btn = document.createElement('button');
                     btn.type = 'button';
-                    btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                    btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border transition-colors ' + colors.btn;
                     var label = document.createElement('span');
                     label.className = 'font-medium';
                     label.textContent = opt.label;
@@ -121,9 +301,14 @@
                         var val = input.value.trim();
                         input.value = '';
                         input.disabled = true;
+                        input.style.height = 'auto';
                         global.RespondAPI.sendOther(agentId, val).then(function(success) {
                             input.disabled = false;
-                            if (!success) input.value = val;
+                            if (!success) {
+                                input.value = val;
+                                input.style.height = 'auto';
+                                input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+                            }
                             input.focus();
                         });
                     };
@@ -140,7 +325,7 @@
                      {label: 'No', desc: 'Deny this action', idx: 1}].forEach(function(opt) {
                         var btn = document.createElement('button');
                         btn.type = 'button';
-                        btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                        btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border transition-colors ' + colors.btn;
                         var label = document.createElement('span');
                         label.className = 'font-medium';
                         label.textContent = opt.label;
@@ -163,7 +348,7 @@
                         options.forEach(function(opt) {
                             var btn = document.createElement('button');
                             btn.type = 'button';
-                            btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                            btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border transition-colors ' + colors.btn;
                             btn.textContent = opt.number + '. ' + opt.label;
                             btn.onclick = function() {
                                 global.RespondAPI.sendOption(agentId, opt.number);
@@ -178,6 +363,12 @@
                     if (formContainer) formContainer.style.display = '';
                 }
             }
+        }
+
+        // Initialize textarea auto-resize
+        var textarea = widget.querySelector('.respond-text-input');
+        if (textarea && global.RespondAPI) {
+            global.RespondAPI.initTextarea(textarea, agentId);
         }
 
         // Show the widget

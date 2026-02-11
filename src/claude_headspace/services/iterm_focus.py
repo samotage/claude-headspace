@@ -240,6 +240,142 @@ def focus_iterm_pane(pane_id: str) -> FocusResult:
         )
 
 
+def _build_tty_applescript(tty: str) -> str:
+    """
+    Build AppleScript to focus an iTerm2 session by its TTY path.
+
+    Unlike _build_applescript() which matches by unique ID (which changes
+    when iTerm windows are closed/reopened), this matches by the exact TTY
+    path which is stable for the lifetime of the tmux client connection.
+
+    Args:
+        tty: The TTY path (e.g., /dev/ttys003)
+
+    Returns:
+        AppleScript code as string
+    """
+    safe_tty = _sanitize_pane_id(tty)
+    return f'''
+tell application "iTerm"
+    activate
+
+    set targetTty to "{safe_tty}"
+    set foundSession to false
+
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                try
+                    if tty of s is targetTty then
+                        select t
+                        select s
+
+                        set index of w to 1
+                        if miniaturized of w then
+                            set miniaturized of w to false
+                        end if
+
+                        set foundSession to true
+                        exit repeat
+                    end if
+                end try
+            end repeat
+            if foundSession then exit repeat
+        end repeat
+        if foundSession then exit repeat
+    end repeat
+
+    if not foundSession then
+        error "Pane not found: " & targetTty
+    end if
+end tell
+'''
+
+
+def focus_iterm_by_tty(tty: str) -> FocusResult:
+    """
+    Focus an iTerm2 session by its TTY path.
+
+    Used for tmux-based sessions where the iTerm unique ID is unreliable
+    (changes when windows are closed/reopened). The TTY path is stable
+    as long as the tmux client is connected.
+
+    Args:
+        tty: The TTY device path (e.g., /dev/ttys003)
+
+    Returns:
+        FocusResult with success status and optional error information
+    """
+    if not tty:
+        return FocusResult(
+            success=False,
+            error_type=FocusErrorType.PANE_NOT_FOUND,
+            error_message="No TTY path provided.",
+            latency_ms=0,
+        )
+
+    start_time = time.time()
+    script = _build_tty_applescript(tty)
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=APPLESCRIPT_TIMEOUT,
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        if result.returncode == 0:
+            logger.info(f"Successfully focused iTerm2 by TTY: {tty} ({latency_ms}ms)")
+            return FocusResult(success=True, latency_ms=latency_ms)
+        else:
+            error_type, error_message = _parse_applescript_error(
+                result.stderr, result.returncode
+            )
+            logger.warning(
+                f"Failed to focus iTerm2 by TTY {tty}: {error_type.value} - {error_message}"
+            )
+            return FocusResult(
+                success=False,
+                error_type=error_type,
+                error_message=error_message,
+                latency_ms=latency_ms,
+            )
+
+    except subprocess.TimeoutExpired:
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"Timeout focusing iTerm2 by TTY {tty} after {latency_ms}ms")
+        return FocusResult(
+            success=False,
+            error_type=FocusErrorType.TIMEOUT,
+            error_message=f"Focus operation timed out after {APPLESCRIPT_TIMEOUT} seconds. "
+            "iTerm2 may be unresponsive.",
+            latency_ms=latency_ms,
+        )
+
+    except FileNotFoundError:
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.error("osascript not found - not running on macOS?")
+        return FocusResult(
+            success=False,
+            error_type=FocusErrorType.UNKNOWN,
+            error_message="osascript command not found. This feature requires macOS.",
+            latency_ms=latency_ms,
+        )
+
+    except Exception as e:
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.exception(f"Unexpected error focusing iTerm2 by TTY {tty}")
+        return FocusResult(
+            success=False,
+            error_type=FocusErrorType.UNKNOWN,
+            error_message=f"Unexpected error: {str(e)}",
+            latency_ms=latency_ms,
+        )
+
+
 # --- Pane existence check (silent, no focus) ---
 
 

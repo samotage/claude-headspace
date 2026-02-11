@@ -622,7 +622,7 @@ class SummarisationService:
             if not prior_tasks:
                 return ""
 
-            prior = prior_tasks[-1]  # Most recent prior task with an instruction
+            prior = prior_tasks[0]  # Most recent prior task with an instruction
             parts = [f"Prior task: {prior.instruction}"]
             if prior.completion_summary:
                 parts.append(f"Prior outcome: {prior.completion_summary}")
@@ -682,7 +682,13 @@ class SummarisationService:
         """
         instruction = getattr(task, "instruction", None) or "No instruction recorded"
 
-        turns = task.turns if hasattr(task, "turns") and task.turns else []
+        try:
+            turns = task.turns if hasattr(task, "turns") and task.turns else []
+        except Exception as e:
+            # Guard against DetachedInstanceError when task was loaded in a
+            # different session context (e.g. post-commit summarisation).
+            logger.warning(f"Failed to access task.turns for task {task.id} (defaulting to empty): {e}")
+            turns = []
         final_turn_text = turns[-1].text.strip() if turns and turns[-1].text else ""
 
         if final_turn_text:
@@ -692,18 +698,14 @@ class SummarisationService:
                 final_turn_text=final_turn_text,
             )
 
-        # Final turn text is empty — build activity from non-command turns
-        from ..models.turn import TurnIntent
+        # Final turn text is empty — build activity from all turns with content
         activity_lines = []
         for t in turns:
-            intent_val = t.intent.value if hasattr(t.intent, "value") else str(t.intent)
-            # Skip the initial command turn and turns with no text
-            if intent_val == TurnIntent.COMMAND.value:
-                continue
             text = (t.summary or t.text or "").strip()
             if not text:
                 continue
             actor_val = t.actor.value if hasattr(t.actor, "value") else str(t.actor)
+            intent_val = t.intent.value if hasattr(t.intent, "value") else str(t.intent)
             activity_lines.append(f"- [{actor_val}/{intent_val}] {text[:200]}")
 
         if activity_lines:
@@ -714,7 +716,13 @@ class SummarisationService:
                 turn_activity=turn_activity,
             )
 
-        # No turn activity at all — nothing meaningful to summarise
+        # No turn activity — fall back to instruction-only prompt
+        if instruction and instruction != "No instruction recorded":
+            return build_prompt(
+                "task_completion_from_instruction",
+                instruction=instruction,
+            )
+
         return None
 
     @staticmethod

@@ -109,6 +109,14 @@ def _reactivate_if_ended(agent: Agent) -> bool:
     agent.ended_at = None
     agent.last_seen_at = datetime.now(timezone.utc)
     db.session.commit()
+
+    # Notify clients that the agent is active again (lazy import to avoid circular deps)
+    try:
+        from .card_state import broadcast_card_refresh
+        broadcast_card_refresh(agent, "reactivated")
+    except Exception:
+        pass  # Best-effort; hook processor will broadcast again shortly
+
     logger.info(
         f"Reactivated ended agent {agent.id} (session_uuid={agent.session_uuid}) "
         f"— hook arrived for previously reaped/ended agent"

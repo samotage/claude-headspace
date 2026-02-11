@@ -89,6 +89,15 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
 
+    # Task completion when only the instruction is available (no agent output)
+    "task_completion_from_instruction": (
+        "Task: {instruction}\n\n"
+        "The task was completed but no agent output was captured. "
+        "Write a task board entry (~18 tokens) stating what was likely accomplished. "
+        "Use past tense. NEVER start with 'The user' or 'The agent'. "
+        "Output ONLY the entry — no preamble, labels, or commentary."
+    ),
+
     # --- Summarisation: instruction ---
     "instruction": (
         "Command: {command_text}\n\n"
@@ -193,6 +202,15 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Agent output:\n{content}\n\n"
         "Is the agent asking the user a question or waiting for user input? "
         "Answer only 'yes' or 'no'."
+    ),
+
+    # --- Voice bridge: output formatting ---
+    "voice_format_output": (
+        "Agent: {agent_name}\n"
+        "Recent output:\n{output_text}\n\n"
+        "Rewrite this for spoken delivery. Use short sentences. "
+        "Structure: 1 status line, 1-3 key results, next action (or 'none'). "
+        "Output ONLY the rewritten text — no labels or commentary."
     ),
 }
 

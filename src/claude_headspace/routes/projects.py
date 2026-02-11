@@ -668,6 +668,26 @@ def get_task_turns(task_id: int):
         return jsonify({"error": "Failed to get task turns"}), 500
 
 
+@projects_bp.route("/api/tasks/<int:task_id>/full-text", methods=["GET"])
+def get_task_full_text(task_id: int):
+    """Get full command and full output text for a task (on-demand)."""
+    try:
+        task = db.session.get(Task, task_id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        return jsonify({
+            "full_command": task.full_command,
+            "full_output": task.full_output,
+            "plan_content": task.plan_content,
+            "plan_file_path": task.plan_file_path,
+        }), 200
+
+    except Exception:
+        logger.exception("Failed to get full text for task %s", task_id)
+        return jsonify({"error": "Failed to get task full text"}), 500
+
+
 @projects_bp.route("/api/projects/<int:project_id>/inference-summary", methods=["GET"])
 def get_project_inference_summary(project_id: int):
     """Get aggregate inference metrics for a project."""

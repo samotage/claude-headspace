@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from src.claude_headspace.cli.launcher import (
+    BRIDGE_FALLBACK,
     EXIT_CLAUDE_NOT_FOUND,
     EXIT_ERROR,
     EXIT_REGISTRATION_FAILED,
@@ -23,6 +24,7 @@ from src.claude_headspace.cli.launcher import (
     _wrap_in_tmux,
     cleanup_session,
     create_parser,
+    get_bridge_default,
     get_iterm_pane_id,
     get_project_info,
     get_server_url,
@@ -549,16 +551,18 @@ class TestWrapInTmux:
         assert argv[path_idx + 1] == "/path/to/my-project"
         assert "--" in argv
 
-    def test_tmux_not_installed_returns_error(self, capsys):
-        """Test error when tmux is not installed."""
+    def test_tmux_not_installed_returns_fallback(self, capsys):
+        """Test warning and fallback when tmux is not installed."""
         args = argparse.Namespace(bridge=True)
 
         with patch("shutil.which", return_value=None):
             result = _wrap_in_tmux(args)
 
-        assert result == EXIT_ERROR
+        assert result == BRIDGE_FALLBACK
         captured = capsys.readouterr()
         assert "tmux is not installed" in captured.err
+        assert "brew install tmux" in captured.err
+        assert "--no-bridge" in captured.err
 
     def test_execvp_failure_returns_error(self, capsys):
         """Test OSError handling from execvp."""
@@ -647,6 +651,20 @@ class TestCreateParser:
         assert args.command == "start"
         assert args.claude_args == ["arg1", "arg2"]
 
+    def test_no_bridge_flag(self):
+        """Test --no-bridge flag parsing."""
+        parser = create_parser()
+        args = parser.parse_args(["start", "--no-bridge"])
+        assert args.no_bridge is True
+        assert args.bridge is False
+
+    def test_bridge_and_no_bridge_flags(self):
+        """Test that both flags can be parsed (--no-bridge takes precedence in cmd_start)."""
+        parser = create_parser()
+        args = parser.parse_args(["start", "--bridge", "--no-bridge"])
+        assert args.bridge is True
+        assert args.no_bridge is True
+
 
 class TestMain:
     """Tests for main function."""
@@ -679,7 +697,7 @@ class TestMain:
                 "src.claude_headspace.cli.launcher.validate_prerequisites",
                 return_value=(False, "Cannot connect to server"),
             ):
-                exit_code = main(["start"])
+                exit_code = main(["start", "--no-bridge"])
 
         assert exit_code == EXIT_SERVER_UNREACHABLE
 
@@ -693,7 +711,7 @@ class TestMain:
                 "src.claude_headspace.cli.launcher.validate_prerequisites",
                 return_value=(False, "claude CLI not found"),
             ):
-                exit_code = main(["start"])
+                exit_code = main(["start", "--no-bridge"])
 
         assert exit_code == EXIT_CLAUDE_NOT_FOUND
 
@@ -719,12 +737,12 @@ class TestMain:
                             "src.claude_headspace.cli.launcher.register_session",
                             return_value=(False, None, "Registration failed"),
                         ):
-                            exit_code = main(["start"])
+                            exit_code = main(["start", "--no-bridge"])
 
         assert exit_code == EXIT_REGISTRATION_FAILED
 
     def test_start_command_full_success(self, capsys):
-        """Test successful start command."""
+        """Test successful start command with --no-bridge."""
         with patch(
             "src.claude_headspace.cli.launcher.get_server_url",
             return_value="http://localhost:5055",
@@ -768,7 +786,7 @@ class TestMain:
                                         "src.claude_headspace.cli.launcher.launch_claude",
                                         return_value=0,
                                     ):
-                                        exit_code = main(["start"])
+                                        exit_code = main(["start", "--no-bridge"])
 
         assert exit_code == EXIT_SUCCESS
 
@@ -831,7 +849,7 @@ class TestMain:
         assert call_kwargs[1]["tmux_pane_id"] == "%5"
         # Verify output mentions Input Bridge available with pane ID
         captured = capsys.readouterr()
-        assert "Input Bridge: available (tmux pane %5)" in captured.out
+        assert "Input Bridge: enabled (tmux pane %5)" in captured.out
 
     def test_start_command_with_bridge_outside_tmux(self):
         """Test start command with --bridge outside tmux calls _wrap_in_tmux."""
@@ -846,19 +864,61 @@ class TestMain:
         assert exit_code == EXIT_SUCCESS
         mock_wrap.assert_called_once()
 
-    def test_start_command_with_bridge_no_tmux_installed(self, capsys):
-        """Test start command with --bridge when tmux is not installed."""
+    def test_start_command_with_bridge_no_tmux_installed_continues(self, capsys):
+        """Test start command with --bridge when tmux not installed falls back gracefully."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TMUX_PANE", None)
             with patch("shutil.which", return_value=None):
-                exit_code = main(["start", "--bridge"])
+                with patch(
+                    "src.claude_headspace.cli.launcher.get_server_url",
+                    return_value="http://localhost:5055",
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.validate_prerequisites",
+                        return_value=(True, None),
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_project_info",
+                            return_value=ProjectInfo("test", "/test", "main"),
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                                return_value="pane123",
+                            ):
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.register_session",
+                                    return_value=(
+                                        True,
+                                        {"agent_id": 1, "project_name": "test"},
+                                        None,
+                                    ),
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.setup_environment",
+                                        return_value={"PATH": "/usr/bin"},
+                                    ):
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.SessionManager"
+                                        ) as MockManager:
+                                            mock_manager = MagicMock()
+                                            MockManager.return_value.__enter__ = MagicMock(
+                                                return_value=mock_manager
+                                            )
+                                            MockManager.return_value.__exit__ = MagicMock(
+                                                return_value=False
+                                            )
+                                            with patch(
+                                                "src.claude_headspace.cli.launcher.launch_claude",
+                                                return_value=0,
+                                            ):
+                                                exit_code = main(["start", "--bridge"])
 
-        assert exit_code == EXIT_ERROR
+        assert exit_code == EXIT_SUCCESS
         captured = capsys.readouterr()
         assert "tmux is not installed" in captured.err
 
-    def test_start_command_without_bridge_skips_tmux_detection(self, capsys):
-        """Test that start without --bridge does not detect tmux."""
+    def test_no_bridge_flag_disables_bridge(self, capsys):
+        """Test that --no-bridge disables bridge and skips tmux detection."""
         with patch(
             "src.claude_headspace.cli.launcher.get_server_url",
             return_value="http://localhost:5055",
@@ -905,12 +965,266 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.launch_claude",
                                             return_value=0,
                                         ):
-                                            exit_code = main(["start"])
+                                            exit_code = main(["start", "--no-bridge"])
 
         assert exit_code == EXIT_SUCCESS
-        # get_tmux_pane_id should not be called without --bridge
+        # get_tmux_pane_id should not be called with --no-bridge
         mock_tmux.assert_not_called()
-        # No bridge-related output
+        # Should show disabled message
         captured = capsys.readouterr()
-        assert "Input Bridge" not in captured.out
-        assert "Input Bridge" not in captured.err
+        assert "Input Bridge: disabled (--no-bridge)" in captured.out
+
+    def test_bridge_flag_is_noop_same_as_default(self):
+        """Test that --bridge behaves same as default (both enable bridge)."""
+        with patch.dict(os.environ, {"TMUX_PANE": "%5"}):
+            with patch(
+                "src.claude_headspace.cli.launcher.get_server_url",
+                return_value="http://localhost:5055",
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.validate_prerequisites",
+                    return_value=(True, None),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_project_info",
+                        return_value=ProjectInfo("test", "/test", "main"),
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                            return_value="pane123",
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                                return_value="%5",
+                            ) as mock_tmux:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.register_session",
+                                    return_value=(
+                                        True,
+                                        {"agent_id": 1, "project_name": "test"},
+                                        None,
+                                    ),
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.setup_environment",
+                                        return_value={"PATH": "/usr/bin"},
+                                    ):
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.SessionManager"
+                                        ) as MockManager:
+                                            mock_manager = MagicMock()
+                                            MockManager.return_value.__enter__ = MagicMock(
+                                                return_value=mock_manager
+                                            )
+                                            MockManager.return_value.__exit__ = MagicMock(
+                                                return_value=False
+                                            )
+                                            with patch(
+                                                "src.claude_headspace.cli.launcher.launch_claude",
+                                                return_value=0,
+                                            ):
+                                                # --bridge explicit
+                                                exit1 = main(["start", "--bridge"])
+
+        assert exit1 == EXIT_SUCCESS
+        mock_tmux.assert_called()
+
+    def test_config_default_bridge_false(self):
+        """Test that config default_bridge=False disables bridge by default."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_bridge_default",
+            return_value=False,
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.get_server_url",
+                return_value="http://localhost:5055",
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.validate_prerequisites",
+                    return_value=(True, None),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_project_info",
+                        return_value=ProjectInfo("test", "/test", "main"),
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                            return_value="pane123",
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                            ) as mock_tmux:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.register_session",
+                                    return_value=(
+                                        True,
+                                        {"agent_id": 1, "project_name": "test"},
+                                        None,
+                                    ),
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.setup_environment",
+                                        return_value={"PATH": "/usr/bin"},
+                                    ):
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.SessionManager"
+                                        ) as MockManager:
+                                            mock_manager = MagicMock()
+                                            MockManager.return_value.__enter__ = MagicMock(
+                                                return_value=mock_manager
+                                            )
+                                            MockManager.return_value.__exit__ = MagicMock(
+                                                return_value=False
+                                            )
+                                            with patch(
+                                                "src.claude_headspace.cli.launcher.launch_claude",
+                                                return_value=0,
+                                            ):
+                                                exit_code = main(["start"])
+
+        assert exit_code == EXIT_SUCCESS
+        # Bridge disabled by config, so no tmux detection
+        mock_tmux.assert_not_called()
+
+    def test_no_bridge_overrides_config(self):
+        """Test that --no-bridge overrides config default_bridge=True."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_bridge_default",
+            return_value=True,
+        ):
+            with patch(
+                "src.claude_headspace.cli.launcher.get_server_url",
+                return_value="http://localhost:5055",
+            ):
+                with patch(
+                    "src.claude_headspace.cli.launcher.validate_prerequisites",
+                    return_value=(True, None),
+                ):
+                    with patch(
+                        "src.claude_headspace.cli.launcher.get_project_info",
+                        return_value=ProjectInfo("test", "/test", "main"),
+                    ):
+                        with patch(
+                            "src.claude_headspace.cli.launcher.get_iterm_pane_id",
+                            return_value="pane123",
+                        ):
+                            with patch(
+                                "src.claude_headspace.cli.launcher.get_tmux_pane_id",
+                            ) as mock_tmux:
+                                with patch(
+                                    "src.claude_headspace.cli.launcher.register_session",
+                                    return_value=(
+                                        True,
+                                        {"agent_id": 1, "project_name": "test"},
+                                        None,
+                                    ),
+                                ):
+                                    with patch(
+                                        "src.claude_headspace.cli.launcher.setup_environment",
+                                        return_value={"PATH": "/usr/bin"},
+                                    ):
+                                        with patch(
+                                            "src.claude_headspace.cli.launcher.SessionManager"
+                                        ) as MockManager:
+                                            mock_manager = MagicMock()
+                                            MockManager.return_value.__enter__ = MagicMock(
+                                                return_value=mock_manager
+                                            )
+                                            MockManager.return_value.__exit__ = MagicMock(
+                                                return_value=False
+                                            )
+                                            with patch(
+                                                "src.claude_headspace.cli.launcher.launch_claude",
+                                                return_value=0,
+                                            ):
+                                                exit_code = main(["start", "--no-bridge"])
+
+        assert exit_code == EXIT_SUCCESS
+        # --no-bridge wins over config
+        mock_tmux.assert_not_called()
+
+    def test_default_start_attempts_bridge(self):
+        """Test that plain 'start' (no flags) attempts bridge by default."""
+        with patch(
+            "src.claude_headspace.cli.launcher.get_bridge_default",
+            return_value=True,
+        ):
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TMUX_PANE", None)
+                with patch(
+                    "src.claude_headspace.cli.launcher._wrap_in_tmux",
+                    return_value=EXIT_SUCCESS,
+                ) as mock_wrap:
+                    exit_code = main(["start"])
+
+        assert exit_code == EXIT_SUCCESS
+        mock_wrap.assert_called_once()
+
+
+class TestGetBridgeDefault:
+    """Tests for get_bridge_default function."""
+
+    def test_returns_true_when_no_config_found(self):
+        """Test that True is returned when no config file exists."""
+        with patch.object(Path, "exists", return_value=False):
+            assert get_bridge_default() is True
+
+    def test_reads_from_config(self):
+        """Test reading cli.default_bridge from config.yaml."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as f:
+            yaml.dump({"cli": {"default_bridge": False}}, f)
+            config_path = f.name
+
+        try:
+            with patch.object(
+                Path, "cwd", return_value=Path(config_path).parent
+            ):
+                original_exists = Path.exists
+
+                def mock_exists(self):
+                    if str(self) == str(Path(config_path).parent / "config.yaml"):
+                        return True
+                    return original_exists(self)
+
+                with patch.object(Path, "exists", mock_exists):
+                    with patch(
+                        "builtins.open",
+                        return_value=open(config_path),
+                    ):
+                        result = get_bridge_default()
+
+            assert result is False
+        finally:
+            os.unlink(config_path)
+
+    def test_returns_true_when_cli_section_missing(self):
+        """Test that True is returned when config has no cli section."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as f:
+            yaml.dump({"server": {"port": 5055}}, f)
+            config_path = f.name
+
+        try:
+            with patch.object(
+                Path, "cwd", return_value=Path(config_path).parent
+            ):
+                original_exists = Path.exists
+
+                def mock_exists(self):
+                    if str(self) == str(Path(config_path).parent / "config.yaml"):
+                        return True
+                    return original_exists(self)
+
+                with patch.object(Path, "exists", mock_exists):
+                    with patch(
+                        "builtins.open",
+                        return_value=open(config_path),
+                    ):
+                        result = get_bridge_default()
+
+            assert result is True
+        finally:
+            os.unlink(config_path)

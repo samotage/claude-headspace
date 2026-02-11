@@ -17,6 +17,8 @@ def setup_logging(config: dict, app_root: Path) -> None:
     """Configure structured logging to console and file."""
     log_level = get_value(config, "logging", "level", default="INFO")
     log_file = get_value(config, "logging", "file", default="logs/app.log")
+    max_bytes = get_value(config, "logging", "max_bytes", default=10_000_000)  # 10MB
+    backup_count = get_value(config, "logging", "backup_count", default=5)
 
     # Ensure logs directory exists
     log_path = app_root / log_file
@@ -39,11 +41,12 @@ def setup_logging(config: dict, app_root: Path) -> None:
                 "stream": "ext://sys.stdout",
             },
             "file": {
-                "class": "logging.FileHandler",
+                "class": "logging.handlers.RotatingFileHandler",
                 "level": log_level,
                 "formatter": "standard",
                 "filename": str(log_path),
-                "mode": "a",
+                "maxBytes": max_bytes,
+                "backupCount": backup_count,
             },
         },
         "root": {
@@ -243,6 +246,33 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services import tmux_bridge
     app.extensions["tmux_bridge"] = tmux_bridge
 
+    # Initialize file upload service
+    from .services.file_upload import FileUploadService
+    file_upload_service = FileUploadService(config=config, app_root=str(app_root))
+    app.extensions["file_upload"] = file_upload_service
+    if not app.config.get("TESTING"):
+        file_upload_service.startup_sweep()
+    logger.info("File upload service initialized (dir=%s)", file_upload_service.upload_dir)
+
+    # Initialize voice bridge services
+    vb_enabled = get_value(config, "voice_bridge", "enabled", default=False)
+    if vb_enabled:
+        from .services.voice_auth import VoiceAuth
+        voice_auth = VoiceAuth(config=config)
+        app.extensions["voice_auth"] = voice_auth
+        logger.info("Voice auth service initialized")
+
+        from .services.voice_formatter import VoiceFormatter
+        voice_formatter = VoiceFormatter(
+            config=config,
+            inference_service=inference_service,
+        )
+        app.extensions["voice_formatter"] = voice_formatter
+        logger.info("Voice formatter service initialized")
+    else:
+        app.extensions["voice_auth"] = None
+        app.extensions["voice_formatter"] = None
+
     # Initialize commander availability tracker (uses tmux_bridge internally)
     from .services.commander_availability import CommanderAvailability
     commander_availability = CommanderAvailability(app=app, config=config)
@@ -289,8 +319,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             "csrf_token": token,
         }
 
-    # CSRF exempt paths (hooks and SSE)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions")
+    # CSRF exempt paths (hooks, SSE, and voice bridge API)
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents")
 
     @app.before_request
     def verify_csrf_token():
@@ -342,6 +372,7 @@ def register_error_handlers(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
     from .routes.activity import activity_bp
+    from .routes.agents import agents_bp
     from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
@@ -362,9 +393,11 @@ def register_blueprints(app: Flask) -> None:
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
+    from .routes.voice_bridge import voice_bridge_bp
     from .routes.waypoint import waypoint_bp
 
     app.register_blueprint(activity_bp)
+    app.register_blueprint(agents_bp)
     app.register_blueprint(archive_bp)
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
@@ -385,4 +418,5 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)
+    app.register_blueprint(voice_bridge_bp)
     app.register_blueprint(waypoint_bp)

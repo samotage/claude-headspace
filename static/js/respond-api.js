@@ -38,6 +38,34 @@
     }
 
     /**
+     * Auto-resize a textarea to fit its content.
+     */
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
+    }
+
+    /**
+     * Attach auto-resize and Enter-to-submit behaviour to a respond textarea.
+     */
+    function initTextarea(textarea, agentId) {
+        if (!textarea || textarea._respondInitDone) return;
+        textarea._respondInitDone = true;
+
+        textarea.addEventListener('input', function() {
+            autoResizeTextarea(textarea);
+        });
+
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                var form = textarea.closest('form');
+                if (form) form.requestSubmit();
+            }
+        });
+    }
+
+    /**
      * Respond API client
      */
     var RespondAPI = {
@@ -118,6 +146,38 @@
         },
 
         /**
+         * Send multi-select answers for a multi-tab AskUserQuestion
+         * @param {number} agentId - The agent ID
+         * @param {Array} answers - Array of {option_index: int} or {option_indices: [int]}
+         * @returns {Promise<boolean>} True if sent successfully
+         */
+        sendMultiSelect: async function(agentId, answers) {
+            if (!agentId || !answers || !answers.length) return false;
+
+            try {
+                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'multi_select', answers: answers })
+                });
+                var data = await response.json();
+                if (response.ok && data.status === 'ok') {
+                    this._showSuccessFeedback(agentId);
+                    return true;
+                } else {
+                    this._handleError(data, agentId);
+                    return false;
+                }
+            } catch (error) {
+                console.error('RespondAPI: Multi-select request failed', error);
+                if (global.Toast) {
+                    global.Toast.error('Could not send selections', 'Network error');
+                }
+                return false;
+            }
+        },
+
+        /**
          * Select "Other" and type custom text
          * @param {number} agentId - The agent ID
          * @param {string} text - Custom text to type
@@ -171,12 +231,13 @@
             var text = input.value.trim();
             input.value = '';
             input.disabled = true;
+            autoResizeTextarea(input);
 
-            var self = this;
             this.sendResponse(agentId, text).then(function(success) {
                 input.disabled = false;
                 if (!success) {
                     input.value = text; // Restore text on failure
+                    autoResizeTextarea(input);
                 }
                 input.focus();
             });
@@ -248,7 +309,12 @@
         /**
          * Parse options from question text (exposed for template use)
          */
-        parseOptions: parseOptions
+        parseOptions: parseOptions,
+
+        /**
+         * Initialize a respond textarea with auto-resize and Enter-to-submit.
+         */
+        initTextarea: initTextarea
     };
 
     // Export

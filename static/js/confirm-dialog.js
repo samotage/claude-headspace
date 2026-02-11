@@ -114,8 +114,13 @@
             var cancelText = opts.cancelText || 'Cancel';
             var confirmClass = opts.confirmClass || 'bg-cyan hover:bg-cyan/90';
 
-            // Set content
-            dialogEl.querySelector('#confirm-dialog-title').textContent = title;
+            // Set content (titleHTML overrides plain-text title for styled content)
+            var titleEl = dialogEl.querySelector('#confirm-dialog-title');
+            if (opts.titleHTML) {
+                titleEl.innerHTML = opts.titleHTML;
+            } else {
+                titleEl.textContent = title;
+            }
             dialogEl.querySelector('#confirm-dialog-message').textContent = message;
 
             var cancelBtn = dialogEl.querySelector('[data-confirm-cancel]');

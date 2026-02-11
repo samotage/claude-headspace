@@ -512,3 +512,56 @@ class TestHookPermissionRequest:
         call_kwargs = mock_process.call_args
         assert call_kwargs[1]["tool_name"] == "Bash"
         assert call_kwargs[1]["tool_input"] == tool_input
+
+
+class TestBackfillTmuxPane:
+    """Tests for _backfill_tmux_pane helper."""
+
+    def test_backfill_flushes_session(self, app):
+        """_backfill_tmux_pane should set pane ID and flush session."""
+        from src.claude_headspace.routes.hooks import _backfill_tmux_pane
+
+        mock_agent = MagicMock()
+        mock_agent.tmux_pane_id = None
+
+        with app.app_context():
+            app.extensions = {}
+            with patch("src.claude_headspace.routes.hooks.db") as mock_db:
+                _backfill_tmux_pane(mock_agent, "%5")
+
+                assert mock_agent.tmux_pane_id == "%5"
+                mock_db.session.flush.assert_called_once()
+
+    def test_backfill_skips_when_already_set(self, app):
+        """_backfill_tmux_pane should not overwrite existing pane ID."""
+        from src.claude_headspace.routes.hooks import _backfill_tmux_pane
+
+        mock_agent = MagicMock()
+        mock_agent.tmux_pane_id = "%3"
+
+        with app.app_context():
+            with patch("src.claude_headspace.routes.hooks.db") as mock_db:
+                _backfill_tmux_pane(mock_agent, "%5")
+
+                assert mock_agent.tmux_pane_id == "%3"
+                mock_db.session.flush.assert_not_called()
+
+
+class TestRateLimiterCleanup:
+    """Tests for rate limiter cleanup of empty IP keys."""
+
+    def test_empty_ip_keys_pruned(self, app):
+        """Stale IP entries should be removed from rate limit counters."""
+        from src.claude_headspace.routes.hooks import _rate_limit_counters, _check_rate_limit
+
+        _rate_limit_counters.clear()
+        # Add a stale entry (timestamp far in the past)
+        _rate_limit_counters["old-ip"] = [0.0]
+
+        with app.app_context():
+            _check_rate_limit("old-ip")
+
+        # Stale entry should be pruned (all timestamps expired, key removed)
+        assert "old-ip" not in _rate_limit_counters
+
+        _rate_limit_counters.clear()

@@ -47,6 +47,8 @@ Use the `claude-headspace` wrapper script to launch Claude Code with automatic s
 claude-headspace start
 ```
 
+This launches the session inside a tmux pane with the Input Bridge enabled by default, so you can respond to agent prompts directly from the dashboard. If tmux is not installed, a warning is shown and the session continues without bridge capability.
+
 You can also pass arguments through to Claude Code:
 
 ```bash
@@ -56,17 +58,18 @@ claude-headspace start -- "your prompt here"
 The wrapper script:
 - Checks that the Headspace server is reachable
 - Registers the session with the dashboard
+- Wraps the session in tmux for Input Bridge (default)
 - Sets up environment variables for hook integration
 - Launches Claude Code as a child process
 - Cleans up the session when Claude Code exits
 
-To enable the tmux bridge (respond to prompts from the dashboard), add `--bridge`:
+To disable the tmux bridge, use `--no-bridge`:
 
 ```bash
-claude-headspace start --bridge
+claude-headspace start --no-bridge
 ```
 
-This launches the session inside a tmux pane so the dashboard can send text responses via `tmux send-keys`. Requires tmux to be installed (`brew install tmux`). See [Input Bridge](input-bridge) for details.
+See [Input Bridge](input-bridge) for details.
 
 ### Method 2: Hooks Only
 
@@ -111,7 +114,7 @@ Navigate to `http://localhost:5055` in your browser to see all your active sessi
 Each agent card shows its current state:
 
 - **Working** (blue) - Claude is actively processing
-- **Input Needed** (amber) - Claude is waiting for your response. If the session was started with `--bridge`, a respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
+- **Input Needed** (amber) - Claude is waiting for your response. A respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
 - **Idle** (gray) - Claude has completed its task
 
 ## Focus on a Session
@@ -122,5 +125,6 @@ Click the state bar on any agent card to bring its iTerm window to the foregroun
 
 - [Dashboard Overview](dashboard) - Learn about all dashboard features
 - [Input Bridge](input-bridge) - Respond to prompts from the dashboard
+- [Voice Bridge](voice-bridge) - Hands-free voice interaction from your phone
 - [Set an Objective](objective) - Guide Claude's priorities
 - [Configure Settings](configuration) - Customize your setup

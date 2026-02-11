@@ -75,14 +75,14 @@ class TestNotNullConstraints:
     def test_project_name_not_null(self, db_session):
         """Project.name cannot be null."""
         with pytest.raises(IntegrityError):
-            project = Project(name=None, path="/test/path")
+            project = Project(name=None, slug="test", path="/test/path")
             db_session.add(project)
             db_session.flush()
 
     def test_project_path_not_null(self, db_session):
         """Project.path cannot be null."""
         with pytest.raises(IntegrityError):
-            project = Project(name="test", path=None)
+            project = Project(name="test", slug="test", path=None)
             db_session.add(project)
             db_session.flush()
 

@@ -7,17 +7,42 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
-        <!-- Activity Metrics Bar (fixed, below nav, above stats bar) -->
-        {% include "partials/_activity_bar.html" %}
-
         <!-- Objective Banner -->
         {% include "partials/_objective_banner.html" %}
 
-        <!-- Recommended Next Panel -->
+        <!-- Recommended Next Panel (only when prioritisation is enabled and there's a recommendation) -->
+        {% if objective and objective.priority_enabled and recommended_next %}
         {% include "partials/_recommended_next.html" %}
+        {% endif %}
 
-        <!-- Sort Controls -->
-        {% include "partials/_sort_controls.html" %}
+        <!-- Sort Controls + New Agent -->
+        <div class="flex items-center justify-between gap-4 mb-4">
+            <div class="flex-1">
+                {% include "partials/_sort_controls.html" %}
+            </div>
+            <!-- New Agent Control -->
+            <div class="flex items-center gap-2" id="new-agent-control">
+                <div class="new-agent-wrapper">
+                    <button id="new-agent-btn" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-green/20 text-green border-green/30 hover:bg-green/30 min-h-[36px]" title="Create new agent" aria-expanded="false">
+                        + Agent
+                    </button>
+                    <div id="new-agent-menu" class="new-agent-menu">
+                        <div class="new-agent-menu-header">spawn agent</div>
+                        <div class="new-agent-menu-body">
+                            {% for project in all_projects %}
+                            <button class="new-agent-item" data-project-id="{{ project.id }}">{{ project.name }}</button>
+                            {% endfor %}
+                            {% if not all_projects %}
+                            <span class="new-agent-item-empty">No projects found</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <a href="/voice" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-blue/20 text-blue border-blue/30 hover:bg-blue/30 min-h-[36px] inline-flex items-center no-underline" title="Open chat view">
+                    Chat
+                </a>
+            </div>
+        </div>
 
         <!-- Content based on sort mode -->
         {% if sort_mode == 'kanban' %}
@@ -129,7 +154,7 @@
         {% else %}
             <!-- By Project View: Kanban columns -->
             {% if projects %}
-                <div class="flex flex-col gap-4 pb-4 md:flex-row md:overflow-x-auto" id="project-view"
+                <div class="flex flex-col gap-4 pb-4 md:flex-row md:overflow-x-auto lg:flex-wrap lg:overflow-visible" id="project-view"
                      style="min-height: calc(100vh - 280px);">
                     {% for project in projects %}
                         {% include "partials/_project_column.html" %}
@@ -153,6 +178,9 @@
 
 <!-- Brain Reboot Modal -->
 {% include "partials/_brain_reboot_modal.html" %}
+
+<!-- Agent Info Modal -->
+{% include "partials/_agent_info_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -167,4 +195,10 @@
 <script src="{{ url_for('static', filename='js/card-tooltip.js') }}?v={{ cache_bust }}"></script>
 <!-- Brain Reboot -->
 <script src="{{ url_for('static', filename='js/brain-reboot.js') }}?v={{ cache_bust }}"></script>
+<!-- Full-text drill-down modal -->
+<script src="{{ url_for('static', filename='js/full-text-modal.js') }}?v={{ cache_bust }}"></script>
+<!-- Agent Info slider -->
+<script src="{{ url_for('static', filename='js/agent-info.js') }}?v={{ cache_bust }}"></script>
+<!-- Agent lifecycle (create, kill, context) -->
+<script src="{{ url_for('static', filename='js/agent-lifecycle.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

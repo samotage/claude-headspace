@@ -1,0 +1,34 @@
+<!-- Agent Info Slider Pane -->
+<div id="agent-info-backdrop" class="slider-backdrop" onclick="AgentInfo.close()"></div>
+<div id="agent-info-slider" class="slider-pane" role="dialog" aria-modal="true" aria-labelledby="agent-info-title">
+    <!-- Header -->
+    <div class="modal-header">
+        <div class="flex items-baseline gap-2.5">
+            <h3 id="agent-info-hero" class="flex items-baseline gap-0.5">
+                <span class="agent-hero" id="agent-info-hero-chars"></span><span class="agent-hero-trail" id="agent-info-hero-trail"></span>
+            </h3>
+            <h2 id="agent-info-title" class="text-primary font-display text-lg">Agent Info</h2>
+        </div>
+        <div class="flex items-center gap-2">
+            <button class="modal-close-btn"
+                    onclick="AgentInfo.close()"
+                    aria-label="Close agent info slider">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Content area (populated by JS) -->
+    <div class="flex-1 overflow-y-auto p-6">
+        <div id="agent-info-content">
+            <p class="text-muted italic">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="modal-footer">
+        <span id="agent-info-status" class="text-muted text-xs"></span>
+    </div>
+</div>

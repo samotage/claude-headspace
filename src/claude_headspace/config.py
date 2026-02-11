@@ -1,10 +1,13 @@
 """Configuration loader with YAML and environment variable support."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 # Default configuration values
@@ -73,6 +76,9 @@ DEFAULTS = {
         "health_check_interval": 30,
         "socket_timeout": 2,
         "socket_path_prefix": "/tmp/claudec-",
+    },
+    "cli": {
+        "default_bridge": True,
     },
     "tmux_bridge": {
         "health_check_interval": 30,
@@ -146,6 +152,33 @@ DEFAULTS = {
             "days": 90,
         },
     },
+    "file_upload": {
+        "upload_dir": "uploads",
+        "max_file_size_mb": 10,
+        "max_total_storage_mb": 500,
+        "retention_days": 7,
+        "allowed_image_types": ["png", "jpg", "jpeg", "gif", "webp"],
+        "allowed_document_types": ["pdf"],
+        "allowed_text_types": [
+            "txt", "md", "py", "js", "ts", "json", "yaml", "yml",
+            "html", "css", "rb", "sh", "sql", "csv", "log",
+        ],
+    },
+    "voice_bridge": {
+        "enabled": False,
+        "auth": {
+            "token": "",
+            "localhost_bypass": True,
+        },
+        "network": {
+            "bind_address": "127.0.0.1",
+        },
+        "rate_limit": {
+            "requests_per_minute": 60,
+        },
+        "default_verbosity": "concise",
+        "auto_target": False,
+    },
 }
 
 # Environment variable mappings
@@ -217,9 +250,14 @@ def apply_env_overrides(config: dict) -> dict:
     for env_var, (section, key, converter) in ENV_MAPPINGS.items():
         value = os.environ.get(env_var)
         if value is not None:
+            try:
+                converted = converter(value)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid value for {env_var}={value!r}: {e}, skipping override")
+                continue
             if section not in result:
                 result[section] = {}
-            result[section][key] = converter(value)
+            result[section][key] = converted
 
     return result
 

@@ -4,6 +4,9 @@ Verifies that multiple agents on different projects
 maintain independent lifecycles on the dashboard.
 """
 
+import shutil
+import tempfile
+
 import pytest
 from playwright.sync_api import expect
 
@@ -11,19 +14,62 @@ from playwright.sync_api import expect
 pytestmark = pytest.mark.e2e
 
 
+@pytest.fixture
+def temp_project_dirs(e2e_app):
+    """Create temporary directories and register as projects.
+
+    Uses a location under HOME (not /var or /tmp) because the session
+    correlator rejects paths under /tmp, /private/tmp, and /var.
+    Projects must be pre-registered since auto-creation is disabled.
+    """
+    from pathlib import Path
+
+    from claude_headspace.database import db
+    from claude_headspace.models.project import Project, generate_slug
+
+    base = Path.home() / ".claude-e2e-test"
+    base.mkdir(exist_ok=True)
+    dirs = []
+    for name in ("project-alpha", "project-beta", "project-gamma", "project-delta"):
+        d = tempfile.mkdtemp(prefix=f"{name}-", dir=str(base))
+        dirs.append(d)
+
+    # Register each directory as a project in the DB
+    with e2e_app.app_context():
+        for d in dirs:
+            project_name = Path(d).name
+            project = Project(
+                name=project_name,
+                slug=generate_slug(project_name),
+                path=d,
+            )
+            db.session.add(project)
+        db.session.commit()
+
+    yield dirs
+
+    for d in dirs:
+        shutil.rmtree(d, ignore_errors=True)
+    # Clean up base dir if empty
+    try:
+        base.rmdir()
+    except OSError:
+        pass
+
+
 class TestMultiAgent:
     """Tests for multiple agents on different projects."""
 
     def test_two_agents_independent_states(
-        self, page, e2e_server, make_hook_client, dashboard
+        self, page, e2e_server, make_hook_client, dashboard, temp_project_dirs
     ):
         """Two agents maintain independent state transitions."""
         # Use distinct working directories so they create separate projects
         client_a = make_hook_client(
-            working_directory="/Users/samotage/dev/e2e-test/project-alpha"
+            working_directory=temp_project_dirs[0]
         )
         client_b = make_hook_client(
-            working_directory="/Users/samotage/dev/e2e-test/project-beta"
+            working_directory=temp_project_dirs[1]
         )
 
         # Start both agents
@@ -55,22 +101,22 @@ class TestMultiAgent:
         dashboard.assert_status_counts(input_needed=0, working=2, idle=0)
         dashboard.capture("multi_03_both_processing")
 
-        # Agent A stops → immediate COMPLETE
+        # Agent A stops → task completes (kanban creates condensed card + resets to IDLE)
         client_a.stop()
-        dashboard.assert_agent_state(agent_a, "COMPLETE", timeout=3000)
+        dashboard.assert_task_completed(agent_a, timeout=3000)
         dashboard.assert_agent_state(agent_b, "PROCESSING")
         dashboard.assert_status_counts(input_needed=0, working=1, idle=1)
         dashboard.capture("multi_04_a_complete")
 
     def test_end_one_agent_preserves_other(
-        self, page, e2e_server, make_hook_client, dashboard
+        self, page, e2e_server, make_hook_client, dashboard, temp_project_dirs
     ):
         """Ending one agent preserves the other's state."""
         client_a = make_hook_client(
-            working_directory="/Users/samotage/dev/e2e-test/project-gamma"
+            working_directory=temp_project_dirs[2]
         )
         client_b = make_hook_client(
-            working_directory="/Users/samotage/dev/e2e-test/project-delta"
+            working_directory=temp_project_dirs[3]
         )
 
         # Start both, both processing

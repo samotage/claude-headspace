@@ -655,6 +655,7 @@
                         } else {
                             html += '<div class="agent-metric-stats"><span class="stat-label">No data</span></div>';
                         }
+                        html += '<a href="/voice?agent_id=' + ad.agent.id + '" class="text-xs text-cyan hover:underline" style="flex-shrink:0;margin-left:auto" title="Chat">Chat</a>';
                         html += '</div>';
                     });
                     html += '</div></details>';

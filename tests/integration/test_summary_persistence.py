@@ -14,7 +14,7 @@ class TestTurnSummaryPersistence:
 
     def test_turn_created_without_summary(self, db_session):
         """Turn can be created with null summary fields."""
-        project = Project(name="test-project", path="/test/path")
+        project = Project(name="test-project", slug="test-project", path="/test/path")
         db_session.add(project)
         db_session.flush()
 
@@ -46,7 +46,7 @@ class TestTurnSummaryPersistence:
 
     def test_turn_summary_persisted(self, db_session):
         """Turn summary and timestamp can be set and persisted."""
-        project = Project(name="test-project-2", path="/test/path-2")
+        project = Project(name="test-project-2", slug="test-project-2", path="/test/path-2")
         db_session.add(project)
         db_session.flush()
 
@@ -84,7 +84,7 @@ class TestTurnSummaryPersistence:
 
     def test_turn_summary_can_be_updated(self, db_session):
         """Turn summary can be overwritten."""
-        project = Project(name="test-project-3", path="/test/path-3")
+        project = Project(name="test-project-3", slug="test-project-3", path="/test/path-3")
         db_session.add(project)
         db_session.flush()
 
@@ -123,7 +123,7 @@ class TestTaskSummaryPersistence:
 
     def test_task_created_without_summary(self, db_session):
         """Task can be created with null summary fields."""
-        project = Project(name="task-test-project", path="/test/task-path")
+        project = Project(name="task-test-project", slug="task-test-project", path="/test/task-path")
         db_session.add(project)
         db_session.flush()
 
@@ -146,7 +146,7 @@ class TestTaskSummaryPersistence:
 
     def test_task_summary_persisted(self, db_session):
         """Task summary and timestamp can be set and persisted."""
-        project = Project(name="task-test-project-2", path="/test/task-path-2")
+        project = Project(name="task-test-project-2", slug="task-test-project-2", path="/test/task-path-2")
         db_session.add(project)
         db_session.flush()
 
@@ -179,7 +179,7 @@ class TestTaskSummaryPersistence:
 
     def test_task_summary_with_turns(self, db_session):
         """Task with turns can have summary persisted independently."""
-        project = Project(name="task-test-project-3", path="/test/task-path-3")
+        project = Project(name="task-test-project-3", slug="task-test-project-3", path="/test/task-path-3")
         db_session.add(project)
         db_session.flush()
 

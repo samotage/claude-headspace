@@ -38,6 +38,26 @@ class DashboardAssertions:
         )
         expect(locator).to_contain_text(text, timeout=timeout)
 
+    def assert_task_instruction_contains(
+        self, agent_id: int, text: str, timeout: int = 10000
+    ):
+        """Wait for .task-instruction to contain text."""
+        locator = self.page.locator(
+            f'article[data-agent-id="{agent_id}"] .task-instruction'
+        )
+        expect(locator).to_contain_text(text, timeout=timeout)
+
+    def assert_task_completed(self, agent_id: int, timeout: int = 10000):
+        """Wait for task completion in kanban view.
+
+        In kanban view, COMPLETE creates a condensed <details> card and
+        resets the <article> card to IDLE. Check for the condensed card.
+        """
+        locator = self.page.locator(
+            f'details.kanban-completed-task[data-agent-id="{agent_id}"]'
+        )
+        expect(locator).to_be_visible(timeout=timeout)
+
     def assert_status_counts(
         self,
         input_needed: int,
@@ -60,7 +80,7 @@ class DashboardAssertions:
         """Wait for SSE connection indicator to show connected."""
         expect(
             self.page.locator("#connection-indicator .connection-text")
-        ).to_have_text("SSE live", timeout=timeout)
+        ).to_have_text("Live", timeout=timeout)
 
     def assert_agent_card_exists(self, agent_id: int, timeout: int = 10000):
         """Wait for agent card to appear in DOM."""

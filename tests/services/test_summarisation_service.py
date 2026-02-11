@@ -474,12 +474,14 @@ class TestResolveTaskPrompt:
 
         assert "No instruction recorded" in prompt
 
-    def test_task_prompt_with_no_turns_returns_none(self, service, mock_task):
+    def test_task_prompt_with_no_turns_uses_instruction_fallback(self, service, mock_task):
         mock_task.turns = []
 
         prompt = service._resolve_task_prompt(mock_task)
 
-        assert prompt is None
+        assert prompt is not None
+        assert "Refactor the authentication middleware" in prompt
+        assert "no agent output was captured" in prompt
 
 
 class TestResolveTurnPrompt:
@@ -674,8 +676,8 @@ class TestTaskEmptyFinalTurnFallback:
         assert result == "Task completed successfully."
         mock_inference.infer.assert_called_once()
 
-    def test_all_turns_empty_skips_inference(self, service, mock_inference, mock_task):
-        """When all turns have empty text, skips inference entirely."""
+    def test_all_turns_empty_uses_instruction_fallback(self, service, mock_inference, mock_task):
+        """When all turns have empty text, falls back to instruction-only prompt."""
         mock_task.completion_summary = None
         for t in mock_task.turns:
             t.text = ""
@@ -683,8 +685,10 @@ class TestTaskEmptyFinalTurnFallback:
 
         result = service.summarise_task(mock_task)
 
-        assert result is None
-        mock_inference.infer.assert_not_called()
+        # Should call inference with instruction-only prompt
+        mock_inference.infer.assert_called_once()
+        call_args = mock_inference.infer.call_args
+        assert "no agent output was captured" in call_args.kwargs["input_text"]
 
 
 class TestSSEBroadcast:
@@ -907,3 +911,25 @@ class TestSlashCommandInstructionBypass:
         service.summarise_instruction(mock_task, "Fix the login page CSS")
 
         mock_inference.infer.assert_called_once()
+
+
+class TestResolveTaskPromptResilience:
+    """Tests for _resolve_task_prompt resilience against DetachedInstanceError."""
+
+    def test_detached_task_turns_graceful_fallback(self, service):
+        """Accessing task.turns raising an exception should fall back to empty turns."""
+        mock_task = MagicMock()
+        mock_task.id = 99
+        mock_task.instruction = "Fix the auth module"
+
+        # Simulate DetachedInstanceError when accessing .turns
+        type(mock_task).turns = property(
+            lambda self: (_ for _ in ()).throw(Exception("DetachedInstanceError"))
+        )
+
+        # Should not raise — falls back to empty turns
+        result = SummarisationService._resolve_task_prompt(mock_task)
+
+        # With instruction but no turns, should return instruction-only prompt
+        assert result is not None
+        assert "Fix the auth module" in result

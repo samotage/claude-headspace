@@ -18,7 +18,6 @@
     window.loadHelpTopic = loadHelpTopic;
     window.openDocViewer = openDocViewer;
     window.closeDocViewer = closeDocViewer;
-    window.copyCodeBlock = copyCodeBlock;
 
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
@@ -217,14 +216,6 @@
 
     function escapeRegex(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    function slugify(text) {
-        return text.toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .trim();
     }
 
     function scrollToAnchor(hash) {

@@ -155,7 +155,7 @@ def save_config():
         if key not in schema_sections:
             config[key] = value
     # Deep-merge nested sections to preserve non-schema sub-keys
-    for nested_section in ["openrouter", "headspace"]:
+    for nested_section in ["openrouter", "headspace", "voice_bridge"]:
         original_nested = original.get(nested_section, {})
         config_nested = config.get(nested_section, {})
         for key, value in original_nested.items():

@@ -8,6 +8,7 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 - [Dashboard](dashboard) - Understanding the main dashboard
 - [Projects](projects) - Managing projects and the project detail page
 - [Input Bridge](input-bridge) - Responding to prompts from the dashboard
+- [Voice Bridge](voice-bridge) - Hands-free voice interaction from your phone
 - [Objective](objective) - Setting and managing your global objective
 - [Waypoints](waypoints) - Editing project waypoints
 - [Brain Reboot](brain-reboot) - Context restoration and progress summaries

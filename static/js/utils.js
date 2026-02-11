@@ -378,6 +378,26 @@
         return { total: total, turns: turns };
     }
 
+    /**
+     * Generate styled hero identity HTML markup.
+     * Reusable component for the agent-hero + agent-hero-trail pattern
+     * used across dashboard cards, kanban, logging, activity, and dialogs.
+     *
+     * @param {string} chars - Hero characters (e.g. "a4")
+     * @param {string} trail - Trail characters (e.g. "6efe68")
+     * @param {Object} [opts] - Options
+     * @param {string} [opts.heroClass] - Extra classes for .agent-hero span
+     * @param {string} [opts.trailClass] - Extra classes for .agent-hero-trail span
+     * @returns {string} Safe HTML string
+     */
+    function heroHTML(chars, trail, opts) {
+        opts = opts || {};
+        var hClass = 'agent-hero' + (opts.heroClass ? ' ' + opts.heroClass : '');
+        var tClass = 'agent-hero-trail' + (opts.trailClass ? ' ' + opts.trailClass : '');
+        return '<span class="' + hClass + '">' + escapeHtml(chars) +
+               '</span><span class="' + tClass + '">' + escapeHtml(trail) + '</span>';
+    }
+
     // Export to global namespace
     window.CHUtils = {
         escapeHtml: escapeHtml,
@@ -385,6 +405,7 @@
         renderMarkdown: renderMarkdown,
         copyCodeBlock: copyCodeBlock,
         apiFetch: apiFetch,
+        heroHTML: heroHTML,
         fillHourlyGaps: fillHourlyGaps,
         aggregateByDay: aggregateByDay,
         weightedAvgTime: weightedAvgTime,

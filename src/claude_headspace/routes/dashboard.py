@@ -536,6 +536,18 @@ def dashboard():
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
+            # Add current task ID and plan state for on-demand drill-down
+            _ct = agent.get_current_task()
+            agent_dict["current_task_id"] = _ct.id if _ct else (agent.tasks[0].id if agent.tasks else None)
+            agent_dict["has_plan"] = bool(_ct and _ct.plan_content)
+            # Plan mode label overrides
+            if _ct:
+                if _ct.plan_content and _ct.plan_approved_at:
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Executing plan..."}
+                elif _ct.plan_content and not _ct.plan_approved_at:
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
+                elif _ct.plan_file_path == "pending":
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
             # Bridge connectivity — use cache, fall back to live check
             is_bridge = False
             if agent.tmux_pane_id:
@@ -577,17 +589,18 @@ def dashboard():
     # Filter out projects with no agents for the Kanban view
     projects_with_agents = [p for p in project_data if p["agents"]]
 
-    # Calculate recommended next agent
-    recommended_next = get_recommended_next(all_agents, agent_data_map)
+    # Get current objective
+    objective = db.session.query(Objective).first()
+    priority_enabled = bool(objective and objective.priority_enabled)
+
+    # Calculate recommended next agent (only when prioritisation is enabled)
+    recommended_next = get_recommended_next(all_agents, agent_data_map) if priority_enabled else None
 
     # Sort agents for priority view
     priority_sorted_agents = sort_agents_by_priority(all_agents_data)
 
-    # Get current objective
-    objective = db.session.query(Objective).first()
-
     # Sort agents within each project by priority when prioritisation is enabled
-    if objective and objective.priority_enabled:
+    if priority_enabled:
         for project in projects_with_agents:
             project["agents"] = sort_agents_by_priority(project["agents"])
 
@@ -596,7 +609,7 @@ def dashboard():
     kanban_data = []
     if sort_mode == "kanban":
         kanban_data = _prepare_kanban_data(
-            projects, project_data, objective and objective.priority_enabled,
+            projects, project_data, priority_enabled,
             projects_by_id=projects_by_id,
         )
 
@@ -608,6 +621,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
+        all_projects=projects,
         status_counts=status_counts,
         recommended_next=recommended_next,
         sort_mode=sort_mode,

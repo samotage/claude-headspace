@@ -76,6 +76,8 @@ Flask application factory (`app.py`) with:
 ## Common Commands
 
 ```bash
+claude-headspace start              # Start monitored session (bridge enabled by default)
+claude-headspace start --no-bridge  # Start without tmux bridge
 python run.py                        # Start the server
 ./restart_server.sh                  # Restart running server
 flask db upgrade                     # Run pending migrations

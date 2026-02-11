@@ -8,7 +8,8 @@ from flask import Blueprint, jsonify
 
 from ..database import db
 from ..models.agent import Agent
-from ..services.iterm_focus import FocusErrorType, FocusResult, focus_iterm_pane
+from ..services.iterm_focus import FocusErrorType, FocusResult, focus_iterm_by_tty, focus_iterm_pane
+from ..services.tmux_bridge import get_pane_client_tty, select_pane
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ def _log_focus_event(
     success: bool,
     error_type: str | None,
     latency_ms: int,
+    tmux_pane_id: str | None = None,
+    method: str | None = None,
 ) -> None:
     """
     Log a focus attempt event.
@@ -46,18 +49,72 @@ def _log_focus_event(
         success: Whether focus succeeded
         error_type: Error type if failed
         latency_ms: Operation latency in milliseconds
+        tmux_pane_id: The tmux pane ID (if available)
+        method: The focus method used (tmux, iterm, tmux_fallback_iterm)
     """
     outcome = "success" if success else "failure"
     logger.info(
         f"focus_attempted: agent_id={agent_id}, pane_id={pane_id}, "
+        f"tmux_pane_id={tmux_pane_id}, method={method}, "
         f"outcome={outcome}, error_type={error_type}, latency_ms={latency_ms}"
     )
+
+
+def _focus_via_tmux(tmux_pane_id: str, iterm_pane_id: str | None) -> tuple[FocusResult, str]:
+    """Focus an agent via tmux pane resolution.
+
+    1. Resolve the tmux pane to a client TTY
+    2. Select the correct tmux pane (switch window + pane)
+    3. Focus the iTerm window by TTY
+
+    Falls back to iterm_pane_id if TTY resolution fails.
+
+    Args:
+        tmux_pane_id: The tmux pane ID (e.g., %29)
+        iterm_pane_id: The iTerm pane ID for fallback (may be None)
+
+    Returns:
+        Tuple of (FocusResult, method_string)
+    """
+    # Step 1: Resolve pane to client TTY
+    tty_result = get_pane_client_tty(tmux_pane_id)
+
+    if not tty_result.success:
+        # TTY resolution failed — fall back to iterm_pane_id if available
+        if iterm_pane_id:
+            logger.info(
+                f"tmux TTY resolution failed for {tmux_pane_id}, "
+                f"falling back to iterm_pane_id: {iterm_pane_id}"
+            )
+            result = focus_iterm_pane(iterm_pane_id)
+            return result, "tmux_fallback_iterm"
+        else:
+            return FocusResult(
+                success=False,
+                error_type=FocusErrorType.PANE_NOT_FOUND,
+                error_message=tty_result.error_message or "Failed to resolve tmux pane TTY.",
+                latency_ms=0,
+            ), "tmux"
+
+    # Step 2: Select the correct tmux pane (before focusing iTerm)
+    select_result = select_pane(tmux_pane_id)
+    if not select_result.success:
+        logger.warning(f"tmux select-pane failed for {tmux_pane_id}: {select_result.error_message}")
+        # Continue anyway — focusing the iTerm window is still useful
+
+    # Step 3: Focus the iTerm window by TTY
+    result = focus_iterm_by_tty(tty_result.tty)
+    return result, "tmux"
 
 
 @focus_bp.route("/api/focus/<int:agent_id>", methods=["POST"])
 def focus_agent(agent_id: int):
     """
     Trigger iTerm2 focus for a specific agent's terminal session.
+
+    For agents with a tmux_pane_id, resolves the pane's client TTY and
+    uses that to find the iTerm window (stable across window close/reopen).
+    Falls back to the existing iterm_pane_id path for non-tmux sessions.
 
     Args:
         agent_id: Database ID of the agent
@@ -87,9 +144,10 @@ def focus_agent(agent_id: int):
 
     fallback_path = _get_fallback_path(agent)
     pane_id = agent.iterm_pane_id
+    tmux_pane_id = agent.tmux_pane_id
 
-    # Check if agent has a pane ID
-    if not pane_id:
+    # Check if agent has any pane ID
+    if not pane_id and not tmux_pane_id:
         latency_ms = int((time.time() - start_time) * 1000)
         _log_focus_event(
             agent_id=agent_id,
@@ -99,13 +157,17 @@ def focus_agent(agent_id: int):
             latency_ms=latency_ms,
         )
         return jsonify({
-            "error": "This agent does not have an iTerm pane ID.",
+            "error": "This agent does not have a pane ID.",
             "detail": "pane_not_found",
             "fallback_path": fallback_path,
         }), 400
 
-    # Attempt to focus the pane
-    result: FocusResult = focus_iterm_pane(pane_id)
+    # Route to appropriate focus method
+    if tmux_pane_id:
+        result, method = _focus_via_tmux(tmux_pane_id, pane_id)
+    else:
+        result = focus_iterm_pane(pane_id)
+        method = "iterm"
 
     # Log the event
     _log_focus_event(
@@ -114,6 +176,8 @@ def focus_agent(agent_id: int):
         success=result.success,
         error_type=result.error_type.value if result.error_type else None,
         latency_ms=result.latency_ms,
+        tmux_pane_id=tmux_pane_id,
+        method=method,
     )
 
     if result.success:
@@ -121,17 +185,16 @@ def focus_agent(agent_id: int):
             "status": "ok",
             "agent_id": agent_id,
             "pane_id": pane_id,
+            "method": method,
         }), 200
     else:
-        # Map error types to appropriate HTTP status codes
         status_code = 500
-        if result.error_type == FocusErrorType.PANE_NOT_FOUND:
-            status_code = 500  # Still a server-side issue, not client error
 
         return jsonify({
             "error": result.error_message,
             "detail": result.error_type.value if result.error_type else "unknown",
             "fallback_path": fallback_path,
+            "method": method,
         }), status_code
 
 

@@ -13,12 +13,12 @@ from src.claude_headspace.services.headspace_monitor import (
 
 
 @pytest.fixture
-def app():
+def mock_app():
     """Minimal Flask app mock with app_context."""
-    app = MagicMock()
-    app.app_context.return_value.__enter__ = MagicMock()
-    app.app_context.return_value.__exit__ = MagicMock(return_value=False)
-    return app
+    mock = MagicMock()
+    mock.app_context.return_value.__enter__ = MagicMock()
+    mock.app_context.return_value.__exit__ = MagicMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
@@ -39,24 +39,24 @@ def config():
 
 
 @pytest.fixture
-def monitor(app, config):
-    return HeadspaceMonitor(app=app, config=config)
+def monitor(mock_app, config):
+    return HeadspaceMonitor(app=mock_app, config=config)
 
 
 class TestConfiguration:
 
-    def test_enabled_from_config(self, app):
+    def test_enabled_from_config(self, mock_app):
         config = {"headspace": {"enabled": True}}
-        m = HeadspaceMonitor(app=app, config=config)
+        m = HeadspaceMonitor(app=mock_app, config=config)
         assert m.enabled is True
 
-    def test_disabled_from_config(self, app):
+    def test_disabled_from_config(self, mock_app):
         config = {"headspace": {"enabled": False}}
-        m = HeadspaceMonitor(app=app, config=config)
+        m = HeadspaceMonitor(app=mock_app, config=config)
         assert m.enabled is False
 
-    def test_default_enabled(self, app):
-        m = HeadspaceMonitor(app=app, config={})
+    def test_default_enabled(self, mock_app):
+        m = HeadspaceMonitor(app=mock_app, config={})
         assert m.enabled is True
 
     def test_thresholds_from_config(self, monitor):
@@ -68,16 +68,16 @@ class TestConfiguration:
         assert monitor._flow_max_frustration == 3
         assert monitor._flow_min_duration == 15
 
-    def test_session_rolling_window_default(self, app):
-        m = HeadspaceMonitor(app=app, config={})
+    def test_session_rolling_window_default(self, mock_app):
+        m = HeadspaceMonitor(app=mock_app, config={})
         assert m._session_rolling_window_minutes == 180
 
-    def test_session_rolling_window_from_config(self, app):
+    def test_session_rolling_window_from_config(self, mock_app):
         config = {"headspace": {"session_rolling_window_minutes": 60}}
-        m = HeadspaceMonitor(app=app, config=config)
+        m = HeadspaceMonitor(app=mock_app, config=config)
         assert m._session_rolling_window_minutes == 60
 
-    def test_custom_messages(self, app):
+    def test_custom_messages(self, mock_app):
         config = {
             "headspace": {
                 "messages": {
@@ -86,7 +86,7 @@ class TestConfiguration:
                 }
             }
         }
-        m = HeadspaceMonitor(app=app, config=config)
+        m = HeadspaceMonitor(app=mock_app, config=config)
         assert m._gentle_alerts == ["Custom alert"]
         assert m._flow_messages == ["Custom flow"]
 
@@ -233,17 +233,17 @@ class TestCalcRolling3hr:
         result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
         assert result == 7.0
 
-    def test_uses_config_window(self, app):
+    def test_uses_config_window(self, mock_app):
         config = {"headspace": {"session_rolling_window_minutes": 60}}
-        m = HeadspaceMonitor(app=app, config=config)
+        m = HeadspaceMonitor(app=mock_app, config=config)
         assert m._session_rolling_window_minutes == 60
 
 
 class TestRecalculate:
 
-    def test_disabled_monitor_skips(self, app):
+    def test_disabled_monitor_skips(self, mock_app):
         config = {"headspace": {"enabled": False}}
-        monitor = HeadspaceMonitor(app=app, config=config)
+        monitor = HeadspaceMonitor(app=mock_app, config=config)
         turn = MagicMock()
         # Should not raise
         monitor.recalculate(turn)

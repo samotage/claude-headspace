@@ -78,16 +78,18 @@ This directory contains the complete roadmap documentation for Claude Headspace 
 | **Epic 1** | Core Foundation + Event-Driven Hooks | 11      | 11-13 weeks | P0 (blocking) |
 | **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | P1            |
 | **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | P1            |
-| **Epic 4** | Data Management                      | 3       | 2-3 weeks   | P2            |
+| **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | P2            |
+| **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | P1            |
+| **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | P1            |
 
-**Total:** 23 sprints, ~21-27 weeks
+**Total:** 38+ sprints, ~37-47 weeks (Epic 6 is extensible)
 
 ### Critical Path
 
 ```
-Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt)
+Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 (Bridge & Projects) → Epic 6 (Voice & Chat)
                    ↘
-                    Epic 2 (UI Polish) [parallel]
+                    Epic 2 (UI Polish) [parallel with Epic 3]
 ```
 
 ---
@@ -109,6 +111,38 @@ Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt)
 | 11     | Claude Code Hooks Integration   | 1-2 weeks | hook-receiver                   |
 
 **Total:** 11 sprints, 11-13 weeks
+
+---
+
+### 6. Epic 6 Detailed Roadmap
+
+**File:** `claude_headspace_v3.1_epic6_detailed_roadmap.md`
+
+**Purpose:** Sprint-by-sprint breakdown of Epic 6 with subsystem-level detail
+
+**Contents:**
+
+- 3 initial sprints (extensible — new sprints appended as scoped)
+- 3 subsystems requiring OpenSpec PRDs
+- Each sprint includes:
+  - Goal, duration, dependencies
+  - Deliverables (comprehensive list)
+  - Technical decisions
+  - UI wireframes
+  - Risks & mitigation
+  - Acceptance criteria
+- Sprint dependency diagram
+- Cross-epic dependencies
+- Acceptance test cases
+- Future sprint candidates
+- PRD generation order
+
+**Use this for:**
+
+- Generating detailed PRDs for each sprint
+- Understanding voice bridge and chat history requirements
+- Implementation planning
+- OpenSpec proposal creation
 
 ---
 
@@ -295,6 +329,7 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 | Version | Date       | Author          | Changes                                              |
 | ------- | ---------- | --------------- | ---------------------------------------------------- |
 | 1.0     | 2026-01-28 | PM Agent (John) | Initial roadmap documentation with hooks integration |
+| 1.1     | 2026-02-11 | PM Agent (John) | Added Epic 5, Epic 6 entries and updated totals      |
 
 ---
 

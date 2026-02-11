@@ -37,9 +37,44 @@ PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode"}
 # completed less than this many seconds ago (tail-end tool activity).
 INFERRED_TASK_COOLDOWN_SECONDS = 30
 
+# ── Module-level state dicts ──────────────────────────────────────────
+# These dicts are in-process singletons. They assume a single-process
+# Flask deployment (no multi-worker gunicorn). If the app were to run
+# with multiple workers, these would need to be moved to Redis or a
+# shared-memory store. reset_receiver_state() clears all of them.
+
 # Track which tool triggered AWAITING_INPUT per agent, so post_tool_use
 # only resumes when the matching tool completes (not unrelated tools).
 _awaiting_tool_for_agent: dict[int, str | None] = {}
+
+# Track agents that just received a respond via the dashboard tmux bridge.
+# When set, the next user_prompt_submit hook for this agent should be skipped
+# because the respond handler already created the turn and transitioned state.
+_respond_pending_for_agent: dict[int, float] = {}
+
+# How long (seconds) a respond-pending flag remains valid.
+_RESPOND_PENDING_TTL = 10.0
+
+# Track agents with an in-flight deferred stop thread to prevent duplicate
+# threads from being spawned for the same agent.
+_deferred_stop_pending: set[int] = set()
+
+# Track per-agent transcript file position for incremental reading.
+# Used by intermediate PROGRESS turn capture (post_tool_use) to avoid
+# re-reading content already captured. Reset on session start.
+_transcript_positions: dict[int, int] = {}
+
+# Track text of PROGRESS turns captured during the current agent response.
+# Used by stop hook for deduplication — the final COMPLETION turn should
+# not duplicate text already captured as intermediate PROGRESS turns.
+# Cleared on user_prompt_submit (new response cycle starts).
+_progress_texts_for_agent: dict[int, list[str]] = {}
+
+# Track file metadata for IDLE-state file uploads via voice bridge.
+# When a file is uploaded to an IDLE agent, the voice bridge sends via tmux
+# but can't create a Turn (no active task). The next user_prompt_submit hook
+# creates the COMMAND turn — this dict passes the file metadata to that turn.
+_file_metadata_pending_for_agent: dict[int, dict] = {}
 
 
 # --- Data types ---
@@ -131,6 +166,11 @@ def reset_receiver_state() -> None:
     global _receiver_state
     _receiver_state = HookReceiverState()
     _awaiting_tool_for_agent.clear()
+    _respond_pending_for_agent.clear()
+    _deferred_stop_pending.clear()
+    _transcript_positions.clear()
+    _progress_texts_for_agent.clear()
+    _file_metadata_pending_for_agent.clear()
 
 
 # --- Internal helpers ---
@@ -175,7 +215,7 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None) -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None) -> None:
     try:
         from .broadcaster import get_broadcaster
         payload = {
@@ -185,6 +225,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "actor": "agent",
             "intent": "question",
             "task_id": task.id if task else None,
+            "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if tool_input:
@@ -194,10 +235,118 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
         logger.warning(f"Turn created broadcast failed: {e}")
 
 
+def _capture_progress_text(agent: Agent, current_task) -> None:
+    """Read new transcript entries and create PROGRESS turns for intermediate agent text.
+
+    Called during post_tool_use when the agent is PROCESSING. Each assistant text
+    entry written to the transcript since the last capture becomes a PROGRESS Turn,
+    giving the voice bridge (and dashboard chat) real-time visibility into what
+    the agent is doing between tool calls.
+    """
+    if not agent.transcript_path:
+        return
+
+    import os
+    from .transcript_reader import read_new_entries_from_position
+
+    # Initialize position to current file size if not yet tracked
+    # (handles the case where user_prompt_submit didn't set it)
+    if agent.id not in _transcript_positions:
+        try:
+            _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+        except OSError:
+            return
+        return  # First call — just set the baseline, don't capture
+
+    pos = _transcript_positions[agent.id]
+    try:
+        entries, new_pos = read_new_entries_from_position(agent.transcript_path, pos)
+    except Exception as e:
+        logger.debug(f"Progress capture failed for agent {agent.id}: {e}")
+        return
+
+    if new_pos == pos:
+        return  # No new content
+
+    _transcript_positions[agent.id] = new_pos
+
+    # Filter for assistant entries with meaningful text
+    MIN_PROGRESS_LEN = 10
+    new_texts = []
+    for entry in entries:
+        if entry.role == "assistant" and entry.content and len(entry.content.strip()) >= MIN_PROGRESS_LEN:
+            new_texts.append(entry.content.strip())
+
+    if not new_texts:
+        return
+
+    # Track captured texts for dedup with the final COMPLETION turn
+    if agent.id not in _progress_texts_for_agent:
+        _progress_texts_for_agent[agent.id] = []
+
+    for text in new_texts:
+        _progress_texts_for_agent[agent.id].append(text)
+
+        # Create a PROGRESS Turn record
+        turn = Turn(
+            task_id=current_task.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text=text,
+        )
+        db.session.add(turn)
+        db.session.flush()
+
+        # Broadcast so SSE clients (voice bridge, dashboard) pick it up
+        try:
+            from .broadcaster import get_broadcaster
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": text,
+                "actor": "agent",
+                "intent": "progress",
+                "task_id": current_task.id,
+                "turn_id": turn.id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"Progress turn broadcast failed: {e}")
+
+    logger.info(
+        f"progress_capture: agent_id={agent.id}, task_id={current_task.id}, "
+        f"new_turns={len(new_texts)}, total_captured={len(_progress_texts_for_agent.get(agent.id, []))}"
+    )
+
+
+def _mark_question_answered(task) -> None:
+    """Mark the most recent QUESTION turn's tool_input status as complete.
+
+    Called when a question is answered to prevent stale options from
+    being rendered on subsequent AWAITING_INPUT transitions.
+    """
+    if not task or not hasattr(task, 'turns') or not task.turns:
+        return
+    for turn in reversed(task.turns):
+        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            if turn.tool_input and isinstance(turn.tool_input, dict):
+                # Reassign dict (not mutate) so SQLAlchemy detects the change
+                turn.tool_input = {**turn.tool_input, "status": "complete"}
+            break
+
+
 def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> str:
     if tool_input and isinstance(tool_input, dict):
         questions = tool_input.get("questions")
         if questions and isinstance(questions, list) and len(questions) > 0:
+            # Multi-question: join all question texts
+            if len(questions) > 1:
+                texts = []
+                for q in questions:
+                    if isinstance(q, dict) and q.get("question"):
+                        texts.append(q["question"])
+                if texts:
+                    return " | ".join(texts)
             q = questions[0]
             if isinstance(q, dict) and q.get("question"):
                 return q["question"]
@@ -367,10 +516,17 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
     Instead of blocking the Flask request handler with time.sleep(), this
     spawns a daemon thread that waits, re-reads the transcript, and applies
     the appropriate state transition within a fresh app context.
+
+    Uses _deferred_stop_pending to prevent duplicate threads for the same agent.
     """
     agent_id = agent.id
     task_id = current_task.id
     project_id = agent.project_id
+
+    # Dedup: skip if a deferred stop is already in flight for this agent
+    if agent_id in _deferred_stop_pending:
+        logger.info(f"deferred_stop: agent_id={agent_id}, skipped (already pending)")
+        return
 
     # Capture Flask app reference BEFORE starting thread
     # (current_app is not available inside background threads)
@@ -383,89 +539,132 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
 
     def _deferred_check():
         import time
-        time.sleep(1.5)  # Wait for Claude Code to flush transcript
+        try:
+            with app.app_context():
+                try:
+                    from ..models.task import Task
 
-        with app.app_context():
-            try:
-                from ..models.task import Task
-                task = db.session.get(Task, task_id)
-                if not task or task.state == TaskState.COMPLETE:
-                    return  # Already completed by another hook
+                    # Poll for transcript content with backoff
+                    delays = [0.5, 1.0, 1.5, 2.0]  # Total: 5s max
+                    agent_text = ""
+                    for delay in delays:
+                        time.sleep(delay)
 
-                agent_obj = db.session.get(Agent, agent_id)
-                if not agent_obj:
-                    return
+                        task = db.session.get(Task, task_id)
+                        if not task or task.state == TaskState.COMPLETE:
+                            return  # Already completed by another hook
 
-                agent_text = _extract_transcript_content(agent_obj)
-                logger.info(
-                    f"deferred_stop: agent_id={agent_id}, "
-                    f"transcript_retry: len={len(agent_text) if agent_text else 0}"
-                )
-                if not agent_text:
-                    # Still empty — complete with no transcript
+                        agent_obj = db.session.get(Agent, agent_id)
+                        if not agent_obj:
+                            return
+
+                        # Refresh to avoid stale reads
+                        db.session.refresh(task)
+                        if task.state == TaskState.COMPLETE:
+                            return
+
+                        agent_text = _extract_transcript_content(agent_obj)
+                        if agent_text:
+                            break
+
+                    logger.info(
+                        f"deferred_stop: agent_id={agent_id}, "
+                        f"transcript_retry: len={len(agent_text) if agent_text else 0}, "
+                        f"polls={delays.index(delay) + 1 if agent_text else len(delays)}"
+                    )
+                    if not agent_text:
+                        # Still empty — complete with no transcript
+                        lifecycle = _get_lifecycle_manager()
+                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+                        _trigger_priority_scoring()
+                        pending = lifecycle.get_pending_summarisations()
+                        db.session.commit()
+                        broadcast_card_refresh(agent_obj, "stop_deferred")
+                        _execute_pending_summarisations(pending)
+                        _send_completion_notification(agent_obj, task)
+                        logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
+                        return
+
+                    # Deduplicate against captured PROGRESS turns
+                    full_agent_text = agent_text
+                    completion_text = agent_text
+                    captured = _progress_texts_for_agent.pop(agent_id, None)
+                    if captured:
+                        pos = _transcript_positions.get(agent_id, 0)
+                        if pos > 0 and agent_obj.transcript_path:
+                            from .transcript_reader import read_new_entries_from_position
+                            new_entries, _ = read_new_entries_from_position(agent_obj.transcript_path, pos)
+                            new_texts = [
+                                e.content.strip() for e in new_entries
+                                if e.role == "assistant" and e.content and e.content.strip()
+                            ]
+                            if new_texts:
+                                completion_text = "\n\n".join(new_texts)
+                            else:
+                                completion_text = ""
+                    _transcript_positions.pop(agent_id, None)
+
+                    inference_service = app.extensions.get("inference_service")
+
+                    intent_result = detect_agent_intent(
+                        full_agent_text, inference_service=inference_service,
+                        project_id=project_id, agent_id=agent_id,
+                    )
+
                     lifecycle = _get_lifecycle_manager()
-                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+                    if intent_result.intent == TurnIntent.QUESTION:
+                        from ..models.turn import Turn as _Turn
+                        turn = _Turn(
+                            task_id=task.id, actor=TurnActor.AGENT,
+                            intent=TurnIntent.QUESTION, text=full_agent_text,
+                            question_text=full_agent_text,
+                            question_source_type="free_text",
+                        )
+                        db.session.add(turn)
+                        lifecycle.update_task_state(
+                            task=task, to_state=TaskState.AWAITING_INPUT,
+                            trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
+                        )
+                    elif intent_result.intent == TurnIntent.END_OF_TASK:
+                        lifecycle.complete_task(
+                            task=task, trigger="hook:stop:deferred_end_of_task",
+                            agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
+                        )
+                        if completion_text != full_agent_text:
+                            task.full_output = full_agent_text
+                    else:
+                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=completion_text)
+                        if completion_text != full_agent_text:
+                            task.full_output = full_agent_text
+
                     _trigger_priority_scoring()
                     pending = lifecycle.get_pending_summarisations()
                     db.session.commit()
                     broadcast_card_refresh(agent_obj, "stop_deferred")
                     _execute_pending_summarisations(pending)
-                    _send_completion_notification(agent_obj, task)
-                    logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
-                    return
 
-                inference_service = app.extensions.get("inference_service")
+                    if task.state == TaskState.COMPLETE:
+                        _send_completion_notification(agent_obj, task)
+                    if task.state == TaskState.AWAITING_INPUT and task.turns:
+                        for t in reversed(task.turns):
+                            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                                _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input, turn_id=t.id)
+                                break
 
-                intent_result = detect_agent_intent(
-                    agent_text, inference_service=inference_service,
-                    project_id=project_id, agent_id=agent_id,
-                )
-
-                lifecycle = _get_lifecycle_manager()
-                if intent_result.intent == TurnIntent.QUESTION:
-                    from ..models.turn import Turn as _Turn
-                    turn = _Turn(
-                        task_id=task.id, actor=TurnActor.AGENT,
-                        intent=TurnIntent.QUESTION, text=agent_text,
+                    logger.info(
+                        f"deferred_stop: agent_id={agent_id}, "
+                        f"new_state={task.state.value}, intent={intent_result.intent.value}"
                     )
-                    db.session.add(turn)
-                    lifecycle.update_task_state(
-                        task=task, to_state=TaskState.AWAITING_INPUT,
-                        trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
-                    )
-                elif intent_result.intent == TurnIntent.END_OF_TASK:
-                    lifecycle.complete_task(
-                        task=task, trigger="hook:stop:deferred_end_of_task",
-                        agent_text=agent_text, intent=TurnIntent.END_OF_TASK,
-                    )
-                else:
-                    lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=agent_text)
+                except Exception as e:
+                    logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        finally:
+            _deferred_stop_pending.discard(agent_id)
 
-                _trigger_priority_scoring()
-                pending = lifecycle.get_pending_summarisations()
-                db.session.commit()
-                broadcast_card_refresh(agent_obj, "stop_deferred")
-                _execute_pending_summarisations(pending)
-
-                if task.state == TaskState.COMPLETE:
-                    _send_completion_notification(agent_obj, task)
-                if task.state == TaskState.AWAITING_INPUT and task.turns:
-                    for t in reversed(task.turns):
-                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                            _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input)
-                            break
-
-                logger.info(
-                    f"deferred_stop: agent_id={agent_id}, "
-                    f"new_state={task.state.value}, intent={intent_result.intent.value}"
-                )
-            except Exception as e:
-                logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-
+    _deferred_stop_pending.add(agent_id)
     t = threading.Thread(target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}")
     t.start()
 
@@ -485,6 +684,10 @@ def process_session_start(
         agent.ended_at = None  # Clear ended state for new session
         if transcript_path and not agent.transcript_path:
             agent.transcript_path = transcript_path
+
+        # Reset transcript position tracking for new session
+        _transcript_positions.pop(agent.id, None)
+        _progress_texts_for_agent.pop(agent.id, None)
 
         # Store tmux pane ID and register with availability tracker
         if tmux_pane_id:
@@ -518,6 +721,8 @@ def process_session_end(
         agent.last_seen_at = now
         agent.ended_at = now
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
+        _transcript_positions.pop(agent.id, None)
+        _progress_texts_for_agent.pop(agent.id, None)
 
         lifecycle = _get_lifecycle_manager()
         current_task = lifecycle.get_current_task(agent)
@@ -557,11 +762,56 @@ def process_user_prompt_submit(
     state = get_receiver_state()
     state.record_event(HookEventType.USER_PROMPT_SUBMIT)
     try:
+        # Check if this prompt was already handled by the dashboard respond handler.
+        # When a user responds via the tmux bridge, the respond handler creates the
+        # turn and transitions AWAITING_INPUT -> PROCESSING.  Claude Code then fires
+        # user_prompt_submit for the same text — skip it to avoid a duplicate task.
+        import time as _time
+        respond_ts = _respond_pending_for_agent.pop(agent.id, None)
+        if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            broadcast_card_refresh(agent, "user_prompt_submit_respond_pending")
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=respond_pending"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
         agent.last_seen_at = datetime.now(timezone.utc)
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
+        _progress_texts_for_agent.pop(agent.id, None)  # New response cycle
+
+        # Initialize transcript position for incremental PROGRESS capture.
+        # Set to current file size so post_tool_use only reads NEW content.
+        if agent.transcript_path:
+            import os
+            try:
+                _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+            except OSError:
+                _transcript_positions.pop(agent.id, None)
 
         lifecycle = _get_lifecycle_manager()
-        result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=prompt_text)
+
+        # Mark any pending question as answered before processing the new turn
+        current_task = lifecycle.get_current_task(agent)
+        if current_task and current_task.state == TaskState.AWAITING_INPUT:
+            _mark_question_answered(current_task)
+            # Detect plan approval: resuming from AWAITING_INPUT with plan content
+            if current_task.plan_content and not current_task.plan_approved_at:
+                current_task.plan_approved_at = datetime.now(timezone.utc)
+                logger.info(
+                    f"plan_approved: agent_id={agent.id}, task_id={current_task.id}"
+                )
+
+        pending_file_meta = _file_metadata_pending_for_agent.pop(agent.id, None)
+        result = lifecycle.process_turn(
+            agent=agent, actor=TurnActor.USER, text=prompt_text,
+            file_metadata=pending_file_meta,
+        )
 
         # Auto-transition COMMANDED → PROCESSING
         if result.success and result.task and result.task.state == TaskState.COMMANDED:
@@ -677,26 +927,55 @@ def process_stop(
                 new_state=current_task.state.value,
             )
 
+        # Deduplicate: if PROGRESS turns already captured intermediate text,
+        # only include NEW text in the COMPLETION turn to avoid duplicate
+        # content in the voice bridge chat.  full_agent_text retains everything
+        # for intent detection and task.full_output.
+        full_agent_text = agent_text
+        captured = _progress_texts_for_agent.pop(agent.id, None)
+        completion_text = agent_text
+        if captured:
+            pos = _transcript_positions.get(agent.id, 0)
+            if pos > 0 and agent.transcript_path:
+                from .transcript_reader import read_new_entries_from_position
+                new_entries, _ = read_new_entries_from_position(agent.transcript_path, pos)
+                new_texts = [
+                    e.content.strip() for e in new_entries
+                    if e.role == "assistant" and e.content and e.content.strip()
+                ]
+                if new_texts:
+                    completion_text = "\n\n".join(new_texts)
+                else:
+                    # All text was already captured as PROGRESS turns
+                    completion_text = ""
+            logger.info(
+                f"hook_event: type=stop, agent_id={agent.id}, "
+                f"progress_dedup: captured={len(captured)} turns, "
+                f"full_len={len(full_agent_text)}, completion_len={len(completion_text)}"
+            )
+        _transcript_positions.pop(agent.id, None)
+
         try:
             from flask import current_app
             inference_service = current_app.extensions.get("inference_service")
         except RuntimeError:
             inference_service = None
 
+        # Use full text for intent detection (completion patterns may be at the end)
         intent_result = detect_agent_intent(
-            agent_text, inference_service=inference_service,
+            full_agent_text, inference_service=inference_service,
             project_id=agent.project_id, agent_id=agent.id,
         )
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "
-            f"transcript_len={len(agent_text) if agent_text else 0}, "
+            f"transcript_len={len(full_agent_text) if full_agent_text else 0}, "
             f"intent={intent_result.intent.value}, "
             f"confidence={intent_result.confidence}, "
             f"pattern={intent_result.matched_pattern!r}"
         )
-        if agent_text:
-            tail_lines = [l for l in agent_text.splitlines() if l.strip()][-5:]
+        if full_agent_text:
+            tail_lines = [l for l in full_agent_text.splitlines() if l.strip()][-5:]
             logger.debug(
                 f"hook_event: type=stop, agent_id={agent.id}, "
                 f"tail_5_lines={tail_lines!r}"
@@ -705,7 +984,9 @@ def process_stop(
         if intent_result.intent == TurnIntent.QUESTION:
             turn = Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
-                intent=TurnIntent.QUESTION, text=agent_text or "",
+                intent=TurnIntent.QUESTION, text=full_agent_text or "",
+                question_text=full_agent_text or "",
+                question_source_type="free_text",
             )
             db.session.add(turn)
             lifecycle.update_task_state(
@@ -715,10 +996,15 @@ def process_stop(
         elif intent_result.intent == TurnIntent.END_OF_TASK:
             lifecycle.complete_task(
                 task=current_task, trigger="hook:stop:end_of_task",
-                agent_text=agent_text, intent=TurnIntent.END_OF_TASK,
+                agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
             )
+            # Preserve full output even when completion turn is deduplicated
+            if completion_text != full_agent_text:
+                current_task.full_output = full_agent_text
         else:
-            lifecycle.complete_task(task=current_task, trigger="hook:stop", agent_text=agent_text)
+            lifecycle.complete_task(task=current_task, trigger="hook:stop", agent_text=completion_text)
+            if completion_text != full_agent_text:
+                current_task.full_output = full_agent_text
 
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
@@ -738,7 +1024,7 @@ def process_stop(
         if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
                     break
 
         logger.info(
@@ -781,12 +1067,41 @@ def _handle_awaiting_input(
 
         # Build question text and create turn BEFORE state transition
         question_text = None
+        question_turn = None
         structured_options = None
         permission_summary_needed = False
         if tool_name is not None or tool_input is not None:
             # pre_tool_use / permission_request: always create turn
             question_text = _extract_question_text(tool_name, tool_input)
             structured_options = _extract_structured_options(tool_name, tool_input)
+            # Determine question source type and voice-friendly options
+            q_source_type = None
+            q_options = None
+            if tool_name == "AskUserQuestion" and structured_options:
+                q_source_type = "ask_user_question"
+                # Extract normalized options for voice bridge
+                questions = structured_options.get("questions", [])
+                if questions and isinstance(questions, list) and len(questions) > 1:
+                    # Multi-question: store full structure array for rendering
+                    q_options = [{
+                        "question": qq.get("question", ""),
+                        "header": qq.get("header", ""),
+                        "multiSelect": qq.get("multiSelect", False),
+                        "options": [
+                            {"label": o.get("label", ""), "description": o.get("description", "")}
+                            for o in qq.get("options", []) if isinstance(o, dict)
+                        ],
+                    } for qq in questions if isinstance(qq, dict)]
+                elif questions and isinstance(questions, list):
+                    q = questions[0] if questions else {}
+                    opts = q.get("options", [])
+                    if opts:
+                        q_options = [
+                            {"label": o.get("label", ""), "description": o.get("description", "")}
+                            for o in opts if isinstance(o, dict)
+                        ]
+            elif event_type_enum == HookEventType.PERMISSION_REQUEST:
+                q_source_type = "permission_request"
             # For ExitPlanMode, synthesize default approval options
             if structured_options is None and tool_name == "ExitPlanMode":
                 question_text = "Approve plan and proceed?"
@@ -800,6 +1115,11 @@ def _handle_awaiting_input(
                     }],
                     "source": "exit_plan_mode_default",
                 }
+                q_source_type = "ask_user_question"
+                q_options = [
+                    {"label": "Yes", "description": "Approve the plan and begin implementation"},
+                    {"label": "No", "description": "Reject and stay in plan mode"},
+                ]
             # For permission_request, try capturing options + context from the tmux pane
             if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
                 structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
@@ -808,14 +1128,28 @@ def _handle_awaiting_input(
                     synth_questions = structured_options.get("questions", [])
                     if synth_questions and synth_questions[0].get("question"):
                         question_text = synth_questions[0]["question"]
+                    # Extract options for voice bridge
+                    if synth_questions:
+                        opts = synth_questions[0].get("options", [])
+                        if opts:
+                            q_options = [
+                                {"label": o.get("label", ""), "description": o.get("description", "")}
+                                for o in opts if isinstance(o, dict)
+                            ]
                     # Check if LLM fallback needed (generic summary)
                     if question_text and question_text.startswith("Permission:"):
                         permission_summary_needed = True
-            db.session.add(Turn(
+            if structured_options:
+                structured_options["status"] = "pending"
+            question_turn = Turn(
                 task_id=current_task.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=question_text,
                 tool_input=structured_options,
-            ))
+                question_text=question_text,
+                question_options=q_options,
+                question_source_type=q_source_type,
+            )
+            db.session.add(question_turn)
         elif message or title:
             # notification: dedup against recent pre_tool_use turn
             has_recent = False
@@ -828,10 +1162,13 @@ def _handle_awaiting_input(
                 question_text = (f"[{title}] " if title else "") + (message or "")
                 question_text = question_text.strip()
                 if question_text:
-                    db.session.add(Turn(
+                    question_turn = Turn(
                         task_id=current_task.id, actor=TurnActor.AGENT,
                         intent=TurnIntent.QUESTION, text=question_text,
-                    ))
+                        question_text=question_text,
+                        question_source_type="free_text",
+                    )
+                    db.session.add(question_turn)
 
         # Use lifecycle manager for state transition (writes event + sends notification)
         lifecycle = _get_lifecycle_manager()
@@ -851,13 +1188,14 @@ def _handle_awaiting_input(
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
         if question_text:
-            _broadcast_turn_created(agent, question_text, current_task, tool_input=structured_options)
+            _broadcast_turn_created(agent, question_text, current_task,
+                                    tool_input=structured_options,
+                                    turn_id=question_turn.id if question_turn else None)
         elif current_task.turns:
             # Broadcast existing turn (dedup case: pre_tool_use fired first)
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input)
-
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
                     break
 
         # Queue LLM fallback for generic permission summaries
@@ -891,6 +1229,33 @@ def process_notification(
     )
 
 
+def _capture_plan_write(agent: Agent, tool_input: dict | None) -> bool:
+    """Capture plan file content when agent writes to .claude/plans/.
+
+    Returns True if plan content was captured and committed.
+    """
+    if not tool_input or not isinstance(tool_input, dict):
+        return False
+    file_path = tool_input.get("file_path", "")
+    content = tool_input.get("content", "")
+    if not file_path or ".claude/plans/" not in file_path or not content:
+        return False
+
+    current_task = agent.get_current_task()
+    if not current_task:
+        return False
+
+    current_task.plan_file_path = file_path
+    current_task.plan_content = content
+    db.session.commit()
+    broadcast_card_refresh(agent, "plan_file_captured")
+    logger.info(
+        f"plan_capture: agent_id={agent.id}, task_id={current_task.id}, "
+        f"file={file_path}, content_len={len(content)}"
+    )
+    return True
+
+
 def process_pre_tool_use(
     agent: Agent,
     claude_session_id: str,
@@ -901,6 +1266,15 @@ def process_pre_tool_use(
     # (where user interaction happens AFTER the tool completes).
     # For all other tools, pre_tool_use is just activity — no state change.
     if tool_name in PRE_TOOL_USE_INTERACTIVE:
+        # Mark plan mode entry before handling the AWAITING_INPUT transition
+        if tool_name == "EnterPlanMode":
+            try:
+                current_task = agent.get_current_task()
+                if current_task and not current_task.plan_file_path:
+                    current_task.plan_file_path = "pending"
+                    # Don't commit yet — _handle_awaiting_input will commit
+            except Exception as e:
+                logger.warning(f"Failed to mark plan mode entry: {e}")
         return _handle_awaiting_input(
             agent, HookEventType.PRE_TOOL_USE, "pre_tool_use",
             tool_name=tool_name, tool_input=tool_input,
@@ -915,8 +1289,13 @@ def process_pre_tool_use(
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
 
+        # Capture plan file writes (Write to .claude/plans/)
+        if tool_name == "Write":
+            _capture_plan_write(agent, tool_input)
+
         current_task = agent.get_current_task()
         if current_task and current_task.state == TaskState.AWAITING_INPUT:
+            _mark_question_answered(current_task)
             lifecycle = _get_lifecycle_manager()
             lifecycle.update_task_state(
                 task=current_task, to_state=TaskState.PROCESSING,
@@ -1045,7 +1424,12 @@ def process_post_tool_use(
                                        new_state=TaskState.AWAITING_INPUT.value)
 
             # Resume: matching tool completed (or no tracking) — user answered
+            _mark_question_answered(current_task)
             _awaiting_tool_for_agent.pop(agent.id, None)
+            # Detect plan approval via post_tool_use resume
+            if current_task.plan_content and not current_task.plan_approved_at:
+                current_task.plan_approved_at = datetime.now(timezone.utc)
+                logger.info(f"plan_approved: agent_id={agent.id}, task_id={current_task.id} (post_tool_use)")
             result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=None)
             if result.success:
                 _trigger_priority_scoring()
@@ -1066,9 +1450,10 @@ def process_post_tool_use(
                 new_state=new_state, error_message=result.error,
             )
 
-        # Already PROCESSING/COMMANDED — no-op
+        # Already PROCESSING/COMMANDED — capture intermediate PROGRESS text
+        _capture_progress_text(agent, current_task)
         db.session.commit()
-        logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, no-op (state={current_task.state.value})")
+        logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, progress_capture (state={current_task.state.value})")
         return HookEventResult(success=True, agent_id=agent.id, new_state=current_task.state.value)
     except Exception as e:
         logger.exception(f"Error processing post_tool_use: {e}")

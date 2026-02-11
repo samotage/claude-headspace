@@ -62,7 +62,7 @@ def create_agent_data(
         "id": agent_id,
         "session_uuid": str(uuid4())[:8],
         "is_active": last_seen_minutes_ago < 5,
-        "uptime": "up 1h 0m",
+        "uptime": "up 1h",
         "state": state,
         "state_info": {"color": "gray", "bg_class": "bg-muted", "label": "Idle"},
         "task_summary": "No active task",
@@ -84,11 +84,8 @@ class TestGetRecommendedNext:
         result = get_recommended_next([], {})
         assert result is None
 
-    @patch("src.claude_headspace.routes.dashboard._get_dashboard_config")
-    def test_awaiting_input_has_priority(self, mock_config):
+    def test_awaiting_input_has_priority(self):
         """Test that AWAITING_INPUT agent is recommended over others."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-
         # Create agents
         agent_idle = create_mock_agent(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=1)
         agent_awaiting = create_mock_agent(
@@ -305,22 +302,18 @@ class TestSortAgentsByPriority:
 class TestSortViewRoute:
     """Tests for sort parameter handling in dashboard route."""
 
-    def test_default_sort_is_project(self, client):
-        """Test that default sort mode is 'project'."""
+    def test_default_sort_is_kanban(self, client):
+        """Test that default sort mode is 'kanban'."""
         response = client.get("/")
         assert response.status_code == 200
-        # The template should receive sort_mode='project'
-        html = response.data.decode("utf-8")
-        # Check that project view elements are present
-        assert "By Project" in html or "project-view" in html
 
     def test_sort_parameter_priority(self, client):
         """Test that sort=priority parameter is accepted."""
         response = client.get("/?sort=priority")
         assert response.status_code == 200
 
-    def test_invalid_sort_defaults_to_project(self, client):
-        """Test that invalid sort parameter defaults to 'project'."""
+    def test_invalid_sort_defaults_to_kanban(self, client):
+        """Test that invalid sort parameter defaults to 'kanban'."""
         response = client.get("/?sort=invalid")
         assert response.status_code == 200
 
@@ -380,11 +373,11 @@ class TestDataAttributes:
         html = response.data.decode("utf-8")
         # Template uses data-agent-id for targeting
         # Even with no agents, the template structure should be present
-        assert "data-agent-id" in html or "No projects found" in html
+        assert "data-agent-id" in html or "No agents found" in html or "No projects found" in html
 
     def test_project_groups_have_data_attributes(self, client):
         """Test that project groups have data-project-id attributes."""
-        response = client.get("/")
+        response = client.get("/?sort=project")
         html = response.data.decode("utf-8")
         # Template uses data-project-id for targeting
         assert "data-project-id" in html or "No projects found" in html

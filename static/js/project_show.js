@@ -338,6 +338,9 @@
                 }
                 html += '</div>';
 
+                // Chat link
+                html += '<a href="/voice?agent_id=' + agentId + '" class="text-xs text-cyan hover:underline" style="flex-shrink:0" title="Chat" onclick="event.stopPropagation()">Chat</a>';
+
                 // Last seen / ended badge
                 if (isEnded) {
                     html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';
@@ -464,14 +467,17 @@
                 html += '</div></div>';
                 // Line 03: Turn count + duration (completed only)
                 if (isComplete) {
-                    html += '<div class="card-line"><span class="line-num">03</span><div class="line-content">';
+                    html += '<div class="card-line"><span class="line-num">03</span><div class="line-content flex items-baseline justify-between gap-2">';
                     var turnLabel = (task.turn_count || 0) + ' turn' + ((task.turn_count || 0) !== 1 ? 's' : '');
                     if (task.started_at && task.completed_at) {
                         turnLabel += ' \u00B7 ' + ProjectShow._formatDuration(task.started_at, task.completed_at);
                     }
                     html += '<span class="text-muted text-xs">' + turnLabel + '</span>';
+                    html += '<button type="button" class="full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors" onclick="ProjectShow.toggleFullOutput(' + taskId + ')" title="View full output">View full</button>';
                     html += '</div></div>';
                 }
+                // Full output expandable section (hidden by default)
+                html += '<div id="task-full-output-' + taskId + '" class="card-line" style="display:none;"><span class="line-num">&nbsp;</span><div class="line-content"><pre class="full-text-modal-text" style="max-height:300px;overflow-y:auto;"></pre></div></div>';
                 html += '</div>';
 
                 html += '<div id="task-turns-' + taskId + '" class="accordion-body ml-6 mt-1" style="display: none;"></div>';
@@ -480,6 +486,38 @@
             html += '</div>';
 
             container.innerHTML = html;
+        },
+
+        toggleFullOutput: async function(taskId) {
+            var container = document.getElementById('task-full-output-' + taskId);
+            if (!container) return;
+
+            if (container.style.display !== 'none') {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = '';
+            var pre = container.querySelector('pre');
+            if (!pre) return;
+
+            // Check cache
+            if (cache._fullText && cache._fullText[taskId]) {
+                pre.textContent = cache._fullText[taskId].full_output || 'No full output available';
+                return;
+            }
+
+            pre.textContent = 'Loading...';
+            try {
+                var response = await fetch('/api/tasks/' + taskId + '/full-text');
+                if (!response.ok) throw new Error('Failed to fetch');
+                var data = await response.json();
+                if (!cache._fullText) cache._fullText = {};
+                cache._fullText[taskId] = data;
+                pre.textContent = data.full_output || 'No full output available';
+            } catch (e) {
+                pre.textContent = 'Failed to load full output.';
+            }
         },
 
         toggleTaskTurns: async function(taskId, agentId) {
@@ -1264,7 +1302,7 @@
                 });
 
                 if (response.ok) {
-                    var data = await response.json();
+                    await response.json();
                     if (btn) btn.textContent = 'Exported!';
                     setTimeout(function() {
                         if (btn) {

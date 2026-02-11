@@ -18,9 +18,23 @@ Dashboard button click
 
 ## Prerequisites
 
-- **tmux** must be installed and running
-- Claude Code sessions must be running inside tmux panes
+- **tmux** must be installed (`brew install tmux`)
+- Bridge mode is now the **default** when using the `claude-headspace` CLI — tmux is auto-detected; if not installed, a warning is shown and the session continues without bridge
 - The agent's `tmux_pane_id` must be set (registered via hooks at session start)
+
+## Disabling the Bridge
+
+To run without the Input Bridge (plain session, no dashboard respond):
+
+```bash
+claude-headspace start --no-bridge
+```
+
+Or set in `config.yaml`:
+```yaml
+cli:
+  default_bridge: false
+```
 
 ## Using the Respond Widget
 
@@ -84,6 +98,14 @@ These can also be edited from the [Configuration](configuration) page.
 ## Audit Trail
 
 Every response sent via the dashboard is recorded as a Turn entity (actor: USER, intent: ANSWER) in the database. This provides a complete audit trail of dashboard interactions alongside normal terminal interactions.
+
+## Known Behaviors
+
+### Claude Code Chat Buttons Remain Interactive
+
+When Claude Code uses `AskUserQuestion` to present options, the Headspace dashboard correctly removes its response buttons after a selection is made. However, the buttons rendered in the **Claude Code chat history** (in the terminal) remain interactive and can be re-clicked at any time.
+
+This is native Claude Code behavior that Headspace cannot control. Re-clicking an old button sends a new user message into the conversation, and Claude responds to it as a fresh input. This can be a useful feature — for example, re-selecting a different option to explore alternatives — but be aware that each click generates a new turn that flows through the hook pipeline and is tracked by Headspace.
 
 ## Limitations
 

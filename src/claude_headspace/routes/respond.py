@@ -44,6 +44,41 @@ def _count_options(task) -> int:
     return 0
 
 
+def _build_multi_select_keys(answers: list) -> list[str]:
+    """Build tmux key sequence for multi-tab AskUserQuestion answers.
+
+    Each answer navigates one question tab. Single-select uses Down+Enter
+    (auto-advances to next tab). Multi-select uses Space toggles then Enter.
+    After all tabs, a final Enter confirms the Submit button.
+
+    Args:
+        answers: List of dicts, each with 'option_index' (int) or 'option_indices' (list[int]).
+
+    Returns:
+        List of tmux key names.
+    """
+    keys: list[str] = []
+    for ans in answers:
+        if "option_indices" in ans and isinstance(ans["option_indices"], list):
+            # Multi-select: navigate and toggle each option with Space
+            indices = sorted(ans["option_indices"])
+            current_pos = 0
+            for opt_idx in indices:
+                delta = opt_idx - current_pos
+                keys.extend(["Down"] * delta)
+                keys.append("Space")
+                current_pos = opt_idx
+            keys.append("Enter")
+        else:
+            # Single-select: Down × N, then Enter (auto-advances)
+            option_index = ans.get("option_index", 0)
+            keys.extend(["Down"] * option_index)
+            keys.append("Enter")
+    # Final Enter to confirm the Submit tab
+    keys.append("Enter")
+    return keys
+
+
 def _tmux_error_response(result, agent_id):
     """Build error response for tmux bridge failures."""
     if result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND:
@@ -98,11 +133,11 @@ def respond_to_agent(agent_id: int):
     data = request.get_json(silent=True) or {}
     mode = data.get("mode", "text")
 
-    if mode not in ("text", "select", "other"):
+    if mode not in ("text", "select", "other", "multi_select"):
         return jsonify({
             "status": "error",
             "error_type": "invalid_mode",
-            "message": f"Invalid mode '{mode}'. Must be 'text', 'select', or 'other'.",
+            "message": f"Invalid mode '{mode}'. Must be 'text', 'select', 'other', or 'multi_select'.",
         }), 400
 
     # Validate mode-specific parameters
@@ -130,6 +165,29 @@ def respond_to_agent(agent_id: int):
                 "error_type": "missing_text",
                 "message": "Text is required for 'other' mode.",
             }), 400
+    elif mode == "multi_select":
+        answers = data.get("answers")
+        if not answers or not isinstance(answers, list) or len(answers) == 0:
+            return jsonify({
+                "status": "error",
+                "error_type": "invalid_answers",
+                "message": "answers must be a non-empty array for 'multi_select' mode.",
+            }), 400
+        for idx, ans in enumerate(answers):
+            if not isinstance(ans, dict):
+                return jsonify({
+                    "status": "error",
+                    "error_type": "invalid_answers",
+                    "message": f"answers[{idx}] must be an object.",
+                }), 400
+            has_single = "option_index" in ans and isinstance(ans["option_index"], int) and ans["option_index"] >= 0
+            has_multi = "option_indices" in ans and isinstance(ans["option_indices"], list) and len(ans["option_indices"]) > 0
+            if not has_single and not has_multi:
+                return jsonify({
+                    "status": "error",
+                    "error_type": "invalid_answers",
+                    "message": f"answers[{idx}] must have option_index (int >= 0) or option_indices (non-empty list).",
+                }), 400
 
     # Lookup agent with row lock to prevent concurrent state mutations (SRV-C1)
     agent = db.session.get(Agent, agent_id, with_for_update=True)
@@ -210,16 +268,45 @@ def respond_to_agent(agent_id: int):
             )
         record_text = text
 
+    elif mode == "multi_select":
+        keys = _build_multi_select_keys(answers)
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+        )
+        # Build descriptive summary for the turn record
+        parts = []
+        for i, ans in enumerate(answers):
+            if "option_indices" in ans and isinstance(ans["option_indices"], list):
+                parts.append(f"Q{i+1}: options {ans['option_indices']}")
+            else:
+                parts.append(f"Q{i+1}: option {ans.get('option_index', 0)}")
+        record_text = "[multi-select: " + ", ".join(parts) + "]"
+
     if not result.success:
         return _tmux_error_response(result, agent_id)
 
     # Success: create Turn record and transition state
     try:
+        # Find the most recent QUESTION turn for answer linking
+        answered_turn_id = None
+        if current_task.turns:
+            for t in reversed(current_task.turns):
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                    answered_turn_id = t.id
+                    break
+
+        from ..services.hook_receiver import _mark_question_answered
+        _mark_question_answered(current_task)
+
         turn = Turn(
             task_id=current_task.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=record_text,
+            answered_by_turn_id=answered_turn_id,
         )
         db.session.add(turn)
 
@@ -240,6 +327,12 @@ def respond_to_agent(agent_id: int):
         _awaiting_tool_for_agent.pop(agent_id, None)
 
         db.session.commit()
+
+        # Flag this agent so the upcoming user_prompt_submit hook is skipped
+        # (the respond handler owns the turn creation and state transition).
+        # Set AFTER commit so the flag is never orphaned if the commit fails.
+        from ..services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent[agent.id] = time.time()
 
         broadcast_card_refresh(agent, "respond")
         _broadcast_state_change(agent, record_text)
@@ -314,13 +407,14 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "message": f"User responded via dashboard",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        _task = agent.get_current_task()
         broadcaster.broadcast("turn_created", {
             "agent_id": agent.id,
             "project_id": agent.project_id,
             "text": response_text,
             "actor": "user",
             "intent": "answer",
-            "task_id": agent.get_current_task().id if agent.get_current_task() else None,
+            "task_id": _task.id if _task else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

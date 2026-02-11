@@ -41,6 +41,27 @@
     // Track agent states for recalculating counts
     let agentStates = new Map();
 
+    // Track last received SSE event ID for gap detection (M6 client-side)
+    let _lastEventId = 0;
+
+    /**
+     * Check for SSE event ID gaps indicating dropped events.
+     * If the gap exceeds a threshold, trigger a safe reload to re-sync state.
+     * Called from the shared SSE client's onMessage hook.
+     */
+    function checkEventIdGap(eventId) {
+        if (!eventId) return;
+        var id = parseInt(eventId, 10);
+        if (isNaN(id)) return;
+        if (_lastEventId > 0 && id - _lastEventId > 5) {
+            console.warn('SSE event ID gap detected:', _lastEventId, '->', id, '- reloading to sync');
+            _lastEventId = id;
+            safeDashboardReload();
+            return;
+        }
+        _lastEventId = id;
+    }
+
     /**
      * Safe reload that defers if a ConfirmDialog is open or a respond widget
      * input is focused (FE-H3). Prevents SSE-triggered reloads from
@@ -65,6 +86,21 @@
         }
         window.location.reload();
     }
+
+    // Execute deferred reload when focus leaves a respond widget
+    document.addEventListener('focusout', function(e) {
+        if (!window._sseReloadDeferred) return;
+        if (!e.target || !e.target.closest || !e.target.closest('.respond-widget')) return;
+        // Small delay to allow focus to move to another element within the widget
+        setTimeout(function() {
+            var active = document.activeElement;
+            if (!active || !active.closest || !active.closest('.respond-widget')) {
+                var deferred = window._sseReloadDeferred;
+                window._sseReloadDeferred = null;
+                deferred();
+            }
+        }, 100);
+    });
 
     // ── Kanban card movement utilities ──────────────────────────────
 
@@ -278,6 +314,15 @@
         client.on('turn_detected', handleActivityBarUpdate);
         client.on('turn_created', handleActivityBarUpdate);
 
+        // Track event IDs for gap detection (M6 client-side).
+        // Uses a wildcard handler so every event type is checked.
+        // The broadcaster includes _eid in the data payload for this purpose.
+        client.on('*', function(data, eventType) {
+            if (data && data._eid) {
+                checkEventIdGap(data._eid);
+            }
+        });
+
         return client;
     }
 
@@ -296,6 +341,24 @@
         // which creates the condensed card + resets the agent card to IDLE.
         // Ignore state_transition events for COMPLETE to avoid undoing that work.
         if (newState === 'COMPLETE' && isKanbanView()) {
+            // M7 fallback: if handleCardRefresh doesn't arrive within 2s,
+            // the card may be stuck. Check if the card is still in a non-IDLE
+            // column and reload if so.
+            (function(aid) {
+                setTimeout(function() {
+                    var card = findAgentCard(aid);
+                    if (!card) return;
+                    var col = card.closest('[data-kanban-state]');
+                    if (!col) return;
+                    var colState = col.getAttribute('data-kanban-state');
+                    // If the card is still in PROCESSING or AWAITING_INPUT, card_refresh
+                    // was likely dropped — reload to resync.
+                    if (colState === 'PROCESSING' || colState === 'AWAITING_INPUT') {
+                        console.warn('COMPLETE fallback: card still in', colState, '— reloading');
+                        safeDashboardReload();
+                    }
+                }, 2000);
+            })(agentId);
             return;
         }
 
@@ -863,7 +926,7 @@
                 statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
             }
         }
-        // Bridge indicator: show/hide based on is_bridge_connected
+        // Bridge indicator: mutually exclusive with status badge
         if (data.is_bridge_connected != null) {
             var bridgeEl = card.querySelector('.bridge-indicator');
             var badgeContainer = statusBadge ? statusBadge.parentElement : null;
@@ -876,6 +939,10 @@
                 badgeContainer.insertBefore(bridgeEl, statusBadge);
             } else if (!data.is_bridge_connected && bridgeEl) {
                 bridgeEl.remove();
+            }
+            // Hide status badge when bridge connected, show when not
+            if (statusBadge) {
+                statusBadge.style.display = data.is_bridge_connected ? 'none' : '';
             }
         }
         var lastSeenEl = card.querySelector('.last-seen');
@@ -907,11 +974,35 @@
                 instructionEl.classList.remove('text-muted', 'italic');
                 instructionEl.classList.add('text-primary', 'font-medium');
             } else {
-                instructionEl.textContent = 'No instruction';
+                instructionEl.textContent = 'No active task';
                 instructionEl.classList.remove('text-primary', 'font-medium');
                 instructionEl.classList.add('text-muted', 'italic');
             }
             if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
+        }
+
+        // Plan indicator on line 03
+        var planIndicator = card.querySelector('.plan-indicator');
+        if (data.has_plan && data.current_task_id) {
+            if (!planIndicator && instructionEl) {
+                planIndicator = document.createElement('button');
+                planIndicator.className = 'plan-indicator plan-indicator-btn';
+                planIndicator.type = 'button';
+                planIndicator.textContent = 'plan';
+                planIndicator.title = 'View plan';
+                planIndicator.setAttribute('aria-label', 'View agent plan');
+                instructionEl.parentElement.appendChild(planIndicator);
+            }
+            if (planIndicator) {
+                planIndicator.style.display = '';
+                planIndicator.onclick = function() {
+                    if (window.FullTextModal) {
+                        window.FullTextModal.show(data.current_task_id, 'plan');
+                    }
+                };
+            }
+        } else if (planIndicator) {
+            planIndicator.style.display = 'none';
         }
 
         // Line 04: task summary / completion summary (hidden when redundant with line 03)
@@ -937,8 +1028,8 @@
                     var newRow = document.createElement('div');
                     newRow.className = 'card-line card-line-04';
                     newRow.innerHTML = '<span class="line-num">04</span>' +
-                        '<div class="line-content">' +
-                        '<p class="task-summary text-sm italic ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
+                        '<div class="line-content flex items-baseline justify-between gap-2">' +
+                        '<p class="task-summary text-sm italic flex-1 min-w-0 truncate ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
                         window.CHUtils.escapeHtml(line04Text) + '</p></div>';
                     cardEditor.appendChild(newRow);
                 }
@@ -993,18 +1084,17 @@
         var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
         if (turnCount > 0) {
             var turnLabel = turnCount === 1 ? 'turn' : 'turns';
-            var elapsedStr = data.elapsed ? ' \u00b7 ' + window.CHUtils.escapeHtml(data.elapsed) : '';
             if (statsEl) {
                 statsEl.textContent = turnCount + ' ' + turnLabel + (data.elapsed ? ' \u00b7 ' + data.elapsed : '');
                 statsEl.style.display = '';
             } else {
-                // Create stats element if it doesn't exist
-                var footer = card.querySelector('.border-t.border-border');
-                if (footer) {
+                // Create stats element inside the left group (beside priority score)
+                var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
+                if (leftGroup) {
                     var newStats = document.createElement('span');
                     newStats.className = 'task-stats text-muted text-xs';
                     newStats.textContent = turnCount + ' ' + turnLabel + (data.elapsed ? ' \u00b7 ' + data.elapsed : '');
-                    footer.appendChild(newStats);
+                    leftGroup.appendChild(newStats);
                 }
             }
         } else if (statsEl) {
@@ -1054,15 +1144,12 @@
      * Recalculate and update header status counts
      */
     function updateStatusCounts() {
-        let timedOut = 0;
         let inputNeeded = 0;
         let working = 0;
         let idle = 0;
 
         agentStates.forEach(function(state, key) {
-            if (state === 'TIMED_OUT') {
-                timedOut++;
-            } else if (state === 'AWAITING_INPUT') {
+            if (state === 'AWAITING_INPUT') {
                 inputNeeded++;
             } else if (state === 'COMMANDED' || state === 'PROCESSING') {
                 working++;
@@ -1337,6 +1424,11 @@
                 }
             } else if (!data.available && bridgeEl) {
                 bridgeEl.remove();
+            }
+            // Hide status badge when bridge connected, show when not
+            var statusBadge = card.querySelector('.status-badge');
+            if (statusBadge) {
+                statusBadge.style.display = data.available ? 'none' : '';
             }
         }
 

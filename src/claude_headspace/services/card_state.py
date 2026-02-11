@@ -129,7 +129,7 @@ def format_uptime(started_at: datetime) -> str:
         started_at: When the agent started
 
     Returns:
-        String like "up 32h 38m"
+        String like "up 13h" or "up 45m"
     """
     now = datetime.now(timezone.utc)
     delta = now - started_at
@@ -139,7 +139,7 @@ def format_uptime(started_at: datetime) -> str:
     minutes = (total_seconds % 3600) // 60
 
     if hours > 0:
-        return f"up {hours}h {minutes}m"
+        return f"up {hours}h"
     elif minutes > 0:
         return f"up {minutes}m"
     else:
@@ -293,8 +293,14 @@ def get_task_instruction(agent: Agent, _current_task=None) -> str | None:
             f"no current_task, no tasks"
         )
 
-    # Fall back to first USER COMMAND turn's raw text
+    # Fall back to task.full_command (set immediately at task creation)
     task = current_task or (agent.tasks[0] if agent.tasks else None)
+    if task and task.full_command:
+        text = task.full_command.strip()
+        if text:
+            return text[:77] + "..." if len(text) > 80 else text
+
+    # Fall back to first USER COMMAND turn's raw text
     if task and hasattr(task, "turns") and task.turns:
         for t in task.turns:
             if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
@@ -515,6 +521,7 @@ def _default_permission_options(question_text: str) -> dict:
             ],
         }],
         "source": "card_state_fallback",
+        "status": "pending",
     }
 
 
@@ -541,17 +548,13 @@ def get_question_options(agent: Agent, _current_task=None) -> dict | None:
     if not current_task.turns:
         return None
 
-    # First pass: find any recent AGENT QUESTION turn with actual tool_input.
-    # The stop hook may have created a newer Turn without tool_input that
-    # shadows the original structured options — search past it.
     for turn in reversed(current_task.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if turn.tool_input:
+                if turn.tool_input.get("status") == "complete":
+                    continue  # answered — skip
                 return turn.tool_input
-
-    # Second pass: fallback for permission requests (most recent QUESTION turn)
-    for turn in reversed(current_task.turns):
-        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
+            # No tool_input: check permission fallback
             if _is_permission_question(turn.text):
                 return _default_permission_options(turn.text or "Permission needed")
             return None
@@ -596,6 +599,25 @@ def build_card_state(agent: Agent) -> dict:
         "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
     }
+
+    # Plan mode label overrides (before task ID, so state_info is already in card)
+    if current_task:
+        if current_task.plan_content and current_task.plan_approved_at:
+            card["state_info"] = {**card["state_info"], "label": "Executing plan..."}
+        elif current_task.plan_content and not current_task.plan_approved_at:
+            card["state_info"] = {**card["state_info"], "label": "Planning..."}
+        elif current_task.plan_file_path == "pending":
+            card["state_info"] = {**card["state_info"], "label": "Planning..."}
+
+    # Plan content for frontend
+    has_plan = bool(current_task and current_task.plan_content)
+    card["has_plan"] = has_plan
+    if has_plan:
+        card["plan_content"] = current_task.plan_content
+
+    # Include current task ID for on-demand full-text drill-down
+    task_for_id = current_task or (agent.tasks[0] if agent.tasks else None)
+    card["current_task_id"] = task_for_id.id if task_for_id else None
 
     # Include turn count and elapsed time for all states (used by
     # the agent card footer and condensed completed-task card)

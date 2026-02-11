@@ -36,13 +36,13 @@
             </div>
         </div>
     </main>
+
+    {% include "partials/_doc_viewer_modal.html" %}
 </div>
 {% endblock %}
 
-{% include "partials/_doc_viewer_modal.html" %}
-
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/help.js') }}"></script>
+<script src="{{ url_for('static', filename='js/help.js') }}?v={{ cache_bust }}"></script>
 <script>
     // Load initial topic from URL hash or default to index
     (function() {

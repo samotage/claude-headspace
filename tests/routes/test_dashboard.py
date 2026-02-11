@@ -45,6 +45,10 @@ def create_mock_agent(
     agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
     agent.ended_at = None
+    agent.priority_score = None
+    agent.priority_reason = None
+    agent.tmux_pane_id = None
+    agent.tasks = []
 
     # Mock get_current_task
     if task_text:
@@ -53,7 +57,14 @@ def create_mock_agent(
         mock_turn.summary = None
         mock_task = MagicMock()
         mock_task.turns = [mock_turn]
+        mock_task.id = 1
+        mock_task.state = TaskState.PROCESSING
+        mock_task.instruction = task_text
+        mock_task.started_at = datetime.now(timezone.utc)
+        mock_task.completed_at = None
+        mock_task.completion_summary = None
         agent.get_current_task.return_value = mock_task
+        agent.tasks = [mock_task]
     else:
         agent.get_current_task.return_value = None
 
@@ -225,16 +236,16 @@ class TestFormatUptime:
     """Tests for format_uptime function."""
 
     def test_hours_and_minutes(self):
-        """Test formatting with hours and minutes."""
+        """Test formatting with hours shows only hours (single unit)."""
         started_at = datetime.now(timezone.utc) - timedelta(hours=32, minutes=38)
         result = format_uptime(started_at)
-        assert result == "up 32h 38m"
+        assert result == "up 32h"
 
     def test_hours_only(self):
         """Test formatting with full hours."""
         started_at = datetime.now(timezone.utc) - timedelta(hours=5)
         result = format_uptime(started_at)
-        assert result == "up 5h 0m"
+        assert result == "up 5h"
 
     def test_minutes_only(self):
         """Test formatting with only minutes."""
@@ -694,10 +705,12 @@ class TestDashboardWithData:
         rendering (navigation links use url_for to other blueprints).
         """
         from pathlib import Path
+        from src.claude_headspace.routes.activity import activity_bp
         from src.claude_headspace.routes.config import config_bp
         from src.claude_headspace.routes.help import help_bp
         from src.claude_headspace.routes.logging import logging_bp
         from src.claude_headspace.routes.objective import objective_bp
+        from src.claude_headspace.routes.projects import projects_bp
 
         project_root = Path(__file__).parent.parent.parent
         app = Flask(
@@ -706,10 +719,12 @@ class TestDashboardWithData:
             static_folder=str(project_root / "static"),
         )
         app.register_blueprint(dashboard_bp)
+        app.register_blueprint(activity_bp)
         app.register_blueprint(config_bp)
         app.register_blueprint(help_bp)
         app.register_blueprint(logging_bp)
         app.register_blueprint(objective_bp)
+        app.register_blueprint(projects_bp)
         app.config["TESTING"] = True
         app.config["APP_CONFIG"] = {
             "dashboard": {
@@ -732,25 +747,34 @@ class TestDashboardWithData:
         with patch("src.claude_headspace.routes.dashboard.db") as mock_db:
             yield mock_db
 
+    def _make_mock_project(self, name, agents):
+        """Create a mock project with all required attributes."""
+        mock_project = MagicMock()
+        mock_project.id = 1
+        mock_project.name = name
+        mock_project.slug = name.lower().replace(" ", "-")
+        mock_project.agents = agents
+        return mock_project
+
+    def _setup_mock_queries(self, mock_db_session, projects):
+        """Configure mock DB to return projects and None for Objective."""
+        def side_effect(model):
+            query = MagicMock()
+            query.options.return_value = query
+            query.order_by.return_value = query
+            query.all.return_value = projects
+            query.first.return_value = None  # No Objective
+            return query
+        mock_db_session.session.query.side_effect = side_effect
+
     def test_projects_displayed(self, standalone_client, mock_db_session):
         """Test that projects are displayed when data exists."""
-        # Create mock project with agents
         mock_agent = create_mock_agent(
             state=TaskState.PROCESSING,
             last_seen_minutes_ago=1,
         )
-
-        mock_project = MagicMock()
-        mock_project.id = 1
-        mock_project.name = "Test Project"
-        mock_project.agents = [mock_agent]
-
-        # Configure the mock query chain
-        mock_query = MagicMock()
-        mock_query.options.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.all.return_value = [mock_project]
-        mock_db_session.session.query.return_value = mock_query
+        mock_project = self._make_mock_project("Test Project", [mock_agent])
+        self._setup_mock_queries(mock_db_session, [mock_project])
 
         response = standalone_client.get("/")
         assert response.status_code == 200
@@ -758,17 +782,8 @@ class TestDashboardWithData:
     def test_state_dots_displayed(self, standalone_client, mock_db_session):
         """Test that state indicator dots are shown."""
         mock_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
-
-        mock_project = MagicMock()
-        mock_project.id = 1
-        mock_project.name = "Needs Input Project"
-        mock_project.agents = [mock_agent]
-
-        mock_query = MagicMock()
-        mock_query.options.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.all.return_value = [mock_project]
-        mock_db_session.session.query.return_value = mock_query
+        mock_project = self._make_mock_project("Needs Input Project", [mock_agent])
+        self._setup_mock_queries(mock_db_session, [mock_project])
 
         response = standalone_client.get("/")
         html = response.data.decode("utf-8")
@@ -898,6 +913,7 @@ class TestGetTaskInstruction:
         agent = MagicMock()
         mock_task = MagicMock()
         mock_task.instruction = None
+        mock_task.full_command = None
         agent.get_current_task.return_value = mock_task
         agent.tasks = []
 
@@ -945,6 +961,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = [turn]
         agent.tasks = [task]
@@ -965,6 +982,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = [turn]
         agent.tasks = [task]
@@ -981,6 +999,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = []
         agent.tasks = [task]

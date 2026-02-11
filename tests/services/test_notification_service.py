@@ -120,15 +120,31 @@ class TestRateLimiting:
         time.sleep(0.01)
         assert service._is_rate_limited("agent-1") is False
 
-    def test_pruning_when_tracker_exceeds_100(self, service):
+    def test_pruning_when_tracker_exceeds_threshold(self, service):
         service.preferences.rate_limit_seconds = 0  # Entries expire instantly
-        # Populate 101 stale entries
-        for i in range(101):
+        # Populate 15 stale entries (threshold is > 10)
+        for i in range(15):
             service._rate_limit_tracker[f"agent-{i}"] = 0.0
         time.sleep(0.01)
         # Trigger pruning by checking rate limit
         service._is_rate_limited("agent-new")
-        assert len(service._rate_limit_tracker) < 101
+        assert len(service._rate_limit_tracker) < 15
+
+    def test_pruning_cleans_stale_entries_preserves_recent(self, service):
+        """Pruning should remove stale entries but keep recent ones."""
+        service.preferences.rate_limit_seconds = 1
+        now = time.time()
+        # 10 stale entries (timestamp=0.0)
+        for i in range(10):
+            service._rate_limit_tracker[f"stale-{i}"] = 0.0
+        # 5 recent entries
+        for i in range(5):
+            service._rate_limit_tracker[f"recent-{i}"] = now
+        # Trigger pruning (tracker has 15 entries > 10 threshold)
+        service._is_rate_limited("new-agent")
+        # Stale entries should be pruned, recent ones kept
+        assert all(f"stale-{i}" not in service._rate_limit_tracker for i in range(10))
+        assert all(f"recent-{i}" in service._rate_limit_tracker for i in range(5))
 
 
 # ---------------------------------------------------------------------------

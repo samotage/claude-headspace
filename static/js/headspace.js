@@ -5,7 +5,7 @@
  * events from the shared SSE connection (window.headerSSEClient).
  */
 
-var HeadspaceBanner = (function () {
+var HeadspaceBanner = (function () { // eslint-disable-line no-unused-vars -- used from template onclick
   "use strict";
 
   var FLOW_TOAST_DURATION_MS = 8000;

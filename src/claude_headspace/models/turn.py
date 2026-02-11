@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,9 +57,21 @@ class Turn(db.Model):
     )
     frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tool_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    file_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Voice bridge: structured question detail
+    question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question_options: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    question_source_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    answered_by_turn_id: Mapped[int | None] = mapped_column(
+        ForeignKey("turns.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="turns")
+    answered_by: Mapped["Turn | None"] = relationship(
+        "Turn", remote_side="Turn.id", foreign_keys=[answered_by_turn_id],
+    )
 
     def __repr__(self) -> str:
         return f"<Turn id={self.id} actor={self.actor.value} intent={self.intent.value}>"

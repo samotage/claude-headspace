@@ -109,10 +109,24 @@ def e2e_app(e2e_test_db):
     app = create_app(config_path=str(PROJECT_ROOT / "config.yaml"))
     app.config["TESTING"] = True
 
-    # Create tables in the test database
+    # Create tables in the test database and seed required data
     with app.app_context():
         from claude_headspace import models  # noqa: F401
+        from claude_headspace.models.project import Project, generate_slug
         db.create_all()
+
+        # Seed a project matching the working_directory used by hook_client
+        project_path = str(PROJECT_ROOT)
+        project_name = PROJECT_ROOT.name
+        existing = db.session.query(Project).filter_by(path=project_path).first()
+        if not existing:
+            project = Project(
+                name=project_name,
+                slug=generate_slug(project_name),
+                path=project_path,
+            )
+            db.session.add(project)
+            db.session.commit()
 
     yield app
 
@@ -165,7 +179,7 @@ def browser_context_args():
 
 @pytest.fixture(autouse=True)
 def clean_db(e2e_app):
-    """Truncate all tables and reset global state between tests."""
+    """Truncate all tables, re-seed project, and reset global state between tests."""
     yield  # Run the test first
 
     from claude_headspace.database import db
@@ -174,6 +188,18 @@ def clean_db(e2e_app):
         # Truncate tables in dependency order
         for table in reversed(db.metadata.sorted_tables):
             db.session.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE'))
+        db.session.commit()
+
+        # Re-seed the test project (hook_client needs a registered project)
+        from claude_headspace.models.project import Project, generate_slug
+        project_path = str(PROJECT_ROOT)
+        project_name = PROJECT_ROOT.name
+        project = Project(
+            name=project_name,
+            slug=generate_slug(project_name),
+            path=project_path,
+        )
+        db.session.add(project)
         db.session.commit()
 
     # Reset global state

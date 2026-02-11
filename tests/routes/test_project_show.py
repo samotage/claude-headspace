@@ -35,6 +35,18 @@ def mock_db():
     """Mock database session."""
     with patch("src.claude_headspace.routes.projects.db") as mock:
         mock.session = MagicMock()
+        # Configure query chain to return sensible defaults for counts/lists
+        mock_query = mock.session.query.return_value
+        mock_query.filter.return_value = mock_query
+        mock_query.filter_by.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.options.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.count.return_value = 0
+        mock_query.all.return_value = []
+        mock_query.join.return_value = mock_query
+        mock_query.group_by.return_value = mock_query
         yield mock
 
 

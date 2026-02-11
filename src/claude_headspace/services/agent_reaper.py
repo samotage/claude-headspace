@@ -43,6 +43,70 @@ class ReapResult:
     details: list[ReapDetail] = field(default_factory=list)
 
 
+def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
+    """Check if a `claude` process is running in a tmux pane's process tree.
+
+    Returns:
+        True if claude is running, False if pane exists but no claude,
+        None if we can't determine (pane doesn't exist or error).
+    """
+    import subprocess
+
+    try:
+        # Get the pane's root PID from tmux
+        result = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+
+        pane_pid = None
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == tmux_pane_id:
+                pane_pid = parts[1]
+                break
+
+        if not pane_pid:
+            return None  # Pane doesn't exist in tmux
+
+        # Use `ps` to walk the process tree — macOS `pgrep -P` is unreliable
+        # without specific flags, and pgrep -la shows argv[0] (version number
+        # like "2.1.34") instead of the actual process name "claude".
+        #
+        # `ps -axo pid,ppid,comm` reliably shows all processes with their
+        # parent PID and real command name on macOS.
+        ps_result = subprocess.run(
+            ["ps", "-axo", "pid,ppid,comm"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if ps_result.returncode != 0:
+            return None
+
+        # Build parent→children map for pane_pid and its children
+        children: dict[str, list[tuple[str, str]]] = {}  # ppid → [(pid, comm)]
+        for line in ps_result.stdout.strip().split("\n")[1:]:  # skip header
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                pid, ppid, comm = parts[0], parts[1], parts[2]
+                children.setdefault(ppid, []).append((pid, comm))
+
+        # Check direct children
+        for child_pid, child_comm in children.get(pane_pid, []):
+            if "claude" in child_comm.lower():
+                return True
+            # Check grandchildren (bridge → claude)
+            for gc_pid, gc_comm in children.get(child_pid, []):
+                if "claude" in gc_comm.lower():
+                    return True
+
+        # Pane exists (we found it in tmux) but no claude in process tree
+        return False  # Pane exists but no claude process found in tree
+    except Exception:
+        return None
+
+
 class AgentReaper:
     """Background service that detects and cleans up dead agents.
 
@@ -68,6 +132,7 @@ class AgentReaper:
         )
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._pending_summarisations: list = []
 
     def start(self) -> None:
         """Start the reaper background thread."""
@@ -145,12 +210,15 @@ class AgentReaper:
                 .all()
             )
 
-            # Build pane ownership: pane_id → newest agent.id (highest id = most recent)
-            pane_owners: dict[str, int] = {}
+            # Build pane ownership: pane_key → newest agent.id (highest id = most recent)
+            # Use (iterm_pane_id, tmux_pane_id) as key so agents in different
+            # tmux panes within the same iTerm window are treated as separate owners.
+            pane_owners: dict[tuple[str, str | None], int] = {}
             for a in agents:
                 if a.iterm_pane_id:
-                    if a.iterm_pane_id not in pane_owners or a.id > pane_owners[a.iterm_pane_id]:
-                        pane_owners[a.iterm_pane_id] = a.id
+                    key = (a.iterm_pane_id, a.tmux_pane_id)
+                    if key not in pane_owners or a.id > pane_owners[key]:
+                        pane_owners[key] = a.id
 
             for agent in agents:
                 result.checked += 1
@@ -162,14 +230,31 @@ class AgentReaper:
 
                 reap_reason = None
 
-                if agent.iterm_pane_id:
+                # --- Primary liveness: tmux process tree ---
+                # When the agent has a tmux pane, check if `claude` is
+                # actually running.  This is the definitive signal —
+                # iTerm AppleScript is unreliable and commander can't
+                # distinguish Claude Code from the bridge launcher.
+                if agent.tmux_pane_id:
+                    claude_alive = _is_claude_running_in_pane(agent.tmux_pane_id)
+                    if claude_alive is True:
+                        result.skipped_alive += 1
+                        continue
+                    elif claude_alive is False:
+                        # Pane exists but Claude Code has exited
+                        # (bridge launcher still running)
+                        reap_reason = "claude_exited"
+
+                # --- Fallback: iTerm pane check + inactivity ---
+                if reap_reason is None and agent.iterm_pane_id:
                     status = check_pane_exists(agent.iterm_pane_id)
 
                     if status == PaneStatus.FOUND:
-                        # Pane exists — but does this agent own it?
-                        if pane_owners.get(agent.iterm_pane_id) != agent.id:
+                        pane_key = (agent.iterm_pane_id, agent.tmux_pane_id)
+                        if pane_owners.get(pane_key) != agent.id:
                             reap_reason = "stale_pane"
                         else:
+                            # iTerm says pane exists — trust it
                             result.skipped_alive += 1
                             continue
                     elif status == PaneStatus.NOT_FOUND:
@@ -182,11 +267,11 @@ class AgentReaper:
                             result.skipped_alive += 1
                             continue
                     else:
-                        # ERROR — don't reap on uncertainty
                         result.skipped_error += 1
                         continue
-                else:
-                    # No pane ID — can only use inactivity timeout
+
+                # --- No pane info at all: inactivity only ---
+                if reap_reason is None:
                     if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                         reap_reason = "inactivity_timeout"
                     else:
@@ -215,10 +300,20 @@ class AgentReaper:
                 except Exception as e:
                     logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
 
+                # Execute pending summarisations (after commit)
+                if self._pending_summarisations:
+                    try:
+                        from .hook_receiver import _execute_pending_summarisations
+                        _execute_pending_summarisations(self._pending_summarisations)
+                    except Exception as e:
+                        logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
+                    finally:
+                        self._pending_summarisations = []
+
         return result
 
     def _reap_agent(self, agent, reason: str, now: datetime) -> None:
-        """Mark an agent as ended and broadcast the event."""
+        """Mark an agent as ended, complete orphaned tasks, and broadcast."""
         from ..database import db
 
         agent.ended_at = now
@@ -227,6 +322,9 @@ class AgentReaper:
         logger.info(
             f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
         )
+
+        # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
+        self._complete_orphaned_tasks(agent)
 
         # Broadcast session_ended so the dashboard removes the card
         try:
@@ -258,3 +356,81 @@ class AgentReaper:
                 )
         except Exception as e:
             logger.debug(f"Reaper event write failed (non-fatal): {e}")
+
+    def _complete_orphaned_tasks(self, agent) -> None:
+        """Complete non-COMPLETE tasks for a reaped agent.
+
+        Reads the agent's transcript, detects intent, and transitions
+        each orphaned task to COMPLETE via TaskLifecycleManager.
+        """
+        from ..database import db
+        from ..models.task import Task, TaskState
+        from ..models.turn import TurnIntent
+
+        try:
+            active_tasks = (
+                db.session.query(Task)
+                .filter(
+                    Task.agent_id == agent.id,
+                    Task.state.notin_([TaskState.COMPLETE, TaskState.IDLE]),
+                )
+                .order_by(Task.id.desc())
+                .all()
+            )
+
+            if not active_tasks:
+                return
+
+            logger.info(
+                f"Reaper completing {len(active_tasks)} orphaned task(s) "
+                f"for agent {agent.id}"
+            )
+
+            # Read transcript once
+            from .hook_receiver import _extract_transcript_content
+            transcript_text = _extract_transcript_content(agent)
+
+            # Detect intent from transcript
+            intent = TurnIntent.COMPLETION
+            if transcript_text:
+                try:
+                    from .intent_detector import detect_agent_intent
+                    result = detect_agent_intent(transcript_text)
+                    if result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
+                        intent = result.intent
+                except Exception as e:
+                    logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
+
+            # Complete tasks via lifecycle manager
+            from .hook_receiver import _get_lifecycle_manager
+            try:
+                lifecycle = _get_lifecycle_manager()
+            except Exception as e:
+                logger.warning(f"Could not create lifecycle manager: {e}")
+                return
+
+            for i, task in enumerate(active_tasks):
+                try:
+                    # Most recent task (i==0) gets transcript text; older ones get empty
+                    text = transcript_text if i == 0 else ""
+                    lifecycle.complete_task(
+                        task=task,
+                        trigger="reaper:orphaned_task",
+                        agent_text=text,
+                        intent=intent,
+                    )
+                    logger.info(
+                        f"Reaper completed task {task.id} (state was {task.state.value})"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to complete orphaned task {task.id}: {e}"
+                    )
+
+            # Collect pending summarisations for post-commit execution
+            pending = lifecycle.get_pending_summarisations()
+            if pending:
+                self._pending_summarisations.extend(pending)
+
+        except Exception as e:
+            logger.warning(f"Orphaned task completion failed for agent {agent.id}: {e}")
