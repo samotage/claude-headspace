@@ -1335,6 +1335,207 @@ body {
   opacity: 0.6;
 }
 
+/* --- Drop Zone Overlay --- */
+.chat-drop-zone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(13, 17, 23, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  border: 3px dashed var(--accent);
+  border-radius: 8px;
+  margin: 8px;
+}
+
+.drop-zone-content {
+  text-align: center;
+  pointer-events: none;
+}
+
+.drop-zone-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.drop-zone-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* --- Pending Attachment Preview --- */
+.chat-attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-emphasis);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  animation: bubble-in 0.2s ease-out;
+}
+
+.attachment-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attachment-thumb .file-icon {
+  font-size: 22px;
+  color: var(--text-dim);
+}
+
+.attachment-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-size {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.attachment-remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(240, 246, 252, 0.08);
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.attachment-remove:hover {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--error);
+}
+
+/* --- Upload Progress Bar --- */
+.chat-upload-progress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.chat-upload-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+/* --- Upload Error Toast --- */
+.chat-upload-error {
+  padding: 8px 12px;
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 8px;
+  color: var(--error);
+  font-size: 13px;
+  margin-bottom: 6px;
+  animation: bubble-in 0.2s ease-out;
+}
+
+/* --- Image Thumbnails in Chat Bubbles --- */
+.bubble-file-image {
+  margin-top: 6px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.bubble-file-image img {
+  display: block;
+  max-width: 240px;
+  max-height: 200px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bubble-file-image:hover img {
+  opacity: 0.85;
+}
+
+/* --- File Card in Chat Bubbles --- */
+.bubble-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(240, 246, 252, 0.06);
+  border: 1px solid var(--border-emphasis);
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.bubble-file-card:hover {
+  background: rgba(240, 246, 252, 0.1);
+}
+
+.file-card-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.file-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-card-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card-size {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 /* --- Responsive --- */
 @media (min-width: 600px) {
   .screen { max-width: 480px; margin: 0 auto; }

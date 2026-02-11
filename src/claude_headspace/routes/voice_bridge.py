@@ -197,8 +197,9 @@ def voice_command():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     agent_id = data.get("agent_id")
+    file_path = data.get("file_path", "").strip()
 
-    if not text:
+    if not text and not file_path:
         return _voice_error("No command text provided.", "Say your command and try again.")
 
     formatter = _get_voice_formatter()
@@ -270,9 +271,17 @@ def voice_command():
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
     text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
 
+    # Append file_path reference if provided
+    send_text = text
+    if file_path:
+        if send_text:
+            send_text = f"{send_text}\n\nPlease look at this file: {file_path}"
+        else:
+            send_text = f"Please look at this file: {file_path}"
+
     result = tmux_bridge.send_text(
         pane_id=agent.tmux_pane_id,
-        text=text,
+        text=send_text,
         timeout=subprocess_timeout,
         text_enter_delay_ms=text_enter_delay_ms,
     )
@@ -375,6 +384,181 @@ def voice_command():
             "The agent received your input. State will self-correct.",
             500,
         )
+
+
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/upload", methods=["POST"])
+def upload_file(agent_id: int):
+    """Upload a file to share with an agent."""
+    start_time = time.time()
+
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
+
+    # Check tmux pane
+    if not agent.tmux_pane_id:
+        return _voice_error(
+            "Cannot reach this agent.",
+            "The agent has no terminal connection for input.",
+            503,
+        )
+
+    # Get file from multipart form data
+    if "file" not in request.files:
+        return _voice_error("No file provided.", "Attach a file and try again.")
+
+    uploaded_file = request.files["file"]
+    if not uploaded_file.filename:
+        return _voice_error("No file selected.", "Choose a file and try again.")
+
+    text = request.form.get("text", "").strip()
+
+    # Validate and save via FileUploadService
+    file_upload = current_app.extensions.get("file_upload")
+    if not file_upload:
+        return _voice_error("File upload not available.", "Server configuration error.", 503)
+
+    # Read file data to get size
+    uploaded_file.seek(0, 2)  # seek to end
+    file_size = uploaded_file.tell()
+    uploaded_file.seek(0)
+
+    validation = file_upload.validate_file(uploaded_file.filename, file_size, uploaded_file)
+    uploaded_file.seek(0)
+
+    if not validation["valid"]:
+        return _voice_error(validation["error"], "Check the file and try again.", 400)
+
+    # Save the file
+    file_metadata = file_upload.save_file(uploaded_file, uploaded_file.filename)
+
+    # Determine agent state
+    current_task = agent.get_current_task()
+    current_state = current_task.state if current_task else None
+    is_answering = current_state == TaskState.AWAITING_INPUT
+    is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
+
+    if not is_answering and not is_idle:
+        state_str = current_state.value if current_state else "idle"
+        return _voice_error(
+            f"Agent is {state_str}, not ready for input.",
+            "Try again in a moment when the agent finishes processing.",
+            409,
+        )
+
+    # Build message for tmux delivery
+    abs_path = file_metadata["server_path"]
+    if text:
+        tmux_text = f"{text}\n\nPlease look at this file: {abs_path}"
+    else:
+        tmux_text = f"Please look at this file: {abs_path}"
+
+    # Send via tmux bridge
+    config = current_app.config.get("APP_CONFIG", {})
+    bridge_config = config.get("tmux_bridge", {})
+    subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
+
+    result = tmux_bridge.send_text(
+        pane_id=agent.tmux_pane_id,
+        text=tmux_text,
+        timeout=subprocess_timeout,
+        text_enter_delay_ms=text_enter_delay_ms,
+    )
+
+    if not result.success:
+        error_msg = result.error_message or "Send failed"
+        return jsonify({"error": f"File saved but delivery failed: {error_msg}"}), 502
+
+    # Handle state transitions (same logic as voice_command)
+    if is_idle:
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+        broadcast_card_refresh(agent, "file_upload")
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        return jsonify({
+            "file_metadata": file_metadata,
+            "agent_id": agent.id,
+            "new_state": "idle",
+            "latency_ms": latency_ms,
+        }), 200
+
+    # AWAITING_INPUT path
+    try:
+        answered_turn_id = None
+        if current_task.turns:
+            for t in reversed(current_task.turns):
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                    answered_turn_id = t.id
+                    break
+
+        from ..services.hook_receiver import _mark_question_answered
+        _mark_question_answered(current_task)
+
+        display_text = text if text else f"[File: {file_metadata['original_filename']}]"
+        turn = Turn(
+            task_id=current_task.id,
+            actor=TurnActor.USER,
+            intent=TurnIntent.ANSWER,
+            text=display_text,
+            file_metadata=file_metadata,
+            answered_by_turn_id=answered_turn_id,
+        )
+        db.session.add(turn)
+
+        from ..services.state_machine import validate_transition
+        vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
+        if vr.valid:
+            current_task.state = vr.to_state
+        else:
+            current_task.state = TaskState.PROCESSING
+        agent.last_seen_at = datetime.now(timezone.utc)
+
+        from ..services.hook_receiver import _awaiting_tool_for_agent
+        _awaiting_tool_for_agent.pop(agent.id, None)
+
+        db.session.commit()
+
+        from ..services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent[agent.id] = time.time()
+
+        broadcast_card_refresh(agent, "file_upload")
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        return jsonify({
+            "file_metadata": file_metadata,
+            "agent_id": agent.id,
+            "turn_id": turn.id,
+            "new_state": current_task.state.value,
+            "latency_ms": latency_ms,
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.exception(f"Error recording file upload for agent {agent.id}: {e}")
+        return _voice_error(
+            "File was sent but recording failed.",
+            "The agent received your file. State will self-correct.",
+            500,
+        )
+
+
+@voice_bridge_bp.route("/api/voice/uploads/<filename>", methods=["GET"])
+def serve_upload(filename: str):
+    """Serve uploaded files from the configured upload directory."""
+    from ..services.file_upload import FileUploadService
+
+    # Validate filename for path traversal
+    if not FileUploadService.is_safe_filename(filename):
+        return jsonify({"error": "Invalid filename"}), 400
+
+    file_upload = current_app.extensions.get("file_upload")
+    if not file_upload:
+        return jsonify({"error": "File upload not available"}), 503
+
+    upload_dir = str(file_upload.upload_dir)
+    return send_from_directory(upload_dir, filename)
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/output", methods=["GET"])
@@ -556,6 +740,7 @@ def agent_transcript(agent_id: int):
             "question_options": t.question_options,
             "question_source_type": t.question_source_type,
             "answered_by_turn_id": t.answered_by_turn_id,
+            "file_metadata": t.file_metadata,
             "task_id": task.id,
             "task_instruction": task.instruction,
             "task_state": task.state.value,

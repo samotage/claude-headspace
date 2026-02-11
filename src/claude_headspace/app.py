@@ -246,6 +246,14 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     from .services import tmux_bridge
     app.extensions["tmux_bridge"] = tmux_bridge
 
+    # Initialize file upload service
+    from .services.file_upload import FileUploadService
+    file_upload_service = FileUploadService(config=config, app_root=str(app_root))
+    app.extensions["file_upload"] = file_upload_service
+    if not app.config.get("TESTING"):
+        file_upload_service.startup_sweep()
+    logger.info("File upload service initialized (dir=%s)", file_upload_service.upload_dir)
+
     # Initialize voice bridge services
     vb_enabled = get_value(config, "voice_bridge", "enabled", default=False)
     if vb_enabled:

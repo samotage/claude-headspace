@@ -31,6 +31,23 @@ window.VoiceApp = (function () {
   var _settingsReturnScreen = 'agents'; // track where settings was opened from
   var _navStack = [];           // Stack of agent IDs for back navigation
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
+  var _pendingAttachment = null; // File object pending upload
+
+  // File upload configuration (client-side validation)
+  var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  var ALLOWED_MIME_TYPES = [
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+    'application/pdf',
+    'text/plain', 'text/markdown', 'text/x-python', 'text/javascript',
+    'text/html', 'text/css', 'text/csv', 'text/yaml',
+    'application/json', 'application/x-yaml',
+  ];
+  var ALLOWED_EXTENSIONS = [
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf',
+    'txt', 'md', 'py', 'js', 'ts', 'json', 'yaml', 'yml',
+    'html', 'css', 'rb', 'sh', 'sql', 'csv', 'log'
+  ];
+  var MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
 
@@ -781,6 +798,27 @@ window.VoiceApp = (function () {
       }
     }
 
+    // File attachment rendering
+    if (turn.file_metadata) {
+      var fm = turn.file_metadata;
+      if (fm.file_type === 'image') {
+        var imgUrl = fm._localPreviewUrl || fm.serving_url || '';
+        if (imgUrl) {
+          html += '<div class="bubble-file-image" data-full-url="' + _esc(imgUrl) + '">'
+            + '<img src="' + _esc(imgUrl) + '" alt="' + _esc(fm.original_filename || 'Image') + '" loading="lazy">'
+            + '</div>';
+        }
+      } else {
+        var cardUrl = fm.serving_url || '#';
+        html += '<a class="bubble-file-card" href="' + _esc(cardUrl) + '" target="_blank" rel="noopener">'
+          + '<span class="file-card-icon">' + _getFileTypeIcon(fm.original_filename || '') + '</span>'
+          + '<div class="file-card-info">'
+          + '<div class="file-card-name">' + _esc(fm.original_filename || 'File') + '</div>'
+          + '<div class="file-card-size">' + _formatFileSize(fm.file_size || 0) + '</div>'
+          + '</div></a>';
+      }
+    }
+
     // Question options inside the bubble
     if (turn.intent === 'question') {
       var opts = turn.question_options;
@@ -823,6 +861,15 @@ window.VoiceApp = (function () {
     }
 
     bubble.innerHTML = html;
+
+    // Bind image thumbnail click -> open in new tab
+    var imgThumb = bubble.querySelector('.bubble-file-image');
+    if (imgThumb) {
+      imgThumb.addEventListener('click', function () {
+        var url = this.getAttribute('data-full-url');
+        if (url) window.open(url, '_blank');
+      });
+    }
 
     // Bind option button clicks
     var multiContainer = bubble.querySelector('.bubble-multi-question');
@@ -1014,6 +1061,197 @@ window.VoiceApp = (function () {
     el.textContent = text;
     messagesEl.appendChild(el);
     _scrollChatToBottom();
+  }
+
+  // --- File upload helpers ---
+
+  function _getFileExtension(filename) {
+    if (!filename || filename.indexOf('.') === -1) return '';
+    return filename.split('.').pop().toLowerCase();
+  }
+
+  function _isAllowedFile(file) {
+    var ext = _getFileExtension(file.name);
+    return ALLOWED_EXTENSIONS.indexOf(ext) !== -1;
+  }
+
+  function _isImageFile(file) {
+    return ALLOWED_IMAGE_TYPES.indexOf(file.type) !== -1;
+  }
+
+  function _formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function _getFileTypeIcon(filename) {
+    var ext = _getFileExtension(filename);
+    var icons = {
+      pdf: '\uD83D\uDCC4', // page facing up
+      txt: '\uD83D\uDCDD', // memo
+      md: '\uD83D\uDCDD',
+      py: '\uD83D\uDC0D',  // snake
+      js: '\uD83D\uDCDC',  // scroll
+      ts: '\uD83D\uDCDC',
+      json: '{ }',
+      yaml: '\u2699\uFE0F', // gear
+      yml: '\u2699\uFE0F',
+      html: '\uD83C\uDF10', // globe
+      css: '\uD83C\uDFA8', // palette
+      rb: '\uD83D\uDC8E',  // gem
+      sh: '\uD83D\uDCBB',  // computer
+      sql: '\uD83D\uDDD1\uFE0F', // wastebasket -> use generic
+      csv: '\uD83D\uDCCA', // chart
+      log: '\uD83D\uDCCB', // clipboard
+    };
+    return icons[ext] || '\uD83D\uDCC1'; // file folder
+  }
+
+  function _showPendingAttachment(file) {
+    _pendingAttachment = file;
+    var previewEl = document.getElementById('chat-attachment-preview');
+    var thumbEl = document.getElementById('attachment-thumb');
+    var nameEl = document.getElementById('attachment-name');
+    var sizeEl = document.getElementById('attachment-size');
+    if (!previewEl || !thumbEl || !nameEl || !sizeEl) return;
+
+    nameEl.textContent = file.name;
+    sizeEl.textContent = _formatFileSize(file.size);
+
+    if (_isImageFile(file)) {
+      var url = URL.createObjectURL(file);
+      thumbEl.innerHTML = '<img src="' + url + '" alt="Preview">';
+    } else {
+      thumbEl.innerHTML = '<span class="file-icon">' + _getFileTypeIcon(file.name) + '</span>';
+    }
+
+    previewEl.style.display = 'flex';
+    _hideUploadError();
+  }
+
+  function _clearPendingAttachment() {
+    _pendingAttachment = null;
+    var previewEl = document.getElementById('chat-attachment-preview');
+    var thumbEl = document.getElementById('attachment-thumb');
+    if (previewEl) previewEl.style.display = 'none';
+    if (thumbEl) thumbEl.innerHTML = '';
+  }
+
+  function _showUploadProgress(pct) {
+    var progressEl = document.getElementById('chat-upload-progress');
+    var barEl = document.getElementById('chat-upload-bar');
+    if (progressEl) progressEl.style.display = 'block';
+    if (barEl) barEl.style.width = pct + '%';
+  }
+
+  function _hideUploadProgress() {
+    var progressEl = document.getElementById('chat-upload-progress');
+    var barEl = document.getElementById('chat-upload-bar');
+    if (progressEl) progressEl.style.display = 'none';
+    if (barEl) barEl.style.width = '0%';
+  }
+
+  function _showUploadError(msg) {
+    var el = document.getElementById('chat-upload-error');
+    if (el) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+  }
+
+  function _hideUploadError() {
+    var el = document.getElementById('chat-upload-error');
+    if (el) el.style.display = 'none';
+  }
+
+  function _validateFileClientSide(file) {
+    if (!_isAllowedFile(file)) {
+      var ext = _getFileExtension(file.name);
+      return 'File type .' + ext + ' is not supported. Accepted: ' + ALLOWED_EXTENSIONS.join(', ');
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return 'File too large (' + _formatFileSize(file.size) + '). Maximum: ' + _formatFileSize(MAX_FILE_SIZE);
+    }
+    return null;
+  }
+
+  function _handleFileDrop(file) {
+    var error = _validateFileClientSide(file);
+    if (error) {
+      _showUploadError(error);
+      return;
+    }
+    _showPendingAttachment(file);
+  }
+
+  // --- Chat send with attachment ---
+
+  function _sendChatWithAttachment(text) {
+    if (!_pendingAttachment) {
+      _sendChatCommand(text);
+      return;
+    }
+
+    var file = _pendingAttachment;
+    var trimText = (text || '').trim();
+
+    // Guard: agent state check
+    var state = (_chatAgentState || '').toLowerCase();
+    if (state === 'processing' || state === 'commanded') {
+      _showChatSystemMessage('Agent is processing \u2014 please wait.');
+      return;
+    }
+
+    // Show optimistic user bubble
+    var now = new Date().toISOString();
+    var displayText = trimText ? trimText : '[File: ' + file.name + ']';
+    var fakeTurn = {
+      id: 'pending-' + Date.now(),
+      actor: 'user',
+      intent: 'answer',
+      text: displayText,
+      timestamp: now,
+      file_metadata: {
+        original_filename: file.name,
+        file_type: _isImageFile(file) ? 'image' : 'document',
+        file_size: file.size,
+        _localPreviewUrl: URL.createObjectURL(file)
+      }
+    };
+
+    var messagesEl = document.getElementById('chat-messages');
+    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
+    var prevTurn = lastBubble ? { timestamp: now } : null;
+    _chatPendingUserTexts.add(displayText);
+    _renderChatBubble(fakeTurn, prevTurn);
+    _scrollChatToBottom();
+
+    // Clear input
+    var input = document.getElementById('chat-text-input');
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
+    _clearPendingAttachment();
+
+    // Show progress
+    _showUploadProgress(0);
+    _chatAgentState = 'processing';
+    _updateTypingIndicator();
+
+    VoiceAPI.uploadFile(_targetAgentId, file, trimText || null, function (pct) {
+      _showUploadProgress(pct);
+    }).then(function (data) {
+      _hideUploadProgress();
+      // Upload success — SSE will update state
+    }).catch(function (err) {
+      _hideUploadProgress();
+      var errMsg = (err && err.error) || 'Upload failed';
+      _showUploadError(errMsg);
+      _chatAgentState = 'idle';
+      _updateTypingIndicator();
+    });
   }
 
   function _sendChatCommand(text) {
@@ -1683,9 +1921,11 @@ window.VoiceApp = (function () {
     if (chatForm) {
       chatForm.addEventListener('submit', function (e) {
         e.preventDefault();
-        if (chatInput && chatInput.value.trim()) {
-          _sendChatCommand(chatInput.value);
-          chatInput.style.height = 'auto';
+        var hasText = chatInput && chatInput.value.trim();
+        var hasFile = !!_pendingAttachment;
+        if (hasText || hasFile) {
+          _sendChatWithAttachment(chatInput ? chatInput.value : '');
+          if (chatInput) chatInput.style.height = 'auto';
         }
       });
     }
@@ -1706,6 +1946,67 @@ window.VoiceApp = (function () {
           _stopListening();
         } else {
           _startListening();
+        }
+      });
+    }
+
+    // Attachment remove button
+    var attachRemoveBtn = document.getElementById('attachment-remove');
+    if (attachRemoveBtn) {
+      attachRemoveBtn.addEventListener('click', function () {
+        _clearPendingAttachment();
+      });
+    }
+
+    // Drag-and-drop file handling on chat screen
+    var chatScreen = document.getElementById('screen-chat');
+    var dropZone = document.getElementById('chat-drop-zone');
+    if (chatScreen && dropZone) {
+      var _dragCounter = 0;
+      chatScreen.addEventListener('dragenter', function (e) {
+        e.preventDefault();
+        _dragCounter++;
+        dropZone.style.display = 'flex';
+      });
+      chatScreen.addEventListener('dragover', function (e) {
+        e.preventDefault();
+      });
+      chatScreen.addEventListener('dragleave', function (e) {
+        e.preventDefault();
+        _dragCounter--;
+        if (_dragCounter <= 0) {
+          _dragCounter = 0;
+          dropZone.style.display = 'none';
+        }
+      });
+      chatScreen.addEventListener('drop', function (e) {
+        e.preventDefault();
+        _dragCounter = 0;
+        dropZone.style.display = 'none';
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          _handleFileDrop(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    // Clipboard paste handler for images
+    if (chatInput) {
+      chatInput.addEventListener('paste', function (e) {
+        var items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (var pi = 0; pi < items.length; pi++) {
+          if (items[pi].type && items[pi].type.indexOf('image/') === 0) {
+            e.preventDefault();
+            var file = items[pi].getAsFile();
+            if (file) {
+              // Give pasted images a meaningful name
+              var ext = file.type.split('/')[1] || 'png';
+              if (ext === 'jpeg') ext = 'jpg';
+              var pastedFile = new File([file], 'pasted-image.' + ext, { type: file.type });
+              _handleFileDrop(pastedFile);
+            }
+            break;
+          }
         }
       });
     }
