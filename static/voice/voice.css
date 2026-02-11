@@ -1832,7 +1832,7 @@ body.layout-split .agent-card.selected {
 }
 
 /* ========================================================================
-   THEME: Warm (cream/teal)
+   THEME: Warm (charcoal & rust)
    ======================================================================== */
 [data-theme="warm"] {
   color-scheme: light;
@@ -1842,24 +1842,24 @@ body.layout-split .agent-card.selected {
   --text: #2c2417;
   --text-dim: #7a6e5d;
   --text-muted: #a89b8a;
-  --accent: #0d7c80;
-  --accent-hover: #0a6366;
+  --accent: #d4643b;
+  --accent-hover: #b8532f;
   --success: #2d8a3e;
   --warning: #b8860b;
   --error: #c53030;
   --awaiting: #b8860b;
-  --processing: #0d7c80;
+  --processing: #d4643b;
   --idle: #a89b8a;
   --border: rgba(44, 36, 23, 0.12);
   --border-emphasis: rgba(44, 36, 23, 0.2);
-  --user-bubble: #0d7c80;
-  --agent-bubble: #e0d8ca;
+  --user-bubble: #4a4540;
+  --agent-bubble: #e2dbd0;
 
   /* Brand */
-  --brand-glow: #0d7c80;
-  --brand-shadow: 0 1px 3px rgba(13, 124, 128, 0.2);
-  --brand-shadow-hover: 0 1px 4px rgba(13, 124, 128, 0.3);
-  --brand-cursor-shadow: 0 1px 2px rgba(13, 124, 128, 0.15);
+  --brand-glow: #d4643b;
+  --brand-shadow: 0 1px 3px rgba(212, 100, 59, 0.2);
+  --brand-shadow-hover: 0 1px 4px rgba(212, 100, 59, 0.3);
+  --brand-cursor-shadow: 0 1px 2px rgba(212, 100, 59, 0.15);
 
   /* Interactive */
   --icon-btn-bg: rgba(44, 36, 23, 0.06);
@@ -1872,17 +1872,17 @@ body.layout-split .agent-card.selected {
   --shadow-menu: 0 2px 4px rgba(44, 36, 23, 0.1), 0 8px 24px rgba(44, 36, 23, 0.18);
 
   /* Accent tints */
-  --accent-subtle: rgba(13, 124, 128, 0.05);
-  --accent-subtle-hover: rgba(13, 124, 128, 0.08);
-  --accent-subtle-active: rgba(13, 124, 128, 0.12);
-  --accent-subtle-border: rgba(13, 124, 128, 0.3);
-  --accent-focus: rgba(13, 124, 128, 0.12);
-  --accent-field-border: rgba(13, 124, 128, 0.4);
-  --accent-selected: rgba(13, 124, 128, 0.12);
-  --accent-submit-bg: rgba(13, 124, 128, 0.1);
-  --accent-submit-hover: rgba(13, 124, 128, 0.18);
+  --accent-subtle: rgba(212, 100, 59, 0.05);
+  --accent-subtle-hover: rgba(212, 100, 59, 0.08);
+  --accent-subtle-active: rgba(212, 100, 59, 0.12);
+  --accent-subtle-border: rgba(212, 100, 59, 0.3);
+  --accent-focus: rgba(212, 100, 59, 0.12);
+  --accent-field-border: rgba(212, 100, 59, 0.4);
+  --accent-selected: rgba(212, 100, 59, 0.12);
+  --accent-submit-bg: rgba(212, 100, 59, 0.1);
+  --accent-submit-hover: rgba(212, 100, 59, 0.18);
 
-  /* Status tints */
+  /* Status tints (traffic-light: green/amber/red) */
   --success-subtle: rgba(45, 138, 62, 0.12);
   --success-glow: 0 0 6px rgba(45, 138, 62, 0.3);
   --success-border: rgba(45, 138, 62, 0.3);
@@ -1903,7 +1903,7 @@ body.layout-split .agent-card.selected {
 
   /* State badges */
   --state-bg: rgba(44, 36, 23, 0.06);
-  --state-commanded-bg: rgba(13, 124, 128, 0.1);
+  --state-commanded-bg: rgba(212, 100, 59, 0.1);
 
   /* Code */
   --code-block-bg: rgba(44, 36, 23, 0.06);
