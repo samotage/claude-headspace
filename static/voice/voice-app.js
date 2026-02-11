@@ -28,7 +28,9 @@ window.VoiceApp = (function () {
   var _chatAgentEnded = false;
   var _chatTranscriptSeq = 0;  // Sequence counter to discard stale transcript responses
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
-  var _isTrustedNetwork = _isLocalhost || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname);
+  var _isTrustedNetwork = _isLocalhost
+    || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname)
+    || location.hostname.endsWith('.local');
   var _settingsReturnScreen = 'agents'; // track where settings was opened from
   var _navStack = [];           // Stack of agent IDs for back navigation
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
