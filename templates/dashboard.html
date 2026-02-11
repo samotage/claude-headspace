@@ -7,9 +7,6 @@
     {% include "partials/_header.html" %}
 
     <main class="page-content px-4 py-6 {{ 'container mx-auto' if sort_mode == 'priority' else '' }}" role="main">
-        <!-- Activity Metrics Bar (fixed, below nav, above stats bar) -->
-        {% include "partials/_activity_bar.html" %}
-
         <!-- Objective Banner -->
         {% include "partials/_objective_banner.html" %}
 
@@ -34,6 +31,9 @@
                 <button id="new-agent-btn" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-green/20 text-green border-green/30 hover:bg-green/30 min-h-[36px]" title="Create new agent" disabled>
                     + Agent
                 </button>
+                <a href="/voice" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-blue/20 text-blue border-blue/30 hover:bg-blue/30 min-h-[36px] inline-flex items-center no-underline" title="Open chat view">
+                    Chat
+                </a>
             </div>
         </div>
 
