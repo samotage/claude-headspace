@@ -149,6 +149,18 @@ DEFAULTS = {
             "days": 90,
         },
     },
+    "file_upload": {
+        "upload_dir": "uploads",
+        "max_file_size_mb": 10,
+        "max_total_storage_mb": 500,
+        "retention_days": 7,
+        "allowed_image_types": ["png", "jpg", "jpeg", "gif", "webp"],
+        "allowed_document_types": ["pdf"],
+        "allowed_text_types": [
+            "txt", "md", "py", "js", "ts", "json", "yaml", "yml",
+            "html", "css", "rb", "sh", "sql", "csv", "log",
+        ],
+    },
     "voice_bridge": {
         "enabled": False,
         "auth": {

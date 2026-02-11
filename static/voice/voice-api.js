@@ -99,6 +99,54 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/agents/' + agentId + '/context');
   }
 
+  /**
+   * Upload a file to share with an agent.
+   * Uses XMLHttpRequest for upload progress events.
+   *
+   * @param {number} agentId - Target agent ID
+   * @param {File} file - File object to upload
+   * @param {string} [text] - Optional text to send with the file
+   * @param {function} [onProgress] - Progress callback: fn(percent)
+   * @returns {Promise<object>} - Response data with file_metadata
+   */
+  function uploadFile(agentId, file, text, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      var formData = new FormData();
+      formData.append('file', file);
+      if (text) formData.append('text', text);
+
+      xhr.open('POST', _baseUrl + '/api/voice/agents/' + agentId + '/upload');
+      if (_token) xhr.setRequestHeader('Authorization', 'Bearer ' + _token);
+
+      xhr.upload.onprogress = function (e) {
+        if (e.lengthComputable && onProgress) {
+          var pct = Math.round((e.loaded / e.total) * 100);
+          onProgress(pct);
+        }
+      };
+
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data);
+          } else {
+            reject(data);
+          }
+        } catch (e) {
+          reject({ error: 'Parse error' });
+        }
+      };
+
+      xhr.onerror = function () {
+        reject({ error: 'Network error' });
+      };
+
+      xhr.send(formData);
+    });
+  }
+
   // --- SSE ---
 
   function connectSSE() {
@@ -202,6 +250,7 @@ window.VoiceAPI = (function () {
     createAgent: createAgent,
     shutdownAgent: shutdownAgent,
     getAgentContext: getAgentContext,
+    uploadFile: uploadFile,
     connectSSE: connectSSE,
     disconnectSSE: disconnectSSE
   };

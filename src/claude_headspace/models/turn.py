@@ -57,6 +57,7 @@ class Turn(db.Model):
     )
     frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tool_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    file_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Voice bridge: structured question detail
     question_text: Mapped[str | None] = mapped_column(Text, nullable=True)

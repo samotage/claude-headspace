@@ -97,6 +97,13 @@
       </div>
     </div>
     <div id="attention-banners" class="attention-banners"></div>
+    <!-- Drop zone overlay -->
+    <div id="chat-drop-zone" class="chat-drop-zone" style="display:none">
+      <div class="drop-zone-content">
+        <div class="drop-zone-icon">&#128206;</div>
+        <div class="drop-zone-text">Drop file to share</div>
+      </div>
+    </div>
     <div id="chat-messages" class="chat-messages">
       <div id="chat-load-more" class="chat-load-more" style="display:none"></div>
     </div>
@@ -111,6 +118,21 @@
       Agent session has ended
     </div>
     <div id="chat-input-area" class="chat-input-bar">
+      <!-- Pending attachment preview -->
+      <div id="chat-attachment-preview" class="chat-attachment-preview" style="display:none">
+        <div id="attachment-thumb" class="attachment-thumb"></div>
+        <div id="attachment-info" class="attachment-info">
+          <span id="attachment-name" class="attachment-name"></span>
+          <span id="attachment-size" class="attachment-size"></span>
+        </div>
+        <button type="button" id="attachment-remove" class="attachment-remove" aria-label="Remove attachment">&times;</button>
+      </div>
+      <!-- Upload progress bar -->
+      <div id="chat-upload-progress" class="chat-upload-progress" style="display:none">
+        <div id="chat-upload-bar" class="chat-upload-bar"></div>
+      </div>
+      <!-- Upload error toast -->
+      <div id="chat-upload-error" class="chat-upload-error" style="display:none"></div>
       <form id="chat-input-form" class="chat-input-form">
         <textarea id="chat-text-input" class="chat-text-field" placeholder="Message..." autocomplete="off" rows="1"></textarea>
         <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send">
