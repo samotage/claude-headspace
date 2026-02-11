@@ -1744,13 +1744,15 @@ window.VoiceApp = (function () {
   function init() {
     loadSettings();
 
-    // Close kebab menus on click outside
-    document.addEventListener('click', function (e) {
+    // Close kebab menus on click/touch outside
+    function _handleCloseKebabs(e) {
       if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')
           && !e.target.closest('.project-kebab-btn') && !e.target.closest('.project-kebab-menu')) {
         _closeAllKebabMenus();
       }
-    });
+    }
+    document.addEventListener('click', _handleCloseKebabs);
+    document.addEventListener('touchstart', _handleCloseKebabs, { passive: true });
 
     // Detect agent_id URL param (from dashboard "Chat" link)
     var urlParams = new URLSearchParams(window.location.search);

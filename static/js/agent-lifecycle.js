@@ -95,6 +95,30 @@
     }
 
     /**
+     * Close all open card footer kebab menus.
+     */
+    function closeCardKebabs() {
+        var openMenus = document.querySelectorAll('.card-kebab-menu.open');
+        for (var i = 0; i < openMenus.length; i++) {
+            openMenus[i].classList.remove('open');
+        }
+        var expandedBtns = document.querySelectorAll('.card-kebab-btn[aria-expanded="true"]');
+        for (var j = 0; j < expandedBtns.length; j++) {
+            expandedBtns[j].setAttribute('aria-expanded', 'false');
+        }
+        // Lower all elevated cards
+        var elevatedCards = document.querySelectorAll('article.kebab-open');
+        for (var k = 0; k < elevatedCards.length; k++) {
+            elevatedCards[k].classList.remove('kebab-open');
+        }
+        // Restore overflow on all ancestor containers
+        var unclipped = document.querySelectorAll('.kebab-child-open');
+        for (var m = 0; m < unclipped.length; m++) {
+            unclipped[m].classList.remove('kebab-child-open');
+        }
+    }
+
+    /**
      * Initialize event handlers.
      */
     function init() {
@@ -126,24 +150,57 @@
             });
         }
 
-        // Delegate click events for ctx and kill buttons on agent cards
+        // Dashboard card footer kebab menu
         document.addEventListener('click', function(e) {
-            // Context check button
-            var ctxBtn = e.target.closest('.agent-ctx-btn');
-            if (ctxBtn) {
+            // Kebab toggle
+            var kebabBtn = e.target.closest('.card-kebab-btn');
+            if (kebabBtn) {
                 e.preventDefault();
                 e.stopPropagation();
-                var agentId = parseInt(ctxBtn.getAttribute('data-agent-id'), 10);
+                var agentId = kebabBtn.getAttribute('data-agent-id');
+                var menu = document.querySelector('.card-kebab-menu[data-agent-id="' + agentId + '"]');
+                // Close all other open card kebabs first
+                closeCardKebabs();
+                if (menu) {
+                    var isOpen = !menu.classList.contains('open');
+                    menu.classList.toggle('open');
+                    kebabBtn.setAttribute('aria-expanded', isOpen);
+                    if (isOpen) {
+                        // Elevate the parent card above siblings
+                        var card = kebabBtn.closest('article');
+                        if (card) card.classList.add('kebab-open');
+                        // Disable overflow clipping on all ancestor containers
+                        var el = kebabBtn.parentElement;
+                        while (el && el !== document.body) {
+                            var style = window.getComputedStyle(el);
+                            if (style.overflow !== 'visible' || style.overflowY !== 'visible' || style.overflowX !== 'visible') {
+                                el.classList.add('kebab-child-open');
+                            }
+                            el = el.parentElement;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Context check (kebab menu item)
+            var ctxAction = e.target.closest('.card-ctx-action');
+            if (ctxAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(ctxAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
                 if (agentId) checkContext(agentId);
                 return;
             }
 
-            // Kill button
-            var killBtn = e.target.closest('.agent-kill-btn');
-            if (killBtn) {
+            // Kill (kebab menu item)
+            var killAction = e.target.closest('.card-kill-action');
+            if (killAction) {
                 e.preventDefault();
                 e.stopPropagation();
-                var agentId = parseInt(killBtn.getAttribute('data-agent-id'), 10);
+                var agentId = parseInt(killAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
                 if (!agentId) return;
 
                 if (typeof ConfirmDialog !== 'undefined') {
@@ -162,7 +219,19 @@
                 }
                 return;
             }
+
+            // Close card kebabs on click outside
+            if (!e.target.closest('.card-kebab-wrapper')) {
+                closeCardKebabs();
+            }
         });
+
+        // Touch-aware close: touchstart fires on iOS even on non-interactive elements
+        document.addEventListener('touchstart', function(e) {
+            if (!e.target.closest('.card-kebab-wrapper')) {
+                closeCardKebabs();
+            }
+        }, { passive: true });
     }
 
     // Export

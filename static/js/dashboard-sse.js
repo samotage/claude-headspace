@@ -926,7 +926,7 @@
                 statusBadge.className = 'status-badge px-2 py-0.5 text-xs font-medium rounded bg-muted/20 text-muted';
             }
         }
-        // Bridge indicator: show/hide based on is_bridge_connected
+        // Bridge indicator: mutually exclusive with status badge
         if (data.is_bridge_connected != null) {
             var bridgeEl = card.querySelector('.bridge-indicator');
             var badgeContainer = statusBadge ? statusBadge.parentElement : null;
@@ -939,6 +939,10 @@
                 badgeContainer.insertBefore(bridgeEl, statusBadge);
             } else if (!data.is_bridge_connected && bridgeEl) {
                 bridgeEl.remove();
+            }
+            // Hide status badge when bridge connected, show when not
+            if (statusBadge) {
+                statusBadge.style.display = data.is_bridge_connected ? 'none' : '';
             }
         }
         var lastSeenEl = card.querySelector('.last-seen');
@@ -1396,6 +1400,11 @@
                 }
             } else if (!data.available && bridgeEl) {
                 bridgeEl.remove();
+            }
+            // Hide status badge when bridge connected, show when not
+            var statusBadge = card.querySelector('.status-badge');
+            if (statusBadge) {
+                statusBadge.style.display = data.available ? 'none' : '';
             }
         }
 

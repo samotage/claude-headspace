@@ -80,9 +80,9 @@ This directory contains the complete roadmap documentation for Claude Headspace 
 | **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | P1            |
 | **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | P2            |
 | **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | P1            |
-| **Epic 6** | Voice Bridge & Agent Chat            | 3+      | 5-7 weeks+  | P1            |
+| **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | P1            |
 
-**Total:** 36+ sprints, ~35-45 weeks (Epic 6 is extensible)
+**Total:** 38+ sprints, ~37-47 weeks (Epic 6 is extensible)
 
 ### Critical Path
 

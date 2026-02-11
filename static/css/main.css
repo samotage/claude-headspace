@@ -1267,6 +1267,10 @@ select.form-well {
   overflow: hidden;
 }
 
+.overflow-visible {
+  overflow: visible;
+}
+
 .overflow-x-auto {
   overflow-x: auto;
 }
@@ -2188,13 +2192,13 @@ body::after {
 
 .bridge-icon {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -3px;
   color: rgba(115, 224, 190, 0.9);
   line-height: 1;
   position: relative;
-  top: -2px;
+  top: -3px;
   text-shadow: 0 0 6px rgba(115, 224, 190, 0.5);
   animation: bridge-glow 3s ease-in-out infinite;
 }
@@ -2207,6 +2211,96 @@ body::after {
   50% {
     text-shadow: 0 0 10px rgba(115, 224, 190, 0.7);
   }
+}
+
+/* Elevate card when kebab menu is open so dropdown renders above sibling cards */
+
+article.kebab-open {
+  position: relative;
+  z-index: 100;
+}
+
+/* Dashboard card footer kebab menu */
+
+.card-kebab-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.card-kebab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: rgba(139, 148, 158, 0.7);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s, color 0.15s;
+}
+
+.card-kebab-btn:hover {
+  color: var(--text-secondary, #b0b8c4);
+  background: rgba(240, 246, 252, 0.08);
+}
+
+.card-kebab-btn:active {
+  background: rgba(240, 246, 252, 0.12);
+}
+
+.card-kebab-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated, #1c2128);
+  border: 1px solid var(--border-emphasis, #444c56);
+  border-radius: 10px;
+  min-width: 170px;
+  z-index: 30;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.card-kebab-menu.open {
+  display: block;
+}
+
+.card-kebab-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary, #e6edf3);
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s;
+}
+
+.card-kebab-item:hover {
+  background: rgba(240, 246, 252, 0.08);
+}
+
+.card-kebab-item:active {
+  background: rgba(240, 246, 252, 0.12);
+}
+
+.card-kebab-item.card-kill-action:hover {
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--text-red, #f85149);
 }
 
 /* Card text truncation — 3-line clamp with ellipsis */
@@ -2855,6 +2949,12 @@ body::after {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
+}
+
+/* When a kebab is open inside a column, disable ALL overflow clipping up the tree */
+
+.kebab-child-open {
+  overflow: visible !important;
 }
 
 .kanban-completed-task {

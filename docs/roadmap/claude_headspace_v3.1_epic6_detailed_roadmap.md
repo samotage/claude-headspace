@@ -10,17 +10,19 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 6 implementation. It breaks Epic 6 into 3 initial sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem. This roadmap is designed to grow as new ideas emerge — additional sprints will be appended as they are scoped and workshopped.
+This document serves as the **high-level roadmap and baseline** for Epic 6 implementation. It breaks Epic 6 into 5 sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem. This roadmap is designed to grow as new ideas emerge — additional sprints will be appended as they are scoped and workshopped.
 
-**Epic 6 Goal:** Enable hands-free voice interaction with Claude Code agents from mobile devices and transform the agent chat into a rich, lifetime conversation view with real-time intermediate message capture.
+**Epic 6 Goal:** Enable hands-free voice interaction with Claude Code agents from mobile devices, transform the agent chat into a rich lifetime conversation view, introduce remote agent lifecycle management, and add file/image sharing to the chat interface.
 
 **Epic 6 Value Proposition:**
 
 - **Voice Bridge Server** — Voice-friendly API layer, enhanced question data model, token-based LAN authentication, and LLM-powered concise output formatting for listening rather than reading
 - **Voice Bridge Mobile Client** — PWA for iPhone/iPad with speech-to-text input, text-to-speech output, audio cues, real-time SSE updates, and hands-free agent interaction
 - **Agent Chat History** — Agent-lifetime conversation spanning all tasks, real-time intermediate message capture, iMessage-style timestamps, smart message grouping, paginated scroll, and universal chat links across the dashboard
+- **Agent Lifecycle Management** — Remote agent creation, graceful shutdown via `/exit` through tmux, and on-demand context window usage monitoring from dashboard or mobile chat
+- **File & Image Sharing** — Drag-and-drop and clipboard paste of images/files into the chat panel, thumbnail rendering in conversation history, and file path delivery to Claude Code agents via tmux bridge
 
-**The Differentiator:** Epic 6 breaks Claude Headspace free from the desk. Until now, interacting with agents required being at the Mac — seeing a question on the dashboard and typing a response. The Voice Bridge enables the user to monitor and command agents from anywhere in the house (or yard, or bike ride) via their iPhone, hearing concise spoken summaries and answering questions by voice. The Agent Chat History transforms fragmented task-scoped views into a continuous iMessage-like conversation, making agent interactions feel natural and persistent. Together, these features make Claude Headspace a truly ambient development companion.
+**The Differentiator:** Epic 6 breaks Claude Headspace free from the desk. Until now, interacting with agents required being at the Mac — seeing a question on the dashboard and typing a response. The Voice Bridge enables the user to monitor and command agents from anywhere in the house (or yard, or bike ride) via their iPhone, hearing concise spoken summaries and answering questions by voice. The Agent Chat History transforms fragmented task-scoped views into a continuous iMessage-like conversation, making agent interactions feel natural and persistent. Agent Lifecycle Management closes the orchestration loop — users can create, monitor, and kill agents entirely from their phone. File & Image Sharing makes agent communication visual, enabling screenshots, mockups, and design references to flow through the chat interface. Together, these features make Claude Headspace a truly ambient development companion and a full remote orchestration system.
 
 **Success Criteria:**
 
@@ -33,6 +35,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 6 imple
 - Scroll up in chat → older messages load seamlessly
 - Chat accessible from dashboard cards, project pages, and activity views
 - Ended agents retain readable chat history
+- Create a new agent for a project from the dashboard or mobile chat → agent appears on dashboard in idle state
+- Kill an agent from dashboard or mobile chat → `/exit` sent via tmux → agent ends gracefully
+- Check context window usage for any agent → see percentage used and tokens remaining
+- Drag screenshot into chat panel → thumbnail appears → agent receives and responds to image
+- Paste clipboard image → preview shown → sent alongside optional text message
 
 **Architectural Foundation:** Builds on Epic 5's tmux bridge (E5-S4), input bridge (E5-S1), CLI tmux alignment (E5-S8), full command/output capture (E5-S9), and dashboard restructure (E5-S6). Leverages Epic 3's inference service and summarisation. Extends Epic 4's project controls and activity monitoring.
 
@@ -47,6 +54,8 @@ This document serves as the **high-level roadmap and baseline** for Epic 6 imple
 | E6-S1    | Voice-friendly server API with auth and question model | `voice-bridge-server`   | bridge/       | 1      | P1       |
 | E6-S2    | PWA mobile client for hands-free voice interaction     | `voice-bridge-client`   | bridge/       | 2      | P1       |
 | E6-S3    | Agent-lifetime chat with real-time intermediate msgs   | `agent-chat-history`    | bridge/       | 3      | P1       |
+| E6-S4    | Remote agent creation, shutdown, and context monitoring | `agent-lifecycle`       | agents/       | 4      | P1       |
+| E6-S5    | File and image sharing in chat interface               | `file-image-sharing`    | bridge/       | 5      | P1       |
 
 ---
 
@@ -478,6 +487,258 @@ QUESTION / RESPONSE MODE
 
 ---
 
+### Sprint 4: Agent Lifecycle Management (E6-S4)
+
+**Goal:** Enable remote agent creation, graceful shutdown, and context window usage monitoring from both the dashboard and voice/text bridge chat panel.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E6-S1, E6-S2, and E6-S3 complete (voice bridge server, client, and chat provide the remote interaction foundation)
+
+**Deliverables:**
+
+**Agent Creation:**
+
+- API endpoint to create a new idle Claude Code agent for a specified registered project
+- Invokes `claude-headspace` CLI to start a new session in the project's working directory
+- New agent registered and appears on dashboard in idle state
+- Returns new agent identifier on success
+- Error handling for unregistered or invalid project paths
+
+**Agent Shutdown:**
+
+- API endpoint to gracefully shut down a specific active agent
+- Sends `/exit` command to agent's tmux pane via send-keys
+- Relies on Claude Code's existing hook lifecycle (session-end, stop) for dashboard state updates
+- Error handling: no tmux pane, agent already ended, agent not found
+
+**Context Window Usage:**
+
+- On-demand capture of agent's tmux pane content to parse context usage statusline
+- Parses format: `[ctx: XX% used, XXXk remaining]`
+- Returns structured data: percentage used + tokens remaining
+- Clear indication when context data unavailable (agent not running, statusline not configured)
+
+**Dashboard UI:**
+
+- Project selector + "New Agent" button for creating agents
+- Agent card "Kill" control for graceful shutdown
+- Agent card "Context" indicator: progress bar or percentage badge showing `XX% used · XXXk remaining` (on-demand)
+
+**Voice/Text Bridge Chat Panel:**
+
+- Create command — e.g., "start an agent for [project name]"
+- Kill command — e.g., "kill [agent name/id]" or "shut down [agent]"
+- Context command — e.g., "how much context is [agent] using?" or "check context for [agent]"
+- Responses formatted consistently with existing voice bridge patterns
+
+**Subsystem Requiring PRD:**
+
+4. `agent-lifecycle` — Agent creation API, graceful shutdown, context window parsing, dashboard controls, chat panel commands
+
+**PRD Location:** `docs/prds/agents/done/e6-s4-agent-lifecycle-prd.md`
+
+**Stories:**
+
+- E6-S4: Remote agent creation, shutdown, and context monitoring
+
+**Technical Decisions Made:**
+
+- Graceful shutdown via `/exit` through tmux (not SIGTERM or process kill) — **decided** (fires all lifecycle hooks)
+- Context usage parsed from tmux pane statusline (not Claude Code API) — **decided** (no API available)
+- Context refresh is on-demand only (not periodic polling) — **decided** (avoids unnecessary overhead)
+- New `agents` route blueprint — **decided** (clean separation from existing routes)
+- Agent creation idempotent behaviour to be defined by implementation — **open**
+
+**API Endpoints:**
+
+| Endpoint                               | Method | Description                                           |
+| -------------------------------------- | ------ | ----------------------------------------------------- |
+| `/api/agents`                          | POST   | Create a new idle agent for a registered project      |
+| `/api/agents/<id>/kill`                | POST   | Gracefully shut down an active agent via `/exit`      |
+| `/api/agents/<id>/context`             | GET    | Read context window usage from tmux pane statusline   |
+
+**Dashboard Agent Card with Lifecycle Controls:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  [GREEN] claude-headspace                            Processing     │
+├─────────────────────────────────────────────────────────────────────┤
+│  Task: Fix the login bug in the auth module                        │
+│                                                                     │
+│  Context: ██████████░░░░░░ 62% used · 38k remaining               │
+│                                                                     │
+│  [Chat]  [Check Context]  [Kill Agent]                              │
+│                                                                     │
+│  [Focus iTerm]                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  + New Agent                                                        │
+│  Project: [ claude-headspace ▼ ]    [Create]                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Risks:**
+
+- `claude-headspace` CLI invocation from server process (mitigated: subprocess with timeout, error handling)
+- tmux pane statusline format changes (mitigated: configurable regex pattern)
+- Race condition between `/exit` send and hook-based state update (mitigated: rely on existing hook lifecycle, no manual state change)
+- Agent creation latency (up to 10 seconds for Claude Code startup)
+
+**Acceptance Criteria:**
+
+- [ ] User can create a new idle agent from the dashboard for any registered project
+- [ ] User can create a new idle agent from the voice/text bridge chat panel
+- [ ] User can gracefully shut down any active agent from the dashboard
+- [ ] User can gracefully shut down any active agent from the chat panel
+- [ ] Context window usage (% used + tokens remaining) visible on agent card when requested
+- [ ] Context usage queryable from the chat panel
+- [ ] Graceful shutdown fires all expected lifecycle hooks (session-end, stop)
+- [ ] Dashboard state consistent after creation and shutdown (no orphans, no stale state)
+- [ ] All operations work remotely via voice/text bridge on mobile
+- [ ] Agent creation completes within 10 seconds
+- [ ] Graceful shutdown begins terminating within 5 seconds
+- [ ] Context parsing returns results within 2 seconds
+- [ ] Failed operations return clear, actionable error messages
+
+---
+
+### Sprint 5: File & Image Sharing in Chat (E6-S5)
+
+**Goal:** Enable file and image sharing through the voice bridge chat interface — drag-and-drop, clipboard paste, thumbnail rendering, and file path delivery to Claude Code agents.
+
+**Duration:** 1-2 weeks  
+**Dependencies:** E6-S3 complete (agent chat history provides the conversation UI foundation)
+
+**Deliverables:**
+
+**File Upload:**
+
+- Drag-and-drop file input in the voice bridge chat panel with visual drop zone indicator
+- Clipboard paste of images into the chat input area (Cmd+Shift+4 screenshot → paste workflow)
+- File upload endpoint on Flask server that persists files to disk with unique names
+- Configurable upload storage directory
+- Upload progress feedback in the UI
+
+**File Type & Size Validation:**
+
+- Supported images: PNG, JPG/JPEG, GIF, WebP
+- Supported documents: PDF
+- Supported text/code: .txt, .md, .py, .js, .ts, .json, .yaml, .yml, .html, .css, .rb, .sh, .sql, .csv, .log
+- File type validation via magic bytes (not just extension)
+- Configurable maximum file size per upload (default: 10MB)
+- Configurable maximum total storage size (default: 500MB)
+- Clear error messages for invalid types and exceeded limits
+
+**File Delivery to Agent:**
+
+- Uploaded file's absolute path delivered to Claude Code agent via tmux bridge
+- Path formatted so Claude Code recognises it as a file to read
+- Optional accompanying text message alongside file attachment
+- Combined text + file messages supported
+
+**Chat History Rendering:**
+
+- Image files render as clickable thumbnails (constrained max width/height) in chat message history
+- Non-image files render as compact file card: file type icon + filename + file size
+- Clicking thumbnails opens full-size image; clicking file cards opens/downloads the file
+- Pending attachment preview in input area before sending (removable)
+
+**File Metadata & API:**
+
+- File upload info (filename, type, size, server path, serving URL) stored as metadata on Turn records
+- Transcript API includes file attachment metadata for rendering historical file messages
+- Static file serving endpoint for chat UI to render thumbnails
+
+**Retention & Cleanup:**
+
+- Automatic cleanup after configurable retention period (default: 7 days)
+- Background process or startup sweep handles cleanup
+- Storage directory does not grow unbounded
+
+**Subsystem Requiring PRD:**
+
+5. `file-image-sharing` — Upload endpoint, file validation, thumbnail rendering, tmux delivery, retention, transcript API integration
+
+**PRD Location:** `docs/prds/bridge/done/e6-s5-file-image-sharing-prd.md`
+
+**Stories:**
+
+- E6-S5: File and image sharing in chat interface
+
+**Technical Decisions Made:**
+
+- Files stored locally (not cloud storage) — **decided** (Headspace and Claude Code colocated on same machine)
+- File type validation via magic bytes — **decided** (prevents disguised uploads)
+- Path traversal prevention on upload and serving endpoints — **decided** (security requirement)
+- No video/audio file uploads in v1 — **decided**
+- Voice bridge chat panel only initially (not main dashboard respond modal) — **decided**
+
+**Chat UI with File Sharing:**
+
+```
+┌──────────────────────────────────────┐
+│  < Back            claude-headspace  │
+├──────────────────────────────────────┤
+│                                      │
+│  Here's the mockup for the      ◀  │
+│  new settings page                   │
+│  ┌────────────────────────┐         │
+│  │                        │         │
+│  │   [settings-mockup.png]│         │
+│  │   (thumbnail preview)  │         │
+│  │                        │         │
+│  └────────────────────────┘         │
+│                                      │
+│  ▶  I can see the mockup. The       │
+│     layout looks good. I notice      │
+│     the toggle switches are using    │
+│     a different style than the       │
+│     rest of the app...               │
+│                                      │
+│  Check this error log too        ◀  │
+│  ┌────────────────────────┐         │
+│  │ 📄 server.log (24KB)  │         │
+│  └────────────────────────┘         │
+│                                      │
+├──────────────────────────────────────┤
+│  ┌───────────────────┐              │
+│  │ [📎 screenshot.png]│  (pending) │
+│  │ [✕ remove]         │             │
+│  └───────────────────┘              │
+│  ┌─────────────────────────┐ [🎤]  │
+│  │ Here's the updated...   │ [Send] │
+│  └─────────────────────────┘        │
+│                                      │
+│  Drop files here to share           │
+└──────────────────────────────────────┘
+```
+
+**Risks:**
+
+- Path traversal vulnerabilities on upload/serving endpoints (mitigated: filename sanitisation, magic byte validation, storage directory restriction)
+- Storage growth with frequent image sharing (mitigated: configurable retention policy, total storage cap)
+- Large file uploads on LAN connections (mitigated: 10MB default limit, progress feedback)
+- Claude Code file path recognition (mitigated: format path as absolute path in the message text)
+
+**Acceptance Criteria:**
+
+- [ ] User can drag an image into chat panel → delivered to agent → agent responds to image content
+- [ ] User can paste clipboard screenshot → preview shown → sent to agent
+- [ ] Uploaded images appear as thumbnails in chat history
+- [ ] Non-image files appear with icon, filename, and size
+- [ ] Invalid file types rejected with clear error listing accepted formats
+- [ ] Files exceeding size limit rejected with clear error stating the limit
+- [ ] Existing text-only respond and voice command flows unchanged
+- [ ] File uploads complete within 2 seconds for files under 10MB on local connections
+- [ ] Files automatically cleaned up after retention period
+- [ ] Storage directory does not grow unbounded
+- [ ] Path traversal prevention enforced on upload and serving
+- [ ] File type validation checks magic bytes, not just extension
+- [ ] Transcript API includes file metadata for historical chat rendering
+
+---
+
 ## Sprint Dependencies & Sequencing
 
 ```
@@ -486,15 +747,21 @@ E6-S1 (Voice Bridge Server)
    └──▶ E6-S2 (Voice Bridge Client)
            │
            └──▶ E6-S3 (Agent Chat History)
+                   │
+                   ├──▶ E6-S4 (Agent Lifecycle)
+                   │
+                   └──▶ E6-S5 (File & Image Sharing)
 ```
 
-**Critical Path:** E6-S1 → E6-S2 → E6-S3 (strictly sequential)
+**Critical Path:** E6-S1 → E6-S2 → E6-S3 → E6-S4/E6-S5 (S4 and S5 can run in parallel)
 
 **Rationale:**
 
 - E6-S2 (Client) consumes E6-S1 (Server) APIs — cannot build client without server
 - E6-S3 (Chat History) extends the chat screen introduced in E6-S2 — requires the client foundation
-- No parallelisation opportunities within the initial 3 sprints (each builds on the previous)
+- E6-S4 (Agent Lifecycle) builds on the chat panel and voice bridge from S1-S3 — adds commands to existing interface
+- E6-S5 (File Sharing) extends the chat panel from S3 — adds file upload to existing conversation UI
+- **E6-S4 and E6-S5 are independent** and can be built in parallel after S3 completes
 
 ---
 
@@ -513,7 +780,9 @@ Epic 5 (Voice Bridge & Project Enhancement)
                                                     │
                                                     ├── E6-S1 (Server)
                                                     ├── E6-S2 (Client)
-                                                    └── E6-S3 (Chat History)
+                                                    ├── E6-S3 (Chat History)
+                                                    ├── E6-S4 (Agent Lifecycle)
+                                                    └── E6-S5 (File & Image Sharing)
 ```
 
 Epic 3's InferenceService and PromptRegistry are also leveraged by E6-S1 for voice output formatting.
@@ -576,7 +845,39 @@ Epic 3's InferenceService and PromptRegistry are also leveraged by E6-S1 for voi
 - ✅ Timestamps follow iMessage conventions
 - ✅ After agent ends → chat still accessible from project page (read-only)
 
-### Test Case 5: End-to-End Epic 6 Flow
+### Test Case 5: Agent Lifecycle Management
+
+**Setup:** Two registered projects, one with an active agent, one with no agents. Dashboard and mobile chat available.
+
+**Success:**
+
+- ✅ Click "New Agent" on dashboard → select project → agent created, appears in idle state
+- ✅ Say "start an agent for my-webapp" in chat → agent created remotely
+- ✅ Agent creation completes within 10 seconds
+- ✅ Click "Check Context" on agent card → context usage displayed (e.g., "62% used · 38k remaining")
+- ✅ Say "how much context is claude-headspace using?" → spoken context response
+- ✅ Click "Kill Agent" on dashboard → `/exit` sent → agent ends gracefully
+- ✅ Say "kill claude-headspace" in chat → agent shuts down remotely
+- ✅ Lifecycle hooks fire (session-end, stop) → dashboard updates consistently
+- ✅ No orphaned cards or stale state after creation/shutdown
+
+### Test Case 6: File & Image Sharing
+
+**Setup:** Agent in AWAITING_INPUT or PROCESSING state. Chat panel open. Image files available on Mac.
+
+**Success:**
+
+- ✅ Drag PNG into chat → drop zone indicator appears → file uploads → thumbnail in chat
+- ✅ Cmd+Shift+4 screenshot → paste into chat → preview appears → send → agent receives
+- ✅ Agent responds to image content (can see and analyse the screenshot)
+- ✅ Drag .py file into chat → file card with icon + name + size appears in history
+- ✅ Upload invalid file type (.exe) → clear error listing accepted formats
+- ✅ Upload 15MB file → clear error stating 10MB limit
+- ✅ Combined text + image message → both delivered to agent
+- ✅ Scroll up in chat → historical file messages render thumbnails and file cards
+- ✅ Files automatically cleaned up after retention period
+
+### Test Case 7: End-to-End Epic 6 Flow
 
 **Setup:** Fresh Epic 6 deployment with Epics 1-5 complete. Two agents running.
 
@@ -592,6 +893,11 @@ Epic 3's InferenceService and PromptRegistry are also leveraged by E6-S1 for voi
 - ✅ Agent ends → chat remains accessible (read-only) from project page
 - ✅ TTS reads status summaries and question details aloud
 - ✅ Everything works hands-free without looking at the screen
+- ✅ Create new agent from mobile chat → agent appears on dashboard
+- ✅ Check context usage from mobile → spoken response with percentage
+- ✅ Kill agent from mobile → graceful shutdown, hooks fire, dashboard updates
+- ✅ Share screenshot via chat → agent receives and responds to image
+- ✅ Full orchestration loop without touching the Mac
 
 ---
 
@@ -620,6 +926,22 @@ Generate OpenSpec PRDs in implementation order:
 3. **agent-chat-history** (`docs/prds/bridge/done/e6-s3-agent-chat-history-prd.md`) — Agent-lifetime transcript, intermediate messages, pagination, timestamps, chat links
 
 **Rationale:** Extends the chat foundation from Phase 2 with rich history and real-time intermediate capture.
+
+---
+
+### Phase 4: Agent Lifecycle Management (Week 7-9) — DONE
+
+4. **agent-lifecycle** (`docs/prds/agents/done/e6-s4-agent-lifecycle-prd.md`) — Agent creation API, graceful shutdown, context window parsing, dashboard and chat panel controls
+
+**Rationale:** Completes the remote orchestration loop — users can now create, monitor, and kill agents without terminal access.
+
+---
+
+### Phase 5: File & Image Sharing (Week 7-9) — DONE
+
+5. **file-image-sharing** (`docs/prds/bridge/done/e6-s5-file-image-sharing-prd.md`) — File upload, type validation, thumbnail rendering, tmux delivery, retention, transcript API integration
+
+**Rationale:** Makes agent communication visual. Can run in parallel with Phase 4 since both depend on S3 but not each other.
 
 ---
 
@@ -664,6 +986,7 @@ Full-text search within agent chat history, enabling the user to find specific e
 | Version | Date       | Author          | Changes                                         |
 | ------- | ---------- | --------------- | ----------------------------------------------- |
 | 1.0     | 2026-02-11 | PM Agent (John) | Initial detailed roadmap for Epic 6 (3 sprints) |
+| 1.1     | 2026-02-11 | PM Agent (John) | Added E6-S4 (Agent Lifecycle) and E6-S5 (File & Image Sharing), now 5 sprints |
 
 ---
 
