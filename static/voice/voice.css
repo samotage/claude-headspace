@@ -49,8 +49,43 @@ body {
 }
 
 .app-title {
-  font-size: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-ascii {
+  font-size: 0.28rem;
+  line-height: 1.0;
+  color: #56d4dd;
+  text-shadow: 0 0 10px rgba(86, 212, 221, 0.4), 0 0 30px rgba(86, 212, 221, 0.15);
+  white-space: pre;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.app-title:hover .app-ascii {
+  text-shadow: 0 0 14px rgba(86, 212, 221, 0.5), 0 0 40px rgba(86, 212, 221, 0.2);
+}
+
+.app-brand-cursor {
+  font-family: monospace;
+  font-size: 0.75rem;
   font-weight: 600;
+  color: #56d4dd;
+  text-shadow: 0 0 8px rgba(86, 212, 221, 0.25);
+  margin-left: 6px;
+  line-height: 1;
+}
+
+.app-brand-suffix {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .header-actions {
@@ -224,16 +259,71 @@ body {
 }
 
 .project-group-header {
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text);
   padding: 10px 2px 8px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-kebab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.project-kebab-btn:hover {
+  color: var(--text);
+  background: rgba(240, 246, 252, 0.08);
+}
+.project-kebab-btn:active {
+  background: rgba(240, 246, 252, 0.12);
+}
+
+.project-kebab-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-emphasis);
+  border-radius: 10px;
+  min-width: 160px;
+  z-index: 20;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.project-kebab-menu.open {
+  display: block;
 }
 
 .project-group-cards {
-  padding-left: 0;
+  padding-left: 12px;
 }
 
 /* --- Agent list --- */

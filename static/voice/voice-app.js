@@ -136,7 +136,13 @@ window.VoiceApp = (function () {
       var group = projectGroups[projName];
 
       html += '<div class="project-group">'
-        + '<div class="project-group-header">' + _esc(projName) + '</div>'
+        + '<div class="project-group-header">'
+        + '<span class="project-group-name">' + _esc(projName) + '</span>'
+        + '<button class="project-kebab-btn" data-project="' + _esc(projName) + '" title="Project actions">&#8942;</button>'
+        + '<div class="project-kebab-menu" data-project="' + _esc(projName) + '">'
+        + '<button class="kebab-menu-item project-add-agent" data-project="' + _esc(projName) + '">Add agent</button>'
+        + '</div>'
+        + '</div>'
         + '<div class="project-group-cards">';
 
       for (var j = 0; j < group.length; j++) {
@@ -237,10 +243,33 @@ window.VoiceApp = (function () {
         _shutdownAgent(agentId);
       });
     }
+
+    // Bind project kebab menu buttons
+    var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
+    for (var pk = 0; pk < projKebabBtns.length; pk++) {
+      projKebabBtns[pk].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var projectName = this.getAttribute('data-project');
+        var menu = list.querySelector('.project-kebab-menu[data-project="' + projectName + '"]');
+        _closeAllKebabMenus();
+        if (menu) menu.classList.toggle('open');
+      });
+    }
+
+    // Bind project "Add agent" actions
+    var addAgentActions = list.querySelectorAll('.project-add-agent');
+    for (var aa = 0; aa < addAgentActions.length; aa++) {
+      addAgentActions[aa].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var projectName = this.getAttribute('data-project');
+        _closeAllKebabMenus();
+        _createAgentForProject(projectName);
+      });
+    }
   }
 
   function _closeAllKebabMenus() {
-    var menus = document.querySelectorAll('.agent-kebab-menu.open');
+    var menus = document.querySelectorAll('.agent-kebab-menu.open, .project-kebab-menu.open');
     for (var i = 0; i < menus.length; i++) {
       menus[i].classList.remove('open');
     }
@@ -920,6 +949,12 @@ window.VoiceApp = (function () {
       _updateTypingIndicator();
     }
 
+    // Recover from false ended state: card_refresh with is_active clears ended
+    if (data.is_active === true && _chatAgentEnded) {
+      _chatAgentEnded = false;
+      _updateEndedAgentUI();
+    }
+
     // Check for ended agent
     if (data.agent_ended || (newState && newState.toLowerCase() === 'ended')) {
       _chatAgentEnded = true;
@@ -963,9 +998,10 @@ window.VoiceApp = (function () {
         _chatAgentState = resp.agent_state;
         _updateTypingIndicator();
       }
-      if (resp.agent_ended) {
-        _chatAgentEnded = true;
-        _updateEndedAgentUI();
+      if (resp.agent_ended !== undefined) {
+        var wasEnded = _chatAgentEnded;
+        _chatAgentEnded = !!resp.agent_ended;
+        if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
       }
       _scrollChatToBottom();
     }).catch(function () { /* ignore */ });
@@ -1118,6 +1154,11 @@ window.VoiceApp = (function () {
                 _chatAgentState = resp.agent_state;
                 _updateTypingIndicator();
               }
+              if (resp.agent_ended !== undefined) {
+                var wasEnded = _chatAgentEnded;
+                _chatAgentEnded = !!resp.agent_ended;
+                if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
+              }
               _scrollChatToBottom();
             }).catch(function () { /* ignore */ });
           }
@@ -1229,9 +1270,10 @@ window.VoiceApp = (function () {
           _chatAgentState = resp.agent_state;
           _updateTypingIndicator();
         }
-        if (resp.agent_ended) {
-          _chatAgentEnded = true;
-          _updateEndedAgentUI();
+        if (resp.agent_ended !== undefined) {
+          var wasEnded = _chatAgentEnded;
+          _chatAgentEnded = !!resp.agent_ended;
+          if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
         }
         _scrollChatToBottom();
       }).catch(function () { /* ignore */ });
@@ -1310,7 +1352,8 @@ window.VoiceApp = (function () {
 
     // Close kebab menus on click outside
     document.addEventListener('click', function (e) {
-      if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')) {
+      if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')
+          && !e.target.closest('.project-kebab-btn') && !e.target.closest('.project-kebab-menu')) {
         _closeAllKebabMenus();
       }
     });
@@ -1397,6 +1440,16 @@ window.VoiceApp = (function () {
           setSetting('token', token);
           init();
         }
+      });
+    }
+
+    // Title link — navigate back to agent list
+    var titleLink = document.getElementById('app-title-link');
+    if (titleLink) {
+      titleLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        _refreshAgents();
+        showScreen('agents');
       });
     }
 

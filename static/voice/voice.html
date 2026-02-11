@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0d1117">
-  <title>Agent Chat</title>
+  <title>Claude Chat</title>
   <link rel="manifest" href="/static/voice/manifest.json">
   <link rel="apple-touch-icon" href="/static/voice/icons/icon-192.png">
   <link rel="stylesheet" href="/static/voice/voice.css">
@@ -15,7 +15,12 @@
 
   <!-- Header -->
   <header class="app-header">
-    <span class="app-title">Agent Chat</span>
+    <a href="/voice" class="app-title" id="app-title-link"><pre class="app-ascii" aria-label="CLAUDE"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+██║     ██║     ███████║██║   ██║██║  ██║█████╗
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="app-brand-cursor">&gt;_</span><span class="app-brand-suffix">chat</span></a>
     <div class="header-actions">
       <span id="connection-status" class="connection-dot disconnected"></span>
       <button id="settings-btn" class="icon-btn" aria-label="Settings">&#9881;</button>
@@ -25,7 +30,7 @@
 
   <!-- Screen: Setup (first-launch) -->
   <div id="screen-setup" class="screen active">
-    <div class="setup-title">Agent Chat</div>
+    <div class="setup-title">Claude Chat</div>
     <div class="setup-subtitle">Connect to your Claude Headspace server</div>
     <form id="setup-form">
       <div class="form-group">
