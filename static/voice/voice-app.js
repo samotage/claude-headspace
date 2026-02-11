@@ -117,7 +117,7 @@ window.VoiceApp = (function () {
     } else {
       document.documentElement.setAttribute('data-theme', theme);
     }
-    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f4f3f1' };
+    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f8f7f5' };
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta && colors[theme]) meta.setAttribute('content', colors[theme]);
   }
