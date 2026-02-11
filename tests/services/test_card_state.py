@@ -66,6 +66,7 @@ class TestBuildCardState:
             "task_completion_summary", "priority", "priority_reason",
             "turn_count", "elapsed", "current_task_id", "is_bridge_connected",
             "project_name", "project_slug", "project_id",
+            "has_plan",
         }
         assert set(result.keys()) == expected_keys
 

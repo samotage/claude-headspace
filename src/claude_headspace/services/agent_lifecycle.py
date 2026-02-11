@@ -8,8 +8,11 @@ import logging
 import os
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
+
+from flask import current_app
 
 from ..database import db
 from ..models.agent import Agent
@@ -211,3 +214,165 @@ def get_context_usage(agent_id: int) -> ContextResult:
         remaining_tokens=ctx["remaining_tokens"],
         raw=ctx["raw"],
     )
+
+
+def get_agent_info(agent_id: int) -> dict | None:
+    """Gather comprehensive debug info for an agent.
+
+    Returns a dict with identity, project, lifecycle, priority, headspace,
+    and task history data. Returns None if agent not found.
+
+    Args:
+        agent_id: ID of the agent
+
+    Returns:
+        Dict with all agent info sections, or None
+    """
+    from .card_state import format_uptime, get_effective_state, is_agent_active
+
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return None
+
+    session_uuid_str = str(agent.session_uuid)
+
+    # --- Identity ---
+    identity = {
+        "id": agent.id,
+        "session_uuid": session_uuid_str,
+        "session_uuid_short": session_uuid_str[:8],
+        "claude_session_id": agent.claude_session_id,
+        "tmux_pane_id": agent.tmux_pane_id,
+        "iterm_pane_id": agent.iterm_pane_id,
+        "transcript_path": agent.transcript_path,
+    }
+
+    # Live tmux lookup — match agent's pane to get session name
+    tmux_session_name = None
+    tmux_pane_alive = False
+    try:
+        panes = tmux_bridge.list_panes()
+        for pane in panes:
+            if pane.pane_id == agent.tmux_pane_id:
+                tmux_session_name = pane.session_name
+                tmux_pane_alive = True
+                break
+    except Exception:
+        pass  # tmux not available
+    identity["tmux_session_name"] = tmux_session_name
+    identity["tmux_pane_alive"] = tmux_pane_alive
+
+    # Bridge status
+    bridge_available = False
+    try:
+        commander = current_app.extensions.get("commander_availability")
+        if commander and agent.tmux_pane_id:
+            bridge_available = commander.is_available(agent_id)
+    except RuntimeError:
+        pass
+    identity["bridge_available"] = bridge_available
+
+    # --- Project ---
+    project_info = None
+    if agent.project:
+        p = agent.project
+        project_info = {
+            "id": p.id,
+            "name": p.name,
+            "slug": p.slug,
+            "path": p.path,
+            "current_branch": p.current_branch,
+            "github_repo": p.github_repo,
+        }
+
+    # --- Lifecycle ---
+    effective_state = get_effective_state(agent)
+    state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+
+    lifecycle = {
+        "started_at": agent.started_at.isoformat() if agent.started_at else None,
+        "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else None,
+        "ended_at": agent.ended_at.isoformat() if agent.ended_at else None,
+        "uptime": format_uptime(agent.started_at) if agent.started_at else None,
+        "current_state": state_name,
+        "is_active": is_agent_active(agent),
+    }
+
+    # --- Priority ---
+    priority = {
+        "score": agent.priority_score,
+        "reason": agent.priority_reason,
+        "updated_at": agent.priority_updated_at.isoformat() if agent.priority_updated_at else None,
+    }
+
+    # --- Headspace ---
+    from ..models.headspace_snapshot import HeadspaceSnapshot
+
+    headspace = None
+    latest_snapshot = (
+        db.session.query(HeadspaceSnapshot)
+        .order_by(HeadspaceSnapshot.timestamp.desc())
+        .first()
+    )
+    if latest_snapshot:
+        headspace = {
+            "state": latest_snapshot.state,
+            "frustration_rolling_10": latest_snapshot.frustration_rolling_10,
+            "frustration_rolling_30min": latest_snapshot.frustration_rolling_30min,
+            "frustration_rolling_3hr": latest_snapshot.frustration_rolling_3hr,
+            "is_flow_state": latest_snapshot.is_flow_state,
+            "turn_rate_per_hour": latest_snapshot.turn_rate_per_hour,
+            "flow_duration_minutes": latest_snapshot.flow_duration_minutes,
+            "timestamp": latest_snapshot.timestamp.isoformat(),
+        }
+
+    # Collect recent frustration scores from USER turns across last 5 tasks
+    frustration_scores = []
+    from ..models.turn import TurnActor
+
+    tasks_for_frustration = agent.tasks[:5] if agent.tasks else []
+    for task in tasks_for_frustration:
+        if hasattr(task, "turns"):
+            for turn in task.turns:
+                if turn.actor == TurnActor.USER and turn.frustration_score is not None:
+                    frustration_scores.append({
+                        "score": turn.frustration_score,
+                        "timestamp": turn.timestamp.isoformat(),
+                    })
+
+    # --- Tasks (last 10) with turns ---
+    tasks_info = []
+    recent_tasks = agent.tasks[:10] if agent.tasks else []
+    for task in recent_tasks:
+        recent_turns = task.get_recent_turns(20)
+        turns_info = []
+        for turn in reversed(recent_turns):  # chronological order
+            turns_info.append({
+                "id": turn.id,
+                "actor": turn.actor.value,
+                "intent": turn.intent.value,
+                "timestamp": turn.timestamp.isoformat(),
+                "summary": turn.summary,
+                "frustration_score": turn.frustration_score,
+            })
+
+        tasks_info.append({
+            "id": task.id,
+            "state": task.state.value,
+            "instruction": task.instruction,
+            "completion_summary": task.completion_summary,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "turn_count": len(task.turns) if hasattr(task, "turns") else 0,
+            "turns": turns_info,
+        })
+
+    return {
+        "identity": identity,
+        "project": project_info,
+        "lifecycle": lifecycle,
+        "priority": priority,
+        "headspace": headspace,
+        "frustration_scores": frustration_scores,
+        "tasks": tasks_info,
+    }

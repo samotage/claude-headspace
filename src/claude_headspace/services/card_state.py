@@ -129,7 +129,7 @@ def format_uptime(started_at: datetime) -> str:
         started_at: When the agent started
 
     Returns:
-        String like "up 32h 38m"
+        String like "up 13h" or "up 45m"
     """
     now = datetime.now(timezone.utc)
     delta = now - started_at
@@ -139,7 +139,7 @@ def format_uptime(started_at: datetime) -> str:
     minutes = (total_seconds % 3600) // 60
 
     if hours > 0:
-        return f"up {hours}h {minutes}m"
+        return f"up {hours}h"
     elif minutes > 0:
         return f"up {minutes}m"
     else:
@@ -293,8 +293,14 @@ def get_task_instruction(agent: Agent, _current_task=None) -> str | None:
             f"no current_task, no tasks"
         )
 
-    # Fall back to first USER COMMAND turn's raw text
+    # Fall back to task.full_command (set immediately at task creation)
     task = current_task or (agent.tasks[0] if agent.tasks else None)
+    if task and task.full_command:
+        text = task.full_command.strip()
+        if text:
+            return text[:77] + "..." if len(text) > 80 else text
+
+    # Fall back to first USER COMMAND turn's raw text
     if task and hasattr(task, "turns") and task.turns:
         for t in task.turns:
             if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
@@ -593,6 +599,21 @@ def build_card_state(agent: Agent) -> dict:
         "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
     }
+
+    # Plan mode label overrides (before task ID, so state_info is already in card)
+    if current_task:
+        if current_task.plan_content and current_task.plan_approved_at:
+            card["state_info"] = {**card["state_info"], "label": "Executing plan..."}
+        elif current_task.plan_content and not current_task.plan_approved_at:
+            card["state_info"] = {**card["state_info"], "label": "Planning..."}
+        elif current_task.plan_file_path == "pending":
+            card["state_info"] = {**card["state_info"], "label": "Planning..."}
+
+    # Plan content for frontend
+    has_plan = bool(current_task and current_task.plan_content)
+    card["has_plan"] = has_plan
+    if has_plan:
+        card["plan_content"] = current_task.plan_content
 
     # Include current task ID for on-demand full-text drill-down
     task_for_id = current_task or (agent.tasks[0] if agent.tasks else None)

@@ -18,7 +18,7 @@ window.VoiceApp = (function () {
   var _settings = {};
   var _agents = [];
   var _targetAgentId = null;
-  var _currentScreen = 'setup'; // setup | agents | listening | question | chat | settings
+  var _currentScreen = 'setup'; // setup | agents | listening | question | chat
   var _chatRenderedTurnIds = new Set();
   var _chatPendingUserTexts = new Set(); // texts sent from chat, awaiting real turn
   var _chatAgentState = null;
@@ -31,11 +31,14 @@ window.VoiceApp = (function () {
   var _isTrustedNetwork = _isLocalhost
     || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname)
     || /\.ts\.net$/.test(location.hostname);
-  var _settingsReturnScreen = 'agents'; // track where settings was opened from
   var _navStack = [];           // Stack of agent IDs for back navigation
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
   var _pendingAttachment = null; // File object pending upload
   var _pendingBlobUrl = null;    // Blob URL for image preview (revoke on clear)
+
+  // Layout mode state
+  var _layoutMode = 'stacked'; // 'stacked' | 'split'
+  var SPLIT_BREAKPOINT = 768;
 
   // File upload configuration (client-side validation)
   var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -104,27 +107,129 @@ window.VoiceApp = (function () {
     document.documentElement.style.setProperty('--chat-font-size', _settings.fontSize + 'px');
   }
 
+  // --- Layout mode detection ---
+
+  function _detectLayoutMode() {
+    var newMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
+    if (newMode !== _layoutMode) {
+      _layoutMode = newMode;
+      document.body.classList.remove('layout-stacked', 'layout-split');
+      document.body.classList.add('layout-' + _layoutMode);
+      _applyLayoutMode();
+    }
+  }
+
+  function _initLayoutMode() {
+    _layoutMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
+    document.body.classList.add('layout-' + _layoutMode);
+  }
+
+  function _applyLayoutMode() {
+    // Re-apply current screen visibility for the new layout mode
+    if (_currentScreen === 'setup') return; // setup is outside app-layout
+    _applyScreenVisibility(_currentScreen);
+    _highlightSelectedAgent();
+  }
+
   // --- Screen management ---
 
   function showScreen(name) {
     _currentScreen = name;
-    var screens = document.querySelectorAll('.screen');
-    for (var i = 0; i < screens.length; i++) {
-      screens[i].classList.toggle('active', screens[i].id === 'screen-' + name);
+
+    if (name === 'setup') {
+      // Setup screen is outside app-layout, hide app-layout
+      var setupEl = document.getElementById('screen-setup');
+      var layoutEl = document.getElementById('app-layout');
+      if (setupEl) setupEl.classList.add('active');
+      if (layoutEl) layoutEl.style.display = 'none';
+      _updateConnectionIndicator();
+      return;
     }
+
+    // Hide setup, show app-layout
+    var setupEl2 = document.getElementById('screen-setup');
+    if (setupEl2) setupEl2.classList.remove('active');
+
+    _applyScreenVisibility(name);
     _updateConnectionIndicator();
+    _highlightSelectedAgent();
+  }
+
+  function _applyScreenVisibility(name) {
+    var sidebar = document.getElementById('sidebar');
+    var mainPanel = document.getElementById('main-panel');
+    var emptyEl = document.getElementById('main-panel-empty');
+
+    // Hide all screens in main-panel
+    var screens = mainPanel ? mainPanel.querySelectorAll('.screen') : [];
+    for (var i = 0; i < screens.length; i++) {
+      screens[i].classList.remove('active');
+    }
+    if (emptyEl) emptyEl.classList.remove('show-empty');
+
+    if (_layoutMode === 'split') {
+      // Split mode: sidebar always visible, main panel shows content
+      if (sidebar) {
+        sidebar.classList.remove('show-sidebar');
+      }
+      if (mainPanel) {
+        mainPanel.classList.remove('show-main');
+      }
+
+      if (name === 'agents') {
+        // Show empty placeholder in main panel (no agent selected yet)
+        if (emptyEl && !_targetAgentId) {
+          emptyEl.classList.add('show-empty');
+        } else if (_targetAgentId) {
+          // If an agent was selected, show the chat
+          var chatEl = document.getElementById('screen-chat');
+          if (chatEl) chatEl.classList.add('active');
+        }
+      } else {
+        // Show the requested screen in main panel
+        var screenEl = document.getElementById('screen-' + name);
+        if (screenEl) screenEl.classList.add('active');
+      }
+    } else {
+      // Stacked mode: show one panel at a time
+      if (name === 'agents') {
+        if (sidebar) sidebar.classList.add('show-sidebar');
+        if (mainPanel) mainPanel.classList.remove('show-main');
+      } else {
+        if (sidebar) sidebar.classList.remove('show-sidebar');
+        if (mainPanel) mainPanel.classList.add('show-main');
+        var screenEl2 = document.getElementById('screen-' + name);
+        if (screenEl2) screenEl2.classList.add('active');
+      }
+    }
   }
 
   function getCurrentScreen() { return _currentScreen; }
 
-  function _returnFromSettings() {
-    var target = _settingsReturnScreen || 'agents';
-    if (target === 'chat') {
-      showScreen('chat');
-      _scrollChatToBottom();
-    } else {
-      _refreshAgents();
-      showScreen('agents');
+  // --- Settings slide-out panel ---
+
+  function _openSettings() {
+    _populateSettingsForm();
+    var overlay = document.getElementById('settings-overlay');
+    var panel = document.getElementById('settings-panel');
+    if (overlay) overlay.classList.add('open');
+    if (panel) panel.classList.add('open');
+  }
+
+  function _closeSettings() {
+    var overlay = document.getElementById('settings-overlay');
+    var panel = document.getElementById('settings-panel');
+    if (overlay) overlay.classList.remove('open');
+    if (panel) panel.classList.remove('open');
+  }
+
+  // --- Agent highlighting in sidebar ---
+
+  function _highlightSelectedAgent() {
+    var cards = document.querySelectorAll('.agent-card');
+    for (var i = 0; i < cards.length; i++) {
+      var id = parseInt(cards[i].getAttribute('data-agent-id'), 10);
+      cards[i].classList.toggle('selected', id === _targetAgentId && _layoutMode === 'split');
     }
   }
 
@@ -134,6 +239,10 @@ window.VoiceApp = (function () {
     _agents = agents || [];
     var list = document.getElementById('agent-list');
     if (!list) return;
+
+    // Save scroll position before re-render
+    var sidebar = document.getElementById('sidebar');
+    var savedScroll = sidebar ? sidebar.scrollTop : 0;
 
     if (_agents.length === 0) {
       list.innerHTML = '<div class="empty-state">No active agents</div>';
@@ -162,7 +271,9 @@ window.VoiceApp = (function () {
         + '<span class="project-group-name">' + _esc(projName) + '</span>'
         + '<button class="project-kebab-btn" data-project="' + _esc(projName) + '" title="Project actions">&#8942;</button>'
         + '<div class="project-kebab-menu" data-project="' + _esc(projName) + '">'
-        + '<button class="kebab-menu-item project-add-agent" data-project="' + _esc(projName) + '">Add agent</button>'
+        + '<button class="kebab-menu-item project-add-agent" data-project="' + _esc(projName) + '">'
+        + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>'
+        + '<span>Add agent</span></button>'
         + '</div>'
         + '</div>'
         + '<div class="project-group-cards">';
@@ -197,7 +308,10 @@ window.VoiceApp = (function () {
         }
         footerParts.push(a.last_activity_ago);
 
-        html += '<div class="agent-card ' + stateClass + '" data-agent-id="' + a.agent_id + '">'
+        // Selected class for split mode
+        var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
+
+        html += '<div class="agent-card ' + stateClass + selectedClass + '" data-agent-id="' + a.agent_id + '">'
           + '<div class="agent-header">'
           + '<div class="agent-hero-id">'
           + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
@@ -206,8 +320,13 @@ window.VoiceApp = (function () {
           + '<div class="agent-header-actions">'
           + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
           + '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
-          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">Fetch context</button>'
-          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">Dismiss agent</button>'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
+          + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
+          + '<span>Dismiss agent</span></button>'
           + '</div>'
           + '</div>'
           + '</div>'
@@ -223,6 +342,9 @@ window.VoiceApp = (function () {
       html += '</div></div>';
     }
     list.innerHTML = html;
+
+    // Restore scroll position
+    if (sidebar) sidebar.scrollTop = savedScroll;
 
     // Bind click handlers for agent selection
     var cards = list.querySelectorAll('.agent-card');
@@ -493,6 +615,7 @@ window.VoiceApp = (function () {
     });
 
     showScreen('chat');
+    _highlightSelectedAgent();
   }
 
   function _loadOlderMessages() {
@@ -1744,6 +1867,16 @@ window.VoiceApp = (function () {
   function init() {
     loadSettings();
 
+    // Initialize layout mode
+    _initLayoutMode();
+
+    // Listen for resize to switch layout modes
+    var _resizeTimer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(_detectLayoutMode, 100);
+    });
+
     // Close kebab menus on click/touch outside
     function _handleCloseKebabs(e) {
       if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')
@@ -1833,7 +1966,7 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Title link — navigate back to agent list
+    // Title link — navigate back to agent list (or show sidebar in split mode)
     var titleLink = document.getElementById('app-title-link');
     if (titleLink) {
       titleLink.addEventListener('click', function (e) {
@@ -1897,23 +2030,37 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Settings button — remember where we came from
+    // Settings button — open slide-out panel
     var settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', function () {
-        _settingsReturnScreen = _currentScreen;
-        _populateSettingsForm();
-        showScreen('settings');
+        _openSettings();
       });
     }
 
-    // Settings form (task 2.26) — return to originating screen
+    // Settings close button
+    var settingsCloseBtn = document.getElementById('settings-close-btn');
+    if (settingsCloseBtn) {
+      settingsCloseBtn.addEventListener('click', function () {
+        _closeSettings();
+      });
+    }
+
+    // Settings overlay click — close
+    var settingsOverlay = document.getElementById('settings-overlay');
+    if (settingsOverlay) {
+      settingsOverlay.addEventListener('click', function () {
+        _closeSettings();
+      });
+    }
+
+    // Settings form — save and close
     var settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
       settingsForm.addEventListener('submit', function (e) {
         e.preventDefault();
         _applySettingsForm();
-        _returnFromSettings();
+        _closeSettings();
       });
     }
 
@@ -2054,15 +2201,16 @@ window.VoiceApp = (function () {
     var backBtns = document.querySelectorAll('.back-btn');
     for (var i = 0; i < backBtns.length; i++) {
       backBtns[i].addEventListener('click', function () {
-        showScreen('agents');
-      });
-    }
-
-    // Settings back button — contextual return
-    var settingsBackBtn = document.querySelector('.settings-back-btn');
-    if (settingsBackBtn) {
-      settingsBackBtn.addEventListener('click', function () {
-        _returnFromSettings();
+        if (_layoutMode === 'split') {
+          // In split mode, back from listening/question goes to chat or agents
+          if (_targetAgentId) {
+            _showChatScreen(_targetAgentId);
+          } else {
+            showScreen('agents');
+          }
+        } else {
+          showScreen('agents');
+        }
       });
     }
 

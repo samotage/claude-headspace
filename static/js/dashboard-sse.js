@@ -974,11 +974,35 @@
                 instructionEl.classList.remove('text-muted', 'italic');
                 instructionEl.classList.add('text-primary', 'font-medium');
             } else {
-                instructionEl.textContent = 'No instruction';
+                instructionEl.textContent = 'No active task';
                 instructionEl.classList.remove('text-primary', 'font-medium');
                 instructionEl.classList.add('text-muted', 'italic');
             }
             if (window.CardTooltip) window.CardTooltip.refresh(instructionEl);
+        }
+
+        // Plan indicator on line 03
+        var planIndicator = card.querySelector('.plan-indicator');
+        if (data.has_plan && data.current_task_id) {
+            if (!planIndicator && instructionEl) {
+                planIndicator = document.createElement('button');
+                planIndicator.className = 'plan-indicator plan-indicator-btn';
+                planIndicator.type = 'button';
+                planIndicator.textContent = 'plan';
+                planIndicator.title = 'View plan';
+                planIndicator.setAttribute('aria-label', 'View agent plan');
+                instructionEl.parentElement.appendChild(planIndicator);
+            }
+            if (planIndicator) {
+                planIndicator.style.display = '';
+                planIndicator.onclick = function() {
+                    if (window.FullTextModal) {
+                        window.FullTextModal.show(data.current_task_id, 'plan');
+                    }
+                };
+            }
+        } else if (planIndicator) {
+            planIndicator.style.display = 'none';
         }
 
         // Line 04: task summary / completion summary (hidden when redundant with line 03)

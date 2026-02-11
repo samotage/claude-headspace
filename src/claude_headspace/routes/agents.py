@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from ..services.agent_lifecycle import (
     create_agent,
+    get_agent_info,
     get_context_usage,
     shutdown_agent,
 )
@@ -67,6 +68,20 @@ def shutdown_agent_endpoint(agent_id: int):
         return jsonify({"error": result.message}), status
 
     return jsonify({"message": result.message}), 200
+
+
+@agents_bp.route("/api/agents/<int:agent_id>/info", methods=["GET"])
+def agent_info_endpoint(agent_id: int):
+    """Get comprehensive debug info for an agent.
+
+    Returns:
+        200: Agent info payload
+        404: Agent not found
+    """
+    info = get_agent_info(agent_id)
+    if info is None:
+        return jsonify({"error": "Agent not found"}), 404
+    return jsonify(info), 200
 
 
 @agents_bp.route("/api/agents/<int:agent_id>/context", methods=["GET"])

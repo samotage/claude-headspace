@@ -62,7 +62,7 @@ def create_agent_data(
         "id": agent_id,
         "session_uuid": str(uuid4())[:8],
         "is_active": last_seen_minutes_ago < 5,
-        "uptime": "up 1h 0m",
+        "uptime": "up 1h",
         "state": state,
         "state_info": {"color": "gray", "bg_class": "bg-muted", "label": "Idle"},
         "task_summary": "No active task",

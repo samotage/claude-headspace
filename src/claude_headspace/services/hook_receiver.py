@@ -800,6 +800,12 @@ def process_user_prompt_submit(
         current_task = lifecycle.get_current_task(agent)
         if current_task and current_task.state == TaskState.AWAITING_INPUT:
             _mark_question_answered(current_task)
+            # Detect plan approval: resuming from AWAITING_INPUT with plan content
+            if current_task.plan_content and not current_task.plan_approved_at:
+                current_task.plan_approved_at = datetime.now(timezone.utc)
+                logger.info(
+                    f"plan_approved: agent_id={agent.id}, task_id={current_task.id}"
+                )
 
         pending_file_meta = _file_metadata_pending_for_agent.pop(agent.id, None)
         result = lifecycle.process_turn(
@@ -1223,6 +1229,33 @@ def process_notification(
     )
 
 
+def _capture_plan_write(agent: Agent, tool_input: dict | None) -> bool:
+    """Capture plan file content when agent writes to .claude/plans/.
+
+    Returns True if plan content was captured and committed.
+    """
+    if not tool_input or not isinstance(tool_input, dict):
+        return False
+    file_path = tool_input.get("file_path", "")
+    content = tool_input.get("content", "")
+    if not file_path or ".claude/plans/" not in file_path or not content:
+        return False
+
+    current_task = agent.get_current_task()
+    if not current_task:
+        return False
+
+    current_task.plan_file_path = file_path
+    current_task.plan_content = content
+    db.session.commit()
+    broadcast_card_refresh(agent, "plan_file_captured")
+    logger.info(
+        f"plan_capture: agent_id={agent.id}, task_id={current_task.id}, "
+        f"file={file_path}, content_len={len(content)}"
+    )
+    return True
+
+
 def process_pre_tool_use(
     agent: Agent,
     claude_session_id: str,
@@ -1233,6 +1266,15 @@ def process_pre_tool_use(
     # (where user interaction happens AFTER the tool completes).
     # For all other tools, pre_tool_use is just activity — no state change.
     if tool_name in PRE_TOOL_USE_INTERACTIVE:
+        # Mark plan mode entry before handling the AWAITING_INPUT transition
+        if tool_name == "EnterPlanMode":
+            try:
+                current_task = agent.get_current_task()
+                if current_task and not current_task.plan_file_path:
+                    current_task.plan_file_path = "pending"
+                    # Don't commit yet — _handle_awaiting_input will commit
+            except Exception as e:
+                logger.warning(f"Failed to mark plan mode entry: {e}")
         return _handle_awaiting_input(
             agent, HookEventType.PRE_TOOL_USE, "pre_tool_use",
             tool_name=tool_name, tool_input=tool_input,
@@ -1246,6 +1288,10 @@ def process_pre_tool_use(
     receiver_state.record_event(HookEventType.PRE_TOOL_USE)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Capture plan file writes (Write to .claude/plans/)
+        if tool_name == "Write":
+            _capture_plan_write(agent, tool_input)
 
         current_task = agent.get_current_task()
         if current_task and current_task.state == TaskState.AWAITING_INPUT:
@@ -1380,6 +1426,10 @@ def process_post_tool_use(
             # Resume: matching tool completed (or no tracking) — user answered
             _mark_question_answered(current_task)
             _awaiting_tool_for_agent.pop(agent.id, None)
+            # Detect plan approval via post_tool_use resume
+            if current_task.plan_content and not current_task.plan_approved_at:
+                current_task.plan_approved_at = datetime.now(timezone.utc)
+                logger.info(f"plan_approved: agent_id={agent.id}, task_id={current_task.id} (post_tool_use)")
             result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=None)
             if result.success:
                 _trigger_priority_scoring()

@@ -46,14 +46,17 @@
         var titleEl = m.querySelector('.full-text-modal-title');
         var textEl = m.querySelector('.full-text-modal-text');
 
-        titleEl.textContent = type === 'command' ? 'Full Command' : 'Full Output';
+        var titles = { command: 'Full Command', output: 'Full Output', plan: 'Agent Plan' };
+        titleEl.textContent = titles[type] || 'Full Output';
         textEl.textContent = 'Loading...';
         m.style.display = 'flex';
 
         // Use cache if available
         if (cache[taskId]) {
-            var text = type === 'command' ? cache[taskId].full_command : cache[taskId].full_output;
-            textEl.textContent = text || 'No full text available';
+            var text = type === 'command' ? cache[taskId].full_command
+                     : type === 'plan' ? cache[taskId].plan_content
+                     : cache[taskId].full_output;
+            textEl.textContent = text || 'No content available';
             return;
         }
 
@@ -64,11 +67,13 @@
             })
             .then(function(data) {
                 cache[taskId] = data;
-                var text = type === 'command' ? data.full_command : data.full_output;
-                textEl.textContent = text || 'No full text available';
+                var text = type === 'command' ? data.full_command
+                         : type === 'plan' ? data.plan_content
+                         : data.full_output;
+                textEl.textContent = text || 'No content available';
             })
             .catch(function() {
-                textEl.textContent = 'Failed to load full text.';
+                textEl.textContent = 'Failed to load content.';
             });
     }
 

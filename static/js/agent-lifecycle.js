@@ -119,34 +119,65 @@
     }
 
     /**
+     * Close the new-agent popover menu.
+     */
+    function closeNewAgentMenu() {
+        var menu = document.getElementById('new-agent-menu');
+        var btn = document.getElementById('new-agent-btn');
+        if (menu) menu.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    /**
      * Initialize event handlers.
      */
     function init() {
-        // New Agent control
-        var projectSelect = document.getElementById('new-agent-project');
+        // New Agent popover control
         var createBtn = document.getElementById('new-agent-btn');
+        var menu = document.getElementById('new-agent-menu');
 
-        if (projectSelect && createBtn) {
-            // Enable button when project is selected
-            projectSelect.addEventListener('change', function() {
-                createBtn.disabled = !this.value;
+        if (createBtn && menu) {
+            // Toggle popover on button click
+            createBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var isOpen = menu.classList.contains('open');
+                // Close card kebabs if any are open
+                closeCardKebabs();
+                if (isOpen) {
+                    closeNewAgentMenu();
+                } else {
+                    menu.classList.add('open');
+                    createBtn.setAttribute('aria-expanded', 'true');
+                }
             });
 
-            createBtn.addEventListener('click', function() {
-                var projectId = parseInt(projectSelect.value, 10);
+            // Handle project item clicks
+            menu.addEventListener('click', function(e) {
+                var item = e.target.closest('.new-agent-item');
+                if (!item) return;
+                e.stopPropagation();
+
+                var projectId = parseInt(item.getAttribute('data-project-id'), 10);
                 if (!projectId) return;
 
-                createBtn.disabled = true;
-                createBtn.textContent = 'Starting...';
+                var originalText = item.textContent;
+                item.textContent = 'Starting...';
+                item.style.pointerEvents = 'none';
 
                 createAgent(projectId).then(function() {
-                    projectSelect.value = '';
-                    createBtn.textContent = '+ Agent';
-                    createBtn.disabled = true;
+                    closeNewAgentMenu();
+                    item.textContent = originalText;
+                    item.style.pointerEvents = '';
                 }).catch(function() {
-                    createBtn.textContent = '+ Agent';
-                    createBtn.disabled = false;
+                    item.textContent = originalText;
+                    item.style.pointerEvents = '';
+                    closeNewAgentMenu();
                 });
+            });
+
+            // Close on Escape
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeNewAgentMenu();
             });
         }
 
@@ -194,6 +225,17 @@
                 return;
             }
 
+            // Agent info (kebab menu item)
+            var infoAction = e.target.closest('.card-info-action');
+            if (infoAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(infoAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId && window.AgentInfo) AgentInfo.open(agentId);
+                return;
+            }
+
             // Kill (kebab menu item)
             var killAction = e.target.closest('.card-kill-action');
             if (killAction) {
@@ -224,12 +266,19 @@
             if (!e.target.closest('.card-kebab-wrapper')) {
                 closeCardKebabs();
             }
+            // Close new-agent menu on click outside
+            if (!e.target.closest('.new-agent-wrapper')) {
+                closeNewAgentMenu();
+            }
         });
 
         // Touch-aware close: touchstart fires on iOS even on non-interactive elements
         document.addEventListener('touchstart', function(e) {
             if (!e.target.closest('.card-kebab-wrapper')) {
                 closeCardKebabs();
+            }
+            if (!e.target.closest('.new-agent-wrapper')) {
+                closeNewAgentMenu();
             }
         }, { passive: true });
     }

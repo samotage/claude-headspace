@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -53,6 +53,9 @@ class Task(db.Model):
     )
     full_command: Mapped[str | None] = mapped_column(Text, nullable=True)
     full_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    plan_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     agent: Mapped["Agent"] = relationship("Agent", back_populates="tasks")

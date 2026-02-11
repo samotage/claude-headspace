@@ -536,9 +536,18 @@ def dashboard():
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
             }
-            # Add current task ID for on-demand full-text drill-down
+            # Add current task ID and plan state for on-demand drill-down
             _ct = agent.get_current_task()
             agent_dict["current_task_id"] = _ct.id if _ct else (agent.tasks[0].id if agent.tasks else None)
+            agent_dict["has_plan"] = bool(_ct and _ct.plan_content)
+            # Plan mode label overrides
+            if _ct:
+                if _ct.plan_content and _ct.plan_approved_at:
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Executing plan..."}
+                elif _ct.plan_content and not _ct.plan_approved_at:
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
+                elif _ct.plan_file_path == "pending":
+                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
             # Bridge connectivity — use cache, fall back to live check
             is_bridge = False
             if agent.tmux_pane_id:

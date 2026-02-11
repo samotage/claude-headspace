@@ -236,16 +236,16 @@ class TestFormatUptime:
     """Tests for format_uptime function."""
 
     def test_hours_and_minutes(self):
-        """Test formatting with hours and minutes."""
+        """Test formatting with hours shows only hours (single unit)."""
         started_at = datetime.now(timezone.utc) - timedelta(hours=32, minutes=38)
         result = format_uptime(started_at)
-        assert result == "up 32h 38m"
+        assert result == "up 32h"
 
     def test_hours_only(self):
         """Test formatting with full hours."""
         started_at = datetime.now(timezone.utc) - timedelta(hours=5)
         result = format_uptime(started_at)
-        assert result == "up 5h 0m"
+        assert result == "up 5h"
 
     def test_minutes_only(self):
         """Test formatting with only minutes."""
@@ -913,6 +913,7 @@ class TestGetTaskInstruction:
         agent = MagicMock()
         mock_task = MagicMock()
         mock_task.instruction = None
+        mock_task.full_command = None
         agent.get_current_task.return_value = mock_task
         agent.tasks = []
 
@@ -960,6 +961,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = [turn]
         agent.tasks = [task]
@@ -980,6 +982,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = [turn]
         agent.tasks = [task]
@@ -996,6 +999,7 @@ class TestGetTaskInstruction:
 
         task = MagicMock()
         task.instruction = None
+        task.full_command = None
         task.state = TaskState.COMPLETE
         task.turns = []
         agent.tasks = [task]

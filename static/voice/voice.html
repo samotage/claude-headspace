@@ -23,12 +23,12 @@
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="app-brand-cursor">&gt;_</span><span class="app-brand-suffix">chat</span></a>
     <div class="header-actions">
       <span id="connection-status" class="connection-dot disconnected"></span>
-      <button id="settings-btn" class="icon-btn" aria-label="Settings">&#9881;</button>
+      <button id="settings-btn" class="icon-btn" aria-label="Settings">&#9776;</button>
       <a href="/" class="close-btn" aria-label="Close and return to dashboard">&times;</a>
     </div>
   </header>
 
-  <!-- Screen: Setup (first-launch) -->
+  <!-- Screen: Setup (first-launch, full screen, outside app-layout) -->
   <div id="screen-setup" class="screen active">
     <div class="setup-title">Claude Chat</div>
     <div class="setup-subtitle">Connect to your Claude Headspace server</div>
@@ -45,109 +45,119 @@
     </form>
   </div>
 
-  <!-- Screen: Agent List -->
-  <div id="screen-agents" class="screen">
-    <div id="agent-list"></div>
-    <div id="agent-status-message" class="agent-status-message"></div>
-    <!-- Floating mic button -->
-    <div style="text-align:center; margin-top:24px;">
-      <button id="mic-btn" aria-label="Start listening">&#127908;</button>
-    </div>
-  </div>
-
-  <!-- Screen: Listening / Command -->
-  <div id="screen-listening" class="screen">
-    <div class="screen-header">
-      <button class="back-btn">&larr; Back</button>
-    </div>
-    <div class="listening-target">Sending to: <strong id="listening-target">—</strong></div>
-    <div id="live-transcript"></div>
-    <div id="status-message"></div>
-    <!-- Text input fallback -->
-    <form id="text-form" class="text-fallback">
-      <input type="text" id="text-input" placeholder="Type a command..." autocomplete="off">
-      <button type="submit">Send</button>
-    </form>
-  </div>
-
-  <!-- Screen: Question / Response -->
-  <div id="screen-question" class="screen">
-    <div class="screen-header">
-      <button class="back-btn">&larr; Back</button>
-      <h2>Agent Question</h2>
-    </div>
-    <div id="question-text"></div>
-    <div id="question-options"></div>
-    <div id="question-free">
-      <form id="question-free-form" class="text-fallback">
-        <input type="text" id="question-free-input" placeholder="Type your answer..." autocomplete="off">
-        <button type="submit">Send</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Screen: Chat Transcript -->
-  <div id="screen-chat" class="screen">
-    <div class="chat-header">
-      <button class="chat-back-btn" aria-label="Back">&larr;</button>
-      <span id="chat-hero" class="chat-hero-badge"></span>
-      <div class="chat-header-info">
-        <span id="chat-agent-name" class="chat-agent-name"></span>
-        <span id="chat-project-name" class="chat-project-name"></span>
+  <!-- Split-panel layout wrapper -->
+  <div id="app-layout">
+    <!-- Left: sidebar (agent list) -->
+    <aside id="sidebar">
+      <div id="agent-list"></div>
+      <div id="agent-status-message" class="agent-status-message"></div>
+      <div style="text-align:center; margin-top:24px;">
+        <button id="mic-btn" aria-label="Start listening">&#127908;</button>
       </div>
-    </div>
-    <div id="attention-banners" class="attention-banners"></div>
-    <!-- Drop zone overlay -->
-    <div id="chat-drop-zone" class="chat-drop-zone" style="display:none">
-      <div class="drop-zone-content">
-        <div class="drop-zone-icon">&#128206;</div>
-        <div class="drop-zone-text">Drop file to share</div>
-      </div>
-    </div>
-    <div id="chat-messages" class="chat-messages">
-      <div id="chat-load-more" class="chat-load-more" style="display:none"></div>
-    </div>
-    <div id="chat-typing" class="chat-typing" style="display:none">
-      <div class="typing-bubble">
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-      </div>
-    </div>
-    <div id="chat-ended-banner" class="chat-ended-banner" style="display:none">
-      Agent session has ended
-    </div>
-    <div id="chat-input-area" class="chat-input-bar">
-      <!-- Pending attachment preview -->
-      <div id="chat-attachment-preview" class="chat-attachment-preview" style="display:none">
-        <div id="attachment-thumb" class="attachment-thumb"></div>
-        <div id="attachment-info" class="attachment-info">
-          <span id="attachment-name" class="attachment-name"></span>
-          <span id="attachment-size" class="attachment-size"></span>
+    </aside>
+
+    <!-- Right: main panel -->
+    <main id="main-panel">
+      <!-- Screen: Listening / Command -->
+      <div id="screen-listening" class="screen">
+        <div class="screen-header">
+          <button class="back-btn">&larr; Back</button>
         </div>
-        <button type="button" id="attachment-remove" class="attachment-remove" aria-label="Remove attachment">&times;</button>
+        <div class="listening-target">Sending to: <strong id="listening-target">—</strong></div>
+        <div id="live-transcript"></div>
+        <div id="status-message"></div>
+        <form id="text-form" class="text-fallback">
+          <input type="text" id="text-input" placeholder="Type a command..." autocomplete="off">
+          <button type="submit">Send</button>
+        </form>
       </div>
-      <!-- Upload progress bar -->
-      <div id="chat-upload-progress" class="chat-upload-progress" style="display:none">
-        <div id="chat-upload-bar" class="chat-upload-bar"></div>
+
+      <!-- Screen: Question / Response -->
+      <div id="screen-question" class="screen">
+        <div class="screen-header">
+          <button class="back-btn">&larr; Back</button>
+          <h2>Agent Question</h2>
+        </div>
+        <div id="question-text"></div>
+        <div id="question-options"></div>
+        <div id="question-free">
+          <form id="question-free-form" class="text-fallback">
+            <input type="text" id="question-free-input" placeholder="Type your answer..." autocomplete="off">
+            <button type="submit">Send</button>
+          </form>
+        </div>
       </div>
-      <!-- Upload error toast -->
-      <div id="chat-upload-error" class="chat-upload-error" style="display:none"></div>
-      <form id="chat-input-form" class="chat-input-form">
-        <textarea id="chat-text-input" class="chat-text-field" placeholder="Message..." autocomplete="off" rows="1"></textarea>
-        <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
-        </button>
-        <button type="button" id="chat-mic-btn" class="chat-mic-btn" aria-label="Voice input">&#127908;</button>
-      </form>
-    </div>
+
+      <!-- Screen: Chat Transcript -->
+      <div id="screen-chat" class="screen">
+        <div class="chat-header">
+          <button class="chat-back-btn" aria-label="Back">&larr;</button>
+          <span id="chat-hero" class="chat-hero-badge"></span>
+          <div class="chat-header-info">
+            <span id="chat-agent-name" class="chat-agent-name"></span>
+            <span id="chat-project-name" class="chat-project-name"></span>
+          </div>
+        </div>
+        <div id="attention-banners" class="attention-banners"></div>
+        <!-- Drop zone overlay -->
+        <div id="chat-drop-zone" class="chat-drop-zone" style="display:none">
+          <div class="drop-zone-content">
+            <div class="drop-zone-icon">&#128206;</div>
+            <div class="drop-zone-text">Drop file to share</div>
+          </div>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <div id="chat-load-more" class="chat-load-more" style="display:none"></div>
+        </div>
+        <div id="chat-typing" class="chat-typing" style="display:none">
+          <div class="typing-bubble">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </div>
+        </div>
+        <div id="chat-ended-banner" class="chat-ended-banner" style="display:none">
+          Agent session has ended
+        </div>
+        <div id="chat-input-area" class="chat-input-bar">
+          <!-- Pending attachment preview -->
+          <div id="chat-attachment-preview" class="chat-attachment-preview" style="display:none">
+            <div id="attachment-thumb" class="attachment-thumb"></div>
+            <div id="attachment-info" class="attachment-info">
+              <span id="attachment-name" class="attachment-name"></span>
+              <span id="attachment-size" class="attachment-size"></span>
+            </div>
+            <button type="button" id="attachment-remove" class="attachment-remove" aria-label="Remove attachment">&times;</button>
+          </div>
+          <!-- Upload progress bar -->
+          <div id="chat-upload-progress" class="chat-upload-progress" style="display:none">
+            <div id="chat-upload-bar" class="chat-upload-bar"></div>
+          </div>
+          <!-- Upload error toast -->
+          <div id="chat-upload-error" class="chat-upload-error" style="display:none"></div>
+          <form id="chat-input-form" class="chat-input-form">
+            <textarea id="chat-text-input" class="chat-text-field" placeholder="Message..." autocomplete="off" rows="1"></textarea>
+            <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
+            </button>
+            <button type="button" id="chat-mic-btn" class="chat-mic-btn" aria-label="Voice input">&#127908;</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Empty state: shown in split mode when no agent selected -->
+      <div id="main-panel-empty" class="main-panel-empty">
+        <div class="empty-state">Select an agent to start chatting</div>
+      </div>
+    </main>
   </div>
 
-  <!-- Screen: Settings -->
-  <div id="screen-settings" class="screen">
-    <div class="screen-header">
-      <button class="settings-back-btn">&larr; Back</button>
+  <!-- Settings slide-out panel (outside app-layout) -->
+  <div id="settings-overlay" class="settings-overlay"></div>
+  <div id="settings-panel" class="settings-panel">
+    <div class="settings-panel-header">
       <h2>Settings</h2>
+      <button id="settings-close-btn" class="settings-close-btn" aria-label="Close">&times;</button>
     </div>
     <form id="settings-form">
       <div class="settings-section">
@@ -218,7 +228,7 @@
   <script src="/static/voice/voice-api.js?v=2"></script>
   <script src="/static/voice/voice-input.js?v=2"></script>
   <script src="/static/voice/voice-output.js?v=2"></script>
-  <script src="/static/voice/voice-app.js?v=2"></script>
+  <script src="/static/voice/voice-app.js?v=3"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,

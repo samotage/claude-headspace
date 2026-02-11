@@ -679,6 +679,8 @@ def get_task_full_text(task_id: int):
         return jsonify({
             "full_command": task.full_command,
             "full_output": task.full_output,
+            "plan_content": task.plan_content,
+            "plan_file_path": task.plan_file_path,
         }), 200
 
     except Exception:
