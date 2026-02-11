@@ -1,5 +1,5 @@
 /* Service worker for Claude Headspace Voice PWA */
-const CACHE_NAME = 'voice-bridge-v4';
+const CACHE_NAME = 'voice-bridge-v5';
 const APP_SHELL = [
   '/voice',
   '/static/voice/voice.css',

@@ -7,6 +7,19 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0d1117">
   <title>Claude Chat</title>
+  <!-- Apply theme before first paint to prevent flash -->
+  <script>
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem('voice_settings') || '{}');
+        var t = s.theme || 'dark';
+        if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
+        var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f0f2f5' };
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta && colors[t]) meta.setAttribute('content', colors[t]);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="manifest" href="/static/voice/manifest.json">
   <link rel="apple-touch-icon" href="/static/voice/icons/icon-192.png">
   <link rel="stylesheet" href="/static/voice/voice.css">
@@ -162,6 +175,23 @@
     <form id="settings-form">
       <div class="settings-section">
         <h3>Display</h3>
+        <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:4px">
+          <span class="setting-label">Theme</span>
+          <div id="theme-selector" class="theme-selector">
+            <button type="button" class="theme-chip active" data-theme="dark">
+              <div class="theme-chip-swatch"><div class="theme-chip-swatch-bg"></div><div class="theme-chip-swatch-surface"></div></div>
+              <span class="theme-chip-label">Dark</span>
+            </button>
+            <button type="button" class="theme-chip" data-theme="warm">
+              <div class="theme-chip-swatch"><div class="theme-chip-swatch-bg"></div><div class="theme-chip-swatch-surface"></div></div>
+              <span class="theme-chip-label">Warm</span>
+            </button>
+            <button type="button" class="theme-chip" data-theme="cool">
+              <div class="theme-chip-swatch"><div class="theme-chip-swatch-bg"></div><div class="theme-chip-swatch-surface"></div></div>
+              <span class="theme-chip-label">Cool</span>
+            </button>
+          </div>
+        </div>
         <div class="setting-row">
           <span class="setting-label">Font size</span>
           <span class="setting-control"><input type="range" id="setting-fontsize" min="13" max="20" step="1"> <span id="fontsize-value" class="setting-value">15px</span></span>
@@ -225,10 +255,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/voice/voice-api.js?v=4"></script>
-  <script src="/static/voice/voice-input.js?v=4"></script>
-  <script src="/static/voice/voice-output.js?v=4"></script>
-  <script src="/static/voice/voice-app.js?v=4"></script>
+  <script src="/static/voice/voice-api.js?v=5"></script>
+  <script src="/static/voice/voice-input.js?v=5"></script>
+  <script src="/static/voice/voice-output.js?v=5"></script>
+  <script src="/static/voice/voice-app.js?v=5"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,

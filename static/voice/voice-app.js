@@ -12,7 +12,8 @@ window.VoiceApp = (function () {
     ttsEnabled: true,
     cuesEnabled: true,
     verbosity: 'normal',
-    fontSize: 15
+    fontSize: 15,
+    theme: 'dark'
   };
 
   var _settings = {};
@@ -74,7 +75,8 @@ window.VoiceApp = (function () {
       ttsEnabled: s.ttsEnabled !== undefined ? s.ttsEnabled : DEFAULTS.ttsEnabled,
       cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
       verbosity: s.verbosity || DEFAULTS.verbosity,
-      fontSize: s.fontSize || DEFAULTS.fontSize
+      fontSize: s.fontSize || DEFAULTS.fontSize,
+      theme: s.theme || DEFAULTS.theme
     };
 
     // Apply to modules
@@ -83,6 +85,7 @@ window.VoiceApp = (function () {
     VoiceOutput.setTTSEnabled(_settings.ttsEnabled);
     VoiceOutput.setCuesEnabled(_settings.cuesEnabled);
     _applyFontSize();
+    _applyTheme();
   }
 
   function saveSettings() {
@@ -105,6 +108,18 @@ window.VoiceApp = (function () {
 
   function _applyFontSize() {
     document.documentElement.style.setProperty('--chat-font-size', _settings.fontSize + 'px');
+  }
+
+  function _applyTheme() {
+    var theme = _settings.theme || 'dark';
+    if (theme === 'dark') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f0f2f5' };
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && colors[theme]) meta.setAttribute('content', colors[theme]);
   }
 
   // --- Layout mode detection ---
@@ -2214,6 +2229,25 @@ window.VoiceApp = (function () {
       });
     }
 
+    // Theme chip selector — instant apply
+    var themeSelector = document.getElementById('theme-selector');
+    if (themeSelector) {
+      themeSelector.addEventListener('click', function (e) {
+        var chip = e.target.closest('.theme-chip');
+        if (!chip) return;
+        var theme = chip.getAttribute('data-theme');
+        if (!theme) return;
+        // Update active state
+        var chips = themeSelector.querySelectorAll('.theme-chip');
+        for (var tc = 0; tc < chips.length; tc++) {
+          chips[tc].classList.toggle('active', chips[tc] === chip);
+        }
+        // Apply immediately
+        setSetting('theme', theme);
+        _applyTheme();
+      });
+    }
+
     // Font size slider display + live preview
     var fontSlider = document.getElementById('setting-fontsize');
     if (fontSlider) {
@@ -2235,6 +2269,15 @@ window.VoiceApp = (function () {
 
   function _populateSettingsForm() {
     var el;
+
+    // Theme chips
+    var themeSelector = document.getElementById('theme-selector');
+    if (themeSelector) {
+      var chips = themeSelector.querySelectorAll('.theme-chip');
+      for (var tc = 0; tc < chips.length; tc++) {
+        chips[tc].classList.toggle('active', chips[tc].getAttribute('data-theme') === _settings.theme);
+      }
+    }
 
     el = document.getElementById('setting-fontsize');
     if (el) el.value = _settings.fontSize;

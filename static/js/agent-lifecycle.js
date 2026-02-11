@@ -245,17 +245,37 @@
                 closeCardKebabs();
                 if (!agentId) return;
 
-                var heroLabel = killAction.getAttribute('data-hero') || ('#' + agentId);
+                var heroChars = killAction.getAttribute('data-hero-chars') || '';
+                var heroTrail = killAction.getAttribute('data-hero-trail') || '';
+                var heroLabel = heroChars + heroTrail || ('#' + agentId);
                 if (typeof ConfirmDialog !== 'undefined') {
+                    var styledTitle = heroChars
+                        ? 'Shut down agent ' + CHUtils.heroHTML(heroChars, heroTrail) + '?'
+                        : 'Shut down agent #' + agentId + '?';
                     ConfirmDialog.show(
-                        'Dismiss agent ' + heroLabel + '?',
-                        'This will remove the agent card from the dashboard.',
-                        { confirmText: 'Dismiss', cancelText: 'Cancel' }
+                        'Shut down agent ' + heroLabel + '?',
+                        'This will send /exit to the agent. It will clean up and fire shutdown hooks.',
+                        { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
                     ).then(function(confirmed) {
-                        if (confirmed) window.FocusAPI.dismissAgent(agentId);
+                        if (confirmed) {
+                            shutdownAgent(agentId).then(function(data) {
+                                if (data && data.error) {
+                                    // Shutdown failed (no pane, etc.) — fall back to dismiss
+                                    window.FocusAPI.dismissAgent(agentId);
+                                }
+                            }).catch(function() {
+                                window.FocusAPI.dismissAgent(agentId);
+                            });
+                        }
                     });
-                } else if (confirm('Dismiss agent ' + heroLabel + '?')) {
-                    window.FocusAPI.dismissAgent(agentId);
+                } else if (confirm('Shut down agent ' + heroLabel + '?')) {
+                    shutdownAgent(agentId).then(function(data) {
+                        if (data && data.error) {
+                            window.FocusAPI.dismissAgent(agentId);
+                        }
+                    }).catch(function() {
+                        window.FocusAPI.dismissAgent(agentId);
+                    });
                 }
                 return;
             }
