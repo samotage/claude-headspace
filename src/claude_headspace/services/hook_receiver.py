@@ -525,23 +525,37 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
     def _deferred_check():
         import time
         try:
-            time.sleep(1.5)  # Wait for Claude Code to flush transcript
-
             with app.app_context():
                 try:
                     from ..models.task import Task
-                    task = db.session.get(Task, task_id)
-                    if not task or task.state == TaskState.COMPLETE:
-                        return  # Already completed by another hook
 
-                    agent_obj = db.session.get(Agent, agent_id)
-                    if not agent_obj:
-                        return
+                    # Poll for transcript content with backoff
+                    delays = [0.5, 1.0, 1.5, 2.0]  # Total: 5s max
+                    agent_text = ""
+                    for delay in delays:
+                        time.sleep(delay)
 
-                    agent_text = _extract_transcript_content(agent_obj)
+                        task = db.session.get(Task, task_id)
+                        if not task or task.state == TaskState.COMPLETE:
+                            return  # Already completed by another hook
+
+                        agent_obj = db.session.get(Agent, agent_id)
+                        if not agent_obj:
+                            return
+
+                        # Refresh to avoid stale reads
+                        db.session.refresh(task)
+                        if task.state == TaskState.COMPLETE:
+                            return
+
+                        agent_text = _extract_transcript_content(agent_obj)
+                        if agent_text:
+                            break
+
                     logger.info(
                         f"deferred_stop: agent_id={agent_id}, "
-                        f"transcript_retry: len={len(agent_text) if agent_text else 0}"
+                        f"transcript_retry: len={len(agent_text) if agent_text else 0}, "
+                        f"polls={delays.index(delay) + 1 if agent_text else len(delays)}"
                     )
                     if not agent_text:
                         # Still empty — complete with no transcript

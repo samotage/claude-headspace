@@ -176,8 +176,11 @@ window.VoiceApp = (function () {
           + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
           + '</div>'
           + '<div class="agent-header-actions">'
-          + '<button class="agent-ctx-btn" data-agent-id="' + a.agent_id + '" title="Check context">ctx</button>'
-          + '<button class="agent-kill-btn" data-agent-id="' + a.agent_id + '" title="Shut down agent">&times;</button>'
+          + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
+          + '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">Fetch context</button>'
+          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">Dismiss agent</button>'
+          + '</div>'
           + '</div>'
           + '</div>'
           + '<div class="agent-body">'
@@ -199,22 +202,47 @@ window.VoiceApp = (function () {
       cards[j].addEventListener('click', _onAgentCardClick);
     }
 
-    // Bind context check buttons
-    var ctxBtns = list.querySelectorAll('.agent-ctx-btn');
-    for (var c = 0; c < ctxBtns.length; c++) {
-      ctxBtns[c].addEventListener('click', function (e) {
+    // Bind kebab menu buttons
+    var kebabBtns = list.querySelectorAll('.agent-kebab-btn');
+    for (var c = 0; c < kebabBtns.length; c++) {
+      kebabBtns[c].addEventListener('click', function (e) {
         e.stopPropagation();
-        _checkAgentContext(parseInt(this.getAttribute('data-agent-id'), 10));
+        var agentId = this.getAttribute('data-agent-id');
+        var menu = list.querySelector('.agent-kebab-menu[data-agent-id="' + agentId + '"]');
+        // Close any other open menus
+        var allMenus = list.querySelectorAll('.agent-kebab-menu.open');
+        for (var m = 0; m < allMenus.length; m++) {
+          if (allMenus[m] !== menu) allMenus[m].classList.remove('open');
+        }
+        if (menu) menu.classList.toggle('open');
       });
     }
 
-    // Bind kill buttons
-    var killBtns = list.querySelectorAll('.agent-kill-btn');
-    for (var k = 0; k < killBtns.length; k++) {
-      killBtns[k].addEventListener('click', function (e) {
+    // Bind kebab menu actions
+    var ctxActions = list.querySelectorAll('.agent-ctx-action');
+    for (var ca = 0; ca < ctxActions.length; ca++) {
+      ctxActions[ca].addEventListener('click', function (e) {
         e.stopPropagation();
-        _shutdownAgent(parseInt(this.getAttribute('data-agent-id'), 10));
+        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
+        _closeAllKebabMenus();
+        _checkAgentContext(agentId);
       });
+    }
+    var killActions = list.querySelectorAll('.agent-kill-action');
+    for (var ka = 0; ka < killActions.length; ka++) {
+      killActions[ka].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
+        _closeAllKebabMenus();
+        _shutdownAgent(agentId);
+      });
+    }
+  }
+
+  function _closeAllKebabMenus() {
+    var menus = document.querySelectorAll('.agent-kebab-menu.open');
+    for (var i = 0; i < menus.length; i++) {
+      menus[i].classList.remove('open');
     }
   }
 
@@ -806,8 +834,34 @@ window.VoiceApp = (function () {
     if (isProcessing) _scrollChatToBottom();
   }
 
+  function _markAllQuestionsAnswered() {
+    var containers = document.querySelectorAll('.bubble-options:not(.answered)');
+    containers.forEach(function(el) {
+      el.classList.add('answered');
+      el.querySelectorAll('button').forEach(function(btn) { btn.disabled = true; });
+    });
+  }
+
+  function _showChatSystemMessage(text) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    var el = document.createElement('div');
+    el.className = 'chat-system-message';
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    _scrollChatToBottom();
+  }
+
   function _sendChatCommand(text) {
     if (!text || !text.trim()) return;
+
+    // Guard: if agent is not in a receptive state, don't send stale text.
+    // The question may have been answered in the terminal.
+    var state = (_chatAgentState || '').toLowerCase();
+    if (state === 'processing' || state === 'commanded') {
+      _showChatSystemMessage('Agent is processing \u2014 please wait.');
+      return;
+    }
 
     // Add user bubble immediately
     var now = new Date().toISOString();
@@ -957,8 +1011,19 @@ window.VoiceApp = (function () {
       actor: data.actor || 'agent',
       intent: data.intent || 'progress',
       text: data.text,
-      timestamp: data.timestamp || new Date().toISOString()
+      timestamp: data.timestamp || new Date().toISOString(),
+      tool_input: data.tool_input || null,
+      question_text: data.text,
+      question_options: null
     };
+
+    // Extract question_options from tool_input for immediate rendering
+    if (data.tool_input && data.tool_input.questions) {
+      var q = data.tool_input.questions[0];
+      if (q && q.options) {
+        turn.question_options = q.options;
+      }
+    }
 
     // Skip if already rendered
     if (_chatRenderedTurnIds.has(turn.id)) return;
@@ -998,6 +1063,25 @@ window.VoiceApp = (function () {
             project_name: data.project || ''
           };
           _renderAttentionBanners();
+        }
+      }
+    }
+
+    // Sync state to chat if this is the target agent
+    if (_currentScreen === 'chat' && _targetAgentId) {
+      var updateAgentId = data.agent_id || data.id;
+      if (parseInt(updateAgentId, 10) === parseInt(_targetAgentId, 10)) {
+        var chatNewState = data.new_state || data.state;
+        if (chatNewState) {
+          var prevState = _chatAgentState;
+          _chatAgentState = chatNewState;
+          _updateTypingIndicator();
+
+          // If state left AWAITING_INPUT, update question options to "answered"
+          if (prevState && prevState.toLowerCase() === 'awaiting_input'
+              && chatNewState.toLowerCase() !== 'awaiting_input') {
+            _markAllQuestionsAnswered();
+          }
         }
       }
     }
@@ -1100,6 +1184,14 @@ window.VoiceApp = (function () {
     // On reconnect: catch up on any missed state by re-fetching
     if (state === 'connected' && _previousConnectionState !== 'connected') {
       _catchUpAfterReconnect();
+      if (_currentScreen === 'chat') {
+        _showChatSystemMessage('Reconnected');
+      }
+    }
+    if (state === 'reconnecting' && _previousConnectionState === 'connected') {
+      if (_currentScreen === 'chat') {
+        _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
+      }
     }
     _previousConnectionState = state;
   }
@@ -1215,6 +1307,13 @@ window.VoiceApp = (function () {
 
   function init() {
     loadSettings();
+
+    // Close kebab menus on click outside
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')) {
+        _closeAllKebabMenus();
+      }
+    });
 
     // Detect agent_id URL param (from dashboard "Chat" link)
     var urlParams = new URLSearchParams(window.location.search);
