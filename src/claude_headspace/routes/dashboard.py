@@ -612,6 +612,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
+        all_projects=projects,
         status_counts=status_counts,
         recommended_next=recommended_next,
         sort_mode=sort_mode,

@@ -12,6 +12,11 @@ from ..models.agent import Agent
 from ..models.task import Task, TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from ..services import tmux_bridge
+from ..services.agent_lifecycle import (
+    create_agent,
+    get_context_usage,
+    shutdown_agent,
+)
 from ..services.card_state import broadcast_card_refresh
 
 logger = logging.getLogger(__name__)
@@ -557,4 +562,132 @@ def agent_transcript(agent_id: int):
         "agent_name": agent.name,
         "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
         "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
+    }), 200
+
+
+@voice_bridge_bp.route("/api/voice/agents/create", methods=["POST"])
+def voice_create_agent():
+    """Create a new agent for a project via voice bridge."""
+    start_time = time.time()
+    data = request.get_json(silent=True) or {}
+    formatter = _get_voice_formatter()
+
+    # Accept project_id or project_name
+    project_id = data.get("project_id")
+    project_name = data.get("project_name", "").strip()
+
+    if not project_id and not project_name:
+        return _voice_error(
+            "No project specified.",
+            "Provide a project name or ID.",
+        )
+
+    # Resolve project_name to project_id
+    if not project_id and project_name:
+        from ..models.project import Project as Proj
+
+        project = (
+            db.session.query(Proj)
+            .filter(db.func.lower(Proj.name) == project_name.lower())
+            .first()
+        )
+        if not project:
+            return _voice_error(
+                f"Project '{project_name}' not found.",
+                "Check the project name and try again.",
+                404,
+            )
+        project_id = project.id
+
+    result = create_agent(project_id)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    if not result.success:
+        if formatter:
+            voice = formatter.format_error(result.message, "Check project settings.")
+        else:
+            voice = {"status_line": result.message, "results": [], "next_action": "none"}
+        return jsonify({"voice": voice, "error": result.message, "latency_ms": latency_ms}), 422
+
+    if formatter:
+        voice = {"status_line": "Agent starting.", "results": [result.message], "next_action": "Wait for it to appear on the dashboard."}
+    else:
+        voice = {"status_line": result.message, "results": [], "next_action": "none"}
+
+    return jsonify({
+        "voice": voice,
+        "message": result.message,
+        "tmux_session_name": result.tmux_session_name,
+        "latency_ms": latency_ms,
+    }), 201
+
+
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/shutdown", methods=["POST"])
+def voice_shutdown_agent(agent_id: int):
+    """Gracefully shut down an agent via voice bridge."""
+    start_time = time.time()
+    formatter = _get_voice_formatter()
+
+    result = shutdown_agent(agent_id)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    if not result.success:
+        status = 404 if "not found" in result.message.lower() else 422
+        if formatter:
+            voice = formatter.format_error(result.message, "Check the agent status.")
+        else:
+            voice = {"status_line": result.message, "results": [], "next_action": "none"}
+        return jsonify({"voice": voice, "error": result.message, "latency_ms": latency_ms}), status
+
+    if formatter:
+        voice = {"status_line": "Shutting down.", "results": [result.message], "next_action": "Agent will disappear when hooks fire."}
+    else:
+        voice = {"status_line": result.message, "results": [], "next_action": "none"}
+
+    return jsonify({"voice": voice, "message": result.message, "latency_ms": latency_ms}), 200
+
+
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/context", methods=["GET"])
+def voice_agent_context(agent_id: int):
+    """Get context window usage for an agent via voice bridge."""
+    start_time = time.time()
+    formatter = _get_voice_formatter()
+
+    result = get_context_usage(agent_id)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    if not result.available:
+        reason_messages = {
+            "agent_not_found": "Agent not found.",
+            "agent_ended": "Agent has ended.",
+            "no_tmux_pane": "Agent has no terminal connection.",
+            "capture_failed": "Could not read agent terminal.",
+            "statusline_not_found": "Context info not available for this agent.",
+        }
+        msg = reason_messages.get(result.reason, "Context unavailable.")
+        status = 404 if result.reason == "agent_not_found" else 200
+        if formatter:
+            voice = {"status_line": msg, "results": [], "next_action": "none"}
+        else:
+            voice = {"status_line": msg, "results": [], "next_action": "none"}
+        return jsonify({
+            "voice": voice,
+            "available": False,
+            "reason": result.reason,
+            "latency_ms": latency_ms,
+        }), status
+
+    summary = f"{result.percent_used}% used, {result.remaining_tokens} remaining"
+    if formatter:
+        voice = {"status_line": summary, "results": [result.raw or summary], "next_action": "none"}
+    else:
+        voice = {"status_line": summary, "results": [], "next_action": "none"}
+
+    return jsonify({
+        "voice": voice,
+        "available": True,
+        "percent_used": result.percent_used,
+        "remaining_tokens": result.remaining_tokens,
+        "raw": result.raw,
+        "latency_ms": latency_ms,
     }), 200

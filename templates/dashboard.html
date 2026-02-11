@@ -18,8 +18,24 @@
         {% include "partials/_recommended_next.html" %}
         {% endif %}
 
-        <!-- Sort Controls -->
-        {% include "partials/_sort_controls.html" %}
+        <!-- Sort Controls + New Agent -->
+        <div class="flex items-center justify-between gap-4 mb-4">
+            <div class="flex-1">
+                {% include "partials/_sort_controls.html" %}
+            </div>
+            <!-- New Agent Control -->
+            <div class="flex items-center gap-2" id="new-agent-control">
+                <select id="new-agent-project" class="form-well px-2 py-1 text-sm min-h-[36px]" aria-label="Select project">
+                    <option value="">Project...</option>
+                    {% for project in all_projects %}
+                    <option value="{{ project.id }}">{{ project.name }}</option>
+                    {% endfor %}
+                </select>
+                <button id="new-agent-btn" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-green/20 text-green border-green/30 hover:bg-green/30 min-h-[36px]" title="Create new agent" disabled>
+                    + Agent
+                </button>
+            </div>
+        </div>
 
         <!-- Content based on sort mode -->
         {% if sort_mode == 'kanban' %}
@@ -171,4 +187,6 @@
 <script src="{{ url_for('static', filename='js/brain-reboot.js') }}?v={{ cache_bust }}"></script>
 <!-- Full-text drill-down modal -->
 <script src="{{ url_for('static', filename='js/full-text-modal.js') }}?v={{ cache_bust }}"></script>
+<!-- Agent lifecycle (create, kill, context) -->
+<script src="{{ url_for('static', filename='js/agent-lifecycle.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}
