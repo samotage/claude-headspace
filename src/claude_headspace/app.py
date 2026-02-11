@@ -312,7 +312,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         }
 
     # CSRF exempt paths (hooks, SSE, and voice bridge API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/")
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents")
 
     @app.before_request
     def verify_csrf_token():
@@ -364,6 +364,7 @@ def register_error_handlers(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Register application blueprints."""
     from .routes.activity import activity_bp
+    from .routes.agents import agents_bp
     from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
@@ -388,6 +389,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.waypoint import waypoint_bp
 
     app.register_blueprint(activity_bp)
+    app.register_blueprint(agents_bp)
     app.register_blueprint(archive_bp)
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)

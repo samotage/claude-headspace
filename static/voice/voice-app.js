@@ -28,6 +28,8 @@ window.VoiceApp = (function () {
   var _chatAgentEnded = false;
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
   var _settingsReturnScreen = 'agents'; // track where settings was opened from
+  var _navStack = [];           // Stack of agent IDs for back navigation
+  var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
 
@@ -173,11 +175,15 @@ window.VoiceApp = (function () {
           + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
           + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
           + '</div>'
-          + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
+          + '<div class="agent-header-actions">'
+          + '<button class="agent-ctx-btn" data-agent-id="' + a.agent_id + '" title="Check context">ctx</button>'
+          + '<button class="agent-kill-btn" data-agent-id="' + a.agent_id + '" title="Shut down agent">&times;</button>'
+          + '</div>'
           + '</div>'
           + '<div class="agent-body">'
           + instructionHtml
           + summaryHtml
+          + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
           + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
           + '</div>'
           + '</div>';
@@ -192,6 +198,24 @@ window.VoiceApp = (function () {
     for (var j = 0; j < cards.length; j++) {
       cards[j].addEventListener('click', _onAgentCardClick);
     }
+
+    // Bind context check buttons
+    var ctxBtns = list.querySelectorAll('.agent-ctx-btn');
+    for (var c = 0; c < ctxBtns.length; c++) {
+      ctxBtns[c].addEventListener('click', function (e) {
+        e.stopPropagation();
+        _checkAgentContext(parseInt(this.getAttribute('data-agent-id'), 10));
+      });
+    }
+
+    // Bind kill buttons
+    var killBtns = list.querySelectorAll('.agent-kill-btn');
+    for (var k = 0; k < killBtns.length; k++) {
+      killBtns[k].addEventListener('click', function (e) {
+        e.stopPropagation();
+        _shutdownAgent(parseInt(this.getAttribute('data-agent-id'), 10));
+      });
+    }
   }
 
   function _onAgentCardClick(e) {
@@ -202,7 +226,48 @@ window.VoiceApp = (function () {
 
   function _selectAgent(id) {
     _targetAgentId = id;
+    _navStack = [];
     _showChatScreen(id);
+  }
+
+  function _checkAgentContext(agentId) {
+    var display = document.getElementById('ctx-display-' + agentId);
+    if (display) {
+      display.textContent = 'Checking...';
+      display.className = 'agent-ctx-display loading';
+    }
+    VoiceAPI.getAgentContext(agentId).then(function (data) {
+      if (!display) return;
+      if (data.available) {
+        display.textContent = data.percent_used + '% used \u00B7 ' + data.remaining_tokens + ' remaining';
+        display.className = 'agent-ctx-display available';
+      } else {
+        display.textContent = 'Context unavailable';
+        display.className = 'agent-ctx-display unavailable';
+      }
+    }).catch(function () {
+      if (display) {
+        display.textContent = 'Error checking context';
+        display.className = 'agent-ctx-display error';
+      }
+    });
+  }
+
+  function _shutdownAgent(agentId) {
+    if (!confirm('Shut down this agent?')) return;
+    VoiceAPI.shutdownAgent(agentId).then(function () {
+      _refreshAgents();
+    }).catch(function (err) {
+      alert('Shutdown failed: ' + (err.error || 'unknown error'));
+    });
+  }
+
+  function _createAgentForProject(projectName) {
+    VoiceAPI.createAgent(projectName).then(function (data) {
+      _refreshAgents();
+    }).catch(function (err) {
+      alert('Create failed: ' + (err.error || 'unknown error'));
+    });
   }
 
   // Auto-targeting (task 2.23)
@@ -298,6 +363,27 @@ window.VoiceApp = (function () {
     _chatAgentEnded = false;
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
+    var bannersEl = document.getElementById('attention-banners');
+    if (bannersEl) bannersEl.innerHTML = '';
+
+    // Fetch other agent states for attention banners
+    VoiceAPI.getSessions().then(function (data) {
+      var agents = data.agents || [];
+      _otherAgentStates = {};
+      for (var i = 0; i < agents.length; i++) {
+        var a = agents[i];
+        if (a.agent_id !== agentId) {
+          _otherAgentStates[a.agent_id] = {
+            hero_chars: a.hero_chars || '',
+            hero_trail: a.hero_trail || '',
+            task_instruction: a.task_instruction || '',
+            state: (a.state || '').toLowerCase(),
+            project_name: a.project || ''
+          };
+        }
+      }
+      _renderAttentionBanners();
+    }).catch(function () { /* ignore */ });
 
     VoiceAPI.getTranscript(agentId).then(function (data) {
       var nameEl = document.getElementById('chat-agent-name');
@@ -381,6 +467,54 @@ window.VoiceApp = (function () {
       if (inputArea) inputArea.style.display = '';
       if (endedBanner) endedBanner.style.display = 'none';
     }
+  }
+
+  function _renderAttentionBanners() {
+    var container = document.getElementById('attention-banners');
+    if (!container) return;
+
+    var bannerAgents = [];
+    var keys = Object.keys(_otherAgentStates);
+    for (var i = 0; i < keys.length; i++) {
+      var agentId = keys[i];
+      var info = _otherAgentStates[agentId];
+      if (info.state === 'awaiting_input') {
+        bannerAgents.push({ id: agentId, info: info });
+      }
+    }
+
+    if (bannerAgents.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    var html = '';
+    for (var j = 0; j < bannerAgents.length; j++) {
+      var ba = bannerAgents[j];
+      var text = ba.info.task_instruction || 'Needs input';
+      html += '<div class="attention-banner" data-agent-id="' + ba.id + '">'
+        + '<div class="attention-banner-hero">'
+        + '<span class="agent-hero">' + _esc(ba.info.hero_chars) + '</span>'
+        + '<span class="agent-hero-trail">' + _esc(ba.info.hero_trail) + '</span>'
+        + '</div>'
+        + '<div class="attention-banner-text">' + _esc(text) + '</div>'
+        + '<div class="attention-banner-arrow">&#8250;</div>'
+        + '</div>';
+    }
+    container.innerHTML = html;
+
+    var banners = container.querySelectorAll('.attention-banner');
+    for (var k = 0; k < banners.length; k++) {
+      banners[k].addEventListener('click', function () {
+        var id = parseInt(this.getAttribute('data-agent-id'), 10);
+        _navigateToAgentFromBanner(id);
+      });
+    }
+  }
+
+  function _navigateToAgentFromBanner(agentId) {
+    _navStack.push(_targetAgentId);
+    _showChatScreen(agentId);
   }
 
   function _renderTranscriptTurns(data) {
@@ -834,6 +968,40 @@ window.VoiceApp = (function () {
   }
 
   function _handleAgentUpdate(data) {
+    // Handle session_ended: remove from other agent states and re-render banners
+    if (data._type === 'session_ended') {
+      var endedId = data.agent_id || data.id;
+      if (endedId && _otherAgentStates[endedId]) {
+        delete _otherAgentStates[endedId];
+        if (_currentScreen === 'chat') _renderAttentionBanners();
+      }
+    }
+
+    // Update attention banners for non-target agents on chat screen
+    if (_currentScreen === 'chat') {
+      var agentId = data.agent_id || data.id;
+      if (agentId && parseInt(agentId, 10) !== parseInt(_targetAgentId, 10)) {
+        var newState = data.new_state || data.state;
+        if (newState && _otherAgentStates[agentId]) {
+          _otherAgentStates[agentId].state = newState.toLowerCase();
+          if (data.task_instruction) _otherAgentStates[agentId].task_instruction = data.task_instruction;
+          if (data.hero_chars) _otherAgentStates[agentId].hero_chars = data.hero_chars;
+          if (data.hero_trail) _otherAgentStates[agentId].hero_trail = data.hero_trail;
+          _renderAttentionBanners();
+        } else if (newState && !_otherAgentStates[agentId]) {
+          // New agent appeared via SSE — add it
+          _otherAgentStates[agentId] = {
+            hero_chars: data.hero_chars || '',
+            hero_trail: data.hero_trail || '',
+            task_instruction: data.task_instruction || '',
+            state: newState.toLowerCase(),
+            project_name: data.project || ''
+          };
+          _renderAttentionBanners();
+        }
+      }
+    }
+
     // Update chat screen if active
     _handleChatSSE(data);
 
@@ -896,6 +1064,24 @@ window.VoiceApp = (function () {
         if (!stored || stored.autoTarget === undefined) {
           _settings.autoTarget = data.settings.auto_target;
         }
+      }
+      // Sync attention banners when on chat screen
+      if (_currentScreen === 'chat' && _targetAgentId) {
+        var agents = data.agents || [];
+        _otherAgentStates = {};
+        for (var i = 0; i < agents.length; i++) {
+          var a = agents[i];
+          if (a.agent_id !== _targetAgentId) {
+            _otherAgentStates[a.agent_id] = {
+              hero_chars: a.hero_chars || '',
+              hero_trail: a.hero_trail || '',
+              task_instruction: a.task_instruction || '',
+              state: (a.state || '').toLowerCase(),
+              project_name: a.project || ''
+            };
+          }
+        }
+        _renderAttentionBanners();
       }
     }).catch(function () { /* ignore */ });
   }
@@ -1232,12 +1418,18 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Chat back button — always go to agent list
+    // Chat back button — pop nav stack or go to agent list
     var chatBackBtn = document.querySelector('.chat-back-btn');
     if (chatBackBtn) {
       chatBackBtn.addEventListener('click', function () {
-        _refreshAgents();
-        showScreen('agents');
+        if (_navStack.length > 0) {
+          var prevId = _navStack.pop();
+          _showChatScreen(prevId);
+        } else {
+          _otherAgentStates = {};
+          _refreshAgents();
+          showScreen('agents');
+        }
       });
     }
 
