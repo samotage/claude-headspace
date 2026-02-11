@@ -1,10 +1,13 @@
 """Configuration loader with YAML and environment variable support."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 # Default configuration values
@@ -247,9 +250,14 @@ def apply_env_overrides(config: dict) -> dict:
     for env_var, (section, key, converter) in ENV_MAPPINGS.items():
         value = os.environ.get(env_var)
         if value is not None:
+            try:
+                converted = converter(value)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid value for {env_var}={value!r}: {e}, skipping override")
+                continue
             if section not in result:
                 result[section] = {}
-            result[section][key] = converter(value)
+            result[section][key] = converted
 
     return result
 

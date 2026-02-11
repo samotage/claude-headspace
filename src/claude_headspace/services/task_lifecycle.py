@@ -332,6 +332,7 @@ class TaskLifecycleManager:
         agent: Agent,
         actor: TurnActor,
         text: Optional[str],
+        file_metadata: Optional[dict] = None,
     ) -> TurnProcessingResult:
         """
         Process a turn and update task state accordingly.
@@ -382,6 +383,7 @@ class TaskLifecycleManager:
                     actor=actor,
                     intent=intent_result.intent,
                     text=text or "",
+                    file_metadata=file_metadata,
                 )
                 self._session.add(turn)
                 self._session.flush()
@@ -447,6 +449,7 @@ class TaskLifecycleManager:
                 actor=actor,
                 intent=intent_result.intent,
                 text=text or "",
+                file_metadata=file_metadata,
             )
             self._session.add(turn)
             self._session.flush()

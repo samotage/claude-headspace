@@ -407,13 +407,14 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "message": f"User responded via dashboard",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        _task = agent.get_current_task()
         broadcaster.broadcast("turn_created", {
             "agent_id": agent.id,
             "project_id": agent.project_id,
             "text": response_text,
             "actor": "user",
             "intent": "answer",
-            "task_id": agent.get_current_task().id if agent.get_current_task() else None,
+            "task_id": _task.id if _task else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

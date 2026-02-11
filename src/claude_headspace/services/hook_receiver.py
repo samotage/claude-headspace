@@ -70,6 +70,12 @@ _transcript_positions: dict[int, int] = {}
 # Cleared on user_prompt_submit (new response cycle starts).
 _progress_texts_for_agent: dict[int, list[str]] = {}
 
+# Track file metadata for IDLE-state file uploads via voice bridge.
+# When a file is uploaded to an IDLE agent, the voice bridge sends via tmux
+# but can't create a Turn (no active task). The next user_prompt_submit hook
+# creates the COMMAND turn — this dict passes the file metadata to that turn.
+_file_metadata_pending_for_agent: dict[int, dict] = {}
+
 
 # --- Data types ---
 
@@ -164,6 +170,7 @@ def reset_receiver_state() -> None:
     _deferred_stop_pending.clear()
     _transcript_positions.clear()
     _progress_texts_for_agent.clear()
+    _file_metadata_pending_for_agent.clear()
 
 
 # --- Internal helpers ---
@@ -794,7 +801,11 @@ def process_user_prompt_submit(
         if current_task and current_task.state == TaskState.AWAITING_INPUT:
             _mark_question_answered(current_task)
 
-        result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=prompt_text)
+        pending_file_meta = _file_metadata_pending_for_agent.pop(agent.id, None)
+        result = lifecycle.process_turn(
+            agent=agent, actor=TurnActor.USER, text=prompt_text,
+            file_metadata=pending_file_meta,
+        )
 
         # Auto-transition COMMANDED → PROCESSING
         if result.success and result.task and result.task.state == TaskState.COMMANDED:

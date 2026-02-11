@@ -33,6 +33,7 @@ window.VoiceApp = (function () {
   var _navStack = [];           // Stack of agent IDs for back navigation
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
   var _pendingAttachment = null; // File object pending upload
+  var _pendingBlobUrl = null;    // Blob URL for image preview (revoke on clear)
 
   // File upload configuration (client-side validation)
   var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -1121,8 +1122,9 @@ window.VoiceApp = (function () {
     sizeEl.textContent = _formatFileSize(file.size);
 
     if (_isImageFile(file)) {
-      var url = URL.createObjectURL(file);
-      thumbEl.innerHTML = '<img src="' + url + '" alt="Preview">';
+      if (_pendingBlobUrl) URL.revokeObjectURL(_pendingBlobUrl);
+      _pendingBlobUrl = URL.createObjectURL(file);
+      thumbEl.innerHTML = '<img src="' + _pendingBlobUrl + '" alt="Preview">';
     } else {
       thumbEl.innerHTML = '<span class="file-icon">' + _getFileTypeIcon(file.name) + '</span>';
     }
@@ -1133,6 +1135,7 @@ window.VoiceApp = (function () {
 
   function _clearPendingAttachment() {
     _pendingAttachment = null;
+    if (_pendingBlobUrl) { URL.revokeObjectURL(_pendingBlobUrl); _pendingBlobUrl = null; }
     var previewEl = document.getElementById('chat-attachment-preview');
     var thumbEl = document.getElementById('attachment-thumb');
     if (previewEl) previewEl.style.display = 'none';

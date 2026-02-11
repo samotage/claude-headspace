@@ -102,7 +102,7 @@ def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
                     return True
 
         # Pane exists (we found it in tmux) but no claude in process tree
-        return False if children.get(pane_pid) else False
+        return False  # Pane exists but no claude process found in tree
     except Exception:
         return None
 

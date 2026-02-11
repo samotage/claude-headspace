@@ -5,7 +5,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, jsonify, request, send_from_directory
+from flask import Blueprint, current_app, jsonify, make_response, request, send_from_directory
 
 from ..database import db
 from ..models.agent import Agent
@@ -119,7 +119,9 @@ def serve_voice_app():
     """Serve the voice bridge PWA entry point."""
     static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
     static_dir = os.path.normpath(static_dir)
-    return send_from_directory(static_dir, "voice.html")
+    resp = make_response(send_from_directory(static_dir, "voice.html"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 def _is_local_or_lan(addr: str) -> bool:
@@ -429,10 +431,7 @@ def upload_file(agent_id: int):
     if not validation["valid"]:
         return _voice_error(validation["error"], "Check the file and try again.", 400)
 
-    # Save the file
-    file_metadata = file_upload.save_file(uploaded_file, uploaded_file.filename)
-
-    # Determine agent state
+    # Determine agent state BEFORE saving file to avoid orphaned files on rejection
     current_task = agent.get_current_task()
     current_state = current_task.state if current_task else None
     is_answering = current_state == TaskState.AWAITING_INPUT
@@ -445,6 +444,12 @@ def upload_file(agent_id: int):
             "Try again in a moment when the agent finishes processing.",
             409,
         )
+
+    # Save the file (only after state check passes)
+    file_metadata = file_upload.save_file(uploaded_file, uploaded_file.filename)
+
+    # Prepare DB-safe metadata (strip server filesystem path)
+    db_metadata = {k: v for k, v in file_metadata.items() if k != "server_path"}
 
     # Build message for tmux delivery
     abs_path = file_metadata["server_path"]
@@ -467,18 +472,26 @@ def upload_file(agent_id: int):
     )
 
     if not result.success:
+        # Clean up saved file since delivery failed
+        from pathlib import Path
+        Path(file_metadata["server_path"]).unlink(missing_ok=True)
         error_msg = result.error_message or "Send failed"
-        return jsonify({"error": f"File saved but delivery failed: {error_msg}"}), 502
+        return jsonify({"error": f"File delivery failed: {error_msg}"}), 502
 
     # Handle state transitions (same logic as voice_command)
     if is_idle:
+        # Store file metadata so the next user_prompt_submit hook can attach it
+        # to the COMMAND turn it creates (IDLE agents have no active task yet).
+        from ..services.hook_receiver import _file_metadata_pending_for_agent
+        _file_metadata_pending_for_agent[agent.id] = db_metadata
+
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
         broadcast_card_refresh(agent, "file_upload")
 
         latency_ms = int((time.time() - start_time) * 1000)
         return jsonify({
-            "file_metadata": file_metadata,
+            "file_metadata": db_metadata,
             "agent_id": agent.id,
             "new_state": "idle",
             "latency_ms": latency_ms,
@@ -502,7 +515,7 @@ def upload_file(agent_id: int):
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=display_text,
-            file_metadata=file_metadata,
+            file_metadata=db_metadata,
             answered_by_turn_id=answered_turn_id,
         )
         db.session.add(turn)
