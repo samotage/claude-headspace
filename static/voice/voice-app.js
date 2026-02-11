@@ -117,7 +117,7 @@ window.VoiceApp = (function () {
     } else {
       document.documentElement.setAttribute('data-theme', theme);
     }
-    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f0f2f5' };
+    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f4f3f1' };
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta && colors[theme]) meta.setAttribute('content', colors[theme]);
   }
@@ -958,6 +958,21 @@ window.VoiceApp = (function () {
           + '<div class="file-card-name">' + _esc(fm.original_filename || 'File') + '</div>'
           + '<div class="file-card-size">' + _formatFileSize(fm.file_size || 0) + '</div>'
           + '</div></a>';
+      }
+    }
+
+    // Plan content — render collapsible plan above question options
+    if (turn.intent === 'question') {
+      var toolInput = turn.tool_input || {};
+      if (toolInput.plan_content) {
+        html += '<div class="bubble-plan-content">';
+        html += '<details open>';
+        html += '<summary class="plan-toggle">Plan Details'
+          + (toolInput.plan_file_path ? ' <span class="plan-file-path">' + _esc(toolInput.plan_file_path.split('/').pop()) + '</span>' : '')
+          + '</summary>';
+        html += '<div class="plan-body">' + _renderMd(toolInput.plan_content) + '</div>';
+        html += '</details>';
+        html += '</div>';
       }
     }
 

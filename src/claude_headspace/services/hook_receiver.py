@@ -1065,6 +1065,12 @@ def _handle_awaiting_input(
             logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing task)")
             return HookEventResult(success=True, agent_id=agent.id)
 
+        # Flush any pending agent output from the transcript BEFORE creating
+        # the question turn. This captures text the agent printed (e.g. plan
+        # details, colour palette options, analysis) between the last tool
+        # completion and this interactive tool call.
+        _capture_progress_text(agent, current_task)
+
         # Build question text and create turn BEFORE state transition
         question_text = None
         question_turn = None
@@ -1102,7 +1108,7 @@ def _handle_awaiting_input(
                         ]
             elif event_type_enum == HookEventType.PERMISSION_REQUEST:
                 q_source_type = "permission_request"
-            # For ExitPlanMode, synthesize default approval options
+            # For ExitPlanMode, synthesize default approval options + attach plan content
             if structured_options is None and tool_name == "ExitPlanMode":
                 question_text = "Approve plan and proceed?"
                 structured_options = {
@@ -1115,6 +1121,11 @@ def _handle_awaiting_input(
                     }],
                     "source": "exit_plan_mode_default",
                 }
+                # Attach plan content so the voice chat can display it
+                if current_task.plan_content:
+                    structured_options["plan_content"] = current_task.plan_content
+                    if current_task.plan_file_path:
+                        structured_options["plan_file_path"] = current_task.plan_file_path
                 q_source_type = "ask_user_question"
                 q_options = [
                     {"label": "Yes", "description": "Approve the plan and begin implementation"},
