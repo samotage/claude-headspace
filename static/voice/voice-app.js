@@ -28,6 +28,7 @@ window.VoiceApp = (function () {
   var _chatAgentEnded = false;
   var _chatTranscriptSeq = 0;  // Sequence counter to discard stale transcript responses
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
+  var _isTrustedNetwork = _isLocalhost || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname);
   var _settingsReturnScreen = 'agents'; // track where settings was opened from
   var _navStack = [];           // Stack of agent IDs for back navigation
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
@@ -1750,17 +1751,10 @@ window.VoiceApp = (function () {
     var urlParams = new URLSearchParams(window.location.search);
     var paramAgentId = urlParams.get('agent_id');
 
-    // When agent_id param is present, use current origin as server
-    // (user navigated here intentionally from dashboard or LAN link)
-    if (paramAgentId && (!_settings.serverUrl || !_settings.token)) {
+    // Trusted network (localhost, LAN, Tailscale): skip setup, use current origin
+    if (_isTrustedNetwork && (!_settings.serverUrl || !_settings.token)) {
       _settings.serverUrl = window.location.origin;
-      _settings.token = 'lan';
-    }
-
-    // Localhost: skip setup, use current origin as server URL
-    if (_isLocalhost && (!_settings.serverUrl || !_settings.token)) {
-      _settings.serverUrl = window.location.origin;
-      _settings.token = 'localhost';
+      _settings.token = _isLocalhost ? 'localhost' : 'lan';
     }
 
     // Check if we have credentials

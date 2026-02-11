@@ -442,11 +442,13 @@
         try {
             const data = collectFormData();
 
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
             const response = await fetch('/api/config', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Confirm-Destructive': 'true',
+                    'X-CSRF-Token': csrfMeta ? csrfMeta.getAttribute('content') : '',
                 },
                 body: JSON.stringify(data),
             });
