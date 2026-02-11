@@ -525,26 +525,29 @@ def save_config_file(
     """
     path = Path(config_path)
 
+    # Resolve symlinks so we write to the actual file, not replace the symlink
+    resolved_path = path.resolve()
+
     try:
-        # Write to temporary file first
+        # Write to temporary file first (in the resolved file's directory)
         fd, temp_path = tempfile.mkstemp(
             suffix=".yaml",
             prefix="config_",
-            dir=path.parent,
+            dir=resolved_path.parent,
         )
 
         try:
             with os.fdopen(fd, "w") as f:
                 yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
 
-            # Atomic rename
-            os.replace(temp_path, path)
+            # Atomic rename to the resolved path (preserves symlinks)
+            os.replace(temp_path, resolved_path)
 
             # Restrict file permissions (config may contain passwords)
-            os.chmod(path, 0o600)
+            os.chmod(resolved_path, 0o600)
 
             # Log success without sensitive data
-            logger.info(f"Configuration saved to {path}")
+            logger.info(f"Configuration saved to {resolved_path}")
             return True, None
 
         except Exception as e:
