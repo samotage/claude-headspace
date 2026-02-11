@@ -42,6 +42,132 @@
     }
 
     /**
+     * Render a stacked multi-question form for AskUserQuestion with 2+ questions.
+     * Each question gets its own section with radio (single-select) or checkbox
+     * (multi-select) behavior. A submit button at the bottom is enabled when all
+     * questions are answered.
+     */
+    function _renderMultiQuestionForm(container, questions, agentId, colors) {
+        var form = document.createElement('div');
+        form.className = 'multi-question-form';
+
+        // Track selections: { questionIndex: int|null (single) or Set (multi) }
+        var selections = {};
+
+        questions.forEach(function(q, qIdx) {
+            var isMulti = q.multiSelect === true;
+            selections[qIdx] = isMulti ? new Set() : null;
+
+            var section = document.createElement('div');
+            section.className = 'question-section';
+
+            var header = document.createElement('div');
+            header.className = 'question-section-header';
+            header.textContent = (q.header ? q.header + ': ' : '') + (q.question || '');
+            section.appendChild(header);
+
+            var optionsWrap = document.createElement('div');
+            optionsWrap.className = 'question-section-options';
+
+            var opts = q.options || [];
+            opts.forEach(function(opt, optIdx) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'question-option ' + colors.btn;
+                btn.setAttribute('data-q-idx', qIdx);
+                btn.setAttribute('data-opt-idx', optIdx);
+
+                var label = document.createElement('span');
+                label.className = 'font-medium';
+                label.textContent = opt.label;
+                btn.appendChild(label);
+                if (opt.description) {
+                    var desc = document.createElement('span');
+                    desc.className = 'text-muted ml-2';
+                    desc.textContent = opt.description;
+                    btn.appendChild(desc);
+                }
+
+                btn.onclick = function() {
+                    if (isMulti) {
+                        // Checkbox behavior: toggle
+                        if (selections[qIdx].has(optIdx)) {
+                            selections[qIdx].delete(optIdx);
+                            btn.classList.remove('toggled');
+                        } else {
+                            selections[qIdx].add(optIdx);
+                            btn.classList.add('toggled');
+                        }
+                    } else {
+                        // Radio behavior: deselect siblings, select this
+                        var siblings = optionsWrap.querySelectorAll('.question-option');
+                        for (var s = 0; s < siblings.length; s++) {
+                            siblings[s].classList.remove('selected');
+                        }
+                        btn.classList.add('selected');
+                        selections[qIdx] = optIdx;
+                    }
+                    _updateSubmitButton(submitBtn, selections, questions);
+                };
+
+                optionsWrap.appendChild(btn);
+            });
+
+            section.appendChild(optionsWrap);
+            form.appendChild(section);
+        });
+
+        var submitBtn = document.createElement('button');
+        submitBtn.type = 'button';
+        submitBtn.className = 'multi-submit-btn';
+        submitBtn.textContent = 'Submit All';
+        submitBtn.disabled = true;
+
+        submitBtn.onclick = function() {
+            if (submitBtn.disabled) return;
+            // Build answers array
+            var answers = [];
+            for (var i = 0; i < questions.length; i++) {
+                var isMulti = questions[i].multiSelect === true;
+                if (isMulti) {
+                    answers.push({ option_indices: Array.from(selections[i]).sort() });
+                } else {
+                    answers.push({ option_index: selections[i] });
+                }
+            }
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending...';
+            global.RespondAPI.sendMultiSelect(agentId, answers);
+        };
+
+        form.appendChild(submitBtn);
+        container.appendChild(form);
+    }
+
+    /**
+     * Enable/disable the multi-question submit button based on whether
+     * all questions have at least one selection.
+     */
+    function _updateSubmitButton(btn, selections, questions) {
+        var allAnswered = true;
+        for (var i = 0; i < questions.length; i++) {
+            var isMulti = questions[i].multiSelect === true;
+            if (isMulti) {
+                if (!selections[i] || selections[i].size === 0) {
+                    allAnswered = false;
+                    break;
+                }
+            } else {
+                if (selections[i] === null || selections[i] === undefined) {
+                    allAnswered = false;
+                    break;
+                }
+            }
+        }
+        btn.disabled = !allAnswered;
+    }
+
+    /**
      * Initialize respond widgets on all visible agent cards.
      */
     function initRespondWidgets() {
@@ -112,15 +238,22 @@
 
             // Check for structured AskUserQuestion options
             var structuredOptions = null;
+            var allQuestions = null;
             if (questionOptions && questionOptions.questions &&
                 questionOptions.questions.length > 0) {
-                var q = questionOptions.questions[0];
+                allQuestions = questionOptions.questions;
+                var q = allQuestions[0];
                 if (q.options && q.options.length > 0) {
                     structuredOptions = q.options;
                 }
             }
 
-            if (structuredOptions) {
+            // Multi-question form (2+ questions with options)
+            if (allQuestions && allQuestions.length > 1) {
+                _renderMultiQuestionForm(optionsContainer, allQuestions, agentId, colors);
+                optionsContainer.style.display = '';
+                if (formContainer) formContainer.style.display = 'none';
+            } else if (structuredOptions) {
                 // Render structured option buttons
                 structuredOptions.forEach(function(opt, index) {
                     var btn = document.createElement('button');

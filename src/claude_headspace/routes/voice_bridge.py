@@ -460,14 +460,28 @@ def agent_question(agent_id: int):
         ti = question_turn.tool_input
         questions = ti.get("questions", [])
         if questions and isinstance(questions, list):
-            opts = questions[0].get("options", []) if questions else []
-            if opts:
-                q_options = [
-                    {"label": o.get("label", ""), "description": o.get("description", "")}
-                    for o in opts if isinstance(o, dict)
-                ]
+            if len(questions) > 1:
+                # Multi-question: return full structure array
+                q_options = [{
+                    "question": qq.get("question", ""),
+                    "header": qq.get("header", ""),
+                    "multiSelect": qq.get("multiSelect", False),
+                    "options": [
+                        {"label": o.get("label", ""), "description": o.get("description", "")}
+                        for o in qq.get("options", []) if isinstance(o, dict)
+                    ],
+                } for qq in questions if isinstance(qq, dict)]
                 if not q_source or q_source == "unknown":
                     q_source = "ask_user_question"
+            else:
+                opts = questions[0].get("options", []) if questions else []
+                if opts:
+                    q_options = [
+                        {"label": o.get("label", ""), "description": o.get("description", "")}
+                        for o in opts if isinstance(o, dict)
+                    ]
+                    if not q_source or q_source == "unknown":
+                        q_source = "ask_user_question"
 
     agent_data = {
         "project": agent.project.name if agent.project else "unknown",

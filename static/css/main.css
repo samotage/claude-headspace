@@ -1833,6 +1833,10 @@ select.form-well {
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
 }
 
+.no-underline {
+  text-decoration-line: none;
+}
+
 .opacity-0 {
   opacity: 0;
 }
@@ -3209,6 +3213,82 @@ body::after {
   color: var(--red);
 }
 
+/* Multi-question form — stacked sections for AskUserQuestion with 2+ questions */
+
+.multi-question-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.question-section {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.question-section-header {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.question-section-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.question-option {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.question-option.selected {
+  border-color: var(--cyan) !important;
+  background: rgba(34, 211, 238, 0.15) !important;
+  color: var(--cyan);
+}
+
+.question-option.toggled {
+  border-color: var(--green) !important;
+  background: rgba(63, 185, 80, 0.15) !important;
+  color: var(--green);
+}
+
+.multi-submit-btn {
+  margin-top: 4px;
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid var(--cyan);
+  background: rgba(34, 211, 238, 0.15);
+  color: var(--cyan);
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.multi-submit-btn:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.25);
+}
+
+.multi-submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
 /*
  * Tailwind safelist — ensure safety-level color utilities survive purging.
  * These classes are applied dynamically by respond-init.js and must exist
@@ -3378,6 +3458,10 @@ body::after {
 
 .hover\:bg-amber\/90:hover {
   background-color: rgb(224 176 115 / 0.9);
+}
+
+.hover\:bg-blue\/30:hover {
+  background-color: rgb(115 153 224 / 0.3);
 }
 
 .hover\:bg-cyan\/10:hover {

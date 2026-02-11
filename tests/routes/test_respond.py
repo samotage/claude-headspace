@@ -575,6 +575,235 @@ class TestOtherMode:
         assert data["error_type"] == "missing_text"
 
 
+class TestMultiSelectMode:
+    """Tests for POST /api/respond/<agent_id> with mode=multi_select."""
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_two_single_select_answers(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Two single-select answers produce correct key sequence."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
+
+        response = client.post(
+            "/api/respond/1",
+            json={
+                "mode": "multi_select",
+                "answers": [
+                    {"option_index": 1},
+                    {"option_index": 0},
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["mode"] == "multi_select"
+
+        # Q1: Down, Enter; Q2: Enter; Submit: Enter
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Down", "Enter", "Enter", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_mixed_single_and_multi_select(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Mixed single + multi-select answers produce correct key sequence."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
+
+        response = client.post(
+            "/api/respond/1",
+            json={
+                "mode": "multi_select",
+                "answers": [
+                    {"option_index": 2},
+                    {"option_indices": [0, 2]},
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        # Q1: Down, Down, Enter; Q2: Space (idx 0), Down, Down, Space (idx 2), Enter; Submit: Enter
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Down", "Down", "Enter", "Space", "Down", "Down", "Space", "Enter", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_option_index_0_no_down_keys(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Option index 0 produces no Down keys."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        response = client.post(
+            "/api/respond/1",
+            json={
+                "mode": "multi_select",
+                "answers": [{"option_index": 0}],
+            },
+        )
+
+        assert response.status_code == 200
+        # Q1: Enter; Submit: Enter
+        mock_bridge.send_keys.assert_called_once_with(
+            "%5", "Enter", "Enter",
+            timeout=5, sequential_delay_ms=150,
+        )
+
+    def test_empty_answers_returns_400(self, client, mock_db, mock_agent):
+        """Empty answers array returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "multi_select", "answers": []},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_answers"
+
+    def test_missing_answers_returns_400(self, client, mock_db, mock_agent):
+        """Missing answers key returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "multi_select"},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_answers"
+
+    def test_invalid_answer_shape_returns_400(self, client, mock_db, mock_agent):
+        """Answer without option_index or option_indices returns 400."""
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post(
+            "/api/respond/1",
+            json={"mode": "multi_select", "answers": [{"bad": "shape"}]},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["error_type"] == "invalid_answers"
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_creates_turn_with_descriptive_text(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Multi-select creates a turn with descriptive summary text."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        client.post(
+            "/api/respond/1",
+            json={
+                "mode": "multi_select",
+                "answers": [
+                    {"option_index": 1},
+                    {"option_indices": [0, 2]},
+                ],
+            },
+        )
+
+        mock_db.session.add.assert_called_once()
+        turn = mock_db.session.add.call_args[0][0]
+        assert "multi-select" in turn.text
+        assert "Q1: option 1" in turn.text
+        assert "Q2: options [0, 2]" in turn.text
+
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_tmux_failure(self, mock_bridge, client, mock_db, mock_agent):
+        """tmux failure in multi_select mode returns error."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+            error_message="Pane not found",
+            latency_ms=5,
+        )
+
+        response = client.post(
+            "/api/respond/1",
+            json={
+                "mode": "multi_select",
+                "answers": [{"option_index": 0}],
+            },
+        )
+
+        assert response.status_code == 503
+
+
+class TestBuildMultiSelectKeys:
+    """Unit tests for _build_multi_select_keys helper."""
+
+    def test_single_question_index_0(self):
+        """Single question, option 0: just Enter + Submit Enter."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([{"option_index": 0}])
+        assert keys == ["Enter", "Enter"]
+
+    def test_single_question_index_3(self):
+        """Single question, option 3: Down×3 + Enter + Submit Enter."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([{"option_index": 3}])
+        assert keys == ["Down", "Down", "Down", "Enter", "Enter"]
+
+    def test_two_single_selects(self):
+        """Two single-select: Down+Enter each, then Submit Enter."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([
+            {"option_index": 1},
+            {"option_index": 0},
+        ])
+        assert keys == ["Down", "Enter", "Enter", "Enter"]
+
+    def test_multi_select_indices(self):
+        """Multi-select with option_indices: Space toggles."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([{"option_indices": [0, 2]}])
+        # idx 0: Space, then Down×2 to idx 2: Space, Enter, Submit Enter
+        assert keys == ["Space", "Down", "Down", "Space", "Enter", "Enter"]
+
+    def test_mixed_single_and_multi(self):
+        """Mixed single + multi-select answers."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([
+            {"option_index": 2},
+            {"option_indices": [0, 2]},
+        ])
+        expected = [
+            "Down", "Down", "Enter",         # Q1: select option 2
+            "Space", "Down", "Down", "Space", "Enter",  # Q2: toggle 0 and 2
+            "Enter",                           # Submit
+        ]
+        assert keys == expected
+
+    def test_multi_select_unsorted_indices_get_sorted(self):
+        """option_indices are sorted before processing."""
+        from src.claude_headspace.routes.respond import _build_multi_select_keys
+        keys = _build_multi_select_keys([{"option_indices": [3, 1]}])
+        # Sorted: [1, 3] -> Down, Space (idx 1), Down×2, Space (idx 3), Enter, Submit Enter
+        assert keys == ["Down", "Space", "Down", "Down", "Space", "Enter", "Enter"]
+
+
 class TestInvalidMode:
     """Tests for POST /api/respond/<agent_id> with invalid mode."""
 

@@ -781,16 +781,31 @@ window.VoiceApp = (function () {
     if (turn.intent === 'question') {
       var opts = turn.question_options;
       var toolInput = turn.tool_input || {};
+      var allQuestions = null;
       if (!opts && toolInput.questions) {
         var questions = toolInput.questions;
-        if (questions && questions.length > 0 && questions[0].options) {
+        if (questions && questions.length > 1) {
+          // Multi-question: check if first element has 'options' (full question objects)
+          if (questions[0].options) {
+            allQuestions = questions;
+          }
+        } else if (questions && questions.length > 0 && questions[0].options) {
           opts = questions[0].options;
         }
+      }
+      // Also check if q_options itself is multi-question format
+      if (!allQuestions && opts && opts.length > 0 && opts[0].options) {
+        allQuestions = opts;
+        opts = null;
       }
       // Extract safety for color-coding option buttons
       var bubbleSafety = toolInput.safety || '';
       var safetyClass = bubbleSafety ? ' safety-' + _esc(bubbleSafety) : '';
-      if (opts && opts.length > 0) {
+
+      if (allQuestions && allQuestions.length > 1) {
+        // Multi-question bubble
+        html += _renderMultiQuestionBubble(allQuestions, safetyClass, turn);
+      } else if (opts && opts.length > 0) {
         html += '<div class="bubble-options">';
         for (var i = 0; i < opts.length; i++) {
           var opt = opts[i];
@@ -806,15 +821,131 @@ window.VoiceApp = (function () {
     bubble.innerHTML = html;
 
     // Bind option button clicks
-    var optBtns = bubble.querySelectorAll('.bubble-option-btn');
-    for (var j = 0; j < optBtns.length; j++) {
-      optBtns[j].addEventListener('click', function () {
-        _sendChatCommand(this.getAttribute('data-label'));
-      });
+    var multiContainer = bubble.querySelector('.bubble-multi-question');
+    if (multiContainer) {
+      _bindMultiQuestionBubble(multiContainer, bubble);
+    } else {
+      var optBtns = bubble.querySelectorAll('.bubble-option-btn');
+      for (var j = 0; j < optBtns.length; j++) {
+        optBtns[j].addEventListener('click', function () {
+          _sendChatCommand(this.getAttribute('data-label'));
+        });
+      }
     }
 
     frag.appendChild(bubble);
     return frag;
+  }
+
+  function _renderMultiQuestionBubble(questions, safetyClass, turn) {
+    var html = '<div class="bubble-multi-question">';
+    for (var qi = 0; qi < questions.length; qi++) {
+      var q = questions[qi];
+      var isMulti = q.multiSelect === true;
+      html += '<div class="bubble-question-section" data-q-idx="' + qi + '" data-multi="' + (isMulti ? '1' : '0') + '">';
+      html += '<div class="bubble-question-header">' + _esc(q.header ? q.header + ': ' : '') + _esc(q.question || '') + '</div>';
+      var qOpts = q.options || [];
+      for (var oi = 0; oi < qOpts.length; oi++) {
+        html += '<button class="bubble-option-btn' + safetyClass + '" data-q-idx="' + qi + '" data-opt-idx="' + oi + '">'
+          + _esc(qOpts[oi].label)
+          + (qOpts[oi].description ? '<div class="bubble-option-desc">' + _esc(qOpts[oi].description) + '</div>' : '')
+          + '</button>';
+      }
+      html += '</div>';
+    }
+    html += '<button class="bubble-multi-submit" disabled>Submit All</button>';
+    html += '</div>';
+    return html;
+  }
+
+  function _bindMultiQuestionBubble(container, bubble) {
+    var sections = container.querySelectorAll('.bubble-question-section');
+    var selections = {};
+    sections.forEach(function(sec) {
+      var qi = parseInt(sec.getAttribute('data-q-idx'), 10);
+      var isMulti = sec.getAttribute('data-multi') === '1';
+      selections[qi] = isMulti ? new Set() : null;
+    });
+
+    var submitBtn = container.querySelector('.bubble-multi-submit');
+    var questionCount = sections.length;
+
+    container.querySelectorAll('.bubble-option-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (container.classList.contains('answered')) return;
+        var qi = parseInt(btn.getAttribute('data-q-idx'), 10);
+        var oi = parseInt(btn.getAttribute('data-opt-idx'), 10);
+        var sec = container.querySelector('[data-q-idx="' + qi + '"].bubble-question-section');
+        var isMulti = sec && sec.getAttribute('data-multi') === '1';
+
+        if (isMulti) {
+          if (selections[qi].has(oi)) {
+            selections[qi].delete(oi);
+            btn.classList.remove('bubble-option-selected');
+          } else {
+            selections[qi].add(oi);
+            btn.classList.add('bubble-option-selected');
+          }
+        } else {
+          // Radio: deselect siblings
+          sec.querySelectorAll('.bubble-option-btn').forEach(function(s) {
+            s.classList.remove('bubble-option-selected');
+          });
+          btn.classList.add('bubble-option-selected');
+          selections[qi] = oi;
+        }
+
+        // Update submit button
+        var allAnswered = true;
+        for (var i = 0; i < questionCount; i++) {
+          var m = container.querySelector('[data-q-idx="' + i + '"].bubble-question-section');
+          var im = m && m.getAttribute('data-multi') === '1';
+          if (im) {
+            if (!selections[i] || selections[i].size === 0) { allAnswered = false; break; }
+          } else {
+            if (selections[i] === null || selections[i] === undefined) { allAnswered = false; break; }
+          }
+        }
+        submitBtn.disabled = !allAnswered;
+      });
+    });
+
+    submitBtn.addEventListener('click', function() {
+      if (submitBtn.disabled || container.classList.contains('answered')) return;
+      // Build answers
+      var answers = [];
+      for (var i = 0; i < questionCount; i++) {
+        var sec = container.querySelector('[data-q-idx="' + i + '"].bubble-question-section');
+        var isMulti = sec && sec.getAttribute('data-multi') === '1';
+        if (isMulti) {
+          answers.push({ option_indices: Array.from(selections[i]).sort() });
+        } else {
+          answers.push({ option_index: selections[i] });
+        }
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+
+      fetch('/api/respond/' + _targetAgentId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'multi_select', answers: answers })
+      }).then(function(resp) {
+        return resp.json();
+      }).then(function(data) {
+        if (data.status === 'ok') {
+          container.classList.add('answered');
+          container.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
+          submitBtn.textContent = 'Submitted';
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit All';
+        }
+      }).catch(function() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit All';
+      });
+    });
   }
 
   function _formatChatTime(isoStr) {

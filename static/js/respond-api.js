@@ -146,6 +146,38 @@
         },
 
         /**
+         * Send multi-select answers for a multi-tab AskUserQuestion
+         * @param {number} agentId - The agent ID
+         * @param {Array} answers - Array of {option_index: int} or {option_indices: [int]}
+         * @returns {Promise<boolean>} True if sent successfully
+         */
+        sendMultiSelect: async function(agentId, answers) {
+            if (!agentId || !answers || !answers.length) return false;
+
+            try {
+                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'multi_select', answers: answers })
+                });
+                var data = await response.json();
+                if (response.ok && data.status === 'ok') {
+                    this._showSuccessFeedback(agentId);
+                    return true;
+                } else {
+                    this._handleError(data, agentId);
+                    return false;
+                }
+            } catch (error) {
+                console.error('RespondAPI: Multi-select request failed', error);
+                if (global.Toast) {
+                    global.Toast.error('Could not send selections', 'Network error');
+                }
+                return false;
+            }
+        },
+
+        /**
          * Select "Other" and type custom text
          * @param {number} agentId - The agent ID
          * @param {string} text - Custom text to type

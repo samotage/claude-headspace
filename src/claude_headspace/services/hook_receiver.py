@@ -332,6 +332,14 @@ def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> st
     if tool_input and isinstance(tool_input, dict):
         questions = tool_input.get("questions")
         if questions and isinstance(questions, list) and len(questions) > 0:
+            # Multi-question: join all question texts
+            if len(questions) > 1:
+                texts = []
+                for q in questions:
+                    if isinstance(q, dict) and q.get("question"):
+                        texts.append(q["question"])
+                if texts:
+                    return " | ".join(texts)
             q = questions[0]
             if isinstance(q, dict) and q.get("question"):
                 return q["question"]
@@ -1055,7 +1063,18 @@ def _handle_awaiting_input(
                 q_source_type = "ask_user_question"
                 # Extract normalized options for voice bridge
                 questions = structured_options.get("questions", [])
-                if questions and isinstance(questions, list):
+                if questions and isinstance(questions, list) and len(questions) > 1:
+                    # Multi-question: store full structure array for rendering
+                    q_options = [{
+                        "question": qq.get("question", ""),
+                        "header": qq.get("header", ""),
+                        "multiSelect": qq.get("multiSelect", False),
+                        "options": [
+                            {"label": o.get("label", ""), "description": o.get("description", "")}
+                            for o in qq.get("options", []) if isinstance(o, dict)
+                        ],
+                    } for qq in questions if isinstance(qq, dict)]
+                elif questions and isinstance(questions, list):
                     q = questions[0] if questions else {}
                     opts = q.get("options", [])
                     if opts:
