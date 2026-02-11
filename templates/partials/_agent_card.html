@@ -40,7 +40,7 @@
              title="Click to focus this agent's iTerm window"
              onclick="window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }})"
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }});}">
-          <span class="state-label">{{ agent.state_info.label }}</span>
+          <span class="state-label">{{ agent.state_info.label }}{% if agent.state_name == 'AWAITING_INPUT' and agent.question_options and agent.question_options.safety is defined %} · <span class="safety-hint safety-hint-{{ agent.question_options.safety }}">{% if agent.question_options.safety == 'safe_read' %}read{% elif agent.question_options.safety == 'destructive' %}destructive{% elif agent.question_options.safety == 'safe_write' %}write{% else %}write{% endif %}</span>{% endif %}</span>
         </div>
       </div>
     </div>
@@ -83,18 +83,22 @@
   </div>
   <!-- 05: Respond widget (AWAITING_INPUT only, hidden until commander availability confirmed) -->
   {% if agent.state_name == 'AWAITING_INPUT' %}
+  {% set safety = agent.question_options.safety if agent.question_options and agent.question_options.safety is defined else '' %}
   <div class="respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5"
        data-agent-id="{{ agent.id }}"
+       data-safety="{{ safety }}"
        data-question-text="{{ agent.task_summary|e }}"
        {% if agent.question_options %}data-question-options='{{ agent.question_options|tojson }}'{% endif %}
        style="display:none;">
     <div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>
-    <form class="respond-form flex gap-2"
+    <form class="respond-form flex items-start gap-2"
           onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, {{ agent.id }}); return false;">
-      <input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"
-             placeholder="Type a response..."
-             autocomplete="off">
-      <button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">
+      <textarea class="respond-text-input form-well flex-1 px-2 py-1 text-sm"
+                placeholder="Type a response..."
+                autocomplete="off"
+                rows="1"
+                style="resize:none;overflow:hidden;min-height:1.75rem;max-height:10rem;"></textarea>
+      <button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded border transition-colors bg-amber/20 text-amber border-amber/30 hover:bg-amber/30">
         Send
       </button>
     </form>

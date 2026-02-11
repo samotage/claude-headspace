@@ -1390,9 +1390,17 @@ select.form-well {
   border-color: rgb(115 224 160 / 0.3);
 }
 
+.border-green\/40 {
+  border-color: rgb(115 224 160 / 0.4);
+}
+
 .border-red {
   --tw-border-opacity: 1;
   border-color: rgb(224 115 115 / var(--tw-border-opacity, 1));
+}
+
+.border-red\/20 {
+  border-color: rgb(224 115 115 / 0.2);
 }
 
 .border-red\/30 {
@@ -1477,12 +1485,20 @@ select.form-well {
   background-color: rgb(115 224 160 / var(--tw-bg-opacity, 1));
 }
 
+.bg-green\/10 {
+  background-color: rgb(115 224 160 / 0.1);
+}
+
 .bg-green\/15 {
   background-color: rgb(115 224 160 / 0.15);
 }
 
 .bg-green\/20 {
   background-color: rgb(115 224 160 / 0.2);
+}
+
+.bg-green\/5 {
+  background-color: rgb(115 224 160 / 0.05);
 }
 
 .bg-muted\/20 {
@@ -1505,6 +1521,10 @@ select.form-well {
 
 .bg-red\/20 {
   background-color: rgb(224 115 115 / 0.2);
+}
+
+.bg-red\/5 {
+  background-color: rgb(224 115 115 / 0.05);
 }
 
 .bg-surface {
@@ -3164,6 +3184,38 @@ body::after {
   color: var(--text-muted);
 }
 
+/* Safety hint in state strip — color-coded safety level indicator */
+
+.safety-hint {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.safety-hint-safe_read {
+  color: var(--green);
+}
+
+.safety-hint-safe_write,
+.safety-hint-unknown {
+  color: var(--amber);
+}
+
+.safety-hint-destructive {
+  color: var(--red);
+}
+
+/*
+ * Tailwind safelist — ensure safety-level color utilities survive purging.
+ * These classes are applied dynamically by respond-init.js and must exist
+ * in the compiled output even though they don't appear in template HTML.
+ *
+ * border-green/20 bg-green/5 border-green/40 text-green bg-green/10 hover:bg-green/20
+ * bg-green/20 border-green/30 hover:bg-green/30
+ * border-red/20 bg-red/5 border-red/40 text-red bg-red/10 hover:bg-red/20
+ * bg-red/20 border-red/30 hover:bg-red/30
+ */
+
 /* iOS smooth scrolling for overflow containers */
 
 .overflow-x-auto,
@@ -3321,6 +3373,14 @@ body::after {
 
 .hover\:bg-green\/10:hover {
   background-color: rgb(115 224 160 / 0.1);
+}
+
+.hover\:bg-green\/20:hover {
+  background-color: rgb(115 224 160 / 0.2);
+}
+
+.hover\:bg-green\/30:hover {
+  background-color: rgb(115 224 160 / 0.3);
 }
 
 .hover\:bg-hover:hover {

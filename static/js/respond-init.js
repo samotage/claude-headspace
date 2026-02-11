@@ -12,6 +12,36 @@
     var AVAILABILITY_ENDPOINT = '/api/respond';
 
     /**
+     * Map safety classification to color scheme classes.
+     * Safety comes from classify_safety() in permission_summarizer.py.
+     */
+    function getSafetyColors(safety) {
+        switch (safety) {
+            case 'safe_read':
+                return {
+                    btn: 'border-green/40 text-green bg-green/10 hover:bg-green/20',
+                    container: 'border-green/20 bg-green/5',
+                    send: 'bg-green/20 text-green border-green/30 hover:bg-green/30',
+                    label: 'read'
+                };
+            case 'destructive':
+                return {
+                    btn: 'border-red/40 text-red bg-red/10 hover:bg-red/20',
+                    container: 'border-red/20 bg-red/5',
+                    send: 'bg-red/20 text-red border-red/30 hover:bg-red/30',
+                    label: 'destructive'
+                };
+            default:  // safe_write, unknown, missing
+                return {
+                    btn: 'border-amber/40 text-amber bg-amber/10 hover:bg-amber/20',
+                    container: 'border-amber/20 bg-amber/5',
+                    send: 'bg-amber/20 text-amber border-amber/30 hover:bg-amber/30',
+                    label: 'write'
+                };
+        }
+    }
+
+    /**
      * Initialize respond widgets on all visible agent cards.
      */
     function initRespondWidgets() {
@@ -57,8 +87,25 @@
             try { questionOptions = JSON.parse(questionOptionsRaw); } catch(e) { /* ignore */ }
         }
 
+        // Extract safety classification and compute color scheme
+        var safety = (questionOptions && questionOptions.safety) || 'unknown';
+        var colors = getSafetyColors(safety);
+
+        // Apply safety colors to the widget container (border-top + background)
+        widget.className = widget.className
+            .replace(/border-(?:amber|green|red)\/20/g, '')
+            .replace(/bg-(?:amber|green|red)\/5/g, '')
+            .trim();
+        widget.classList.add.apply(widget.classList, colors.container.split(' '));
+
         var optionsContainer = widget.querySelector('.respond-options');
         var formContainer = widget.querySelector('.respond-form');
+
+        // Apply safety colors to the Send button
+        var sendBtn = widget.querySelector('.respond-send-btn');
+        if (sendBtn) {
+            sendBtn.className = 'respond-send-btn px-3 py-1 text-xs font-medium rounded border transition-colors ' + colors.send;
+        }
 
         if (optionsContainer && global.RespondAPI) {
             optionsContainer.innerHTML = '';
@@ -78,7 +125,7 @@
                 structuredOptions.forEach(function(opt, index) {
                     var btn = document.createElement('button');
                     btn.type = 'button';
-                    btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                    btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border transition-colors ' + colors.btn;
                     var label = document.createElement('span');
                     label.className = 'font-medium';
                     label.textContent = opt.label;
@@ -121,9 +168,14 @@
                         var val = input.value.trim();
                         input.value = '';
                         input.disabled = true;
+                        input.style.height = 'auto';
                         global.RespondAPI.sendOther(agentId, val).then(function(success) {
                             input.disabled = false;
-                            if (!success) input.value = val;
+                            if (!success) {
+                                input.value = val;
+                                input.style.height = 'auto';
+                                input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+                            }
                             input.focus();
                         });
                     };
@@ -140,7 +192,7 @@
                      {label: 'No', desc: 'Deny this action', idx: 1}].forEach(function(opt) {
                         var btn = document.createElement('button');
                         btn.type = 'button';
-                        btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                        btn.className = 'respond-option-btn w-full text-left px-3 py-2 text-xs rounded border transition-colors ' + colors.btn;
                         var label = document.createElement('span');
                         label.className = 'font-medium';
                         label.textContent = opt.label;
@@ -163,7 +215,7 @@
                         options.forEach(function(opt) {
                             var btn = document.createElement('button');
                             btn.type = 'button';
-                            btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border border-amber/40 text-amber bg-amber/10 hover:bg-amber/20 transition-colors';
+                            btn.className = 'respond-option-btn px-3 py-1 text-xs font-medium rounded border transition-colors ' + colors.btn;
                             btn.textContent = opt.number + '. ' + opt.label;
                             btn.onclick = function() {
                                 global.RespondAPI.sendOption(agentId, opt.number);
@@ -178,6 +230,12 @@
                     if (formContainer) formContainer.style.display = '';
                 }
             }
+        }
+
+        // Initialize textarea auto-resize
+        var textarea = widget.querySelector('.respond-text-input');
+        if (textarea && global.RespondAPI) {
+            global.RespondAPI.initTextarea(textarea, agentId);
         }
 
         // Show the widget

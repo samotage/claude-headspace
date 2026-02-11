@@ -11,6 +11,7 @@ window.VoiceAPI = (function () {
   let _connectionState = 'disconnected'; // connected | reconnecting | disconnected
   let _onConnectionChange = null;
   let _onAgentUpdate = null;
+  let _onTurnCreated = null;
 
   function init(baseUrl, token) {
     _baseUrl = baseUrl.replace(/\/+$/, '');
@@ -37,6 +38,7 @@ window.VoiceAPI = (function () {
   function getConnectionState() { return _connectionState; }
   function onConnectionChange(fn) { _onConnectionChange = fn; }
   function onAgentUpdate(fn) { _onAgentUpdate = fn; }
+  function onTurnCreated(fn) { _onTurnCreated = fn; }
 
   // --- HTTP helpers ---
 
@@ -114,6 +116,13 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('turn_created', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onTurnCreated) _onTurnCreated(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;
@@ -151,6 +160,7 @@ window.VoiceAPI = (function () {
     getConnectionState: getConnectionState,
     onConnectionChange: onConnectionChange,
     onAgentUpdate: onAgentUpdate,
+    onTurnCreated: onTurnCreated,
     getSessions: getSessions,
     sendCommand: sendCommand,
     getOutput: getOutput,

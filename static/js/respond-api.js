@@ -38,6 +38,34 @@
     }
 
     /**
+     * Auto-resize a textarea to fit its content.
+     */
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
+    }
+
+    /**
+     * Attach auto-resize and Enter-to-submit behaviour to a respond textarea.
+     */
+    function initTextarea(textarea, agentId) {
+        if (!textarea || textarea._respondInitDone) return;
+        textarea._respondInitDone = true;
+
+        textarea.addEventListener('input', function() {
+            autoResizeTextarea(textarea);
+        });
+
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                var form = textarea.closest('form');
+                if (form) form.requestSubmit();
+            }
+        });
+    }
+
+    /**
      * Respond API client
      */
     var RespondAPI = {
@@ -171,11 +199,13 @@
             var text = input.value.trim();
             input.value = '';
             input.disabled = true;
+            autoResizeTextarea(input);
 
             this.sendResponse(agentId, text).then(function(success) {
                 input.disabled = false;
                 if (!success) {
                     input.value = text; // Restore text on failure
+                    autoResizeTextarea(input);
                 }
                 input.focus();
             });
@@ -247,7 +277,12 @@
         /**
          * Parse options from question text (exposed for template use)
          */
-        parseOptions: parseOptions
+        parseOptions: parseOptions,
+
+        /**
+         * Initialize a respond textarea with auto-resize and Enter-to-submit.
+         */
+        initTextarea: initTextarea
     };
 
     // Export

@@ -11,7 +11,8 @@ window.VoiceApp = (function () {
     autoTarget: false,
     ttsEnabled: true,
     cuesEnabled: true,
-    verbosity: 'normal'
+    verbosity: 'normal',
+    fontSize: 15
   };
 
   var _settings = {};
@@ -19,12 +20,14 @@ window.VoiceApp = (function () {
   var _targetAgentId = null;
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat | settings
   var _chatRenderedTurnIds = new Set();
+  var _chatPendingUserTexts = new Set(); // texts sent from chat, awaiting real turn
   var _chatAgentState = null;
   var _chatHasMore = false;
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
+  var _settingsReturnScreen = 'agents'; // track where settings was opened from
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
 
@@ -43,7 +46,8 @@ window.VoiceApp = (function () {
       autoTarget: s.autoTarget !== undefined ? s.autoTarget : DEFAULTS.autoTarget,
       ttsEnabled: s.ttsEnabled !== undefined ? s.ttsEnabled : DEFAULTS.ttsEnabled,
       cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
-      verbosity: s.verbosity || DEFAULTS.verbosity
+      verbosity: s.verbosity || DEFAULTS.verbosity,
+      fontSize: s.fontSize || DEFAULTS.fontSize
     };
 
     // Apply to modules
@@ -51,6 +55,7 @@ window.VoiceApp = (function () {
     VoiceInput.setDoneWords([_settings.doneWord]);
     VoiceOutput.setTTSEnabled(_settings.ttsEnabled);
     VoiceOutput.setCuesEnabled(_settings.cuesEnabled);
+    _applyFontSize();
   }
 
   function saveSettings() {
@@ -71,6 +76,10 @@ window.VoiceApp = (function () {
     saveSettings();
   }
 
+  function _applyFontSize() {
+    document.documentElement.style.setProperty('--chat-font-size', _settings.fontSize + 'px');
+  }
+
   // --- Screen management ---
 
   function showScreen(name) {
@@ -84,6 +93,17 @@ window.VoiceApp = (function () {
 
   function getCurrentScreen() { return _currentScreen; }
 
+  function _returnFromSettings() {
+    var target = _settingsReturnScreen || 'agents';
+    if (target === 'chat') {
+      showScreen('chat');
+      _scrollChatToBottom();
+    } else {
+      _refreshAgents();
+      showScreen('agents');
+    }
+  }
+
   // --- Agent list (tasks 2.20, 2.23, 2.24) ---
 
   function _renderAgentList(agents) {
@@ -96,22 +116,74 @@ window.VoiceApp = (function () {
       return;
     }
 
-    var html = '';
+    // Group agents by project
+    var projectGroups = {};
+    var projectOrder = [];
     for (var i = 0; i < _agents.length; i++) {
-      var a = _agents[i];
-      var stateClass = 'state-' + a.state;
-      var needsInput = a.awaiting_input ? '<span class="needs-input">Needs Input</span>' : '';
-      html += '<div class="agent-card ' + stateClass + '" data-agent-id="' + a.agent_id + '">'
-        + '<div class="agent-header">'
-        + '<span class="agent-project">' + _esc(a.project) + '</span>'
-        + '<span class="agent-state ' + stateClass + '">' + _esc(a.state) + '</span>'
-        + '</div>'
-        + '<div class="agent-body">'
-        + (a.summary ? '<div class="agent-summary">' + _esc(a.summary) + '</div>' : '')
-        + needsInput
-        + '<div class="agent-ago">' + _esc(a.last_activity_ago) + '</div>'
-        + '</div>'
-        + '</div>';
+      var proj = _agents[i].project || 'unknown';
+      if (!projectGroups[proj]) {
+        projectGroups[proj] = [];
+        projectOrder.push(proj);
+      }
+      projectGroups[proj].push(_agents[i]);
+    }
+
+    var html = '';
+    for (var p = 0; p < projectOrder.length; p++) {
+      var projName = projectOrder[p];
+      var group = projectGroups[projName];
+
+      html += '<div class="project-group">'
+        + '<div class="project-group-header">' + _esc(projName) + '</div>'
+        + '<div class="project-group-cards">';
+
+      for (var j = 0; j < group.length; j++) {
+        var a = group[j];
+        var stateClass = 'state-' + (a.state || '').toLowerCase();
+        var stateLabel = a.state_label || a.state || 'unknown';
+        var heroChars = a.hero_chars || '';
+        var heroTrail = a.hero_trail || '';
+
+        // Task instruction line
+        var instructionHtml = a.task_instruction
+          ? '<div class="agent-instruction">' + _esc(a.task_instruction) + '</div>'
+          : '';
+
+        // Summary line (only if different from instruction)
+        var summaryText = '';
+        if (a.task_completion_summary) {
+          summaryText = a.task_completion_summary;
+        } else if (a.task_summary && a.task_summary !== a.task_instruction) {
+          summaryText = a.task_summary;
+        }
+        var summaryHtml = summaryText
+          ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
+          : '';
+
+        // Footer: turn count + last activity
+        var footerParts = [];
+        if (a.turn_count && a.turn_count > 0) {
+          footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
+        }
+        footerParts.push(a.last_activity_ago);
+
+        html += '<div class="agent-card ' + stateClass + '" data-agent-id="' + a.agent_id + '">'
+          + '<div class="agent-header">'
+          + '<div class="agent-hero-id">'
+          + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
+          + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
+          + '</div>'
+          + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
+          + '</div>'
+          + '<div class="agent-body">'
+          + instructionHtml
+          + summaryHtml
+          + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
+          + '</div>'
+          + '</div>';
+      }
+
+      html += '</div></div>';
     }
     list.innerHTML = html;
 
@@ -130,17 +202,7 @@ window.VoiceApp = (function () {
 
   function _selectAgent(id) {
     _targetAgentId = id;
-    var agent = null;
-    for (var i = 0; i < _agents.length; i++) {
-      if (_agents[i].agent_id === id) { agent = _agents[i]; break; }
-    }
-
-    if (agent && agent.awaiting_input) {
-      // Load question for this agent
-      _loadQuestion(id);
-    } else {
-      _showListeningScreen(agent);
-    }
+    _showChatScreen(id);
   }
 
   // Auto-targeting (task 2.23)
@@ -229,6 +291,7 @@ window.VoiceApp = (function () {
   function _showChatScreen(agentId) {
     _targetAgentId = agentId;
     _chatRenderedTurnIds.clear();
+    _chatPendingUserTexts.clear();
     _chatHasMore = false;
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
@@ -239,8 +302,14 @@ window.VoiceApp = (function () {
     VoiceAPI.getTranscript(agentId).then(function (data) {
       var nameEl = document.getElementById('chat-agent-name');
       var projEl = document.getElementById('chat-project-name');
-      if (nameEl) nameEl.textContent = data.agent_name || 'Agent';
-      if (projEl) projEl.textContent = data.project || '';
+      var heroEl = document.getElementById('chat-hero');
+      if (heroEl) {
+        var hc = data.hero_chars || '';
+        var ht = data.hero_trail || '';
+        heroEl.innerHTML = '<span class="agent-hero">' + _esc(hc) + '</span><span class="agent-hero-trail">' + _esc(ht) + '</span>';
+      }
+      if (nameEl) nameEl.textContent = data.project || 'Agent';
+      if (projEl) projEl.textContent = '';
 
       _chatAgentState = data.agent_state;
       _chatHasMore = data.has_more || false;
@@ -490,6 +559,8 @@ window.VoiceApp = (function () {
       html += '<div class="bubble-intent">Completed</div>';
     } else if (turn.intent === 'command') {
       html += '<div class="bubble-intent">Command</div>';
+    } else if (turn.intent === 'progress') {
+      html += '<div class="bubble-intent progress-intent">Working</div>';
     }
 
     // Text content — fallback chain: text -> summary -> (empty)
@@ -501,33 +572,38 @@ window.VoiceApp = (function () {
       displayText = turn.summary;
     }
     if (displayText) {
+      var renderFn = isUser ? _esc : _renderMd;
       if (isGrouped) {
         // Render grouped texts with separators
         html += '<div class="bubble-text grouped-text">';
         for (var g = 0; g < turn.groupedTexts.length; g++) {
           if (g > 0) html += '<div class="group-divider"></div>';
-          html += '<div>' + _esc(turn.groupedTexts[g]) + '</div>';
+          html += '<div>' + renderFn(turn.groupedTexts[g]) + '</div>';
         }
         html += '</div>';
       } else {
-        html += '<div class="bubble-text">' + _esc(displayText) + '</div>';
+        html += '<div class="bubble-text">' + renderFn(displayText) + '</div>';
       }
     }
 
     // Question options inside the bubble
     if (turn.intent === 'question') {
       var opts = turn.question_options;
-      if (!opts && turn.tool_input) {
-        var questions = turn.tool_input.questions;
+      var toolInput = turn.tool_input || {};
+      if (!opts && toolInput.questions) {
+        var questions = toolInput.questions;
         if (questions && questions.length > 0 && questions[0].options) {
           opts = questions[0].options;
         }
       }
+      // Extract safety for color-coding option buttons
+      var bubbleSafety = toolInput.safety || '';
+      var safetyClass = bubbleSafety ? ' safety-' + _esc(bubbleSafety) : '';
       if (opts && opts.length > 0) {
         html += '<div class="bubble-options">';
         for (var i = 0; i < opts.length; i++) {
           var opt = opts[i];
-          html += '<button class="bubble-option-btn" data-label="' + _esc(opt.label) + '">'
+          html += '<button class="bubble-option-btn' + safetyClass + '" data-label="' + _esc(opt.label) + '">'
             + _esc(opt.label)
             + (opt.description ? '<div class="bubble-option-desc">' + _esc(opt.description) + '</div>' : '')
             + '</button>';
@@ -590,7 +666,8 @@ window.VoiceApp = (function () {
   function _updateTypingIndicator() {
     var typingEl = document.getElementById('chat-typing');
     if (!typingEl) return;
-    var isProcessing = _chatAgentState === 'processing' || _chatAgentState === 'commanded';
+    var state = (_chatAgentState || '').toLowerCase();
+    var isProcessing = state === 'processing' || state === 'commanded';
     typingEl.style.display = isProcessing ? 'block' : 'none';
     if (isProcessing) _scrollChatToBottom();
   }
@@ -614,12 +691,16 @@ window.VoiceApp = (function () {
     if (lastBubble) {
       prevTurn = { timestamp: now }; // skip timestamp for immediate send
     }
+    _chatPendingUserTexts.add(text.trim());
     _renderChatBubble(fakeTurn, prevTurn);
     _scrollChatToBottom();
 
-    // Clear input
+    // Clear input and reset textarea height
     var input = document.getElementById('chat-text-input');
-    if (input) input.value = '';
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
 
     // Show typing indicator (agent will be processing)
     _chatAgentState = 'processing';
@@ -652,7 +733,7 @@ window.VoiceApp = (function () {
     }
 
     // Check for ended agent
-    if (data.agent_ended || newState === 'ended') {
+    if (data.agent_ended || (newState && newState.toLowerCase() === 'ended')) {
       _chatAgentEnded = true;
       _updateEndedAgentUI();
     }
@@ -666,8 +747,17 @@ window.VoiceApp = (function () {
     // Fetch recent turns (no cursor = latest)
     VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
       var turns = resp.turns || [];
-      // Filter to only truly new turns
-      var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
+      // Filter to only truly new turns, dedup user echoes from chat send
+      var newTurns = turns.filter(function (t) {
+        if (_chatRenderedTurnIds.has(t.id)) return false;
+        // Skip USER turns whose text matches a pending chat message (already shown as fake bubble)
+        if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
+          _chatRenderedTurnIds.add(t.id); // mark as rendered so it won't appear later
+          _chatPendingUserTexts.delete(t.text.trim());
+          return false;
+        }
+        return true;
+      });
       if (newTurns.length > 0) {
         var grouped = _groupTurns(newTurns);
         var messagesEl = document.getElementById('chat-messages');
@@ -715,9 +805,74 @@ window.VoiceApp = (function () {
 
   // --- SSE event handling ---
 
+  function _handleTurnCreated(data) {
+    if (_currentScreen !== 'chat') return;
+    if (!data || !data.agent_id) return;
+    if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
+    if (!data.text || !data.text.trim()) return;
+
+    // Only handle agent turns directly — user turns are handled by
+    // _handleChatSSE via transcript fetch (which includes echo dedup).
+    // Processing user turns here would consume _chatPendingUserTexts
+    // entries before the transcript-based dedup can use them.
+    if (data.actor === 'user') return;
+
+    // Build a turn-like object for direct rendering
+    var turn = {
+      id: data.turn_id || ('sse-' + Date.now()),
+      actor: data.actor || 'agent',
+      intent: data.intent || 'progress',
+      text: data.text,
+      timestamp: data.timestamp || new Date().toISOString()
+    };
+
+    // Skip if already rendered
+    if (_chatRenderedTurnIds.has(turn.id)) return;
+
+    _renderChatBubble(turn, null);
+    _scrollChatToBottom();
+  }
+
   function _handleAgentUpdate(data) {
     // Update chat screen if active
     _handleChatSSE(data);
+
+    // Polling fallback: if data is a sessions list (no agent_id), and chat
+    // is active, check if the target agent's state changed
+    if (!data.agent_id && !data.id && data.agents && _currentScreen === 'chat' && _targetAgentId) {
+      for (var i = 0; i < data.agents.length; i++) {
+        if (data.agents[i].agent_id === _targetAgentId) {
+          var polledState = data.agents[i].state;
+          if (polledState && polledState.toLowerCase() !== (_chatAgentState || '').toLowerCase()) {
+            _chatAgentState = polledState;
+            _updateTypingIndicator();
+            // Fetch transcript to pick up any new turns
+            VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+              var turns = resp.turns || [];
+              var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
+              if (newTurns.length > 0) {
+                var grouped = _groupTurns(newTurns);
+                for (var j = 0; j < grouped.length; j++) {
+                  var item = grouped[j];
+                  var prev = j > 0 ? grouped[j - 1] : null;
+                  if (item.type === 'separator') {
+                    _renderTaskSeparator(item);
+                  } else {
+                    _renderChatBubble(item, prev);
+                  }
+                }
+              }
+              if (resp.agent_state) {
+                _chatAgentState = resp.agent_state;
+                _updateTypingIndicator();
+              }
+              _scrollChatToBottom();
+            }).catch(function () { /* ignore */ });
+          }
+          break;
+        }
+      }
+    }
 
     // Re-fetch agent list on any update
     _refreshAgents();
@@ -747,12 +902,62 @@ window.VoiceApp = (function () {
 
   // --- Connection indicator (task 2.18) ---
 
+  var _previousConnectionState = 'disconnected';
+
   function _updateConnectionIndicator() {
     var el = document.getElementById('connection-status');
     if (!el) return;
     var state = VoiceAPI.getConnectionState();
     el.className = 'connection-dot ' + state;
     el.title = state;
+
+    // On reconnect: catch up on any missed state by re-fetching
+    if (state === 'connected' && _previousConnectionState !== 'connected') {
+      _catchUpAfterReconnect();
+    }
+    _previousConnectionState = state;
+  }
+
+  function _catchUpAfterReconnect() {
+    // Always refresh agent list
+    _refreshAgents();
+
+    // If chat screen is active, re-fetch transcript to catch missed events
+    if (_currentScreen === 'chat' && _targetAgentId) {
+      VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
+        var turns = resp.turns || [];
+        var newTurns = turns.filter(function (t) {
+          if (_chatRenderedTurnIds.has(t.id)) return false;
+          if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
+            _chatRenderedTurnIds.add(t.id);
+            _chatPendingUserTexts.delete(t.text.trim());
+            return false;
+          }
+          return true;
+        });
+        if (newTurns.length > 0) {
+          var grouped = _groupTurns(newTurns);
+          for (var i = 0; i < grouped.length; i++) {
+            var item = grouped[i];
+            var prev = i > 0 ? grouped[i - 1] : null;
+            if (item.type === 'separator') {
+              _renderTaskSeparator(item);
+            } else {
+              _renderChatBubble(item, prev);
+            }
+          }
+        }
+        if (resp.agent_state) {
+          _chatAgentState = resp.agent_state;
+          _updateTypingIndicator();
+        }
+        if (resp.agent_ended) {
+          _chatAgentEnded = true;
+          _updateEndedAgentUI();
+        }
+        _scrollChatToBottom();
+      }).catch(function () { /* ignore */ });
+    }
   }
 
   // --- Escape HTML ---
@@ -762,6 +967,62 @@ window.VoiceApp = (function () {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(s));
     return div.innerHTML;
+  }
+
+  // --- Lightweight markdown renderer for agent bubbles ---
+
+  function _renderMd(text) {
+    if (!text) return '';
+    // Escape HTML first to prevent XSS
+    var html = _esc(text);
+
+    // Code blocks (``` ... ```)
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
+      return '<pre class="md-code-block"><code>' + code.trim() + '</code></pre>';
+    });
+
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
+
+    // Bold and italic
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Horizontal rules
+    html = html.replace(/^---+$/gm, '<hr class="md-hr">');
+
+    // Unordered lists
+    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+    // Ordered lists
+    html = html.replace(/^\d+\. (.+)$/gm, '<li class="md-ol-item">$1</li>');
+    // Wrap consecutive list items
+    html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, function(match) {
+      if (match.indexOf('md-ol-item') !== -1) {
+        return '<ol class="md-ol">' + match + '</ol>';
+      }
+      return '<ul class="md-ul">' + match + '</ul>';
+    });
+
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, linkText, url) {
+      if (!/^https?:\/\//i.test(url)) return _esc(linkText);
+      return '<a href="' + url + '" class="md-link" target="_blank" rel="noopener">' + linkText + '</a>';
+    });
+
+    // Paragraphs (double newline)
+    html = html.replace(/\n\n/g, '</p><p class="md-p">');
+    html = '<p class="md-p">' + html + '</p>';
+    html = html.replace(/<p class="md-p"><\/p>/g, '');
+
+    // Single newlines -> <br> (within paragraphs, after other transforms)
+    html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
+
+    return html;
   }
 
   // --- Initialization ---
@@ -819,6 +1080,7 @@ window.VoiceApp = (function () {
     // Wire up SSE
     VoiceAPI.onConnectionChange(_updateConnectionIndicator);
     VoiceAPI.onAgentUpdate(_handleAgentUpdate);
+    VoiceAPI.onTurnCreated(_handleTurnCreated);
     VoiceAPI.connectSSE();
 
     // Play ready cue
@@ -907,34 +1169,43 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Settings button
+    // Settings button — remember where we came from
     var settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', function () {
+        _settingsReturnScreen = _currentScreen;
         _populateSettingsForm();
         showScreen('settings');
       });
     }
 
-    // Settings form (task 2.26)
+    // Settings form (task 2.26) — return to originating screen
     var settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
       settingsForm.addEventListener('submit', function (e) {
         e.preventDefault();
         _applySettingsForm();
-        showScreen('agents');
+        _returnFromSettings();
       });
     }
 
-    // Chat input form
+    // Chat input form + textarea auto-resize
     var chatForm = document.getElementById('chat-input-form');
+    var chatInput = document.getElementById('chat-text-input');
     if (chatForm) {
       chatForm.addEventListener('submit', function (e) {
         e.preventDefault();
-        var input = document.getElementById('chat-text-input');
-        if (input && input.value.trim()) {
-          _sendChatCommand(input.value);
+        if (chatInput && chatInput.value.trim()) {
+          _sendChatCommand(chatInput.value);
+          chatInput.style.height = 'auto';
         }
+      });
+    }
+    if (chatInput) {
+      // Auto-resize textarea as content grows
+      chatInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
       });
     }
 
@@ -961,25 +1232,37 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Chat back button
+    // Chat back button — always go to agent list
     var chatBackBtn = document.querySelector('.chat-back-btn');
     if (chatBackBtn) {
       chatBackBtn.addEventListener('click', function () {
-        // If opened from dashboard (agent_id param), go back to dashboard
-        var urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('agent_id') && document.referrer) {
-          window.history.back();
-        } else {
-          showScreen('agents');
-        }
+        _refreshAgents();
+        showScreen('agents');
       });
     }
 
-    // Back buttons (existing screens)
+    // Back buttons (listening, question screens)
     var backBtns = document.querySelectorAll('.back-btn');
     for (var i = 0; i < backBtns.length; i++) {
       backBtns[i].addEventListener('click', function () {
         showScreen('agents');
+      });
+    }
+
+    // Settings back button — contextual return
+    var settingsBackBtn = document.querySelector('.settings-back-btn');
+    if (settingsBackBtn) {
+      settingsBackBtn.addEventListener('click', function () {
+        _returnFromSettings();
+      });
+    }
+
+    // Font size slider display + live preview
+    var fontSlider = document.getElementById('setting-fontsize');
+    if (fontSlider) {
+      fontSlider.addEventListener('input', function () {
+        var display = document.getElementById('fontsize-value');
+        if (display) display.textContent = this.value + 'px';
       });
     }
 
@@ -995,6 +1278,12 @@ window.VoiceApp = (function () {
 
   function _populateSettingsForm() {
     var el;
+
+    el = document.getElementById('setting-fontsize');
+    if (el) el.value = _settings.fontSize;
+    var fsDisplay = document.getElementById('fontsize-value');
+    if (fsDisplay) fsDisplay.textContent = _settings.fontSize + 'px';
+
     el = document.getElementById('setting-silence');
     if (el) el.value = _settings.silenceTimeout;
     var display = document.getElementById('silence-value');
@@ -1024,6 +1313,11 @@ window.VoiceApp = (function () {
 
   function _applySettingsForm() {
     var el;
+
+    el = document.getElementById('setting-fontsize');
+    if (el) setSetting('fontSize', parseInt(el.value, 10));
+    _applyFontSize();
+
     el = document.getElementById('setting-silence');
     if (el) setSetting('silenceTimeout', parseInt(el.value, 10));
 
