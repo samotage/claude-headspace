@@ -2010,9 +2010,9 @@ body.layout-split .agent-card.selected {
    ======================================================================== */
 [data-theme="cool"] {
   color-scheme: light;
-  --bg: #f8f7f5;
-  --surface: #f0eee9;
-  --surface-raised: #e6e4df;
+  --bg: #fbfaf8;
+  --surface: #f3f2ee;
+  --surface-raised: #eae8e3;
   --text: #1a1d23;
   --text-dim: #5a6070;
   --text-muted: #8b92a0;
@@ -2027,7 +2027,7 @@ body.layout-split .agent-card.selected {
   --border: rgba(26, 29, 35, 0.1);
   --border-emphasis: rgba(26, 29, 35, 0.18);
   --user-bubble: #2563eb;
-  --agent-bubble: #eae8e3;
+  --agent-bubble: #eeedea;
 
   /* Brand */
   --brand-glow: #2563eb;
@@ -2092,7 +2092,7 @@ body.layout-split .agent-card.selected {
   /* Misc */
   --bubble-intent-user: rgba(255, 255, 255, 0.8);
   --btn-text-on-accent: #fff;
-  --drop-zone-bg: rgba(248, 247, 245, 0.92);
+  --drop-zone-bg: rgba(251, 250, 248, 0.92);
   --image-bg: rgba(26, 29, 35, 0.05);
   --mic-active-bg: rgba(220, 38, 38, 0.1);
 }
@@ -2145,8 +2145,8 @@ body.layout-split .agent-card.selected {
 .theme-chip[data-theme="dark"] .theme-chip-swatch-surface { background: #161b22; }
 .theme-chip[data-theme="warm"] .theme-chip-swatch-bg { background: #f5f0e8; }
 .theme-chip[data-theme="warm"] .theme-chip-swatch-surface { background: #ede7db; }
-.theme-chip[data-theme="cool"] .theme-chip-swatch-bg { background: #f8f7f5; }
-.theme-chip[data-theme="cool"] .theme-chip-swatch-surface { background: #f0eee9; }
+.theme-chip[data-theme="cool"] .theme-chip-swatch-bg { background: #fbfaf8; }
+.theme-chip[data-theme="cool"] .theme-chip-swatch-surface { background: #f3f2ee; }
 
 .theme-chip-label {
   font-size: 11px;

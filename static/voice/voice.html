@@ -14,7 +14,7 @@
         var s = JSON.parse(localStorage.getItem('voice_settings') || '{}');
         var t = s.theme || 'dark';
         if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
-        var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f8f7f5' };
+        var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#fbfaf8' };
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta && colors[t]) meta.setAttribute('content', colors[t]);
       } catch (e) {}
