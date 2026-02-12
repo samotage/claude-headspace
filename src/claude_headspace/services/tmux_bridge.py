@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_SUBPROCESS_TIMEOUT = 5  # seconds
 DEFAULT_TEXT_ENTER_DELAY_MS = 100  # ms between text send and Enter
+DEFAULT_CLEAR_DELAY_MS = 200  # ms after Ctrl+C before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 
 
@@ -84,6 +85,7 @@ def send_text(
     text: str,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
+    clear_delay_ms: int = DEFAULT_CLEAR_DELAY_MS,
 ) -> SendResult:
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
@@ -95,6 +97,7 @@ def send_text(
         text: The text to send
         timeout: Subprocess timeout in seconds
         text_enter_delay_ms: Delay in ms between text send and Enter send
+        clear_delay_ms: Delay in ms after Ctrl+C before sending text
 
     Returns:
         SendResult with success status and optional error information
@@ -119,7 +122,7 @@ def send_text(
             timeout=timeout,
             capture_output=True,
         )
-        time.sleep(text_enter_delay_ms / 1000.0)
+        time.sleep(clear_delay_ms / 1000.0)  # longer to let TUI stabilise
 
         # Send literal text (does NOT interpret key names)
         subprocess.run(

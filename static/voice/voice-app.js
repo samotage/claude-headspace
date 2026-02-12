@@ -470,12 +470,31 @@ window.VoiceApp = (function () {
   }
 
   function _shutdownAgent(agentId) {
-    if (!confirm('Shut down this agent?')) return;
-    VoiceAPI.shutdownAgent(agentId).then(function () {
-      _refreshAgents();
-    }).catch(function (err) {
-      alert('Shutdown failed: ' + (err.error || 'unknown error'));
-    });
+    if (typeof ConfirmDialog !== 'undefined') {
+      ConfirmDialog.show(
+        'Shut down agent?',
+        'This will send /exit to the agent.',
+        { confirmText: 'Shut down', cancelText: 'Cancel' }
+      ).then(function (confirmed) {
+        if (!confirmed) return;
+        VoiceAPI.shutdownAgent(agentId).then(function () {
+          _refreshAgents();
+        }).catch(function (err) {
+          if (window.Toast) {
+            Toast.error('Shutdown failed', err.error || 'unknown error');
+          } else {
+            alert('Shutdown failed: ' + (err.error || 'unknown error'));
+          }
+        });
+      });
+    } else {
+      if (!confirm('Shut down this agent?')) return;
+      VoiceAPI.shutdownAgent(agentId).then(function () {
+        _refreshAgents();
+      }).catch(function (err) {
+        alert('Shutdown failed: ' + (err.error || 'unknown error'));
+      });
+    }
   }
 
   function _createAgentForProject(projectName) {
@@ -1712,8 +1731,12 @@ window.VoiceApp = (function () {
       }
     }
 
-    // Re-fetch agent list on any update
-    _refreshAgents();
+    // Re-fetch agent list on any update (but defer if confirm dialog is open)
+    if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
+      window._sseReloadDeferred = function () { _refreshAgents(); };
+    } else {
+      _refreshAgents();
+    }
 
     // Play cue if an agent transitions to awaiting_input
     if (data && data.new_state === 'awaiting_input') {

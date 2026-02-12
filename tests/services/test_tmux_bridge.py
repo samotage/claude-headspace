@@ -123,20 +123,24 @@ class TestSendText:
     def test_send_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
 
-        result = send_text("%5", "1", text_enter_delay_ms=0)
+        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0)
 
         assert result.success is True
         assert result.latency_ms >= 0
-        # Two subprocess calls: text send + Enter send
-        assert mock_run.call_count == 2
+        # Three subprocess calls: Ctrl+C + text send + Enter send
+        assert mock_run.call_count == 3
 
-        # First call: literal text
+        # First call: Ctrl+C to clear autocomplete
         first_call = mock_run.call_args_list[0]
-        assert first_call[0][0] == ["tmux", "send-keys", "-t", "%5", "-l", "1"]
+        assert first_call[0][0] == ["tmux", "send-keys", "-t", "%5", "C-c"]
 
-        # Second call: Enter key
+        # Second call: literal text
         second_call = mock_run.call_args_list[1]
-        assert second_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
+        assert second_call[0][0] == ["tmux", "send-keys", "-t", "%5", "-l", "1"]
+
+        # Third call: Enter key
+        third_call = mock_run.call_args_list[2]
+        assert third_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
 
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
