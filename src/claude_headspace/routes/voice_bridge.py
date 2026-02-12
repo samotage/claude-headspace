@@ -319,9 +319,11 @@ def voice_command():
         # fire.  For PROCESSING agents the Escape interrupt was sent first,
         # then the new command text; the hook's user_prompt_submit will
         # create the COMMAND turn.
-        # Set respond-pending so the hook doesn't duplicate our send.
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        # NOTE: Do NOT set _respond_pending_for_agent here. That flag causes
+        # user_prompt_submit to skip turn creation, but this path does NOT
+        # create a turn itself — so setting it would silently drop the user's
+        # command. The AWAITING_INPUT path (below) correctly sets it because
+        # it creates the ANSWER turn itself.
 
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()

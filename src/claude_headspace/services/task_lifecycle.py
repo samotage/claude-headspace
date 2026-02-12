@@ -366,6 +366,50 @@ class TaskLifecycleManager:
         # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
             if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING):
+                # Race condition fix: if the task is PROCESSING but has no USER
+                # turns, it was created by post_tool_use:inferred before this
+                # user_prompt_submit arrived. Attach the user turn to the
+                # existing task rather than completing it and losing any PROGRESS
+                # data already recorded on it.
+                if (
+                    current_task
+                    and current_state == TaskState.PROCESSING
+                    and not any(t.actor == TurnActor.USER for t in current_task.turns)
+                ):
+                    if text:
+                        current_task.full_command = text
+
+                    turn = Turn(
+                        task_id=current_task.id,
+                        actor=actor,
+                        intent=intent_result.intent,
+                        text=text or "",
+                        file_metadata=file_metadata,
+                    )
+                    self._session.add(turn)
+                    self._session.flush()
+
+                    self._pending_summarisations.append(
+                        SummarisationRequest(type="turn", turn=turn)
+                    )
+                    if text:
+                        self._pending_summarisations.append(
+                            SummarisationRequest(type="instruction", task=current_task, command_text=text)
+                        )
+
+                    logger.info(
+                        f"Attached USER COMMAND to inferred task id={current_task.id} "
+                        f"(agent id={agent.id})"
+                    )
+                    return TurnProcessingResult(
+                        success=True,
+                        task=current_task,
+                        intent=intent_result,
+                        event_written=self._event_writer is not None,
+                        new_task_created=False,
+                        pending_summarisations=list(self._pending_summarisations),
+                    )
+
                 # Complete any existing task before creating a new one
                 if current_task and current_task.state != TaskState.COMPLETE:
                     self.complete_task(current_task, trigger="user:new_command")

@@ -1466,6 +1466,38 @@ def process_post_tool_use(
 
             # No task — infer one from tool use evidence
             new_task = lifecycle.create_task(agent, TaskState.COMMANDED)
+
+            # Defense-in-depth: recover user command from the transcript file.
+            # If user_prompt_submit never fires (broken hook, timeout, etc.),
+            # this ensures the user's instruction is still captured.
+            if agent.transcript_path:
+                try:
+                    from .transcript_reader import read_last_user_message
+                    result = read_last_user_message(agent.transcript_path)
+                    if result.success and result.text:
+                        new_task.full_command = result.text
+                        turn = Turn(
+                            task_id=new_task.id,
+                            actor=TurnActor.USER,
+                            intent=TurnIntent.COMMAND,
+                            text=result.text,
+                        )
+                        db.session.add(turn)
+                        db.session.flush()
+                        from .task_lifecycle import SummarisationRequest
+                        lifecycle._pending_summarisations.append(
+                            SummarisationRequest(type="turn", turn=turn)
+                        )
+                        lifecycle._pending_summarisations.append(
+                            SummarisationRequest(type="instruction", task=new_task, command_text=result.text)
+                        )
+                        logger.info(
+                            f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                            f"recovered user command from transcript ({len(result.text)} chars)"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to recover user command from transcript: {e}")
+
             lifecycle.update_task_state(
                 task=new_task, to_state=TaskState.PROCESSING,
                 trigger="hook:post_tool_use:inferred", confidence=0.9,

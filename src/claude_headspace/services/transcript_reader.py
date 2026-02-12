@@ -144,6 +144,74 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         return TranscriptReadResult(success=False, error=str(e))
 
 
+def read_last_user_message(transcript_path: str) -> TranscriptReadResult:
+    """Read the most recent user message text from a transcript .jsonl file.
+
+    Walks backwards from the end of the file looking for the first ``user``
+    entry with text content.  Returns the text of that entry.  Used as a
+    fallback to recover user command text when hooks arrive out of order.
+    """
+    if not transcript_path:
+        return TranscriptReadResult(success=False, error="No transcript path")
+
+    if not os.path.exists(transcript_path):
+        return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
+
+    try:
+        _TAIL_SIZE = 64 * 1024
+        file_size = os.path.getsize(transcript_path)
+        with open(transcript_path, "r") as f:
+            start_pos = max(0, file_size - _TAIL_SIZE)
+            if start_pos > 0:
+                f.seek(start_pos)
+                f.readline()  # Skip partial line at seek boundary
+            lines = f.readlines()
+
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if data.get("type") != "user":
+                continue
+
+            msg = data.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+
+            content = msg.get("content")
+            # Extract text from string content
+            if isinstance(content, str) and content.strip():
+                text = content.strip()
+                if len(text) > MAX_CONTENT_LENGTH:
+                    text = text[:MAX_CONTENT_LENGTH] + "... [truncated]"
+                return TranscriptReadResult(success=True, text=text)
+
+            # Extract text from content blocks
+            if isinstance(content, list):
+                parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        t = block.get("text", "")
+                        if t.strip():
+                            parts.append(t.strip())
+                if parts:
+                    text = "\n".join(parts)
+                    if len(text) > MAX_CONTENT_LENGTH:
+                        text = text[:MAX_CONTENT_LENGTH] + "... [truncated]"
+                    return TranscriptReadResult(success=True, text=text)
+
+        return TranscriptReadResult(success=True, text="")
+
+    except Exception as e:
+        logger.warning(f"Error reading last user message from {transcript_path}: {e}")
+        return TranscriptReadResult(success=False, error=str(e))
+
+
 def read_new_entries_from_position(
     transcript_path: str,
     position: int = 0,
