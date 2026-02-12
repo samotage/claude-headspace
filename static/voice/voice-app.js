@@ -21,13 +21,15 @@ window.VoiceApp = (function () {
   var _targetAgentId = null;
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat
   var _chatRenderedTurnIds = new Set();
-  var _chatPendingUserTexts = new Set(); // texts sent from chat, awaiting real turn
+  var _chatPendingUserSends = [];  // {text, sentAt, fakeTurnId} — pending sends awaiting real turn
+  var PENDING_SEND_TTL_MS = 15000; // 15s window for dedup matching
   var _chatAgentState = null;
   var _chatHasMore = false;
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
-  var _chatTranscriptSeq = 0;  // Sequence counter to discard stale transcript responses
+  // _chatTranscriptSeq kept for initial load guard only (stale navigation detection)
+  var _chatSyncTimer = null;   // Periodic transcript sync timer (safety net)
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
   var _isTrustedNetwork = _isLocalhost
     || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname)
@@ -151,6 +153,8 @@ window.VoiceApp = (function () {
 
   function showScreen(name) {
     _currentScreen = name;
+    // Stop chat sync timer when leaving chat screen
+    if (name !== 'chat') _stopChatSyncTimer();
 
     if (name === 'setup') {
       // Setup screen is outside app-layout, hide app-layout
@@ -681,15 +685,36 @@ window.VoiceApp = (function () {
 
   // --- Chat screen ---
 
+  function _stopChatSyncTimer() {
+    if (_chatSyncTimer) { clearInterval(_chatSyncTimer); _chatSyncTimer = null; }
+  }
+
+  function _startChatSyncTimer() {
+    _stopChatSyncTimer();
+    // Safety-net: poll transcript every 8s while on chat screen.
+    // Catches turns missed by SSE disconnects, deferred stops, and race conditions.
+    _chatSyncTimer = setInterval(function () {
+      if (_currentScreen !== 'chat' || !_targetAgentId) {
+        _stopChatSyncTimer();
+        return;
+      }
+      _fetchTranscriptForChat();
+    }, 8000);
+  }
+
   function _showChatScreen(agentId) {
     _targetAgentId = agentId;
+    var focusLink = document.getElementById('chat-focus-link');
+    if (focusLink) focusLink.setAttribute('data-agent-id', agentId);
     _chatRenderedTurnIds.clear();
-    _chatPendingUserTexts.clear();
+    _chatPendingUserSends = [];
     _chatHasMore = false;
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
-    _chatTranscriptSeq = 0;  // Reset and invalidate any in-flight fetches
+    _fetchInFlight = false; // Reset in-flight guard for new agent
+    if (_fetchDebounceTimer) { clearTimeout(_fetchDebounceTimer); _fetchDebounceTimer = null; }
+    _startChatSyncTimer();
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
     var bannersEl = document.getElementById('attention-banners');
@@ -714,9 +739,9 @@ window.VoiceApp = (function () {
       _renderAttentionBanners();
     }).catch(function () { /* ignore */ });
 
-    var initSeq = ++_chatTranscriptSeq;
+    var initAgentId = agentId;
     VoiceAPI.getTranscript(agentId).then(function (data) {
-      if (initSeq !== _chatTranscriptSeq) return; // Stale response — discard
+      if (initAgentId !== _targetAgentId) return; // Stale response — user navigated away
       var nameEl = document.getElementById('chat-agent-name');
       var projEl = document.getElementById('chat-project-name');
       var heroEl = document.getElementById('chat-hero');
@@ -1131,12 +1156,13 @@ window.VoiceApp = (function () {
 
     bubble.innerHTML = html;
 
-    // Bind image thumbnail click -> open in new tab
+    // Bind image thumbnail click -> open in lightbox
     var imgThumb = bubble.querySelector('.bubble-file-image');
     if (imgThumb) {
       imgThumb.addEventListener('click', function () {
         var url = this.getAttribute('data-full-url');
-        if (url) window.open(url, '_blank');
+        var alt = (this.querySelector('img') || {}).alt || 'Image';
+        if (url) _openImageLightbox(url, alt);
       });
     }
 
@@ -1494,7 +1520,8 @@ window.VoiceApp = (function () {
     var messagesEl = document.getElementById('chat-messages');
     var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
     var prevTurn = lastBubble ? { timestamp: now } : null;
-    _chatPendingUserTexts.add(displayText);
+    var pendingEntry = { text: displayText, sentAt: Date.now(), fakeTurnId: fakeTurn.id };
+    _chatPendingUserSends.push(pendingEntry);
     _renderChatBubble(fakeTurn, prevTurn);
     _scrollChatToBottom();
 
@@ -1518,6 +1545,8 @@ window.VoiceApp = (function () {
       // Upload success — SSE will update state
     }).catch(function (err) {
       _hideUploadProgress();
+      // Remove the ghost optimistic bubble on failure (Finding 10)
+      _removeOptimisticBubble(pendingEntry);
       var errMsg = (err && err.error) || 'Upload failed';
       _showUploadError(errMsg);
       _chatAgentState = 'idle';
@@ -1552,7 +1581,8 @@ window.VoiceApp = (function () {
     if (lastBubble) {
       prevTurn = { timestamp: now }; // skip timestamp for immediate send
     }
-    _chatPendingUserTexts.add(text.trim());
+    var pendingEntry = { text: text.trim(), sentAt: Date.now(), fakeTurnId: fakeTurn.id };
+    _chatPendingUserSends.push(pendingEntry);
     _renderChatBubble(fakeTurn, prevTurn);
     _scrollChatToBottom();
 
@@ -1570,6 +1600,8 @@ window.VoiceApp = (function () {
     VoiceAPI.sendCommand(text.trim(), _targetAgentId).then(function () {
       // Command sent — SSE will update state
     }).catch(function (err) {
+      // Remove the ghost optimistic bubble on failure (Finding 10)
+      _removeOptimisticBubble(pendingEntry);
       // Show error as system message
       var errBubble = document.createElement('div');
       errBubble.className = 'chat-bubble agent';
@@ -1605,52 +1637,8 @@ window.VoiceApp = (function () {
       _updateEndedAgentUI();
     }
 
-    // Fetch only new turns since last rendered
-    var newestRendered = 0;
-    _chatRenderedTurnIds.forEach(function (id) {
-      if (typeof id === 'number' && id > newestRendered) newestRendered = id;
-    });
-
-    // Fetch recent turns (no cursor = latest)
-    var sseSeq = ++_chatTranscriptSeq;
-    VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-      if (sseSeq !== _chatTranscriptSeq) return; // Stale response — discard
-      var turns = resp.turns || [];
-      // Filter to only truly new turns, dedup user echoes from chat send
-      var newTurns = turns.filter(function (t) {
-        if (_chatRenderedTurnIds.has(t.id)) return false;
-        // Skip USER turns whose text matches a pending chat message (already shown as fake bubble)
-        if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
-          _chatRenderedTurnIds.add(t.id); // mark as rendered so it won't appear later
-          _chatPendingUserTexts.delete(t.text.trim());
-          return false;
-        }
-        return true;
-      });
-      if (newTurns.length > 0) {
-        var grouped = _groupTurns(newTurns);
-        var messagesEl = document.getElementById('chat-messages');
-        for (var i = 0; i < grouped.length; i++) {
-          var item = grouped[i];
-          var prev = i > 0 ? grouped[i - 1] : null;
-          if (item.type === 'separator') {
-            _renderTaskSeparator(item);
-          } else {
-            _renderChatBubble(item, prev);
-          }
-        }
-      }
-      if (resp.agent_state) {
-        _chatAgentState = resp.agent_state;
-        _updateTypingIndicator();
-      }
-      if (resp.agent_ended !== undefined) {
-        var wasEnded = _chatAgentEnded;
-        _chatAgentEnded = !!resp.agent_ended;
-        if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-      }
-      _scrollChatToBottom();
-    }).catch(function () { /* ignore */ });
+    // Fetch new turns via shared transcript fetch
+    _fetchTranscriptForChat();
   }
 
   // --- Command sending ---
@@ -1674,6 +1662,14 @@ window.VoiceApp = (function () {
   }
 
   // --- SSE event handling ---
+
+  function _handleGap(data) {
+    // Server detected dropped events — do a full refresh to catch up
+    _refreshAgents();
+    if (_currentScreen === 'chat' && _targetAgentId) {
+      _fetchTranscriptForChat();
+    }
+  }
 
   function _handleTurnCreated(data) {
     if (_currentScreen !== 'chat') return;
@@ -1789,35 +1785,7 @@ window.VoiceApp = (function () {
               _chatAgentState = polledState;
               _updateTypingIndicator();
             }
-            // Fetch transcript to pick up any new turns
-            var pollSeq = ++_chatTranscriptSeq;
-            VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-              if (pollSeq !== _chatTranscriptSeq) return; // Stale response — discard
-              var turns = resp.turns || [];
-              var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
-              if (newTurns.length > 0) {
-                var grouped = _groupTurns(newTurns);
-                for (var j = 0; j < grouped.length; j++) {
-                  var item = grouped[j];
-                  var prev = j > 0 ? grouped[j - 1] : null;
-                  if (item.type === 'separator') {
-                    _renderTaskSeparator(item);
-                  } else {
-                    _renderChatBubble(item, prev);
-                  }
-                }
-              }
-              if (resp.agent_state) {
-                _chatAgentState = resp.agent_state;
-                _updateTypingIndicator();
-              }
-              if (resp.agent_ended !== undefined) {
-                var wasEnded = _chatAgentEnded;
-                _chatAgentEnded = !!resp.agent_ended;
-                if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-              }
-              _scrollChatToBottom();
-            }).catch(function () { /* ignore */ });
+            _fetchTranscriptForChat();
           }
           break;
         }
@@ -1904,46 +1872,153 @@ window.VoiceApp = (function () {
 
     // If chat screen is active, re-fetch transcript to catch missed events
     if (_currentScreen === 'chat' && _targetAgentId) {
-      var reconnSeq = ++_chatTranscriptSeq;
-      VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-        if (reconnSeq !== _chatTranscriptSeq) return; // Stale response — discard
-        var turns = resp.turns || [];
-        var newTurns = turns.filter(function (t) {
-          if (_chatRenderedTurnIds.has(t.id)) return false;
-          if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
-            _chatRenderedTurnIds.add(t.id);
-            _chatPendingUserTexts.delete(t.text.trim());
-            return false;
-          }
-          return true;
-        });
-        if (newTurns.length > 0) {
-          var grouped = _groupTurns(newTurns);
-          for (var i = 0; i < grouped.length; i++) {
-            var item = grouped[i];
-            var prev = i > 0 ? grouped[i - 1] : null;
-            if (item.type === 'separator') {
-              _renderTaskSeparator(item);
-            } else {
-              _renderChatBubble(item, prev);
-            }
-          }
+      _fetchTranscriptForChat();
+
+      // Deferred stops create turns 0.5-5s after the initial stop hook.
+      // If we reconnected during that gap the first fetch finds nothing.
+      // A second fetch 3s later catches those late-arriving turns.
+      var deferredAgentId = _targetAgentId;
+      setTimeout(function () {
+        if (_currentScreen === 'chat' && _targetAgentId === deferredAgentId) {
+          _fetchTranscriptForChat();
         }
-        if (resp.agent_state) {
-          _chatAgentState = resp.agent_state;
-          _updateTypingIndicator();
-        }
-        if (resp.agent_ended !== undefined) {
-          var wasEnded = _chatAgentEnded;
-          _chatAgentEnded = !!resp.agent_ended;
-          if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-        }
-        _scrollChatToBottom();
-      }).catch(function () { /* ignore */ });
+      }, 3000);
     }
   }
 
+  /**
+   * Shared transcript fetch + render logic used by reconnect catch-up,
+   * periodic sync, and anywhere else that needs to pull new turns.
+   *
+   * Debounced: multiple calls within 500ms collapse into one fetch.
+   * This prevents SSE event bursts and the sync timer from cancelling
+   * each other's responses (Finding 5).
+   */
+  var _fetchDebounceTimer = null;
+  var _fetchInFlight = false;
+
+  function _fetchTranscriptForChat() {
+    if (!_targetAgentId) return;
+    // If a fetch is already in flight, just schedule another after it finishes
+    if (_fetchInFlight) {
+      _fetchDebounceTimer = _fetchDebounceTimer || setTimeout(function () {
+        _fetchDebounceTimer = null;
+        _fetchTranscriptForChat();
+      }, 500);
+      return;
+    }
+    // Clear any pending debounce since we're about to fetch now
+    if (_fetchDebounceTimer) {
+      clearTimeout(_fetchDebounceTimer);
+      _fetchDebounceTimer = null;
+    }
+    _fetchInFlight = true;
+    var agentId = _targetAgentId;
+    VoiceAPI.getTranscript(agentId).then(function (resp) {
+      _fetchInFlight = false;
+      // Discard if user navigated to a different agent while fetching
+      if (agentId !== _targetAgentId) return;
+      var turns = resp.turns || [];
+      // Expire old pending sends (Finding 4 — TTL-based instead of exact text match)
+      var now = Date.now();
+      _chatPendingUserSends = _chatPendingUserSends.filter(function (p) {
+        return (now - p.sentAt) < PENDING_SEND_TTL_MS;
+      });
+      var newTurns = turns.filter(function (t) {
+        if (_chatRenderedTurnIds.has(t.id)) return false;
+        // Dedup user turns against pending sends using fuzzy time-window matching
+        if (t.actor === 'user') {
+          for (var pi = 0; pi < _chatPendingUserSends.length; pi++) {
+            var pending = _chatPendingUserSends[pi];
+            // Match within TTL window — the server turn corresponds to our optimistic bubble
+            if ((now - pending.sentAt) < PENDING_SEND_TTL_MS) {
+              _chatRenderedTurnIds.add(t.id);
+              _chatPendingUserSends.splice(pi, 1);
+              return false;
+            }
+          }
+        }
+        return true;
+      });
+      if (newTurns.length > 0) {
+        var grouped = _groupTurns(newTurns);
+        for (var i = 0; i < grouped.length; i++) {
+          var item = grouped[i];
+          var prev = i > 0 ? grouped[i - 1] : null;
+          if (item.type === 'separator') {
+            _renderTaskSeparator(item);
+          } else {
+            _renderChatBubble(item, prev);
+          }
+        }
+      }
+      if (resp.agent_state) {
+        _chatAgentState = resp.agent_state;
+        _updateTypingIndicator();
+      }
+      if (resp.agent_ended !== undefined) {
+        var wasEnded = _chatAgentEnded;
+        _chatAgentEnded = !!resp.agent_ended;
+        if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
+      }
+      _scrollChatToBottom();
+    }).catch(function () {
+      _fetchInFlight = false;
+    });
+  }
+
+  /**
+   * Remove an optimistic (fake) user bubble when send fails (Finding 10).
+   * Cleans up both the DOM element and the pending send entry.
+   */
+  function _removeOptimisticBubble(pendingEntry) {
+    // Remove from pending sends list
+    var idx = _chatPendingUserSends.indexOf(pendingEntry);
+    if (idx !== -1) _chatPendingUserSends.splice(idx, 1);
+    // Remove the fake bubble from DOM
+    var messagesEl = document.getElementById('chat-messages');
+    if (messagesEl && pendingEntry.fakeTurnId) {
+      var bubble = messagesEl.querySelector('[data-turn-id="' + pendingEntry.fakeTurnId + '"]');
+      if (bubble) bubble.remove();
+    }
+    // Clean up rendered ID tracking
+    _chatRenderedTurnIds.delete(pendingEntry.fakeTurnId);
+  }
+
   // --- Escape HTML ---
+
+  // --- Image Lightbox ---
+
+  function _openImageLightbox(url, alt) {
+    var lb = document.getElementById('image-lightbox');
+    var img = document.getElementById('lightbox-img');
+    if (!lb || !img) return;
+    img.src = url;
+    img.alt = alt || 'Image';
+    lb.style.display = 'flex';
+  }
+
+  function _closeImageLightbox() {
+    var lb = document.getElementById('image-lightbox');
+    var img = document.getElementById('lightbox-img');
+    if (!lb) return;
+    lb.style.display = 'none';
+    if (img) img.src = '';
+  }
+
+  (function _initImageLightbox() {
+    document.addEventListener('click', function (e) {
+      var lb = document.getElementById('image-lightbox');
+      if (!lb || lb.style.display === 'none') return;
+      if (e.target.classList.contains('image-lightbox-backdrop') ||
+          e.target.classList.contains('image-lightbox-close')) {
+        _closeImageLightbox();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') _closeImageLightbox();
+    });
+  })();
 
   function _esc(s) {
     if (!s) return '';
@@ -2078,6 +2153,7 @@ window.VoiceApp = (function () {
     VoiceAPI.onConnectionChange(_updateConnectionIndicator);
     VoiceAPI.onAgentUpdate(_handleAgentUpdate);
     VoiceAPI.onTurnCreated(_handleTurnCreated);
+    VoiceAPI.onGap(_handleGap);
     VoiceAPI.connectSSE();
 
     // Play ready cue
@@ -2346,10 +2422,11 @@ window.VoiceApp = (function () {
     // Chat header focus link — click to focus iTerm window
     var chatFocusLink = document.getElementById('chat-focus-link');
     if (chatFocusLink) {
-      chatFocusLink.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (_targetAgentId && window.FocusAPI) {
-          window.FocusAPI.focusAgent(_targetAgentId);
+      chatFocusLink.addEventListener('click', function () {
+        if (_targetAgentId) {
+          VoiceAPI.focusAgent(_targetAgentId).catch(function (err) {
+            console.warn('Focus failed:', err);
+          });
         }
       });
     }

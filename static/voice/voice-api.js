@@ -7,11 +7,15 @@ window.VoiceAPI = (function () {
   let _sse = null;
   let _sseRetryDelay = 1000;
   const SSE_MAX_DELAY = 30000;
+  const FETCH_TIMEOUT_MS = 30000;
+  const UPLOAD_TIMEOUT_MS = 60000;
   let _pollTimer = null;
+  let _reconnectTimer = null;  // Guard against stacked reconnects
   let _connectionState = 'disconnected'; // connected | reconnecting | disconnected
   let _onConnectionChange = null;
   let _onAgentUpdate = null;
   let _onTurnCreated = null;
+  let _onGap = null;
 
   function init(baseUrl, token) {
     _baseUrl = baseUrl.replace(/\/+$/, '');
@@ -39,15 +43,29 @@ window.VoiceAPI = (function () {
   function onConnectionChange(fn) { _onConnectionChange = fn; }
   function onAgentUpdate(fn) { _onAgentUpdate = fn; }
   function onTurnCreated(fn) { _onTurnCreated = fn; }
+  function onGap(fn) { _onGap = fn; }
 
   // --- HTTP helpers ---
 
   function _fetch(path, opts) {
     opts = opts || {};
     opts.headers = _headers();
+
+    // Add AbortController timeout for all fetch calls
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT_MS);
+    opts.signal = controller.signal;
+
     return fetch(_baseUrl + path, opts).then(function (r) {
+      clearTimeout(timeoutId);
       if (!r.ok) return r.json().then(function (b) { return Promise.reject(b); });
       return r.json();
+    }).catch(function (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        return Promise.reject({ error: 'Request timed out' });
+      }
+      return Promise.reject(err);
     });
   }
 
@@ -119,6 +137,9 @@ window.VoiceAPI = (function () {
       xhr.open('POST', _baseUrl + '/api/voice/agents/' + agentId + '/upload');
       if (_token) xhr.setRequestHeader('Authorization', 'Bearer ' + _token);
 
+      // Timeout for upload requests (Finding 9)
+      xhr.timeout = UPLOAD_TIMEOUT_MS;
+
       xhr.upload.onprogress = function (e) {
         if (e.lengthComputable && onProgress) {
           var pct = Math.round((e.loaded / e.total) * 100);
@@ -143,6 +164,10 @@ window.VoiceAPI = (function () {
         reject({ error: 'Network error' });
       };
 
+      xhr.ontimeout = function () {
+        reject({ error: 'Upload timed out' });
+      };
+
       xhr.send(formData);
     });
   }
@@ -152,6 +177,7 @@ window.VoiceAPI = (function () {
   function connectSSE() {
     if (_sse) _sse.close();
     _stopPolling();
+    _clearReconnectTimer();
 
     var url = _baseUrl + '/api/events/stream';
     try {
@@ -212,17 +238,37 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    // Gap event: server detected dropped events for this client
+    _sse.addEventListener('gap', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onGap) _onGap(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;
       _setConnection('reconnecting');
       _startPolling();
+
+      // Guard against stacked reconnect timers: clear any existing
+      // timer before scheduling a new one.
+      _clearReconnectTimer();
       _sseRetryDelay = Math.min(_sseRetryDelay * 2, SSE_MAX_DELAY);
-      setTimeout(connectSSE, _sseRetryDelay);
+      _reconnectTimer = setTimeout(connectSSE, _sseRetryDelay);
     };
   }
 
+  function _clearReconnectTimer() {
+    if (_reconnectTimer) {
+      clearTimeout(_reconnectTimer);
+      _reconnectTimer = null;
+    }
+  }
+
   function disconnectSSE() {
+    _clearReconnectTimer();
     if (_sse) { _sse.close(); _sse = null; }
     _stopPolling();
     _setConnection('disconnected');
@@ -241,6 +287,10 @@ window.VoiceAPI = (function () {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
+  function focusAgent(agentId) {
+    return _fetch('/api/focus/' + agentId, { method: 'POST' });
+  }
+
   return {
     init: init,
     getToken: getToken,
@@ -250,6 +300,7 @@ window.VoiceAPI = (function () {
     onConnectionChange: onConnectionChange,
     onAgentUpdate: onAgentUpdate,
     onTurnCreated: onTurnCreated,
+    onGap: onGap,
     getSessions: getSessions,
     sendCommand: sendCommand,
     getOutput: getOutput,
@@ -260,6 +311,7 @@ window.VoiceAPI = (function () {
     getAgentContext: getAgentContext,
     uploadFile: uploadFile,
     connectSSE: connectSSE,
-    disconnectSSE: disconnectSSE
+    disconnectSSE: disconnectSSE,
+    focusAgent: focusAgent
   };
 })();

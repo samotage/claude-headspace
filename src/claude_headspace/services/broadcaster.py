@@ -1,5 +1,6 @@
 """Event broadcaster service for SSE (Server-Sent Events)."""
 
+import collections
 import json
 import logging
 import threading
@@ -25,6 +26,7 @@ class SSEClient:
     failed_writes: int = 0
     dropped_events: int = 0
     is_active: bool = True
+    has_gap: bool = False
 
     def matches_filter(self, event_type: str, payload: dict) -> bool:
         """Check if an event matches this client's filters."""
@@ -64,12 +66,16 @@ class SSEEvent:
 class Broadcaster:
     """SSE event broadcaster. Thread-safe client registry with filtered delivery."""
 
+    # Default replay buffer size — keeps last N events for reconnecting clients.
+    DEFAULT_REPLAY_BUFFER_SIZE = 500
+
     def __init__(
         self,
         max_connections: int = 100,
         heartbeat_interval: float = 30.0,
-        connection_timeout: float = 60.0,
+        connection_timeout: float = 300.0,
         retry_after: int = 5,
+        replay_buffer_size: int = DEFAULT_REPLAY_BUFFER_SIZE,
     ) -> None:
         self._max_connections = max_connections
         self._heartbeat_interval = heartbeat_interval
@@ -80,13 +86,20 @@ class Broadcaster:
         self._lock = threading.Lock()
         self._event_id_counter = 0
 
+        # Ring buffer for event replay on reconnect
+        self._replay_buffer: collections.deque[SSEEvent] = collections.deque(
+            maxlen=replay_buffer_size
+        )
+
         self._running = False
         self._cleanup_thread: Optional[threading.Thread] = None
         self._shutdown_event = threading.Event()
 
         logger.info(
             f"Broadcaster initialized: max_connections={max_connections}, "
-            f"heartbeat_interval={heartbeat_interval}s"
+            f"heartbeat_interval={heartbeat_interval}s, "
+            f"connection_timeout={connection_timeout}s, "
+            f"replay_buffer_size={replay_buffer_size}"
         )
 
     @property
@@ -187,6 +200,10 @@ class Broadcaster:
         data["_eid"] = event_id
         event = SSEEvent(event_type=event_type, data=data, event_id=event_id)
 
+        # Store in replay buffer for reconnecting clients
+        with self._lock:
+            self._replay_buffer.append(event)
+
         sent_count = 0
         now = datetime.now(timezone.utc)
         for client in clients_snapshot:
@@ -197,6 +214,7 @@ class Broadcaster:
                     sent_count += 1
                 except Full:
                     client.dropped_events += 1
+                    client.has_gap = True
                     logger.warning(
                         f"Client {client.client_id} queue full, dropped event "
                         f"type={event_type} id={event_id} "
@@ -206,11 +224,58 @@ class Broadcaster:
         logger.debug(f"Broadcast: type={event_type}, id={event_id}, sent_to={sent_count}")
         return sent_count
 
+    def get_replay_events(self, after_event_id: int, filters: Optional[dict] = None) -> list[SSEEvent]:
+        """Get events from the replay buffer after a given event ID.
+
+        Used for reconnecting clients that send Last-Event-ID.
+        """
+        with self._lock:
+            events = []
+            for event in self._replay_buffer:
+                if event.event_id <= after_event_id:
+                    continue
+                if filters:
+                    if not self._event_matches_filters(event, filters):
+                        continue
+                events.append(event)
+            return events
+
+    @staticmethod
+    def _event_matches_filters(event: "SSEEvent", filters: dict) -> bool:
+        """Check if an event matches a set of filters."""
+        if "types" in filters and filters["types"]:
+            if event.event_type not in filters["types"]:
+                return False
+        if "project_id" in filters and filters["project_id"]:
+            if event.data.get("project_id") != filters["project_id"]:
+                return False
+        if "agent_id" in filters and filters["agent_id"]:
+            if event.data.get("agent_id") != filters["agent_id"]:
+                return False
+        return True
+
     def get_next_event(self, client_id: str, timeout: float = 30.0) -> Optional[SSEEvent]:
-        """Get the next event for a client, blocking with timeout."""
+        """Get the next event for a client, blocking with timeout.
+
+        If the client has a gap (events were dropped), injects a gap
+        notification event so the client knows to do a full refresh.
+        """
         client = self.get_client(client_id)
         if not client or not client.is_active:
             return None
+
+        # Inject gap notification if events were dropped for this client
+        if client.has_gap:
+            client.has_gap = False
+            with self._lock:
+                self._event_id_counter += 1
+                gap_id = self._event_id_counter
+            return SSEEvent(
+                event_type="gap",
+                data={"_eid": gap_id, "message": "Events were dropped, refresh recommended"},
+                event_id=gap_id,
+            )
+
         try:
             return client.event_queue.get(timeout=timeout)
         except Empty:
@@ -282,8 +347,9 @@ def init_broadcaster(config: Optional[dict] = None) -> Broadcaster:
         _broadcaster = Broadcaster(
             max_connections=sse_config.get("max_connections", 100),
             heartbeat_interval=sse_config.get("heartbeat_interval_seconds", 30),
-            connection_timeout=sse_config.get("connection_timeout_seconds", 60),
+            connection_timeout=sse_config.get("connection_timeout_seconds", 300),
             retry_after=sse_config.get("retry_after_seconds", 5),
+            replay_buffer_size=sse_config.get("replay_buffer_size", 500),
         )
         _broadcaster.start()
         return _broadcaster
