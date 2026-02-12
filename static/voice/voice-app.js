@@ -1446,9 +1446,10 @@ window.VoiceApp = (function () {
     if (!state) { pill.style.display = 'none'; return; }
     pill.style.display = '';
     var label = _chatAgentStateLabel || _getStateLabel(state);
-    // Remove all state-* classes
-    pill.className = pill.className.replace(/\bstate-\S+/g, '').trim();
-    pill.classList.add('chat-state-pill', 'state-' + state);
+    // Remove previous state-* classes (but not chat-state-pill base class)
+    pill.className = pill.className.replace(/(?:^|\s)state-\S+/g, '').trim();
+    if (pill.className.indexOf('chat-state-pill') === -1) pill.classList.add('chat-state-pill');
+    pill.classList.add('state-' + state);
     pill.textContent = label;
     // Pulse animation for active states
     if (state === 'processing' || state === 'commanded') {
