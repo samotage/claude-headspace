@@ -215,7 +215,7 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None) -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question") -> None:
     try:
         from .broadcaster import get_broadcaster
         payload = {
@@ -223,7 +223,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "project_id": agent.project_id,
             "text": text,
             "actor": "agent",
-            "intent": "question",
+            "intent": intent,
             "task_id": task.id if task else None,
             "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -645,10 +645,17 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
 
                     if task.state == TaskState.COMPLETE:
                         _send_completion_notification(agent_obj, task)
-                    if task.state == TaskState.AWAITING_INPUT and task.turns:
+                    # Broadcast agent turn for all intent types (voice chat needs this)
+                    if task.turns:
                         for t in reversed(task.turns):
-                            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                                _broadcast_turn_created(agent_obj, t.text, task, tool_input=t.tool_input, turn_id=t.id)
+                            if t.actor == TurnActor.AGENT and t.intent in (
+                                TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
+                            ):
+                                _broadcast_turn_created(
+                                    agent_obj, t.text, task,
+                                    tool_input=t.tool_input, turn_id=t.id,
+                                    intent=t.intent.value,
+                                )
                                 break
 
                     logger.info(
@@ -781,6 +788,26 @@ def process_user_prompt_submit(
                 state_changed=False, new_state=None,
             )
 
+        # Filter out system-injected XML messages that aren't real user input.
+        # Claude Code injects <task-notification> when background tasks complete,
+        # and <system-reminder> for internal plumbing.  These fire the
+        # user_prompt_submit hook but should NOT create turns or trigger state
+        # transitions — they'd appear as nonsensical "COMMAND" bubbles in chat.
+        if prompt_text and (
+            "<task-notification>" in prompt_text
+            or "<system-reminder>" in prompt_text
+        ):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=system_xml"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
         agent.last_seen_at = datetime.now(timezone.utc)
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
         _progress_texts_for_agent.pop(agent.id, None)  # New response cycle
@@ -808,6 +835,12 @@ def process_user_prompt_submit(
                 )
 
         pending_file_meta = _file_metadata_pending_for_agent.pop(agent.id, None)
+        # When the upload endpoint set file metadata, it includes a clean
+        # display text (_display_text) so the turn stores the user's text
+        # rather than the raw tmux text (which has the file path prepended).
+        # This lets the frontend dedup match the optimistic bubble text.
+        if pending_file_meta and "_display_text" in pending_file_meta:
+            prompt_text = pending_file_meta.pop("_display_text")
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,
@@ -1020,11 +1053,20 @@ def process_stop(
         if current_task.state == TaskState.COMPLETE:
             _send_completion_notification(agent, current_task)
 
-        # Broadcast question turn if transitioned to AWAITING_INPUT
-        if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
+        # Broadcast agent turn for voice chat — all intent types, not just questions.
+        # Without this, completion/end_of_task turns are invisible via SSE and
+        # the voice chat only picks them up via transcript polling (which can miss
+        # them due to timing gaps with deferred stops and SSE reconnects).
+        if current_task.turns:
             for t in reversed(current_task.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
+                if t.actor == TurnActor.AGENT and t.intent in (
+                    TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
+                ):
+                    _broadcast_turn_created(
+                        agent, t.text, current_task,
+                        tool_input=t.tool_input, turn_id=t.id,
+                        intent=t.intent.value,
+                    )
                     break
 
         logger.info(
