@@ -459,7 +459,7 @@ body.layout-split .main-panel-empty.show-empty {
   background: none;
   border: 1px solid transparent;
   color: var(--text-dim, #aaa);
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -608,7 +608,7 @@ body.layout-split .agent-card.selected {
   background: none;
   border: 1px solid transparent;
   color: var(--text-dim, #aaa);
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
