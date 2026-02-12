@@ -59,14 +59,28 @@ def summarize_permission_command(
         return f"Permission: {tool_name}"
 
 
-def classify_safety(tool_name: str | None, tool_input: dict | None) -> str:
+def classify_safety(
+    tool_name: str | None,
+    tool_input: dict | None,
+    pane_context: dict | None = None,
+) -> str:
     """Classify the safety level of a permission request.
+
+    Uses a layered approach:
+    1. Option label keywords from Claude Code's permission dialog (highest confidence)
+    2. Tool-specific classification (Bash compound commands, git, etc.)
 
     Returns:
         One of: "safe_read", "safe_write", "destructive", "unknown"
     """
     if not tool_name:
         return "unknown"
+
+    # Layer 1: Check option labels from Claude Code's permission dialog
+    if pane_context:
+        label_result = _classify_from_option_labels(pane_context.get("options"))
+        if label_result:
+            return label_result
 
     tool_input = tool_input or {}
 
@@ -333,6 +347,28 @@ def _truncate(text: str, max_length: int = MAX_SUMMARY_LENGTH) -> str:
     return text[: max_length - 3] + "..."
 
 
+# --- Option label classification ---
+
+def _classify_from_option_labels(options: list[dict] | None) -> str | None:
+    """Check option labels for Claude Code's 'allow reading/writing' patterns.
+
+    Claude Code's permission dialog shows options like:
+    - "Yes, allow reading from samotage/ from this project"
+    - "Yes, allow writing to samotage/ from this project"
+
+    These are high-confidence signals for read vs write classification.
+    """
+    if not options:
+        return None
+    for opt in options:
+        label = (opt.get("label") or "").lower()
+        if "allow reading" in label:
+            return "safe_read"
+        if any(kw in label for kw in ("allow writing", "allow editing", "allow modifying")):
+            return "safe_write"
+    return None
+
+
 # --- Bash safety classification ---
 
 _SAFE_READ_COMMANDS = frozenset({
@@ -363,11 +399,49 @@ _DESTRUCTIVE_GIT = frozenset({
 })
 
 
+def _classify_compound_bash(command: str) -> str | None:
+    """Split compound command on ; and &&, classify each segment, return worst.
+
+    Returns None if the command is not compound (no ; or &&).
+    For compound commands, classifies each segment independently and returns
+    the most dangerous result.
+    """
+    if ";" not in command and "&&" not in command:
+        return None
+
+    # Split on ; and &&
+    segments = re.split(r"\s*(?:;|&&)\s*", command)
+    segments = [s.strip() for s in segments if s.strip()]
+
+    if len(segments) <= 1:
+        return None
+
+    results = []
+    for segment in segments:
+        # Classify each segment as if it were a standalone command
+        result = _classify_bash_safety({"command": segment})
+        results.append(result)
+
+    # Return the most dangerous classification
+    if "destructive" in results:
+        return "destructive"
+    if "safe_write" in results or "unknown" in results:
+        return "safe_write"
+    if results and all(r == "safe_read" for r in results):
+        return "safe_read"
+    return "unknown"
+
+
 def _classify_bash_safety(tool_input: dict) -> str:
     """Classify a Bash command's safety level."""
     command = tool_input.get("command", "")
     if not command:
         return "unknown"
+
+    # Layer 2: Check compound commands (;, &&)
+    compound_result = _classify_compound_bash(command)
+    if compound_result is not None:
+        return compound_result
 
     primary = _extract_primary_command(command)
     if not primary:

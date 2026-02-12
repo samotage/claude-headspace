@@ -414,7 +414,7 @@ def _synthesize_permission_options(
     # Generate meaningful summary using permission summarizer
     from .permission_summarizer import summarize_permission_command, classify_safety
     question_text = summarize_permission_command(tool_name, tool_input, pane_context)
-    safety = classify_safety(tool_name, tool_input)
+    safety = classify_safety(tool_name, tool_input, pane_context)
 
     # Build command context for future auto-responder
     command_context = {}
