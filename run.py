@@ -5,6 +5,7 @@ Reads configuration from config.yaml and starts the server with the
 configured host, port, and debug settings.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -33,9 +34,14 @@ def main():
         if vb_bind:
             host = vb_bind
 
+    # TLS -- Tailscale HTTPS certificates
+    ssl_cert = os.environ.get("TLS_CERT")
+    ssl_key = os.environ.get("TLS_KEY")
+    ssl_context = (ssl_cert, ssl_key) if ssl_cert and ssl_key else None
+
     # Create and run the app
     app = create_app(str(config_path))
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

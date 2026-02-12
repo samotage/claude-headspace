@@ -19,6 +19,10 @@ if [[ -d "venv" ]]; then
     source venv/bin/activate
 fi
 
+# TLS -- Tailscale HTTPS certificates
+export TLS_CERT="/Users/samotage/certs/smac.griffin-blenny.ts.net.crt"
+export TLS_KEY="/Users/samotage/certs/smac.griffin-blenny.ts.net.key"
+
 # Start server in background using run.py (reads config.yaml)
 python3 run.py > /tmp/claude_headspace.log 2>&1 &
 
@@ -27,7 +31,7 @@ sleep 2
 
 # Verify it's running
 if lsof -i :$PORT > /dev/null 2>&1; then
-    echo "Server started on port $PORT"
+    echo "Server started on https://0.0.0.0:$PORT (TLS)"
     lsof -i :$PORT | head -3
 else
     echo "Server failed to start. Check /tmp/claude_headspace.log"
