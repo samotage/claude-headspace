@@ -652,6 +652,14 @@ body.layout-split .agent-card.selected {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Larger kebab dots on touch devices (iPhone, iPad) */
+@media (pointer: coarse) {
+  .project-kebab-btn,
+  .agent-kebab-btn {
+    font-size: 32px;
+  }
+}
+
 .kebab-menu-item {
   display: flex;
   align-items: center;
