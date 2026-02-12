@@ -759,6 +759,10 @@ select.form-well {
   z-index: 50;
 }
 
+.z-\[1\] {
+  z-index: 1;
+}
+
 .z-\[200\] {
   z-index: 200;
 }
@@ -2253,6 +2257,12 @@ article.kebab-open {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition: color 0.15s, border-color 0.2s, background 0.15s;
+}
+
+@media (max-width: 640px) {
+  .card-kebab-btn {
+    margin: -2px -8px -2px 0;
+  }
 }
 
 .card-kebab-btn:hover {

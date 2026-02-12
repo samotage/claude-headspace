@@ -588,6 +588,9 @@ body.layout-split .agent-card.selected {
 .agent-header-actions {
   position: relative;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .agent-kebab-btn {
@@ -708,11 +711,41 @@ body.layout-split .agent-card.selected {
   white-space: nowrap;
   letter-spacing: 0.3px;
 }
+.agent-state.state-idle { background: var(--surface-raised); color: var(--text-muted); }
 .agent-state.state-awaiting_input { background: var(--warning-subtle); color: var(--awaiting); }
 .agent-state.state-processing { background: var(--accent-focus); color: var(--processing); }
 .agent-state.state-commanded { background: var(--state-commanded-bg); color: var(--accent); }
 .agent-state.state-complete { background: var(--success-subtle); color: var(--success); }
 .agent-state.state-timed_out { background: var(--error-subtle); color: var(--error); }
+
+/* --- Chat header state pill --- */
+.chat-state-pill {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+  transition: background 0.3s, color 0.3s;
+}
+.chat-state-pill.state-idle { background: var(--surface-raised); color: var(--text-muted); }
+.chat-state-pill.state-awaiting_input { background: var(--warning-subtle); color: var(--awaiting); }
+.chat-state-pill.state-processing { background: var(--accent-focus); color: var(--processing); }
+.chat-state-pill.state-commanded { background: var(--state-commanded-bg); color: var(--accent); }
+.chat-state-pill.state-complete { background: var(--success-subtle); color: var(--success); }
+.chat-state-pill.state-timed_out { background: var(--error-subtle); color: var(--error); }
+
+.state-pill-active {
+  animation: state-pill-pulse 2s ease-in-out infinite;
+}
+@keyframes state-pill-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
 .agent-instruction {
   font-size: var(--chat-font-size, 15px);

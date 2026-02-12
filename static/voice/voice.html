@@ -106,13 +106,14 @@
       <div id="screen-chat" class="screen">
         <div class="chat-header">
           <button class="chat-back-btn" aria-label="Back">&larr;</button>
-          <a id="chat-focus-link" class="chat-focus-link" role="button" title="Focus iTerm window">
+          <div id="chat-focus-link" class="chat-focus-link" role="button" tabindex="0" title="Focus iTerm window">
             <span id="chat-hero" class="chat-hero-badge"></span>
             <div class="chat-header-info">
               <span id="chat-agent-name" class="chat-agent-name"></span>
               <span id="chat-project-name" class="chat-project-name"></span>
             </div>
-          </a>
+          </div>
+          <span id="chat-state-pill" class="chat-state-pill"></span>
         </div>
         <div id="attention-banners" class="attention-banners"></div>
         <!-- Drop zone overlay -->
@@ -263,7 +264,6 @@
 
   <!-- Scripts -->
   <script src="/static/js/utils.js?v=4"></script>
-  <script src="/static/js/focus-api.js?v=1"></script>
   <script src="/static/js/confirm-dialog.js?v=4"></script>
   <script src="/static/voice/voice-api.js?v=5"></script>
   <script src="/static/voice/voice-input.js?v=5"></script>
@@ -301,6 +301,15 @@
         .catch(function () { /* ignore */ });
     }
   </script>
+
+  <!-- Image Lightbox Modal -->
+  <div id="image-lightbox" class="image-lightbox" style="display:none">
+    <div class="image-lightbox-backdrop"></div>
+    <div class="image-lightbox-content">
+      <button class="image-lightbox-close" aria-label="Close image">&times;</button>
+      <img id="lightbox-img" src="" alt="">
+    </div>
+  </div>
 
 </body>
 </html>

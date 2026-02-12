@@ -316,6 +316,11 @@ article.kebab-open {
     touch-action: manipulation;
     transition: color 0.15s, border-color 0.2s, background 0.15s;
 }
+@media (max-width: 640px) {
+    .card-kebab-btn {
+        margin: -2px -8px -2px 0;
+    }
+}
 .card-kebab-btn:hover {
     color: var(--cyan);
     border-color: var(--border-bright);

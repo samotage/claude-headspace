@@ -976,6 +976,7 @@ class TestStopTurnBroadcast:
         assert result.success is True
         mock_broadcast_turn.assert_called_once_with(
             mock_agent, "Do you want to proceed?", mock_task, tool_input=None, turn_id=mock_turn.id,
+            intent='question',
         )
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")

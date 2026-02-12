@@ -24,12 +24,14 @@ window.VoiceApp = (function () {
   var _chatPendingUserSends = [];  // {text, sentAt, fakeTurnId} — pending sends awaiting real turn
   var PENDING_SEND_TTL_MS = 15000; // 15s window for dedup matching
   var _chatAgentState = null;
+  var _chatAgentStateLabel = null;
   var _chatHasMore = false;
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
   // _chatTranscriptSeq kept for initial load guard only (stale navigation detection)
   var _chatSyncTimer = null;   // Periodic transcript sync timer (safety net)
+  var _responseCatchUpTimers = []; // Aggressive post-send fetch timers
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
   var _isTrustedNetwork = _isLocalhost
     || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname)
@@ -154,7 +156,7 @@ window.VoiceApp = (function () {
   function showScreen(name) {
     _currentScreen = name;
     // Stop chat sync timer when leaving chat screen
-    if (name !== 'chat') _stopChatSyncTimer();
+    if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); }
 
     if (name === 'setup') {
       // Setup screen is outside app-layout, hide app-layout
@@ -364,6 +366,7 @@ window.VoiceApp = (function () {
           + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
           + '</div>'
           + '<div class="agent-header-actions">'
+          + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
           + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
           + '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
@@ -702,6 +705,44 @@ window.VoiceApp = (function () {
     }, 8000);
   }
 
+  /**
+   * Cancel any active response catch-up timers.
+   */
+  function _cancelResponseCatchUp() {
+    for (var i = 0; i < _responseCatchUpTimers.length; i++) {
+      clearTimeout(_responseCatchUpTimers[i]);
+    }
+    _responseCatchUpTimers = [];
+  }
+
+  /**
+   * Schedule aggressive transcript fetches after sending a message.
+   *
+   * iOS Safari often drops SSE events, leaving the chat stuck on typing
+   * dots. This watchdog polls at short intervals until the agent state
+   * leaves 'processing'/'commanded', ensuring the response appears
+   * even when SSE is unreliable.
+   */
+  function _scheduleResponseCatchUp() {
+    _cancelResponseCatchUp();
+    var delays = [1500, 3000, 5000, 8000, 12000, 18000, 25000];
+    var savedAgentId = _targetAgentId;
+    for (var i = 0; i < delays.length; i++) {
+      (function (delay) {
+        _responseCatchUpTimers.push(setTimeout(function () {
+          if (_currentScreen !== 'chat' || _targetAgentId !== savedAgentId) return;
+          // Stop polling once we're no longer waiting for a response
+          var state = (_chatAgentState || '').toLowerCase();
+          if (state !== 'processing' && state !== 'commanded') {
+            _cancelResponseCatchUp();
+            return;
+          }
+          _fetchTranscriptForChat();
+        }, delay));
+      })(delays[i]);
+    }
+  }
+
   function _showChatScreen(agentId) {
     _targetAgentId = agentId;
     var focusLink = document.getElementById('chat-focus-link');
@@ -714,6 +755,7 @@ window.VoiceApp = (function () {
     _chatAgentEnded = false;
     _fetchInFlight = false; // Reset in-flight guard for new agent
     if (_fetchDebounceTimer) { clearTimeout(_fetchDebounceTimer); _fetchDebounceTimer = null; }
+    _cancelResponseCatchUp();
     _startChatSyncTimer();
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
@@ -754,11 +796,13 @@ window.VoiceApp = (function () {
       if (projEl) projEl.textContent = '';
 
       _chatAgentState = data.agent_state;
+      _chatAgentStateLabel = null; // Reset; will be set by SSE with richer label if available
       _chatHasMore = data.has_more || false;
       _chatAgentEnded = data.agent_ended || false;
       _renderTranscriptTurns(data);
       _scrollChatToBottom();
       _updateTypingIndicator();
+      _updateChatStatePill();
       _updateEndedAgentUI();
       _updateLoadMoreIndicator();
     }).catch(function () {
@@ -997,21 +1041,42 @@ window.VoiceApp = (function () {
     return sep;
   }
 
-  function _renderChatBubble(turn, prevTurn) {
+  function _renderChatBubble(turn, prevTurn, forceRender) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
-    var el = _createBubbleEl(turn, prevTurn);
+    // When a terminal intent (completion/end_of_task) arrives, collapse
+    // intermediate PROGRESS bubbles for the same task to avoid content
+    // overlap — the COMPLETION turn contains the full response.
+    var isTerminal = (turn.intent === 'completion' || turn.intent === 'end_of_task');
+    if (isTerminal && turn.task_id) {
+      _collapseProgressBubbles(messagesEl, turn.task_id);
+    }
+    var el = _createBubbleEl(turn, prevTurn, forceRender);
     if (el) messagesEl.appendChild(el);
   }
 
-  function _createBubbleEl(turn, prevTurn) {
+  /**
+   * Remove PROGRESS bubbles for a given task from the DOM.
+   * Their IDs remain in _chatRenderedTurnIds so transcript fetch
+   * won't re-render them.
+   */
+  function _collapseProgressBubbles(container, taskId) {
+    var bubbles = container.querySelectorAll('.chat-bubble[data-task-id="' + taskId + '"]');
+    for (var i = 0; i < bubbles.length; i++) {
+      if (bubbles[i].querySelector('.progress-intent')) {
+        bubbles[i].remove();
+      }
+    }
+  }
+
+  function _createBubbleEl(turn, prevTurn, forceRender) {
     // Check all IDs in a group
     var ids = turn.groupedIds || [turn.id];
     var allRendered = true;
     for (var k = 0; k < ids.length; k++) {
       if (!_chatRenderedTurnIds.has(ids[k])) { allRendered = false; break; }
     }
-    if (allRendered) return null;
+    if (allRendered && !forceRender) return null;
     for (var k2 = 0; k2 < ids.length; k2++) {
       _chatRenderedTurnIds.add(ids[k2]);
     }
@@ -1040,6 +1105,7 @@ window.VoiceApp = (function () {
     var isGrouped = turn.groupedTexts && turn.groupedTexts.length > 1;
     bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent') + (isGrouped ? ' grouped' : '');
     bubble.setAttribute('data-turn-id', turn.id);
+    if (turn.task_id) bubble.setAttribute('data-task-id', turn.task_id);
 
     var html = '';
 
@@ -1351,6 +1417,19 @@ window.VoiceApp = (function () {
     if (_isUserNearBottom()) _scrollChatToBottom();
   }
 
+  var _STATE_LABELS = {
+    idle: 'Idle',
+    commanded: 'Command received',
+    processing: 'Processing\u2026',
+    awaiting_input: 'Input needed',
+    complete: 'Task complete',
+    timed_out: 'Timed out'
+  };
+
+  function _getStateLabel(state) {
+    return _STATE_LABELS[(state || '').toLowerCase()] || state || 'Unknown';
+  }
+
   function _updateTypingIndicator() {
     var typingEl = document.getElementById('chat-typing');
     if (!typingEl) return;
@@ -1358,6 +1437,25 @@ window.VoiceApp = (function () {
     var isProcessing = state === 'processing' || state === 'commanded';
     typingEl.style.display = isProcessing ? 'block' : 'none';
     if (isProcessing) _scrollChatToBottomIfNear();
+  }
+
+  function _updateChatStatePill() {
+    var pill = document.getElementById('chat-state-pill');
+    if (!pill) return;
+    var state = (_chatAgentState || '').toLowerCase();
+    if (!state) { pill.style.display = 'none'; return; }
+    pill.style.display = '';
+    var label = _chatAgentStateLabel || _getStateLabel(state);
+    // Remove all state-* classes
+    pill.className = pill.className.replace(/\bstate-\S+/g, '').trim();
+    pill.classList.add('chat-state-pill', 'state-' + state);
+    pill.textContent = label;
+    // Pulse animation for active states
+    if (state === 'processing' || state === 'commanded') {
+      pill.classList.add('state-pill-active');
+    } else {
+      pill.classList.remove('state-pill-active');
+    }
   }
 
   function _markAllQuestionsAnswered() {
@@ -1556,13 +1654,16 @@ window.VoiceApp = (function () {
     // Show progress
     _showUploadProgress(0);
     _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
     _updateTypingIndicator();
+    _updateChatStatePill();
 
     VoiceAPI.uploadFile(_targetAgentId, file, trimText || null, function (pct) {
       _showUploadProgress(pct);
     }).then(function (data) {
       _hideUploadProgress();
-      // Upload success — SSE will update state
+      // Schedule aggressive catch-up fetches in case SSE events are missed
+      _scheduleResponseCatchUp();
     }).catch(function (err) {
       _hideUploadProgress();
       // Remove the ghost optimistic bubble on failure (Finding 10)
@@ -1570,20 +1671,14 @@ window.VoiceApp = (function () {
       var errMsg = (err && err.error) || 'Upload failed';
       _showUploadError(errMsg);
       _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
       _updateTypingIndicator();
+      _updateChatStatePill();
     });
   }
 
   function _sendChatCommand(text) {
     if (!text || !text.trim()) return;
-
-    // Guard: if agent is not in a receptive state, don't send stale text.
-    // The question may have been answered in the terminal.
-    var state = (_chatAgentState || '').toLowerCase();
-    if (state === 'processing' || state === 'commanded') {
-      _showChatSystemMessage('Agent is processing \u2014 please wait.');
-      return;
-    }
 
     // Add user bubble immediately
     var now = new Date().toISOString();
@@ -1615,10 +1710,14 @@ window.VoiceApp = (function () {
 
     // Show typing indicator (agent will be processing)
     _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
     _updateTypingIndicator();
+    _updateChatStatePill();
 
     VoiceAPI.sendCommand(text.trim(), _targetAgentId).then(function () {
-      // Command sent — SSE will update state
+      // Command sent — schedule aggressive catch-up fetches in case
+      // SSE events are missed (common on iOS Safari).
+      _scheduleResponseCatchUp();
     }).catch(function (err) {
       // Remove the ghost optimistic bubble on failure (Finding 10)
       _removeOptimisticBubble(pendingEntry);
@@ -1628,7 +1727,9 @@ window.VoiceApp = (function () {
       errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Send failed') + '</div>';
       if (messagesEl) messagesEl.appendChild(errBubble);
       _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
       _updateTypingIndicator();
+      _updateChatStatePill();
       _scrollChatToBottom();
     });
   }
@@ -1642,7 +1743,9 @@ window.VoiceApp = (function () {
     var newState = data.new_state || data.state;
     if (newState) {
       _chatAgentState = newState;
+      _chatAgentStateLabel = (data.state_info && data.state_info.label) ? data.state_info.label : null;
       _updateTypingIndicator();
+      _updateChatStatePill();
     }
 
     // Recover from false ended state: card_refresh with is_active clears ended
@@ -1703,6 +1806,8 @@ window.VoiceApp = (function () {
     // entries before the transcript-based dedup can use them.
     if (data.actor === 'user') return;
 
+    var isTerminalIntent = (data.intent === 'completion' || data.intent === 'end_of_task');
+
     // Build a turn-like object for direct rendering
     var turn = {
       id: data.turn_id || ('sse-' + Date.now()),
@@ -1712,7 +1817,8 @@ window.VoiceApp = (function () {
       timestamp: data.timestamp || new Date().toISOString(),
       tool_input: data.tool_input || null,
       question_text: data.text,
-      question_options: null
+      question_options: null,
+      task_id: data.task_id || null
     };
 
     // Extract question_options from tool_input for immediate rendering
@@ -1723,10 +1829,18 @@ window.VoiceApp = (function () {
       }
     }
 
-    // Skip if already rendered
-    if (_chatRenderedTurnIds.has(turn.id)) return;
+    // Skip if already rendered — but always render terminal intents
+    // (completion/end_of_task) so the agent's final response is visible
+    // even if a PROGRESS turn with the same ID was already shown.
+    if (_chatRenderedTurnIds.has(turn.id)) {
+      if (!isTerminalIntent) return;
+      // Terminal intent: verify it's not already in the DOM (prevent duplicates
+      // from race between sync timer and SSE broadcast)
+      var messagesEl = document.getElementById('chat-messages');
+      if (messagesEl && messagesEl.querySelector('[data-turn-id="' + turn.id + '"]')) return;
+    }
 
-    _renderChatBubble(turn, null);
+    _renderChatBubble(turn, null, isTerminalIntent);
     _scrollChatToBottomIfNear();
   }
 
@@ -1773,7 +1887,9 @@ window.VoiceApp = (function () {
         if (chatNewState) {
           var prevState = _chatAgentState;
           _chatAgentState = chatNewState;
+          _chatAgentStateLabel = (data.state_info && data.state_info.label) ? data.state_info.label : null;
           _updateTypingIndicator();
+          _updateChatStatePill();
 
           // If state left AWAITING_INPUT, update question options to "answered"
           if (prevState && prevState.toLowerCase() === 'awaiting_input'
@@ -1803,7 +1919,9 @@ window.VoiceApp = (function () {
           if (justRecovered || (polledState && polledState.toLowerCase() !== (_chatAgentState || '').toLowerCase())) {
             if (polledState) {
               _chatAgentState = polledState;
+              _chatAgentStateLabel = data.agents[i].state_label || null;
               _updateTypingIndicator();
+              _updateChatStatePill();
             }
             _fetchTranscriptForChat();
           }
@@ -1975,6 +2093,7 @@ window.VoiceApp = (function () {
       if (resp.agent_state) {
         _chatAgentState = resp.agent_state;
         _updateTypingIndicator();
+        _updateChatStatePill();
       }
       if (resp.agent_ended !== undefined) {
         var wasEnded = _chatAgentEnded;
@@ -2197,6 +2316,21 @@ window.VoiceApp = (function () {
     VoiceAPI.onTurnCreated(_handleTurnCreated);
     VoiceAPI.onGap(_handleGap);
     VoiceAPI.connectSSE();
+
+    // iOS recovery: when the tab returns from background, SSE is dead and
+    // timers were suspended.  Force an immediate catch-up.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      // Reconnect SSE if it died in the background
+      if (VoiceAPI.getConnectionState() !== 'connected') {
+        VoiceAPI.connectSSE();
+      }
+      // Immediately refresh state and transcript
+      _refreshAgents();
+      if (_currentScreen === 'chat' && _targetAgentId) {
+        _fetchTranscriptForChat();
+      }
+    });
 
     // Play ready cue
     VoiceOutput.playCue('ready');

@@ -111,7 +111,7 @@
   </div>
   {% endif %}
   <!-- Priority + task stats footer -->
-  <div class="flex items-center justify-between gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
+  <div class="relative z-[1] flex items-center justify-between gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
     <div class="flex items-center gap-3">
       <span class="priority-score px-1.5 py-0.5 text-[11px] font-mono font-medium rounded-sm" data-priority="{{ agent.priority }}">{{ agent.priority }}</span>
       {% if agent.turn_count and agent.turn_count > 0 %}
@@ -121,10 +121,10 @@
     <div class="card-kebab-wrapper">
       <button class="card-kebab-btn" data-agent-id="{{ agent.id }}" title="Actions" aria-label="Agent actions" aria-expanded="false">&#8942;</button>
       <div class="card-kebab-menu" data-agent-id="{{ agent.id }}">
-        <a href="/voice?agent_id={{ agent.id }}" class="card-kebab-item">
+        <button class="card-kebab-item card-chat-action" data-agent-id="{{ agent.id }}">
           <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h1l7-7-1-1-7 7zm9.5-9.5 1 1m-2-2 1.44-1.44a.7.7 0 0 1 1 0l1 1a.7.7 0 0 1 0 1L12.5 4.5"/></svg>
           <span>Chat</span>
-        </a>
+        </button>
         <button class="card-kebab-item card-ctx-action" data-agent-id="{{ agent.id }}">
           <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>
           <span>Fetch context</span>

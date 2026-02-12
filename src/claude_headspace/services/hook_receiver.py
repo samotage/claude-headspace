@@ -601,7 +601,9 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                             if new_texts:
                                 completion_text = "\n\n".join(new_texts)
                             else:
-                                completion_text = ""
+                                # All text captured as PROGRESS — use full
+                                # text so a COMPLETION Turn is still created.
+                                completion_text = full_agent_text
                     _transcript_positions.pop(agent_id, None)
 
                     inference_service = app.extensions.get("inference_service")
@@ -647,16 +649,24 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                         _send_completion_notification(agent_obj, task)
                     # Broadcast agent turn for all intent types (voice chat needs this)
                     if task.turns:
+                        broadcast_turn = None
                         for t in reversed(task.turns):
                             if t.actor == TurnActor.AGENT and t.intent in (
                                 TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
                             ):
-                                _broadcast_turn_created(
-                                    agent_obj, t.text, task,
-                                    tool_input=t.tool_input, turn_id=t.id,
-                                    intent=t.intent.value,
-                                )
+                                broadcast_turn = t
                                 break
+                        if not broadcast_turn:
+                            for t in reversed(task.turns):
+                                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
+                                    broadcast_turn = t
+                                    break
+                        if broadcast_turn:
+                            _broadcast_turn_created(
+                                agent_obj, broadcast_turn.text, task,
+                                tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
+                                intent=broadcast_turn.intent.value,
+                            )
 
                     logger.info(
                         f"deferred_stop: agent_id={agent_id}, "
@@ -979,8 +989,11 @@ def process_stop(
                 if new_texts:
                     completion_text = "\n\n".join(new_texts)
                 else:
-                    # All text was already captured as PROGRESS turns
-                    completion_text = ""
+                    # All text was captured as PROGRESS turns — use
+                    # full_agent_text so a COMPLETION Turn is still created.
+                    # Without this, the voice chat never sees the response
+                    # (the PROGRESS broadcast gets deduped client-side).
+                    completion_text = full_agent_text
             logger.info(
                 f"hook_event: type=stop, agent_id={agent.id}, "
                 f"progress_dedup: captured={len(captured)} turns, "
@@ -1058,16 +1071,27 @@ def process_stop(
         # the voice chat only picks them up via transcript polling (which can miss
         # them due to timing gaps with deferred stops and SSE reconnects).
         if current_task.turns:
+            broadcast_turn = None
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent in (
                     TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
                 ):
-                    _broadcast_turn_created(
-                        agent, t.text, current_task,
-                        tool_input=t.tool_input, turn_id=t.id,
-                        intent=t.intent.value,
-                    )
+                    broadcast_turn = t
                     break
+            # Fallback: when progress dedup captured all agent text and no
+            # COMPLETION turn was created, broadcast the last PROGRESS turn
+            # so the voice chat gets the agent's response via SSE.
+            if not broadcast_turn:
+                for t in reversed(current_task.turns):
+                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
+                        broadcast_turn = t
+                        break
+            if broadcast_turn:
+                _broadcast_turn_created(
+                    agent, broadcast_turn.text, current_task,
+                    tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
+                    intent=broadcast_turn.intent.value,
+                )
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "

@@ -263,15 +263,7 @@ def voice_command():
     current_state = current_task.state if current_task else None
     is_answering = current_state == TaskState.AWAITING_INPUT
     is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
-
-    # Reject if agent is busy (PROCESSING or COMMANDED)
-    if not is_answering and not is_idle:
-        state_str = current_state.value if current_state else "idle"
-        return _voice_error(
-            f"Agent is {state_str}, not ready for input.",
-            "Try again in a moment when the agent finishes processing.",
-            409,
-        )
+    is_processing = current_state in (TaskState.PROCESSING, TaskState.COMMANDED)
 
     # Check tmux pane
     if not agent.tmux_pane_id:
@@ -297,12 +289,21 @@ def voice_command():
         else:
             send_text = file_path
 
-    result = tmux_bridge.send_text(
-        pane_id=agent.tmux_pane_id,
-        text=send_text,
-        timeout=subprocess_timeout,
-        text_enter_delay_ms=text_enter_delay_ms,
-    )
+    if is_processing:
+        # Agent is busy — send Escape to interrupt first, then deliver message
+        result = tmux_bridge.interrupt_and_send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+        )
+    else:
+        result = tmux_bridge.send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+        )
 
     if not result.success:
         error_msg = result.error_message or "Send failed"
@@ -312,10 +313,16 @@ def voice_command():
             voice = {"status_line": f"Command failed: {error_msg}", "results": [], "next_action": "Try again."}
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
-    if is_idle:
-        # IDLE/COMPLETE: just send via tmux — the hook receiver will handle
-        # task creation + turn recording when Claude Code's hooks fire.
-        # Do NOT create a task here (avoids duplication with hook receiver).
+    if is_idle or is_processing:
+        # IDLE/COMPLETE/PROCESSING: just send via tmux — the hook receiver
+        # will handle task creation + turn recording when Claude Code's hooks
+        # fire.  For PROCESSING agents the Escape interrupt was sent first,
+        # then the new command text; the hook's user_prompt_submit will
+        # create the COMMAND turn.
+        # Set respond-pending so the hook doesn't duplicate our send.
+        from ..services.hook_receiver import _respond_pending_for_agent
+        _respond_pending_for_agent[agent.id] = time.time()
+
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
         broadcast_card_refresh(agent, "voice_command")
@@ -329,7 +336,7 @@ def voice_command():
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": "idle",
+            "new_state": "processing",
             "latency_ms": latency_ms,
         }), 200
 
@@ -503,8 +510,13 @@ def upload_file(agent_id: int):
     if is_idle:
         # Store file metadata so the next user_prompt_submit hook can attach it
         # to the COMMAND turn it creates (IDLE agents have no active task yet).
+        # Include the clean display text so the hook uses it instead of the raw
+        # tmux text (which has the file path prepended), avoiding a duplicate
+        # bubble in the chat UI where the frontend dedup compares by text.
         from ..services.hook_receiver import _file_metadata_pending_for_agent
-        _file_metadata_pending_for_agent[agent.id] = db_metadata
+        pending_meta = dict(db_metadata)
+        pending_meta["_display_text"] = text or f"[File: {file_metadata['original_filename']}]"
+        _file_metadata_pending_for_agent[agent.id] = pending_meta
 
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()

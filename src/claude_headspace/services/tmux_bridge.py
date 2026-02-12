@@ -190,6 +190,92 @@ def send_text(
         )
 
 
+def interrupt_and_send_text(
+    pane_id: str,
+    text: str,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
+    interrupt_settle_ms: int = 500,
+) -> SendResult:
+    """Interrupt a processing Claude Code agent, then send text.
+
+    Sends Escape to halt the current agent execution, waits for the
+    agent to return to its input prompt, then sends the text as a new
+    command via send_text().
+
+    Args:
+        pane_id: The tmux pane ID (format: %0, %5, etc.)
+        text: The text to send after interrupting
+        timeout: Subprocess timeout in seconds
+        text_enter_delay_ms: Delay in ms between text send and Enter send
+        interrupt_settle_ms: Delay in ms after Escape before sending text
+    """
+    if not pane_id:
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.NO_PANE_ID,
+            error_message="No pane ID provided.",
+        )
+
+    start_time = time.time()
+
+    try:
+        # Send Escape to interrupt the running agent
+        subprocess.run(
+            ["tmux", "send-keys", "-t", pane_id, "Escape"],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+        logger.info(f"Sent Escape interrupt to tmux pane {pane_id}")
+
+        # Wait for Claude Code to process the interrupt and return to prompt
+        time.sleep(interrupt_settle_ms / 1000.0)
+
+    except FileNotFoundError:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+            error_message="tmux is not installed or not on PATH.",
+            latency_ms=latency_ms,
+        )
+    except subprocess.CalledProcessError as e:
+        latency_ms = int((time.time() - start_time) * 1000)
+        error_type = _classify_subprocess_error(e)
+        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+        logger.warning(f"tmux Escape failed for pane {pane_id}: {stderr_text}")
+        return SendResult(
+            success=False,
+            error_type=error_type,
+            error_message=f"Interrupt failed: {stderr_text}" if stderr_text else "Interrupt failed",
+            latency_ms=latency_ms,
+        )
+    except subprocess.TimeoutExpired:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.TIMEOUT,
+            error_message=f"Interrupt timed out after {timeout}s.",
+            latency_ms=latency_ms,
+        )
+
+    # Now send the actual text
+    result = send_text(
+        pane_id=pane_id,
+        text=text,
+        timeout=timeout,
+        text_enter_delay_ms=text_enter_delay_ms,
+    )
+
+    if result.success:
+        total_latency_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"Interrupt + send to tmux pane {pane_id} ({total_latency_ms}ms)")
+        return SendResult(success=True, latency_ms=total_latency_ms)
+
+    return result
+
+
 def send_keys(
     pane_id: str,
     *keys: str,
