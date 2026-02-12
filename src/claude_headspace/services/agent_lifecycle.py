@@ -344,14 +344,18 @@ def get_agent_info(agent_id: int) -> dict | None:
     tasks_info = []
     recent_tasks = agent.tasks[:10] if agent.tasks else []
     for task in recent_tasks:
-        recent_turns = task.get_recent_turns(20)
+        recent_turns = task.get_recent_turns(50)
         turns_info = []
         for turn in reversed(recent_turns):  # chronological order
+            text = turn.text or ""
+            text_truncated = len(text) > 500
             turns_info.append({
                 "id": turn.id,
                 "actor": turn.actor.value,
                 "intent": turn.intent.value,
                 "timestamp": turn.timestamp.isoformat(),
+                "text": text[:500] if text_truncated else text,
+                "text_truncated": text_truncated,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
             })

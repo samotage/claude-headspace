@@ -570,6 +570,7 @@
             turns.forEach(function(turn) {
                 var actorValue = turn.actor || 'agent';
                 var intentValue = turn.intent || '';
+                var text = turn.text || '';
                 var summary = turn.summary || '';
                 var frustration = turn.frustration_score;
 
@@ -584,6 +585,7 @@
                 }
 
                 var actorClass = actorValue === 'user' ? 'text-amber' : 'text-cyan';
+                var turnId = 'ps-turn-text-' + turn.id;
 
                 html += '<div class="' + rowClass + '">';
                 html += '<div class="flex items-center gap-2">';
@@ -599,7 +601,20 @@
                     html += '<span class="text-xs text-muted ml-auto">' + ProjectShow._formatDate(turn.created_at) + '</span>';
                 }
                 html += '</div>';
-                if (summary) {
+                // Primary content: turn text (truncated to 300 chars with View full toggle)
+                if (text) {
+                    var displayText = text.length > 300 ? text.substring(0, 300) + '...' : text;
+                    html += '<p class="text-xs text-secondary mt-1 whitespace-pre-line" id="' + turnId + '">' + CHUtils.escapeHtml(displayText) + '</p>';
+                    if (text.length > 300) {
+                        html += '<button type="button" class="turn-view-full-btn text-[10px] text-cyan hover:underline mt-0.5" data-turn-id="' + turn.id + '" data-task-id="' + taskId + '">View full</button>';
+                    }
+                }
+                // Annotation: summary shown in muted italic if it exists and differs from text
+                if (summary && summary !== text && summary !== text.substring(0, summary.length)) {
+                    html += '<p class="text-[10px] text-muted italic mt-0.5">' + CHUtils.escapeHtml(summary) + '</p>';
+                }
+                // Fallback: if no text, show summary as primary
+                if (!text && summary) {
                     html += '<p class="text-xs text-secondary mt-1">' + CHUtils.escapeHtml(summary) + '</p>';
                 }
                 html += '</div>';
@@ -607,6 +622,31 @@
             html += '</div>';
 
             container.innerHTML = html;
+            // Bind View full toggles — look up full text from cached turns
+            container.querySelectorAll('.turn-view-full-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var tid = parseInt(btn.getAttribute('data-turn-id'), 10);
+                    var tkId = parseInt(btn.getAttribute('data-task-id'), 10);
+                    var el = document.getElementById('ps-turn-text-' + tid);
+                    if (!el) return;
+                    var expanded = btn.getAttribute('data-expanded') === '1';
+                    if (expanded) {
+                        // Find the cached turn to get the truncated display
+                        var cachedTurns = cache.taskTurns[tkId] || [];
+                        var t = cachedTurns.find(function(x) { return x.id === tid; });
+                        var shortText = t ? (t.text || '').substring(0, 300) + '...' : '';
+                        el.textContent = shortText;
+                        btn.textContent = 'View full';
+                        btn.setAttribute('data-expanded', '0');
+                    } else {
+                        var cachedTurns2 = cache.taskTurns[tkId] || [];
+                        var t2 = cachedTurns2.find(function(x) { return x.id === tid; });
+                        el.textContent = t2 ? (t2.text || '') : '';
+                        btn.textContent = 'Collapse';
+                        btn.setAttribute('data-expanded', '1');
+                    }
+                });
+            });
         },
 
         // --- Activity Metrics ---

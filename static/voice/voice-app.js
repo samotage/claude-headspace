@@ -803,6 +803,8 @@ window.VoiceApp = (function () {
       _scrollChatToBottom();
       _updateTypingIndicator();
       _updateChatStatePill();
+      // Show most recent task instruction in header
+      _updateChatTaskInstruction(data.turns || []);
       _updateEndedAgentUI();
       _updateLoadMoreIndicator();
     }).catch(function () {
@@ -1459,6 +1461,26 @@ window.VoiceApp = (function () {
     }
   }
 
+  function _updateChatTaskInstruction(turns) {
+    var el = document.getElementById('chat-task-instruction');
+    if (!el) return;
+    // Find the most recent task_instruction from turns (last non-empty)
+    var instruction = '';
+    for (var i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].task_instruction) {
+        instruction = turns[i].task_instruction;
+        break;
+      }
+    }
+    if (instruction) {
+      el.textContent = instruction.length > 80 ? instruction.substring(0, 80) + '...' : instruction;
+      el.style.display = '';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  }
+
   function _markAllQuestionsAnswered() {
     var containers = document.querySelectorAll('.bubble-options:not(.answered)');
     containers.forEach(function(el) {
@@ -1896,6 +1918,15 @@ window.VoiceApp = (function () {
           if (prevState && prevState.toLowerCase() === 'awaiting_input'
               && chatNewState.toLowerCase() !== 'awaiting_input') {
             _markAllQuestionsAnswered();
+          }
+        }
+        // Update task instruction in header if SSE provides it
+        if (data.task_instruction) {
+          var instrEl = document.getElementById('chat-task-instruction');
+          if (instrEl) {
+            var instr = data.task_instruction;
+            instrEl.textContent = instr.length > 80 ? instr.substring(0, 80) + '...' : instr;
+            instrEl.style.display = '';
           }
         }
       }

@@ -652,10 +652,14 @@ def get_task_turns(task_id: int):
 
         result = []
         for turn in turns:
+            text = turn.text or ""
+            text_truncated = len(text) > 500
             result.append({
                 "id": turn.id,
                 "actor": turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor),
                 "intent": turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent),
+                "text": text[:500] if text_truncated else text,
+                "text_truncated": text_truncated,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
                 "created_at": turn.timestamp.isoformat() if turn.timestamp else None,
