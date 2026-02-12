@@ -656,6 +656,7 @@ def get_task_turns(task_id: int):
                 "id": turn.id,
                 "actor": turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor),
                 "intent": turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent),
+                "text": turn.text,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
                 "created_at": turn.timestamp.isoformat() if turn.timestamp else None,
