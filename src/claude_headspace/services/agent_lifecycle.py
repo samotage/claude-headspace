@@ -90,7 +90,7 @@ def create_agent(project_id: int) -> CreateResult:
     # Generate a unique tmux session name
     import uuid
 
-    session_name = f"hs-{project.name}-{uuid.uuid4().hex[:8]}"
+    session_name = f"hs-{project.slug}-{uuid.uuid4().hex[:8]}"
 
     try:
         # Start claude-headspace in a new detached tmux session

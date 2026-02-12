@@ -287,13 +287,15 @@ def voice_command():
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
     text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
 
-    # Append file_path reference if provided
+    # Prepend file_path reference if provided (file before text so the
+    # instruction can reference it).  Single line — no embedded newlines
+    # which cause premature submission via tmux send-keys.
     send_text = text
     if file_path:
         if send_text:
-            send_text = f"{send_text}\n\nPlease look at this file: {file_path}"
+            send_text = f"{file_path} {send_text}"
         else:
-            send_text = f"Please look at this file: {file_path}"
+            send_text = file_path
 
     result = tmux_bridge.send_text(
         pane_id=agent.tmux_pane_id,
@@ -465,12 +467,17 @@ def upload_file(agent_id: int):
     # Prepare DB-safe metadata (strip server filesystem path)
     db_metadata = {k: v for k, v in file_metadata.items() if k != "server_path"}
 
-    # Build message for tmux delivery
-    abs_path = file_metadata["server_path"]
+    # Build message for tmux delivery.
+    # Use relative path (uploads/<file>) — Claude Code handles relative paths
+    # well and absolute paths trigger its interactive file-selection UI.
+    # File reference goes first (so the text can reference it), and
+    # everything stays on one line to avoid embedded newlines causing
+    # premature submission via tmux send-keys.
+    rel_path = f"uploads/{file_metadata['stored_filename']}"
     if text:
-        tmux_text = f"{text}\n\nPlease look at this file: {abs_path}"
+        tmux_text = f"{rel_path} {text}"
     else:
-        tmux_text = f"Please look at this file: {abs_path}"
+        tmux_text = rel_path
 
     # Send via tmux bridge
     config = current_app.config.get("APP_CONFIG", {})

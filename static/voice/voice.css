@@ -537,6 +537,42 @@ body.layout-split .agent-card.selected {
   background: var(--surface-raised);
 }
 
+/* Pending agent placeholder card */
+.agent-card.agent-card-pending {
+  opacity: 0.55;
+  pointer-events: none;
+  border-left-color: var(--text-muted);
+}
+.pending-pulse {
+  animation: pending-pulse 1.5s ease-in-out infinite;
+}
+@keyframes pending-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Lightweight voice toast */
+.voice-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  z-index: 9000;
+  pointer-events: none;
+}
+.voice-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .agent-header {
   display: flex;
   justify-content: space-between;
@@ -1080,6 +1116,21 @@ body.layout-split .agent-card.selected {
   transition: color 0.15s;
 }
 .chat-back-btn:hover { color: var(--accent-hover); }
+
+.chat-focus-link {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  transition: background 0.15s;
+}
+.chat-focus-link:hover { background: var(--surface-hover, rgba(255,255,255,0.05)); }
 
 .chat-hero-badge {
   display: flex;
@@ -1929,6 +1980,91 @@ body.layout-split .agent-card.selected {
 .file-card-size {
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* --- Confirm Dialog (override Tailwind classes for voice page) --- */
+#confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+}
+#confirm-dialog.hidden { display: none !important; }
+#confirm-dialog [data-confirm-backdrop] {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+#confirm-dialog > div:last-child {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#confirm-dialog > div:last-child > div {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-emphasis);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
+}
+#confirm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+#confirm-dialog-message {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+#confirm-dialog [data-confirm-cancel],
+#confirm-dialog [data-confirm-ok] {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+#confirm-dialog [data-confirm-cancel] {
+  background: var(--icon-btn-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+#confirm-dialog [data-confirm-cancel]:hover {
+  background: var(--icon-btn-bg-hover);
+  color: var(--text);
+}
+#confirm-dialog [data-confirm-ok] {
+  background: var(--error);
+  color: #fff;
+}
+#confirm-dialog [data-confirm-ok]:hover {
+  opacity: 0.9;
+}
+#confirm-dialog [data-confirm-cancel]:active,
+#confirm-dialog [data-confirm-ok]:active {
+  transform: scale(0.97);
+}
+/* Button row */
+#confirm-dialog [data-confirm-cancel] + [data-confirm-ok],
+#confirm-dialog [data-confirm-ok] {
+  margin-left: 0;
+}
+#confirm-dialog div:has([data-confirm-cancel]) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 /* ========================================================================

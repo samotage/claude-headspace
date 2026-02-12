@@ -204,6 +204,14 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('session_created', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        data._type = 'session_created';
+        if (_onAgentUpdate) _onAgentUpdate(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;

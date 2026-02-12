@@ -106,11 +106,13 @@
       <div id="screen-chat" class="screen">
         <div class="chat-header">
           <button class="chat-back-btn" aria-label="Back">&larr;</button>
-          <span id="chat-hero" class="chat-hero-badge"></span>
-          <div class="chat-header-info">
-            <span id="chat-agent-name" class="chat-agent-name"></span>
-            <span id="chat-project-name" class="chat-project-name"></span>
-          </div>
+          <a id="chat-focus-link" class="chat-focus-link" role="button" title="Focus iTerm window">
+            <span id="chat-hero" class="chat-hero-badge"></span>
+            <div class="chat-header-info">
+              <span id="chat-agent-name" class="chat-agent-name"></span>
+              <span id="chat-project-name" class="chat-project-name"></span>
+            </div>
+          </a>
         </div>
         <div id="attention-banners" class="attention-banners"></div>
         <!-- Drop zone overlay -->
@@ -261,6 +263,7 @@
 
   <!-- Scripts -->
   <script src="/static/js/utils.js?v=4"></script>
+  <script src="/static/js/focus-api.js?v=1"></script>
   <script src="/static/js/confirm-dialog.js?v=4"></script>
   <script src="/static/voice/voice-api.js?v=5"></script>
   <script src="/static/voice/voice-input.js?v=5"></script>

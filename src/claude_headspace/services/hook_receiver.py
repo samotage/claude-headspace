@@ -1349,11 +1349,17 @@ def process_post_tool_use(
     agent: Agent,
     claude_session_id: str,
     tool_name: str | None = None,
+    tool_input: dict | None = None,
 ) -> HookEventResult:
     state = get_receiver_state()
     state.record_event(HookEventType.POST_TOOL_USE)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Capture plan file writes via post_tool_use (pre_tool_use only fires
+        # for interactive tools, so Write hooks are only received here)
+        if tool_name == "Write":
+            _capture_plan_write(agent, tool_input)
 
         lifecycle = _get_lifecycle_manager()
         current_task = lifecycle.get_current_task(agent)

@@ -15,11 +15,12 @@ from claude_headspace.services.agent_lifecycle import (
 )
 
 
-def _make_project(id=1, name="test-project", path="/tmp/test-project"):
+def _make_project(id=1, name="test-project", slug="test-project", path="/tmp/test-project"):
     """Create a mock Project object."""
     p = MagicMock()
     p.id = id
     p.name = name
+    p.slug = slug
     p.path = path
     return p
 

@@ -36,6 +36,7 @@ window.VoiceApp = (function () {
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
   var _pendingAttachment = null; // File object pending upload
   var _pendingBlobUrl = null;    // Blob URL for image preview (revoke on clear)
+  var _pendingNewAgentProject = null; // Project name when awaiting a newly created agent to appear
 
   // Layout mode state
   var _layoutMode = 'stacked'; // 'stacked' | 'split'
@@ -251,9 +252,29 @@ window.VoiceApp = (function () {
   // --- Agent list (tasks 2.20, 2.23, 2.24) ---
 
   function _renderAgentList(agents) {
+    // Detect newly appeared agents before overwriting _agents
+    var oldIds = {};
+    for (var oi = 0; oi < _agents.length; oi++) {
+      oldIds[_agents[oi].agent_id] = true;
+    }
+
     _agents = agents || [];
     var list = document.getElementById('agent-list');
     if (!list) return;
+
+    // Auto-select a newly created agent when it first appears
+    if (_pendingNewAgentProject) {
+      for (var ni = 0; ni < _agents.length; ni++) {
+        var a = _agents[ni];
+        if (!oldIds[a.agent_id] && (a.project || '').toLowerCase() === _pendingNewAgentProject.toLowerCase()) {
+          var newAgentId = a.agent_id;
+          _pendingNewAgentProject = null;
+          // Defer selection until after render completes
+          setTimeout(function () { _selectAgent(newAgentId); }, 0);
+          break;
+        }
+      }
+    }
 
     // Save scroll position before re-render
     var sidebar = document.getElementById('sidebar');
@@ -264,7 +285,7 @@ window.VoiceApp = (function () {
       return;
     }
 
-    // Group agents by project
+    // Group agents by project, newest first within each group
     var projectGroups = {};
     var projectOrder = [];
     for (var i = 0; i < _agents.length; i++) {
@@ -274,6 +295,12 @@ window.VoiceApp = (function () {
         projectOrder.push(proj);
       }
       projectGroups[proj].push(_agents[i]);
+    }
+    // Sort each group: newest agent first (highest agent_id)
+    for (var si = 0; si < projectOrder.length; si++) {
+      projectGroups[projectOrder[si]].sort(function (a, b) {
+        return b.agent_id - a.agent_id;
+      });
     }
 
     var html = '';
@@ -498,11 +525,77 @@ window.VoiceApp = (function () {
   }
 
   function _createAgentForProject(projectName) {
+    _pendingNewAgentProject = projectName;
+    _showPendingAgentPlaceholder(projectName);
     VoiceAPI.createAgent(projectName).then(function (data) {
+      _showToast('Agent starting\u2026');
       _refreshAgents();
     }).catch(function (err) {
-      alert('Create failed: ' + (err.error || 'unknown error'));
+      _pendingNewAgentProject = null;
+      _removePendingAgentPlaceholder();
+      if (window.Toast) {
+        Toast.error('Create failed', err.error || 'unknown error');
+      } else {
+        alert('Create failed: ' + (err.error || 'unknown error'));
+      }
     });
+  }
+
+  function _showPendingAgentPlaceholder(projectName) {
+    var list = document.getElementById('agent-list');
+    if (!list) return;
+    // Find the project group matching this project
+    var groups = list.querySelectorAll('.project-group');
+    var targetGroup = null;
+    for (var i = 0; i < groups.length; i++) {
+      var nameEl = groups[i].querySelector('.project-group-name');
+      if (nameEl && nameEl.textContent.trim().toLowerCase() === projectName.toLowerCase()) {
+        targetGroup = groups[i];
+        break;
+      }
+    }
+    if (!targetGroup) return;
+    // Remove any existing placeholder
+    _removePendingAgentPlaceholder();
+    // Append placeholder card
+    var cardsContainer = targetGroup.querySelector('.project-group-cards');
+    if (!cardsContainer) return;
+    var placeholder = document.createElement('div');
+    placeholder.className = 'agent-card agent-card-pending';
+    placeholder.id = 'pending-agent-placeholder';
+    placeholder.innerHTML = '<div class="agent-header">'
+      + '<div class="agent-hero-id">'
+      + '<span class="agent-hero">\u2026</span>'
+      + '</div>'
+      + '</div>'
+      + '<div class="agent-body">'
+      + '<div class="agent-instruction pending-pulse">Starting agent\u2026</div>'
+      + '</div>';
+    cardsContainer.prepend(placeholder);
+  }
+
+  function _removePendingAgentPlaceholder() {
+    var el = document.getElementById('pending-agent-placeholder');
+    if (el) el.remove();
+  }
+
+  function _showToast(message) {
+    // Lightweight inline toast for voice app (no dependency on dashboard Toast)
+    var existing = document.getElementById('voice-toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = 'voice-toast';
+    toast.className = 'voice-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    // Trigger animation
+    requestAnimationFrame(function () {
+      toast.classList.add('show');
+    });
+    setTimeout(function () {
+      toast.classList.remove('show');
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
   }
 
   // Auto-targeting (task 2.23)
@@ -2246,6 +2339,17 @@ window.VoiceApp = (function () {
       chatMessages.addEventListener('scroll', function () {
         if (chatMessages.scrollTop < 50) {
           _loadOlderMessages();
+        }
+      });
+    }
+
+    // Chat header focus link — click to focus iTerm window
+    var chatFocusLink = document.getElementById('chat-focus-link');
+    if (chatFocusLink) {
+      chatFocusLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (_targetAgentId && window.FocusAPI) {
+          window.FocusAPI.focusAgent(_targetAgentId);
         }
       });
     }
