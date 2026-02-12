@@ -2141,6 +2141,21 @@ window.VoiceApp = (function () {
       });
     }
 
+    // Attach file button + hidden file input
+    var chatAttachBtn = document.getElementById('chat-attach-btn');
+    var chatFileInput = document.getElementById('chat-file-input');
+    if (chatAttachBtn && chatFileInput) {
+      chatAttachBtn.addEventListener('click', function () {
+        chatFileInput.click();
+      });
+      chatFileInput.addEventListener('change', function () {
+        if (chatFileInput.files && chatFileInput.files[0]) {
+          _handleFileDrop(chatFileInput.files[0]);
+          chatFileInput.value = '';
+        }
+      });
+    }
+
     // Attachment remove button
     var attachRemoveBtn = document.getElementById('attachment-remove');
     if (attachRemoveBtn) {

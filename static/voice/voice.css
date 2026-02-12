@@ -1128,7 +1128,7 @@ body.layout-split .agent-card.selected {
 
 /* Message bubbles */
 .chat-bubble {
-  max-width: min(78%, 700px);
+  max-width: 85%;
   padding: 8px 14px;
   border-radius: 18px;
   font-size: var(--chat-font-size, 15px);
@@ -1592,6 +1592,23 @@ body.layout-split .agent-card.selected {
 }
 .chat-mic-btn:hover { color: var(--text); }
 .chat-mic-btn:active { color: var(--accent); }
+
+.chat-attach-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.chat-attach-btn:hover { color: var(--text); }
+.chat-attach-btn:active { color: var(--accent); }
 
 /* --- Task Separator --- */
 .chat-task-separator {
