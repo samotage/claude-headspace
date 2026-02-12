@@ -570,9 +570,7 @@
             turns.forEach(function(turn) {
                 var actorValue = turn.actor || 'agent';
                 var intentValue = turn.intent || '';
-                var text = turn.text || '';
                 var summary = turn.summary || '';
-                var displayText = text || summary;
                 var frustration = turn.frustration_score;
 
                 // Frustration highlighting
@@ -601,15 +599,8 @@
                     html += '<span class="text-xs text-muted ml-auto">' + ProjectShow._formatDate(turn.created_at) + '</span>';
                 }
                 html += '</div>';
-                if (displayText) {
-                    var truncated = displayText.length > 200;
-                    var shown = truncated ? displayText.substring(0, 200) + '...' : displayText;
-                    var turnId = 'turn-text-' + (turn.id || Math.random().toString(36).substr(2, 9));
-                    html += '<p class="text-xs text-secondary mt-1" id="' + turnId + '">' + CHUtils.escapeHtml(shown);
-                    if (truncated) {
-                        html += ' <button type="button" class="text-cyan hover:underline" onclick="(function(el){var p=document.getElementById(\'' + turnId + '\');p.innerHTML=CHUtils.escapeHtml(' + JSON.stringify(displayText) + ')})(this)">Show more</button>';
-                    }
-                    html += '</p>';
+                if (summary) {
+                    html += '<p class="text-xs text-secondary mt-1">' + CHUtils.escapeHtml(summary) + '</p>';
                 }
                 html += '</div>';
             });

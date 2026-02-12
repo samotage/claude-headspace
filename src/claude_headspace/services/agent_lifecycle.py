@@ -352,7 +352,6 @@ def get_agent_info(agent_id: int) -> dict | None:
                 "actor": turn.actor.value,
                 "intent": turn.intent.value,
                 "timestamp": turn.timestamp.isoformat(),
-                "text": turn.text,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
             })

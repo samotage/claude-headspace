@@ -331,8 +331,7 @@
                     var tu = ttTurns[tui];
                     var frustVal = (tu.frustration_score !== null && tu.frustration_score !== undefined) ? tu.frustration_score : '\u2014';
                     taskTextLines.push('| ' + tu.id + ' | ' + tu.actor + ' | ' + tu.intent + ' | ' + formatTimestampPlain(tu.timestamp) + ' | ' + frustVal + ' |');
-                    var tuDisplay = tu.text || tu.summary;
-                    if (tuDisplay) taskTextLines.push('| | *' + tuDisplay + '* ||||');
+                    if (tu.summary) taskTextLines.push('| | *' + tu.summary + '* ||||');
                 }
             }
         }
@@ -387,10 +386,8 @@
                         html += '<td>' + formatTimestamp(turn.timestamp) + '</td>';
                         html += '<td>' + frustCell + '</td>';
                         html += '</tr>';
-                        var turnDisplay = turn.text || turn.summary;
-                        if (turnDisplay) {
-                            var turnShown = turnDisplay.length > 200 ? turnDisplay.substring(0, 200) + '...' : turnDisplay;
-                            html += '<tr class="agent-info-turn-summary-row"><td></td><td colspan="4" class="text-muted text-[10px] italic">' + esc(turnShown) + '</td></tr>';
+                        if (turn.summary) {
+                            html += '<tr class="agent-info-turn-summary-row"><td></td><td colspan="4" class="text-muted text-[10px] italic">' + esc(turn.summary) + '</td></tr>';
                         }
                     }
                     html += '</tbody></table>';
