@@ -97,6 +97,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  min-height: 100dvh; /* iOS Safari: excludes toolbar from height */
   overflow-x: hidden;
   -webkit-user-select: none;
   user-select: none;
@@ -215,6 +216,7 @@ body {
 #app-layout {
   display: none; /* hidden until init sets layout mode */
   height: calc(100vh - 52px);
+  height: calc(100dvh - 52px); /* iOS Safari: tracks actual viewport minus toolbar */
 }
 
 #sidebar {
@@ -312,6 +314,7 @@ body.layout-split .main-panel-empty.show-empty {
   display: none;
   padding: 16px;
   min-height: calc(100vh - 52px);
+  min-height: calc(100dvh - 52px);
 }
 .screen.active { display: block; }
 
@@ -893,6 +896,7 @@ body.layout-split .agent-card.selected {
   width: 340px;
   max-width: 90vw;
   height: 100vh;
+  height: 100dvh;
   background: var(--surface);
   border-left: 1px solid var(--border);
   z-index: 100;
@@ -1939,6 +1943,56 @@ body.layout-split .agent-card.selected {
 
 .bubble-file-image:hover img {
   opacity: 0.85;
+}
+
+/* --- Image Lightbox Modal --- */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.image-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+.image-lightbox-content img {
+  display: block;
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.image-lightbox-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.image-lightbox-close:hover {
+  background: var(--border-emphasis);
 }
 
 /* --- File Card in Chat Bubbles --- */

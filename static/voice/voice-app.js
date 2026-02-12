@@ -1324,11 +1324,31 @@ window.VoiceApp = (function () {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + timeStr;
   }
 
+  /**
+   * Check if the user is scrolled near the bottom of the chat.
+   * "Near" = within 150px of the bottom edge.  If they've scrolled
+   * up to read older messages, we don't want to yank them away.
+   */
+  function _isUserNearBottom() {
+    var el = document.getElementById('chat-messages');
+    if (!el) return true;
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+  }
+
   function _scrollChatToBottom() {
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
+  }
+
+  /**
+   * Scroll to bottom ONLY if the user is already near the bottom.
+   * Call this for incoming messages (SSE, transcript refresh, typing
+   * indicator) — anywhere the user didn't just perform an action.
+   */
+  function _scrollChatToBottomIfNear() {
+    if (_isUserNearBottom()) _scrollChatToBottom();
   }
 
   function _updateTypingIndicator() {
@@ -1337,7 +1357,7 @@ window.VoiceApp = (function () {
     var state = (_chatAgentState || '').toLowerCase();
     var isProcessing = state === 'processing' || state === 'commanded';
     typingEl.style.display = isProcessing ? 'block' : 'none';
-    if (isProcessing) _scrollChatToBottom();
+    if (isProcessing) _scrollChatToBottomIfNear();
   }
 
   function _markAllQuestionsAnswered() {
@@ -1355,7 +1375,7 @@ window.VoiceApp = (function () {
     el.className = 'chat-system-message';
     el.textContent = text;
     messagesEl.appendChild(el);
-    _scrollChatToBottom();
+    _scrollChatToBottomIfNear();
   }
 
   // --- File upload helpers ---
@@ -1707,7 +1727,7 @@ window.VoiceApp = (function () {
     if (_chatRenderedTurnIds.has(turn.id)) return;
 
     _renderChatBubble(turn, null);
-    _scrollChatToBottom();
+    _scrollChatToBottomIfNear();
   }
 
   function _handleAgentUpdate(data) {
@@ -1961,7 +1981,9 @@ window.VoiceApp = (function () {
         _chatAgentEnded = !!resp.agent_ended;
         if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
       }
-      _scrollChatToBottom();
+      // Only auto-scroll if user is near the bottom — don't yank them
+      // away from reading older messages (mobile reading experience)
+      _scrollChatToBottomIfNear();
     }).catch(function () {
       _fetchInFlight = false;
     });
@@ -2097,6 +2119,26 @@ window.VoiceApp = (function () {
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(_detectLayoutMode, 100);
     });
+
+    // iOS Safari: the bottom toolbar overlaps content.  `100dvh` in CSS
+    // handles the static case, but when the keyboard appears/disappears
+    // or Safari toggles its toolbar, we need to dynamically resize the
+    // app layout so the chat input stays above the toolbar.
+    if (window.visualViewport) {
+      var _vpTimer = null;
+      window.visualViewport.addEventListener('resize', function () {
+        clearTimeout(_vpTimer);
+        _vpTimer = setTimeout(function () {
+          var layout = document.getElementById('app-layout');
+          if (!layout) return;
+          // visualViewport.height is the *actually visible* area,
+          // excluding Safari toolbar and on-screen keyboard.
+          var headerH = 52; // .app-header height
+          var vpH = window.visualViewport.height;
+          layout.style.height = (vpH - headerH) + 'px';
+        }, 50);
+      });
+    }
 
     // Close kebab menus on click/touch outside
     function _handleCloseKebabs(e) {
@@ -2317,6 +2359,14 @@ window.VoiceApp = (function () {
       chatInput.addEventListener('input', function () {
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      });
+      // iOS Safari: when keyboard opens, scroll the input into view
+      // after a short delay (let Safari finish its viewport resize).
+      chatInput.addEventListener('focus', function () {
+        var self = this;
+        setTimeout(function () {
+          self.scrollIntoView({ block: 'end', behavior: 'smooth' });
+        }, 300);
       });
     }
 
