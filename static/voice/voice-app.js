@@ -1324,6 +1324,16 @@ window.VoiceApp = (function () {
       if (!_chatRenderedTurnIds.has(ids[k])) { allRendered = false; break; }
     }
     if (allRendered && !forceRender) return null;
+    // When force-rendering, prevent duplicates by checking the DOM.
+    // forceRender is used for terminal intents (completion/end_of_task)
+    // to ensure they always appear, but we must not create a second
+    // bubble if one is already in the DOM.
+    if (allRendered && forceRender) {
+      var container = document.getElementById('chat-messages');
+      if (container && container.querySelector('[data-turn-id="' + turn.id + '"]')) {
+        return null;
+      }
+    }
     for (var k2 = 0; k2 < ids.length; k2++) {
       _chatRenderedTurnIds.add(ids[k2]);
     }
@@ -2509,8 +2519,19 @@ window.VoiceApp = (function () {
       _chatPendingUserSends = _chatPendingUserSends.filter(function (p) {
         return (now - p.sentAt) < PENDING_SEND_TTL_MS;
       });
+      var messagesContainer = document.getElementById('chat-messages');
       var newTurns = turns.filter(function (t) {
-        if (_chatRenderedTurnIds.has(t.id)) return false;
+        if (_chatRenderedTurnIds.has(t.id)) {
+          // Resilience: verify the DOM element still exists.
+          // If the element was removed (e.g., by progress collapse) or never
+          // created (race between SSE turn_created and transcript fetch), the
+          // dedup set is stale — clear it and allow re-rendering.
+          if (messagesContainer && !messagesContainer.querySelector('[data-turn-id="' + t.id + '"]')) {
+            _chatRenderedTurnIds.delete(t.id);
+            return true;
+          }
+          return false;
+        }
         // Dedup user turns against pending sends using fuzzy time-window matching
         if (t.actor === 'user') {
           for (var pi = 0; pi < _chatPendingUserSends.length; pi++) {
@@ -2533,7 +2554,11 @@ window.VoiceApp = (function () {
           if (item.type === 'separator') {
             _renderTaskSeparator(item);
           } else {
-            _renderChatBubble(item, prev);
+            // Force-render terminal intents (completion/end_of_task) so the
+            // agent's final response is always visible — even if the dedup set
+            // was re-populated between the filter step and this render call.
+            var forceTerminal = (item.intent === 'completion' || item.intent === 'end_of_task');
+            _renderChatBubble(item, prev, forceTerminal);
           }
         }
       }
