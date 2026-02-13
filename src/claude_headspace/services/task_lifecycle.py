@@ -374,7 +374,9 @@ class TaskLifecycleManager:
                 if (
                     current_task
                     and current_state == TaskState.PROCESSING
-                    and not any(t.actor == TurnActor.USER for t in current_task.turns)
+                    and Turn.query.filter_by(task_id=current_task.id)
+                    .filter(Turn.actor == TurnActor.USER)
+                    .count() == 0
                 ):
                     if text:
                         current_task.full_command = text

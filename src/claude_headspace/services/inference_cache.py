@@ -80,8 +80,8 @@ class InferenceCache:
             self._cache[input_hash] = entry
             self._insert_count += 1
 
-            # LRU eviction: remove oldest entry when at capacity
-            if len(self._cache) > self.max_size:
+            # LRU eviction: remove oldest entries until within capacity
+            while len(self._cache) > self.max_size:
                 oldest_key = min(self._cache, key=lambda k: self._cache[k].cached_at)
                 del self._cache[oldest_key]
 

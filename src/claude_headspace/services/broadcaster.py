@@ -301,8 +301,8 @@ class Broadcaster:
 
     def _cleanup_stale_connections(self) -> None:
         now = datetime.now(timezone.utc)
-        stale_clients = []
         with self._lock:
+            stale_clients = []
             for client_id, client in self._clients.items():
                 if client.failed_writes >= 3:
                     stale_clients.append(client_id)
@@ -310,9 +310,9 @@ class Broadcaster:
                 last = client.last_event_at or client.connected_at
                 if (now - last).total_seconds() > self._connection_timeout:
                     stale_clients.append(client_id)
-        for client_id in stale_clients:
-            self.unregister_client(client_id)
-            logger.info(f"Cleaned up stale connection: {client_id}")
+            for client_id in stale_clients:
+                del self._clients[client_id]
+                logger.info(f"Cleaned up stale connection: {client_id}")
 
     def get_health_status(self) -> dict[str, Any]:
         return {
