@@ -613,21 +613,40 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                         project_id=project_id, agent_id=agent_id,
                     )
 
+                    # Check for stale notification turn to replace
+                    stale_notification_turn = None
+                    if task.turns:
+                        for t in reversed(task.turns):
+                            if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
+                                    and t.text == "Claude is waiting for your input"):
+                                stale_notification_turn = t
+                                break
+
                     lifecycle = _get_lifecycle_manager()
                     if intent_result.intent == TurnIntent.QUESTION:
-                        from ..models.turn import Turn as _Turn
-                        turn = _Turn(
-                            task_id=task.id, actor=TurnActor.AGENT,
-                            intent=TurnIntent.QUESTION, text=full_agent_text,
-                            question_text=full_agent_text,
-                            question_source_type="free_text",
-                        )
-                        db.session.add(turn)
+                        if stale_notification_turn:
+                            stale_notification_turn.text = full_agent_text
+                            stale_notification_turn.question_text = full_agent_text
+                            stale_notification_turn.question_source_type = "free_text"
+                        else:
+                            from ..models.turn import Turn as _Turn
+                            turn = _Turn(
+                                task_id=task.id, actor=TurnActor.AGENT,
+                                intent=TurnIntent.QUESTION, text=full_agent_text,
+                                question_text=full_agent_text,
+                                question_source_type="free_text",
+                            )
+                            db.session.add(turn)
                         lifecycle.update_task_state(
                             task=task, to_state=TaskState.AWAITING_INPUT,
                             trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
                         )
                     elif intent_result.intent == TurnIntent.END_OF_TASK:
+                        if stale_notification_turn:
+                            stale_notification_turn.text = completion_text or ""
+                            stale_notification_turn.intent = TurnIntent.END_OF_TASK
+                            stale_notification_turn.question_text = None
+                            stale_notification_turn.question_source_type = None
                         lifecycle.complete_task(
                             task=task, trigger="hook:stop:deferred_end_of_task",
                             agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
@@ -635,6 +654,11 @@ def _schedule_deferred_stop(agent: Agent, current_task) -> None:
                         if completion_text != full_agent_text:
                             task.full_output = full_agent_text
                     else:
+                        if stale_notification_turn:
+                            stale_notification_turn.text = completion_text or ""
+                            stale_notification_turn.intent = TurnIntent.COMPLETION
+                            stale_notification_turn.question_text = None
+                            stale_notification_turn.question_source_type = None
                         lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=completion_text)
                         if completion_text != full_agent_text:
                             task.full_output = full_agent_text
@@ -1027,19 +1051,39 @@ def process_stop(
                 f"tail_5_lines={tail_lines!r}"
             )
 
+        # Check for stale notification turn to replace (created by
+        # notification hook before this stop hook arrived)
+        stale_notification_turn = None
+        if current_task.turns:
+            for t in reversed(current_task.turns):
+                if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
+                        and t.text == "Claude is waiting for your input"):
+                    stale_notification_turn = t
+                    break
+
         if intent_result.intent == TurnIntent.QUESTION:
-            turn = Turn(
-                task_id=current_task.id, actor=TurnActor.AGENT,
-                intent=TurnIntent.QUESTION, text=full_agent_text or "",
-                question_text=full_agent_text or "",
-                question_source_type="free_text",
-            )
-            db.session.add(turn)
+            if stale_notification_turn:
+                stale_notification_turn.text = full_agent_text or ""
+                stale_notification_turn.question_text = full_agent_text or ""
+                stale_notification_turn.question_source_type = "free_text"
+            else:
+                turn = Turn(
+                    task_id=current_task.id, actor=TurnActor.AGENT,
+                    intent=TurnIntent.QUESTION, text=full_agent_text or "",
+                    question_text=full_agent_text or "",
+                    question_source_type="free_text",
+                )
+                db.session.add(turn)
             lifecycle.update_task_state(
                 task=current_task, to_state=TaskState.AWAITING_INPUT,
                 trigger="hook:stop:question_detected", confidence=intent_result.confidence,
             )
         elif intent_result.intent == TurnIntent.END_OF_TASK:
+            if stale_notification_turn:
+                stale_notification_turn.text = completion_text or ""
+                stale_notification_turn.intent = TurnIntent.END_OF_TASK
+                stale_notification_turn.question_text = None
+                stale_notification_turn.question_source_type = None
             lifecycle.complete_task(
                 task=current_task, trigger="hook:stop:end_of_task",
                 agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
@@ -1048,6 +1092,11 @@ def process_stop(
             if completion_text != full_agent_text:
                 current_task.full_output = full_agent_text
         else:
+            if stale_notification_turn:
+                stale_notification_turn.text = completion_text or ""
+                stale_notification_turn.intent = TurnIntent.COMPLETION
+                stale_notification_turn.question_text = None
+                stale_notification_turn.question_source_type = None
             lifecycle.complete_task(task=current_task, trigger="hook:stop", agent_text=completion_text)
             if completion_text != full_agent_text:
                 current_task.full_output = full_agent_text
@@ -1228,24 +1277,31 @@ def _handle_awaiting_input(
             )
             db.session.add(question_turn)
         elif message or title:
-            # notification: dedup against recent pre_tool_use turn
-            has_recent = False
-            if current_task.turns:
-                for t in reversed(current_task.turns):
-                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                        has_recent = (datetime.now(timezone.utc) - t.timestamp).total_seconds() < 10
-                        break
-            if not has_recent:
-                question_text = (f"[{title}] " if title else "") + (message or "")
-                question_text = question_text.strip()
-                if question_text:
-                    question_turn = Turn(
-                        task_id=current_task.id, actor=TurnActor.AGENT,
-                        intent=TurnIntent.QUESTION, text=question_text,
-                        question_text=question_text,
-                        question_source_type="free_text",
-                    )
-                    db.session.add(question_turn)
+            # Skip turn creation for standard NOTIFICATION hooks — they carry
+            # generic text ("Claude is waiting for your input") with no actual
+            # response content.  The stop hook creates the proper turn with
+            # real transcript text.  State transition + OS notification still fire.
+            if event_type_enum == HookEventType.NOTIFICATION:
+                pass
+            else:
+                # Non-notification path (future code paths): dedup against recent turn
+                has_recent = False
+                if current_task.turns:
+                    for t in reversed(current_task.turns):
+                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                            has_recent = (datetime.now(timezone.utc) - t.timestamp).total_seconds() < 10
+                            break
+                if not has_recent:
+                    question_text = (f"[{title}] " if title else "") + (message or "")
+                    question_text = question_text.strip()
+                    if question_text:
+                        question_turn = Turn(
+                            task_id=current_task.id, actor=TurnActor.AGENT,
+                            intent=TurnIntent.QUESTION, text=question_text,
+                            question_text=question_text,
+                            question_source_type="free_text",
+                        )
+                        db.session.add(question_turn)
 
         # Use lifecycle manager for state transition (writes event + sends notification)
         lifecycle = _get_lifecycle_manager()

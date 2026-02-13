@@ -894,7 +894,8 @@ class TestNotificationTurnDedup:
         mock_db.session.add.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_turn_when_no_recent_question(self, mock_db, mock_agent, fresh_state):
+    def test_skips_turn_creation_for_notification_events(self, mock_db, mock_agent, fresh_state):
+        """Notification hooks carry generic text — the stop hook creates the real turn."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
@@ -910,13 +911,13 @@ class TestNotificationTurnDedup:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
-        assert added_turn.text == "[Question] Need your input"
+        # Notification events should NOT create turns (phantom turn fix)
+        mock_db.session.add.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_broadcasts_turn_created_on_transition(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_no_turn_broadcast_for_notification(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+        """Notification hooks should not broadcast turn_created (no turn is created)."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
@@ -931,9 +932,8 @@ class TestNotificationTurnDedup:
         )
 
         assert result.state_changed is True
-        mock_broadcast_turn.assert_called_once()
-        call_args = mock_broadcast_turn.call_args[0]
-        assert call_args[1] == "Need your input"
+        # No turn was created, so no turn_created broadcast
+        mock_broadcast_turn.assert_not_called()
 
 
 class TestStopTurnBroadcast:
