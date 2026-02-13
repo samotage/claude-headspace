@@ -305,6 +305,10 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             event_writer = app.extensions.get("event_writer")
             if event_writer:
                 event_writer.stop()
+            # Dispose inference service engine
+            inference_svc = app.extensions.get("inference_service")
+            if inference_svc:
+                inference_svc.stop()
         except Exception as e:
             logger.warning(f"Error during shutdown cleanup: {e}")
 

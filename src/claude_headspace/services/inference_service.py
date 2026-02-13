@@ -65,6 +65,12 @@ class InferenceService:
         )
         self._log_session_factory = sessionmaker(bind=self._independent_engine)
 
+    def stop(self) -> None:
+        """Dispose of the independent database engine, releasing connections."""
+        if self._independent_engine:
+            self._independent_engine.dispose()
+            logger.info("Inference service: independent engine disposed")
+
     @property
     def is_available(self) -> bool:
         """Check if the service is operational (API key configured)."""
