@@ -682,6 +682,7 @@
     /**
      * Build a condensed completed-task accordion element for the COMPLETE column.
      * Matches the server-side template in _kanban_view.html.
+     * Uses innerHTML with all dynamic values escaped via CHUtils.escapeHtml.
      */
     function buildCompletedTaskCard(data) {
         var details = document.createElement('details');
@@ -735,6 +736,7 @@
      * Build a respond widget element for AWAITING_INPUT state.
      * Matches the server-rendered widget in _agent_card.html.
      * Starts hidden — respond-init.js handles visibility after commander availability check.
+     * Uses DOM APIs instead of innerHTML for XSS safety.
      */
     function buildRespondWidget(agentId, questionText, questionOptions) {
         var widget = document.createElement('div');
@@ -746,18 +748,32 @@
         }
         widget.style.display = 'none';
 
-        widget.innerHTML =
-            '<div class="respond-options flex flex-col gap-1.5 mb-2"></div>' +
-            '<form class="respond-form flex gap-2"' +
-            ' onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, ' +
-            parseInt(agentId, 10) + '); return false;">' +
-                '<input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"' +
-                ' placeholder="Type a response..." autocomplete="off">' +
-                '<button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded ' +
-                'bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">' +
-                'Send</button>' +
-            '</form>';
+        var optionsDiv = document.createElement('div');
+        optionsDiv.className = 'respond-options flex flex-col gap-1.5 mb-2';
+        widget.appendChild(optionsDiv);
 
+        var form = document.createElement('form');
+        form.className = 'respond-form flex gap-2';
+        var safeAgentId = parseInt(agentId, 10);
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (window.RespondAPI) window.RespondAPI.handleSubmit(e, safeAgentId);
+        });
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'respond-text-input form-well flex-1 px-2 py-1 text-sm';
+        input.placeholder = 'Type a response...';
+        input.autocomplete = 'off';
+        form.appendChild(input);
+
+        var button = document.createElement('button');
+        button.type = 'submit';
+        button.className = 'respond-send-btn px-3 py-1 text-xs font-medium rounded bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors';
+        button.textContent = 'Send';
+        form.appendChild(button);
+
+        widget.appendChild(form);
         return widget;
     }
 
@@ -935,7 +951,10 @@
                 bridgeEl.className = 'bridge-indicator';
                 bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
                 bridgeEl.setAttribute('aria-label', 'Bridge connected');
-                bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                var bridgeIcon = document.createElement('span');
+                bridgeIcon.className = 'bridge-icon';
+                bridgeIcon.textContent = '\u25B8\u25C2';
+                bridgeEl.appendChild(bridgeIcon);
                 badgeContainer.insertBefore(bridgeEl, statusBadge);
             } else if (!data.is_bridge_connected && bridgeEl) {
                 bridgeEl.remove();
@@ -1419,7 +1438,10 @@
                     bridgeEl.className = 'bridge-indicator';
                     bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
                     bridgeEl.setAttribute('aria-label', 'Bridge connected');
-                    bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                    var bridgeIcon = document.createElement('span');
+                    bridgeIcon.className = 'bridge-icon';
+                    bridgeIcon.textContent = '\u25B8\u25C2';
+                    bridgeEl.appendChild(bridgeIcon);
                     container.insertBefore(bridgeEl, statusBadge);
                 }
             } else if (!data.available && bridgeEl) {
