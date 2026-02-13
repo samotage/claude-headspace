@@ -44,6 +44,9 @@
     // Track last received SSE event ID for gap detection (M6 client-side)
     let _lastEventId = 0;
 
+    // Track fallback timeout IDs per agent for cleanup (M15)
+    const _fallbackTimeouts = new Map();
+
     /**
      * Check for SSE event ID gaps indicating dropped events.
      * If the gap exceeds a threshold, trigger a safe reload to re-sync state.
@@ -343,9 +346,14 @@
         if (newState === 'COMPLETE' && isKanbanView()) {
             // M7 fallback: if handleCardRefresh doesn't arrive within 2s,
             // the card may be stuck. Check if the card is still in a non-IDLE
-            // column and reload if so.
+            // column and reload if so. Tracked per-agent so card_refresh can cancel (M15).
             (function(aid) {
-                setTimeout(function() {
+                // Clear any existing fallback timeout for this agent
+                var existingTimeout = _fallbackTimeouts.get(aid);
+                if (existingTimeout) clearTimeout(existingTimeout);
+
+                var timeoutId = setTimeout(function() {
+                    _fallbackTimeouts.delete(aid);
                     var card = findAgentCard(aid);
                     if (!card) return;
                     var col = card.closest('[data-kanban-state]');
@@ -358,6 +366,7 @@
                         safeDashboardReload();
                     }
                 }, 2000);
+                _fallbackTimeouts.set(aid, timeoutId);
             })(agentId);
             return;
         }
@@ -799,6 +808,13 @@
         if (!agentId || !state) return;
 
         console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
+
+        // Clear any pending fallback timeout for this agent (M15)
+        var pendingTimeout = _fallbackTimeouts.get(agentId);
+        if (pendingTimeout) {
+            clearTimeout(pendingTimeout);
+            _fallbackTimeouts.delete(agentId);
+        }
 
         var card = findAgentCard(agentId);
 
