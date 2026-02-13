@@ -195,6 +195,9 @@ class CommanderAvailability:
 
     def _check_all_agents(self) -> None:
         """Check health for all registered agents in parallel."""
+        if self._stop_event.is_set():
+            return
+
         with self._lock:
             agents_to_check = dict(self._pane_ids)
 
@@ -202,12 +205,14 @@ class CommanderAvailability:
             return
 
         with ThreadPoolExecutor(max_workers=min(5, len(agents_to_check))) as pool:
-            futures = {
-                pool.submit(self._check_single_agent, agent_id, pane_id): agent_id
-                for agent_id, pane_id in agents_to_check.items()
-            }
+            futures = {}
+            for agent_id, pane_id in agents_to_check.items():
+                if self._stop_event.is_set():
+                    break
+                futures[pool.submit(self._check_single_agent, agent_id, pane_id)] = agent_id
             for future in as_completed(futures):
                 if self._stop_event.is_set():
+                    pool.shutdown(wait=False)
                     break
                 # Exceptions are already handled inside _check_single_agent
                 future.result()

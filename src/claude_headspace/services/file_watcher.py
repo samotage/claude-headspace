@@ -154,6 +154,12 @@ class FileWatcher:
             self._polling_thread = None
             logger.info("Polling thread stopped")
 
+        # Cancel all pending inference timers
+        with self._timer_lock:
+            for agent_id, timer in self._pending_inference_timers.items():
+                timer.cancel()
+            self._pending_inference_timers.clear()
+
         # Clear parsers
         self._parsers.clear()
 

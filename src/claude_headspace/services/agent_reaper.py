@@ -210,9 +210,12 @@ class AgentReaper:
                 .all()
             )
 
-            # Build pane ownership: pane_key → newest agent.id (highest id = most recent)
-            # Use (iterm_pane_id, tmux_pane_id) as key so agents in different
-            # tmux panes within the same iTerm window are treated as separate owners.
+            # Build pane ownership: pane_key → newest agent.id (highest id = most recent).
+            # Design: When multiple agents share a pane, only the newest (highest ID) is
+            # the legitimate owner. Older agents in the same pane are stale remnants from
+            # previous sessions that reused the pane, and will be reaped with reason
+            # "stale_pane". This is by-design — a tmux pane can only run one Claude Code
+            # session at a time, so the newest agent is always the current one.
             pane_owners: dict[tuple[str, str | None], int] = {}
             for a in agents:
                 if a.iterm_pane_id:
