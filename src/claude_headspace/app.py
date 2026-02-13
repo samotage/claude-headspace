@@ -172,12 +172,16 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         NotificationPreferences, configure_notification_service, get_notification_service,
     )
     notif_config = get_notifications_config(config)
-    # Derive dashboard_url from server config if not explicitly set in notifications
+    # Derive dashboard_url: prefer application_url (Tailscale hostname for browsers/notifications),
+    # then fall back to notifications config, then construct from server host/port
     server_host = get_value(config, "server", "host", default="127.0.0.1")
     server_port = get_value(config, "server", "port", default=5055)
-    # Use 127.0.0.1 for browser access when host is 0.0.0.0
     browser_host = "127.0.0.1" if server_host == "0.0.0.0" else server_host
-    dashboard_url = notif_config.get("dashboard_url") or f"http://{browser_host}:{server_port}"
+    dashboard_url = (
+        get_value(config, "server", "application_url", default=None)
+        or notif_config.get("dashboard_url")
+        or f"https://{browser_host}:{server_port}"
+    )
     configure_notification_service(NotificationPreferences(
         enabled=notif_config.get("enabled", True),
         sound=notif_config.get("sound", True),

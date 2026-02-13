@@ -174,6 +174,7 @@ $REPO_DIR/bin/install-hooks.sh
 
 This script:
 - Copies `notify-headspace.sh` to `~/.claude/hooks/`
+- Bakes the `hooks.endpoint_url` from `config.yaml` into the installed hook script as the default URL
 - Configures hooks in `~/.claude/settings.json` using the correct nested PascalCase format
 - Preserves any existing non-headspace hooks in settings.json
 
@@ -364,7 +365,7 @@ Tell the user: "Checking whether the Headspace server is running on localhost:50
 
 Check if the server is running:
 ```bash
-curl -s --connect-timeout 2 http://localhost:5055/health
+curl -sk --connect-timeout 2 https://localhost:5055/health
 ```
 
 If the server is not running, report:
@@ -405,7 +406,7 @@ If all REQUIRED items passed:
    To start the dashboard:  cd $REPO_DIR && python run.py
    To launch a monitored session:  claude-headspace start
    To launch with tmux bridge:  claude-headspace start --bridge
-   To view hook status:  curl http://localhost:5055/hook/status"
+   To view hook status:  curl https://localhost:5055/hook/status"
 
 If PATH was updated during setup, add this note:
   "Note: If you haven't yet sourced your shell config or opened a new terminal, run:

@@ -82,7 +82,7 @@ class TestGetServerUrl:
                     with patch.object(Path, "exists", mock_exists):
                         # Just test default since patching is complex
                         url = get_server_url()
-                        assert url.startswith("http://")
+                        assert url.startswith("https://")
             finally:
                 os.unlink(config_path)
 
@@ -92,7 +92,7 @@ class TestGetServerUrl:
             os.environ.pop("CLAUDE_HEADSPACE_URL", None)
 
             with patch.object(Path, "exists", return_value=False):
-                assert get_server_url() == "http://127.0.0.1:5055"
+                assert get_server_url() == "https://127.0.0.1:5055"
 
 
 class TestGetProjectInfo:

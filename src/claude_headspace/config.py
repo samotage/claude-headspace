@@ -16,6 +16,7 @@ DEFAULTS = {
         "host": "0.0.0.0",
         "port": 5055,
         "debug": False,
+        "application_url": "https://localhost:5055",
     },
     "logging": {
         "level": "INFO",
@@ -54,6 +55,7 @@ DEFAULTS = {
     },
     "hooks": {
         "enabled": True,
+        "endpoint_url": "https://localhost:5055",
         "polling_interval_with_hooks": 60,
         "fallback_timeout": 300,
     },
@@ -65,7 +67,7 @@ DEFAULTS = {
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
-        "dashboard_url": "http://localhost:5055",
+        "dashboard_url": "https://localhost:5055",
     },
     "activity": {
         "enabled": True,
@@ -404,6 +406,6 @@ def get_notifications_config(config: dict) -> dict:
             config, "notifications", "rate_limit_seconds", default=5
         ),
         "dashboard_url": get_value(
-            config, "notifications", "dashboard_url", default="http://localhost:5055"
+            config, "notifications", "dashboard_url", default="https://localhost:5055"
         ),
     }

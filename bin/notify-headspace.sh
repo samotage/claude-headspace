@@ -13,7 +13,7 @@
 #   session_id, cwd, transcript_path, hook_event_name, etc.
 #
 # Configuration:
-#   HEADSPACE_URL - Base URL (default: http://localhost:5055)
+#   CLAUDE_HEADSPACE_URL or HEADSPACE_URL - Base URL (default: https://localhost:5055)
 #
 
 # NOTE: Do NOT use set -e — silent exits mask hook failures
@@ -22,7 +22,7 @@
 DEBUG_LOG="/tmp/headspace-hook-debug.log"
 
 # Configuration
-HEADSPACE_URL="${HEADSPACE_URL:-http://localhost:5055}"
+HEADSPACE_URL="${CLAUDE_HEADSPACE_URL:-${HEADSPACE_URL:-https://localhost:5055}}"
 CONNECT_TIMEOUT=1
 MAX_TIME=2
 
@@ -118,7 +118,7 @@ PAYLOAD=$(jq -n \
      + (if $tmux_pane != "" then {tmux_pane: $tmux_pane} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
-CURL_RESULT=$(curl -s -w "\n%{http_code}" \
+CURL_RESULT=$(curl -s -k -w "\n%{http_code}" \
     --connect-timeout "$CONNECT_TIMEOUT" \
     --max-time "$MAX_TIME" \
     -X POST \

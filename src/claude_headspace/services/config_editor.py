@@ -66,6 +66,9 @@ CONFIG_SCHEMA = [
                          help_text="The TCP port the web server listens on. Change if port 5050 conflicts with another service. Values below 1024 require root privileges."),
             FieldSchema("debug", "boolean", "Enable debug mode", default=False,
                          help_text="Enables Flask debug mode with auto-reload and detailed error pages. Enable during development for live code reloading. Disable in production as it exposes stack traces."),
+            FieldSchema("application_url", "string", "Application URL (for browser access and notifications)",
+                         default="https://localhost:5055",
+                         help_text="The public-facing URL for browser access and macOS notification links. Use your Tailscale hostname for remote access (e.g. https://hostname.ts.net:5055) or https://localhost:5055 for local-only use."),
         ],
     ),
     SectionSchema(
@@ -180,6 +183,9 @@ CONFIG_SCHEMA = [
                          help_text="When hooks are actively sending events, the file watcher reduces to this polling rate as a fallback. Higher values save CPU since hooks handle most updates."),
             FieldSchema("fallback_timeout", "integer", "Fallback timeout in seconds", min_value=60, max_value=3600, default=300,
                          help_text="If no hook events are received within this time, the system falls back to full-speed file polling. Increase if your sessions have long idle periods where no hooks fire."),
+            FieldSchema("endpoint_url", "string", "Hook endpoint URL",
+                         default="https://localhost:5055",
+                         help_text="The URL that hooks and the CLI use to reach the Flask server. For local setups use https://localhost:5055. SSL verification is disabled for localhost connections since the TLS certificate is for the Tailscale hostname."),
         ],
     ),
     SectionSchema(
