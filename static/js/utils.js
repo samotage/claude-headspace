@@ -109,7 +109,11 @@
             var startAttr = (token.ordered && token.start != null && token.start !== 1)
                 ? ' start="' + token.start + '"'
                 : '';
-            return '<' + tag + startAttr + '>\n' + token.body + '</' + tag + '>\n';
+            var body = '';
+            for (var i = 0; i < token.items.length; i++) {
+                body += this.listitem(token.items[i]);
+            }
+            return '<' + tag + startAttr + '>\n' + body + '</' + tag + '>\n';
         };
 
         var rawHtml = marked.parse(text, { renderer: renderer, breaks: true, gfm: true });
