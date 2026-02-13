@@ -2257,9 +2257,13 @@ window.VoiceApp = (function () {
 
     // Extract question_options from tool_input for immediate rendering
     if (data.tool_input && data.tool_input.questions) {
-      var q = data.tool_input.questions[0];
-      if (q && q.options) {
-        turn.question_options = q.options;
+      var questions = data.tool_input.questions;
+      if (questions.length > 1) {
+        // Multi-question: preserve full question objects array
+        // (each element has .question, .header, .multiSelect, .options)
+        turn.question_options = questions;
+      } else if (questions.length > 0 && questions[0].options) {
+        turn.question_options = questions[0].options;
       }
     }
 
