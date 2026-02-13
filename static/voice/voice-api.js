@@ -80,6 +80,13 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/command', { method: 'POST', body: JSON.stringify(body) });
   }
 
+  function sendSelect(agentId, optionIndex) {
+    return _fetch('/api/respond/' + agentId, {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'select', option_index: optionIndex })
+    });
+  }
+
   function getOutput(agentId, verbosity) {
     var q = verbosity ? '?verbosity=' + verbosity : '';
     return _fetch('/api/voice/agents/' + agentId + '/output' + q);
@@ -307,6 +314,7 @@ window.VoiceAPI = (function () {
     onGap: onGap,
     getSessions: getSessions,
     sendCommand: sendCommand,
+    sendSelect: sendSelect,
     getOutput: getOutput,
     getQuestion: getQuestion,
     getTranscript: getTranscript,

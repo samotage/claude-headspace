@@ -852,7 +852,7 @@ window.VoiceApp = (function () {
         var html = '';
         for (var i = 0; i < q.question_options.length; i++) {
           var opt = q.question_options[i];
-          html += '<button class="option-btn" data-label="' + _esc(opt.label) + '">'
+          html += '<button class="option-btn" data-label="' + _esc(opt.label) + '" data-opt-idx="' + i + '">'
             + '<strong>' + _esc(opt.label) + '</strong>'
             + (opt.description ? '<br><span class="option-desc">' + _esc(opt.description) + '</span>' : '')
             + '</button>';
@@ -862,7 +862,8 @@ window.VoiceApp = (function () {
         var btns = optionsEl.querySelectorAll('.option-btn');
         for (var j = 0; j < btns.length; j++) {
           btns[j].addEventListener('click', function () {
-            _sendCommand(this.getAttribute('data-label'));
+            var idx = parseInt(this.getAttribute('data-opt-idx'), 10);
+            _sendSelect(idx);
           });
         }
       }
@@ -1432,7 +1433,7 @@ window.VoiceApp = (function () {
         html += '<div class="bubble-options">';
         for (var i = 0; i < opts.length; i++) {
           var opt = opts[i];
-          html += '<button class="bubble-option-btn' + safetyClass + '" data-label="' + _esc(opt.label) + '">'
+          html += '<button class="bubble-option-btn' + safetyClass + '" data-opt-idx="' + i + '" data-label="' + _esc(opt.label) + '">'
             + _esc(opt.label)
             + (opt.description ? '<div class="bubble-option-desc">' + _esc(opt.description) + '</div>' : '')
             + '</button>';
@@ -1461,7 +1462,9 @@ window.VoiceApp = (function () {
       var optBtns = bubble.querySelectorAll('.bubble-option-btn');
       for (var j = 0; j < optBtns.length; j++) {
         optBtns[j].addEventListener('click', function () {
-          _sendChatCommand(this.getAttribute('data-label'));
+          var idx = parseInt(this.getAttribute('data-opt-idx'), 10);
+          var label = this.getAttribute('data-label');
+          _sendChatSelect(idx, label, bubble);
         });
       }
     }
@@ -2027,6 +2030,70 @@ window.VoiceApp = (function () {
     });
   }
 
+  function _sendChatSelect(optionIndex, label, bubble) {
+    // Add optimistic user bubble with the label text
+    var now = new Date().toISOString();
+    var fakeTurn = {
+      id: 'pending-' + Date.now(),
+      actor: 'user',
+      intent: 'answer',
+      text: label,
+      timestamp: now
+    };
+
+    var messagesEl = document.getElementById('chat-messages');
+    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
+    var prevTurn = null;
+    if (lastBubble) {
+      prevTurn = { timestamp: now };
+    }
+    var pendingEntry = { text: label, sentAt: Date.now(), fakeTurnId: fakeTurn.id };
+    _chatPendingUserSends.push(pendingEntry);
+    _renderChatBubble(fakeTurn, prevTurn);
+    _scrollChatToBottom();
+
+    // Disable option buttons in this bubble to prevent double-sends
+    if (bubble) {
+      var allBtns = bubble.querySelectorAll('.bubble-option-btn');
+      for (var k = 0; k < allBtns.length; k++) {
+        allBtns[k].disabled = true;
+        allBtns[k].style.opacity = '0.5';
+        allBtns[k].style.pointerEvents = 'none';
+      }
+    }
+
+    // Show typing indicator
+    _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
+    _updateTypingIndicator();
+    _updateChatStatePill();
+
+    VoiceAPI.sendSelect(_targetAgentId, optionIndex).then(function () {
+      _scheduleResponseCatchUp();
+    }).catch(function (err) {
+      _removeOptimisticBubble(pendingEntry);
+      var errBubble = document.createElement('div');
+      errBubble.className = 'chat-bubble agent';
+      errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Select failed') + '</div>';
+      if (messagesEl) messagesEl.appendChild(errBubble);
+      _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
+      _updateTypingIndicator();
+      _updateChatStatePill();
+      _scrollChatToBottom();
+
+      // Re-enable buttons on error
+      if (bubble) {
+        var btns = bubble.querySelectorAll('.bubble-option-btn');
+        for (var k = 0; k < btns.length; k++) {
+          btns[k].disabled = false;
+          btns[k].style.opacity = '';
+          btns[k].style.pointerEvents = '';
+        }
+      }
+    });
+  }
+
   function _handleChatSSE(data) {
     if (_currentScreen !== 'chat') return;
 
@@ -2075,6 +2142,20 @@ window.VoiceApp = (function () {
     }).catch(function (err) {
       VoiceOutput.playCue('error');
       if (status) status.textContent = 'Error: ' + (err.error || 'Send failed');
+    });
+  }
+
+  function _sendSelect(optionIndex) {
+    var status = document.getElementById('status-message');
+    if (status) status.textContent = 'Sending...';
+
+    VoiceAPI.sendSelect(_targetAgentId, optionIndex).then(function (data) {
+      VoiceOutput.playCue('sent');
+      if (status) status.textContent = 'Sent!';
+      setTimeout(function () { _refreshAgents(); showScreen('agents'); }, 1500);
+    }).catch(function (err) {
+      VoiceOutput.playCue('error');
+      if (status) status.textContent = 'Error: ' + (err.error || 'Select failed');
     });
   }
 
