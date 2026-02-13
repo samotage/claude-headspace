@@ -115,10 +115,8 @@ class HeadspaceMonitor:
             with self._app.app_context():
                 now = datetime.now(timezone.utc)
 
-                # Calculate rolling averages
-                rolling_10 = self._calc_rolling_10()
-                rolling_30min = self._calc_rolling_30min(now)
-                rolling_3hr = self._calc_rolling_3hr(now)
+                # Calculate rolling averages from a single query
+                rolling_10, rolling_30min, rolling_3hr = self._calc_rolling_windows(now)
 
                 # Determine traffic light state
                 state = self._determine_state(rolling_10, rolling_30min)
@@ -162,56 +160,48 @@ class HeadspaceMonitor:
         except Exception as e:
             logger.error(f"Headspace recalculation failed: {e}")
 
-    def _calc_rolling_10(self) -> float | None:
-        """Calculate rolling average of last 10 scored user turns."""
+    def _calc_rolling_windows(self, now: datetime) -> tuple[float | None, float | None, float | None]:
+        """Calculate all three rolling windows from a single DB query.
+
+        Fetches all scored USER turns from the last 3 hours (session window),
+        then computes:
+          - rolling_10: average of last 10 scored turns (by recency)
+          - rolling_30min: average of turns within the last 30 minutes
+          - rolling_3hr: average of turns within the session window
+
+        Returns:
+            Tuple of (rolling_10, rolling_30min, rolling_3hr)
+        """
+        session_cutoff = now - timedelta(minutes=self._session_rolling_window_minutes)
+        cutoff_30min = now - timedelta(minutes=30)
+
         turns = (
-            db.session.query(Turn.frustration_score)
+            db.session.query(Turn.frustration_score, Turn.timestamp)
             .filter(
                 Turn.actor == TurnActor.USER,
                 Turn.frustration_score.isnot(None),
+                Turn.timestamp >= session_cutoff,
             )
             .order_by(Turn.timestamp.desc())
-            .limit(10)
             .all()
         )
-        if not turns:
-            return None
-        scores = [t[0] for t in turns]
-        return sum(scores) / len(scores)
 
-    def _calc_rolling_30min(self, now: datetime) -> float | None:
-        """Calculate rolling average of scored user turns in the last 30 minutes."""
-        cutoff = now - timedelta(minutes=30)
-        turns = (
-            db.session.query(Turn.frustration_score)
-            .filter(
-                Turn.actor == TurnActor.USER,
-                Turn.frustration_score.isnot(None),
-                Turn.timestamp >= cutoff,
-            )
-            .all()
-        )
         if not turns:
-            return None
-        scores = [t[0] for t in turns]
-        return sum(scores) / len(scores)
+            return None, None, None
 
-    def _calc_rolling_3hr(self, now: datetime) -> float | None:
-        """Calculate rolling average of scored user turns in the session window."""
-        cutoff = now - timedelta(minutes=self._session_rolling_window_minutes)
-        turns = (
-            db.session.query(Turn.frustration_score)
-            .filter(
-                Turn.actor == TurnActor.USER,
-                Turn.frustration_score.isnot(None),
-                Turn.timestamp >= cutoff,
-            )
-            .all()
-        )
-        if not turns:
-            return None
-        scores = [t[0] for t in turns]
-        return sum(scores) / len(scores)
+        # All turns in the session window → rolling_3hr
+        all_scores = [t[0] for t in turns]
+        rolling_3hr = sum(all_scores) / len(all_scores)
+
+        # Last 10 turns (already ordered desc) → rolling_10
+        last_10_scores = all_scores[:10]
+        rolling_10 = sum(last_10_scores) / len(last_10_scores)
+
+        # Turns within last 30 minutes → rolling_30min
+        scores_30min = [t[0] for t in turns if t[1] >= cutoff_30min]
+        rolling_30min = sum(scores_30min) / len(scores_30min) if scores_30min else None
+
+        return rolling_10, rolling_30min, rolling_3hr
 
     def _calc_turn_rate(self, now: datetime) -> float:
         """Calculate user turns per hour in the last hour."""
@@ -384,6 +374,11 @@ class HeadspaceMonitor:
             return False
 
     def _is_in_cooldown(self, now: datetime) -> bool:
+        """Check if we are within the alert cooldown period.
+
+        Enforced at the top of _check_thresholds — prevents alert spam by
+        requiring at least `_cooldown_minutes` minutes between alerts.
+        """
         with self._lock:
             if self._last_alert_at:
                 elapsed = (now - self._last_alert_at).total_seconds() / 60
