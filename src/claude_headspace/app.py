@@ -3,6 +3,7 @@
 import logging
 import logging.config
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -151,21 +152,29 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["summarisation_service"] = summarisation_service
     logger.info("Summarisation service initialized")
 
-    # Initialize headspace monitor
-    from .services.headspace_monitor import HeadspaceMonitor
-    headspace_monitor = HeadspaceMonitor(app=app, config=config)
-    app.extensions["headspace_monitor"] = headspace_monitor
-    logger.info("Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled)
+    # Initialize headspace monitor (requires database for snapshot persistence)
+    if db_connected:
+        from .services.headspace_monitor import HeadspaceMonitor
+        headspace_monitor = HeadspaceMonitor(app=app, config=config)
+        app.extensions["headspace_monitor"] = headspace_monitor
+        logger.info("Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled)
+    else:
+        app.extensions["headspace_monitor"] = None
+        logger.debug("Headspace monitor disabled (no database connection)")
 
-    # Initialize priority scoring service
-    from .services.priority_scoring import PriorityScoringService
-    priority_scoring_service = PriorityScoringService(
-        inference_service=inference_service,
-        app=app,
-        config=config,
-    )
-    app.extensions["priority_scoring_service"] = priority_scoring_service
-    logger.info("Priority scoring service initialized")
+    # Initialize priority scoring service (requires database for agent queries)
+    if db_connected:
+        from .services.priority_scoring import PriorityScoringService
+        priority_scoring_service = PriorityScoringService(
+            inference_service=inference_service,
+            app=app,
+            config=config,
+        )
+        app.extensions["priority_scoring_service"] = priority_scoring_service
+        logger.info("Priority scoring service initialized")
+    else:
+        app.extensions["priority_scoring_service"] = None
+        logger.debug("Priority scoring service disabled (no database connection)")
 
     # Initialize notification service from config
     from .services.notification_service import (
@@ -220,11 +229,15 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["brain_reboot_service"] = brain_reboot_service
     logger.info("Brain reboot service initialized")
 
-    # Initialize staleness service
-    from .services.staleness import StalenessService
-    staleness_service = StalenessService(app=app)
-    app.extensions["staleness_service"] = staleness_service
-    logger.info("Staleness service initialized")
+    # Initialize staleness service (requires database for task queries)
+    if db_connected:
+        from .services.staleness import StalenessService
+        staleness_service = StalenessService(app=app)
+        app.extensions["staleness_service"] = staleness_service
+        logger.info("Staleness service initialized")
+    else:
+        app.extensions["staleness_service"] = None
+        logger.debug("Staleness service disabled (no database connection)")
 
     # Initialize file watcher (only in non-testing environments)
     if not app.config.get("TESTING"):
@@ -239,8 +252,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         reaper.start()
         app.extensions["agent_reaper"] = reaper
 
-    # Initialize activity aggregator (only in non-testing environments)
-    if not app.config.get("TESTING"):
+    # Initialize activity aggregator (only in non-testing environments, requires database)
+    if not app.config.get("TESTING") and db_connected:
         from .services.activity_aggregator import ActivityAggregator
         aggregator = ActivityAggregator(app=app, config=config)
         aggregator.start()
@@ -285,6 +298,37 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         commander_availability.start()
     logger.info("Commander availability service initialized")
 
+    # Background thread health monitor
+    _thread_health_stop = threading.Event()
+
+    def _get_background_thread_status():
+        """Get the alive status of all background threads."""
+        status = {}
+        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability"):
+            svc = app.extensions.get(name)
+            if svc is None:
+                status[name] = "disabled"
+            elif hasattr(svc, "_thread") and isinstance(svc._thread, threading.Thread):
+                status[name] = "alive" if svc._thread.is_alive() else "dead"
+            elif hasattr(svc, "thread") and isinstance(svc.thread, threading.Thread):
+                status[name] = "alive" if svc.thread.is_alive() else "dead"
+            else:
+                status[name] = "unknown"
+        return status
+
+    app.extensions["_get_background_thread_status"] = _get_background_thread_status
+
+    def _thread_health_loop():
+        while not _thread_health_stop.wait(60):
+            status = _get_background_thread_status()
+            dead = [k for k, v in status.items() if v == "dead"]
+            if dead:
+                logger.warning(f"Background threads dead: {', '.join(dead)}")
+
+    if not app.config.get("TESTING"):
+        health_thread = threading.Thread(target=_thread_health_loop, daemon=True, name="thread-health")
+        health_thread.start()
+
     # Register shutdown cleanup
     import atexit
 
@@ -292,6 +336,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     def cleanup():
         # Wrap in try-except as logging may be shut down during atexit
         try:
+            _thread_health_stop.set()
             shutdown_broadcaster()
             if "agent_reaper" in app.extensions:
                 app.extensions["agent_reaper"].stop()
@@ -315,9 +360,17 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     # Compute cache bust once at startup (not per-render)
     app.config["CACHE_BUST"] = int(time.time())
 
-    # CSRF protection
+    # CSRF protection — use a secure secret key in non-debug mode
     from itsdangerous import URLSafeTimedSerializer
-    csrf_serializer = URLSafeTimedSerializer(app.config.get("SECRET_KEY") or "dev-secret-key")
+    secret_key = app.config.get("SECRET_KEY")
+    if not secret_key:
+        if app.config["DEBUG"]:
+            secret_key = "dev-secret-key"
+        else:
+            secret_key = os.urandom(32).hex()
+            logger.warning("No SECRET_KEY configured — using a generated key (will not persist across restarts)")
+    app.config["SECRET_KEY"] = secret_key
+    csrf_serializer = URLSafeTimedSerializer(secret_key)
 
     @app.context_processor
     def inject_template_globals():

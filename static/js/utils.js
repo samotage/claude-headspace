@@ -356,6 +356,54 @@
                '</span><span class="' + tClass + '">' + escapeHtml(trail) + '</span>';
     }
 
+    // ── API URL builder (L1) ──
+
+    var API_BASE = ''; // Same-origin
+
+    /**
+     * Build an API URL path. Centralises the base URL for all API calls.
+     *
+     * @param {string} path - API path (e.g. '/api/events')
+     * @returns {string} Full URL path
+     */
+    function apiUrl(path) {
+        return API_BASE + path;
+    }
+
+    // ── Response validation (L8) ──
+
+    /**
+     * Validate that a response object contains all required fields.
+     *
+     * @param {Object} data - Response data to validate
+     * @param {string[]} requiredFields - Array of required field names
+     * @returns {boolean} true if all fields are present and non-null
+     */
+    function validateResponse(data, requiredFields) {
+        for (var i = 0; i < requiredFields.length; i++) {
+            var field = requiredFields[i];
+            if (data[field] === undefined || data[field] === null) {
+                console.warn('Missing required field: ' + field, data);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ── CSRF token refresh (L3) ──
+
+    setInterval(function() {
+        fetch('/api/csrf-token', { method: 'GET' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.csrf_token) {
+                    var meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta) meta.setAttribute('content', data.csrf_token);
+                }
+            })
+            .catch(function() {}); // Silent fail — token refreshes on next page load
+    }, 30 * 60 * 1000);
+
     // Global unhandled promise rejection handler
     window.addEventListener('unhandledrejection', function(event) {
         console.error('Unhandled promise rejection:', event.reason);
@@ -368,6 +416,8 @@
         renderMarkdown: renderMarkdown,
         copyCodeBlock: copyCodeBlock,
         apiFetch: apiFetch,
+        apiUrl: apiUrl,
+        validateResponse: validateResponse,
         heroHTML: heroHTML,
         fillHourlyGaps: fillHourlyGaps,
         aggregateByDay: aggregateByDay,

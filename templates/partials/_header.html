@@ -87,7 +87,7 @@
 
 <!-- Stats Bar -->
 {% set status_counts = status_counts|default({"input_needed": 0, "working": 0, "idle": 0}) %}
-<div class="stats-bar" id="stats-bar">
+<div class="stats-bar" id="stats-bar" role="status" aria-live="polite">
     <div id="status-input-needed" class="stat-item">
         <span class="stat-dot amber" aria-hidden="true"></span>
         <span class="stat-label amber">INPUT NEEDED</span>
@@ -110,7 +110,7 @@
 </div>
 
 <!-- Headspace Alert Banner (hidden by default) -->
-<div id="headspace-alert-banner" class="headspace-alert-banner hidden">
+<div id="headspace-alert-banner" class="headspace-alert-banner hidden" role="alert" aria-live="assertive">
     <span id="headspace-alert-message" class="headspace-alert-text"></span>
     <div class="headspace-alert-actions">
         <button id="headspace-fine-btn" class="headspace-fine-btn" onclick="HeadspaceBanner.suppress()">I'm fine</button>
@@ -119,7 +119,7 @@
 </div>
 
 <!-- Headspace Flow Toast (hidden by default) -->
-<div id="headspace-flow-toast" class="headspace-flow-toast hidden">
+<div id="headspace-flow-toast" class="headspace-flow-toast hidden" role="status" aria-live="polite">
     <span id="headspace-flow-message" class="headspace-flow-text"></span>
 </div>
 
