@@ -25,6 +25,9 @@ class Event(db.Model):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )
+    # FK design: SET NULL on delete — events form an audit trail with independent
+    # value. Retaining event records even when referenced entities are deleted
+    # preserves the historical record for debugging and analytics.
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )

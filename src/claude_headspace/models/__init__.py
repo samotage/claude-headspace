@@ -7,7 +7,7 @@ Models:
     - Project: Monitored projects/codebases
     - Agent: Claude Code sessions
     - Task: Units of work with 5-state lifecycle
-    - Turn: Individual exchanges (user ↔ agent)
+    - Turn: Individual exchanges (user <-> agent)
     - Event: Audit trail events
     - InferenceCall: LLM inference call logging
     - ActivityMetric: Hourly activity metrics time-series
