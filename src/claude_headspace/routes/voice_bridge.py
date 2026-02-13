@@ -438,6 +438,11 @@ def upload_file(agent_id: int):
     if not uploaded_file.filename:
         return _voice_error("No file selected.", "Choose a file and try again.")
 
+    # Defense-in-depth: validate filename for path traversal at route level
+    from ..services.file_upload import FileUploadService
+    if not FileUploadService.is_safe_filename(uploaded_file.filename):
+        return _voice_error("Invalid filename.", "Filename contains unsafe characters.", 400)
+
     text = request.form.get("text", "").strip()
 
     # Validate and save via FileUploadService
