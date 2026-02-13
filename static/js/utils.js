@@ -356,6 +356,11 @@
                '</span><span class="' + tClass + '">' + escapeHtml(trail) + '</span>';
     }
 
+    // Global unhandled promise rejection handler
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled promise rejection:', event.reason);
+    });
+
     // Export to global namespace
     window.CHUtils = {
         escapeHtml: escapeHtml,

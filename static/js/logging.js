@@ -166,7 +166,7 @@
 
       // Hide empty/no results states
       this._hideStates();
-      this.paginationControls.classList.remove("hidden");
+      if (this.paginationControls) this.paginationControls.classList.remove("hidden");
 
       // Create new row
       const row = this._createEventRow(event);
