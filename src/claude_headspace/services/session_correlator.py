@@ -8,11 +8,16 @@ from datetime import datetime, timezone
 from typing import NamedTuple
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
+
 from ..database import db
 from ..models.agent import Agent
 from ..models.project import Project
 
 logger = logging.getLogger(__name__)
+
+# Default query timeout in milliseconds for database operations
+DEFAULT_QUERY_TIMEOUT_MS = 10000  # 10 seconds
 
 # Project root markers — if any of these exist in a directory, it's a project root
 _PROJECT_ROOT_MARKERS = (
@@ -209,10 +214,19 @@ def _resolve_working_directory(working_directory: str | None) -> str | None:
     return resolved
 
 
+def _set_query_timeout(timeout_ms: int = DEFAULT_QUERY_TIMEOUT_MS) -> None:
+    """Set PostgreSQL statement_timeout for the current session."""
+    try:
+        db.session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+    except Exception as e:
+        logger.debug(f"Could not set statement_timeout (non-fatal): {e}")
+
+
 def correlate_session(
     claude_session_id: str,
     working_directory: str | None = None,
     headspace_session_id: str | None = None,
+    query_timeout_ms: int = DEFAULT_QUERY_TIMEOUT_MS,
 ) -> CorrelationResult:
     """
     Correlate a Claude Code session to an agent.
@@ -239,6 +253,9 @@ def correlate_session(
     """
     # Cleanup stale cache entries periodically
     _cache_cleanup()
+
+    # Set query timeout to prevent long-running DB queries from blocking hooks
+    _set_query_timeout(query_timeout_ms)
 
     # Strategy 1: Check in-memory session cache — working_directory is ignored
     # for already-known sessions. The project was determined at first contact.

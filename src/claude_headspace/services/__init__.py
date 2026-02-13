@@ -5,13 +5,15 @@ from .project_decoder import decode_project_path, encode_project_path, locate_js
 from .jsonl_parser import JSONLParser, ParsedTurn
 from .git_metadata import GitMetadata, GitInfo
 from .file_watcher import FileWatcher, init_file_watcher
-from .event_writer import (
+from .event_schemas import (
     EventType,
     PayloadSchema,
     ValidatedEvent,
     validate_event_type,
     validate_payload,
     create_validated_event,
+)
+from .event_writer import (
     EventWriter,
     WriteResult,
     create_event_writer,

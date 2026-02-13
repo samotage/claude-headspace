@@ -44,12 +44,14 @@ class Event(db.Model):
         return f"<Event id={self.id} type={self.event_type} timestamp={self.timestamp}>"
 
 
-# Event type constants
+# Event type constants — kept here for backward compatibility with imports
+# from models.event. The authoritative, complete definition is in
+# services/event_schemas.py (which event_writer.py uses).
 class EventType:
     """Supported event types."""
 
     # Core events
-    SESSION_DISCOVERED = "session_discovered"
+    SESSION_REGISTERED = "session_registered"
     SESSION_ENDED = "session_ended"
     TURN_DETECTED = "turn_detected"
     STATE_TRANSITION = "state_transition"
@@ -59,12 +61,16 @@ class EventType:
     # Generic hook event (legacy)
     HOOK_RECEIVED = "hook_received"
 
-    # Specific hook events (Issue 9 remediation)
+    # Specific hook events
     HOOK_SESSION_START = "hook_session_start"
     HOOK_SESSION_END = "hook_session_end"
     HOOK_USER_PROMPT = "hook_user_prompt"
     HOOK_STOP = "hook_stop"
     HOOK_NOTIFICATION = "hook_notification"
+    HOOK_POST_TOOL_USE = "hook_post_tool_use"
+
+    # Content pipeline events
+    QUESTION_DETECTED = "question_detected"
 
 
 # Composite indexes for common query patterns

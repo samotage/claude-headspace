@@ -11,152 +11,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+# Single source of truth for event types and schemas
+from .event_schemas import (
+    EventType,
+    ValidatedEvent,
+    create_validated_event,
+    validate_event_type,
+    validate_payload,
+)
+
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Event type definitions and payload schemas (inlined from event_schemas.py)
-# ---------------------------------------------------------------------------
-
-class EventType:
-    """Supported event types for the event system."""
-
-    SESSION_REGISTERED = "session_registered"
-    SESSION_ENDED = "session_ended"
-    TURN_DETECTED = "turn_detected"
-    STATE_TRANSITION = "state_transition"
-    HOOK_RECEIVED = "hook_received"
-    HOOK_SESSION_START = "hook_session_start"
-    HOOK_SESSION_END = "hook_session_end"
-    HOOK_USER_PROMPT = "hook_user_prompt"
-    HOOK_STOP = "hook_stop"
-    HOOK_NOTIFICATION = "hook_notification"
-    HOOK_POST_TOOL_USE = "hook_post_tool_use"
-    QUESTION_DETECTED = "question_detected"
-
-    ALL_TYPES = [
-        SESSION_REGISTERED, SESSION_ENDED, TURN_DETECTED, STATE_TRANSITION,
-        HOOK_RECEIVED, HOOK_SESSION_START, HOOK_SESSION_END, HOOK_USER_PROMPT,
-        HOOK_STOP, HOOK_NOTIFICATION, HOOK_POST_TOOL_USE, QUESTION_DETECTED,
-    ]
-
-
-@dataclass
-class PayloadSchema:
-    """Schema definition for event payloads."""
-    required_fields: list[str]
-    optional_fields: list[str]
-
-
-PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
-    EventType.SESSION_REGISTERED: PayloadSchema(
-        required_fields=["session_uuid", "project_path", "working_directory"],
-        optional_fields=["iterm_pane_id"],
-    ),
-    EventType.SESSION_ENDED: PayloadSchema(
-        required_fields=["session_uuid", "reason"],
-        optional_fields=["duration_seconds"],
-    ),
-    EventType.TURN_DETECTED: PayloadSchema(
-        required_fields=["session_uuid", "actor", "text", "source", "turn_timestamp"],
-        optional_fields=[],
-    ),
-    EventType.STATE_TRANSITION: PayloadSchema(
-        required_fields=["from_state", "to_state", "trigger"],
-        optional_fields=["confidence"],
-    ),
-    EventType.HOOK_RECEIVED: PayloadSchema(
-        required_fields=["hook_type", "claude_session_id", "working_directory"],
-        optional_fields=[],
-    ),
-    EventType.HOOK_SESSION_START: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory"],
-    ),
-    EventType.HOOK_SESSION_END: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory"],
-    ),
-    EventType.HOOK_USER_PROMPT: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory"],
-    ),
-    EventType.HOOK_STOP: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory"],
-    ),
-    EventType.HOOK_NOTIFICATION: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory", "title", "message", "notification_type"],
-    ),
-    EventType.HOOK_POST_TOOL_USE: PayloadSchema(
-        required_fields=["claude_session_id"],
-        optional_fields=["working_directory", "tool_name"],
-    ),
-    EventType.QUESTION_DETECTED: PayloadSchema(
-        required_fields=["agent_id", "source"],
-        optional_fields=["content"],
-    ),
-}
-
-
-def validate_event_type(event_type: str) -> bool:
-    """Check if event_type is in the defined taxonomy."""
-    return event_type in EventType.ALL_TYPES
-
-
-def validate_payload(event_type: str, payload: dict[str, Any]) -> tuple[bool, Optional[str]]:
-    """Validate payload conforms to schema. Returns (is_valid, error_message)."""
-    if not validate_event_type(event_type):
-        return False, f"Unknown event type: {event_type}"
-    if not isinstance(payload, dict):
-        return False, "Payload must be a dictionary"
-    schema = PAYLOAD_SCHEMAS.get(event_type)
-    if not schema:
-        return False, f"No schema defined for event type: {event_type}"
-    missing = [f for f in schema.required_fields if f not in payload]
-    if missing:
-        return False, f"Missing required fields: {', '.join(missing)}"
-    return True, None
-
-
-@dataclass
-class ValidatedEvent:
-    """A validated event ready for writing to the database."""
-    event_type: str
-    payload: dict[str, Any]
-    timestamp: datetime
-    project_id: Optional[int] = None
-    agent_id: Optional[int] = None
-    task_id: Optional[int] = None
-    turn_id: Optional[int] = None
-
-
-def create_validated_event(
-    event_type: str,
-    payload: dict[str, Any],
-    timestamp: Optional[datetime] = None,
-    project_id: Optional[int] = None,
-    agent_id: Optional[int] = None,
-    task_id: Optional[int] = None,
-    turn_id: Optional[int] = None,
-) -> tuple[Optional[ValidatedEvent], Optional[str]]:
-    """Create a validated event. Returns (ValidatedEvent or None, error or None)."""
-    is_valid, error = validate_payload(event_type, payload)
-    if not is_valid:
-        logger.warning(f"Event validation failed: {error}")
-        return None, error
-    if timestamp is None:
-        timestamp = datetime.now(timezone.utc)
-    return ValidatedEvent(
-        event_type=event_type, payload=payload, timestamp=timestamp,
-        project_id=project_id, agent_id=agent_id, task_id=task_id, turn_id=turn_id,
-    ), None
-
-
-# ---------------------------------------------------------------------------
-# Event writer
-# ---------------------------------------------------------------------------
 
 @dataclass
 class WriteResult:
