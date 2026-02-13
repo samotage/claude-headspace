@@ -426,10 +426,11 @@ class TestVoiceCommand:
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
             response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
             assert response.status_code == 500
-            assert 1 not in pending
+            # respond-pending should NOT be set on commit failure
+            mock_get_state().set_respond_pending.assert_not_called()
 
 
 class TestVoiceCommandToIdle:
@@ -487,9 +488,9 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
             client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
-            assert 4 not in pending
+            mock_get_state().set_respond_pending.assert_not_called()
 
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_idle_path_returns_idle_state_and_no_respond_pending(self, mock_bridge, client, mock_db, mock_agent_complete):
@@ -497,12 +498,12 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.hook_receiver._respond_pending_for_agent", {}) as pending:
+        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
             response = client.post("/api/voice/command", json={"text": "do something", "agent_id": 4})
             assert response.status_code == 200
             data = response.get_json()
             assert data["new_state"] == "idle"
-            assert 4 not in pending
+            mock_get_state().set_respond_pending.assert_not_called()
 
     def test_command_to_processing_rejected(self, client, mock_db, mock_agent_processing):
         """Sending a command to a PROCESSING agent is rejected."""

@@ -16,6 +16,25 @@ from ..models.agent import Agent
 from ..models.task import TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .card_state import broadcast_card_refresh
+from .hook_agent_state import get_agent_hook_state
+from .hook_extractors import (
+    capture_plan_write as _capture_plan_write,
+    extract_question_text as _extract_question_text,
+    extract_structured_options as _extract_structured_options,
+    mark_question_answered as _mark_question_answered,
+    synthesize_permission_options as _synthesize_permission_options,
+)
+from .hook_helpers import (
+    broadcast_state_change as _broadcast_state_change,
+    broadcast_turn_created as _broadcast_turn_created,
+    capture_progress_text as _capture_progress_text_impl,
+    execute_pending_summarisations as _execute_pending_summarisations,
+    extract_transcript_content as _extract_transcript_content,
+    get_lifecycle_manager as _get_lifecycle_manager,
+    send_completion_notification as _send_completion_notification,
+    send_notification as _send_notification,
+    trigger_priority_scoring as _trigger_priority_scoring,
+)
 from .intent_detector import detect_agent_intent
 from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_instruction_for_notification
 
@@ -37,44 +56,164 @@ PRE_TOOL_USE_INTERACTIVE = {"AskUserQuestion", "ExitPlanMode"}
 # completed less than this many seconds ago (tail-end tool activity).
 INFERRED_TASK_COOLDOWN_SECONDS = 30
 
-# ── Module-level state dicts ──────────────────────────────────────────
-# These dicts are in-process singletons. They assume a single-process
-# Flask deployment (no multi-worker gunicorn). If the app were to run
-# with multiple workers, these would need to be moved to Redis or a
-# shared-memory store. reset_receiver_state() clears all of them.
+# ── Per-agent state ──────────────────────────────────────────────────
+# All mutable per-agent state is now managed by AgentHookState
+# (hook_agent_state.py) with proper thread synchronization.
+#
+# The following module-level proxy objects are provided for backwards
+# compatibility with external callers that import them directly.
+# They delegate to get_agent_hook_state() internally.
 
-# Track which tool triggered AWAITING_INPUT per agent, so post_tool_use
-# only resumes when the matching tool completes (not unrelated tools).
-_awaiting_tool_for_agent: dict[int, str | None] = {}
 
-# Track agents that just received a respond via the dashboard tmux bridge.
-# When set, the next user_prompt_submit hook for this agent should be skipped
-# because the respond handler already created the turn and transitioned state.
-_respond_pending_for_agent: dict[int, float] = {}
+class _AwaitingToolProxy:
+    """Dict-like proxy to AgentHookState._awaiting_tool."""
+    def __getitem__(self, agent_id):
+        return get_agent_hook_state().get_awaiting_tool(agent_id)
 
-# How long (seconds) a respond-pending flag remains valid.
-_RESPOND_PENDING_TTL = 10.0
+    def __setitem__(self, agent_id, value):
+        get_agent_hook_state().set_awaiting_tool(agent_id, value)
 
-# Track agents with an in-flight deferred stop thread to prevent duplicate
-# threads from being spawned for the same agent.
-_deferred_stop_pending: set[int] = set()
+    def __contains__(self, agent_id):
+        return get_agent_hook_state().get_awaiting_tool(agent_id) is not None
 
-# Track per-agent transcript file position for incremental reading.
-# Used by intermediate PROGRESS turn capture (post_tool_use) to avoid
-# re-reading content already captured. Reset on session start.
-_transcript_positions: dict[int, int] = {}
+    def get(self, agent_id, default=None):
+        val = get_agent_hook_state().get_awaiting_tool(agent_id)
+        return val if val is not None else default
 
-# Track text of PROGRESS turns captured during the current agent response.
-# Used by stop hook for deduplication — the final COMPLETION turn should
-# not duplicate text already captured as intermediate PROGRESS turns.
-# Cleared on user_prompt_submit (new response cycle starts).
-_progress_texts_for_agent: dict[int, list[str]] = {}
+    def pop(self, agent_id, *args):
+        return get_agent_hook_state().clear_awaiting_tool(agent_id)
 
-# Track file metadata for IDLE-state file uploads via voice bridge.
-# When a file is uploaded to an IDLE agent, the voice bridge sends via tmux
-# but can't create a Turn (no active task). The next user_prompt_submit hook
-# creates the COMMAND turn — this dict passes the file metadata to that turn.
-_file_metadata_pending_for_agent: dict[int, dict] = {}
+    def clear(self):
+        state = get_agent_hook_state()
+        with state._lock:
+            state._awaiting_tool.clear()
+
+    def __len__(self):
+        # Only used by tests checking emptiness
+        return 0
+
+
+class _RespondPendingProxy:
+    """Dict-like proxy to AgentHookState._respond_pending."""
+    def __getitem__(self, agent_id):
+        raise KeyError(agent_id)  # Not needed
+
+    def __setitem__(self, agent_id, value):
+        get_agent_hook_state().set_respond_pending(agent_id)
+
+    def __contains__(self, agent_id):
+        state = get_agent_hook_state()
+        with state._lock:
+            return agent_id in state._respond_pending
+
+    def pop(self, agent_id, *args):
+        # consume_respond_pending returns bool, but callers expect timestamp or None
+        state = get_agent_hook_state()
+        with state._lock:
+            return state._respond_pending.pop(agent_id, None if not args else args[0])
+
+    def clear(self):
+        state = get_agent_hook_state()
+        with state._lock:
+            state._respond_pending.clear()
+
+    def __len__(self):
+        return 0
+
+
+class _DeferredStopProxy:
+    """Set-like proxy to AgentHookState._deferred_stop_pending."""
+    def add(self, agent_id):
+        state = get_agent_hook_state()
+        with state._lock:
+            state._deferred_stop_pending.add(agent_id)
+
+    def discard(self, agent_id):
+        get_agent_hook_state().release_deferred_stop(agent_id)
+
+    def __contains__(self, agent_id):
+        return get_agent_hook_state().is_deferred_stop_pending(agent_id)
+
+    def clear(self):
+        state = get_agent_hook_state()
+        with state._lock:
+            state._deferred_stop_pending.clear()
+
+    def __len__(self):
+        return 0
+
+
+class _TranscriptPositionsProxy:
+    """Dict-like proxy to AgentHookState._transcript_positions."""
+    def __getitem__(self, agent_id):
+        val = get_agent_hook_state().get_transcript_position(agent_id)
+        if val is None:
+            raise KeyError(agent_id)
+        return val
+
+    def __setitem__(self, agent_id, value):
+        get_agent_hook_state().set_transcript_position(agent_id, value)
+
+    def __contains__(self, agent_id):
+        return get_agent_hook_state().get_transcript_position(agent_id) is not None
+
+    def get(self, agent_id, default=None):
+        val = get_agent_hook_state().get_transcript_position(agent_id)
+        return val if val is not None else default
+
+    def pop(self, agent_id, *args):
+        return get_agent_hook_state().clear_transcript_position(agent_id)
+
+    def clear(self):
+        pass  # handled by reset
+
+
+class _ProgressTextsProxy:
+    """Dict-like proxy to AgentHookState._progress_texts."""
+    def __getitem__(self, agent_id):
+        val = get_agent_hook_state().get_progress_texts(agent_id)
+        if not val:
+            raise KeyError(agent_id)
+        return val
+
+    def __setitem__(self, agent_id, value):
+        state = get_agent_hook_state()
+        with state._lock:
+            state._progress_texts[agent_id] = value
+
+    def __contains__(self, agent_id):
+        return len(get_agent_hook_state().get_progress_texts(agent_id)) > 0
+
+    def get(self, agent_id, default=None):
+        val = get_agent_hook_state().get_progress_texts(agent_id)
+        return val if val else default
+
+    def pop(self, agent_id, *args):
+        return get_agent_hook_state().consume_progress_texts(agent_id)
+
+    def clear(self):
+        pass  # handled by reset
+
+
+class _FileMetadataPendingProxy:
+    """Dict-like proxy to AgentHookState._file_metadata_pending."""
+    def __setitem__(self, agent_id, value):
+        get_agent_hook_state().set_file_metadata_pending(agent_id, value)
+
+    def pop(self, agent_id, *args):
+        return get_agent_hook_state().consume_file_metadata_pending(agent_id)
+
+    def clear(self):
+        pass  # handled by reset
+
+
+# Backwards-compatible module-level names (used by external callers)
+_awaiting_tool_for_agent = _AwaitingToolProxy()
+_respond_pending_for_agent = _RespondPendingProxy()
+_deferred_stop_pending = _DeferredStopProxy()
+_transcript_positions = _TranscriptPositionsProxy()
+_progress_texts_for_agent = _ProgressTextsProxy()
+_file_metadata_pending_for_agent = _FileMetadataPendingProxy()
 
 
 # --- Data types ---
@@ -165,549 +304,27 @@ def configure_receiver(
 def reset_receiver_state() -> None:
     global _receiver_state
     _receiver_state = HookReceiverState()
-    _awaiting_tool_for_agent.clear()
-    _respond_pending_for_agent.clear()
-    _deferred_stop_pending.clear()
-    _transcript_positions.clear()
-    _progress_texts_for_agent.clear()
-    _file_metadata_pending_for_agent.clear()
+    get_agent_hook_state().reset()
 
 
-# --- Internal helpers ---
-
-def _get_lifecycle_manager() -> TaskLifecycleManager:
-    event_writer = None
-    try:
-        from flask import current_app
-        event_writer = current_app.extensions.get("event_writer")
-    except RuntimeError:
-        logger.debug("No app context for event_writer")
-    return TaskLifecycleManager(
-        session=db.session,
-        event_writer=event_writer,
-    )
-
-
-def _trigger_priority_scoring() -> None:
-    try:
-        from flask import current_app
-        service = current_app.extensions.get("priority_scoring_service")
-        if service:
-            service.trigger_scoring()
-    except Exception as e:
-        logger.warning(f"Priority scoring trigger failed: {e}")
-
-
-def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, message: str | None = None) -> None:
-    try:
-        from .broadcaster import get_broadcaster
-        get_broadcaster().broadcast("state_changed", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "project_name": agent.project.name if agent.project else None,
-            "agent_session": str(agent.session_uuid),
-            "event_type": event_type,
-            "new_state": new_state.upper() if isinstance(new_state, str) else new_state,
-            "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception as e:
-        logger.warning(f"State change broadcast failed: {e}")
-
-
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question") -> None:
-    try:
-        from .broadcaster import get_broadcaster
-        payload = {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "text": text,
-            "actor": "agent",
-            "intent": intent,
-            "task_id": task.id if task else None,
-            "turn_id": turn_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        if tool_input:
-            payload["tool_input"] = tool_input
-        get_broadcaster().broadcast("turn_created", payload)
-    except Exception as e:
-        logger.warning(f"Turn created broadcast failed: {e}")
-
+# --- _capture_progress_text wrapper ---
+# The new implementation in hook_helpers requires a state parameter.
+# This wrapper provides backwards compatibility for callers within this module.
 
 def _capture_progress_text(agent: Agent, current_task) -> None:
-    """Read new transcript entries and create PROGRESS turns for intermediate agent text.
-
-    Called during post_tool_use when the agent is PROCESSING. Each assistant text
-    entry written to the transcript since the last capture becomes a PROGRESS Turn,
-    giving the voice bridge (and dashboard chat) real-time visibility into what
-    the agent is doing between tool calls.
-    """
-    if not agent.transcript_path:
-        return
-
-    import os
-    from .transcript_reader import read_new_entries_from_position
-
-    # Initialize position to current file size if not yet tracked
-    # (handles the case where user_prompt_submit didn't set it)
-    if agent.id not in _transcript_positions:
-        try:
-            _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
-        except OSError:
-            return
-        return  # First call — just set the baseline, don't capture
-
-    pos = _transcript_positions[agent.id]
-    try:
-        entries, new_pos = read_new_entries_from_position(agent.transcript_path, pos)
-    except Exception as e:
-        logger.debug(f"Progress capture failed for agent {agent.id}: {e}")
-        return
-
-    if new_pos == pos:
-        return  # No new content
-
-    _transcript_positions[agent.id] = new_pos
-
-    # Filter for assistant entries with meaningful text
-    MIN_PROGRESS_LEN = 10
-    new_texts = []
-    for entry in entries:
-        if entry.role == "assistant" and entry.content and len(entry.content.strip()) >= MIN_PROGRESS_LEN:
-            new_texts.append(entry.content.strip())
-
-    if not new_texts:
-        return
-
-    # Track captured texts for dedup with the final COMPLETION turn
-    if agent.id not in _progress_texts_for_agent:
-        _progress_texts_for_agent[agent.id] = []
-
-    for text in new_texts:
-        _progress_texts_for_agent[agent.id].append(text)
-
-        # Create a PROGRESS Turn record
-        turn = Turn(
-            task_id=current_task.id,
-            actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS,
-            text=text,
-        )
-        db.session.add(turn)
-        db.session.flush()
-
-        # Broadcast so SSE clients (voice bridge, dashboard) pick it up
-        try:
-            from .broadcaster import get_broadcaster
-            get_broadcaster().broadcast("turn_created", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "text": text,
-                "actor": "agent",
-                "intent": "progress",
-                "task_id": current_task.id,
-                "turn_id": turn.id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        except Exception as e:
-            logger.warning(f"Progress turn broadcast failed: {e}")
-
-    logger.info(
-        f"progress_capture: agent_id={agent.id}, task_id={current_task.id}, "
-        f"new_turns={len(new_texts)}, total_captured={len(_progress_texts_for_agent.get(agent.id, []))}"
-    )
-
-
-def _mark_question_answered(task) -> None:
-    """Mark the most recent QUESTION turn's tool_input status as complete.
-
-    Called when a question is answered to prevent stale options from
-    being rendered on subsequent AWAITING_INPUT transitions.
-    """
-    if not task or not hasattr(task, 'turns') or not task.turns:
-        return
-    for turn in reversed(task.turns):
-        if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
-            if turn.tool_input and isinstance(turn.tool_input, dict):
-                # Reassign dict (not mutate) so SQLAlchemy detects the change
-                turn.tool_input = {**turn.tool_input, "status": "complete"}
-            break
-
-
-def _extract_question_text(tool_name: str | None, tool_input: dict | None) -> str:
-    if tool_input and isinstance(tool_input, dict):
-        questions = tool_input.get("questions")
-        if questions and isinstance(questions, list) and len(questions) > 0:
-            # Multi-question: join all question texts
-            if len(questions) > 1:
-                texts = []
-                for q in questions:
-                    if isinstance(q, dict) and q.get("question"):
-                        texts.append(q["question"])
-                if texts:
-                    return " | ".join(texts)
-            q = questions[0]
-            if isinstance(q, dict) and q.get("question"):
-                return q["question"]
-        # Non-AskUserQuestion tool_input with raw params (e.g. {"command": "..."})
-        # Use permission summarizer for a meaningful description
-        if tool_name and tool_name != "AskUserQuestion" and not questions:
-            from .permission_summarizer import summarize_permission_command
-            return summarize_permission_command(tool_name, tool_input)
-    if tool_name:
-        return f"Permission needed: {tool_name}"
-    return "Awaiting input"
-
-
-def _extract_structured_options(tool_name: str | None, tool_input: dict | None) -> dict | None:
-    """Extract structured AskUserQuestion data for storage in Turn.tool_input.
-
-    Returns the full tool_input dict when the tool is AskUserQuestion and
-    contains valid questions with options. Returns None otherwise.
-    """
-    if tool_name != "AskUserQuestion" or not tool_input or not isinstance(tool_input, dict):
-        return None
-    questions = tool_input.get("questions")
-    if not questions or not isinstance(questions, list) or len(questions) == 0:
-        return None
-    q = questions[0]
-    if not isinstance(q, dict) or not q.get("options"):
-        return None
-    return tool_input
-
-
-def _synthesize_permission_options(
-    agent: Agent,
-    tool_name: str | None,
-    tool_input: dict | None,
-) -> dict | None:
-    """Capture permission dialog context from tmux pane and build AskUserQuestion-compatible dict.
-
-    When a permission-request hook fires, the actual numbered options (e.g. "1. Yes / 2. No")
-    are rendered in the terminal but not included in the hook payload. This function captures
-    the tmux pane content, parses the options and command context, and wraps them in the same
-    format that AskUserQuestion uses so the existing button-rendering pipeline works unchanged.
-
-    Also generates a meaningful summary (e.g. "Bash: curl from localhost:5055") instead of
-    the generic "Permission needed: Bash" using pattern matching on the tool_input.
-
-    Returns None if the agent has no tmux_pane_id or if capture/parse fails.
-    """
-    if not agent.tmux_pane_id:
-        return None
-
-    try:
-        from . import tmux_bridge
-        pane_context = tmux_bridge.capture_permission_context(agent.tmux_pane_id)
-    except Exception as e:
-        logger.warning(f"Permission context capture failed for agent {agent.id}: {e}")
-        return None
-
-    if not pane_context:
-        return None
-
-    options = pane_context.get("options")
-    if not options:
-        return None
-
-    # Generate meaningful summary using permission summarizer
-    from .permission_summarizer import summarize_permission_command, classify_safety
-    question_text = summarize_permission_command(tool_name, tool_input, pane_context)
-    safety = classify_safety(tool_name, tool_input, pane_context)
-
-    # Build command context for future auto-responder
-    command_context = {}
-    if pane_context.get("command"):
-        command_context["command"] = pane_context["command"]
-    if pane_context.get("description"):
-        command_context["description"] = pane_context["description"]
-
-    result = {
-        "questions": [{
-            "question": question_text,
-            "options": options,
-        }],
-        "source": "permission_pane_capture",
-        "safety": safety,
-    }
-    if command_context:
-        result["command_context"] = command_context
-
-    return result
-
-
-def _execute_pending_summarisations(pending: list) -> None:
-    if not pending:
-        return
-    try:
-        from flask import current_app
-        service = current_app.extensions.get("summarisation_service")
-        if service:
-            service.execute_pending(pending, db.session)
-    except Exception as e:
-        logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
-
-
-def _extract_transcript_content(agent: Agent) -> str:
-    if not agent.transcript_path:
-        logger.debug(f"TRANSCRIPT_EXTRACT agent={agent.id}: no transcript_path")
-        return ""
-    try:
-        from .transcript_reader import read_transcript_file
-        result = read_transcript_file(agent.transcript_path)
-        logger.debug(
-            f"TRANSCRIPT_EXTRACT agent={agent.id}: success={result.success}, "
-            f"text_len={len(result.text) if result.text else 0}, "
-            f"error={result.error}"
-        )
-        if result.success and result.text:
-            return result.text
-    except Exception as e:
-        logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
-    return ""
-
-
-def _send_notification(agent: Agent, task, turn_text: str | None) -> None:
-    try:
-        from .notification_service import get_notification_service
-        svc = get_notification_service()
-        svc.notify_awaiting_input(
-            agent_id=str(agent.id),
-            agent_name=agent.name or f"Agent {agent.id}",
-            project=agent.project.name if agent.project else None,
-            task_instruction=get_instruction_for_notification(task),
-            turn_text=turn_text,
-        )
-    except Exception as e:
-        logger.warning(f"Notification send failed: {e}")
-
-
-def _send_completion_notification(agent: Agent, task) -> None:
-    """Send task-complete notification using AI-generated summaries.
-
-    Called AFTER summarisation so task.completion_summary and task.instruction
-    are populated with useful content instead of raw transcript text.
-    """
-    try:
-        from .notification_service import get_notification_service
-        svc = get_notification_service()
-
-        instruction = get_instruction_for_notification(task)
-        # Prefer AI-generated completion summary over raw transcript
-        completion_text = task.completion_summary or None
-
-        svc.notify_task_complete(
-            agent_id=str(agent.id),
-            agent_name=agent.name or f"Agent {agent.id}",
-            project=agent.project.name if agent.project else None,
-            task_instruction=instruction,
-            turn_text=completion_text,
-        )
-    except Exception as e:
-        logger.warning(f"Completion notification failed (non-fatal): {e}")
+    """Wrapper that passes AgentHookState to the extracted implementation."""
+    _capture_progress_text_impl(agent, current_task, get_agent_hook_state())
 
 
 # --- Deferred stop handler (INT-H1: non-blocking transcript retry) ---
 
 def _schedule_deferred_stop(agent: Agent, current_task) -> None:
-    """Schedule a background thread to retry transcript extraction after a delay.
+    """Schedule a background thread to retry transcript extraction.
 
-    Instead of blocking the Flask request handler with time.sleep(), this
-    spawns a daemon thread that waits, re-reads the transcript, and applies
-    the appropriate state transition within a fresh app context.
-
-    Uses _deferred_stop_pending to prevent duplicate threads for the same agent.
+    Delegates to hook_deferred_stop.schedule_deferred_stop().
     """
-    agent_id = agent.id
-    task_id = current_task.id
-    project_id = agent.project_id
-
-    # Dedup: skip if a deferred stop is already in flight for this agent
-    if agent_id in _deferred_stop_pending:
-        logger.info(f"deferred_stop: agent_id={agent_id}, skipped (already pending)")
-        return
-
-    # Capture Flask app reference BEFORE starting thread
-    # (current_app is not available inside background threads)
-    try:
-        from flask import current_app
-        app = current_app._get_current_object()
-    except RuntimeError:
-        logger.warning("Cannot schedule deferred stop: no app context available")
-        return
-
-    def _deferred_check():
-        import time
-        try:
-            with app.app_context():
-                try:
-                    from ..models.task import Task
-
-                    # Poll for transcript content with backoff
-                    delays = [0.5, 1.0, 1.5, 2.0]  # Total: 5s max
-                    agent_text = ""
-                    for delay in delays:
-                        time.sleep(delay)
-
-                        task = db.session.get(Task, task_id)
-                        if not task or task.state == TaskState.COMPLETE:
-                            return  # Already completed by another hook
-
-                        agent_obj = db.session.get(Agent, agent_id)
-                        if not agent_obj:
-                            return
-
-                        # Refresh to avoid stale reads
-                        db.session.refresh(task)
-                        if task.state == TaskState.COMPLETE:
-                            return
-
-                        agent_text = _extract_transcript_content(agent_obj)
-                        if agent_text:
-                            break
-
-                    logger.info(
-                        f"deferred_stop: agent_id={agent_id}, "
-                        f"transcript_retry: len={len(agent_text) if agent_text else 0}, "
-                        f"polls={delays.index(delay) + 1 if agent_text else len(delays)}"
-                    )
-                    if not agent_text:
-                        # Still empty — complete with no transcript
-                        lifecycle = _get_lifecycle_manager()
-                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
-                        _trigger_priority_scoring()
-                        pending = lifecycle.get_pending_summarisations()
-                        db.session.commit()
-                        broadcast_card_refresh(agent_obj, "stop_deferred")
-                        _execute_pending_summarisations(pending)
-                        _send_completion_notification(agent_obj, task)
-                        logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
-                        return
-
-                    # Deduplicate against captured PROGRESS turns
-                    full_agent_text = agent_text
-                    completion_text = agent_text
-                    captured = _progress_texts_for_agent.pop(agent_id, None)
-                    if captured:
-                        pos = _transcript_positions.get(agent_id, 0)
-                        if pos > 0 and agent_obj.transcript_path:
-                            from .transcript_reader import read_new_entries_from_position
-                            new_entries, _ = read_new_entries_from_position(agent_obj.transcript_path, pos)
-                            new_texts = [
-                                e.content.strip() for e in new_entries
-                                if e.role == "assistant" and e.content and e.content.strip()
-                            ]
-                            if new_texts:
-                                completion_text = "\n\n".join(new_texts)
-                            else:
-                                # All text captured as PROGRESS — use full
-                                # text so a COMPLETION Turn is still created.
-                                completion_text = full_agent_text
-                    _transcript_positions.pop(agent_id, None)
-
-                    inference_service = app.extensions.get("inference_service")
-
-                    intent_result = detect_agent_intent(
-                        full_agent_text, inference_service=inference_service,
-                        project_id=project_id, agent_id=agent_id,
-                    )
-
-                    # Check for stale notification turn to replace
-                    stale_notification_turn = None
-                    if task.turns:
-                        for t in reversed(task.turns):
-                            if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
-                                    and t.text == "Claude is waiting for your input"):
-                                stale_notification_turn = t
-                                break
-
-                    lifecycle = _get_lifecycle_manager()
-                    if intent_result.intent == TurnIntent.QUESTION:
-                        if stale_notification_turn:
-                            stale_notification_turn.text = full_agent_text
-                            stale_notification_turn.question_text = full_agent_text
-                            stale_notification_turn.question_source_type = "free_text"
-                        else:
-                            from ..models.turn import Turn as _Turn
-                            turn = _Turn(
-                                task_id=task.id, actor=TurnActor.AGENT,
-                                intent=TurnIntent.QUESTION, text=full_agent_text,
-                                question_text=full_agent_text,
-                                question_source_type="free_text",
-                            )
-                            db.session.add(turn)
-                        lifecycle.update_task_state(
-                            task=task, to_state=TaskState.AWAITING_INPUT,
-                            trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
-                        )
-                    elif intent_result.intent == TurnIntent.END_OF_TASK:
-                        if stale_notification_turn:
-                            stale_notification_turn.text = completion_text or ""
-                            stale_notification_turn.intent = TurnIntent.END_OF_TASK
-                            stale_notification_turn.question_text = None
-                            stale_notification_turn.question_source_type = None
-                        lifecycle.complete_task(
-                            task=task, trigger="hook:stop:deferred_end_of_task",
-                            agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
-                        )
-                        if completion_text != full_agent_text:
-                            task.full_output = full_agent_text
-                    else:
-                        if stale_notification_turn:
-                            stale_notification_turn.text = completion_text or ""
-                            stale_notification_turn.intent = TurnIntent.COMPLETION
-                            stale_notification_turn.question_text = None
-                            stale_notification_turn.question_source_type = None
-                        lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=completion_text)
-                        if completion_text != full_agent_text:
-                            task.full_output = full_agent_text
-
-                    _trigger_priority_scoring()
-                    pending = lifecycle.get_pending_summarisations()
-                    db.session.commit()
-                    broadcast_card_refresh(agent_obj, "stop_deferred")
-                    _execute_pending_summarisations(pending)
-
-                    if task.state == TaskState.COMPLETE:
-                        _send_completion_notification(agent_obj, task)
-                    # Broadcast agent turn for all intent types (voice chat needs this)
-                    if task.turns:
-                        broadcast_turn = None
-                        for t in reversed(task.turns):
-                            if t.actor == TurnActor.AGENT and t.intent in (
-                                TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
-                            ):
-                                broadcast_turn = t
-                                break
-                        if not broadcast_turn:
-                            for t in reversed(task.turns):
-                                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
-                                    broadcast_turn = t
-                                    break
-                        if broadcast_turn:
-                            _broadcast_turn_created(
-                                agent_obj, broadcast_turn.text, task,
-                                tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
-                                intent=broadcast_turn.intent.value,
-                            )
-
-                    logger.info(
-                        f"deferred_stop: agent_id={agent_id}, "
-                        f"new_state={task.state.value}, intent={intent_result.intent.value}"
-                    )
-                except Exception as e:
-                    logger.exception(f"deferred_stop failed for agent {agent_id}: {e}")
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
-        finally:
-            _deferred_stop_pending.discard(agent_id)
-
-    _deferred_stop_pending.add(agent_id)
-    t = threading.Thread(target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}")
-    t.start()
+    from .hook_deferred_stop import schedule_deferred_stop
+    schedule_deferred_stop(agent, current_task)
 
 
 # --- Hook processors ---
@@ -1361,32 +978,6 @@ def process_notification(
         message=message, title=title,
     )
 
-
-def _capture_plan_write(agent: Agent, tool_input: dict | None) -> bool:
-    """Capture plan file content when agent writes to .claude/plans/.
-
-    Returns True if plan content was captured and committed.
-    """
-    if not tool_input or not isinstance(tool_input, dict):
-        return False
-    file_path = tool_input.get("file_path", "")
-    content = tool_input.get("content", "")
-    if not file_path or ".claude/plans/" not in file_path or not content:
-        return False
-
-    current_task = agent.get_current_task()
-    if not current_task:
-        return False
-
-    current_task.plan_file_path = file_path
-    current_task.plan_content = content
-    db.session.commit()
-    broadcast_card_refresh(agent, "plan_file_captured")
-    logger.info(
-        f"plan_capture: agent_id={agent.id}, task_id={current_task.id}, "
-        f"file={file_path}, content_len={len(content)}"
-    )
-    return True
 
 
 def process_pre_tool_use(

@@ -351,8 +351,8 @@ def voice_command():
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         turn = Turn(
             task_id=current_task.id,
@@ -378,15 +378,15 @@ def voice_command():
             current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent.id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent.id)
 
         db.session.commit()
 
         # Flag respond-pending AFTER commit to prevent duplicate turn from hook.
         # Set after commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "voice_command")
 
@@ -515,10 +515,10 @@ def upload_file(agent_id: int):
         # Include the clean display text so the hook uses it instead of the raw
         # tmux text (which has the file path prepended), avoiding a duplicate
         # bubble in the chat UI where the frontend dedup compares by text.
-        from ..services.hook_receiver import _file_metadata_pending_for_agent
+        from ..services.hook_agent_state import get_agent_hook_state
         pending_meta = dict(db_metadata)
         pending_meta["_display_text"] = text or f"[File: {file_metadata['original_filename']}]"
-        _file_metadata_pending_for_agent[agent.id] = pending_meta
+        get_agent_hook_state().set_file_metadata_pending(agent.id, pending_meta)
 
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -541,8 +541,8 @@ def upload_file(agent_id: int):
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         display_text = text if text else f"[File: {file_metadata['original_filename']}]"
         turn = Turn(
@@ -563,13 +563,13 @@ def upload_file(agent_id: int):
             current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent.id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent.id)
 
         db.session.commit()
 
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "file_upload")
 

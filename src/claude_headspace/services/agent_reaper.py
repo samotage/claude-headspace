@@ -303,8 +303,8 @@ class AgentReaper:
                 # Execute pending summarisations (after commit)
                 if self._pending_summarisations:
                     try:
-                        from .hook_receiver import _execute_pending_summarisations
-                        _execute_pending_summarisations(self._pending_summarisations)
+                        from .hook_helpers import execute_pending_summarisations
+                        execute_pending_summarisations(self._pending_summarisations)
                     except Exception as e:
                         logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
                     finally:
@@ -387,8 +387,8 @@ class AgentReaper:
             )
 
             # Read transcript once
-            from .hook_receiver import _extract_transcript_content
-            transcript_text = _extract_transcript_content(agent)
+            from .hook_helpers import extract_transcript_content
+            transcript_text = extract_transcript_content(agent)
 
             # Detect intent from transcript
             intent = TurnIntent.COMPLETION
@@ -402,9 +402,9 @@ class AgentReaper:
                     logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
 
             # Complete tasks via lifecycle manager
-            from .hook_receiver import _get_lifecycle_manager
+            from .hook_helpers import get_lifecycle_manager
             try:
-                lifecycle = _get_lifecycle_manager()
+                lifecycle = get_lifecycle_manager()
             except Exception as e:
                 logger.warning(f"Could not create lifecycle manager: {e}")
                 return

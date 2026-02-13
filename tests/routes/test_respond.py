@@ -386,15 +386,12 @@ class TestRespondToAgent:
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        from src.claude_headspace.services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent.clear()
+        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
+            response = client.post("/api/respond/1", json={"text": "hello"})
 
-        response = client.post("/api/respond/1", json={"text": "hello"})
-
-        assert response.status_code == 500
-        assert 1 not in _respond_pending_for_agent
-
-        _respond_pending_for_agent.clear()
+            assert response.status_code == 500
+            # respond-pending should NOT be set on commit failure
+            mock_get_state().set_respond_pending.assert_not_called()
 
 
 class TestSelectMode:

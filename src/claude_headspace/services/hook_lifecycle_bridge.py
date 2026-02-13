@@ -283,9 +283,10 @@ class HookLifecycleBridge:
         if not agent_text:
             return agent_text
 
-        from .hook_receiver import _progress_texts_for_agent
+        from .hook_agent_state import get_agent_hook_state
 
-        progress_texts = _progress_texts_for_agent.get(agent.id, [])
+        state = get_agent_hook_state()
+        progress_texts = state.get_progress_texts(agent.id)
         if not progress_texts:
             return agent_text
 
@@ -309,7 +310,7 @@ class HookLifecycleBridge:
                 remaining = (before + after).strip()
 
         # Clear the progress texts now that deduplication is done
-        _progress_texts_for_agent.pop(agent.id, None)
+        state.clear_progress_texts(agent.id)
 
         return remaining
 
@@ -405,14 +406,15 @@ class HookLifecycleBridge:
         if not agent.transcript_path:
             return
 
-        from .hook_receiver import _transcript_positions, _progress_texts_for_agent
+        from .hook_agent_state import get_agent_hook_state
         from .transcript_reader import read_new_entries_from_position
 
-        position = _transcript_positions.get(agent.id, 0)
+        state = get_agent_hook_state()
+        position = state.get_transcript_position(agent.id) or 0
         entries, new_position = read_new_entries_from_position(
             agent.transcript_path, position,
         )
-        _transcript_positions[agent.id] = new_position
+        state.set_transcript_position(agent.id, new_position)
 
         for entry in entries:
             if entry.type != "assistant" or not entry.content:
@@ -429,9 +431,7 @@ class HookLifecycleBridge:
             )
             db.session.add(turn)
 
-            if agent.id not in _progress_texts_for_agent:
-                _progress_texts_for_agent[agent.id] = []
-            _progress_texts_for_agent[agent.id].append(text)
+            state.append_progress_text(agent.id, text)
 
             logger.debug(
                 f"HookLifecycleBridge: captured PROGRESS turn for "

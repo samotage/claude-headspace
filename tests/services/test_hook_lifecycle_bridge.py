@@ -700,13 +700,15 @@ class TestIntermediateProgressCapture(TestHookLifecycleBridge):
             TranscriptEntry(type="assistant", role="assistant", content="Working on it..."),
         ]
 
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.set_transcript_position(1, 0)
+
         with patch(
-            "claude_headspace.services.hook_receiver._transcript_positions",
-            {1: 0},  # agent_id -> position
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ), patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {},
-        ) as mock_progress_texts, patch(
             "claude_headspace.services.transcript_reader.read_new_entries_from_position",
             return_value=(entries, 500),
         ) as mock_read:
@@ -720,8 +722,8 @@ class TestIntermediateProgressCapture(TestHookLifecycleBridge):
             assert added_turn.actor == TurnActor.AGENT
             assert added_turn.text == "Working on it..."
             # Should track the text for deduplication
-            assert 1 in mock_progress_texts
-            assert "Working on it..." in mock_progress_texts[1]
+            progress_texts = mock_state.get_progress_texts(1)
+            assert "Working on it..." in progress_texts
 
     @patch("claude_headspace.services.hook_lifecycle_bridge.db")
     def test_skips_empty_text(
@@ -738,12 +740,14 @@ class TestIntermediateProgressCapture(TestHookLifecycleBridge):
             TranscriptEntry(type="user", role="user", content="hello"),
         ]
 
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.set_transcript_position(1, 0)
+
         with patch(
-            "claude_headspace.services.hook_receiver._transcript_positions",
-            {1: 0},
-        ), patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {},
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ), patch(
             "claude_headspace.services.transcript_reader.read_new_entries_from_position",
             return_value=(entries, 500),
@@ -773,14 +777,14 @@ class TestIntermediateProgressCapture(TestHookLifecycleBridge):
 
         from claude_headspace.services.transcript_reader import TranscriptEntry
 
-        positions = {1: 100}
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.set_transcript_position(1, 100)
 
         with patch(
-            "claude_headspace.services.hook_receiver._transcript_positions",
-            positions,
-        ), patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {},
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ), patch(
             "claude_headspace.services.transcript_reader.read_new_entries_from_position",
             return_value=([], 600),
@@ -788,7 +792,7 @@ class TestIntermediateProgressCapture(TestHookLifecycleBridge):
             bridge._capture_intermediate_progress(mock_agent, mock_task)
 
             # Position should be updated
-            assert positions[1] == 600
+            assert mock_state.get_transcript_position(1) == 600
 
 
 class TestDeduplication(TestHookLifecycleBridge):
@@ -796,9 +800,15 @@ class TestDeduplication(TestHookLifecycleBridge):
 
     def test_dedup_strips_matching_text(self, bridge, mock_agent):
         """_deduplicate_stop_text strips text already captured as PROGRESS."""
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.append_progress_text(1, "First part")
+        mock_state.append_progress_text(1, "Second part")
+
         with patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {1: ["First part", "Second part"]},
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ):
             result = bridge._deduplicate_stop_text(
                 mock_agent,
@@ -810,29 +820,42 @@ class TestDeduplication(TestHookLifecycleBridge):
 
     def test_dedup_returns_full_text_when_no_progress(self, bridge, mock_agent):
         """_deduplicate_stop_text returns full text when no PROGRESS captured."""
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+
         with patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {},
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ):
             result = bridge._deduplicate_stop_text(mock_agent, "Full text here")
             assert result == "Full text here"
 
     def test_dedup_handles_empty_text(self, bridge, mock_agent):
         """_deduplicate_stop_text handles empty/None text."""
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.append_progress_text(1, "some text")
+
         with patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            {1: ["some text"]},
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ):
             assert bridge._deduplicate_stop_text(mock_agent, "") == ""
             assert bridge._deduplicate_stop_text(mock_agent, None) is None
 
     def test_dedup_clears_progress_texts(self, bridge, mock_agent):
         """_deduplicate_stop_text clears progress texts after dedup."""
-        progress_dict = {1: ["Captured text"]}
+        from claude_headspace.services.hook_agent_state import AgentHookState
+
+        mock_state = AgentHookState()
+        mock_state.append_progress_text(1, "Captured text")
+
         with patch(
-            "claude_headspace.services.hook_receiver._progress_texts_for_agent",
-            progress_dict,
+            "claude_headspace.services.hook_agent_state.get_agent_hook_state",
+            return_value=mock_state,
         ):
             bridge._deduplicate_stop_text(mock_agent, "Captured text and more")
             # Progress texts should be cleared
-            assert 1 not in progress_dict
+            assert mock_state.get_progress_texts(1) == []

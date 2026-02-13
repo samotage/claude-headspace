@@ -298,8 +298,8 @@ def respond_to_agent(agent_id: int):
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         turn = Turn(
             task_id=current_task.id,
@@ -323,16 +323,16 @@ def respond_to_agent(agent_id: int):
 
         # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
         # don't incorrectly preserve AWAITING_INPUT state
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent_id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent_id)
 
         db.session.commit()
 
         # Flag this agent so the upcoming user_prompt_submit hook is skipped
         # (the respond handler owns the turn creation and state transition).
         # Set AFTER commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "respond")
         _broadcast_state_change(agent, record_text)

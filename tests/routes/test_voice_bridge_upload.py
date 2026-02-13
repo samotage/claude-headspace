@@ -139,7 +139,7 @@ class TestUploadEndpoint:
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_receiver._mark_question_answered"):
+        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
                 mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
                 data = {"file": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "test.png")}
@@ -311,7 +311,7 @@ class TestExistingCommandUnchanged:
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_receiver._mark_question_answered"):
+        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
                 mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
                 resp = client.post(
@@ -332,7 +332,7 @@ class TestExistingCommandUnchanged:
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_receiver._mark_question_answered"):
+        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
                 mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
                 resp = client.post(
