@@ -135,7 +135,7 @@ log_info "Installed notification script: $NOTIFY_SCRIPT"
 # This ensures hooks use the correct URL even when launched outside the CLI
 CONFIG_FILE="$SCRIPT_DIR/../config.yaml"
 if [ -f "$CONFIG_FILE" ]; then
-    ENDPOINT_URL=$(grep -A1 'hooks:' "$CONFIG_FILE" | grep 'endpoint_url:' | awk '{print $2}' | tr -d '"' | tr -d "'")
+    ENDPOINT_URL=$(grep -A5 'hooks:' "$CONFIG_FILE" | grep 'endpoint_url:' | awk '{print $2}' | tr -d '"' | tr -d "'")
     if [ -n "$ENDPOINT_URL" ]; then
         sed -i '' "s|HEADSPACE_URL=\"\${CLAUDE_HEADSPACE_URL:-\${HEADSPACE_URL:-https://localhost:5055}}\"|HEADSPACE_URL=\"\${CLAUDE_HEADSPACE_URL:-\${HEADSPACE_URL:-${ENDPOINT_URL}}}\"|" "$NOTIFY_SCRIPT"
         log_info "Baked endpoint URL from config.yaml: $ENDPOINT_URL"
