@@ -417,7 +417,8 @@
 
         contentEl.innerHTML = html;
 
-        // Attach click handlers for section copy buttons
+        // Attach click handlers for section copy buttons.
+        // These don't accumulate because contentEl.innerHTML replaces all prior content.
         var copyBtns = contentEl.querySelectorAll('.agent-info-copy-btn[data-section-id]');
         for (var ci = 0; ci < copyBtns.length; ci++) {
             copyBtns[ci].addEventListener('click', function(e) {
