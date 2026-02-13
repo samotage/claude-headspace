@@ -320,9 +320,34 @@ window.VoiceApp = (function () {
       _openProjectPicker();
     } else if (action === 'settings') {
       _openSettings();
+    } else if (action === 'voice') {
+      _triggerVoiceFromMenu();
     } else if (action === 'close') {
       window.location.href = '/';
     }
+  }
+
+  // --- Voice from FAB/hamburger ---
+
+  function _triggerVoiceFromMenu() {
+    VoiceOutput.initAudio();
+    if (VoiceInput.isListening()) {
+      _stopListening();
+      return;
+    }
+    if (_settings.autoTarget) {
+      var auto = _autoTarget();
+      if (auto) { _showListeningScreen(auto); }
+    }
+    if (!_targetAgentId) {
+      var agentStatus = document.getElementById('agent-status-message');
+      if (agentStatus) {
+        agentStatus.textContent = 'Select an agent first';
+        setTimeout(function () { agentStatus.textContent = ''; }, 2000);
+      }
+      return;
+    }
+    _startListening();
   }
 
   // --- Project Picker ---
@@ -2552,60 +2577,10 @@ window.VoiceApp = (function () {
     return div.innerHTML;
   }
 
-  // --- Lightweight markdown renderer for agent bubbles ---
+  // --- Markdown renderer for agent bubbles (delegates to marked.js via CHUtils) ---
 
   function _renderMd(text) {
-    if (!text) return '';
-    // Escape HTML first to prevent XSS
-    var html = _esc(text);
-
-    // Code blocks (``` ... ```)
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
-      return '<pre class="md-code-block"><code>' + code.trim() + '</code></pre>';
-    });
-
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
-
-    // Headers
-    html = html.replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
-
-    // Bold and italic
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-    // Horizontal rules
-    html = html.replace(/^---+$/gm, '<hr class="md-hr">');
-
-    // Unordered lists
-    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-    // Ordered lists
-    html = html.replace(/^\d+\. (.+)$/gm, '<li class="md-ol-item">$1</li>');
-    // Wrap consecutive list items
-    html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, function(match) {
-      if (match.indexOf('md-ol-item') !== -1) {
-        return '<ol class="md-ol">' + match + '</ol>';
-      }
-      return '<ul class="md-ul">' + match + '</ul>';
-    });
-
-    // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, linkText, url) {
-      if (!/^https?:\/\//i.test(url)) return _esc(linkText);
-      return '<a href="' + url + '" class="md-link" target="_blank" rel="noopener">' + linkText + '</a>';
-    });
-
-    // Paragraphs (double newline)
-    html = html.replace(/\n\n/g, '</p><p class="md-p">');
-    html = '<p class="md-p">' + html + '</p>';
-    html = html.replace(/<p class="md-p"><\/p>/g, '');
-
-    // Single newlines -> <br> (within paragraphs, after other transforms)
-    html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
-
-    return html;
+    return CHUtils.renderMarkdown(text);
   }
 
   // --- Initialization ---
@@ -2688,8 +2663,6 @@ window.VoiceApp = (function () {
     });
 
     VoiceInput.onStateChange(function (listening) {
-      var btn = document.getElementById('mic-btn');
-      if (btn) btn.classList.toggle('active', listening);
       var chatMic = document.getElementById('chat-mic-btn');
       if (chatMic) chatMic.classList.toggle('active', listening);
     });
@@ -2758,34 +2731,6 @@ window.VoiceApp = (function () {
         }
         _refreshAgents();
         showScreen('agents');
-      });
-    }
-
-    // Mic button
-    var micBtn = document.getElementById('mic-btn');
-    if (micBtn) {
-      micBtn.addEventListener('click', function () {
-        VoiceOutput.initAudio();
-        if (VoiceInput.isListening()) {
-          _stopListening();
-        } else {
-          // Auto-target if enabled
-          if (_settings.autoTarget) {
-            var auto = _autoTarget();
-            if (auto) {
-              _showListeningScreen(auto);
-            }
-          }
-          if (!_targetAgentId) {
-            var agentStatus = document.getElementById('agent-status-message');
-            if (agentStatus) {
-              agentStatus.textContent = 'Select an agent first';
-              setTimeout(function () { agentStatus.textContent = ''; }, 2000);
-            }
-            return;
-          }
-          _startListening();
-        }
       });
     }
 

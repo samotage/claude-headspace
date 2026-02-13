@@ -87,11 +87,21 @@
             fn(value);
         }
 
-        // Execute any deferred SSE reload
+        // Execute any deferred SSE reload — but only on cancel.
+        // When the user confirms, the .then() callback hasn't run yet
+        // (Promise microtask). Firing the deferred reload now would
+        // reload the page before the action (shutdown/dismiss) starts.
         if (global._sseReloadDeferred) {
-            var deferred = global._sseReloadDeferred;
-            global._sseReloadDeferred = null;
-            deferred();
+            if (value) {
+                // Confirmed — discard the deferred reload. The confirmed
+                // action will produce its own SSE events to update state.
+                global._sseReloadDeferred = null;
+            } else {
+                // Cancelled — execute the deferred reload now.
+                var deferred = global._sseReloadDeferred;
+                global._sseReloadDeferred = null;
+                deferred();
+            }
         }
     }
 

@@ -128,8 +128,8 @@ def get_project_info() -> ProjectInfo:
     Returns:
         ProjectInfo with name, path, and optional branch
     """
-    cwd = Path.cwd()
-    project_path = str(cwd.absolute())
+    cwd = Path(os.getcwd())  # os.getcwd() preserves symlinks; Path.cwd().absolute() resolves them
+    project_path = str(cwd)
     project_name = cwd.name
     branch = None
 
@@ -266,7 +266,7 @@ def register_session(
     payload = {
         "session_uuid": str(session_uuid),
         "project_path": project_info.path,
-        "working_directory": str(Path.cwd().absolute()),
+        "working_directory": os.getcwd(),
         "project_name": project_info.name,
         "current_branch": project_info.branch,
     }

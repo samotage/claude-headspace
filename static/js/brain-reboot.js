@@ -209,7 +209,7 @@ function exportBrainReboot() {
 function renderBrainRebootContent(contentEl, data) {
     if (!contentEl || !data || !data.content) return;
 
-    contentEl.innerHTML = CHUtils.renderMarkdown(data.content);
+    contentEl.innerHTML = '<div class="prose prose-invert max-w-none">' + CHUtils.renderMarkdown(data.content) + '</div>';
 
     // Add "Generate/Regenerate Progress Summary" button
     var btnWrap = document.createElement('div');

@@ -77,13 +77,27 @@ def create_session():
         project_name = project_path.rstrip("/").split("/")[-1]
 
     try:
-        # Find registered project — auto-creation is disabled
+        # Find or auto-create project
         project = Project.query.filter_by(path=project_path).first()
         if project is None:
-            return jsonify({
-                "error": f"Project not registered: '{project_path}'. "
-                         f"Register this project at the /projects management page before starting a session.",
-            }), 404
+            # Auto-create project from session info
+            from ..models.project import generate_slug
+            slug = generate_slug(project_name)
+            # Ensure slug uniqueness by appending a suffix if needed
+            base_slug = slug
+            counter = 1
+            while Project.query.filter_by(slug=slug).first() is not None:
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            project = Project(
+                name=project_name,
+                slug=slug,
+                path=project_path,
+                current_branch=current_branch,
+            )
+            db.session.add(project)
+            db.session.flush()  # Get the ID before creating the agent
+            logger.info(f"Auto-created project: {project.name} (id={project.id}, path={project_path})")
         else:
             # Update branch if provided
             if current_branch:

@@ -5,7 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Claude Headspace{% endblock %}</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111114'/%3E%3Crect x='5' y='10' width='9' height='14' rx='2' fill='%2356d4dd'/%3E%3Crect x='18' y='6' width='9' height='18' rx='2' fill='%2373e0a0'/%3E%3C/svg%3E">
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/icons/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/icons/favicon-16x16.png') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='images/icons/favicon.ico') }}">
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/icons/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="152x152" href="{{ url_for('static', filename='images/icons/apple-touch-icon-152x152.png') }}">
+    <link rel="apple-touch-icon" sizes="120x120" href="{{ url_for('static', filename='images/icons/apple-touch-icon-120x120.png') }}">
+    <link rel="apple-touch-icon" sizes="76x76" href="{{ url_for('static', filename='images/icons/apple-touch-icon-76x76.png') }}">
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <meta name="theme-color" content="#111114">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Headspace">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
@@ -15,7 +29,11 @@
 <body class="bg-void text-primary font-mono min-h-screen">
     {% block content %}{% endblock %}
 
-    <!-- Shared utilities (must load first) -->
+    <!-- Vendor libraries (markdown + sanitization) -->
+    <script src="{{ url_for('static', filename='vendor/marked.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/purify.min.js') }}"></script>
+
+    <!-- Shared utilities (must load after vendor libs) -->
     <script src="{{ url_for('static', filename='js/utils.js') }}?v={{ cache_bust }}"></script>
 
     <!-- Shared SSE connection (all pages) -->

@@ -51,7 +51,7 @@ var HeadspaceBanner = (function () { // eslint-disable-line no-unused-vars -- us
   function suppress() {
     dismiss();
     // POST to suppress endpoint (1 hour)
-    fetch("/api/headspace/suppress", {
+    CHUtils.apiFetch("/api/headspace/suppress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hours: 1 }),

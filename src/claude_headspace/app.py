@@ -324,7 +324,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         }
 
     # CSRF exempt paths (hooks, SSE, and voice bridge API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/")
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/")
 
     @app.before_request
     def verify_csrf_token():

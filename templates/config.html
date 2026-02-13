@@ -497,7 +497,8 @@
             });
 
             try {
-                const res = await fetch('/api/config/restart', { method: 'POST', headers: { 'X-Confirm-Destructive': 'true' } });
+                const csrfMeta2 = document.querySelector('meta[name="csrf-token"]');
+                const res = await fetch('/api/config/restart', { method: 'POST', headers: { 'X-Confirm-Destructive': 'true', 'X-CSRF-Token': csrfMeta2 ? csrfMeta2.getAttribute('content') : '' } });
                 if (!res.ok) {
                     const data = await res.json();
                     showToast(data.message || 'Failed to restart server', 'error');

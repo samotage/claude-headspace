@@ -50,6 +50,10 @@
   <!-- Hamburger dropdown (stacked/narrow mode) -->
   <div id="hamburger-backdrop" class="hamburger-backdrop"></div>
   <div id="hamburger-dropdown" class="hamburger-dropdown">
+    <button class="hamburger-item" data-action="voice">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="6" y="1" width="4" height="8" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M3 7a5 5 0 0010 0M8 12v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span>Voice</span>
+    </button>
     <button class="hamburger-item" data-action="new-chat">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span>New Chat</span>
@@ -87,13 +91,14 @@
     <aside id="sidebar">
       <div id="agent-list"></div>
       <div id="agent-status-message" class="agent-status-message"></div>
-      <div style="text-align:center; margin-top:24px; flex-shrink:0;">
-        <button id="mic-btn" aria-label="Start listening">&#127908;</button>
-      </div>
       <!-- FAB (split/wide mode) -->
       <div id="fab-container" class="fab-container">
         <div id="fab-backdrop" class="fab-backdrop"></div>
         <div class="fab-menu">
+          <button class="fab-menu-item" data-action="voice" aria-label="Voice Input">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="6" y="1" width="4" height="8" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M3 7a5 5 0 0010 0M8 12v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span>Voice</span>
+          </button>
           <button class="fab-menu-item" data-action="close" aria-label="Close">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span>Close</span>
@@ -307,7 +312,9 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/utils.js?v=4"></script>
+  <script src="/static/vendor/marked.min.js"></script>
+  <script src="/static/vendor/purify.min.js"></script>
+  <script src="/static/js/utils.js?v=5"></script>
   <script src="/static/js/confirm-dialog.js?v=4"></script>
   <script src="/static/voice/voice-api.js?v=6"></script>
   <script src="/static/voice/voice-input.js?v=5"></script>

@@ -1610,7 +1610,7 @@
         },
 
         _renderMarkdown: function(text) {
-            return CHUtils.renderMarkdown(text);
+            return '<div class="prose prose-invert max-w-none">' + CHUtils.renderMarkdown(text) + '</div>';
         },
 
         _timeAgo: function(dateString) {
