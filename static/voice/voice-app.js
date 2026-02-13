@@ -480,7 +480,6 @@ window.VoiceApp = (function () {
   }
 
   function _selectAgent(id) {
-    _targetAgentId = id;
     _navStack = [];
     _showChatScreen(id);
   }
