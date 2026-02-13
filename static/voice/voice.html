@@ -21,8 +21,12 @@
     })();
   </script>
   <link rel="manifest" href="/static/voice/manifest.json">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111114'/%3E%3Crect x='5' y='10' width='9' height='14' rx='2' fill='%2356d4dd'/%3E%3Crect x='18' y='6' width='9' height='18' rx='2' fill='%2373e0a0'/%3E%3C/svg%3E">
-  <link rel="apple-touch-icon" href="/static/voice/icons/icon-192.png">
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/voice/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/voice/icons/favicon-16x16.png">
+  <!-- Apple Touch Icons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/voice/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Claude Chat">
   <link rel="stylesheet" href="/static/voice/voice.css">
 </head>
 <body>
@@ -37,10 +41,28 @@
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="app-brand-cursor">&gt;_</span><span class="app-brand-suffix">chat</span></a>
     <div class="header-actions">
       <span id="connection-status" class="connection-dot disconnected"></span>
-      <button id="settings-btn" class="icon-btn" aria-label="Settings">&#9776;</button>
-      <a href="/" class="close-btn" aria-label="Close and return to dashboard">&times;</a>
+      <button id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
     </div>
   </header>
+
+  <!-- Hamburger dropdown (stacked/narrow mode) -->
+  <div id="hamburger-backdrop" class="hamburger-backdrop"></div>
+  <div id="hamburger-dropdown" class="hamburger-dropdown">
+    <button class="hamburger-item" data-action="new-chat">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>New Chat</span>
+    </button>
+    <button class="hamburger-item" data-action="settings">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      <span>Settings</span>
+    </button>
+    <button class="hamburger-item" data-action="close">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Close</span>
+    </button>
+  </div>
 
   <!-- Screen: Setup (first-launch, full screen, outside app-layout) -->
   <div id="screen-setup" class="screen active">
@@ -65,8 +87,29 @@
     <aside id="sidebar">
       <div id="agent-list"></div>
       <div id="agent-status-message" class="agent-status-message"></div>
-      <div style="text-align:center; margin-top:24px;">
+      <div style="text-align:center; margin-top:24px; flex-shrink:0;">
         <button id="mic-btn" aria-label="Start listening">&#127908;</button>
+      </div>
+      <!-- FAB (split/wide mode) -->
+      <div id="fab-container" class="fab-container">
+        <div id="fab-backdrop" class="fab-backdrop"></div>
+        <div class="fab-menu">
+          <button class="fab-menu-item" data-action="close" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Close</span>
+          </button>
+          <button class="fab-menu-item" data-action="settings" aria-label="Settings">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <span>Settings</span>
+          </button>
+          <button class="fab-menu-item fab-item-new-chat" data-action="new-chat" aria-label="New Chat">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>New Chat</span>
+          </button>
+        </div>
+        <button id="fab-btn" class="fab-btn" aria-label="Actions">
+          <svg class="fab-icon" width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
       </div>
     </aside>
 
@@ -266,10 +309,10 @@
   <!-- Scripts -->
   <script src="/static/js/utils.js?v=4"></script>
   <script src="/static/js/confirm-dialog.js?v=4"></script>
-  <script src="/static/voice/voice-api.js?v=5"></script>
+  <script src="/static/voice/voice-api.js?v=6"></script>
   <script src="/static/voice/voice-input.js?v=5"></script>
   <script src="/static/voice/voice-output.js?v=5"></script>
-  <script src="/static/voice/voice-app.js?v=5"></script>
+  <script src="/static/voice/voice-app.js?v=6"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,
@@ -302,6 +345,19 @@
         .catch(function () { /* ignore */ });
     }
   </script>
+
+  <!-- Project Picker Bottom Sheet -->
+  <div id="project-picker-backdrop" class="project-picker-backdrop"></div>
+  <div id="project-picker" class="project-picker">
+    <div class="project-picker-header">
+      <h2>New Chat</h2>
+      <button id="project-picker-close" class="settings-close-btn" aria-label="Close">&times;</button>
+    </div>
+    <div class="project-picker-search-wrap">
+      <input type="text" id="project-picker-search" class="project-picker-search" placeholder="Search projects..." autocomplete="off">
+    </div>
+    <div id="project-picker-list" class="project-picker-list"></div>
+  </div>
 
   <!-- Image Lightbox Modal -->
   <div id="image-lightbox" class="image-lightbox" style="display:none">

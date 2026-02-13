@@ -287,6 +287,10 @@ window.VoiceAPI = (function () {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
+  function getProjects() {
+    return _fetch('/api/projects');
+  }
+
   function focusAgent(agentId) {
     return _fetch('/api/focus/' + agentId, { method: 'POST' });
   }
@@ -310,6 +314,7 @@ window.VoiceAPI = (function () {
     shutdownAgent: shutdownAgent,
     getAgentContext: getAgentContext,
     uploadFile: uploadFile,
+    getProjects: getProjects,
     connectSSE: connectSSE,
     disconnectSSE: disconnectSSE,
     focusAgent: focusAgent

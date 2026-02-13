@@ -51,6 +51,13 @@ window.VoiceApp = (function () {
   var _layoutMode = 'stacked'; // 'stacked' | 'split'
   var SPLIT_BREAKPOINT = 768;
 
+  // FAB / Hamburger / Project Picker state
+  var _fabOpen = false;
+  var _hamburgerOpen = false;
+  var _projectPickerOpen = false;
+  var _allProjects = [];
+  var _fabCloseTimer = null;
+
   // File upload configuration (client-side validation)
   var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   var ALLOWED_MIME_TYPES = [
@@ -138,6 +145,8 @@ window.VoiceApp = (function () {
     var newMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
     if (newMode !== _layoutMode) {
       _layoutMode = newMode;
+      _closeFab();
+      _closeHamburger();
       document.body.classList.remove('layout-stacked', 'layout-split');
       document.body.classList.add('layout-' + _layoutMode);
       _applyLayoutMode();
@@ -248,6 +257,167 @@ window.VoiceApp = (function () {
     var panel = document.getElementById('settings-panel');
     if (overlay) overlay.classList.remove('open');
     if (panel) panel.classList.remove('open');
+  }
+
+  // --- FAB (split mode) ---
+
+  function _openFab() {
+    if (_fabOpen) return;
+    _fabOpen = true;
+    if (_fabCloseTimer) { clearTimeout(_fabCloseTimer); _fabCloseTimer = null; }
+    var el = document.getElementById('fab-container');
+    if (el) {
+      el.classList.remove('closing');
+      el.classList.add('open');
+    }
+  }
+
+  function _closeFab() {
+    if (!_fabOpen) return;
+    _fabOpen = false;
+    var el = document.getElementById('fab-container');
+    if (el) {
+      el.classList.remove('open');
+      el.classList.add('closing');
+      if (_fabCloseTimer) clearTimeout(_fabCloseTimer);
+      _fabCloseTimer = setTimeout(function () {
+        el.classList.remove('closing');
+        _fabCloseTimer = null;
+      }, 200);
+    }
+  }
+
+  function _toggleFab() {
+    if (_fabOpen) { _closeFab(); } else { _openFab(); }
+  }
+
+  // --- Hamburger (stacked mode) ---
+
+  function _openHamburger() {
+    if (_hamburgerOpen) return;
+    _hamburgerOpen = true;
+    var dd = document.getElementById('hamburger-dropdown');
+    var bd = document.getElementById('hamburger-backdrop');
+    if (dd) dd.classList.add('open');
+    if (bd) bd.classList.add('open');
+  }
+
+  function _closeHamburger() {
+    if (!_hamburgerOpen) return;
+    _hamburgerOpen = false;
+    var dd = document.getElementById('hamburger-dropdown');
+    var bd = document.getElementById('hamburger-backdrop');
+    if (dd) dd.classList.remove('open');
+    if (bd) bd.classList.remove('open');
+  }
+
+  // --- Menu action dispatcher ---
+
+  function _handleMenuAction(action) {
+    _closeFab();
+    _closeHamburger();
+    if (action === 'new-chat') {
+      _openProjectPicker();
+    } else if (action === 'settings') {
+      _openSettings();
+    } else if (action === 'close') {
+      window.location.href = '/';
+    }
+  }
+
+  // --- Project Picker ---
+
+  function _openProjectPicker() {
+    _projectPickerOpen = true;
+    var bd = document.getElementById('project-picker-backdrop');
+    var pk = document.getElementById('project-picker');
+    var search = document.getElementById('project-picker-search');
+    if (bd) bd.classList.add('open');
+    if (pk) pk.classList.add('open');
+    if (search) { search.value = ''; search.focus(); }
+    _fetchProjects();
+  }
+
+  function _closeProjectPicker() {
+    _projectPickerOpen = false;
+    var bd = document.getElementById('project-picker-backdrop');
+    var pk = document.getElementById('project-picker');
+    if (bd) bd.classList.remove('open');
+    if (pk) pk.classList.remove('open');
+  }
+
+  function _fetchProjects() {
+    var list = document.getElementById('project-picker-list');
+    if (list) list.innerHTML = '<div class="project-picker-empty">Loading\u2026</div>';
+    VoiceAPI.getProjects().then(function (data) {
+      _allProjects = Array.isArray(data) ? data : [];
+      _renderProjectList(_allProjects);
+    }).catch(function () {
+      _allProjects = [];
+      if (list) list.innerHTML = '<div class="project-picker-empty">Failed to load projects</div>';
+    });
+  }
+
+  function _renderProjectList(projects) {
+    var list = document.getElementById('project-picker-list');
+    if (!list) return;
+
+    if (!projects || projects.length === 0) {
+      list.innerHTML = '<div class="project-picker-empty">No projects found</div>';
+      return;
+    }
+
+    // Sort: projects with active agents first, then alphabetical
+    var sorted = projects.slice().sort(function (a, b) {
+      var aCount = a.agent_count || 0;
+      var bCount = b.agent_count || 0;
+      if (aCount > 0 && bCount === 0) return -1;
+      if (aCount === 0 && bCount > 0) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var p = sorted[i];
+      var count = p.agent_count || 0;
+      var badgeClass = count === 0 ? 'project-picker-badge zero' : 'project-picker-badge';
+      var shortPath = (p.path || '').replace(/^\/Users\/[^/]+\//, '~/');
+      html += '<div class="project-picker-row" data-project-name="' + _esc(p.name) + '">'
+        + '<div class="project-picker-info">'
+        + '<div class="project-picker-name">' + _esc(p.name) + '</div>'
+        + '<div class="project-picker-path">' + _esc(shortPath) + '</div>'
+        + '</div>'
+        + '<span class="' + badgeClass + '">' + count + ' agent' + (count !== 1 ? 's' : '') + '</span>'
+        + '</div>';
+    }
+    list.innerHTML = html;
+
+    // Bind click handlers
+    var rows = list.querySelectorAll('.project-picker-row');
+    for (var r = 0; r < rows.length; r++) {
+      rows[r].addEventListener('click', function () {
+        var name = this.getAttribute('data-project-name');
+        _onProjectPicked(this, name);
+      });
+    }
+  }
+
+  function _filterProjectList(query) {
+    if (!query) {
+      _renderProjectList(_allProjects);
+      return;
+    }
+    var q = query.toLowerCase();
+    var filtered = _allProjects.filter(function (p) {
+      return (p.name || '').toLowerCase().indexOf(q) !== -1;
+    });
+    _renderProjectList(filtered);
+  }
+
+  function _onProjectPicked(rowEl, projectName) {
+    if (rowEl) rowEl.classList.add('creating');
+    _closeProjectPicker();
+    _createAgentForProject(projectName);
   }
 
   // --- Agent highlighting in sidebar ---
@@ -565,7 +735,17 @@ window.VoiceApp = (function () {
         break;
       }
     }
-    if (!targetGroup) return;
+    // If no matching group exists (project has 0 agents), create a temporary one
+    if (!targetGroup) {
+      targetGroup = document.createElement('div');
+      targetGroup.className = 'project-group';
+      targetGroup.id = 'pending-project-group';
+      targetGroup.innerHTML = '<div class="project-group-header">'
+        + '<span class="project-group-name">' + _esc(projectName) + '</span>'
+        + '</div>'
+        + '<div class="project-group-cards"></div>';
+      list.prepend(targetGroup);
+    }
     // Remove any existing placeholder
     _removePendingAgentPlaceholder();
     // Append placeholder card
@@ -588,6 +768,9 @@ window.VoiceApp = (function () {
   function _removePendingAgentPlaceholder() {
     var el = document.getElementById('pending-agent-placeholder');
     if (el) el.remove();
+    // Also remove the temporary project group if it was created
+    var tempGroup = document.getElementById('pending-project-group');
+    if (tempGroup) tempGroup.remove();
   }
 
   function _showToast(message) {
@@ -2551,13 +2734,77 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Settings button — open slide-out panel
-    var settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', function () {
-        _openSettings();
+    // --- FAB (split mode) ---
+    var fabBtn = document.getElementById('fab-btn');
+    if (fabBtn) {
+      fabBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _toggleFab();
       });
     }
+    var fabBackdrop = document.getElementById('fab-backdrop');
+    if (fabBackdrop) {
+      fabBackdrop.addEventListener('click', function () { _closeFab(); });
+    }
+    // FAB menu items
+    var fabItems = document.querySelectorAll('.fab-menu-item');
+    for (var fi = 0; fi < fabItems.length; fi++) {
+      fabItems[fi].addEventListener('click', function (e) {
+        e.stopPropagation();
+        _handleMenuAction(this.getAttribute('data-action'));
+      });
+    }
+
+    // --- Hamburger (stacked mode) ---
+    var hamburgerBtn = document.getElementById('hamburger-btn');
+    if (hamburgerBtn) {
+      hamburgerBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (_hamburgerOpen) { _closeHamburger(); } else { _openHamburger(); }
+      });
+    }
+    var hamburgerBackdrop = document.getElementById('hamburger-backdrop');
+    if (hamburgerBackdrop) {
+      hamburgerBackdrop.addEventListener('click', function () { _closeHamburger(); });
+    }
+    var hamburgerItems = document.querySelectorAll('.hamburger-item');
+    for (var hi = 0; hi < hamburgerItems.length; hi++) {
+      hamburgerItems[hi].addEventListener('click', function () {
+        _handleMenuAction(this.getAttribute('data-action'));
+      });
+    }
+
+    // --- Project Picker ---
+    var pickerClose = document.getElementById('project-picker-close');
+    if (pickerClose) {
+      pickerClose.addEventListener('click', function () { _closeProjectPicker(); });
+    }
+    var pickerBackdrop = document.getElementById('project-picker-backdrop');
+    if (pickerBackdrop) {
+      pickerBackdrop.addEventListener('click', function () { _closeProjectPicker(); });
+    }
+    var pickerSearch = document.getElementById('project-picker-search');
+    if (pickerSearch) {
+      pickerSearch.addEventListener('input', function () {
+        _filterProjectList(this.value.trim());
+      });
+    }
+
+    // --- Escape key handler ---
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (_projectPickerOpen) { _closeProjectPicker(); e.preventDefault(); return; }
+        if (_fabOpen) { _closeFab(); e.preventDefault(); return; }
+        if (_hamburgerOpen) { _closeHamburger(); e.preventDefault(); return; }
+      }
+    });
+
+    // Close FAB on outside click
+    document.addEventListener('click', function (e) {
+      if (_fabOpen && !e.target.closest('.fab-container')) {
+        _closeFab();
+      }
+    });
 
     // Settings close button
     var settingsCloseBtn = document.getElementById('settings-close-btn');
