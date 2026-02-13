@@ -127,6 +127,9 @@ def create_project():
     if not name or not path:
         return jsonify({"error": "Both 'name' and 'path' are required"}), 400
 
+    if not os.path.isabs(path):
+        return jsonify({"error": "Project path must be an absolute path"}), 400
+
     try:
         existing = Project.query.filter_by(path=path).first()
         if existing:
