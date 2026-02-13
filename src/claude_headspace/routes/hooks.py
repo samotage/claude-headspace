@@ -167,7 +167,7 @@ def hook_session_start():
         logger.warning(f"session-start: invalid working_directory: {working_directory}")
         return jsonify({
             "status": "error",
-            "message": f"working_directory is not a valid directory: {working_directory}",
+            "message": "working_directory is not a valid directory",
         }), 400
 
     try:
@@ -210,11 +210,11 @@ def hook_session_start():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for session_start: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling session_start hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling session_start hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/session-end", methods=["POST"])
@@ -271,11 +271,11 @@ def hook_session_end():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for session_end: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling session_end hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling session_end hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/user-prompt-submit", methods=["POST"])
@@ -333,11 +333,11 @@ def hook_user_prompt_submit():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for user_prompt_submit: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling user_prompt_submit hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling user_prompt_submit hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/stop", methods=["POST"])
@@ -397,11 +397,11 @@ def hook_stop():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for stop: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling stop hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling stop hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/notification", methods=["POST"])
@@ -468,11 +468,11 @@ def hook_notification():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for notification: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling notification hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling notification hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/post-tool-use", methods=["POST"])
@@ -545,11 +545,11 @@ def hook_post_tool_use():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for post_tool_use: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling post_tool_use hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling post_tool_use hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/pre-tool-use", methods=["POST"])
@@ -614,11 +614,11 @@ def hook_pre_tool_use():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for pre_tool_use: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling pre_tool_use hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling pre_tool_use hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/permission-request", methods=["POST"])
@@ -682,11 +682,11 @@ def hook_permission_request():
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for permission_request: {e}")
-        return jsonify({"status": "dropped", "message": str(e)}), 404
+        return jsonify({"status": "dropped", "message": "Session correlation failed"}), 404
 
-    except Exception as e:
-        logger.exception(f"Error handling permission_request hook: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        logger.exception("Error handling permission_request hook")
+        return jsonify({"status": "error", "message": "Internal processing error"}), 500
 
 
 @hooks_bp.route("/hook/status", methods=["GET"])
