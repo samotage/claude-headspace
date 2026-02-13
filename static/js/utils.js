@@ -104,7 +104,18 @@
             return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + linkText + '</a>';
         };
 
+        renderer.list = function(token) {
+            var tag = token.ordered ? 'ol' : 'ul';
+            var startAttr = (token.ordered && token.start != null && token.start !== 1)
+                ? ' start="' + token.start + '"'
+                : '';
+            return '<' + tag + startAttr + '>\n' + token.body + '</' + tag + '>\n';
+        };
+
         var rawHtml = marked.parse(text, { renderer: renderer, breaks: true, gfm: true });
+
+        // Merge consecutive <ol> fragments that marked creates from loose list items
+        rawHtml = rawHtml.replace(/<\/ol>\s*<ol(?:\s+start="\d+")?>/g, '');
 
         return DOMPurify.sanitize(rawHtml, {
             ADD_TAGS: ['details', 'summary'],

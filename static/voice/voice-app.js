@@ -1467,7 +1467,41 @@ window.VoiceApp = (function () {
       }
     }
 
+    // Copy button for agent bubbles with text content
+    if (!isUser && displayText) {
+      bubble.setAttribute('data-raw-md', displayText);
+      html = '<button class="bubble-copy-btn" aria-label="Copy markdown" title="Copy">'
+        + '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+        + '<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>'
+        + '</svg>'
+        + '</button>' + html;
+    }
+
     bubble.innerHTML = html;
+
+    // Bind copy button click
+    var copyBtn = bubble.querySelector('.bubble-copy-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rawMd = bubble.getAttribute('data-raw-md');
+        if (!rawMd) return;
+        navigator.clipboard.writeText(rawMd).then(function () {
+          copyBtn.classList.add('copied');
+          copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            + '<polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>'
+            + '</svg>';
+          setTimeout(function () {
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+              + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+              + '<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>'
+              + '</svg>';
+          }, 1500);
+        }).catch(function (err) { console.warn('Clipboard copy failed:', err); });
+      });
+    }
 
     // Bind image thumbnail click -> open in lightbox
     var imgThumb = bubble.querySelector('.bubble-file-image');

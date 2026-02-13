@@ -1362,6 +1362,47 @@ body.layout-split .agent-card.selected {
   font-weight: 600;
 }
 
+/* Copy button on agent bubbles */
+.bubble-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--icon-btn-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 2;
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-bubble.agent:hover .bubble-copy-btn,
+.chat-bubble.agent:focus-within .bubble-copy-btn {
+  opacity: 1;
+}
+.bubble-copy-btn:hover {
+  background: var(--icon-btn-bg-hover);
+  color: var(--text-dim);
+}
+.bubble-copy-btn:active {
+  background: var(--icon-btn-bg-active);
+}
+.bubble-copy-btn.copied {
+  opacity: 1;
+  color: var(--success);
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .bubble-copy-btn { opacity: 0.6; }
+}
+
 /* Plan content inside a question bubble */
 .chat-bubble .bubble-plan-content {
   margin-top: 6px;
