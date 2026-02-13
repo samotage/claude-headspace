@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models.agent import Agent
+from .hooks import rate_limited
 from ..models.inference_call import InferenceCall
 from ..models.project import Project, generate_slug
 from ..models.task import Task
@@ -102,6 +103,7 @@ def list_projects():
 
 
 @projects_bp.route("/api/projects", methods=["POST"])
+@rate_limited
 def create_project():
     """Create a new project.
 

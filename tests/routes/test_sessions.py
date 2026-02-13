@@ -265,7 +265,7 @@ class TestCreateSession:
             )
 
             assert response.status_code == 500
-            assert "DB error" in response.get_json()["error"]
+            assert response.get_json()["error"] == "Internal processing error"
 
 
 class TestDeleteSession:

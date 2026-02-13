@@ -109,7 +109,6 @@ def create_session():
         if existing_agent:
             return jsonify({
                 "error": f"Session {session_uuid} already exists",
-                "agent_id": existing_agent.id,
             }), 409
 
         # Create agent
@@ -147,10 +146,10 @@ def create_session():
             "project_name": project.name,
         }), 201
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        logger.error(f"Error creating session: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error creating session")
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 @sessions_bp.route("/api/sessions/<uuid:session_uuid>", methods=["DELETE"])
@@ -192,10 +191,10 @@ def delete_session(session_uuid: UUID):
             "agent_id": agent.id,
         }), 200
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        logger.error(f"Error ending session: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error ending session")
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 @sessions_bp.route("/api/sessions/<uuid:session_uuid>", methods=["GET"])
