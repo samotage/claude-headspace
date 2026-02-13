@@ -1832,6 +1832,31 @@ body.layout-split .agent-card.selected {
   opacity: 0.6;
 }
 
+/* --- New Messages Pill --- */
+.new-messages-pill {
+  align-self: center;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-subtle-border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  z-index: 5;
+  margin: 6px auto;
+  transition: background 0.15s, transform 0.1s;
+  animation: bubble-in 0.2s ease-out;
+}
+.new-messages-pill:hover {
+  background: var(--accent-subtle-hover);
+}
+.new-messages-pill:active {
+  transform: scale(0.97);
+  background: var(--accent-subtle-active);
+}
+
 /* --- Drop Zone Overlay --- */
 .chat-drop-zone {
   position: absolute;

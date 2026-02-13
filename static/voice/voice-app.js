@@ -42,6 +42,11 @@ window.VoiceApp = (function () {
   var _pendingBlobUrl = null;    // Blob URL for image preview (revoke on clear)
   var _pendingNewAgentProject = null; // Project name when awaiting a newly created agent to appear
 
+  // Per-agent scroll position memory (in-memory, dies with tab)
+  var _agentScrollState = {};        // agentId -> { scrollTop, scrollHeight, lastTurnId }
+  var _newMessagesPillVisible = false;
+  var _newMessagesFirstTurnId = null;
+
   // Layout mode state
   var _layoutMode = 'stacked'; // 'stacked' | 'split'
   var SPLIT_BREAKPOINT = 768;
@@ -744,6 +749,12 @@ window.VoiceApp = (function () {
   }
 
   function _showChatScreen(agentId) {
+    // Save scroll state for the agent we're leaving
+    var previousAgentId = _targetAgentId;
+    if (previousAgentId && previousAgentId !== agentId) {
+      _saveScrollState(previousAgentId);
+    }
+    _dismissNewMessagesPill();
     _targetAgentId = agentId;
     var focusLink = document.getElementById('chat-focus-link');
     if (focusLink) focusLink.setAttribute('data-agent-id', agentId);
@@ -800,7 +811,33 @@ window.VoiceApp = (function () {
       _chatHasMore = data.has_more || false;
       _chatAgentEnded = data.agent_ended || false;
       _renderTranscriptTurns(data);
-      _scrollChatToBottom();
+      // Restore scroll position if returning to a previously-viewed agent
+      var saved = _agentScrollState[agentId];
+      if (saved) {
+        delete _agentScrollState[agentId]; // one-shot restore
+        // Determine which rendered turn IDs are new (numeric only)
+        var maxRenderedId = 0;
+        var newTurnIds = [];
+        _chatRenderedTurnIds.forEach(function (id) {
+          var n = typeof id === 'number' ? id : parseInt(id, 10);
+          if (!isNaN(n)) {
+            if (n > maxRenderedId) maxRenderedId = n;
+            if (n > saved.lastTurnId) newTurnIds.push(n);
+          }
+        });
+        newTurnIds.sort(function (a, b) { return a - b; });
+        var messagesEl = document.getElementById('chat-messages');
+        if (newTurnIds.length === 0) {
+          // No new turns — restore exact position
+          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+        } else {
+          // New turns arrived — restore position + show pill
+          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+          _showNewMessagesPill(newTurnIds.length, newTurnIds[0]);
+        }
+      } else {
+        _scrollChatToBottom();
+      }
       _updateTypingIndicator();
       _updateChatStatePill();
       // Show most recent task instruction in header
@@ -1419,6 +1456,57 @@ window.VoiceApp = (function () {
     if (_isUserNearBottom()) _scrollChatToBottom();
   }
 
+  function _saveScrollState(agentId) {
+    if (!agentId) return;
+    var el = document.getElementById('chat-messages');
+    if (!el) return;
+    // Find max numeric turn ID (filter out SSE-generated string IDs like 'sse-...' or 'pending-...')
+    var maxId = 0;
+    _chatRenderedTurnIds.forEach(function (id) {
+      var n = typeof id === 'number' ? id : parseInt(id, 10);
+      if (!isNaN(n) && n > maxId) maxId = n;
+    });
+    _agentScrollState[agentId] = {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      lastTurnId: maxId
+    };
+  }
+
+  function _showNewMessagesPill(count, firstNewTurnId) {
+    _newMessagesFirstTurnId = firstNewTurnId;
+    var pill = document.getElementById('new-messages-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'new-messages-pill';
+      pill.className = 'new-messages-pill';
+      pill.addEventListener('click', function () {
+        if (!_newMessagesFirstTurnId) return;
+        var bubble = document.querySelector('[data-turn-id="' + _newMessagesFirstTurnId + '"]');
+        if (bubble) {
+          bubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        _dismissNewMessagesPill();
+      });
+      // Insert as child of #screen-chat, between attention-banners and chat-messages
+      var chatScreen = document.getElementById('screen-chat');
+      var messagesEl = document.getElementById('chat-messages');
+      if (chatScreen && messagesEl) {
+        chatScreen.insertBefore(pill, messagesEl);
+      }
+    }
+    pill.textContent = count + ' new message' + (count !== 1 ? 's' : '');
+    pill.style.display = '';
+    _newMessagesPillVisible = true;
+  }
+
+  function _dismissNewMessagesPill() {
+    var pill = document.getElementById('new-messages-pill');
+    if (pill) pill.style.display = 'none';
+    _newMessagesPillVisible = false;
+    _newMessagesFirstTurnId = null;
+  }
+
   var _STATE_LABELS = {
     idle: 'Idle',
     commanded: 'Command received',
@@ -1780,6 +1868,7 @@ window.VoiceApp = (function () {
     // Check for ended agent
     if (data.agent_ended || (newState && newState.toLowerCase() === 'ended')) {
       _chatAgentEnded = true;
+      delete _agentScrollState[_targetAgentId];
       _updateEndedAgentUI();
     }
 
@@ -2401,6 +2490,9 @@ window.VoiceApp = (function () {
     if (titleLink) {
       titleLink.addEventListener('click', function (e) {
         e.preventDefault();
+        if (_currentScreen === 'chat' && _targetAgentId) {
+          _saveScrollState(_targetAgentId);
+        }
         _refreshAgents();
         showScreen('agents');
       });
@@ -2632,6 +2724,17 @@ window.VoiceApp = (function () {
         if (chatMessages.scrollTop < 50) {
           _loadOlderMessages();
         }
+        // Auto-dismiss new messages pill when user scrolls to the first new message
+        if (_newMessagesPillVisible && _newMessagesFirstTurnId) {
+          var bubble = document.querySelector('[data-turn-id="' + _newMessagesFirstTurnId + '"]');
+          if (bubble) {
+            var containerRect = chatMessages.getBoundingClientRect();
+            var bubbleRect = bubble.getBoundingClientRect();
+            if (bubbleRect.top < containerRect.bottom) {
+              _dismissNewMessagesPill();
+            }
+          }
+        }
       });
     }
 
@@ -2655,6 +2758,7 @@ window.VoiceApp = (function () {
           var prevId = _navStack.pop();
           _showChatScreen(prevId);
         } else {
+          _saveScrollState(_targetAgentId);
           _otherAgentStates = {};
           _refreshAgents();
           showScreen('agents');
