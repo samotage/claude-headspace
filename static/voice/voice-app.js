@@ -2539,6 +2539,15 @@ window.VoiceApp = (function () {
             // Match within TTL window — the server turn corresponds to our optimistic bubble
             if ((now - pending.sentAt) < PENDING_SEND_TTL_MS) {
               _chatRenderedTurnIds.add(t.id);
+              // Promote optimistic bubble: swap fake data-turn-id to real server ID
+              // so the DOM resilience check (line ~2529) finds it on subsequent fetches.
+              if (pending.fakeTurnId && messagesContainer) {
+                var fakeBubble = messagesContainer.querySelector(
+                  '[data-turn-id="' + pending.fakeTurnId + '"]'
+                );
+                if (fakeBubble) fakeBubble.setAttribute('data-turn-id', t.id);
+              }
+              _chatRenderedTurnIds.delete(pending.fakeTurnId);
               _chatPendingUserSends.splice(pi, 1);
               return false;
             }
