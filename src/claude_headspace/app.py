@@ -239,11 +239,17 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         app.extensions["staleness_service"] = None
         logger.debug("Staleness service disabled (no database connection)")
 
-    # Initialize file watcher (only in non-testing environments)
-    if not app.config.get("TESTING"):
+    # Initialize file watcher — fallback monitoring mechanism.
+    # The file watcher polls .jsonl and transcript files to catch events
+    # that hooks miss. Disabled by default since hooks are the primary path.
+    # Enable via file_watcher.enabled in config.yaml or the /config dashboard.
+    fw_enabled = get_value(config, "file_watcher", "enabled", default=False)
+    if not app.config.get("TESTING") and fw_enabled:
         from .services.file_watcher import init_file_watcher
         init_file_watcher(app, config)
-        logger.info("File watcher initialized")
+        logger.info("File watcher initialized (fallback monitoring enabled)")
+    elif not app.config.get("TESTING"):
+        logger.info("File watcher disabled (hooks are the primary event path)")
 
     # Clean up orphaned tmux sessions on startup (only in non-testing environments)
     if not app.config.get("TESTING") and db_connected:

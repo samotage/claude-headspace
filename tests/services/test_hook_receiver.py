@@ -226,6 +226,21 @@ class TestProcessUserPromptSubmit:
         # Should auto-transition COMMANDED → PROCESSING
         mock_lifecycle.update_task_state.assert_called_once()
 
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_user_prompt_submit_skips_tool_interruption_artifact(
+        self, mock_db, mock_agent, fresh_state
+    ):
+        """Tool interruption artifacts from tmux key injection are silently skipped."""
+        result = process_user_prompt_submit(
+            mock_agent,
+            "session-123",
+            prompt_text="[Request interrupted by user for tool use]",
+        )
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
 
 class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
@@ -439,6 +454,20 @@ class TestProcessNotification:
 
         assert result.state_changed is False
         mock_send_notif.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_skips_interruption_artifact(self, mock_db, mock_agent, fresh_state):
+        """Interruption artifact notifications from tmux key injection are silently skipped."""
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Interruption detected",
+        )
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+        # Should still update last_seen_at and commit
+        mock_db.session.commit.assert_called_once()
 
 
 class TestHookEventResult:
@@ -1460,13 +1489,13 @@ class TestPermissionPaneCapture:
 class TestDeferredStopPolling:
     """Tests for the polling loop in _schedule_deferred_stop."""
 
-    @patch("claude_headspace.services.hook_helpers.send_completion_notification")
-    @patch("claude_headspace.services.hook_helpers.execute_pending_summarisations")
+    @patch("claude_headspace.services.hook_deferred_stop._send_completion_notification")
+    @patch("claude_headspace.services.hook_deferred_stop._execute_pending_summarisations")
     @patch("claude_headspace.services.card_state.broadcast_card_refresh")
-    @patch("claude_headspace.services.hook_helpers.trigger_priority_scoring")
+    @patch("claude_headspace.services.hook_deferred_stop._trigger_priority_scoring")
     @patch("claude_headspace.services.intent_detector.detect_agent_intent")
-    @patch("claude_headspace.services.hook_helpers.extract_transcript_content")
-    @patch("claude_headspace.services.hook_helpers.get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_deferred_stop._extract_transcript_content")
+    @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
     @patch("claude_headspace.database.db")
     def test_polling_finds_transcript_on_second_attempt(
         self, mock_db, mock_get_lm, mock_extract, mock_detect,
@@ -1541,8 +1570,8 @@ class TestDeferredStopPolling:
         from claude_headspace.services.hook_agent_state import get_agent_hook_state
         assert not get_agent_hook_state().is_deferred_stop_pending(42)
 
-    @patch("claude_headspace.services.hook_helpers.extract_transcript_content")
-    @patch("claude_headspace.services.hook_helpers.get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_deferred_stop._extract_transcript_content")
+    @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
     @patch("claude_headspace.database.db")
     def test_deferred_stop_exits_early_if_task_completed(
         self, mock_db, mock_get_lm, mock_extract, fresh_state,

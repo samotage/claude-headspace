@@ -1,7 +1,15 @@
-"""File watcher service for monitoring Claude Code session files.
+"""File watcher service — fallback monitoring for Claude Code session files.
+
+This is a redundancy/robustification mechanism that catches events Claude Code
+hooks miss. It monitors .jsonl and transcript files via filesystem polling
+(Watchdog + periodic reconciliation) and has historically caught events that
+hooks missed due to timing, crashes, or misconfiguration.
+
+The file watcher is DISABLED by default since hooks are the primary event path.
+Enable via ``file_watcher.enabled: true`` in config.yaml or the /config dashboard.
 
 Provides two modes of operation:
-1. Legacy session file monitoring via Watchdog + polling
+1. Session file monitoring via Watchdog + polling
 2. Content pipeline: transcript monitoring, regex question detection,
    and timeout-gated inference for AWAITING_INPUT detection
 """

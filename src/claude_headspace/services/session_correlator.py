@@ -540,3 +540,37 @@ def cache_session_mapping(claude_session_id: str, agent_id: int) -> None:
     """
     _cache_set(claude_session_id, agent_id)
     logger.debug(f"Cached session {claude_session_id} -> agent {agent_id}")
+
+
+def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> None:
+    """Clear all per-agent caches when a session ends or is reaped.
+
+    Should be called from process_session_end() and agent_reaper._reap_agent()
+    to ensure no stale state persists across session boundaries.
+
+    Clears:
+    1. Session correlator cache (by session_id)
+    2. Hook agent state (per-agent mutable state)
+    3. Commander availability tracking
+    """
+    # 1. Session correlator cache
+    if session_id:
+        _cache_delete(session_id)
+
+    # 2. Hook agent state (awaiting_tool, transcript positions, progress texts)
+    try:
+        from .hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().on_session_end(agent_id)
+    except Exception as e:
+        logger.debug(f"Hook agent state cleanup failed for agent {agent_id}: {e}")
+
+    # 3. Commander availability
+    try:
+        from flask import current_app
+        availability = current_app.extensions.get("commander_availability")
+        if availability:
+            availability.unregister_agent(agent_id)
+    except RuntimeError:
+        logger.debug("No app context for commander_availability cleanup")
+    except Exception as e:
+        logger.debug(f"Commander availability cleanup failed for agent {agent_id}: {e}")

@@ -10,6 +10,14 @@ from ..models.turn import TurnActor, TurnIntent
 logger = logging.getLogger(__name__)
 
 
+class InvalidTransitionError(Exception):
+    """Raised when a state transition violates the state machine rules."""
+
+    def __init__(self, result: "TransitionResult"):
+        self.result = result
+        super().__init__(result.reason)
+
+
 @dataclass
 class TransitionResult:
     """Result of a state transition attempt."""

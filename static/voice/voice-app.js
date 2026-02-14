@@ -2192,7 +2192,7 @@ window.VoiceApp = (function () {
     _updateTypingIndicator();
     _updateChatStatePill();
 
-    VoiceAPI.sendSelect(_targetAgentId, optionIndex).then(function () {
+    VoiceAPI.sendSelect(_targetAgentId, optionIndex, label).then(function () {
       _scheduleResponseCatchUp();
     }).catch(function (err) {
       _removeOptimisticBubble(pendingEntry);
@@ -2494,6 +2494,8 @@ window.VoiceApp = (function () {
   // --- Connection indicator (task 2.18) ---
 
   var _previousConnectionState = 'disconnected';
+  var _connectionLostTimer = null;
+  var _connectionLostShown = false;
 
   function _updateConnectionIndicator() {
     var el = document.getElementById('connection-status');
@@ -2502,16 +2504,31 @@ window.VoiceApp = (function () {
     el.className = 'connection-dot ' + state;
     el.title = state;
 
-    // On reconnect: catch up on any missed state by re-fetching
     if (state === 'connected' && _previousConnectionState !== 'connected') {
       _catchUpAfterReconnect();
-      if (_currentScreen === 'chat') {
+      // Cancel pending "connection lost" — hiccup recovered before timeout
+      if (_connectionLostTimer) {
+        clearTimeout(_connectionLostTimer);
+        _connectionLostTimer = null;
+      }
+      // Only show "Reconnected" if we actually showed "Connection lost"
+      if (_connectionLostShown && _currentScreen === 'chat') {
         _showChatSystemMessage('Reconnected');
       }
+      _connectionLostShown = false;
     }
     if (state === 'reconnecting' && _previousConnectionState === 'connected') {
-      if (_currentScreen === 'chat') {
-        _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
+      // Debounce: wait 2s before showing. If recovered within window, suppress.
+      if (!_connectionLostTimer) {
+        _connectionLostTimer = setTimeout(function () {
+          _connectionLostTimer = null;
+          if (VoiceAPI.getConnectionState() !== 'connected') {
+            _connectionLostShown = true;
+            if (_currentScreen === 'chat') {
+              _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
+            }
+          }
+        }, 2000);
       }
     }
     _previousConnectionState = state;

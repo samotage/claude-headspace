@@ -18,7 +18,6 @@ from .event_writer import (
     WriteResult,
     create_event_writer,
 )
-from .process_monitor import ProcessMonitor, WatcherStatus
 from .intent_detector import (
     IntentResult,
     detect_agent_intent,
@@ -29,6 +28,7 @@ from .intent_detector import (
     BLOCKED_PATTERNS,
 )
 from .state_machine import (
+    InvalidTransitionError,
     TransitionResult,
     validate_transition,
     get_valid_transitions_from,
@@ -73,9 +73,6 @@ __all__ = [
     "EventWriter",
     "WriteResult",
     "create_event_writer",
-    # Process monitor
-    "ProcessMonitor",
-    "WatcherStatus",
     # Intent detector
     "IntentResult",
     "detect_agent_intent",
@@ -85,6 +82,7 @@ __all__ = [
     "COMPLETION_PATTERNS",
     "BLOCKED_PATTERNS",
     # State machine
+    "InvalidTransitionError",
     "TransitionResult",
     "validate_transition",
     "get_valid_transitions_from",

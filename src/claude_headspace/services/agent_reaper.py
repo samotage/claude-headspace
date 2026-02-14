@@ -264,8 +264,10 @@ class AgentReaper:
                 # Execute pending summarisations (after commit)
                 if self._pending_summarisations:
                     try:
-                        from .hook_helpers import execute_pending_summarisations
-                        execute_pending_summarisations(self._pending_summarisations)
+                        summarisation_svc = self._app.extensions.get("summarisation_service")
+                        if summarisation_svc:
+                            from ..database import db as _db
+                            summarisation_svc.execute_pending(self._pending_summarisations, _db.session)
                     except Exception as e:
                         logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
                     finally:
@@ -283,6 +285,16 @@ class AgentReaper:
         logger.info(
             f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
         )
+
+        # Centralized cache cleanup (correlator, hook_agent_state, commander)
+        try:
+            from .session_correlator import invalidate_agent_caches
+            invalidate_agent_caches(
+                agent.id,
+                session_id=agent.claude_session_id if hasattr(agent, 'claude_session_id') else None,
+            )
+        except Exception as e:
+            logger.debug(f"Reaper cache cleanup failed (non-fatal): {e}")
 
         # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
         self._complete_orphaned_tasks(agent)
@@ -348,8 +360,15 @@ class AgentReaper:
             )
 
             # Read transcript once
-            from .hook_helpers import extract_transcript_content
-            transcript_text = extract_transcript_content(agent)
+            transcript_text = ""
+            if agent.transcript_path:
+                try:
+                    from .transcript_reader import read_transcript_file
+                    result = read_transcript_file(agent.transcript_path)
+                    if result.success and result.text:
+                        transcript_text = result.text
+                except Exception as e:
+                    logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
 
             # Detect intent from transcript
             intent = TurnIntent.COMPLETION
@@ -363,9 +382,13 @@ class AgentReaper:
                     logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
 
             # Complete tasks via lifecycle manager
-            from .hook_helpers import get_lifecycle_manager
+            from .task_lifecycle import TaskLifecycleManager
             try:
-                lifecycle = get_lifecycle_manager()
+                event_writer = self._app.extensions.get("event_writer")
+                lifecycle = TaskLifecycleManager(
+                    session=db.session,
+                    event_writer=event_writer,
+                )
             except Exception as e:
                 logger.warning(f"Could not create lifecycle manager: {e}")
                 return

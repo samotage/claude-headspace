@@ -35,6 +35,7 @@ DEFAULTS = {
         "projects_path": "~/.claude/projects",
     },
     "file_watcher": {
+        "enabled": False,  # Fallback mechanism — hooks are the primary event path
         "polling_interval": 2,
         "reconciliation_interval": 60,
         "inactivity_timeout": 5400,
@@ -370,6 +371,9 @@ def get_claude_projects_path(config: dict) -> str:
 def get_file_watcher_config(config: dict) -> dict:
     """Get file watcher configuration with defaults."""
     return {
+        "enabled": get_value(
+            config, "file_watcher", "enabled", default=False
+        ),
         "polling_interval": get_value(
             config, "file_watcher", "polling_interval", default=2
         ),

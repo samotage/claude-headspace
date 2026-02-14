@@ -23,7 +23,7 @@ PATCH_CHECK_PANE = "claude_headspace.services.iterm_focus.check_pane_exists"
 PATCH_DB = "claude_headspace.database.db"
 PATCH_BROADCASTER = "claude_headspace.services.broadcaster.get_broadcaster"
 PATCH_CLAUDE_RUNNING = "claude_headspace.services.agent_reaper._is_claude_running_in_pane"
-PATCH_GET_LIFECYCLE = "claude_headspace.services.hook_helpers.get_lifecycle_manager"
+PATCH_GET_LIFECYCLE = "claude_headspace.services.task_lifecycle.TaskLifecycleManager"
 
 
 def _make_agent(
@@ -574,7 +574,7 @@ class TestOrphanedTaskCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.hook_helpers.extract_transcript_content", return_value="TASK COMPLETE — did stuff"), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="TASK COMPLETE — did stuff")), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
@@ -618,7 +618,7 @@ class TestOrphanedTaskCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.hook_helpers.extract_transcript_content", return_value=""), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="")), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
@@ -693,7 +693,7 @@ class TestOrphanedTaskCompletion:
         from claude_headspace.models.turn import TurnIntent
         mock_intent_result.intent = TurnIntent.END_OF_TASK
 
-        with patch("claude_headspace.services.hook_helpers.extract_transcript_content", return_value="---\nTASK COMPLETE — finished work\n---"), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="---\nTASK COMPLETE — finished work\n---")), \
              patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})

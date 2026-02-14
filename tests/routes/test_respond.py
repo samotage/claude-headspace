@@ -459,6 +459,24 @@ class TestSelectMode:
         turn = mock_db.session.add.call_args[0][0]
         assert turn.text == "[selected option 1]"
 
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_with_option_label_uses_label(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Select mode uses option_label as turn text when provided."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        client.post("/api/respond/1", json={
+            "mode": "select", "option_index": 0, "option_label": "Yes"
+        })
+
+        mock_db.session.add.assert_called_once()
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.text == "Yes"
+
     def test_select_invalid_index_negative(self, client, mock_db, mock_agent):
         """Negative option_index returns 400."""
         mock_db.session.get.return_value = mock_agent

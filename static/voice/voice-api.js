@@ -83,10 +83,12 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/command', { method: 'POST', body: JSON.stringify(body) });
   }
 
-  function sendSelect(agentId, optionIndex) {
+  function sendSelect(agentId, optionIndex, optionLabel) {
+    var body = { mode: 'select', option_index: optionIndex };
+    if (optionLabel) body.option_label = optionLabel;
     return _fetch('/api/respond/' + agentId, {
       method: 'POST',
-      body: JSON.stringify({ mode: 'select', option_index: optionIndex })
+      body: JSON.stringify(body)
     });
   }
 

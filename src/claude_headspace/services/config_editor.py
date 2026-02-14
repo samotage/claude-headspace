@@ -115,8 +115,10 @@ CONFIG_SCHEMA = [
     SectionSchema(
         name="file_watcher",
         title="File Watcher",
-        section_description="Controls how Claude Headspace monitors Claude Code session files for changes. The file watcher is the fallback mechanism when hooks are not active.",
+        section_description="Fallback monitoring that polls Claude Code session files for changes. Catches events that hooks miss. Disabled by default since hooks are the primary event path.",
         fields=[
+            FieldSchema("enabled", "boolean", "Enable file watcher (fallback monitoring)", default=False,
+                         help_text="Enable background filesystem polling of .jsonl and transcript files. This is a fallback mechanism that catches events hooks miss. Disabled by default since Claude Code hooks are the primary event path. Enable if you notice missed events or are not using hooks."),
             FieldSchema("polling_interval", "float", "Polling interval in seconds", min_value=0.1, max_value=60, default=2,
                          help_text="How often to check for file changes. Lower values detect changes faster but use more CPU. Too low (< 0.5s) causes excessive disk I/O. Too high (> 10s) makes the dashboard feel sluggish."),
             FieldSchema("reconciliation_interval", "integer", "Reconciliation interval in seconds", min_value=10, max_value=600, default=60,

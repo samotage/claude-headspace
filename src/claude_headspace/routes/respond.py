@@ -243,7 +243,8 @@ def respond_to_agent(agent_id: int):
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
         )
-        record_text = f"[selected option {option_index}]"
+        option_label = data.get("option_label", "").strip()
+        record_text = option_label if option_label else f"[selected option {option_index}]"
 
     elif mode == "other":
         # Navigate to "Other" (last item) then type custom text

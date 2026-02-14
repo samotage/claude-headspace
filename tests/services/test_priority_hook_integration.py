@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from claude_headspace.services.hook_helpers import trigger_priority_scoring as _trigger_priority_scoring
+from claude_headspace.services.hook_receiver import _trigger_priority_scoring
 
 
 @pytest.fixture
