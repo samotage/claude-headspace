@@ -3033,7 +3033,7 @@ window.VoiceApp = (function () {
       // Auto-resize textarea as content grows
       chatInput.addEventListener('input', function () {
         this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        this.style.height = Math.min(this.scrollHeight, 240) + 'px';
       });
       // iOS Safari: when keyboard opens, scroll the input into view
       // after a short delay (let Safari finish its viewport resize).

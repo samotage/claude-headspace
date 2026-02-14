@@ -269,6 +269,13 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         reaper.start()
         app.extensions["agent_reaper"] = reaper
 
+    # Initialize context poller (only in non-testing environments, requires database)
+    if not app.config.get("TESTING") and db_connected:
+        from .services.context_poller import ContextPoller
+        context_poller = ContextPoller(app=app, config=config)
+        context_poller.start()
+        app.extensions["context_poller"] = context_poller
+
     # Initialize activity aggregator (only in non-testing environments, requires database)
     if not app.config.get("TESTING") and db_connected:
         from .services.activity_aggregator import ActivityAggregator
@@ -321,7 +328,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     def _get_background_thread_status():
         """Get the alive status of all background threads."""
         status = {}
-        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability"):
+        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability", "context_poller"):
             svc = app.extensions.get(name)
             if svc is None:
                 status[name] = "disabled"
@@ -363,6 +370,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
                 app.extensions["file_watcher"].stop()
             if "commander_availability" in app.extensions:
                 app.extensions["commander_availability"].stop()
+            if "context_poller" in app.extensions:
+                app.extensions["context_poller"].stop()
             # Stop event writer to close database connections
             event_writer = app.extensions.get("event_writer")
             if event_writer:

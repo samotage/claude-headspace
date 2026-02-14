@@ -117,6 +117,16 @@
       {% if agent.turn_count and agent.turn_count > 0 %}
         <span class="task-stats text-muted text-xs">{{ agent.turn_count }} turn{{ 's' if agent.turn_count != 1 else '' }}{% if agent.elapsed %} · {{ agent.elapsed }}{% endif %}</span>
       {% endif %}
+      {% if agent.context_percent_used is not none %}
+        {% set ctx_class = 'text-muted' %}
+        {% if context_thresholds is defined and agent.context_percent_used >= context_thresholds.high %}
+          {% set ctx_class = 'text-red' %}
+        {% elif context_thresholds is defined and agent.context_percent_used >= context_thresholds.warning %}
+          {% set ctx_class = 'text-amber' %}
+        {% endif %}
+        <span class="context-usage {{ ctx_class }} text-xs font-mono whitespace-nowrap"
+              data-agent-id="{{ agent.id }}">{{ agent.context_percent_used }}% · {{ agent.context_remaining_tokens }} rem</span>
+      {% endif %}
     </div>
     <div class="card-kebab-wrapper">
       <button class="card-kebab-btn" data-agent-id="{{ agent.id }}" title="Actions" aria-label="Agent actions" aria-expanded="false">&#8942;</button>

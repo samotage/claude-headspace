@@ -535,6 +535,8 @@ def dashboard():
                 "project_slug": project.slug,
                 "project_id": project.id,
                 "last_seen_at": agent.last_seen_at,
+                "context_percent_used": agent.context_percent_used,
+                "context_remaining_tokens": agent.context_remaining_tokens,
             }
             # Add current task ID and plan state for on-demand drill-down
             _ct = agent.get_current_task()
@@ -618,6 +620,14 @@ def dashboard():
     # Server-side computation used UTC midnight which gave wrong results
     # for non-UTC timezones.
 
+    # Context monitor thresholds for card template
+    app_config = current_app.config.get("APP_CONFIG", {})
+    ctx_config = app_config.get("context_monitor", {})
+    context_thresholds = {
+        "warning": ctx_config.get("warning_threshold", 65),
+        "high": ctx_config.get("high_threshold", 75),
+    }
+
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
@@ -629,4 +639,5 @@ def dashboard():
         objective=objective,
         kanban_data=kanban_data,
         activity_metrics=None,
+        context_thresholds=context_thresholds,
     )

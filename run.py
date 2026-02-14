@@ -27,13 +27,6 @@ def main():
     port = get_value(config, "server", "port", default=5050)
     debug = get_value(config, "server", "debug", default=False)
 
-    # Voice bridge may override bind address to enable LAN access
-    vb_enabled = get_value(config, "voice_bridge", "enabled", default=False)
-    if vb_enabled:
-        vb_bind = get_value(config, "voice_bridge", "network", "bind_address", default=None)
-        if vb_bind:
-            host = vb_bind
-
     # TLS -- Tailscale HTTPS certificates
     ssl_cert = os.environ.get("TLS_CERT")
     ssl_key = os.environ.get("TLS_KEY")

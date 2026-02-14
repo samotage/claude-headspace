@@ -262,6 +262,21 @@ CONFIG_SCHEMA = [
         ],
     ),
     SectionSchema(
+        name="context_monitor",
+        title="Context Monitor",
+        section_description="Periodic context window usage monitoring for active agents. Polls tmux panes to read the Claude Code statusline and persists usage data for at-a-glance visibility on dashboard cards.",
+        fields=[
+            FieldSchema("enabled", "boolean", "Enable context monitoring", default=True,
+                         help_text="Enable the background poller that reads context window usage from agent tmux panes. Disable if you don't need context visibility or want to save CPU on tmux subprocess calls."),
+            FieldSchema("poll_interval_seconds", "integer", "Seconds between polling passes", min_value=10, max_value=600, default=60,
+                         help_text="How often the context poller scans all active agents. Lower values give more up-to-date context readings. Too low wastes CPU on frequent tmux capture-pane calls."),
+            FieldSchema("warning_threshold", "integer", "Warning threshold (% context used)", min_value=0, max_value=100, default=65,
+                         help_text="Context usage at or above this percentage is displayed in amber (warning). Agents approaching this level may need attention soon."),
+            FieldSchema("high_threshold", "integer", "High threshold (% context used)", min_value=0, max_value=100, default=75,
+                         help_text="Context usage at or above this percentage is displayed in red (high). Agents at this level are at risk of context compression or degradation."),
+        ],
+    ),
+    SectionSchema(
         name="notifications",
         title="Notifications",
         section_description="macOS desktop notifications via terminal-notifier. Alerts you when agents need input or complete tasks.",

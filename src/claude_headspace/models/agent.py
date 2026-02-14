@@ -71,6 +71,17 @@ class Agent(db.Model):
         DateTime(timezone=True), nullable=True, default=None
     )
 
+    # Context monitoring fields
+    context_percent_used: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    context_remaining_tokens: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+    context_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="agents")
     tasks: Mapped[list["Task"]] = relationship(

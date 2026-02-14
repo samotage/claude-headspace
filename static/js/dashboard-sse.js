@@ -1136,6 +1136,31 @@
             statsEl.style.display = 'none';
         }
 
+        // Context usage display
+        var ctxSpan = card.querySelector('.context-usage');
+        if (data.context && data.context.percent_used != null) {
+            var pct = data.context.percent_used;
+            var ctxText = pct + '% \u00b7 ' + (data.context.remaining_tokens || '?') + ' rem';
+            var ctxClass = 'text-muted';
+            if (pct >= (data.context.high_threshold || 75)) ctxClass = 'text-red';
+            else if (pct >= (data.context.warning_threshold || 65)) ctxClass = 'text-amber';
+            if (ctxSpan) {
+                ctxSpan.textContent = ctxText;
+                ctxSpan.className = 'context-usage ' + ctxClass + ' text-xs font-mono whitespace-nowrap';
+            } else {
+                var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
+                if (leftGroup) {
+                    var s = document.createElement('span');
+                    s.className = 'context-usage ' + ctxClass + ' text-xs font-mono whitespace-nowrap';
+                    s.setAttribute('data-agent-id', String(data.id));
+                    s.textContent = ctxText;
+                    leftGroup.appendChild(s);
+                }
+            }
+        } else if (ctxSpan) {
+            ctxSpan.remove();
+        }
+
         // Update tracked state and move card if state changed
         var oldState = agentStates.get(agentId);
         agentStates.set(agentId, state);
