@@ -245,6 +245,17 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         init_file_watcher(app, config)
         logger.info("File watcher initialized")
 
+    # Clean up orphaned tmux sessions on startup (only in non-testing environments)
+    if not app.config.get("TESTING") and db_connected:
+        try:
+            from .services.agent_lifecycle import cleanup_orphaned_sessions
+            with app.app_context():
+                killed = cleanup_orphaned_sessions()
+                if killed:
+                    logger.info(f"Startup: cleaned up {killed} orphaned tmux session(s)")
+        except Exception as e:
+            logger.warning(f"Startup orphan cleanup failed (non-fatal): {e}")
+
     # Initialize agent reaper (only in non-testing environments)
     if not app.config.get("TESTING"):
         from .services.agent_reaper import AgentReaper

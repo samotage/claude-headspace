@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from . import tmux_bridge
+from .tmux_bridge import HealthCheckLevel
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,12 @@ class CommanderAvailability:
             agent_id: The agent ID
         """
         with self._lock:
-            self._pane_ids.pop(agent_id, None)
+            pane_id = self._pane_ids.pop(agent_id, None)
             self._availability.pop(agent_id, None)
+
+        # Clean up the per-pane send lock
+        if pane_id:
+            tmux_bridge.release_send_lock(pane_id)
 
     def check_agent(self, agent_id: int, tmux_pane_id: str | None = None) -> bool:
         """Check and update tmux pane availability for a specific agent.
@@ -136,10 +141,81 @@ class CommanderAvailability:
             self.register_agent(agent_id, tmux_pane_id)
 
         health = tmux_bridge.check_health(
-            pid, timeout=self._subprocess_timeout
+            pid,
+            timeout=self._subprocess_timeout,
+            level=HealthCheckLevel.COMMAND,
         )
         self._update_availability(agent_id, health.available)
         return health.available
+
+    def _attempt_reconnection(self, agent_id: int, old_pane_id: str) -> bool:
+        """Try to find a new tmux pane for an agent whose pane went away.
+
+        Scans list_panes() for a pane running a claude process in the same
+        working directory as the agent's project. If found, updates the agent's
+        tmux_pane_id in the DB and re-registers it.
+
+        Args:
+            agent_id: The agent ID
+            old_pane_id: The previous (now-dead) pane ID
+
+        Returns:
+            True if reconnected, False otherwise
+        """
+        try:
+            if not self._app:
+                return False
+
+            with self._app.app_context():
+                from ..database import db
+                from ..models.agent import Agent
+
+                agent = db.session.get(Agent, agent_id)
+                if not agent or agent.ended_at is not None:
+                    return False
+
+                # Get agent's project working directory
+                project_path = agent.project.path if agent.project else None
+                if not project_path:
+                    return False
+
+                # Scan for candidate panes
+                panes = tmux_bridge.list_panes()
+                for pane in panes:
+                    # Skip the dead pane
+                    if pane.pane_id == old_pane_id:
+                        continue
+
+                    # Must be in the same project directory
+                    if pane.working_directory != project_path:
+                        continue
+
+                    # Must be an hs-* session
+                    if not pane.session_name.startswith("hs-"):
+                        continue
+
+                    # Verify claude is running via PROCESS_TREE check
+                    health = tmux_bridge.check_health(
+                        pane.pane_id,
+                        timeout=self._subprocess_timeout,
+                        level=HealthCheckLevel.PROCESS_TREE,
+                    )
+                    if health.available and health.running:
+                        # Found a live candidate — reconnect
+                        agent.tmux_pane_id = pane.pane_id
+                        db.session.commit()
+                        self.register_agent(agent_id, pane.pane_id)
+                        self._update_availability(agent_id, True)
+                        logger.info(
+                            f"Reconnected agent {agent_id} from pane {old_pane_id} "
+                            f"to pane {pane.pane_id} (session {pane.session_name})"
+                        )
+                        return True
+
+        except Exception as e:
+            logger.debug(f"Reconnection attempt failed for agent {agent_id}: {e}")
+
+        return False
 
     def _update_availability(self, agent_id: int, available: bool) -> None:
         """Update availability and broadcast if changed."""
@@ -185,7 +261,12 @@ class CommanderAvailability:
             health = tmux_bridge.check_health(
                 pane_id,
                 timeout=self._subprocess_timeout,
+                level=HealthCheckLevel.COMMAND,
             )
+            if not health.available:
+                # Pane went away — try to find a replacement
+                if self._attempt_reconnection(agent_id, pane_id):
+                    return  # Reconnected successfully
             self._update_availability(agent_id, health.available)
         except Exception as e:
             logger.debug(

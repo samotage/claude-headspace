@@ -46,65 +46,23 @@ class ReapResult:
 def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
     """Check if a `claude` process is running in a tmux pane's process tree.
 
+    Delegates to tmux_bridge.check_health with PROCESS_TREE level.
+
     Returns:
         True if claude is running, False if pane exists but no claude,
         None if we can't determine (pane doesn't exist or error).
     """
-    import subprocess
+    from . import tmux_bridge
+    from .tmux_bridge import HealthCheckLevel
 
-    try:
-        # Get the pane's root PID from tmux
-        result = subprocess.run(
-            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode != 0:
-            return None
+    health = tmux_bridge.check_health(
+        tmux_pane_id,
+        level=HealthCheckLevel.PROCESS_TREE,
+    )
 
-        pane_pid = None
-        for line in result.stdout.strip().split("\n"):
-            parts = line.split()
-            if len(parts) == 2 and parts[0] == tmux_pane_id:
-                pane_pid = parts[1]
-                break
-
-        if not pane_pid:
-            return None  # Pane doesn't exist in tmux
-
-        # Use `ps` to walk the process tree — macOS `pgrep -P` is unreliable
-        # without specific flags, and pgrep -la shows argv[0] (version number
-        # like "2.1.34") instead of the actual process name "claude".
-        #
-        # `ps -axo pid,ppid,comm` reliably shows all processes with their
-        # parent PID and real command name on macOS.
-        ps_result = subprocess.run(
-            ["ps", "-axo", "pid,ppid,comm"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if ps_result.returncode != 0:
-            return None
-
-        # Build parent→children map for pane_pid and its children
-        children: dict[str, list[tuple[str, str]]] = {}  # ppid → [(pid, comm)]
-        for line in ps_result.stdout.strip().split("\n")[1:]:  # skip header
-            parts = line.split(None, 2)
-            if len(parts) >= 3:
-                pid, ppid, comm = parts[0], parts[1], parts[2]
-                children.setdefault(ppid, []).append((pid, comm))
-
-        # Check direct children
-        for child_pid, child_comm in children.get(pane_pid, []):
-            if "claude" in child_comm.lower():
-                return True
-            # Check grandchildren (bridge → claude)
-            for gc_pid, gc_comm in children.get(child_pid, []):
-                if "claude" in gc_comm.lower():
-                    return True
-
-        # Pane exists (we found it in tmux) but no claude in process tree
-        return False  # Pane exists but no claude process found in tree
-    except Exception:
-        return None
+    if not health.available:
+        return None  # Pane doesn't exist or error
+    return health.running
 
 
 class AgentReaper:
