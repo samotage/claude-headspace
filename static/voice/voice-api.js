@@ -69,8 +69,11 @@ window.VoiceAPI = (function () {
     });
   }
 
-  function getSessions(verbosity) {
-    var q = verbosity ? '?verbosity=' + verbosity : '';
+  function getSessions(verbosity, includeEnded) {
+    var params = [];
+    if (verbosity) params.push('verbosity=' + verbosity);
+    if (includeEnded) params.push('include_ended=true');
+    var q = params.length ? '?' + params.join('&') : '';
     return _fetch('/api/voice/sessions' + q);
   }
 

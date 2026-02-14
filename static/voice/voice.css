@@ -565,6 +565,22 @@ body.layout-split .agent-card.selected {
   50% { opacity: 1; }
 }
 
+/* Ended agent cards */
+.agent-card.ended {
+  opacity: 0.5;
+  border-left-color: var(--text-muted);
+}
+.agent-card.ended:hover {
+  opacity: 0.7;
+}
+
+/* Divider between active and ended agents within a project group */
+.ended-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
 /* Lightweight voice toast */
 .voice-toast {
   position: fixed;

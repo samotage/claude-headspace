@@ -3,7 +3,7 @@
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, make_response, request, send_from_directory
 
@@ -52,7 +52,19 @@ def _get_active_agents():
     )
 
 
-def _agent_to_voice_dict(agent: Agent) -> dict:
+def _get_ended_agents(hours: int = 24) -> list:
+    """Get recently ended agents (last N hours), newest first."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return (
+        db.session.query(Agent)
+        .filter(Agent.ended_at.isnot(None))
+        .filter(Agent.ended_at >= cutoff)
+        .order_by(Agent.ended_at.desc())
+        .all()
+    )
+
+
+def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> dict:
     """Convert an agent to a voice-friendly dict."""
     from ..services.card_state import (
         get_effective_state,
@@ -96,7 +108,7 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
     else:
         ago = "unknown"
 
-    return {
+    result = {
         "agent_id": agent.id,
         "name": agent.name,
         "hero_chars": hero_chars,
@@ -112,6 +124,12 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
         "summary": task_summary or task_instruction,
         "last_activity_ago": ago,
     }
+
+    if include_ended_fields and agent.ended_at:
+        result["ended"] = True
+        result["ended_at"] = agent.ended_at.isoformat()
+
+    return result
 
 
 @voice_bridge_bp.route("/voice")
@@ -184,6 +202,7 @@ def list_sessions():
     """List active agents with voice-friendly status (FR5)."""
     start_time = time.time()
     verbosity = request.args.get("verbosity")
+    include_ended = request.args.get("include_ended", "").lower() == "true"
     formatter = _get_voice_formatter()
 
     agents = _get_active_agents()
@@ -198,12 +217,20 @@ def list_sessions():
     auto_target = config.get("voice_bridge", {}).get("auto_target", False)
 
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({
+    response_data = {
         "voice": voice,
         "agents": agent_dicts,
         "settings": {"auto_target": auto_target},
         "latency_ms": latency_ms,
-    }), 200
+    }
+
+    if include_ended:
+        ended = _get_ended_agents(hours=24)
+        response_data["ended_agents"] = [
+            _agent_to_voice_dict(a, include_ended_fields=True) for a in ended
+        ]
+
+    return jsonify(response_data), 200
 
 
 @voice_bridge_bp.route("/api/voice/command", methods=["POST"])

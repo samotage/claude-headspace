@@ -13,11 +13,13 @@ window.VoiceApp = (function () {
     cuesEnabled: true,
     verbosity: 'normal',
     fontSize: 15,
-    theme: 'dark'
+    theme: 'dark',
+    showEndedAgents: false
   };
 
   var _settings = {};
   var _agents = [];
+  var _endedAgents = [];
   var _targetAgentId = null;
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat
   var _chatRenderedTurnIds = new Set();
@@ -93,7 +95,8 @@ window.VoiceApp = (function () {
       cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
       verbosity: s.verbosity || DEFAULTS.verbosity,
       fontSize: s.fontSize || DEFAULTS.fontSize,
-      theme: s.theme || DEFAULTS.theme
+      theme: s.theme || DEFAULTS.theme,
+      showEndedAgents: s.showEndedAgents !== undefined ? s.showEndedAgents : DEFAULTS.showEndedAgents
     };
 
     // Apply to modules
@@ -457,7 +460,7 @@ window.VoiceApp = (function () {
 
   // --- Agent list (tasks 2.20, 2.23, 2.24) ---
 
-  function _renderAgentList(agents) {
+  function _renderAgentList(agents, endedAgents) {
     // Detect newly appeared agents before overwriting _agents
     var oldIds = {};
     for (var oi = 0; oi < _agents.length; oi++) {
@@ -486,7 +489,19 @@ window.VoiceApp = (function () {
     var sidebar = document.getElementById('sidebar');
     var savedScroll = sidebar ? sidebar.scrollTop : 0;
 
-    if (_agents.length === 0) {
+    // Group ended agents by project
+    var endedByProject = {};
+    if (endedAgents && endedAgents.length) {
+      for (var ei = 0; ei < endedAgents.length; ei++) {
+        var ep = endedAgents[ei].project || 'unknown';
+        if (!endedByProject[ep]) endedByProject[ep] = [];
+        endedByProject[ep].push(endedAgents[ei]);
+      }
+    }
+
+    var hasEnded = Object.keys(endedByProject).length > 0;
+
+    if (_agents.length === 0 && !hasEnded) {
       list.innerHTML = '<div class="empty-state">No active agents</div>';
       return;
     }
@@ -502,6 +517,13 @@ window.VoiceApp = (function () {
       }
       projectGroups[proj].push(_agents[i]);
     }
+    // Add projects that only have ended agents
+    for (var endedProj in endedByProject) {
+      if (!projectGroups[endedProj]) {
+        projectGroups[endedProj] = [];
+        projectOrder.push(endedProj);
+      }
+    }
     // Sort each group: newest agent first (highest agent_id)
     for (var si = 0; si < projectOrder.length; si++) {
       projectGroups[projectOrder[si]].sort(function (a, b) {
@@ -509,10 +531,90 @@ window.VoiceApp = (function () {
       });
     }
 
+    // Helper to build a single agent card's HTML
+    function _buildCardHtml(a, isEnded) {
+      var stateClass = isEnded ? 'state-ended' : 'state-' + (a.state || '').toLowerCase();
+      var stateLabel = isEnded ? 'Ended' : (a.state_label || a.state || 'unknown');
+      var heroChars = a.hero_chars || '';
+      var heroTrail = a.hero_trail || '';
+
+      var instructionHtml = a.task_instruction
+        ? '<div class="agent-instruction">' + _esc(a.task_instruction) + '</div>'
+        : '';
+
+      var summaryText = '';
+      if (a.task_completion_summary) {
+        summaryText = a.task_completion_summary;
+      } else if (a.task_summary && a.task_summary !== a.task_instruction) {
+        summaryText = a.task_summary;
+      }
+      var summaryHtml = summaryText
+        ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
+        : '';
+
+      var footerParts = [];
+      if (a.turn_count && a.turn_count > 0) {
+        footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
+      }
+      if (isEnded && a.ended_at) {
+        var endedDate = new Date(a.ended_at);
+        var endedElapsed = (Date.now() - endedDate.getTime()) / 1000;
+        if (endedElapsed < 60) footerParts.push('ended ' + Math.floor(endedElapsed) + 's ago');
+        else if (endedElapsed < 3600) footerParts.push('ended ' + Math.floor(endedElapsed / 60) + 'm ago');
+        else footerParts.push('ended ' + Math.floor(endedElapsed / 3600) + 'h ago');
+      } else {
+        footerParts.push(a.last_activity_ago);
+      }
+
+      var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
+      var endedClass = isEnded ? ' ended' : '';
+
+      // Kebab menu: ended agents only get "Fetch context"
+      var kebabMenuHtml;
+      if (isEnded) {
+        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
+          + '<span>Fetch context</span></button>'
+          + '</div>';
+      } else {
+        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
+          + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
+          + '<span>Dismiss agent</span></button>'
+          + '</div>';
+      }
+
+      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
+        + '<div class="agent-header">'
+        + '<div class="agent-hero-id">'
+        + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
+        + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
+        + '</div>'
+        + '<div class="agent-header-actions">'
+        + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
+        + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
+        + kebabMenuHtml
+        + '</div>'
+        + '</div>'
+        + '<div class="agent-body">'
+        + instructionHtml
+        + summaryHtml
+        + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
+        + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
+        + '</div>'
+        + '</div>';
+    }
+
     var html = '';
     for (var p = 0; p < projectOrder.length; p++) {
       var projName = projectOrder[p];
       var group = projectGroups[projName];
+      var endedGroup = endedByProject[projName] || [];
 
       html += '<div class="project-group">'
         + '<div class="project-group-header">'
@@ -526,66 +628,19 @@ window.VoiceApp = (function () {
         + '</div>'
         + '<div class="project-group-cards">';
 
+      // Active agents
       for (var j = 0; j < group.length; j++) {
-        var a = group[j];
-        var stateClass = 'state-' + (a.state || '').toLowerCase();
-        var stateLabel = a.state_label || a.state || 'unknown';
-        var heroChars = a.hero_chars || '';
-        var heroTrail = a.hero_trail || '';
+        html += _buildCardHtml(group[j], false);
+      }
 
-        // Task instruction line
-        var instructionHtml = a.task_instruction
-          ? '<div class="agent-instruction">' + _esc(a.task_instruction) + '</div>'
-          : '';
-
-        // Summary line (only if different from instruction)
-        var summaryText = '';
-        if (a.task_completion_summary) {
-          summaryText = a.task_completion_summary;
-        } else if (a.task_summary && a.task_summary !== a.task_instruction) {
-          summaryText = a.task_summary;
+      // Ended agents (with divider if there are active agents above)
+      if (endedGroup.length > 0) {
+        if (group.length > 0) {
+          html += '<div class="ended-divider"></div>';
         }
-        var summaryHtml = summaryText
-          ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
-          : '';
-
-        // Footer: turn count + last activity
-        var footerParts = [];
-        if (a.turn_count && a.turn_count > 0) {
-          footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
+        for (var ej = 0; ej < endedGroup.length; ej++) {
+          html += _buildCardHtml(endedGroup[ej], true);
         }
-        footerParts.push(a.last_activity_ago);
-
-        // Selected class for split mode
-        var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
-
-        html += '<div class="agent-card ' + stateClass + selectedClass + '" data-agent-id="' + a.agent_id + '">'
-          + '<div class="agent-header">'
-          + '<div class="agent-hero-id">'
-          + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
-          + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
-          + '</div>'
-          + '<div class="agent-header-actions">'
-          + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
-          + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
-          + '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
-          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
-          + '<span>Fetch context</span></button>'
-          + '<div class="kebab-divider"></div>'
-          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
-          + '<span>Dismiss agent</span></button>'
-          + '</div>'
-          + '</div>'
-          + '</div>'
-          + '<div class="agent-body">'
-          + instructionHtml
-          + summaryHtml
-          + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
-          + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
-          + '</div>'
-          + '</div>';
       }
 
       html += '</div></div>';
@@ -2401,8 +2456,9 @@ window.VoiceApp = (function () {
   }
 
   function _refreshAgents() {
-    VoiceAPI.getSessions(_settings.verbosity).then(function (data) {
-      _renderAgentList(data.agents || []);
+    VoiceAPI.getSessions(_settings.verbosity, _settings.showEndedAgents).then(function (data) {
+      _endedAgents = data.ended_agents || [];
+      _renderAgentList(data.agents || [], _endedAgents);
       // Apply server auto_target setting if user hasn't overridden locally
       if (data.settings && data.settings.auto_target !== undefined) {
         var stored = null;
@@ -3202,6 +3258,9 @@ window.VoiceApp = (function () {
     el = document.getElementById('setting-verbosity');
     if (el) el.value = _settings.verbosity;
 
+    el = document.getElementById('setting-ended');
+    if (el) el.checked = _settings.showEndedAgents;
+
     el = document.getElementById('setting-url');
     if (el) el.value = _settings.serverUrl;
 
@@ -3233,6 +3292,13 @@ window.VoiceApp = (function () {
 
     el = document.getElementById('setting-verbosity');
     if (el) setSetting('verbosity', el.value);
+
+    el = document.getElementById('setting-ended');
+    if (el) {
+      var prev = _settings.showEndedAgents;
+      setSetting('showEndedAgents', el.checked);
+      if (el.checked !== prev) _refreshAgents();
+    }
 
     el = document.getElementById('setting-url');
     if (el) setSetting('serverUrl', el.value.trim());

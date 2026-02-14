@@ -323,6 +323,59 @@ class TestListSessions:
         data = response.get_json()
         assert len(data["agents"]) == 0
 
+    def test_no_ended_agents_by_default(self, client, mock_db):
+        """Ended agents are not included unless include_ended=true."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        response = client.get("/api/voice/sessions")
+        data = response.get_json()
+        assert "ended_agents" not in data
+
+    @patch("src.claude_headspace.routes.voice_bridge._agent_to_voice_dict")
+    @patch("src.claude_headspace.routes.voice_bridge._get_ended_agents")
+    def test_include_ended_returns_ended_agents(self, mock_get_ended, mock_to_dict, client, mock_db):
+        """include_ended=true returns ended_agents in response."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+
+        ended_agent = MagicMock()
+        ended_agent.id = 50
+        mock_get_ended.return_value = [ended_agent]
+
+        mock_to_dict.return_value = {
+            "agent_id": 50,
+            "name": "ended-agent",
+            "hero_chars": "ab",
+            "hero_trail": "cd1234",
+            "project": "test-project",
+            "state": "complete",
+            "state_label": "Complete",
+            "awaiting_input": False,
+            "task_instruction": None,
+            "task_summary": None,
+            "task_completion_summary": None,
+            "turn_count": 0,
+            "summary": None,
+            "last_activity_ago": "1h ago",
+            "ended": True,
+            "ended_at": "2026-02-14T12:00:00+00:00",
+        }
+
+        response = client.get("/api/voice/sessions?include_ended=true")
+        data = response.get_json()
+        assert "ended_agents" in data
+        assert len(data["ended_agents"]) == 1
+        assert data["ended_agents"][0]["agent_id"] == 50
+        assert data["ended_agents"][0]["ended"] is True
+        assert data["ended_agents"][0]["ended_at"] is not None
+
+    @patch("src.claude_headspace.routes.voice_bridge._get_ended_agents")
+    def test_include_ended_false_omits_ended(self, mock_get_ended, client, mock_db):
+        """include_ended=false does not include ended_agents."""
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        response = client.get("/api/voice/sessions?include_ended=false")
+        data = response.get_json()
+        assert "ended_agents" not in data
+        mock_get_ended.assert_not_called()
+
 
 # ──────────────────────────────────────────────────────────────
 # Voice command tests (task 3.4)
