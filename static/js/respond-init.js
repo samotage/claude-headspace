@@ -181,19 +181,42 @@
         });
     }
 
+    var AVAIL_MAX_RETRIES = 3;
+    var AVAIL_RETRY_BASE_DELAY = 1000;
+
     /**
      * Check availability and show/populate widget if available.
+     * Retries on network errors and 502/503 with exponential backoff.
      */
-    function checkAndShowWidget(widget, agentId) {
+    function checkAndShowWidget(widget, agentId, attempt) {
+        attempt = attempt || 0;
+
         fetch(AVAILABILITY_ENDPOINT + '/' + agentId + '/availability')
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.commander_available) {
-                    showWidget(widget);
+            .then(function(response) {
+                if ((response.status === 502 || response.status === 503) && attempt < AVAIL_MAX_RETRIES) {
+                    var delay = AVAIL_RETRY_BASE_DELAY * Math.pow(2, attempt);
+                    console.warn('Respond availability: server restarting, retry in ' + delay + 'ms');
+                    setTimeout(function() {
+                        checkAndShowWidget(widget, agentId, attempt + 1);
+                    }, delay);
+                    return;
                 }
+                return response.json().then(function(data) {
+                    if (data.commander_available) {
+                        showWidget(widget);
+                    }
+                });
             })
             .catch(function(err) {
-                console.warn('Respond availability check failed:', err);
+                if (attempt < AVAIL_MAX_RETRIES) {
+                    var delay = AVAIL_RETRY_BASE_DELAY * Math.pow(2, attempt);
+                    console.warn('Respond availability check failed, retry in ' + delay + 'ms:', err);
+                    setTimeout(function() {
+                        checkAndShowWidget(widget, agentId, attempt + 1);
+                    }, delay);
+                } else {
+                    console.warn('Respond availability check failed after ' + AVAIL_MAX_RETRIES + ' retries:', err);
+                }
             });
     }
 

@@ -65,52 +65,139 @@
         });
     }
 
+    var MAX_RETRIES = 3;
+    var RETRY_BASE_DELAY = 1000; // 1s, doubles each attempt
+
     /**
      * Respond API client
      */
     var RespondAPI = {
+        /**
+         * Send a POST request with exponential backoff retry.
+         * Retries on network errors and 502/503 (server restarting).
+         *
+         * @param {number} agentId - The agent ID
+         * @param {Object} body - JSON body to send
+         * @returns {Promise<boolean>} True if response sent successfully
+         */
+        _sendWithRetry: async function(agentId, body) {
+            var url = RESPOND_ENDPOINT + '/' + agentId;
+
+            for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    var response = await CHUtils.apiFetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+
+                    // Server restarting — retry if we have attempts left
+                    if ((response.status === 502 || response.status === 503) && attempt < MAX_RETRIES) {
+                        this._showRetryState(agentId, attempt + 1);
+                        await this._delay(RETRY_BASE_DELAY * Math.pow(2, attempt));
+                        continue;
+                    }
+
+                    // Clear any retry banner on eventual response
+                    if (attempt > 0) this._clearRetryState(agentId);
+
+                    var data = await response.json();
+                    if (response.ok && data.status === 'ok') {
+                        this._showSuccessFeedback(agentId);
+                        return true;
+                    } else {
+                        this._handleError(data, agentId);
+                        return false;
+                    }
+                } catch (error) {
+                    if (attempt < MAX_RETRIES) {
+                        this._showRetryState(agentId, attempt + 1);
+                        await this._delay(RETRY_BASE_DELAY * Math.pow(2, attempt));
+                        continue;
+                    }
+                    // All retries exhausted
+                    console.error('RespondAPI: All retry attempts failed', error);
+                    this._showFinalFailure(agentId);
+                    return false;
+                }
+            }
+            return false;
+        },
+
+        /** Promise-based delay helper */
+        _delay: function(ms) {
+            return new Promise(function(resolve) { setTimeout(resolve, ms); });
+        },
+
+        /**
+         * Show a retry-in-progress banner on the respond widget.
+         */
+        _showRetryState: function(agentId, attemptNum) {
+            var widget = this._getWidget(agentId);
+            if (!widget) return;
+
+            var banner = widget.querySelector('.respond-retry-banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.className = 'respond-retry-banner px-3 py-1.5 mb-2 text-xs rounded border border-amber/30 bg-amber/10 text-amber';
+                widget.insertBefore(banner, widget.firstChild);
+            }
+            banner.textContent = 'Connection lost, retrying\u2026 (' + attemptNum + '/' + MAX_RETRIES + ')';
+            banner.style.display = '';
+        },
+
+        /**
+         * Remove retry banner from the widget.
+         */
+        _clearRetryState: function(agentId) {
+            var widget = this._getWidget(agentId);
+            if (!widget) return;
+            var banner = widget.querySelector('.respond-retry-banner');
+            if (banner) banner.remove();
+        },
+
+        /**
+         * Show a permanent failure banner after all retries exhausted.
+         */
+        _showFinalFailure: function(agentId) {
+            var widget = this._getWidget(agentId);
+            if (!widget) return;
+
+            var banner = widget.querySelector('.respond-retry-banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.className = 'respond-retry-banner';
+                widget.insertBefore(banner, widget.firstChild);
+            }
+            banner.className = 'respond-retry-banner px-3 py-1.5 mb-2 text-xs rounded border border-red/30 bg-red/10 text-red';
+            banner.textContent = 'Could not send response. Try again or respond directly in terminal.';
+
+            if (global.Toast) {
+                global.Toast.error('Send failed', 'Server unreachable after ' + MAX_RETRIES + ' retries');
+            }
+        },
+
+        /** Locate the respond widget element for an agent. */
+        _getWidget: function(agentId) {
+            return document.querySelector('.respond-widget[data-agent-id="' + agentId + '"]');
+        },
+
         /**
          * Send a text response to an agent's Claude Code session
          * @param {number} agentId - The agent ID
          * @param {string} text - The text to send
          * @returns {Promise<boolean>} True if response sent successfully
          */
-        sendResponse: async function(agentId, text) {
+        sendResponse: function(agentId, text) {
             if (!agentId) {
                 console.error('RespondAPI: No agent ID provided');
-                return false;
+                return Promise.resolve(false);
             }
             if (!text || !text.trim()) {
                 console.error('RespondAPI: No text provided');
-                return false;
+                return Promise.resolve(false);
             }
-
-            try {
-                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text.trim() })
-                });
-
-                var data = await response.json();
-
-                if (response.ok && data.status === 'ok') {
-                    this._showSuccessFeedback(agentId);
-                    return true;
-                } else {
-                    this._handleError(data, agentId);
-                    return false;
-                }
-            } catch (error) {
-                console.error('RespondAPI: Request failed', error);
-                if (global.Toast) {
-                    global.Toast.error(
-                        'Could not send response',
-                        'Network error - check if the server is running'
-                    );
-                }
-                return false;
-            }
+            return this._sendWithRetry(agentId, { text: text.trim() });
         },
 
         /**
@@ -119,30 +206,9 @@
          * @param {number} optionIndex - Zero-based option index
          * @returns {Promise<boolean>} True if sent successfully
          */
-        sendSelect: async function(agentId, optionIndex) {
-            if (!agentId) return false;
-
-            try {
-                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: 'select', option_index: optionIndex })
-                });
-                var data = await response.json();
-                if (response.ok && data.status === 'ok') {
-                    this._showSuccessFeedback(agentId);
-                    return true;
-                } else {
-                    this._handleError(data, agentId);
-                    return false;
-                }
-            } catch (error) {
-                console.error('RespondAPI: Select request failed', error);
-                if (global.Toast) {
-                    global.Toast.error('Could not send selection', 'Network error');
-                }
-                return false;
-            }
+        sendSelect: function(agentId, optionIndex) {
+            if (!agentId) return Promise.resolve(false);
+            return this._sendWithRetry(agentId, { mode: 'select', option_index: optionIndex });
         },
 
         /**
@@ -151,30 +217,9 @@
          * @param {Array} answers - Array of {option_index: int} or {option_indices: [int]}
          * @returns {Promise<boolean>} True if sent successfully
          */
-        sendMultiSelect: async function(agentId, answers) {
-            if (!agentId || !answers || !answers.length) return false;
-
-            try {
-                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: 'multi_select', answers: answers })
-                });
-                var data = await response.json();
-                if (response.ok && data.status === 'ok') {
-                    this._showSuccessFeedback(agentId);
-                    return true;
-                } else {
-                    this._handleError(data, agentId);
-                    return false;
-                }
-            } catch (error) {
-                console.error('RespondAPI: Multi-select request failed', error);
-                if (global.Toast) {
-                    global.Toast.error('Could not send selections', 'Network error');
-                }
-                return false;
-            }
+        sendMultiSelect: function(agentId, answers) {
+            if (!agentId || !answers || !answers.length) return Promise.resolve(false);
+            return this._sendWithRetry(agentId, { mode: 'multi_select', answers: answers });
         },
 
         /**
@@ -183,30 +228,9 @@
          * @param {string} text - Custom text to type
          * @returns {Promise<boolean>} True if sent successfully
          */
-        sendOther: async function(agentId, text) {
-            if (!agentId || !text || !text.trim()) return false;
-
-            try {
-                var response = await CHUtils.apiFetch(RESPOND_ENDPOINT + '/' + agentId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: 'other', text: text.trim() })
-                });
-                var data = await response.json();
-                if (response.ok && data.status === 'ok') {
-                    this._showSuccessFeedback(agentId);
-                    return true;
-                } else {
-                    this._handleError(data, agentId);
-                    return false;
-                }
-            } catch (error) {
-                console.error('RespondAPI: Other request failed', error);
-                if (global.Toast) {
-                    global.Toast.error('Could not send response', 'Network error');
-                }
-                return false;
-            }
+        sendOther: function(agentId, text) {
+            if (!agentId || !text || !text.trim()) return Promise.resolve(false);
+            return this._sendWithRetry(agentId, { mode: 'other', text: text.trim() });
         },
 
         /**
