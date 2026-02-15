@@ -8,7 +8,12 @@
       <span class="line-num">01</span>
       <div class="line-content flex items-baseline justify-between">
         <div class="flex flex-wrap items-baseline gap-2">
-          <h3 id="agent-{{ agent.id }}-heading" class="flex items-baseline gap-0.5">
+          <h3 id="agent-{{ agent.id }}-heading"
+              class="flex items-baseline gap-0.5 agent-hero-link"
+              role="button" tabindex="0"
+              title="{% if agent.tmux_session %}Attach to tmux session{% else %}Focus iTerm window{% endif %}"
+              onclick="{% if agent.tmux_session %}window.FocusAPI && window.FocusAPI.attachAgent({{ agent.id }}){% else %}window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }}){% endif %}"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
             <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
           </h3>
           <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>

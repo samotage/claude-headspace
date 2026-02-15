@@ -785,11 +785,6 @@ select.form-well {
   margin-bottom: 0.5rem;
 }
 
-.my-4 {
-  margin-top: 1rem;
-  margin-bottom: 1rem;
-}
-
 .-mr-2 {
   margin-right: -0.5rem;
 }
@@ -1119,18 +1114,6 @@ select.form-well {
 
 .resize {
   resize: both;
-}
-
-.list-inside {
-  list-style-position: inside;
-}
-
-.list-decimal {
-  list-style-type: decimal;
-}
-
-.list-disc {
-  list-style-type: disc;
 }
 
 .grid-cols-1 {
@@ -1750,11 +1733,6 @@ select.form-well {
   font-size: 9px;
 }
 
-.text-base {
-  font-size: 1rem;
-  line-height: 1.5rem;
-}
-
 .text-lg {
   font-size: 1.125rem;
   line-height: 1.75rem;
@@ -1857,6 +1835,11 @@ select.form-well {
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
 }
 
+.text-zinc-500 {
+  --tw-text-opacity: 1;
+  color: rgb(113 113 122 / var(--tw-text-opacity, 1));
+}
+
 .no-underline {
   text-decoration-line: none;
 }
@@ -1879,6 +1862,12 @@ select.form-well {
 
 .opacity-75 {
   opacity: 0.75;
+}
+
+.shadow {
+  --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
 .shadow-lg {
@@ -1965,6 +1954,10 @@ select.form-well {
 
 .duration-300 {
   transition-duration: 300ms;
+}
+
+.\[a-zA-Z\:_\] {
+  a-z-a--z: ;
 }
 
 /* CSS Custom Properties for theme colors */
@@ -2069,6 +2062,16 @@ body::after {
   font-weight: 400;
   color: var(--text-muted);
   line-height: 1;
+}
+
+.agent-hero-link {
+  cursor: pointer;
+}
+
+.agent-hero-link:hover .agent-hero {
+  text-decoration: underline;
+  text-decoration-color: var(--cyan);
+  text-underline-offset: 3px;
 }
 
 /* Neon text glow utility */

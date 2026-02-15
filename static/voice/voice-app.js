@@ -1055,6 +1055,11 @@ window.VoiceApp = (function () {
       _chatAgentStateLabel = null; // Reset; will be set by SSE with richer label if available
       _chatHasMore = data.has_more || false;
       _chatAgentEnded = data.agent_ended || false;
+      var focusLink = document.getElementById('chat-focus-link');
+      if (focusLink) {
+        focusLink.setAttribute('data-tmux-session', data.tmux_session || '');
+        focusLink.title = data.tmux_session ? 'Attach to tmux session' : 'Focus iTerm window';
+      }
       _renderTranscriptTurns(data);
       // Restore scroll position if returning to a previously-viewed agent
       var saved = _agentScrollState[agentId];
@@ -3198,14 +3203,21 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Chat header focus link — click to focus iTerm window
+    // Chat header focus link — click to attach (tmux) or focus (iTerm)
     var chatFocusLink = document.getElementById('chat-focus-link');
     if (chatFocusLink) {
       chatFocusLink.addEventListener('click', function () {
         if (_targetAgentId) {
-          VoiceAPI.focusAgent(_targetAgentId).catch(function (err) {
-            console.warn('Focus failed:', err);
-          });
+          var tmuxSession = this.getAttribute('data-tmux-session');
+          if (tmuxSession) {
+            VoiceAPI.attachAgent(_targetAgentId).catch(function (err) {
+              console.warn('Attach failed:', err);
+            });
+          } else {
+            VoiceAPI.focusAgent(_targetAgentId).catch(function (err) {
+              console.warn('Focus failed:', err);
+            });
+          }
         }
       });
     }

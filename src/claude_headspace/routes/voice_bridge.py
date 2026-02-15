@@ -132,6 +132,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "summary": task_summary or task_instruction,
         "last_activity_ago": ago,
         "context": context,
+        "tmux_session": agent.tmux_session,
     }
 
     if include_ended_fields and agent.ended_at:
@@ -1002,6 +1003,7 @@ def agent_transcript(agent_id: int):
         "agent_name": agent.name,
         "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
         "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
+        "tmux_session": agent.tmux_session,
     }), 200
 
 

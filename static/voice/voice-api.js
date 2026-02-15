@@ -316,6 +316,10 @@ window.VoiceAPI = (function () {
     return _fetch('/api/focus/' + agentId, { method: 'POST' });
   }
 
+  function attachAgent(agentId) {
+    return _fetch('/api/agents/' + agentId + '/attach', { method: 'POST' });
+  }
+
   return {
     init: init,
     getToken: getToken,
@@ -340,6 +344,7 @@ window.VoiceAPI = (function () {
     getProjects: getProjects,
     connectSSE: connectSSE,
     disconnectSSE: disconnectSSE,
-    focusAgent: focusAgent
+    focusAgent: focusAgent,
+    attachAgent: attachAgent
   };
 })();

@@ -149,6 +149,15 @@ body::after {
     line-height: 1;
 }
 
+.agent-hero-link {
+    cursor: pointer;
+}
+.agent-hero-link:hover .agent-hero {
+    text-decoration: underline;
+    text-decoration-color: var(--cyan);
+    text-underline-offset: 3px;
+}
+
 /* Neon text glow utility */
 .text-glow-cyan {
     text-shadow: 0 0 8px rgba(86,212,221,0.4), 0 0 20px rgba(86,212,221,0.15);

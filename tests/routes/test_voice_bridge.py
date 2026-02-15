@@ -99,6 +99,7 @@ def mock_agent(mock_project):
     agent.name = "agent-1"
     agent.project = mock_project
     agent.tmux_pane_id = "%5"
+    agent.tmux_session = None
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
@@ -139,6 +140,7 @@ def mock_agent_processing(mock_project):
     agent.name = "agent-2"
     agent.project = mock_project
     agent.tmux_pane_id = "%6"
+    agent.tmux_session = None
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
@@ -158,6 +160,7 @@ def mock_agent_no_pane(mock_project):
     agent.name = "agent-3"
     agent.project = mock_project
     agent.tmux_pane_id = None
+    agent.tmux_session = None
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
@@ -177,6 +180,7 @@ def mock_agent_complete(mock_project):
     agent.name = "agent-4"
     agent.project = mock_project
     agent.tmux_pane_id = "%7"
+    agent.tmux_session = None
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
@@ -1066,6 +1070,7 @@ class TestAgentTranscript:
         agent.id = 5
         agent.name = "ended-agent"
         agent.project = mock_project
+        agent.tmux_session = None
         agent.ended_at = datetime(2026, 2, 10, tzinfo=timezone.utc)
         agent.get_current_task.return_value = None
 
