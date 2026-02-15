@@ -271,11 +271,20 @@ def respond_to_agent(agent_id: int):
 
     elif mode == "multi_select":
         keys = _build_multi_select_keys(answers)
+        logger.info(
+            f"[MULTI-Q DEBUG] multi_select respond: agent_id={agent_id}, "
+            f"answers={answers}, keys={keys}, pane={agent.tmux_pane_id}, "
+            f"sequential_delay_ms={sequential_delay_ms}"
+        )
         result = tmux_bridge.send_keys(
             agent.tmux_pane_id,
             *keys,
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
+        )
+        logger.info(
+            f"[MULTI-Q DEBUG] multi_select send_keys result: "
+            f"success={result.success}, error={result.error_message}, latency={result.latency_ms}ms"
         )
         # Build descriptive summary for the turn record
         parts = []

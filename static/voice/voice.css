@@ -815,6 +815,14 @@ body.layout-split .agent-card.selected {
   color: var(--text-muted);
 }
 
+.agent-ctx-inline {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+}
+.agent-ctx-inline.ctx-normal { color: var(--text-muted); }
+.agent-ctx-inline.ctx-warning { color: var(--warning); }
+.agent-ctx-inline.ctx-high { color: var(--error); }
+
 .empty-state {
   text-align: center;
   color: var(--text-dim);

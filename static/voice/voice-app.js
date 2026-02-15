@@ -552,6 +552,17 @@ window.VoiceApp = (function () {
         ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
         : '';
 
+      // Context usage display
+      var ctxHtml = '';
+      if (a.context && a.context.percent_used != null) {
+        var pct = a.context.percent_used;
+        var ctxClass = 'ctx-normal';
+        if (pct >= 75) ctxClass = 'ctx-high';
+        else if (pct >= 65) ctxClass = 'ctx-warning';
+        ctxHtml = '<span class="agent-ctx-inline ' + ctxClass + '">'
+          + pct + '% · ' + (a.context.remaining_tokens || '?') + ' rem</span>';
+      }
+
       var footerParts = [];
       if (a.turn_count && a.turn_count > 0) {
         footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
@@ -605,7 +616,7 @@ window.VoiceApp = (function () {
         + instructionHtml
         + summaryHtml
         + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
-        + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
+        + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + (ctxHtml ? ' ' + ctxHtml : '') + '</div>'
         + '</div>'
         + '</div>';
     }
@@ -1496,25 +1507,50 @@ window.VoiceApp = (function () {
       var opts = turn.question_options;
       var toolInput = turn.tool_input || {};
       var allQuestions = null;
+      console.log('[MULTI-Q DEBUG] Rendering question turn:', {
+        turnId: turn.id,
+        hasQuestionOptions: !!opts,
+        questionOptionsType: opts ? (Array.isArray(opts) ? 'array[' + opts.length + ']' : typeof opts) : 'null',
+        hasToolInput: !!toolInput,
+        hasToolInputQuestions: !!(toolInput && toolInput.questions),
+        toolInputQuestionsLength: toolInput && toolInput.questions ? toolInput.questions.length : 0,
+        questionOptionsRaw: JSON.stringify(opts),
+        toolInputQuestionsRaw: JSON.stringify(toolInput.questions),
+      });
       if (!opts && toolInput.questions) {
         var questions = toolInput.questions;
+        console.log('[MULTI-Q DEBUG] Checking toolInput.questions:', {
+          length: questions.length,
+          firstHasOptions: questions.length > 0 ? !!questions[0].options : false,
+          firstKeys: questions.length > 0 ? Object.keys(questions[0]) : [],
+        });
         if (questions && questions.length > 1) {
           // Multi-question: check if first element has 'options' (full question objects)
           if (questions[0].options) {
             allQuestions = questions;
+            console.log('[MULTI-Q DEBUG] => Multi-question detected via toolInput.questions (length=' + questions.length + ')');
           }
         } else if (questions && questions.length > 0 && questions[0].options) {
           opts = questions[0].options;
+          console.log('[MULTI-Q DEBUG] => Single question extracted from toolInput.questions[0].options');
         }
       }
       // Also check if q_options itself is multi-question format
       if (!allQuestions && opts && opts.length > 0 && opts[0].options) {
+        console.log('[MULTI-Q DEBUG] => q_options itself is multi-question format, promoting');
         allQuestions = opts;
         opts = null;
       }
       // Extract safety for color-coding option buttons
       var bubbleSafety = toolInput.safety || '';
       var safetyClass = bubbleSafety ? ' safety-' + _esc(bubbleSafety) : '';
+
+      console.log('[MULTI-Q DEBUG] Final rendering decision:', {
+        allQuestions: allQuestions ? allQuestions.length : null,
+        opts: opts ? opts.length : null,
+        willRenderMulti: !!(allQuestions && allQuestions.length > 1),
+        willRenderSingle: !!(opts && opts.length > 0),
+      });
 
       if (allQuestions && allQuestions.length > 1) {
         // Multi-question bubble
@@ -1683,6 +1719,8 @@ window.VoiceApp = (function () {
           answers.push({ option_index: selections[i] });
         }
       }
+      console.log('[MULTI-Q DEBUG] Submit clicked, answers:', JSON.stringify(answers));
+      console.log('[MULTI-Q DEBUG] Sending multi_select to /api/respond/' + _targetAgentId);
       submitBtn.disabled = true;
       submitBtn.textContent = 'Sending...';
 
@@ -1691,8 +1729,10 @@ window.VoiceApp = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'multi_select', answers: answers })
       }).then(function(resp) {
+        console.log('[MULTI-Q DEBUG] Submit response status:', resp.status);
         return resp.json();
       }).then(function(data) {
+        console.log('[MULTI-Q DEBUG] Submit response data:', JSON.stringify(data));
         if (data.status === 'ok') {
           container.classList.add('answered');
           container.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
@@ -2299,6 +2339,17 @@ window.VoiceApp = (function () {
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
     if (!data.text || !data.text.trim()) return;
 
+    console.log('[MULTI-Q DEBUG] _handleTurnCreated SSE:', {
+      turnId: data.turn_id,
+      actor: data.actor,
+      intent: data.intent,
+      hasToolInput: !!data.tool_input,
+      toolInputKeys: data.tool_input ? Object.keys(data.tool_input) : [],
+      hasQuestions: !!(data.tool_input && data.tool_input.questions),
+      questionsLength: data.tool_input && data.tool_input.questions ? data.tool_input.questions.length : 0,
+      textPreview: (data.text || '').substring(0, 100),
+    });
+
     // Only handle agent turns directly — user turns are handled by
     // _handleChatSSE via transcript fetch (which includes echo dedup).
     // Processing user turns here would consume _chatPendingUserTexts
@@ -2593,6 +2644,22 @@ window.VoiceApp = (function () {
         return (now - p.sentAt) < PENDING_SEND_TTL_MS;
       });
       var messagesContainer = document.getElementById('chat-messages');
+      // Debug: log any question turns in the transcript
+      for (var _di = 0; _di < turns.length; _di++) {
+        if (turns[_di].intent === 'question') {
+          console.log('[MULTI-Q DEBUG] Transcript question turn:', {
+            id: turns[_di].id,
+            intent: turns[_di].intent,
+            hasQuestionOptions: !!turns[_di].question_options,
+            questionOptionsLength: turns[_di].question_options ? turns[_di].question_options.length : 0,
+            hasToolInput: !!turns[_di].tool_input,
+            toolInputKeys: turns[_di].tool_input ? Object.keys(turns[_di].tool_input) : [],
+            toolInputQuestionsLength: turns[_di].tool_input && turns[_di].tool_input.questions ? turns[_di].tool_input.questions.length : 0,
+            questionOptionsRaw: JSON.stringify(turns[_di].question_options),
+            toolInputQuestionsRaw: JSON.stringify(turns[_di].tool_input && turns[_di].tool_input.questions),
+          });
+        }
+      }
       var newTurns = turns.filter(function (t) {
         if (_chatRenderedTurnIds.has(t.id)) {
           // Resilience: verify the DOM element still exists.

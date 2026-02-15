@@ -1182,6 +1182,14 @@ def _handle_awaiting_input(
 
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
+        if structured_options:
+            _q_list = structured_options.get("questions", [])
+            logger.info(
+                f"[MULTI-Q DEBUG] Broadcasting turn_created: agent_id={agent.id}, "
+                f"tool_name={tool_name}, questions_count={len(_q_list)}, "
+                f"has_options={bool(_q_list and _q_list[0].get('options'))}, "
+                f"q_source_type={q_source_type}, q_options_count={len(q_options) if q_options else 0}"
+            )
         if question_text:
             _broadcast_turn_created(agent, question_text, current_task,
                                     tool_input=structured_options,

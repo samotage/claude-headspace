@@ -158,7 +158,7 @@ class ContextPoller:
                 old_tier = self._last_tiers.get(agent.id)
                 self._last_tiers[agent.id] = new_tier
 
-                if old_tier is not None and old_tier != new_tier:
+                if old_tier is None or old_tier != new_tier:
                     broadcast_agents.append(agent)
 
             if checked > 0:

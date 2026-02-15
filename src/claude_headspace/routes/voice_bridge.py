@@ -108,6 +108,14 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     else:
         ago = "unknown"
 
+    # Context usage (persisted by ContextPoller)
+    context = None
+    if agent.context_percent_used is not None:
+        context = {
+            "percent_used": agent.context_percent_used,
+            "remaining_tokens": agent.context_remaining_tokens or "",
+        }
+
     result = {
         "agent_id": agent.id,
         "name": agent.name,
@@ -123,6 +131,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "turn_count": turn_count,
         "summary": task_summary or task_instruction,
         "last_activity_ago": ago,
+        "context": context,
     }
 
     if include_ended_fields and agent.ended_at:
