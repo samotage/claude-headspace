@@ -13,7 +13,7 @@ from ..models.task import Task, TaskState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .event_writer import EventWriter, WriteResult
 from .intent_detector import IntentResult, detect_intent
-from .state_machine import TransitionResult, validate_transition
+from .state_machine import InvalidTransitionError, TransitionResult, validate_transition
 
 logger = logging.getLogger(__name__)
 
@@ -177,15 +177,26 @@ class TaskLifecycleManager:
         """
         from_state = task.state
 
-        # Validate through state machine (log-only for now — allow the
-        # transition regardless so callers like session_end forced-completion
-        # still work, but flag unexpected paths)
+        # Validate through state machine — reject invalid transitions.
         from .state_machine import validate_transition as _validate
-        # Build a synthetic actor/intent for validation
+        # Build a synthetic actor/intent for validation.
+        # Triggers from hook_receiver use "hook:*" patterns; triggers from
+        # process_turn use "ACTOR:INTENT" patterns from the state machine.
         _actor_map = {
             "hook:user_prompt_submit": (TurnActor.USER, TurnIntent.COMMAND),
             "hook:stop:question_detected": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "hook:stop:deferred_question": (TurnActor.AGENT, TurnIntent.QUESTION),
             "hook:pre_tool_use:stale_awaiting_recovery": (TurnActor.AGENT, TurnIntent.PROGRESS),
+            "hook:post_tool_use:inferred": (TurnActor.AGENT, TurnIntent.PROGRESS),
+            "notification": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "pre_tool_use": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "permission_request": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "user:answer": (TurnActor.USER, TurnIntent.ANSWER),
+            "user:command": (TurnActor.USER, TurnIntent.COMMAND),
+            "agent:question": (TurnActor.AGENT, TurnIntent.QUESTION),
+            "agent:progress": (TurnActor.AGENT, TurnIntent.PROGRESS),
+            "agent:completion": (TurnActor.AGENT, TurnIntent.COMPLETION),
+            "agent:end_of_task": (TurnActor.AGENT, TurnIntent.END_OF_TASK),
         }
         _actor, _intent = _actor_map.get(trigger, (TurnActor.AGENT, TurnIntent.PROGRESS))
         if to_state == TaskState.AWAITING_INPUT:
@@ -194,11 +205,7 @@ class TaskLifecycleManager:
             _intent = TurnIntent.COMPLETION
         _vr = _validate(from_state, _actor, _intent)
         if not _vr.valid:
-            logger.warning(
-                f"State transition not in VALID_TRANSITIONS (allowing anyway): "
-                f"{from_state.value} -> {to_state.value} trigger={trigger} "
-                f"agent_id={task.agent_id} task_id={task.id} reason={_vr.reason}"
-            )
+            raise InvalidTransitionError(_vr)
 
         task.state = to_state
 
@@ -253,10 +260,15 @@ class TaskLifecycleManager:
         agent_text: str = "",
         intent: TurnIntent = TurnIntent.COMPLETION,
     ) -> bool:
-        """
-        Mark a task as complete.
+        """Mark a task as complete.
 
         Sets the state to COMPLETE and records the completed_at timestamp.
+
+        NOTE: Validation is advisory (log-only) here, unlike update_task_state()
+        which enforces transitions strictly. This is intentional — session_end
+        and reaper cleanup MUST be able to force-complete tasks regardless of
+        current state, since they represent external lifecycle events that
+        override the state machine.
 
         Args:
             task: The task to complete
@@ -269,8 +281,8 @@ class TaskLifecycleManager:
         """
         from_state = task.state
 
-        # Validate through state machine (log-only — forced completions like
-        # session_end must still proceed even if the transition is unusual)
+        # Validate through state machine (advisory only — forced completions
+        # like session_end must still proceed even if the transition is unusual)
         _vr = validate_transition(from_state, TurnActor.AGENT, intent)
         if not _vr.valid:
             logger.warning(
@@ -365,7 +377,90 @@ class TaskLifecycleManager:
         # This handles IDLE (no active task), AWAITING_INPUT (agent asked a question),
         # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
-            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING):
+            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING, TaskState.COMMANDED):
+                # User sends follow-up before agent starts — append to existing task
+                if current_state == TaskState.COMMANDED and current_task:
+                    if text:
+                        existing = current_task.full_command or ""
+                        current_task.full_command = (existing + "\n" + text).strip() if existing else text
+
+                    turn = Turn(
+                        task_id=current_task.id,
+                        actor=actor,
+                        intent=TurnIntent.COMMAND,
+                        text=text or "",
+                        file_metadata=file_metadata,
+                    )
+                    self._session.add(turn)
+                    self._session.flush()
+
+                    self._pending_summarisations.append(
+                        SummarisationRequest(type="turn", turn=turn)
+                    )
+                    if text:
+                        self._pending_summarisations.append(
+                            SummarisationRequest(type="instruction", task=current_task, command_text=current_task.full_command)
+                        )
+
+                    logger.info(
+                        f"Attached follow-up USER COMMAND to commanded task id={current_task.id} "
+                        f"(agent id={agent.id})"
+                    )
+                    return TurnProcessingResult(
+                        success=True,
+                        task=current_task,
+                        intent=intent_result,
+                        event_written=self._event_writer is not None,
+                        new_task_created=False,
+                        pending_summarisations=list(self._pending_summarisations),
+                    )
+
+                # Race condition fix: if the task is PROCESSING but has no USER
+                # turns, it was created by post_tool_use:inferred before this
+                # user_prompt_submit arrived. Attach the user turn to the
+                # existing task rather than completing it and losing any PROGRESS
+                # data already recorded on it.
+                if (
+                    current_task
+                    and current_state == TaskState.PROCESSING
+                    and Turn.query.filter_by(task_id=current_task.id)
+                    .filter(Turn.actor == TurnActor.USER)
+                    .count() == 0
+                ):
+                    if text:
+                        current_task.full_command = text
+
+                    turn = Turn(
+                        task_id=current_task.id,
+                        actor=actor,
+                        intent=intent_result.intent,
+                        text=text or "",
+                        file_metadata=file_metadata,
+                    )
+                    self._session.add(turn)
+                    self._session.flush()
+
+                    self._pending_summarisations.append(
+                        SummarisationRequest(type="turn", turn=turn)
+                    )
+                    if text:
+                        self._pending_summarisations.append(
+                            SummarisationRequest(type="instruction", task=current_task, command_text=text)
+                        )
+
+                    logger.info(
+                        f"Attached USER COMMAND to inferred task id={current_task.id} "
+                        f"(agent id={agent.id})"
+                    )
+                    return TurnProcessingResult(
+                        success=True,
+                        task=current_task,
+                        intent=intent_result,
+                        event_written=self._event_writer is not None,
+                        new_task_created=False,
+                        pending_summarisations=list(self._pending_summarisations),
+                    )
+
                 # Complete any existing task before creating a new one
                 if current_task and current_task.state != TaskState.COMPLETE:
                     self.complete_task(current_task, trigger="user:new_command")

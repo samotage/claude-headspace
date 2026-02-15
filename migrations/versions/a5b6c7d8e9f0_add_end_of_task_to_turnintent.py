@@ -16,7 +16,10 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("ALTER TYPE turnintent ADD VALUE IF NOT EXISTS 'end_of_task'")
+    # SQLAlchemy stores Python enum NAMES (uppercase), not values.
+    # The other turnintent members (COMMAND, ANSWER, etc.) are already
+    # uppercase in the DB because their names match.
+    op.execute("ALTER TYPE turnintent ADD VALUE IF NOT EXISTS 'END_OF_TASK'")
 
 
 def downgrade():

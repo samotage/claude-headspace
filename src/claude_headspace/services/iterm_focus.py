@@ -495,3 +495,191 @@ def check_pane_exists(pane_id: str) -> PaneStatus:
     except Exception as e:
         logger.warning(f"Pane check error for {pane_id}: {e}")
         return PaneStatus.ERROR
+
+
+# --- Tmux session attach ---
+
+
+class AttachResult(NamedTuple):
+    """Result of a tmux attach operation."""
+
+    success: bool
+    method: str | None = None  # "new_tab" or "reused_tab"
+    error_type: FocusErrorType | None = None
+    error_message: str | None = None
+    latency_ms: int = 0
+
+
+def check_tmux_session_exists(session_name: str) -> bool:
+    """Check if a tmux session exists.
+
+    Args:
+        session_name: The tmux session name (e.g. hs-claude-headspace-14100608)
+
+    Returns:
+        True if the session exists, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", session_name],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return False
+
+
+def _get_tmux_client_ttys(session_name: str) -> list[str]:
+    """Get TTY paths of clients attached to a tmux session.
+
+    Args:
+        session_name: The tmux session name
+
+    Returns:
+        List of TTY paths (e.g. ["/dev/ttys003"])
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "list-clients", "-t", session_name, "-F", "#{client_tty}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    return []
+
+
+def _build_attach_applescript(session_name: str) -> str:
+    """Build AppleScript to open a new iTerm2 tab and run tmux attach.
+
+    Args:
+        session_name: The tmux session name
+
+    Returns:
+        AppleScript code as string
+    """
+    safe_name = _sanitize_pane_id(session_name)
+    return f'''
+tell application "iTerm"
+    activate
+    tell current window
+        set newTab to (create tab with default profile)
+        tell current session of newTab
+            write text "tmux attach -t {safe_name}"
+        end tell
+    end tell
+end tell
+'''
+
+
+def attach_tmux_session(session_name: str) -> AttachResult:
+    """Attach to a tmux session via iTerm2.
+
+    First checks if an iTerm2 tab is already attached to the session
+    (by matching client TTYs against iTerm session TTYs). If found,
+    focuses that tab. Otherwise opens a new iTerm2 tab and runs
+    tmux attach -t <session_name>.
+
+    Args:
+        session_name: The tmux session name (e.g. hs-claude-headspace-14100608)
+
+    Returns:
+        AttachResult with success status and method used
+    """
+    if not session_name:
+        return AttachResult(
+            success=False,
+            error_type=FocusErrorType.PANE_NOT_FOUND,
+            error_message="No tmux session name provided.",
+        )
+
+    start_time = time.time()
+
+    # Check if any iTerm2 tab already has this session attached
+    client_ttys = _get_tmux_client_ttys(session_name)
+    if client_ttys:
+        # Try to focus the existing attached tab by TTY
+        for tty in client_ttys:
+            result = focus_iterm_by_tty(tty)
+            if result.success:
+                latency_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    f"Reused existing tab for tmux session {session_name} "
+                    f"via TTY {tty} ({latency_ms}ms)"
+                )
+                return AttachResult(
+                    success=True,
+                    method="reused_tab",
+                    latency_ms=latency_ms,
+                )
+
+    # No existing tab found — open a new one
+    script = _build_attach_applescript(session_name)
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=APPLESCRIPT_TIMEOUT,
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        if result.returncode == 0:
+            logger.info(
+                f"Opened new iTerm2 tab for tmux session {session_name} ({latency_ms}ms)"
+            )
+            return AttachResult(
+                success=True,
+                method="new_tab",
+                latency_ms=latency_ms,
+            )
+        else:
+            error_type, error_message = _parse_applescript_error(
+                result.stderr, result.returncode
+            )
+            logger.warning(
+                f"Failed to attach to tmux session {session_name}: "
+                f"{error_type.value} - {error_message}"
+            )
+            return AttachResult(
+                success=False,
+                error_type=error_type,
+                error_message=error_message,
+                latency_ms=latency_ms,
+            )
+
+    except subprocess.TimeoutExpired:
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"Timeout attaching to tmux session {session_name}")
+        return AttachResult(
+            success=False,
+            error_type=FocusErrorType.TIMEOUT,
+            error_message=f"Attach operation timed out after {APPLESCRIPT_TIMEOUT} seconds.",
+            latency_ms=latency_ms,
+        )
+
+    except FileNotFoundError:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return AttachResult(
+            success=False,
+            error_type=FocusErrorType.UNKNOWN,
+            error_message="osascript command not found. This feature requires macOS.",
+            latency_ms=latency_ms,
+        )
+
+    except Exception as e:
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.exception(f"Unexpected error attaching to tmux session {session_name}")
+        return AttachResult(
+            success=False,
+            error_type=FocusErrorType.UNKNOWN,
+            error_message=f"Unexpected error: {str(e)}",
+            latency_ms=latency_ms,
+        )

@@ -13,7 +13,7 @@
 #   session_id, cwd, transcript_path, hook_event_name, etc.
 #
 # Configuration:
-#   HEADSPACE_URL - Base URL (default: http://localhost:5055)
+#   CLAUDE_HEADSPACE_URL or HEADSPACE_URL - Base URL (default: https://localhost:5055)
 #
 
 # NOTE: Do NOT use set -e — silent exits mask hook failures
@@ -22,7 +22,7 @@
 DEBUG_LOG="/tmp/headspace-hook-debug.log"
 
 # Configuration
-HEADSPACE_URL="${HEADSPACE_URL:-http://localhost:5055}"
+HEADSPACE_URL="${CLAUDE_HEADSPACE_URL:-${HEADSPACE_URL:-https://localhost:5055}}"
 CONNECT_TIMEOUT=1
 MAX_TIME=2
 
@@ -82,6 +82,9 @@ HEADSPACE_SESSION_ID="${CLAUDE_HEADSPACE_SESSION_ID:-}"
 # Extract tmux pane ID from environment (set by tmux for processes in a pane)
 TMUX_PANE_ID="${TMUX_PANE:-}"
 
+# Extract tmux session name from environment (set by CLI launcher)
+TMUX_SESSION_NAME="${CLAUDE_HEADSPACE_TMUX_SESSION:-}"
+
 echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY}" >> "$DEBUG_LOG"
 
 if [ -z "$SESSION_ID" ]; then
@@ -105,6 +108,7 @@ PAYLOAD=$(jq -n \
     --arg tname "$TOOL_NAME" \
     --argjson tinput "${TOOL_INPUT:-null}" \
     --arg tmux_pane "$TMUX_PANE_ID" \
+    --arg tmux_session "$TMUX_SESSION_NAME" \
     '{session_id: $sid}
      + (if $wd != "" then {working_directory: $wd} else {} end)
      + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
@@ -115,10 +119,11 @@ PAYLOAD=$(jq -n \
      + (if $ntype != "" then {notification_type: $ntype} else {} end)
      + (if $tname != "" then {tool_name: $tname} else {} end)
      + (if $tinput != null then {tool_input: $tinput} else {} end)
-     + (if $tmux_pane != "" then {tmux_pane: $tmux_pane} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
+     + (if $tmux_pane != "" then {tmux_pane: $tmux_pane} else {} end)
+     + (if $tmux_session != "" then {tmux_session: $tmux_session} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
-CURL_RESULT=$(curl -s -w "\n%{http_code}" \
+CURL_RESULT=$(curl -s -k -w "\n%{http_code}" \
     --connect-timeout "$CONNECT_TIMEOUT" \
     --max-time "$MAX_TIME" \
     -X POST \

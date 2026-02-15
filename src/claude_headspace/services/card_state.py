@@ -22,6 +22,15 @@ TIMED_OUT = "TIMED_OUT"
 _DEFAULT_ACTIVE_TIMEOUT_MINUTES = 5
 
 
+def _get_context_config() -> dict:
+    """Get context_monitor config from the Flask app, with safe fallback."""
+    try:
+        config = current_app.config.get("APP_CONFIG", {})
+        return config.get("context_monitor", {})
+    except RuntimeError:
+        return {}
+
+
 def _get_dashboard_config() -> dict:
     """Get dashboard config from the Flask app, with safe fallback for no-context."""
     try:
@@ -598,6 +607,7 @@ def build_card_state(agent: Agent) -> dict:
         "project_name": agent.project.name if agent.project else None,
         "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
+        "tmux_session": agent.tmux_session,
     }
 
     # Plan mode label overrides (before task ID, so state_info is already in card)
@@ -628,6 +638,17 @@ def build_card_state(agent: Agent) -> dict:
     options = get_question_options(agent, _current_task=current_task)
     if options:
         card["question_options"] = options
+
+    # Context usage
+    card["context"] = None
+    if agent.context_percent_used is not None:
+        ctx_config = _get_context_config()
+        card["context"] = {
+            "percent_used": agent.context_percent_used,
+            "remaining_tokens": agent.context_remaining_tokens or "",
+            "warning_threshold": ctx_config.get("warning_threshold", 65),
+            "high_threshold": ctx_config.get("high_threshold", 75),
+        }
 
     # Bridge connectivity: cache first, live check fallback
     card["is_bridge_connected"] = False

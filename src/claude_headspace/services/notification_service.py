@@ -22,7 +22,7 @@ class NotificationPreferences:
         "awaiting_input": True,
     })
     rate_limit_seconds: int = 5
-    dashboard_url: str = "http://localhost:5055"
+    dashboard_url: str = "https://localhost:5055"
 
 
 class NotificationService:

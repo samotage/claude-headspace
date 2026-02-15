@@ -131,6 +131,17 @@ cp "$SOURCE_SCRIPT" "$NOTIFY_SCRIPT"
 chmod +x "$NOTIFY_SCRIPT"
 log_info "Installed notification script: $NOTIFY_SCRIPT"
 
+# Bake endpoint_url from config.yaml into the installed hook script
+# This ensures hooks use the correct URL even when launched outside the CLI
+CONFIG_FILE="$SCRIPT_DIR/../config.yaml"
+if [ -f "$CONFIG_FILE" ]; then
+    ENDPOINT_URL=$(grep -A5 'hooks:' "$CONFIG_FILE" | grep 'endpoint_url:' | awk '{print $2}' | tr -d '"' | tr -d "'")
+    if [ -n "$ENDPOINT_URL" ]; then
+        sed -i '' "s|HEADSPACE_URL=\"\${CLAUDE_HEADSPACE_URL:-\${HEADSPACE_URL:-https://localhost:5055}}\"|HEADSPACE_URL=\"\${CLAUDE_HEADSPACE_URL:-\${HEADSPACE_URL:-${ENDPOINT_URL}}}\"|" "$NOTIFY_SCRIPT"
+        log_info "Baked endpoint URL from config.yaml: $ENDPOINT_URL"
+    fi
+fi
+
 # Verify the path is absolute (Claude Code requires absolute paths)
 if ! is_absolute_path "$NOTIFY_SCRIPT"; then
     log_error "Script path is not absolute: $NOTIFY_SCRIPT"
@@ -371,6 +382,6 @@ log_info ""
 log_info "To verify hooks are working:"
 log_info "  1. Start a new Claude Code session"
 log_info "  2. Check the Headspace dashboard for the new agent"
-log_info "  3. View hook status at http://localhost:5055/hook/status"
+log_info "  3. View hook status at https://localhost:5055/hook/status"
 log_info ""
 log_info "To uninstall: $0 --uninstall"

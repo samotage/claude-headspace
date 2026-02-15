@@ -159,6 +159,40 @@ Captured agent turn text SHALL be passed through the existing summarisation and 
 
 ---
 
+### Requirement: TranscriptReconciler Service
+
+The system SHALL include a TranscriptReconciler service (`transcript_reconciler.py`) that implements Phase 2 of the three-phase event pipeline for voice chat ordering.
+
+#### Scenario: Content-hash matching
+
+- **WHEN** the reconciler processes JSONL entries
+- **THEN** it SHALL generate SHA-256 content hashes from `(actor, text[:200])` pairs
+- **AND** match against recent Turn records within a configurable time window (default 30 seconds)
+
+#### Scenario: Timestamp correction
+
+- **WHEN** a JSONL entry matches an existing Turn via content hash
+- **AND** the JSONL entry has a timestamp
+- **THEN** the Turn's timestamp SHALL be updated to the JSONL value
+- **AND** `timestamp_source` SHALL be set to "jsonl"
+- **AND** `jsonl_entry_hash` SHALL be set for deduplication
+
+#### Scenario: Missing Turn creation
+
+- **WHEN** a JSONL entry has no matching Turn in the database
+- **THEN** a new Turn SHALL be created with the JSONL content
+- **AND** `timestamp_source` SHALL be "jsonl" if the entry has a timestamp, "server" otherwise
+- **AND** intent SHALL be inferred (COMMAND for user turns, PROGRESS for unmatched agent turns)
+
+#### Scenario: Reconciliation broadcasting (Phase 3)
+
+- **WHEN** reconciliation produces updates or new Turns
+- **THEN** `turn_updated` SSE events SHALL be broadcast for timestamp corrections
+- **AND** `turn_created` SSE events SHALL be broadcast for newly created Turns
+- **AND** broadcasts SHALL include `agent_id`, `project_id`, `turn_id`, `timestamp`
+
+---
+
 ### Requirement: Hook Installer Update
 
 The hook installer SHALL configure new Notification matchers and PostToolUse hooks.

@@ -5,6 +5,7 @@ Reads configuration from config.yaml and starts the server with the
 configured host, port, and debug settings.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -26,16 +27,14 @@ def main():
     port = get_value(config, "server", "port", default=5050)
     debug = get_value(config, "server", "debug", default=False)
 
-    # Voice bridge may override bind address to enable LAN access
-    vb_enabled = get_value(config, "voice_bridge", "enabled", default=False)
-    if vb_enabled:
-        vb_bind = get_value(config, "voice_bridge", "network", "bind_address", default=None)
-        if vb_bind:
-            host = vb_bind
+    # TLS -- Tailscale HTTPS certificates
+    ssl_cert = os.environ.get("TLS_CERT")
+    ssl_key = os.environ.get("TLS_KEY")
+    ssl_context = (ssl_cert, ssl_key) if ssl_cert and ssl_key else None
 
     # Create and run the app
     app = create_app(str(config_path))
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

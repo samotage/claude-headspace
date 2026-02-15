@@ -19,6 +19,7 @@
     totalPages: 0,
     expandedEventIds: new Set(),
     sseClient: null,
+    _fetchController: null,
     filters: {
       project_id: null,
       agent_id: null,
@@ -166,7 +167,7 @@
 
       // Hide empty/no results states
       this._hideStates();
-      this.paginationControls.classList.remove("hidden");
+      if (this.paginationControls) this.paginationControls.classList.remove("hidden");
 
       // Create new row
       const row = this._createEventRow(event);
@@ -324,6 +325,10 @@
     _loadEvents: async function () {
       this._showLoading();
 
+      // Abort any in-flight filter fetch to prevent race conditions (M14)
+      if (this._fetchController) this._fetchController.abort();
+      this._fetchController = new AbortController();
+
       try {
         // Build URL with query parameters
         const url = new URL(EVENTS_API, window.location.origin);
@@ -340,7 +345,7 @@
           url.searchParams.set("event_type", this.filters.event_type);
         }
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: this._fetchController.signal });
         const data = await response.json();
 
         if (response.ok) {
@@ -349,6 +354,7 @@
           this._showError();
         }
       } catch (error) {
+        if (error.name === 'AbortError') return; // Superseded by newer request
         console.error("Failed to load events:", error);
         this._showError();
       }

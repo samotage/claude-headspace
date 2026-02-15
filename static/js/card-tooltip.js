@@ -113,6 +113,8 @@
     }, { once: true, passive: true });
 
     // --- Desktop: mouseover/mouseout (bubble, unlike mouseenter/mouseleave) ---
+    // Uses page-level delegation — single listeners on document, not per-element.
+    // This is intentional to avoid listener accumulation on dynamically-rendered cards.
 
     document.addEventListener('mouseover', function(e) {
         if (isTouch) return;

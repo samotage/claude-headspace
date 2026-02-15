@@ -87,11 +87,30 @@ The TaskState enum SHALL contain exactly 5 values: idle, commanded, processing, 
 
 ### Requirement: Turn Model
 
-The system SHALL persist Turns with id, task_id FK, actor (2-value enum), intent (5-value enum), text, and timestamp.
+The system SHALL persist Turns with id, task_id FK, actor (2-value enum), intent (6-value enum), text, timestamp, timestamp_source (String(20), nullable, default="server"), and jsonl_entry_hash (String(64), nullable, indexed).
 
 #### Scenario: Create Turn
 - **WHEN** a Turn is created with task_id, actor="user", intent="command", text
 - **THEN** the turn is persisted with FK relationship to Task
+- **AND** `timestamp_source` defaults to "server"
+- **AND** `jsonl_entry_hash` defaults to NULL
+
+#### Scenario: Turn timestamp provenance tracking
+- **WHEN** a Turn is created via a hook event
+- **THEN** `timestamp_source` SHALL be "server" (datetime.now at creation time)
+- **WHEN** the Turn's timestamp is corrected from JSONL data during reconciliation
+- **THEN** `timestamp_source` SHALL be updated to "jsonl"
+- **WHEN** a Turn is created from a user action (e.g., voice command, dashboard respond)
+- **THEN** `timestamp_source` SHALL be "user"
+
+#### Scenario: Turn JSONL deduplication hash
+- **WHEN** a Turn is reconciled against a JSONL transcript entry
+- **THEN** `jsonl_entry_hash` SHALL be set to a SHA-256 content hash of the actor and text
+- **AND** the hash SHALL be used to prevent duplicate Turn creation during reconciliation
+
+#### Scenario: Turn ordering
+- **WHEN** turns are queried for display (e.g., transcript API, chat view)
+- **THEN** turns SHALL be ordered by `(timestamp, id)` composite ordering instead of `id` alone
 
 ---
 
@@ -107,11 +126,11 @@ The TurnActor enum SHALL contain exactly 2 values: user, agent.
 
 ### Requirement: TurnIntent Enum
 
-The TurnIntent enum SHALL contain exactly 5 values: command, answer, question, completion, progress.
+The TurnIntent enum SHALL contain exactly 6 values: command, answer, question, completion, progress, end_of_task.
 
 #### Scenario: TurnIntent Enum Values
 - **WHEN** TurnIntent enum is queried for values
-- **THEN** exactly 5 values are returned: command, answer, question, completion, progress
+- **THEN** exactly 6 values are returned: command, answer, question, completion, progress, end_of_task
 
 ---
 
@@ -158,7 +177,7 @@ The system SHALL cascade deletes: Project→Agents→Tasks→Turns.
 The system SHALL create indexes for:
 - agents.project_id, agents.session_uuid
 - tasks.agent_id, tasks.state
-- turns.task_id
+- turns.task_id, turns.timestamp (individual), turns.(task_id, timestamp) (composite), turns.(task_id, actor) (composite), turns.jsonl_entry_hash
 - events.timestamp, events.event_type, events.project_id, events.agent_id
 
 #### Scenario: Query Performance

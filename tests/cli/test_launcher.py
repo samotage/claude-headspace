@@ -82,7 +82,7 @@ class TestGetServerUrl:
                     with patch.object(Path, "exists", mock_exists):
                         # Just test default since patching is complex
                         url = get_server_url()
-                        assert url.startswith("http://")
+                        assert url.startswith("https://")
             finally:
                 os.unlink(config_path)
 
@@ -92,7 +92,7 @@ class TestGetServerUrl:
             os.environ.pop("CLAUDE_HEADSPACE_URL", None)
 
             with patch.object(Path, "exists", return_value=False):
-                assert get_server_url() == "http://127.0.0.1:5055"
+                assert get_server_url() == "https://127.0.0.1:5055"
 
 
 class TestGetProjectInfo:
@@ -107,7 +107,7 @@ class TestGetProjectInfo:
                 MagicMock(returncode=0, stdout="feature-branch\n"),
             ]
 
-            with patch.object(Path, "cwd", return_value=Path("/path/to/repo")):
+            with patch("os.getcwd", return_value="/path/to/repo"):
                 info = get_project_info()
 
             assert info.name == "repo"
@@ -119,11 +119,11 @@ class TestGetProjectInfo:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="not a git repo")
 
-            with patch.object(Path, "cwd", return_value=Path("/home/user/project")):
+            with patch("os.getcwd", return_value="/home/user/project"):
                 info = get_project_info()
 
             assert info.name == "project"
-            assert "/home/user/project" in info.path
+            assert info.path == "/home/user/project"
             assert info.branch is None
 
     def test_git_timeout(self):
@@ -131,7 +131,7 @@ class TestGetProjectInfo:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("git", 5)
 
-            with patch.object(Path, "cwd", return_value=Path("/some/path")):
+            with patch("os.getcwd", return_value="/some/path"):
                 info = get_project_info()
 
             assert info.name == "path"

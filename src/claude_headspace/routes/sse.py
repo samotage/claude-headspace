@@ -45,12 +45,16 @@ def parse_int_param(value: Optional[str]) -> Optional[int]:
         return None
 
 
-def generate_events(client_id: str) -> Generator[str, None, None]:
+def generate_events(
+    client_id: str,
+    last_event_id: int | None = None,
+) -> Generator[str, None, None]:
     """
     Generator function that yields SSE events for a client.
 
     Args:
         client_id: The registered client ID
+        last_event_id: If set, replay missed events from the replay buffer
 
     Yields:
         SSE-formatted event strings
@@ -61,6 +65,19 @@ def generate_events(client_id: str) -> Generator[str, None, None]:
     # Without this, Flask buffers the response until the first real event,
     # causing EventSource.onopen to never fire.
     yield ": heartbeat\n\n"
+
+    # Replay missed events if client is reconnecting with a Last-Event-ID
+    if last_event_id is not None:
+        client = broadcaster.get_client(client_id)
+        filters = client.filters if client else {}
+        replayed = broadcaster.get_replay_events(last_event_id, filters)
+        if replayed:
+            logger.info(
+                f"Replaying {len(replayed)} events for client {client_id} "
+                f"(after event_id={last_event_id})"
+            )
+            for event in replayed:
+                yield event.format()
 
     try:
         while True:
@@ -124,10 +141,15 @@ def events():
     project_id = parse_int_param(request.args.get("project_id"))
     agent_id = parse_int_param(request.args.get("agent_id"))
 
-    # Log reconnection if Last-Event-ID is present
-    last_event_id = request.headers.get("Last-Event-ID")
-    if last_event_id:
-        logger.info(f"SSE client reconnecting from event ID: {last_event_id}")
+    # Parse Last-Event-ID for replay on reconnect
+    last_event_id_raw = request.headers.get("Last-Event-ID")
+    last_event_id: int | None = None
+    if last_event_id_raw:
+        try:
+            last_event_id = int(last_event_id_raw)
+            logger.info(f"SSE client reconnecting from event ID: {last_event_id}")
+        except ValueError:
+            logger.warning(f"Invalid Last-Event-ID: {last_event_id_raw}")
 
     # Register client
     client_id = broadcaster.register_client(
@@ -154,7 +176,7 @@ def events():
 
     # Create streaming response
     response = Response(
-        generate_events(client_id),
+        generate_events(client_id, last_event_id=last_event_id),
         mimetype="text/event-stream",
     )
     response.headers["Cache-Control"] = "no-cache"

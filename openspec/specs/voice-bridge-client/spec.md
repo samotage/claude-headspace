@@ -78,11 +78,18 @@ The voice bridge client SHALL display active agents with real-time status.
 - **THEN** the agent list SHALL update automatically via SSE
 - **AND** if an agent transitions to AWAITING_INPUT, the "needs input" audio cue SHALL play
 
+#### Scenario: SSE-primary chat architecture
+
+- **WHEN** the chat view is open for an agent
+- **THEN** new messages SHALL arrive exclusively via SSE `turn_created` events
+- **AND** the client SHALL NOT use polling timers for message updates
+- **AND** `turn_updated` SSE events SHALL trigger timestamp corrections and bubble reordering
+
 #### Scenario: SSE reconnection
 
 - **WHEN** the SSE connection drops
 - **THEN** the client SHALL reconnect with exponential backoff
-- **AND** SHALL fall back to periodic polling until SSE is restored
+- **AND** SHALL NOT fall back to periodic polling for chat messages
 
 ---
 
@@ -292,4 +299,63 @@ The chat view SHALL fully support ended agents with read-only conversation displ
 - **THEN** a loading spinner SHALL appear at the top of the message area
 - **WHEN** all history has been loaded
 - **THEN** an indicator SHALL show that no more messages are available
+
+---
+
+### Requirement: Ordered Bubble Insertion
+
+The chat view SHALL insert new message bubbles in timestamp-sorted order using `data-timestamp` attributes.
+
+#### Scenario: Out-of-order SSE arrival
+
+- **WHEN** a `turn_created` SSE event arrives with a timestamp earlier than the last bubble
+- **THEN** the bubble SHALL be inserted at the correct position based on its `data-timestamp` attribute
+- **AND** NOT appended to the end of the chat
+
+#### Scenario: Timestamp correction reordering
+
+- **WHEN** a `turn_updated` SSE event arrives with a corrected timestamp
+- **THEN** the existing bubble SHALL be moved to its new correct position in the chat
+- **AND** the `data-timestamp` attribute SHALL be updated
+
+---
+
+### Requirement: CSS-Only Progress Collapse
+
+The chat view SHALL use CSS classes for progress message visibility instead of DOM removal.
+
+#### Scenario: Progress message collapse
+
+- **WHEN** agent PROGRESS turns are superseded by a COMPLETION turn
+- **THEN** the progress bubbles SHALL receive a `.collapsed` CSS class (`display: none`)
+- **AND** the DOM elements SHALL NOT be removed
+
+#### Scenario: Collapsed bubble accessibility
+
+- **WHEN** progress bubbles are collapsed via CSS
+- **THEN** they SHALL remain in the DOM for potential future expansion or debugging
+
+---
+
+### Requirement: Optimistic User Sends
+
+The chat view SHALL display user messages optimistically before server confirmation.
+
+#### Scenario: Optimistic message display
+
+- **WHEN** the user sends a message via voice or text input
+- **THEN** the message SHALL appear immediately in the chat with a `pending-{timestamp}` identifier
+- **AND** the bubble SHALL be visually distinct (pending state)
+
+#### Scenario: SSE promotion of pending message
+
+- **WHEN** a `turn_created` SSE event arrives matching a pending message
+- **THEN** the pending bubble SHALL be promoted to a confirmed bubble with the server-assigned `turn_id`
+- **AND** the `pending-{timestamp}` identifier SHALL be replaced
+
+#### Scenario: Failed send indicator
+
+- **WHEN** a send operation fails (server error, timeout)
+- **THEN** the bubble SHALL receive a `.send-failed` CSS class (opacity 0.5, dashed border)
+- **AND** the user SHALL be able to retry the send
 

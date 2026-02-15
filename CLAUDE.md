@@ -18,6 +18,38 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 - Project management with inference pause controls, metadata detection, and per-project settings
 - Activity metrics: hourly aggregation at agent, project, and system-wide scope
 
+## CRITICAL: Server & URL Rules
+
+**These rules are non-negotiable. Violations cause server instability, zombie processes, and socket errors.**
+
+### Server Management
+
+**Do NOT restart the server unless absolutely necessary.** Flask's debug reloader picks up most Python file changes automatically. The server should be left running.
+
+When a restart IS required:
+- Server has crashed or is unresponsive
+- `config.yaml` or dependency changes that the reloader cannot pick up
+- Expected application behavior is not being exhibited AND a restart is the last resort after investigating the root cause
+- User explicitly requests it
+
+In ALL of these cases:
+- **The ONLY way is `./restart_server.sh`.** No exceptions.
+- **NEVER** run `python run.py` directly — it does not handle TLS certs, process cleanup, or startup verification
+- **NEVER** kill the server with `kill`, `kill -9`, `lsof | xargs kill`, or any ad-hoc process termination
+- **NEVER** spawn `run.py` in background with `&` or `nohup`
+
+**Why:** Ad-hoc kills leave zombie werkzeug workers. Direct `run.py` starts inherit stale file descriptors and crash with `OSError: Socket operation on non-socket`. The restart script handles all of this correctly.
+
+### Application URL
+
+**The application URL is `https://smac.griffin-blenny.ts.net:5055` (configured in `config.yaml` as `server.application_url`).**
+
+- **NEVER** use `localhost`, `127.0.0.1`, or `http://` to access the dashboard, check health, take screenshots, or open in a browser
+- **ALWAYS** use `https://smac.griffin-blenny.ts.net:5055` for: health checks (`curl -sk https://smac.griffin-blenny.ts.net:5055/health`), browser/agent-browser connections, screenshot verification, any HTTP request to the dashboard
+- The ONLY exception is Claude Code hook endpoints (`/hook/*`) which fire from the local machine via `hooks.endpoint_url` in config.yaml — that is a separate config and does not affect dashboard access
+
+**Why:** The server uses TLS via Tailscale certificates. `localhost` bypasses TLS, fails certificate validation, and breaks agent-browser connections.
+
 ## Architecture
 
 Flask application factory (`app.py`) with:
@@ -78,8 +110,7 @@ Flask application factory (`app.py`) with:
 ```bash
 claude-headspace start              # Start monitored session (bridge enabled by default)
 claude-headspace start --no-bridge  # Start without tmux bridge
-python run.py                        # Start the server
-./restart_server.sh                  # Restart running server
+./restart_server.sh                  # Start or restart the server (ONLY way — see Critical Rules above)
 flask db upgrade                     # Run pending migrations
 npx tailwindcss -i static/css/src/input.css -o static/css/main.css --watch  # Tailwind dev (v3)
 pytest tests/services/test_foo.py    # Run targeted tests (preferred)
@@ -137,7 +168,7 @@ Key things to know:
 
 ## Claude Code Hooks
 
-8 lifecycle hooks fire from Claude Code to Flask endpoints at `http://localhost:5055/hook/*`:
+8 lifecycle hooks fire from Claude Code to Flask endpoints (via `hooks.endpoint_url` in config.yaml):
 
 `session-start`, `session-end`, `stop`, `notification`, `user-prompt-submit`, `pre-tool-use`, `post-tool-use`, `permission-request`
 
@@ -159,6 +190,7 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 - **SessionRegistry** (`session_registry.py`) -- in-memory registry of active sessions for fast lookup
 - **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) -- translates hook events into task lifecycle actions
 - **TranscriptReader** (`transcript_reader.py`) -- reads and parses Claude Code transcript files
+- **TranscriptReconciler** (`transcript_reconciler.py`) -- reconciles JSONL transcript entries against database Turn records; corrects Turn timestamps from approximate (server time) to accurate (JSONL conversation time); creates Turns for events missed by hooks; broadcasts SSE corrections
 - **PermissionSummarizer** (`permission_summarizer.py`) -- summarises permission request details for display
 
 ### Intelligence Layer
@@ -191,7 +223,7 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 
 ### Infrastructure
 
-- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` and transcript files
+- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` transcript files; feeds the TranscriptReconciler with JSONL entries containing actual conversation timestamps for Phase 2 reconciliation
 - **ConfigEditor** (`config_editor.py`) -- reads, validates, merges, and saves config.yaml
 - **ArchiveService** (`archive_service.py`) -- archives waypoints and other artifacts with timestamped versions
 - **WaypointEditor** (`waypoint_editor.py`) -- loads, saves, and archives project waypoint files

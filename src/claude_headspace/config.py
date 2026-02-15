@@ -16,6 +16,7 @@ DEFAULTS = {
         "host": "0.0.0.0",
         "port": 5055,
         "debug": False,
+        "application_url": "https://localhost:5055",
     },
     "logging": {
         "level": "INFO",
@@ -34,6 +35,7 @@ DEFAULTS = {
         "projects_path": "~/.claude/projects",
     },
     "file_watcher": {
+        "enabled": False,  # Fallback mechanism — hooks are the primary event path
         "polling_interval": 2,
         "reconciliation_interval": 60,
         "inactivity_timeout": 5400,
@@ -54,6 +56,7 @@ DEFAULTS = {
     },
     "hooks": {
         "enabled": True,
+        "endpoint_url": "https://localhost:5055",
         "polling_interval_with_hooks": 60,
         "fallback_timeout": 300,
     },
@@ -65,7 +68,7 @@ DEFAULTS = {
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
-        "dashboard_url": "http://localhost:5055",
+        "dashboard_url": "https://localhost:5055",
     },
     "activity": {
         "enabled": True,
@@ -368,6 +371,9 @@ def get_claude_projects_path(config: dict) -> str:
 def get_file_watcher_config(config: dict) -> dict:
     """Get file watcher configuration with defaults."""
     return {
+        "enabled": get_value(
+            config, "file_watcher", "enabled", default=False
+        ),
         "polling_interval": get_value(
             config, "file_watcher", "polling_interval", default=2
         ),
@@ -404,6 +410,6 @@ def get_notifications_config(config: dict) -> dict:
             config, "notifications", "rate_limit_seconds", default=5
         ),
         "dashboard_url": get_value(
-            config, "notifications", "dashboard_url", default="http://localhost:5055"
+            config, "notifications", "dashboard_url", default="https://localhost:5055"
         ),
     }

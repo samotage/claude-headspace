@@ -95,27 +95,46 @@ class TestCreateSession:
         assert response.status_code == 400
         assert "Invalid session_uuid" in response.get_json()["error"]
 
-    def test_rejects_unregistered_project(self, client, mock_db):
-        """Test 404 returned when project path is not registered."""
+    def test_auto_creates_unregistered_project(self, client, mock_db):
+        """Test that unregistered project paths are auto-created."""
         session_uuid = str(uuid.uuid4())
 
         with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
-            MockProject.query.filter_by.return_value.first.return_value = None
+            with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
+                # First filter_by(path=...) returns None (not registered)
+                # Second filter_by(slug=...) returns None (slug available)
+                MockProject.query.filter_by.return_value.first.side_effect = [None, None, None]
 
-            response = client.post(
-                "/api/sessions",
-                json={
-                    "session_uuid": session_uuid,
-                    "project_path": "/path/to/unregistered-project",
-                    "iterm_pane_id": "pane123",
-                },
-            )
+                mock_project = MagicMock()
+                mock_project.id = 42
+                mock_project.name = "unregistered-project"
+                MockProject.return_value = mock_project
 
-            assert response.status_code == 404
-            data = response.get_json()
-            assert "not registered" in data["error"]
-            assert "/path/to/unregistered-project" in data["error"]
-            assert "/projects" in data["error"]
+                mock_agent = MagicMock()
+                mock_agent.id = 1
+                MockAgent.return_value = mock_agent
+                MockAgent.query.filter_by.return_value.first.return_value = None
+
+                with patch("src.claude_headspace.models.project.generate_slug", return_value="unregistered-project"):
+                    response = client.post(
+                        "/api/sessions",
+                        json={
+                            "session_uuid": session_uuid,
+                            "project_path": "/path/to/unregistered-project",
+                            "iterm_pane_id": "pane123",
+                        },
+                    )
+
+                assert response.status_code == 201
+                data = response.get_json()
+                assert data["status"] == "created"
+                # Project was auto-created
+                MockProject.assert_called_once_with(
+                    name="unregistered-project",
+                    slug="unregistered-project",
+                    path="/path/to/unregistered-project",
+                    current_branch=None,
+                )
 
     def test_uses_existing_project(self, client, mock_db, mock_project):
         """Test creating session with existing project."""
@@ -246,7 +265,7 @@ class TestCreateSession:
             )
 
             assert response.status_code == 500
-            assert "DB error" in response.get_json()["error"]
+            assert response.get_json()["error"] == "Internal processing error"
 
 
 class TestDeleteSession:

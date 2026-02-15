@@ -209,29 +209,39 @@ class TestDailyAlertCount:
         assert monitor._alert_count_today == 1  # Reset
 
 
-class TestCalcRolling3hr:
+class TestCalcRollingWindows:
 
     @patch("src.claude_headspace.services.headspace_monitor.db")
     def test_returns_none_when_no_turns(self, mock_db, monitor):
-        mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
-        assert result is None
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        r10, r30, r3h = monitor._calc_rolling_windows(datetime.now(timezone.utc))
+        assert r10 is None
+        assert r30 is None
+        assert r3h is None
 
     @patch("src.claude_headspace.services.headspace_monitor.db")
-    def test_returns_average_of_scored_turns(self, mock_db, monitor):
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            (2,), (4,), (6,),
+    def test_returns_averages_of_scored_turns(self, mock_db, monitor):
+        now = datetime.now(timezone.utc)
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            (2, now - timedelta(minutes=1)),
+            (4, now - timedelta(minutes=5)),
+            (6, now - timedelta(minutes=10)),
         ]
-        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
-        assert result == 4.0
+        r10, r30, r3h = monitor._calc_rolling_windows(now)
+        assert r10 == 4.0
+        assert r30 == 4.0
+        assert r3h == 4.0
 
     @patch("src.claude_headspace.services.headspace_monitor.db")
     def test_single_turn(self, mock_db, monitor):
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            (7,),
+        now = datetime.now(timezone.utc)
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            (7, now - timedelta(minutes=1)),
         ]
-        result = monitor._calc_rolling_3hr(datetime.now(timezone.utc))
-        assert result == 7.0
+        r10, r30, r3h = monitor._calc_rolling_windows(now)
+        assert r10 == 7.0
+        assert r30 == 7.0
+        assert r3h == 7.0
 
     def test_uses_config_window(self, mock_app):
         config = {"headspace": {"session_rolling_window_minutes": 60}}
@@ -253,14 +263,20 @@ class TestRecalculate:
         mock_turn = MagicMock()
         mock_turn.frustration_score = 3
 
-        # Mock rolling average queries
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            (3,), (2,), (4,),
+        now = datetime.now(timezone.utc)
+
+        # Mock consolidated rolling windows query (returns (score, timestamp) tuples)
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            (3, now - timedelta(minutes=1)),
+            (2, now - timedelta(minutes=5)),
+            (4, now - timedelta(minutes=10)),
         ]
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            (3,), (2,),
-        ]
+        # Mock turn rate count
         mock_db.session.query.return_value.filter.return_value.count.return_value = 5
+        # Mock rising trend query (limit chain)
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            (3,), (2,), (4,), (3,), (2,),
+        ]
 
         # Prune returns 0
         mock_db.session.query.return_value.filter.return_value.delete.return_value = 0

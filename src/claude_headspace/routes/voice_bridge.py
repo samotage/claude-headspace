@@ -3,7 +3,7 @@
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, make_response, request, send_from_directory
 
@@ -52,7 +52,19 @@ def _get_active_agents():
     )
 
 
-def _agent_to_voice_dict(agent: Agent) -> dict:
+def _get_ended_agents(hours: int = 24) -> list:
+    """Get recently ended agents (last N hours), newest first."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return (
+        db.session.query(Agent)
+        .filter(Agent.ended_at.isnot(None))
+        .filter(Agent.ended_at >= cutoff)
+        .order_by(Agent.ended_at.desc())
+        .all()
+    )
+
+
+def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> dict:
     """Convert an agent to a voice-friendly dict."""
     from ..services.card_state import (
         get_effective_state,
@@ -96,7 +108,15 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
     else:
         ago = "unknown"
 
-    return {
+    # Context usage (persisted by ContextPoller)
+    context = None
+    if agent.context_percent_used is not None:
+        context = {
+            "percent_used": agent.context_percent_used,
+            "remaining_tokens": agent.context_remaining_tokens or "",
+        }
+
+    result = {
         "agent_id": agent.id,
         "name": agent.name,
         "hero_chars": hero_chars,
@@ -111,7 +131,14 @@ def _agent_to_voice_dict(agent: Agent) -> dict:
         "turn_count": turn_count,
         "summary": task_summary or task_instruction,
         "last_activity_ago": ago,
+        "context": context,
     }
+
+    if include_ended_fields and agent.ended_at:
+        result["ended"] = True
+        result["ended_at"] = agent.ended_at.isoformat()
+
+    return result
 
 
 @voice_bridge_bp.route("/voice")
@@ -184,6 +211,7 @@ def list_sessions():
     """List active agents with voice-friendly status (FR5)."""
     start_time = time.time()
     verbosity = request.args.get("verbosity")
+    include_ended = request.args.get("include_ended", "").lower() == "true"
     formatter = _get_voice_formatter()
 
     agents = _get_active_agents()
@@ -198,12 +226,20 @@ def list_sessions():
     auto_target = config.get("voice_bridge", {}).get("auto_target", False)
 
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({
+    response_data = {
         "voice": voice,
         "agents": agent_dicts,
         "settings": {"auto_target": auto_target},
         "latency_ms": latency_ms,
-    }), 200
+    }
+
+    if include_ended:
+        ended = _get_ended_agents(hours=24)
+        response_data["ended_agents"] = [
+            _agent_to_voice_dict(a, include_ended_fields=True) for a in ended
+        ]
+
+    return jsonify(response_data), 200
 
 
 @voice_bridge_bp.route("/api/voice/command", methods=["POST"])
@@ -263,15 +299,7 @@ def voice_command():
     current_state = current_task.state if current_task else None
     is_answering = current_state == TaskState.AWAITING_INPUT
     is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
-
-    # Reject if agent is busy (PROCESSING or COMMANDED)
-    if not is_answering and not is_idle:
-        state_str = current_state.value if current_state else "idle"
-        return _voice_error(
-            f"Agent is {state_str}, not ready for input.",
-            "Try again in a moment when the agent finishes processing.",
-            409,
-        )
+    is_processing = current_state in (TaskState.PROCESSING, TaskState.COMMANDED)
 
     # Check tmux pane
     if not agent.tmux_pane_id:
@@ -287,20 +315,31 @@ def voice_command():
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
     text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
 
-    # Append file_path reference if provided
+    # Prepend file_path reference if provided (file before text so the
+    # instruction can reference it).  Single line — no embedded newlines
+    # which cause premature submission via tmux send-keys.
     send_text = text
     if file_path:
         if send_text:
-            send_text = f"{send_text}\n\nPlease look at this file: {file_path}"
+            send_text = f"{file_path} {send_text}"
         else:
-            send_text = f"Please look at this file: {file_path}"
+            send_text = file_path
 
-    result = tmux_bridge.send_text(
-        pane_id=agent.tmux_pane_id,
-        text=send_text,
-        timeout=subprocess_timeout,
-        text_enter_delay_ms=text_enter_delay_ms,
-    )
+    if is_processing:
+        # Agent is busy — send Escape to interrupt first, then deliver message
+        result = tmux_bridge.interrupt_and_send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+        )
+    else:
+        result = tmux_bridge.send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+        )
 
     if not result.success:
         error_msg = result.error_message or "Send failed"
@@ -310,13 +349,83 @@ def voice_command():
             voice = {"status_line": f"Command failed: {error_msg}", "results": [], "next_action": "Try again."}
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
-    if is_idle:
-        # IDLE/COMPLETE: just send via tmux — the hook receiver will handle
-        # task creation + turn recording when Claude Code's hooks fire.
-        # Do NOT create a task here (avoids duplication with hook receiver).
-        agent.last_seen_at = datetime.now(timezone.utc)
-        db.session.commit()
-        broadcast_card_refresh(agent, "voice_command")
+    if is_idle or is_processing:
+        # Create turn directly so the user's message is persisted and
+        # broadcast regardless of whether hooks fire.  Previously this path
+        # relied entirely on hook_receiver.process_user_prompt_submit to
+        # create the Turn — but hooks can fail when context compression
+        # changes session_id, after session_end invalidates caches, or if
+        # the Claude Code process has exited.  The optimistic voice chat
+        # bubble would expire after 10s with no SSE confirmation.
+        turn_result = None
+        try:
+            from ..services.task_lifecycle import TaskLifecycleManager
+            event_writer = current_app.extensions.get("event_writer")
+            lifecycle = TaskLifecycleManager(
+                session=db.session,
+                event_writer=event_writer,
+            )
+            turn_result = lifecycle.process_turn(
+                agent=agent, actor=TurnActor.USER, text=send_text,
+            )
+            # Auto-transition COMMANDED → PROCESSING
+            if turn_result.success and turn_result.task and turn_result.task.state == TaskState.COMMANDED:
+                lifecycle.update_task_state(
+                    task=turn_result.task, to_state=TaskState.PROCESSING,
+                    trigger="voice_command", confidence=1.0,
+                )
+
+            pending = lifecycle.get_pending_summarisations()
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+            # Broadcast turn_created immediately after commit
+            if turn_result.success and turn_result.task:
+                try:
+                    from ..services.broadcaster import get_broadcaster
+                    user_turn_id = None
+                    if turn_result.task.turns:
+                        for t in reversed(turn_result.task.turns):
+                            if t.actor == TurnActor.USER:
+                                user_turn_id = t.id
+                                break
+                    get_broadcaster().broadcast("turn_created", {
+                        "agent_id": agent.id,
+                        "project_id": agent.project_id,
+                        "text": send_text,
+                        "actor": "user",
+                        "intent": turn_result.intent.intent.value if turn_result.intent else "command",
+                        "task_id": turn_result.task.id,
+                        "turn_id": user_turn_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception as e:
+                    logger.warning(f"Voice command turn_created broadcast failed: {e}")
+
+            # Set respond_pending AFTER commit so hook's user_prompt_submit
+            # skips duplicate turn creation
+            from ..services.hook_agent_state import get_agent_hook_state
+            get_agent_hook_state().set_respond_pending(agent.id)
+
+            broadcast_card_refresh(agent, "voice_command")
+
+            # Execute summarisations (instruction + turn)
+            if pending:
+                try:
+                    summarisation_service = current_app.extensions.get("summarisation_service")
+                    if summarisation_service:
+                        summarisation_service.execute_pending(pending, db.session)
+                except Exception as e:
+                    logger.warning(f"Voice command summarisation failed: {e}")
+
+        except Exception as e:
+            # Lifecycle processing failed but tmux send already succeeded.
+            # Fall back: no turn persisted, hooks may still handle it.
+            logger.warning(f"Voice command turn creation failed (tmux send succeeded): {e}")
+            db.session.rollback()
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            broadcast_card_refresh(agent, "voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
@@ -324,10 +433,14 @@ def voice_command():
         else:
             voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
 
+        new_state = "processing"
+        if turn_result and turn_result.task:
+            new_state = turn_result.task.state.value
+
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": "idle",
+            "new_state": new_state,
             "latency_ms": latency_ms,
         }), 200
 
@@ -340,8 +453,8 @@ def voice_command():
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         turn = Turn(
             task_id=current_task.id,
@@ -349,6 +462,7 @@ def voice_command():
             intent=TurnIntent.ANSWER,
             text=text,
             answered_by_turn_id=answered_turn_id,
+            timestamp_source="user",
         )
         db.session.add(turn)
 
@@ -367,17 +481,33 @@ def voice_command():
             current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent.id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent.id)
 
         db.session.commit()
 
         # Flag respond-pending AFTER commit to prevent duplicate turn from hook.
         # Set after commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "voice_command")
+
+        # Broadcast turn_created for voice command so SSE clients see the user turn
+        try:
+            from ..services.broadcaster import get_broadcaster
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": text,
+                "actor": "user",
+                "intent": "answer",
+                "task_id": current_task.id,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"Voice command turn_created broadcast failed: {e}")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
@@ -427,6 +557,11 @@ def upload_file(agent_id: int):
     if not uploaded_file.filename:
         return _voice_error("No file selected.", "Choose a file and try again.")
 
+    # Defense-in-depth: validate filename for path traversal at route level
+    from ..services.file_upload import FileUploadService
+    if not FileUploadService.is_safe_filename(uploaded_file.filename):
+        return _voice_error("Invalid filename.", "Filename contains unsafe characters.", 400)
+
     text = request.form.get("text", "").strip()
 
     # Validate and save via FileUploadService
@@ -465,12 +600,17 @@ def upload_file(agent_id: int):
     # Prepare DB-safe metadata (strip server filesystem path)
     db_metadata = {k: v for k, v in file_metadata.items() if k != "server_path"}
 
-    # Build message for tmux delivery
-    abs_path = file_metadata["server_path"]
+    # Build message for tmux delivery.
+    # Use relative path (uploads/<file>) — Claude Code handles relative paths
+    # well and absolute paths trigger its interactive file-selection UI.
+    # File reference goes first (so the text can reference it), and
+    # everything stays on one line to avoid embedded newlines causing
+    # premature submission via tmux send-keys.
+    rel_path = f"uploads/{file_metadata['stored_filename']}"
     if text:
-        tmux_text = f"{text}\n\nPlease look at this file: {abs_path}"
+        tmux_text = f"{rel_path} {text}"
     else:
-        tmux_text = f"Please look at this file: {abs_path}"
+        tmux_text = rel_path
 
     # Send via tmux bridge
     config = current_app.config.get("APP_CONFIG", {})
@@ -496,8 +636,13 @@ def upload_file(agent_id: int):
     if is_idle:
         # Store file metadata so the next user_prompt_submit hook can attach it
         # to the COMMAND turn it creates (IDLE agents have no active task yet).
-        from ..services.hook_receiver import _file_metadata_pending_for_agent
-        _file_metadata_pending_for_agent[agent.id] = db_metadata
+        # Include the clean display text so the hook uses it instead of the raw
+        # tmux text (which has the file path prepended), avoiding a duplicate
+        # bubble in the chat UI where the frontend dedup compares by text.
+        from ..services.hook_agent_state import get_agent_hook_state
+        pending_meta = dict(db_metadata)
+        pending_meta["_display_text"] = text or f"[File: {file_metadata['original_filename']}]"
+        get_agent_hook_state().set_file_metadata_pending(agent.id, pending_meta)
 
         agent.last_seen_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -520,8 +665,8 @@ def upload_file(agent_id: int):
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         display_text = text if text else f"[File: {file_metadata['original_filename']}]"
         turn = Turn(
@@ -531,6 +676,7 @@ def upload_file(agent_id: int):
             text=display_text,
             file_metadata=db_metadata,
             answered_by_turn_id=answered_turn_id,
+            timestamp_source="user",
         )
         db.session.add(turn)
 
@@ -542,15 +688,31 @@ def upload_file(agent_id: int):
             current_task.state = TaskState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent.id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent.id)
 
         db.session.commit()
 
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "file_upload")
+
+        # Broadcast turn_created for file upload so SSE clients see the user turn
+        try:
+            from ..services.broadcaster import get_broadcaster
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": display_text,
+                "actor": "user",
+                "intent": "answer",
+                "task_id": current_task.id,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"File upload turn_created broadcast failed: {e}")
 
         latency_ms = int((time.time() - start_time) * 1000)
         return jsonify({
@@ -736,10 +898,22 @@ def agent_transcript(agent_id: int):
     )
 
     if before:
-        query = query.filter(Turn.id < before)
+        # Look up the cursor turn's timestamp for composite pagination.
+        # This ensures correct ordering even when timestamps are corrected
+        # by the JSONL reconciler (turn insertion order != conversation order).
+        cursor_turn = db.session.get(Turn, before)
+        if cursor_turn:
+            query = query.filter(
+                db.or_(
+                    Turn.timestamp < cursor_turn.timestamp,
+                    db.and_(Turn.timestamp == cursor_turn.timestamp, Turn.id < before),
+                )
+            )
+        else:
+            query = query.filter(Turn.id < before)
 
-    # Order descending to get most recent first, then reverse for chronological
-    query = query.order_by(Turn.id.desc()).limit(limit + 1)
+    # Order by conversation time (timestamp), then id for deterministic tie-breaking
+    query = query.order_by(Turn.timestamp.desc(), Turn.id.desc()).limit(limit + 1)
     results = query.all()
 
     # Check if there are more older turns

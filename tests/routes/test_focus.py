@@ -6,7 +6,7 @@ import pytest
 from flask import Flask
 
 from src.claude_headspace.routes.focus import focus_bp
-from src.claude_headspace.services.iterm_focus import FocusErrorType, FocusResult
+from src.claude_headspace.services.iterm_focus import AttachResult, FocusErrorType, FocusResult
 from src.claude_headspace.services.tmux_bridge import TmuxBridgeErrorType, TtyResult
 
 
@@ -463,3 +463,123 @@ class TestFocusEventLogging:
         log_message = mock_logger.info.call_args[0][0]
         assert "method=tmux" in log_message
         assert "tmux_pane_id=%29" in log_message
+
+
+class TestAttachAgent:
+    """Tests for POST /api/agents/<id>/attach."""
+
+    def test_agent_not_found(self, client, mock_db):
+        """Test 404 when agent doesn't exist."""
+        mock_db.session.get.return_value = None
+
+        response = client.post("/api/agents/999/attach")
+
+        assert response.status_code == 404
+        data = response.get_json()
+        assert data["detail"] == "agent_not_found"
+
+    def test_agent_no_tmux_session(self, client, mock_db, mock_agent):
+        """Test 400 when agent has no tmux_session."""
+        mock_agent.tmux_session = None
+        mock_db.session.get.return_value = mock_agent
+
+        response = client.post("/api/agents/1/attach")
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["detail"] == "no_tmux_session"
+
+    @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
+    def test_session_not_found(self, mock_check, client, mock_db, mock_agent):
+        """Test 400 when tmux session no longer exists."""
+        mock_agent.tmux_session = "hs-test-123"
+        mock_db.session.get.return_value = mock_agent
+        mock_check.return_value = False
+
+        response = client.post("/api/agents/1/attach")
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["detail"] == "session_not_found"
+        mock_check.assert_called_once_with("hs-test-123")
+
+    @patch("src.claude_headspace.routes.focus.attach_tmux_session")
+    @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
+    def test_attach_success(self, mock_check, mock_attach, client, mock_db, mock_agent):
+        """Test successful attach operation."""
+        mock_agent.tmux_session = "hs-test-123"
+        mock_db.session.get.return_value = mock_agent
+        mock_check.return_value = True
+        mock_attach.return_value = AttachResult(
+            success=True, method="new_tab", latency_ms=150,
+        )
+
+        response = client.post("/api/agents/1/attach")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert data["agent_id"] == 1
+        assert data["tmux_session"] == "hs-test-123"
+        assert data["method"] == "new_tab"
+        mock_attach.assert_called_once_with("hs-test-123")
+
+    @patch("src.claude_headspace.routes.focus.attach_tmux_session")
+    @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
+    def test_attach_reused_tab(self, mock_check, mock_attach, client, mock_db, mock_agent):
+        """Test successful attach with tab reuse."""
+        mock_agent.tmux_session = "hs-test-123"
+        mock_db.session.get.return_value = mock_agent
+        mock_check.return_value = True
+        mock_attach.return_value = AttachResult(
+            success=True, method="reused_tab", latency_ms=80,
+        )
+
+        response = client.post("/api/agents/1/attach")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["method"] == "reused_tab"
+
+    @patch("src.claude_headspace.routes.focus.attach_tmux_session")
+    @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
+    def test_attach_failure(self, mock_check, mock_attach, client, mock_db, mock_agent):
+        """Test attach failure returns 500."""
+        mock_agent.tmux_session = "hs-test-123"
+        mock_db.session.get.return_value = mock_agent
+        mock_check.return_value = True
+        mock_attach.return_value = AttachResult(
+            success=False,
+            error_type=FocusErrorType.ITERM_NOT_RUNNING,
+            error_message="iTerm2 is not running",
+            latency_ms=50,
+        )
+
+        response = client.post("/api/agents/1/attach")
+
+        assert response.status_code == 500
+        data = response.get_json()
+        assert data["detail"] == "iterm_not_running"
+        assert data["error"] == "iTerm2 is not running"
+
+    @patch("src.claude_headspace.routes.focus.attach_tmux_session")
+    @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
+    @patch("src.claude_headspace.routes.focus.logger")
+    def test_attach_event_logged(
+        self, mock_logger, mock_check, mock_attach, client, mock_db, mock_agent,
+    ):
+        """Test attach events are logged."""
+        mock_agent.tmux_session = "hs-test-123"
+        mock_db.session.get.return_value = mock_agent
+        mock_check.return_value = True
+        mock_attach.return_value = AttachResult(
+            success=True, method="new_tab", latency_ms=150,
+        )
+
+        client.post("/api/agents/1/attach")
+
+        assert mock_logger.info.called
+        log_message = mock_logger.info.call_args[0][0]
+        assert "attach_attempted" in log_message
+        assert "tmux_session=hs-test-123" in log_message
+        assert "outcome=success" in log_message

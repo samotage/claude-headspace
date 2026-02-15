@@ -243,7 +243,8 @@ def respond_to_agent(agent_id: int):
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
         )
-        record_text = f"[selected option {option_index}]"
+        option_label = data.get("option_label", "").strip()
+        record_text = option_label if option_label else f"[selected option {option_index}]"
 
     elif mode == "other":
         # Navigate to "Other" (last item) then type custom text
@@ -298,8 +299,8 @@ def respond_to_agent(agent_id: int):
                     answered_turn_id = t.id
                     break
 
-        from ..services.hook_receiver import _mark_question_answered
-        _mark_question_answered(current_task)
+        from ..services.hook_extractors import mark_question_answered
+        mark_question_answered(current_task)
 
         turn = Turn(
             task_id=current_task.id,
@@ -323,19 +324,19 @@ def respond_to_agent(agent_id: int):
 
         # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
         # don't incorrectly preserve AWAITING_INPUT state
-        from ..services.hook_receiver import _awaiting_tool_for_agent
-        _awaiting_tool_for_agent.pop(agent_id, None)
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_awaiting_tool(agent_id)
 
         db.session.commit()
 
         # Flag this agent so the upcoming user_prompt_submit hook is skipped
         # (the respond handler owns the turn creation and state transition).
         # Set AFTER commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent[agent.id] = time.time()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "respond")
-        _broadcast_state_change(agent, record_text)
+        _broadcast_state_change(agent, record_text, turn_id=turn.id)
 
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(
@@ -393,7 +394,7 @@ def check_availability(agent_id: int):
     }), 200
 
 
-def _broadcast_state_change(agent: Agent, response_text: str) -> None:
+def _broadcast_state_change(agent: Agent, response_text: str, turn_id: int | None = None) -> None:
     """Broadcast state change and turn creation after response."""
     try:
         from ..services.broadcaster import get_broadcaster
@@ -404,7 +405,7 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "project_id": agent.project_id,
             "event_type": "respond",
             "new_state": "PROCESSING",
-            "message": f"User responded via dashboard",
+            "message": "User responded via dashboard",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         _task = agent.get_current_task()
@@ -415,6 +416,7 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "actor": "user",
             "intent": "answer",
             "task_id": _task.id if _task else None,
+            "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

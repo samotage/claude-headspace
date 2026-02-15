@@ -44,6 +44,9 @@
     // Track last received SSE event ID for gap detection (M6 client-side)
     let _lastEventId = 0;
 
+    // Track fallback timeout IDs per agent for cleanup (M15)
+    const _fallbackTimeouts = new Map();
+
     /**
      * Check for SSE event ID gaps indicating dropped events.
      * If the gap exceeds a threshold, trigger a safe reload to re-sync state.
@@ -343,9 +346,14 @@
         if (newState === 'COMPLETE' && isKanbanView()) {
             // M7 fallback: if handleCardRefresh doesn't arrive within 2s,
             // the card may be stuck. Check if the card is still in a non-IDLE
-            // column and reload if so.
+            // column and reload if so. Tracked per-agent so card_refresh can cancel (M15).
             (function(aid) {
-                setTimeout(function() {
+                // Clear any existing fallback timeout for this agent
+                var existingTimeout = _fallbackTimeouts.get(aid);
+                if (existingTimeout) clearTimeout(existingTimeout);
+
+                var timeoutId = setTimeout(function() {
+                    _fallbackTimeouts.delete(aid);
                     var card = findAgentCard(aid);
                     if (!card) return;
                     var col = card.closest('[data-kanban-state]');
@@ -358,6 +366,7 @@
                         safeDashboardReload();
                     }
                 }, 2000);
+                _fallbackTimeouts.set(aid, timeoutId);
             })(agentId);
             return;
         }
@@ -682,6 +691,7 @@
     /**
      * Build a condensed completed-task accordion element for the COMPLETE column.
      * Matches the server-side template in _kanban_view.html.
+     * Uses innerHTML with all dynamic values escaped via CHUtils.escapeHtml.
      */
     function buildCompletedTaskCard(data) {
         var details = document.createElement('details');
@@ -735,6 +745,7 @@
      * Build a respond widget element for AWAITING_INPUT state.
      * Matches the server-rendered widget in _agent_card.html.
      * Starts hidden — respond-init.js handles visibility after commander availability check.
+     * Uses DOM APIs instead of innerHTML for XSS safety.
      */
     function buildRespondWidget(agentId, questionText, questionOptions) {
         var widget = document.createElement('div');
@@ -746,18 +757,32 @@
         }
         widget.style.display = 'none';
 
-        widget.innerHTML =
-            '<div class="respond-options flex flex-col gap-1.5 mb-2"></div>' +
-            '<form class="respond-form flex gap-2"' +
-            ' onsubmit="window.RespondAPI && window.RespondAPI.handleSubmit(event, ' +
-            parseInt(agentId, 10) + '); return false;">' +
-                '<input type="text" class="respond-text-input form-well flex-1 px-2 py-1 text-sm"' +
-                ' placeholder="Type a response..." autocomplete="off">' +
-                '<button type="submit" class="respond-send-btn px-3 py-1 text-xs font-medium rounded ' +
-                'bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors">' +
-                'Send</button>' +
-            '</form>';
+        var optionsDiv = document.createElement('div');
+        optionsDiv.className = 'respond-options flex flex-col gap-1.5 mb-2';
+        widget.appendChild(optionsDiv);
 
+        var form = document.createElement('form');
+        form.className = 'respond-form flex gap-2';
+        var safeAgentId = parseInt(agentId, 10);
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (window.RespondAPI) window.RespondAPI.handleSubmit(e, safeAgentId);
+        });
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'respond-text-input form-well flex-1 px-2 py-1 text-sm';
+        input.placeholder = 'Type a response...';
+        input.autocomplete = 'off';
+        form.appendChild(input);
+
+        var button = document.createElement('button');
+        button.type = 'submit';
+        button.className = 'respond-send-btn px-3 py-1 text-xs font-medium rounded bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors';
+        button.textContent = 'Send';
+        form.appendChild(button);
+
+        widget.appendChild(form);
         return widget;
     }
 
@@ -783,6 +808,13 @@
         if (!agentId || !state) return;
 
         console.log('card_refresh:', agentId, 'state:', state, 'reason:', reason);
+
+        // Clear any pending fallback timeout for this agent (M15)
+        var pendingTimeout = _fallbackTimeouts.get(agentId);
+        if (pendingTimeout) {
+            clearTimeout(pendingTimeout);
+            _fallbackTimeouts.delete(agentId);
+        }
 
         var card = findAgentCard(agentId);
 
@@ -935,7 +967,10 @@
                 bridgeEl.className = 'bridge-indicator';
                 bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
                 bridgeEl.setAttribute('aria-label', 'Bridge connected');
-                bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                var bridgeIcon = document.createElement('span');
+                bridgeIcon.className = 'bridge-icon';
+                bridgeIcon.textContent = '\u25B8\u25C2';
+                bridgeEl.appendChild(bridgeIcon);
                 badgeContainer.insertBefore(bridgeEl, statusBadge);
             } else if (!data.is_bridge_connected && bridgeEl) {
                 bridgeEl.remove();
@@ -1099,6 +1134,49 @@
             }
         } else if (statsEl) {
             statsEl.style.display = 'none';
+        }
+
+        // Context usage display
+        var ctxSpan = card.querySelector('.context-usage');
+        if (data.context && data.context.percent_used != null) {
+            var pct = data.context.percent_used;
+            var ctxText = pct + '% \u00b7 ' + (data.context.remaining_tokens || '?') + ' rem';
+            var ctxClass = 'text-muted';
+            if (pct >= (data.context.high_threshold || 75)) ctxClass = 'text-red';
+            else if (pct >= (data.context.warning_threshold || 65)) ctxClass = 'text-amber';
+            if (ctxSpan) {
+                ctxSpan.textContent = ctxText;
+                ctxSpan.className = 'context-usage ' + ctxClass + ' text-xs font-mono whitespace-nowrap';
+            } else {
+                var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
+                if (leftGroup) {
+                    var s = document.createElement('span');
+                    s.className = 'context-usage ' + ctxClass + ' text-xs font-mono whitespace-nowrap';
+                    s.setAttribute('data-agent-id', String(data.id));
+                    s.textContent = ctxText;
+                    leftGroup.appendChild(s);
+                }
+            }
+        } else if (ctxSpan) {
+            ctxSpan.remove();
+        }
+
+        // Attach button: show/hide based on tmux_session
+        var attachBtn = card.querySelector('.card-attach-action');
+        if (data.tmux_session) {
+            if (!attachBtn) {
+                // Inject attach button before the context action in kebab menu
+                var ctxAction = card.querySelector('.card-ctx-action');
+                if (ctxAction) {
+                    var btn = document.createElement('button');
+                    btn.className = 'card-kebab-item card-attach-action';
+                    btn.setAttribute('data-agent-id', String(data.id));
+                    btn.innerHTML = '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg><span>Attach</span>';
+                    ctxAction.parentElement.insertBefore(btn, ctxAction);
+                }
+            }
+        } else if (attachBtn) {
+            attachBtn.remove();
         }
 
         // Update tracked state and move card if state changed
@@ -1419,7 +1497,10 @@
                     bridgeEl.className = 'bridge-indicator';
                     bridgeEl.title = 'Bridge connected \u2014 tmux pane active';
                     bridgeEl.setAttribute('aria-label', 'Bridge connected');
-                    bridgeEl.innerHTML = '<span class="bridge-icon">\u25B8\u25C2</span>';
+                    var bridgeIcon = document.createElement('span');
+                    bridgeIcon.className = 'bridge-icon';
+                    bridgeIcon.textContent = '\u25B8\u25C2';
+                    bridgeEl.appendChild(bridgeIcon);
                     container.insertBefore(bridgeEl, statusBadge);
                 }
             } else if (!data.available && bridgeEl) {

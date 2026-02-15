@@ -10,7 +10,7 @@ from claude_headspace.services.event_writer import (
     WriteResult,
     create_event_writer,
 )
-from claude_headspace.services.event_writer import EventType
+from claude_headspace.services.event_schemas import EventType
 
 
 class TestEventWriterMetrics:

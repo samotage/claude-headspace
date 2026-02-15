@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,13 @@ class Agent(db.Model):
     """
 
     __tablename__ = "agents"
+    __table_args__ = (
+        CheckConstraint(
+            "(priority_score IS NULL AND priority_reason IS NULL AND priority_updated_at IS NULL) OR "
+            "(priority_score IS NOT NULL AND priority_reason IS NOT NULL AND priority_updated_at IS NOT NULL)",
+            name='ck_agents_priority_consistency',
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     session_uuid: Mapped[UUID] = mapped_column(
@@ -38,6 +45,9 @@ class Agent(db.Model):
     )
     iterm_pane_id: Mapped[str | None] = mapped_column(nullable=True)
     tmux_pane_id: Mapped[str | None] = mapped_column(nullable=True)
+    tmux_session: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, default=None
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -61,6 +71,17 @@ class Agent(db.Model):
         Text, nullable=True, default=None
     )
     priority_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    # Context monitoring fields
+    context_percent_used: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    context_remaining_tokens: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+    context_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 

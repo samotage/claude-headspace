@@ -8,11 +8,16 @@ from datetime import datetime, timezone
 from typing import NamedTuple
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
+
 from ..database import db
 from ..models.agent import Agent
 from ..models.project import Project
 
 logger = logging.getLogger(__name__)
+
+# Default query timeout in milliseconds for database operations
+DEFAULT_QUERY_TIMEOUT_MS = 10000  # 10 seconds
 
 # Project root markers — if any of these exist in a directory, it's a project root
 _PROJECT_ROOT_MARKERS = (
@@ -40,7 +45,7 @@ class CorrelationResult(NamedTuple):
 
     agent: Agent
     is_new: bool
-    correlation_method: str  # "session_id", "db_session_id", "headspace_session_id", "working_directory", "created"
+    correlation_method: str  # "session_id", "db_session_id", "headspace_session_id", "tmux_pane_id", "working_directory", "created"
 
 
 class CacheEntry(NamedTuple):
@@ -209,26 +214,40 @@ def _resolve_working_directory(working_directory: str | None) -> str | None:
     return resolved
 
 
+def _set_query_timeout(timeout_ms: int = DEFAULT_QUERY_TIMEOUT_MS) -> None:
+    """Set PostgreSQL statement_timeout for the current session."""
+    try:
+        db.session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+    except Exception as e:
+        logger.debug(f"Could not set statement_timeout (non-fatal): {e}")
+
+
 def correlate_session(
     claude_session_id: str,
     working_directory: str | None = None,
     headspace_session_id: str | None = None,
+    tmux_pane_id: str | None = None,
+    query_timeout_ms: int = DEFAULT_QUERY_TIMEOUT_MS,
 ) -> CorrelationResult:
     """
     Correlate a Claude Code session to an agent.
 
-    Correlation strategy:
+    Correlation strategy (6-step cascade):
     1. Check in-memory cache (fast path)
     2. Check database by claude_session_id (survives server restarts)
-    2.5. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
-    3. Match by working directory to existing project/agents (unclaimed only)
-    4. Create new agent — only if we have a valid working directory
+    3. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
+    4. Match by tmux_pane_id (survives context compression)
+    5. Match by working directory to existing project/agents (unclaimed only)
+    6. Create new agent — only if we have a valid working directory
 
     Args:
         claude_session_id: The Claude Code session ID
         working_directory: The working directory of the session
         headspace_session_id: The CLI-assigned session UUID from
             CLAUDE_HEADSPACE_SESSION_ID env var
+        tmux_pane_id: The tmux pane ID from $TMUX_PANE env var.
+            Stable across context compression — the same pane hosts
+            the same Claude Code process even after session ID changes.
 
     Returns:
         CorrelationResult with the matched or created agent
@@ -240,8 +259,11 @@ def correlate_session(
     # Cleanup stale cache entries periodically
     _cache_cleanup()
 
-    # Strategy 1: Check in-memory session cache — working_directory is ignored
-    # for already-known sessions. The project was determined at first contact.
+    # Set query timeout to prevent long-running DB queries from blocking hooks
+    _set_query_timeout(query_timeout_ms)
+
+    # Strategy 1: In-memory cache — working_directory is ignored for
+    # already-known sessions. The project was determined at first contact.
     cached = _cache_get(claude_session_id)
     if cached is not None:
         agent = db.session.get(Agent, cached.agent_id)
@@ -258,8 +280,8 @@ def correlate_session(
         # Agent no longer exists, remove from cache
         _cache_delete(claude_session_id)
 
-    # Strategy 2: Check database by claude_session_id — this survives server
-    # restarts where the in-memory cache is lost
+    # Strategy 2: DB claude_session_id — survives server restarts where
+    # the in-memory cache is lost
     agent = (
         db.session.query(Agent)
         .filter(Agent.claude_session_id == claude_session_id)
@@ -278,11 +300,10 @@ def correlate_session(
             correlation_method="db_session_id",
         )
 
-    # Strategy 2.5: Match by headspace_session_id → Agent.session_uuid
-    # The CLI wrapper creates agents with session_uuid and sets
-    # CLAUDE_HEADSPACE_SESSION_ID in the env. The hook script forwards this
-    # as headspace_session_id. This bridges the CLI UUID to Claude Code's
-    # internal session_id.
+    # Strategy 3: Headspace session UUID — the CLI wrapper creates agents
+    # with session_uuid and sets CLAUDE_HEADSPACE_SESSION_ID in the env.
+    # The hook script forwards this as headspace_session_id. This bridges
+    # the CLI UUID to Claude Code's internal session_id.
     if headspace_session_id:
         try:
             target_uuid = UUID(headspace_session_id)
@@ -327,6 +348,43 @@ def correlate_session(
                     correlation_method="headspace_session_id",
                 )
 
+    # Strategy 4: Tmux pane ID — the primary correlator for tmux-connected
+    # sessions. Pane IDs are stable across context compression: Claude Code
+    # gets a new session_id but stays in the same pane. Only one Claude Code
+    # process runs per pane, so a match on (tmux_pane_id, ended_at IS NULL)
+    # is unambiguous.
+    if tmux_pane_id:
+        agent = (
+            db.session.query(Agent)
+            .filter(
+                Agent.tmux_pane_id == tmux_pane_id,
+                Agent.ended_at.is_(None),
+            )
+            .order_by(Agent.last_seen_at.desc())
+            .first()
+        )
+        if agent:
+            old_id = agent.claude_session_id
+            if old_id != claude_session_id:
+                agent.claude_session_id = claude_session_id
+                db.session.commit()
+                logger.info(
+                    f"Session {claude_session_id} matched to agent {agent.id} "
+                    f"via tmux_pane_id {tmux_pane_id} "
+                    f"(claude_session_id updated from {old_id})"
+                )
+
+            _cache_set(claude_session_id, agent.id)
+            logger.debug(
+                f"Session {claude_session_id} matched to agent {agent.id} "
+                f"via tmux_pane_id {tmux_pane_id}"
+            )
+            return CorrelationResult(
+                agent=agent,
+                is_new=False,
+                correlation_method="tmux_pane_id",
+            )
+
     # Resolve working directory to project root, filtering out junk paths
     resolved_directory = _resolve_working_directory(working_directory)
     if working_directory and not resolved_directory:
@@ -335,10 +393,10 @@ def correlate_session(
             f"proceeding without it"
         )
 
-    # Strategy 3: Match by working directory — only unclaimed, active agents.
-    # An agent is "unclaimed" if claude_session_id is NULL (not yet linked to
-    # a Claude Code session). Excluding ended agents prevents stealing from
-    # sessions that have already finished.
+    # Strategy 5: Working directory — only unclaimed, active agents. An agent
+    # is "unclaimed" if claude_session_id is NULL (not yet linked to a Claude
+    # Code session). Excluding ended agents prevents stealing from sessions
+    # that have already finished.
     if resolved_directory:
         project = (
             db.session.query(Project)
@@ -374,7 +432,7 @@ def correlate_session(
                     correlation_method="working_directory",
                 )
 
-    # Strategy 4: Create new agent — but ONLY with a valid working directory.
+    # Strategy 6: Create new agent — but ONLY with a valid working directory.
     # Never create garbage placeholder projects.
     if not resolved_directory:
         raise ValueError(
@@ -523,3 +581,37 @@ def cache_session_mapping(claude_session_id: str, agent_id: int) -> None:
     """
     _cache_set(claude_session_id, agent_id)
     logger.debug(f"Cached session {claude_session_id} -> agent {agent_id}")
+
+
+def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> None:
+    """Clear all per-agent caches when a session ends or is reaped.
+
+    Should be called from process_session_end() and agent_reaper._reap_agent()
+    to ensure no stale state persists across session boundaries.
+
+    Clears:
+    1. Session correlator cache (by session_id)
+    2. Hook agent state (per-agent mutable state)
+    3. Commander availability tracking
+    """
+    # 1. Session correlator cache
+    if session_id:
+        _cache_delete(session_id)
+
+    # 2. Hook agent state (awaiting_tool, transcript positions, progress texts)
+    try:
+        from .hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().on_session_end(agent_id)
+    except Exception as e:
+        logger.debug(f"Hook agent state cleanup failed for agent {agent_id}: {e}")
+
+    # 3. Commander availability
+    try:
+        from flask import current_app
+        availability = current_app.extensions.get("commander_availability")
+        if availability:
+            availability.unregister_agent(agent_id)
+    except RuntimeError:
+        logger.debug("No app context for commander_availability cleanup")
+    except Exception as e:
+        logger.debug(f"Commander availability cleanup failed for agent {agent_id}: {e}")

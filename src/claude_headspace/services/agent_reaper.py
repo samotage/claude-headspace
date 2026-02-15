@@ -46,65 +46,23 @@ class ReapResult:
 def _is_claude_running_in_pane(tmux_pane_id: str) -> bool | None:
     """Check if a `claude` process is running in a tmux pane's process tree.
 
+    Delegates to tmux_bridge.check_health with PROCESS_TREE level.
+
     Returns:
         True if claude is running, False if pane exists but no claude,
         None if we can't determine (pane doesn't exist or error).
     """
-    import subprocess
+    from . import tmux_bridge
+    from .tmux_bridge import HealthCheckLevel
 
-    try:
-        # Get the pane's root PID from tmux
-        result = subprocess.run(
-            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode != 0:
-            return None
+    health = tmux_bridge.check_health(
+        tmux_pane_id,
+        level=HealthCheckLevel.PROCESS_TREE,
+    )
 
-        pane_pid = None
-        for line in result.stdout.strip().split("\n"):
-            parts = line.split()
-            if len(parts) == 2 and parts[0] == tmux_pane_id:
-                pane_pid = parts[1]
-                break
-
-        if not pane_pid:
-            return None  # Pane doesn't exist in tmux
-
-        # Use `ps` to walk the process tree — macOS `pgrep -P` is unreliable
-        # without specific flags, and pgrep -la shows argv[0] (version number
-        # like "2.1.34") instead of the actual process name "claude".
-        #
-        # `ps -axo pid,ppid,comm` reliably shows all processes with their
-        # parent PID and real command name on macOS.
-        ps_result = subprocess.run(
-            ["ps", "-axo", "pid,ppid,comm"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if ps_result.returncode != 0:
-            return None
-
-        # Build parent→children map for pane_pid and its children
-        children: dict[str, list[tuple[str, str]]] = {}  # ppid → [(pid, comm)]
-        for line in ps_result.stdout.strip().split("\n")[1:]:  # skip header
-            parts = line.split(None, 2)
-            if len(parts) >= 3:
-                pid, ppid, comm = parts[0], parts[1], parts[2]
-                children.setdefault(ppid, []).append((pid, comm))
-
-        # Check direct children
-        for child_pid, child_comm in children.get(pane_pid, []):
-            if "claude" in child_comm.lower():
-                return True
-            # Check grandchildren (bridge → claude)
-            for gc_pid, gc_comm in children.get(child_pid, []):
-                if "claude" in gc_comm.lower():
-                    return True
-
-        # Pane exists (we found it in tmux) but no claude in process tree
-        return False  # Pane exists but no claude process found in tree
-    except Exception:
-        return None
+    if not health.available:
+        return None  # Pane doesn't exist or error
+    return health.running
 
 
 class AgentReaper:
@@ -210,9 +168,12 @@ class AgentReaper:
                 .all()
             )
 
-            # Build pane ownership: pane_key → newest agent.id (highest id = most recent)
-            # Use (iterm_pane_id, tmux_pane_id) as key so agents in different
-            # tmux panes within the same iTerm window are treated as separate owners.
+            # Build pane ownership: pane_key → newest agent.id (highest id = most recent).
+            # Design: When multiple agents share a pane, only the newest (highest ID) is
+            # the legitimate owner. Older agents in the same pane are stale remnants from
+            # previous sessions that reused the pane, and will be reaped with reason
+            # "stale_pane". This is by-design — a tmux pane can only run one Claude Code
+            # session at a time, so the newest agent is always the current one.
             pane_owners: dict[tuple[str, str | None], int] = {}
             for a in agents:
                 if a.iterm_pane_id:
@@ -303,8 +264,10 @@ class AgentReaper:
                 # Execute pending summarisations (after commit)
                 if self._pending_summarisations:
                     try:
-                        from .hook_receiver import _execute_pending_summarisations
-                        _execute_pending_summarisations(self._pending_summarisations)
+                        summarisation_svc = self._app.extensions.get("summarisation_service")
+                        if summarisation_svc:
+                            from ..database import db as _db
+                            summarisation_svc.execute_pending(self._pending_summarisations, _db.session)
                     except Exception as e:
                         logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
                     finally:
@@ -322,6 +285,16 @@ class AgentReaper:
         logger.info(
             f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
         )
+
+        # Centralized cache cleanup (correlator, hook_agent_state, commander)
+        try:
+            from .session_correlator import invalidate_agent_caches
+            invalidate_agent_caches(
+                agent.id,
+                session_id=agent.claude_session_id if hasattr(agent, 'claude_session_id') else None,
+            )
+        except Exception as e:
+            logger.debug(f"Reaper cache cleanup failed (non-fatal): {e}")
 
         # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
         self._complete_orphaned_tasks(agent)
@@ -387,8 +360,15 @@ class AgentReaper:
             )
 
             # Read transcript once
-            from .hook_receiver import _extract_transcript_content
-            transcript_text = _extract_transcript_content(agent)
+            transcript_text = ""
+            if agent.transcript_path:
+                try:
+                    from .transcript_reader import read_transcript_file
+                    result = read_transcript_file(agent.transcript_path)
+                    if result.success and result.text:
+                        transcript_text = result.text
+                except Exception as e:
+                    logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
 
             # Detect intent from transcript
             intent = TurnIntent.COMPLETION
@@ -402,9 +382,13 @@ class AgentReaper:
                     logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
 
             # Complete tasks via lifecycle manager
-            from .hook_receiver import _get_lifecycle_manager
+            from .task_lifecycle import TaskLifecycleManager
             try:
-                lifecycle = _get_lifecycle_manager()
+                event_writer = self._app.extensions.get("event_writer")
+                lifecycle = TaskLifecycleManager(
+                    session=db.session,
+                    event_writer=event_writer,
+                )
             except Exception as e:
                 logger.warning(f"Could not create lifecycle manager: {e}")
                 return

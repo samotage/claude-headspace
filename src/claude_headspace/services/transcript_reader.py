@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ class TranscriptEntry:
     type: str
     role: str | None = None
     content: str | None = None
+    timestamp: datetime | None = None
+    raw_data: dict | None = None
 
 
 @dataclass
@@ -32,6 +35,31 @@ class TranscriptReadResult:
     success: bool
     text: str = ""
     error: str | None = None
+    timestamp: datetime | None = None
+
+
+def _parse_jsonl_timestamp(data: dict) -> datetime | None:
+    """Parse a timestamp from a JSONL entry.
+
+    JSONL entries may have a "timestamp" field as an ISO string or unix epoch.
+    Returns a timezone-aware datetime or None if parsing fails.
+    """
+    ts_raw = data.get("timestamp")
+    if not ts_raw:
+        return None
+    try:
+        if isinstance(ts_raw, str):
+            if ts_raw.endswith("Z"):
+                ts_raw = ts_raw[:-1] + "+00:00"
+            ts = datetime.fromisoformat(ts_raw)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        elif isinstance(ts_raw, (int, float)):
+            return datetime.fromtimestamp(ts_raw, tz=timezone.utc)
+    except (ValueError, OSError):
+        pass
+    return None
 
 
 def _extract_text(data: dict) -> tuple[str | None, str | None]:
@@ -86,6 +114,7 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
 
         # Walk backwards, collecting assistant texts until we hit a user message
         parts: list[str] = []
+        result_timestamp: datetime | None = None
         logger.debug(f"TRANSCRIPT_READ: walking backwards through {len(lines)} lines from {transcript_path}")
         lines_scanned = 0
         for line in reversed(lines):
@@ -124,6 +153,9 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
             _role, text = _extract_text(data)
             if text:
                 parts.append(text)
+                # Capture timestamp from the most recent (first found) assistant entry
+                if result_timestamp is None:
+                    result_timestamp = _parse_jsonl_timestamp(data)
                 logger.debug(f"TRANSCRIPT_READ: collected assistant text ({len(text)} chars): {repr(text[:100])}")
 
         if not parts:
@@ -137,10 +169,78 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         if len(combined) > MAX_CONTENT_LENGTH:
             combined = combined[:MAX_CONTENT_LENGTH] + "... [truncated]"
 
-        return TranscriptReadResult(success=True, text=combined)
+        return TranscriptReadResult(success=True, text=combined, timestamp=result_timestamp)
 
     except Exception as e:
         logger.warning(f"Error reading transcript {transcript_path}: {e}")
+        return TranscriptReadResult(success=False, error=str(e))
+
+
+def read_last_user_message(transcript_path: str) -> TranscriptReadResult:
+    """Read the most recent user message text from a transcript .jsonl file.
+
+    Walks backwards from the end of the file looking for the first ``user``
+    entry with text content.  Returns the text of that entry.  Used as a
+    fallback to recover user command text when hooks arrive out of order.
+    """
+    if not transcript_path:
+        return TranscriptReadResult(success=False, error="No transcript path")
+
+    if not os.path.exists(transcript_path):
+        return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
+
+    try:
+        _TAIL_SIZE = 64 * 1024
+        file_size = os.path.getsize(transcript_path)
+        with open(transcript_path, "r") as f:
+            start_pos = max(0, file_size - _TAIL_SIZE)
+            if start_pos > 0:
+                f.seek(start_pos)
+                f.readline()  # Skip partial line at seek boundary
+            lines = f.readlines()
+
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if data.get("type") != "user":
+                continue
+
+            msg = data.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+
+            content = msg.get("content")
+            # Extract text from string content
+            if isinstance(content, str) and content.strip():
+                text = content.strip()
+                if len(text) > MAX_CONTENT_LENGTH:
+                    text = text[:MAX_CONTENT_LENGTH] + "... [truncated]"
+                return TranscriptReadResult(success=True, text=text)
+
+            # Extract text from content blocks
+            if isinstance(content, list):
+                parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        t = block.get("text", "")
+                        if t.strip():
+                            parts.append(t.strip())
+                if parts:
+                    text = "\n".join(parts)
+                    if len(text) > MAX_CONTENT_LENGTH:
+                        text = text[:MAX_CONTENT_LENGTH] + "... [truncated]"
+                    return TranscriptReadResult(success=True, text=text)
+
+        return TranscriptReadResult(success=True, text="")
+
+    except Exception as e:
+        logger.warning(f"Error reading last user message from {transcript_path}: {e}")
         return TranscriptReadResult(success=False, error=str(e))
 
 
@@ -176,10 +276,13 @@ def read_new_entries_from_position(
                 continue
 
             role, text = _extract_text(data)
+            ts = _parse_jsonl_timestamp(data)
             entries.append(TranscriptEntry(
                 type=data.get("type", ""),
                 role=role,
                 content=text,
+                timestamp=ts,
+                raw_data=data,
             ))
 
         return entries, new_position

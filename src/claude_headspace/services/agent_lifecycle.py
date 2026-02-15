@@ -6,6 +6,7 @@ to provide remote agent lifecycle management.
 
 import logging
 import os
+import signal
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -51,6 +52,131 @@ class ContextResult(NamedTuple):
     reason: str | None = None
 
 
+def cleanup_orphaned_sessions() -> int:
+    """Kill tmux sessions with `hs-` prefix that have no matching active agent.
+
+    Compares `list_panes()` results against active agents (ended_at IS NULL)
+    in the database. Sessions whose pane IDs don't belong to any active agent
+    are killed.
+
+    Should be called once during startup, after DB init and before background
+    threads start.
+
+    Returns:
+        Number of orphaned sessions killed.
+    """
+    try:
+        panes = tmux_bridge.list_panes()
+    except Exception as e:
+        logger.warning(f"Orphan cleanup: list_panes failed (non-fatal): {e}")
+        return 0
+
+    # Filter to hs-* sessions
+    hs_panes = [p for p in panes if p.session_name.startswith("hs-")]
+    if not hs_panes:
+        return 0
+
+    # Get active agent pane IDs from DB
+    try:
+        active_pane_ids: set[str] = set()
+        agents = (
+            db.session.query(Agent.tmux_pane_id)
+            .filter(Agent.ended_at.is_(None), Agent.tmux_pane_id.isnot(None))
+            .all()
+        )
+        for (pane_id,) in agents:
+            active_pane_ids.add(pane_id)
+    except Exception as e:
+        logger.warning(f"Orphan cleanup: DB query failed (non-fatal): {e}")
+        return 0
+
+    # Find orphaned sessions (hs-* sessions whose pane IDs aren't in active agents)
+    # Group by session name so we kill each session at most once
+    orphaned_sessions: set[str] = set()
+    for pane in hs_panes:
+        if pane.pane_id not in active_pane_ids:
+            orphaned_sessions.add(pane.session_name)
+
+    killed = 0
+    for session_name in orphaned_sessions:
+        result = tmux_bridge.kill_session(session_name)
+        if result.success:
+            killed += 1
+            logger.info(f"Orphan cleanup: killed session '{session_name}'")
+        else:
+            logger.debug(
+                f"Orphan cleanup: failed to kill session '{session_name}': "
+                f"{result.error_message}"
+            )
+
+    if killed:
+        logger.info(f"Orphan cleanup: killed {killed} orphaned session(s)")
+
+    return killed
+
+
+def force_terminate_agent(agent_id: int) -> ShutdownResult:
+    """Force-terminate an agent by killing its tmux pane's process group.
+
+    Uses SIGTERM (not SIGKILL) to allow graceful shutdown of Claude Code
+    and its child processes. This is a manual action — not called by the reaper.
+
+    Args:
+        agent_id: ID of the agent to terminate
+
+    Returns:
+        ShutdownResult with success status and message
+    """
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return ShutdownResult(success=False, message="Agent not found")
+
+    if agent.ended_at is not None:
+        return ShutdownResult(success=False, message="Agent is already ended")
+
+    if not agent.tmux_pane_id:
+        return ShutdownResult(
+            success=False,
+            message="Agent has no tmux pane — cannot determine process group",
+        )
+
+    pane_pid = tmux_bridge.get_pane_pid(agent.tmux_pane_id)
+    if pane_pid is None:
+        return ShutdownResult(
+            success=False,
+            message=f"Could not find PID for pane {agent.tmux_pane_id}",
+        )
+
+    try:
+        pgid = os.getpgid(pane_pid)
+        os.killpg(pgid, signal.SIGTERM)
+        logger.info(
+            f"Sent SIGTERM to process group {pgid} "
+            f"(agent {agent_id}, pane {agent.tmux_pane_id}, pid {pane_pid})"
+        )
+        return ShutdownResult(
+            success=True,
+            message=f"SIGTERM sent to process group {pgid}. "
+            "Agent will be cleaned up by the reaper.",
+        )
+    except ProcessLookupError:
+        return ShutdownResult(
+            success=False,
+            message=f"Process {pane_pid} no longer exists",
+        )
+    except PermissionError:
+        return ShutdownResult(
+            success=False,
+            message=f"Permission denied killing process group for pid {pane_pid}",
+        )
+    except Exception as e:
+        logger.warning(f"Force terminate failed for agent {agent_id}: {e}")
+        return ShutdownResult(
+            success=False,
+            message=f"Failed to terminate: {e}",
+        )
+
+
 def create_agent(project_id: int) -> CreateResult:
     """Create a new idle Claude Code agent for a project.
 
@@ -90,7 +216,7 @@ def create_agent(project_id: int) -> CreateResult:
     # Generate a unique tmux session name
     import uuid
 
-    session_name = f"hs-{project.name}-{uuid.uuid4().hex[:8]}"
+    session_name = f"hs-{project.slug}-{uuid.uuid4().hex[:8]}"
 
     try:
         # Start claude-headspace in a new detached tmux session
@@ -344,14 +470,18 @@ def get_agent_info(agent_id: int) -> dict | None:
     tasks_info = []
     recent_tasks = agent.tasks[:10] if agent.tasks else []
     for task in recent_tasks:
-        recent_turns = task.get_recent_turns(20)
+        recent_turns = task.get_recent_turns(50)
         turns_info = []
         for turn in reversed(recent_turns):  # chronological order
+            text = turn.text or ""
+            text_truncated = len(text) > 500
             turns_info.append({
                 "id": turn.id,
                 "actor": turn.actor.value,
                 "intent": turn.intent.value,
                 "timestamp": turn.timestamp.isoformat(),
+                "text": text[:500] if text_truncated else text,
+                "text_truncated": text_truncated,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
             })

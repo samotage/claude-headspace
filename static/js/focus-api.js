@@ -121,6 +121,55 @@
         },
 
         /**
+         * Attach to an agent's tmux session (open new iTerm tab)
+         * @param {number} agentId - The agent ID
+         * @returns {Promise<boolean>} True if attach succeeded
+         */
+        attachAgent: async function(agentId) {
+            if (!agentId) {
+                console.error('FocusAPI: No agent ID provided for attach');
+                return false;
+            }
+
+            try {
+                const response = await CHUtils.apiFetch(`/api/agents/${agentId}/attach`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'ok') {
+                    this._showSuccessFeedback(agentId);
+                    if (window.Toast) {
+                        window.Toast.success('Attached', 'Opened tmux session in iTerm');
+                    }
+                    return true;
+                } else {
+                    if (window.Toast) {
+                        var detail = data.detail || '';
+                        if (detail === 'session_not_found') {
+                            window.Toast.error('Session gone', 'Tmux session no longer exists');
+                        } else if (detail === 'no_tmux_session') {
+                            window.Toast.error('No session', 'This agent has no tmux session');
+                        } else {
+                            window.Toast.error('Attach failed', data.error || 'Could not attach to tmux session');
+                        }
+                    }
+                    return false;
+                }
+            } catch (error) {
+                console.error('FocusAPI: Attach request failed', error);
+                if (window.Toast) {
+                    window.Toast.error('Attach failed', 'Network error - check if the server is running');
+                }
+                return false;
+            }
+        },
+
+        /**
          * Handle error responses with appropriate toasts
          */
         _handleError: function(data, agentId) {

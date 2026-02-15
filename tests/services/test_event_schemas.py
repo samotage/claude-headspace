@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timezone
 
-from claude_headspace.services.event_writer import (
+from claude_headspace.services.event_schemas import (
     EventType,
     PayloadSchema,
     PAYLOAD_SCHEMAS,

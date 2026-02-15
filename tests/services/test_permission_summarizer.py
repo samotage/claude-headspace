@@ -350,6 +350,106 @@ class TestClassifySafety:
     def test_unknown_tool(self):
         assert classify_safety("CustomTool", {"anything": "here"}) == "unknown"
 
+    # --- Compound commands ---
+
+    def test_compound_all_safe_read(self):
+        """find | head; ls | head should be safe_read (all subcommands are safe reads)."""
+        assert classify_safety("Bash", {
+            "command": "find /Users/samotage -name '*.py' | head -3; ls -lt /Users/samotage | head -3"
+        }) == "safe_read"
+
+    def test_compound_mixed_read_write(self):
+        """ls -la; python script.py should be safe_write (python is safe_write)."""
+        assert classify_safety("Bash", {
+            "command": "ls -la; python run.py"
+        }) == "safe_write"
+
+    def test_compound_with_destructive(self):
+        """ls -la; rm -rf /tmp/foo should be destructive."""
+        assert classify_safety("Bash", {
+            "command": "ls -la; rm -rf /tmp/foo"
+        }) == "destructive"
+
+    def test_compound_and_operator(self):
+        """git status && git log should be safe_read."""
+        assert classify_safety("Bash", {
+            "command": "git status && git log --oneline"
+        }) == "safe_read"
+
+    def test_compound_and_with_write(self):
+        """git add . && git commit should be safe_write."""
+        assert classify_safety("Bash", {
+            "command": "git add . && git commit -m 'msg'"
+        }) == "safe_write"
+
+    def test_compound_unknown_elevates_to_safe_write(self):
+        """Unknown command in compound should elevate to safe_write (conservative)."""
+        assert classify_safety("Bash", {
+            "command": "ls -la; some-unknown-tool arg1"
+        }) == "safe_write"
+
+    # --- Option label classification ---
+
+    def test_option_label_allow_reading(self):
+        """Option label 'allow reading' should classify as safe_read."""
+        assert classify_safety("Bash", {"command": "find /Users/samotage -name '*.py'"}, pane_context={
+            "options": [{"label": "Yes, allow reading from samotage/ from this project"}]
+        }) == "safe_read"
+
+    def test_option_label_allow_writing(self):
+        """Option label 'allow writing' should classify as safe_write."""
+        assert classify_safety("Bash", {"command": "echo hello > file.txt"}, pane_context={
+            "options": [{"label": "Yes, allow writing to samotage/ from this project"}]
+        }) == "safe_write"
+
+    def test_option_label_allow_editing(self):
+        """Option label 'allow editing' should classify as safe_write."""
+        assert classify_safety("Bash", {"command": "sed -i 's/a/b/' file.txt"}, pane_context={
+            "options": [{"label": "Yes, allow editing files in samotage/"}]
+        }) == "safe_write"
+
+    def test_option_label_allow_modifying(self):
+        """Option label 'allow modifying' should classify as safe_write."""
+        assert classify_safety("Bash", {"command": "chmod +x script.sh"}, pane_context={
+            "options": [{"label": "Yes, allow modifying permissions"}]
+        }) == "safe_write"
+
+    def test_option_label_overrides_unknown_command(self):
+        """Option label should override an otherwise unknown bash command."""
+        assert classify_safety("Bash", {"command": "some-custom-tool arg1"}, pane_context={
+            "options": [{"label": "Yes, allow reading from samotage/ from this project"}]
+        }) == "safe_read"
+
+    def test_option_label_no_match_falls_through(self):
+        """Option with no read/write keywords should fall through to command classification."""
+        assert classify_safety("Bash", {"command": "ls -la"}, pane_context={
+            "options": [{"label": "Yes, allow this action"}]
+        }) == "safe_read"
+
+    def test_option_label_empty_options_falls_through(self):
+        """Empty options list should fall through to command classification."""
+        assert classify_safety("Bash", {"command": "ls -la"}, pane_context={
+            "options": []
+        }) == "safe_read"
+
+    def test_option_label_none_options_falls_through(self):
+        """None options should fall through to command classification."""
+        assert classify_safety("Bash", {"command": "cat /etc/hosts"}, pane_context={
+            "options": None
+        }) == "safe_read"
+
+    def test_pane_context_without_options_falls_through(self):
+        """Pane context without options key should fall through."""
+        assert classify_safety("Bash", {"command": "cat /etc/hosts"}, pane_context={
+            "description": "some description"
+        }) == "safe_read"
+
+    def test_option_label_case_insensitive(self):
+        """Option label matching should be case-insensitive."""
+        assert classify_safety("Bash", {"command": "some-tool"}, pane_context={
+            "options": [{"label": "Yes, Allow Reading from samotage/"}]
+        }) == "safe_read"
+
     # --- Empty command ---
 
     def test_bash_empty_command(self):

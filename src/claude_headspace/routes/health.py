@@ -61,11 +61,20 @@ def health_check():
     else:
         overall_status = "degraded"
 
+    # Check background thread health
+    thread_status_fn = current_app.extensions.get("_get_background_thread_status")
+    background_threads = thread_status_fn() if thread_status_fn else {}
+
+    # Degrade status if any background thread is dead
+    if any(v == "dead" for v in background_threads.values()):
+        overall_status = "degraded"
+
     response = {
         "status": overall_status,
         "version": version,
         "database": "connected" if db_connected else "disconnected",
         "sse": sse_health,
+        "background_threads": background_threads,
     }
 
     if db_error:

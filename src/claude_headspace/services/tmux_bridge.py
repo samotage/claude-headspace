@@ -9,6 +9,7 @@ as genuine keyboard input.
 import logging
 import re
 import subprocess
+import threading
 import time
 from enum import Enum
 from typing import NamedTuple
@@ -18,7 +19,28 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_SUBPROCESS_TIMEOUT = 5  # seconds
 DEFAULT_TEXT_ENTER_DELAY_MS = 100  # ms between text send and Enter
+DEFAULT_CLEAR_DELAY_MS = 200  # ms after Ctrl+C before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
+
+# Per-pane send lock registry — prevents concurrent sends to the same pane
+# from interleaving text and corrupting the prompt.
+# Uses RLock so interrupt_and_send_text can call send_text without deadlocking.
+_send_locks: dict[str, threading.RLock] = {}
+_send_locks_meta_lock = threading.Lock()
+
+
+def _get_send_lock(pane_id: str) -> threading.RLock:
+    """Get or create a per-pane reentrant send lock."""
+    with _send_locks_meta_lock:
+        if pane_id not in _send_locks:
+            _send_locks[pane_id] = threading.RLock()
+        return _send_locks[pane_id]
+
+
+def release_send_lock(pane_id: str) -> None:
+    """Remove a pane's send lock when the agent is unregistered."""
+    with _send_locks_meta_lock:
+        _send_locks.pop(pane_id, None)
 
 
 class TmuxBridgeErrorType(str, Enum):
@@ -29,7 +51,7 @@ class TmuxBridgeErrorType(str, Enum):
     SUBPROCESS_FAILED = "subprocess_failed"
     NO_PANE_ID = "no_pane_id"
     TIMEOUT = "timeout"
-    SEND_FAILED = "send_failed"
+    SEND_FAILED = "send_failed"  # Send completed but verification failed (reserved for wait_for_pattern use)
     UNKNOWN = "unknown"
 
 
@@ -40,6 +62,18 @@ class SendResult(NamedTuple):
     error_type: TmuxBridgeErrorType | None = None
     error_message: str | None = None
     latency_ms: int = 0
+
+
+class HealthCheckLevel(str, Enum):
+    """Level of health check to perform."""
+
+    EXISTS = "exists"              # Pane found in list-panes (cheapest)
+    COMMAND = "command"            # + current_command check (default)
+    PROCESS_TREE = "process_tree"  # + ps tree walk (most expensive)
+
+
+# Default process names to check for in health checks
+DEFAULT_PROCESS_NAMES = ("claude", "node")
 
 
 class HealthResult(NamedTuple):
@@ -71,6 +105,33 @@ class PaneInfo(NamedTuple):
     working_directory: str
 
 
+_PANE_ID_PATTERN = re.compile(r"^%\d+$")
+
+
+def _validate_pane_id(pane_id: str | None) -> bool:
+    """Validate that a pane ID matches tmux's %N format.
+
+    Args:
+        pane_id: The pane ID to validate
+
+    Returns:
+        True if valid (e.g. '%0', '%5', '%123'), False otherwise.
+    """
+    if not pane_id:
+        return False
+    return bool(_PANE_ID_PATTERN.match(pane_id))
+
+
+class WaitResult(NamedTuple):
+    """Result of a wait_for_pattern polling operation."""
+
+    matched: bool
+    content: str = ""
+    elapsed_ms: int = 0
+    error_type: TmuxBridgeErrorType | None = None
+    error_message: str | None = None
+
+
 def _classify_subprocess_error(error: subprocess.CalledProcessError) -> TmuxBridgeErrorType:
     """Classify a tmux subprocess error based on stderr content."""
     stderr = (error.stderr or b"").decode("utf-8", errors="replace").lower()
@@ -79,112 +140,303 @@ def _classify_subprocess_error(error: subprocess.CalledProcessError) -> TmuxBrid
     return TmuxBridgeErrorType.SUBPROCESS_FAILED
 
 
+def _diagnostic_dump(pane_id: str, context: str) -> None:
+    """Capture pane content and log at WARNING level for debugging.
+
+    Called on timeouts and failure paths to aid post-mortem analysis.
+
+    Args:
+        pane_id: The tmux pane ID
+        context: Description of why the dump was triggered
+    """
+    try:
+        content = capture_pane(pane_id, lines=100)
+        if content:
+            truncated = content[:2000]
+            if len(content) > 2000:
+                truncated += "\n... [truncated]"
+            logger.warning(
+                f"Diagnostic dump ({context}) for pane {pane_id}:\n{truncated}"
+            )
+        else:
+            logger.warning(
+                f"Diagnostic dump ({context}) for pane {pane_id}: "
+                f"capture returned empty"
+            )
+    except Exception as e:
+        logger.warning(
+            f"Diagnostic dump ({context}) for pane {pane_id} failed: {e}"
+        )
+
+
+def wait_for_pattern(
+    pane_id: str,
+    pattern: str,
+    timeout_ms: int = 5000,
+    poll_interval_ms: int = 200,
+    capture_lines: int = 50,
+    join_wrapped: bool = False,
+) -> WaitResult:
+    """Poll a tmux pane until a regex pattern matches captured content.
+
+    Repeatedly captures pane content and searches for the pattern.
+    Returns as soon as a match is found, or after timeout_ms.
+
+    Args:
+        pane_id: The tmux pane ID (format: %0, %5, etc.)
+        pattern: Regex pattern to search for (re.search)
+        timeout_ms: Maximum time to wait in milliseconds
+        poll_interval_ms: Delay between capture attempts in milliseconds
+        capture_lines: Number of pane lines to capture per attempt
+        join_wrapped: If True, join wrapped lines in capture (-J flag)
+
+    Returns:
+        WaitResult with match status, captured content, and timing
+    """
+    if not _validate_pane_id(pane_id):
+        return WaitResult(
+            matched=False,
+            error_type=TmuxBridgeErrorType.NO_PANE_ID,
+            error_message=f"Invalid pane ID: {pane_id!r}",
+        )
+
+    start_time = time.time()
+    deadline = start_time + (timeout_ms / 1000.0)
+    last_content = ""
+
+    while True:
+        content = capture_pane(
+            pane_id, lines=capture_lines, join_wrapped=join_wrapped
+        )
+        last_content = content
+
+        if content and re.search(pattern, content, re.MULTILINE):
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            return WaitResult(
+                matched=True,
+                content=content,
+                elapsed_ms=elapsed_ms,
+            )
+
+        now = time.time()
+        if now >= deadline:
+            elapsed_ms = int((now - start_time) * 1000)
+            _diagnostic_dump(pane_id, f"wait_for_pattern timeout ({pattern!r})")
+            return WaitResult(
+                matched=False,
+                content=last_content,
+                elapsed_ms=elapsed_ms,
+                error_type=TmuxBridgeErrorType.TIMEOUT,
+                error_message=f"Pattern {pattern!r} not found after {timeout_ms}ms",
+            )
+
+        time.sleep(poll_interval_ms / 1000.0)
+
+
 def send_text(
     pane_id: str,
     text: str,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
+    clear_delay_ms: int = DEFAULT_CLEAR_DELAY_MS,
 ) -> SendResult:
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
-    Sends literal text via `send-keys -l` then Enter as a separate call
-    with a configurable delay between them to prevent race conditions.
+    Uses three separate subprocess calls with configurable delays:
+    1. Ctrl+C to clear pending autocomplete (+ clear_delay_ms)
+    2. send-keys -l for literal text (+ text_enter_delay_ms)
+    3. send-keys Enter to submit
+
+    This deliberate split-with-delays pattern prevents tmux from merging
+    the text and Enter into a single PTY write, which Ink's onSubmit
+    handler may not recognise as keyboard input.
 
     Args:
         pane_id: The tmux pane ID (format: %0, %5, etc.)
         text: The text to send
         timeout: Subprocess timeout in seconds
         text_enter_delay_ms: Delay in ms between text send and Enter send
+        clear_delay_ms: Delay in ms after Ctrl+C before sending text
 
     Returns:
         SendResult with success status and optional error information
     """
-    if not pane_id:
+    if not _validate_pane_id(pane_id):
         return SendResult(
             success=False,
             error_type=TmuxBridgeErrorType.NO_PANE_ID,
-            error_message="No pane ID provided.",
+            error_message=f"Invalid pane ID: {pane_id!r}",
         )
 
-    start_time = time.time()
+    with _get_send_lock(pane_id):
+        start_time = time.time()
 
-    try:
-        # Clear any pending autocomplete or partial input first.
-        # Claude Code's interactive prompt has autocomplete that can
-        # intercept typed text (especially /commands), causing the wrong
-        # command to be submitted. Ctrl+C ensures a clean prompt.
-        subprocess.run(
-            ["tmux", "send-keys", "-t", pane_id, "C-c"],
-            check=True,
+        try:
+            # Clear any pending autocomplete or partial input first.
+            # Claude Code's interactive prompt has autocomplete that can
+            # intercept typed text (especially /commands), causing the wrong
+            # command to be submitted. Ctrl+C ensures a clean prompt.
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "C-c"],
+                check=True,
+                timeout=timeout,
+                capture_output=True,
+            )
+            time.sleep(clear_delay_ms / 1000.0)  # longer to let TUI stabilise
+
+            # Send literal text (does NOT interpret key names)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "-l", text],
+                check=True,
+                timeout=timeout,
+                capture_output=True,
+            )
+
+            # Delay between text and Enter
+            time.sleep(text_enter_delay_ms / 1000.0)
+
+            # Send Enter as a key (triggers Ink's onSubmit)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "Enter"],
+                check=True,
+                timeout=timeout,
+                capture_output=True,
+            )
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"Sent text to tmux pane {pane_id} ({latency_ms}ms)")
+            return SendResult(success=True, latency_ms=latency_ms)
+
+        except FileNotFoundError:
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.warning("tmux binary not found on PATH")
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+                error_message="tmux is not installed or not on PATH.",
+                latency_ms=latency_ms,
+            )
+
+        except subprocess.CalledProcessError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_type = _classify_subprocess_error(e)
+            stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+            logger.warning(f"tmux send-keys failed for pane {pane_id}: {stderr_text}")
+            return SendResult(
+                success=False,
+                error_type=error_type,
+                error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
+                latency_ms=latency_ms,
+            )
+
+        except subprocess.TimeoutExpired:
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.warning(f"tmux send-keys timed out for pane {pane_id}")
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TIMEOUT,
+                error_message=f"tmux subprocess timed out after {timeout}s.",
+                latency_ms=latency_ms,
+            )
+
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.exception(f"Unexpected error sending to tmux pane {pane_id}")
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.UNKNOWN,
+                error_message=f"Unexpected error: {e}",
+                latency_ms=latency_ms,
+            )
+
+
+def interrupt_and_send_text(
+    pane_id: str,
+    text: str,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
+    interrupt_settle_ms: int = 500,
+) -> SendResult:
+    """Interrupt a processing Claude Code agent, then send text.
+
+    Sends Escape to halt the current agent execution, waits for the
+    agent to return to its input prompt, then sends the text as a new
+    command via send_text().
+
+    Used by voice_bridge.py for interrupting agents via voice commands.
+
+    Args:
+        pane_id: The tmux pane ID (format: %0, %5, etc.)
+        text: The text to send after interrupting
+        timeout: Subprocess timeout in seconds
+        text_enter_delay_ms: Delay in ms between text send and Enter send
+        interrupt_settle_ms: Delay in ms after Escape before sending text
+    """
+    if not _validate_pane_id(pane_id):
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.NO_PANE_ID,
+            error_message=f"Invalid pane ID: {pane_id!r}",
+        )
+
+    with _get_send_lock(pane_id):
+        start_time = time.time()
+
+        try:
+            # Send Escape to interrupt the running agent
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                check=True,
+                timeout=timeout,
+                capture_output=True,
+            )
+            logger.info(f"Sent Escape interrupt to tmux pane {pane_id}")
+
+            # Wait for Claude Code to process the interrupt and return to prompt
+            time.sleep(interrupt_settle_ms / 1000.0)
+
+        except FileNotFoundError:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+                error_message="tmux is not installed or not on PATH.",
+                latency_ms=latency_ms,
+            )
+        except subprocess.CalledProcessError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_type = _classify_subprocess_error(e)
+            stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+            logger.warning(f"tmux Escape failed for pane {pane_id}: {stderr_text}")
+            return SendResult(
+                success=False,
+                error_type=error_type,
+                error_message=f"Interrupt failed: {stderr_text}" if stderr_text else "Interrupt failed",
+                latency_ms=latency_ms,
+            )
+        except subprocess.TimeoutExpired:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TIMEOUT,
+                error_message=f"Interrupt timed out after {timeout}s.",
+                latency_ms=latency_ms,
+            )
+
+        # Now send the actual text (RLock allows re-entrance)
+        result = send_text(
+            pane_id=pane_id,
+            text=text,
             timeout=timeout,
-            capture_output=True,
-        )
-        time.sleep(text_enter_delay_ms / 1000.0)
-
-        # Send literal text (does NOT interpret key names)
-        subprocess.run(
-            ["tmux", "send-keys", "-t", pane_id, "-l", text],
-            check=True,
-            timeout=timeout,
-            capture_output=True,
+            text_enter_delay_ms=text_enter_delay_ms,
         )
 
-        # Delay between text and Enter
-        time.sleep(text_enter_delay_ms / 1000.0)
+        if result.success:
+            total_latency_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"Interrupt + send to tmux pane {pane_id} ({total_latency_ms}ms)")
+            return SendResult(success=True, latency_ms=total_latency_ms)
 
-        # Send Enter as a key (triggers Ink's onSubmit)
-        subprocess.run(
-            ["tmux", "send-keys", "-t", pane_id, "Enter"],
-            check=True,
-            timeout=timeout,
-            capture_output=True,
-        )
-
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"Sent text to tmux pane {pane_id} ({latency_ms}ms)")
-        return SendResult(success=True, latency_ms=latency_ms)
-
-    except FileNotFoundError:
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.warning("tmux binary not found on PATH")
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
-            error_message="tmux is not installed or not on PATH.",
-            latency_ms=latency_ms,
-        )
-
-    except subprocess.CalledProcessError as e:
-        latency_ms = int((time.time() - start_time) * 1000)
-        error_type = _classify_subprocess_error(e)
-        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
-        logger.warning(f"tmux send-keys failed for pane {pane_id}: {stderr_text}")
-        return SendResult(
-            success=False,
-            error_type=error_type,
-            error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
-            latency_ms=latency_ms,
-        )
-
-    except subprocess.TimeoutExpired:
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.warning(f"tmux send-keys timed out for pane {pane_id}")
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.TIMEOUT,
-            error_message=f"tmux subprocess timed out after {timeout}s.",
-            latency_ms=latency_ms,
-        )
-
-    except Exception as e:
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.exception(f"Unexpected error sending to tmux pane {pane_id}")
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.UNKNOWN,
-            error_message=f"Unexpected error: {e}",
-            latency_ms=latency_ms,
-        )
+        return result
 
 
 def send_keys(
@@ -207,96 +459,195 @@ def send_keys(
     Returns:
         SendResult with success status
     """
-    if not pane_id:
+    if not _validate_pane_id(pane_id):
         return SendResult(
             success=False,
             error_type=TmuxBridgeErrorType.NO_PANE_ID,
-            error_message="No pane ID provided.",
+            error_message=f"Invalid pane ID: {pane_id!r}",
         )
 
-    start_time = time.time()
+    with _get_send_lock(pane_id):
+        start_time = time.time()
 
-    try:
-        for i, key in enumerate(keys):
-            if i > 0:
-                time.sleep(sequential_delay_ms / 1000.0)
-            subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, key],
-                check=True,
-                timeout=timeout,
-                capture_output=True,
+        try:
+            for i, key in enumerate(keys):
+                if i > 0:
+                    time.sleep(sequential_delay_ms / 1000.0)
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, key],
+                    check=True,
+                    timeout=timeout,
+                    capture_output=True,
+                )
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"Sent keys {keys} to tmux pane {pane_id} ({latency_ms}ms)")
+            return SendResult(success=True, latency_ms=latency_ms)
+
+        except FileNotFoundError:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+                error_message="tmux is not installed or not on PATH.",
+                latency_ms=latency_ms,
             )
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"Sent keys {keys} to tmux pane {pane_id} ({latency_ms}ms)")
-        return SendResult(success=True, latency_ms=latency_ms)
+        except subprocess.CalledProcessError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_type = _classify_subprocess_error(e)
+            stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+            return SendResult(
+                success=False,
+                error_type=error_type,
+                error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
+                latency_ms=latency_ms,
+            )
 
-    except FileNotFoundError:
-        latency_ms = int((time.time() - start_time) * 1000)
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
-            error_message="tmux is not installed or not on PATH.",
-            latency_ms=latency_ms,
-        )
+        except subprocess.TimeoutExpired:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.TIMEOUT,
+                error_message=f"tmux subprocess timed out after {timeout}s.",
+                latency_ms=latency_ms,
+            )
 
-    except subprocess.CalledProcessError as e:
-        latency_ms = int((time.time() - start_time) * 1000)
-        error_type = _classify_subprocess_error(e)
-        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
-        return SendResult(
-            success=False,
-            error_type=error_type,
-            error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
-            latency_ms=latency_ms,
-        )
-
-    except subprocess.TimeoutExpired:
-        latency_ms = int((time.time() - start_time) * 1000)
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.TIMEOUT,
-            error_message=f"tmux subprocess timed out after {timeout}s.",
-            latency_ms=latency_ms,
-        )
-
-    except Exception as e:
-        latency_ms = int((time.time() - start_time) * 1000)
-        return SendResult(
-            success=False,
-            error_type=TmuxBridgeErrorType.UNKNOWN,
-            error_message=f"Unexpected error: {e}",
-            latency_ms=latency_ms,
-        )
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            return SendResult(
+                success=False,
+                error_type=TmuxBridgeErrorType.UNKNOWN,
+                error_message=f"Unexpected error: {e}",
+                latency_ms=latency_ms,
+            )
 
 
-def check_health(
+def get_pane_pid(
     pane_id: str,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
-) -> HealthResult:
-    """Check whether a tmux pane exists and whether Claude Code is running in it.
-
-    Two-level check:
-    1. Pane exists: pane ID found in `tmux list-panes -a`
-    2. Claude Code running: pane_current_command contains 'claude' or 'node'
+) -> int | None:
+    """Get the root PID of a tmux pane's process.
 
     Args:
         pane_id: The tmux pane ID (format: %0, %5, etc.)
         timeout: Subprocess timeout in seconds
 
     Returns:
-        HealthResult with availability and running status
+        The pane's PID as an int, or None if not found/error.
     """
-    if not pane_id:
-        return HealthResult(
-            available=False,
-            error_type=TmuxBridgeErrorType.NO_PANE_ID,
-            error_message="No pane ID provided.",
-        )
+    if not _validate_pane_id(pane_id):
+        return None
 
     try:
         result = subprocess.run(
-            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_current_command}"],
+            ["tmux", "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            return None
+
+        for line in result.stdout.strip().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == pane_id:
+                try:
+                    return int(parts[1])
+                except ValueError:
+                    return None
+        return None
+
+    except Exception:
+        return None
+
+
+def _is_process_in_tree(
+    pane_pid: int,
+    process_names: tuple[str, ...] = DEFAULT_PROCESS_NAMES,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+) -> bool | None:
+    """Check if any of the named processes are in a pane's process tree.
+
+    Walks children and grandchildren of pane_pid using `ps -axo pid,ppid,comm`.
+
+    Args:
+        pane_pid: The root PID of the tmux pane
+        process_names: Process names to search for (case-insensitive)
+        timeout: Subprocess timeout in seconds
+
+    Returns:
+        True if found, False if not found, None on error.
+    """
+    try:
+        ps_result = subprocess.run(
+            ["ps", "-axo", "pid,ppid,comm"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if ps_result.returncode != 0:
+            return None
+
+        pane_pid_str = str(pane_pid)
+
+        # Build parent→children map
+        children: dict[str, list[tuple[str, str]]] = {}
+        for line in ps_result.stdout.strip().split("\n")[1:]:  # skip header
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                pid, ppid, comm = parts[0], parts[1], parts[2]
+                children.setdefault(ppid, []).append((pid, comm))
+
+        # Check direct children
+        for child_pid, child_comm in children.get(pane_pid_str, []):
+            if any(name in child_comm.lower() for name in process_names):
+                return True
+            # Check grandchildren (bridge → claude)
+            for _gc_pid, gc_comm in children.get(child_pid, []):
+                if any(name in gc_comm.lower() for name in process_names):
+                    return True
+
+        return False
+
+    except Exception:
+        return None
+
+
+def check_health(
+    pane_id: str,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    level: HealthCheckLevel = HealthCheckLevel.COMMAND,
+    process_names: tuple[str, ...] = DEFAULT_PROCESS_NAMES,
+) -> HealthResult:
+    """Check whether a tmux pane exists and whether Claude Code is running in it.
+
+    Three-level check controlled by the `level` parameter:
+    - EXISTS: Only checks if the pane exists in `tmux list-panes` (cheapest).
+    - COMMAND: Also checks if pane_current_command matches process_names (default).
+    - PROCESS_TREE: Also walks the pane's process tree via `ps` (most expensive).
+
+    Args:
+        pane_id: The tmux pane ID (format: %0, %5, etc.)
+        timeout: Subprocess timeout in seconds
+        level: Depth of health check (EXISTS, COMMAND, or PROCESS_TREE)
+        process_names: Process names to check for (default: ("claude", "node"))
+
+    Returns:
+        HealthResult with availability, running status, and optional PID
+    """
+    if not _validate_pane_id(pane_id):
+        return HealthResult(
+            available=False,
+            error_type=TmuxBridgeErrorType.NO_PANE_ID,
+            error_message=f"Invalid pane ID: {pane_id!r}",
+        )
+
+    try:
+        # For EXISTS level, we only need pane_id in the output
+        fmt = "#{pane_id} #{pane_current_command}" if level != HealthCheckLevel.EXISTS else "#{pane_id}"
+        result = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", fmt],
             check=True,
             timeout=timeout,
             capture_output=True,
@@ -308,12 +659,36 @@ def check_health(
             parts = line.split(maxsplit=1)
             if len(parts) >= 1 and parts[0] == pane_id:
                 # Pane exists
+                if level == HealthCheckLevel.EXISTS:
+                    return HealthResult(available=True, running=False)
+
                 current_command = parts[1] if len(parts) >= 2 else ""
                 running = any(
                     proc in current_command.lower()
-                    for proc in ("claude", "node")
+                    for proc in process_names
                 )
-                return HealthResult(available=True, running=running)
+
+                if level == HealthCheckLevel.COMMAND:
+                    return HealthResult(available=True, running=running)
+
+                # PROCESS_TREE level: walk the process tree
+                pane_pid = get_pane_pid(pane_id, timeout=timeout)
+                if pane_pid is None:
+                    # Fallback to COMMAND result if we can't get PID
+                    return HealthResult(available=True, running=running, pid=None)
+
+                tree_result = _is_process_in_tree(
+                    pane_pid,
+                    process_names=process_names,
+                    timeout=timeout,
+                )
+                if tree_result is True:
+                    return HealthResult(available=True, running=True, pid=pane_pid)
+                elif tree_result is False:
+                    return HealthResult(available=True, running=False, pid=pane_pid)
+                else:
+                    # Can't determine — fall back to command-level result
+                    return HealthResult(available=True, running=running, pid=pane_pid)
 
         # Pane not found in list
         return HealthResult(
@@ -364,6 +739,7 @@ def capture_pane(
     pane_id: str,
     lines: int = 50,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    join_wrapped: bool = False,
 ) -> str:
     """Capture the last N lines of a tmux pane's visible content.
 
@@ -371,13 +747,21 @@ def capture_pane(
         pane_id: The tmux pane ID
         lines: Number of lines to capture from the end
         timeout: Subprocess timeout in seconds
+        join_wrapped: If True, include -J flag to join wrapped lines
 
     Returns:
         Captured text content (empty string on error)
     """
+    if not _validate_pane_id(pane_id):
+        return ""
+
+    cmd = ["tmux", "capture-pane", "-t", pane_id, "-p", "-S", f"-{lines}"]
+    if join_wrapped:
+        cmd.append("-J")
+
     try:
         result = subprocess.run(
-            ["tmux", "capture-pane", "-t", pane_id, "-p", "-S", f"-{lines}"],
+            cmd,
             check=True,
             timeout=timeout,
             capture_output=True,
@@ -532,31 +916,40 @@ def capture_permission_options(
 ) -> list[dict[str, str]] | None:
     """Capture tmux pane content and parse permission dialog options.
 
-    Retries to handle the race condition where the hook fires before
-    the dialog has fully rendered in the terminal.
+    Uses wait_for_pattern to poll for numbered option lines, handling
+    the race condition where the hook fires before the dialog has fully
+    rendered in the terminal.
 
     Args:
         pane_id: The tmux pane ID
-        max_attempts: Number of capture+parse attempts
-        retry_delay_ms: Delay in ms between attempts
+        max_attempts: Number of capture+parse attempts (used to compute timeout)
+        retry_delay_ms: Delay in ms between attempts (used as poll interval)
         capture_lines: Number of pane lines to capture
 
     Returns:
         List of {"label": "..."} dicts if options found, else None
     """
-    for attempt in range(max_attempts):
-        pane_text = capture_pane(pane_id, lines=capture_lines)
-        options = parse_permission_options(pane_text)
+    # Use wait_for_pattern to detect numbered option lines
+    timeout_ms = max_attempts * retry_delay_ms + retry_delay_ms
+    wait = wait_for_pattern(
+        pane_id,
+        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s+",
+        timeout_ms=timeout_ms,
+        poll_interval_ms=retry_delay_ms,
+        capture_lines=capture_lines,
+        join_wrapped=True,
+    )
+
+    if wait.matched:
+        options = parse_permission_options(wait.content)
         if options is not None:
             logger.debug(
                 f"Parsed {len(options)} permission options from pane {pane_id} "
-                f"(attempt {attempt + 1})"
+                f"({wait.elapsed_ms}ms)"
             )
             return options
-        if attempt < max_attempts - 1:
-            time.sleep(retry_delay_ms / 1000.0)
 
-    logger.debug(f"No permission options found in pane {pane_id} after {max_attempts} attempts")
+    logger.debug(f"No permission options found in pane {pane_id} after {timeout_ms}ms")
     return None
 
 
@@ -571,48 +964,134 @@ def capture_permission_context(
     Like capture_permission_options but returns the full context dict including
     the command text and description, not just the options list.
 
-    Retries to handle the race condition where the hook fires before
-    the dialog has fully rendered in the terminal.
+    Uses wait_for_pattern to poll for numbered option lines, handling
+    the race condition where the hook fires before the dialog has fully
+    rendered in the terminal.
 
     Args:
         pane_id: The tmux pane ID
-        max_attempts: Number of capture+parse attempts
-        retry_delay_ms: Delay in ms between attempts
+        max_attempts: Number of capture+parse attempts (used to compute timeout)
+        retry_delay_ms: Delay in ms between attempts (used as poll interval)
         capture_lines: Number of pane lines to capture
 
     Returns:
         Dict with "tool_type", "command", "description", "options" keys, or None
     """
-    for attempt in range(max_attempts):
-        pane_text = capture_pane(pane_id, lines=capture_lines)
-        context = parse_permission_context(pane_text)
+    # Use wait_for_pattern to detect numbered option lines
+    timeout_ms = max_attempts * retry_delay_ms + retry_delay_ms
+    wait = wait_for_pattern(
+        pane_id,
+        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s+",
+        timeout_ms=timeout_ms,
+        poll_interval_ms=retry_delay_ms,
+        capture_lines=capture_lines,
+        join_wrapped=True,
+    )
+
+    if wait.matched:
+        context = parse_permission_context(wait.content)
         if context is not None:
             logger.debug(
                 f"Parsed permission context from pane {pane_id} "
-                f"(attempt {attempt + 1}): tool_type={context.get('tool_type')}"
+                f"({wait.elapsed_ms}ms): tool_type={context.get('tool_type')}"
             )
             return context
-        if attempt < max_attempts - 1:
-            time.sleep(retry_delay_ms / 1000.0)
 
-    logger.debug(f"No permission context found in pane {pane_id} after {max_attempts} attempts")
+    logger.debug(f"No permission context found in pane {pane_id} after {timeout_ms}ms")
     return None
+
+
+def kill_session(
+    session_name: str,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    socket_path: str | None = None,
+) -> SendResult:
+    """Kill a tmux session by name.
+
+    Args:
+        session_name: The tmux session name to kill
+        timeout: Subprocess timeout in seconds
+        socket_path: Optional tmux socket path (-S flag) for socket isolation
+
+    Returns:
+        SendResult with success status
+    """
+    if not session_name:
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.NO_PANE_ID,
+            error_message="Empty session name",
+        )
+
+    start_time = time.time()
+    cmd = ["tmux"]
+    if socket_path:
+        cmd.extend(["-S", socket_path])
+    cmd.extend(["kill-session", "-t", session_name])
+
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+        latency_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"Killed tmux session '{session_name}' ({latency_ms}ms)")
+        return SendResult(success=True, latency_ms=latency_ms)
+
+    except FileNotFoundError:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+            error_message="tmux is not installed or not on PATH.",
+            latency_ms=latency_ms,
+        )
+
+    except subprocess.CalledProcessError as e:
+        latency_ms = int((time.time() - start_time) * 1000)
+        stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+        return SendResult(
+            success=False,
+            error_type=_classify_subprocess_error(e),
+            error_message=f"tmux kill-session failed: {stderr_text}" if stderr_text else "tmux kill-session failed",
+            latency_ms=latency_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return SendResult(
+            success=False,
+            error_type=TmuxBridgeErrorType.TIMEOUT,
+            error_message=f"tmux kill-session timed out after {timeout}s.",
+            latency_ms=latency_ms,
+        )
 
 
 def list_panes(
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+    socket_path: str | None = None,
 ) -> list[PaneInfo]:
     """List all tmux panes with metadata.
+
+    Args:
+        timeout: Subprocess timeout in seconds
+        socket_path: Optional tmux socket path (-S flag) for socket isolation
 
     Returns:
         List of PaneInfo with pane_id, session_name, current_command, working_directory
     """
     try:
+        cmd = ["tmux"]
+        if socket_path:
+            cmd.extend(["-S", socket_path])
+        cmd.extend([
+            "list-panes", "-a", "-F",
+            "#{pane_id}\t#{session_name}\t#{pane_current_command}\t#{pane_current_path}",
+        ])
         result = subprocess.run(
-            [
-                "tmux", "list-panes", "-a", "-F",
-                "#{pane_id}\t#{session_name}\t#{pane_current_command}\t#{pane_current_path}",
-            ],
+            cmd,
             check=True,
             timeout=timeout,
             capture_output=True,
@@ -652,11 +1131,11 @@ def get_pane_client_tty(
     Returns:
         TtyResult with the client TTY path (e.g., /dev/ttys003)
     """
-    if not pane_id:
+    if not _validate_pane_id(pane_id):
         return TtyResult(
             success=False,
             error_type=TmuxBridgeErrorType.NO_PANE_ID,
-            error_message="No pane ID provided.",
+            error_message=f"Invalid pane ID: {pane_id!r}",
         )
 
     # Step 1: Find which session contains this pane
@@ -765,11 +1244,11 @@ def select_pane(
     Returns:
         SendResult with success status
     """
-    if not pane_id:
+    if not _validate_pane_id(pane_id):
         return SendResult(
             success=False,
             error_type=TmuxBridgeErrorType.NO_PANE_ID,
-            error_message="No pane ID provided.",
+            error_message=f"Invalid pane ID: {pane_id!r}",
         )
 
     start_time = time.time()

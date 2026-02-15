@@ -5,18 +5,19 @@ from .project_decoder import decode_project_path, encode_project_path, locate_js
 from .jsonl_parser import JSONLParser, ParsedTurn
 from .git_metadata import GitMetadata, GitInfo
 from .file_watcher import FileWatcher, init_file_watcher
-from .event_writer import (
+from .event_schemas import (
     EventType,
     PayloadSchema,
     ValidatedEvent,
     validate_event_type,
     validate_payload,
     create_validated_event,
+)
+from .event_writer import (
     EventWriter,
     WriteResult,
     create_event_writer,
 )
-from .process_monitor import ProcessMonitor, WatcherStatus
 from .intent_detector import (
     IntentResult,
     detect_agent_intent,
@@ -27,6 +28,7 @@ from .intent_detector import (
     BLOCKED_PATTERNS,
 )
 from .state_machine import (
+    InvalidTransitionError,
     TransitionResult,
     validate_transition,
     get_valid_transitions_from,
@@ -71,9 +73,6 @@ __all__ = [
     "EventWriter",
     "WriteResult",
     "create_event_writer",
-    # Process monitor
-    "ProcessMonitor",
-    "WatcherStatus",
     # Intent detector
     "IntentResult",
     "detect_agent_intent",
@@ -83,6 +82,7 @@ __all__ = [
     "COMPLETION_PATTERNS",
     "BLOCKED_PATTERNS",
     # State machine
+    "InvalidTransitionError",
     "TransitionResult",
     "validate_transition",
     "get_valid_transitions_from",

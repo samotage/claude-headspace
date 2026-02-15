@@ -42,6 +42,7 @@
       this.reconnectAttempts = 0;
       this.handlers = new Map();
       this.stateChangeCallbacks = [];
+      this._reconnectTimer = null;
 
       // Bind methods
       this._onOpen = this._onOpen.bind(this);
@@ -193,7 +194,8 @@
         `Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts})`
       );
 
-      setTimeout(() => {
+      this._reconnectTimer = setTimeout(() => {
+        this._reconnectTimer = null;
         if (this.state === ConnectionState.RECONNECTING) {
           this.connect();
         }
@@ -259,6 +261,11 @@
      * Disconnect from the SSE endpoint
      */
     disconnect() {
+      if (this._reconnectTimer) {
+        clearTimeout(this._reconnectTimer);
+        this._reconnectTimer = null;
+      }
+
       if (this.eventSource) {
         this.eventSource.close();
         this.eventSource = null;

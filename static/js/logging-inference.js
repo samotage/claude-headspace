@@ -19,6 +19,7 @@
     totalPages: 0,
     expandedCallIds: new Set(),
     sseClient: null,
+    _fetchController: null,
     filters: {
       search: null,
       level: null,
@@ -367,6 +368,10 @@
     _loadCalls: async function () {
       this._showLoading();
 
+      // Abort any in-flight filter fetch to prevent race conditions (M14)
+      if (this._fetchController) this._fetchController.abort();
+      this._fetchController = new AbortController();
+
       try {
         const url = new URL(CALLS_API, window.location.origin);
         url.searchParams.set("page", this.currentPage);
@@ -391,7 +396,7 @@
           url.searchParams.set("cached", this.filters.cached);
         }
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: this._fetchController.signal });
         const data = await response.json();
 
         if (response.ok) {
@@ -400,6 +405,7 @@
           this._showError();
         }
       } catch (error) {
+        if (error.name === 'AbortError') return; // Superseded by newer request
         console.error("Failed to load inference calls:", error);
         this._showError();
       }

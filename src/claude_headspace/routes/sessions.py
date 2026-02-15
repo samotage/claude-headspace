@@ -77,13 +77,27 @@ def create_session():
         project_name = project_path.rstrip("/").split("/")[-1]
 
     try:
-        # Find registered project — auto-creation is disabled
+        # Find or auto-create project
         project = Project.query.filter_by(path=project_path).first()
         if project is None:
-            return jsonify({
-                "error": f"Project not registered: '{project_path}'. "
-                         f"Register this project at the /projects management page before starting a session.",
-            }), 404
+            # Auto-create project from session info
+            from ..models.project import generate_slug
+            slug = generate_slug(project_name)
+            # Ensure slug uniqueness by appending a suffix if needed
+            base_slug = slug
+            counter = 1
+            while Project.query.filter_by(slug=slug).first() is not None:
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            project = Project(
+                name=project_name,
+                slug=slug,
+                path=project_path,
+                current_branch=current_branch,
+            )
+            db.session.add(project)
+            db.session.flush()  # Get the ID before creating the agent
+            logger.info(f"Auto-created project: {project.name} (id={project.id}, path={project_path})")
         else:
             # Update branch if provided
             if current_branch:
@@ -95,7 +109,6 @@ def create_session():
         if existing_agent:
             return jsonify({
                 "error": f"Session {session_uuid} already exists",
-                "agent_id": existing_agent.id,
             }), 409
 
         # Create agent
@@ -133,10 +146,10 @@ def create_session():
             "project_name": project.name,
         }), 201
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        logger.error(f"Error creating session: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error creating session")
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 @sessions_bp.route("/api/sessions/<uuid:session_uuid>", methods=["DELETE"])
@@ -178,10 +191,10 @@ def delete_session(session_uuid: UUID):
             "agent_id": agent.id,
         }), 200
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        logger.error(f"Error ending session: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error ending session")
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 @sessions_bp.route("/api/sessions/<uuid:session_uuid>", methods=["GET"])

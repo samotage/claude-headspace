@@ -274,7 +274,10 @@ class TestRespondToAgent:
         client.post("/api/respond/1", json={"text": "hello"})
 
         mock_bcast_card.assert_called_once_with(mock_agent, "respond")
-        mock_bcast_state.assert_called_once_with(mock_agent, "hello")
+        mock_bcast_state.assert_called_once()
+        call_args = mock_bcast_state.call_args
+        assert call_args[0][0] == mock_agent
+        assert call_args[0][1] == "hello"
 
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_pane_not_found(self, mock_bridge, client, mock_db, mock_agent):
@@ -386,15 +389,12 @@ class TestRespondToAgent:
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        from src.claude_headspace.services.hook_receiver import _respond_pending_for_agent
-        _respond_pending_for_agent.clear()
+        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
+            response = client.post("/api/respond/1", json={"text": "hello"})
 
-        response = client.post("/api/respond/1", json={"text": "hello"})
-
-        assert response.status_code == 500
-        assert 1 not in _respond_pending_for_agent
-
-        _respond_pending_for_agent.clear()
+            assert response.status_code == 500
+            # respond-pending should NOT be set on commit failure
+            mock_get_state().set_respond_pending.assert_not_called()
 
 
 class TestSelectMode:
@@ -461,6 +461,24 @@ class TestSelectMode:
         mock_db.session.add.assert_called_once()
         turn = mock_db.session.add.call_args[0][0]
         assert turn.text == "[selected option 1]"
+
+    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.routes.respond.tmux_bridge")
+    def test_select_with_option_label_uses_label(
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+    ):
+        """Select mode uses option_label as turn text when provided."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
+
+        client.post("/api/respond/1", json={
+            "mode": "select", "option_index": 0, "option_label": "Yes"
+        })
+
+        mock_db.session.add.assert_called_once()
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.text == "Yes"
 
     def test_select_invalid_index_negative(self, client, mock_db, mock_agent):
         """Negative option_index returns 400."""

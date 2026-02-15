@@ -7,14 +7,18 @@ import pytest
 
 from claude_headspace.services.iterm_focus import (
     APPLESCRIPT_TIMEOUT,
+    AttachResult,
     FocusErrorType,
     FocusResult,
     PaneStatus,
     _build_applescript,
+    _build_attach_applescript,
     _build_check_applescript,
     _build_tty_applescript,
     _parse_applescript_error,
+    attach_tmux_session,
     check_pane_exists,
+    check_tmux_session_exists,
     focus_iterm_by_tty,
     focus_iterm_pane,
 )
@@ -493,3 +497,215 @@ class TestFocusItermByTty:
         assert result.success is False
         assert result.error_type == FocusErrorType.UNKNOWN
         assert "Something unexpected" in result.error_message
+
+
+class TestCheckTmuxSessionExists:
+    """Tests for check_tmux_session_exists function."""
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_session_exists(self, mock_run):
+        """Test returns True when tmux has-session succeeds."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        assert check_tmux_session_exists("hs-test-123") is True
+        mock_run.assert_called_once_with(
+            ["tmux", "has-session", "-t", "hs-test-123"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_session_not_exists(self, mock_run):
+        """Test returns False when tmux has-session fails."""
+        mock_run.return_value = MagicMock(returncode=1)
+
+        assert check_tmux_session_exists("hs-nonexistent") is False
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_timeout_returns_false(self, mock_run):
+        """Test returns False on timeout."""
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="tmux", timeout=2)
+
+        assert check_tmux_session_exists("hs-test") is False
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_file_not_found_returns_false(self, mock_run):
+        """Test returns False when tmux binary not found."""
+        mock_run.side_effect = FileNotFoundError("tmux not found")
+
+        assert check_tmux_session_exists("hs-test") is False
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    def test_unexpected_error_returns_false(self, mock_run):
+        """Test returns False on unexpected error."""
+        mock_run.side_effect = Exception("boom")
+
+        assert check_tmux_session_exists("hs-test") is False
+
+
+class TestAttachResult:
+    """Tests for AttachResult named tuple."""
+
+    def test_success_result(self):
+        """Test creating a success result."""
+        result = AttachResult(success=True, method="new_tab", latency_ms=100)
+        assert result.success is True
+        assert result.method == "new_tab"
+        assert result.error_type is None
+        assert result.error_message is None
+        assert result.latency_ms == 100
+
+    def test_error_result(self):
+        """Test creating an error result."""
+        result = AttachResult(
+            success=False,
+            error_type=FocusErrorType.TIMEOUT,
+            error_message="Timed out",
+            latency_ms=2000,
+        )
+        assert result.success is False
+        assert result.error_type == FocusErrorType.TIMEOUT
+        assert result.method is None
+
+
+class TestBuildAttachApplescript:
+    """Tests for _build_attach_applescript function."""
+
+    def test_contains_session_name(self):
+        """Generated AppleScript should contain the session name."""
+        script = _build_attach_applescript("hs-test-123")
+        assert "hs-test-123" in script
+
+    def test_activates_iterm(self):
+        """Generated AppleScript should activate iTerm."""
+        script = _build_attach_applescript("hs-test")
+        assert 'tell application "iTerm"' in script
+        assert "activate" in script
+
+    def test_creates_new_tab(self):
+        """Generated AppleScript should create a new tab."""
+        script = _build_attach_applescript("hs-test")
+        assert "create tab with default profile" in script
+
+    def test_runs_tmux_attach(self):
+        """Generated AppleScript should run tmux attach command."""
+        script = _build_attach_applescript("hs-test-123")
+        assert 'write text "tmux attach -t hs-test-123"' in script
+
+
+class TestAttachTmuxSession:
+    """Tests for attach_tmux_session function."""
+
+    def test_empty_session_name_returns_error(self):
+        """Test that empty session name returns an error."""
+        result = attach_tmux_session("")
+        assert result.success is False
+        assert result.error_type == FocusErrorType.PANE_NOT_FOUND
+        assert "No tmux session name" in result.error_message
+
+    def test_none_session_name_returns_error(self):
+        """Test that None session name returns an error."""
+        result = attach_tmux_session(None)
+        assert result.success is False
+        assert result.error_type == FocusErrorType.PANE_NOT_FOUND
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_new_tab_when_no_clients(self, mock_clients, mock_run):
+        """Test opens new tab when no clients are attached."""
+        mock_clients.return_value = []
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is True
+        assert result.method == "new_tab"
+        assert result.latency_ms >= 0
+
+    @patch("claude_headspace.services.iterm_focus.focus_iterm_by_tty")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_reuses_existing_tab(self, mock_clients, mock_focus_tty):
+        """Test reuses existing tab when client is already attached."""
+        mock_clients.return_value = ["/dev/ttys005"]
+        mock_focus_tty.return_value = FocusResult(success=True, latency_ms=50)
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is True
+        assert result.method == "reused_tab"
+        mock_focus_tty.assert_called_once_with("/dev/ttys005")
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus.focus_iterm_by_tty")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_falls_through_to_new_tab_when_reuse_fails(
+        self, mock_clients, mock_focus_tty, mock_run,
+    ):
+        """Test opens new tab when existing client focus fails."""
+        mock_clients.return_value = ["/dev/ttys005"]
+        mock_focus_tty.return_value = FocusResult(
+            success=False, error_type=FocusErrorType.PANE_NOT_FOUND,
+            error_message="not found", latency_ms=50,
+        )
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is True
+        assert result.method == "new_tab"
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_applescript_error(self, mock_clients, mock_run):
+        """Test handles AppleScript error on new tab."""
+        mock_clients.return_value = []
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stderr="Application isn't running.",
+        )
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.ITERM_NOT_RUNNING
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_timeout(self, mock_clients, mock_run):
+        """Test handles timeout on AppleScript execution."""
+        mock_clients.return_value = []
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="osascript", timeout=APPLESCRIPT_TIMEOUT,
+        )
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.TIMEOUT
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_file_not_found(self, mock_clients, mock_run):
+        """Test handles osascript not found."""
+        mock_clients.return_value = []
+        mock_run.side_effect = FileNotFoundError("osascript not found")
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.UNKNOWN
+        assert "macOS" in result.error_message
+
+    @patch("claude_headspace.services.iterm_focus.subprocess.run")
+    @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
+    def test_unexpected_error(self, mock_clients, mock_run):
+        """Test handles unexpected exception."""
+        mock_clients.return_value = []
+        mock_run.side_effect = Exception("Something broke")
+
+        result = attach_tmux_session("hs-test-123")
+
+        assert result.success is False
+        assert result.error_type == FocusErrorType.UNKNOWN
+        assert "Something broke" in result.error_message

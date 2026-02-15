@@ -45,11 +45,9 @@
     }
 
     /**
-     * Render markdown text to safe HTML.
-     * Consolidated from project_show.js, help.js, and brain-reboot.js.
-     * Handles: headers, bold, italic, code blocks, inline code, links,
-     * unordered/ordered lists, horizontal rules, tables, paragraphs.
-     * All generated links are validated against a protocol whitelist.
+     * Render markdown text to safe HTML using marked.js + DOMPurify.
+     * Handles all CommonMark/GFM syntax including proper ordered lists,
+     * tables, code blocks, and nested structures.
      *
      * @param {string} text - Raw markdown text
      * @param {Object} [options] - Rendering options
@@ -62,109 +60,71 @@
         if (!text) return '';
         options = options || {};
 
-        // Strip HTML comments
+        // Strip HTML comments before parsing
         text = text.replace(/<!--[\s\S]*?-->/g, '');
 
-        // Escape HTML first to prevent XSS
-        var html = escapeHtml(text);
+        var renderer = new marked.Renderer();
 
-        // Code blocks (triple backtick) — must be processed before inline patterns
-        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
-            var trimmed = code.trim();
+        renderer.code = function(token) {
+            var code = escapeHtml(token.text);
             if (options.copyButtons) {
                 var id = 'code-' + Math.random().toString(36).slice(2, 9);
                 return '<div class="code-block-wrapper" style="position:relative; margin: 1rem 0;">' +
                     '<button onclick="CHUtils.copyCodeBlock(\'' + id + '\')" ' +
                         'class="code-copy-btn" title="Copy to clipboard" aria-label="Copy code">' +
                         'Copy</button>' +
-                    '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code id="' + id + '">' + trimmed + '</code></pre>' +
+                    '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code id="' + id + '">' + code + '</code></pre>' +
                     '</div>';
             }
-            return '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code>' + trimmed + '</code></pre>';
-        });
+            return '<pre class="bg-surface rounded p-3 text-xs overflow-x-auto"><code>' + code + '</code></pre>';
+        };
 
-        // Inline code
-        html = html.replace(/`([^`]+)`/g, '<code class="bg-surface px-1 rounded text-xs">$1</code>');
-
-        // Headers (with optional id attributes for anchor linking)
-        if (options.headerIds) {
-            html = html.replace(/^### (.+)$/gm, function(m, title) {
-                var id = _slugify(title);
-                return '<h3 id="' + id + '" class="text-base font-semibold text-primary mt-4 mb-2">' + title + '</h3>';
-            });
-            html = html.replace(/^## (.+)$/gm, function(m, title) {
-                var id = _slugify(title);
-                return '<h2 id="' + id + '" class="text-lg font-bold text-primary mt-4 mb-2">' + title + '</h2>';
-            });
-            html = html.replace(/^# (.+)$/gm, function(m, title) {
-                var id = _slugify(title);
-                return '<h1 id="' + id + '" class="text-xl font-bold text-primary mt-4 mb-2">' + title + '</h1>';
-            });
-        } else {
-            html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-primary mt-4 mb-2">$1</h3>');
-            html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-primary mt-4 mb-2">$1</h2>');
-            html = html.replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-primary mt-4 mb-2">$1</h1>');
-        }
-
-        // Bold and italic
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-        // Horizontal rules
-        html = html.replace(/^---+$/gm, '<hr class="border-border my-4">');
-
-        // Unordered lists
-        html = html.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
-
-        // Ordered lists
-        html = html.replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>');
-
-        // Wrap consecutive list items
-        html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, function(match) {
-            if (match.indexOf('list-decimal') !== -1) {
-                return '<ol class="list-decimal list-inside mb-2">' + match + '</ol>';
+        renderer.heading = function(token) {
+            var tag = 'h' + token.depth;
+            var idAttr = '';
+            if (options.headerIds) {
+                idAttr = ' id="' + _slugify(token.text) + '"';
             }
-            return '<ul class="list-disc mb-2">' + match + '</ul>';
-        });
+            return '<' + tag + idAttr + '>' + this.parser.parseInline(token.tokens) + '</' + tag + '>';
+        };
 
-        // Links — with URL validation for XSS prevention
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, linkText, url) {
+        renderer.link = function(token) {
+            var href = token.href;
+            var linkText = this.parser.parseInline(token.tokens);
+
             // Custom link handler (for doc: links, internal help links, etc.)
             if (options.linkHandler) {
-                var custom = options.linkHandler(linkText, url);
+                var custom = options.linkHandler(linkText, href);
                 if (custom != null) return custom;
             }
             // Validate URL protocol
-            if (!isSafeUrl(url)) {
-                return escapeHtml(linkText);
+            if (!isSafeUrl(href)) {
+                return escapeHtml(token.text);
             }
-            return '<a href="' + escapeHtml(url) + '" class="text-cyan hover:underline" target="_blank" rel="noopener">' + linkText + '</a>';
+            return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + linkText + '</a>';
+        };
+
+        renderer.list = function(token) {
+            var tag = token.ordered ? 'ol' : 'ul';
+            var startAttr = (token.ordered && token.start != null && token.start !== 1)
+                ? ' start="' + token.start + '"'
+                : '';
+            var body = '';
+            for (var i = 0; i < token.items.length; i++) {
+                body += this.listitem(token.items[i]);
+            }
+            return '<' + tag + startAttr + '>\n' + body + '</' + tag + '>\n';
+        };
+
+        var rawHtml = marked.parse(text, { renderer: renderer, breaks: true, gfm: true });
+
+        // Merge consecutive <ol> fragments that marked creates from loose list items
+        rawHtml = rawHtml.replace(/<\/ol>\s*<ol(?:\s+start="\d+")?>/g, '');
+
+        return DOMPurify.sanitize(rawHtml, {
+            ADD_TAGS: ['details', 'summary'],
+            ADD_ATTR: ['target', 'rel', 'id', 'onclick', 'aria-label']
         });
-
-        // Tables (simple support)
-        html = html.replace(/^\|(.+)\|$/gm, function(match, content) {
-            var cells = content.split('|').map(function(c) { return c.trim(); });
-            return '<tr class="border-b border-border">' +
-                cells.map(function(c) {
-                    if (/^[-:]+$/.test(c)) return '';
-                    return '<td class="px-3 py-2 text-secondary">' + c + '</td>';
-                }).join('') +
-                '</tr>';
-        });
-
-        // Wrap tables
-        html = html.replace(/(<tr[^>]*>.*<\/tr>)+/g, function(match) {
-            return '<table class="w-full my-4 border border-border">' + match + '</table>';
-        });
-
-        // Line breaks (double newline -> paragraph)
-        html = html.replace(/\n\n/g, '</p><p class="mb-2">');
-        html = '<p class="mb-2">' + html + '</p>';
-
-        // Clean up empty paragraphs
-        html = html.replace(/<p class="mb-2"><\/p>/g, '');
-
-        return html;
     }
 
     /**
@@ -173,9 +133,7 @@
      * @returns {string}
      */
     function _slugify(text) {
-        // The text is already HTML-escaped at this point, so we decode entities first
-        var decoded = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-        return decoded.toLowerCase()
+        return text.toLowerCase()
             .replace(/[^a-z0-9\s-]/g, '')
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-')
@@ -398,6 +356,59 @@
                '</span><span class="' + tClass + '">' + escapeHtml(trail) + '</span>';
     }
 
+    // ── API URL builder (L1) ──
+
+    var API_BASE = ''; // Same-origin
+
+    /**
+     * Build an API URL path. Centralises the base URL for all API calls.
+     *
+     * @param {string} path - API path (e.g. '/api/events')
+     * @returns {string} Full URL path
+     */
+    function apiUrl(path) {
+        return API_BASE + path;
+    }
+
+    // ── Response validation (L8) ──
+
+    /**
+     * Validate that a response object contains all required fields.
+     *
+     * @param {Object} data - Response data to validate
+     * @param {string[]} requiredFields - Array of required field names
+     * @returns {boolean} true if all fields are present and non-null
+     */
+    function validateResponse(data, requiredFields) {
+        for (var i = 0; i < requiredFields.length; i++) {
+            var field = requiredFields[i];
+            if (data[field] === undefined || data[field] === null) {
+                console.warn('Missing required field: ' + field, data);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ── CSRF token refresh (L3) ──
+
+    setInterval(function() {
+        fetch('/api/csrf-token', { method: 'GET' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.csrf_token) {
+                    var meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta) meta.setAttribute('content', data.csrf_token);
+                }
+            })
+            .catch(function() {}); // Silent fail — token refreshes on next page load
+    }, 30 * 60 * 1000);
+
+    // Global unhandled promise rejection handler
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled promise rejection:', event.reason);
+    });
+
     // Export to global namespace
     window.CHUtils = {
         escapeHtml: escapeHtml,
@@ -405,6 +416,8 @@
         renderMarkdown: renderMarkdown,
         copyCodeBlock: copyCodeBlock,
         apiFetch: apiFetch,
+        apiUrl: apiUrl,
+        validateResponse: validateResponse,
         heroHTML: heroHTML,
         fillHourlyGaps: fillHourlyGaps,
         aggregateByDay: aggregateByDay,

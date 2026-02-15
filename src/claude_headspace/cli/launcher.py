@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 import requests
+import urllib3
 import yaml
+
+# Suppress InsecureRequestWarning for localhost TLS connections
+# (cert is for Tailscale hostname, not localhost)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -49,7 +54,7 @@ def get_server_url() -> str:
     Get the Flask server URL from config or environment.
 
     Returns:
-        Server URL (e.g., "http://127.0.0.1:5055")
+        Server URL (e.g., "https://127.0.0.1:5055")
     """
     # Check environment first
     env_url = os.environ.get("CLAUDE_HEADSPACE_URL")
@@ -68,15 +73,49 @@ def get_server_url() -> str:
             try:
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
+                    # Prefer hooks.endpoint_url (the internal API endpoint)
+                    endpoint_url = config.get("hooks", {}).get("endpoint_url")
+                    if endpoint_url:
+                        return endpoint_url.rstrip("/")
                     host = config.get("server", {}).get("host", "127.0.0.1")
                     port = config.get("server", {}).get("port", 5055)
-                    return f"http://{host}:{port}"
+                    return f"https://{host}:{port}"
             except Exception as e:
                 logging.debug(f"Config parse failed for {config_path}: {e}")
                 continue
 
     # Default
-    return "http://127.0.0.1:5055"
+    return "https://127.0.0.1:5055"
+
+
+def get_bridge_default() -> bool:
+    """
+    Get the default bridge mode from config.
+
+    Reads ``cli.default_bridge`` from config.yaml using the same
+    3-path search as ``get_server_url()``.
+
+    Returns:
+        True if bridge should be enabled by default (also the fallback
+        when no config is found).
+    """
+    config_paths = [
+        Path.cwd() / "config.yaml",
+        Path(__file__).parent.parent.parent.parent.parent / "config.yaml",
+        Path.home() / ".claude-headspace" / "config.yaml",
+    ]
+
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                    return config.get("cli", {}).get("default_bridge", True)
+            except Exception as e:
+                logging.debug(f"Config parse failed for {config_path}: {e}")
+                continue
+
+    return True
 
 
 def get_bridge_default() -> bool:
@@ -119,8 +158,8 @@ def get_project_info() -> ProjectInfo:
     Returns:
         ProjectInfo with name, path, and optional branch
     """
-    cwd = Path.cwd()
-    project_path = str(cwd.absolute())
+    cwd = Path(os.getcwd())  # os.getcwd() preserves symlinks; Path.cwd().absolute() resolves them
+    project_path = str(cwd)
     project_name = cwd.name
     branch = None
 
@@ -216,7 +255,7 @@ def validate_prerequisites(server_url: str) -> tuple[bool, str | None]:
     """
     # Check Flask server is reachable
     try:
-        response = requests.get(f"{server_url}/health", timeout=HTTP_TIMEOUT)
+        response = requests.get(f"{server_url}/health", timeout=HTTP_TIMEOUT, verify=False)
         if response.status_code != 200:
             return False, f"Server returned status {response.status_code}"
     except requests.exceptions.ConnectionError:
@@ -257,7 +296,7 @@ def register_session(
     payload = {
         "session_uuid": str(session_uuid),
         "project_path": project_info.path,
-        "working_directory": str(Path.cwd().absolute()),
+        "working_directory": os.getcwd(),
         "project_name": project_info.name,
         "current_branch": project_info.branch,
     }
@@ -273,6 +312,7 @@ def register_session(
             f"{server_url}/api/sessions",
             json=payload,
             timeout=HTTP_TIMEOUT,
+            verify=False,
         )
 
         if response.status_code == 201:
@@ -302,6 +342,7 @@ def cleanup_session(server_url: str, session_uuid: uuid.UUID) -> None:
         response = requests.delete(
             f"{server_url}/api/sessions/{session_uuid}",
             timeout=HTTP_TIMEOUT,
+            verify=False,
         )
         if response.status_code == 200:
             logger.info(f"Session {session_uuid} cleaned up successfully")
@@ -434,6 +475,9 @@ def _wrap_in_tmux(args: argparse.Namespace) -> int:
 
     # Resolve the CLI entry point for re-execution
     cli_path = shutil.which("claude-headspace") or sys.argv[0]
+
+    # Set env var so hooks can forward the tmux session name to the server
+    os.environ["CLAUDE_HEADSPACE_TMUX_SESSION"] = session_name
 
     print(f"Starting tmux session: {session_name}")
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models.agent import Agent
+from .hooks import rate_limited
 from ..models.inference_call import InferenceCall
 from ..models.project import Project, generate_slug
 from ..models.task import Task
@@ -102,6 +103,7 @@ def list_projects():
 
 
 @projects_bp.route("/api/projects", methods=["POST"])
+@rate_limited
 def create_project():
     """Create a new project.
 
@@ -126,6 +128,9 @@ def create_project():
 
     if not name or not path:
         return jsonify({"error": "Both 'name' and 'path' are required"}), 400
+
+    if not os.path.isabs(path):
+        return jsonify({"error": "Project path must be an absolute path"}), 400
 
     try:
         existing = Project.query.filter_by(path=path).first()
@@ -652,10 +657,14 @@ def get_task_turns(task_id: int):
 
         result = []
         for turn in turns:
+            text = turn.text or ""
+            text_truncated = len(text) > 500
             result.append({
                 "id": turn.id,
                 "actor": turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor),
                 "intent": turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent),
+                "text": text[:500] if text_truncated else text,
+                "text_truncated": text_truncated,
                 "summary": turn.summary,
                 "frustration_score": turn.frustration_score,
                 "created_at": turn.timestamp.isoformat() if turn.timestamp else None,

@@ -1,4 +1,9 @@
-"""Objective API endpoints and page route."""
+"""Objective API endpoints and page route.
+
+Single-tenant design: This application assumes a single active objective at a time.
+The Objective table always has at most one row, representing the current objective.
+ObjectiveHistory tracks the chronological record of all past objectives.
+"""
 
 import logging
 from datetime import datetime, timezone
@@ -97,6 +102,12 @@ def update_objective():
 
     if not text:
         return jsonify({"error": "Objective text is required"}), 400
+
+    if len(text) > 5000:
+        return jsonify({"error": "Text exceeds maximum length of 5000 characters"}), 400
+
+    if constraints and len(constraints) > 5000:
+        return jsonify({"error": "Constraints exceeds maximum length of 5000 characters"}), 400
 
     try:
         now = datetime.now(timezone.utc)
@@ -268,6 +279,9 @@ def delete_history_item(history_id):
 
         if not item:
             return jsonify({"error": "History item not found"}), 404
+
+        if item.ended_at is None:
+            return jsonify({"error": "Cannot delete the active objective history item"}), 400
 
         db.session.delete(item)
         db.session.commit()

@@ -48,6 +48,8 @@ class Turn(db.Model):
         Enum(TurnIntent, name="turnintent", create_constraint=True), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Temporal validation (turn.timestamp >= task.started_at) is enforced at
+    # application level — cross-table CHECK constraints are not supported in PostgreSQL.
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )
@@ -58,6 +60,13 @@ class Turn(db.Model):
     frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tool_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     file_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Transcript reconciliation: tracks timestamp provenance and JSONL dedup
+    timestamp_source: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default="server"
+    )
+    # Values: "server" (datetime.now initial), "jsonl" (reconciled from transcript), "user" (user action)
+    jsonl_entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # Voice bridge: structured question detail
     question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -79,3 +88,4 @@ class Turn(db.Model):
 
 # Additional indexes
 Index("ix_turns_task_id_timestamp", Turn.task_id, Turn.timestamp)
+Index("ix_turns_task_id_actor", Turn.task_id, Turn.actor)

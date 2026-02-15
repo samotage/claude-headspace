@@ -546,6 +546,54 @@ class TestBackfillTmuxPane:
                 assert mock_agent.tmux_pane_id == "%3"
                 mock_db.session.flush.assert_not_called()
 
+    def test_backfill_sets_tmux_session(self, app):
+        """_backfill_tmux_pane should set tmux_session when provided."""
+        from src.claude_headspace.routes.hooks import _backfill_tmux_pane
+
+        mock_agent = MagicMock()
+        mock_agent.tmux_pane_id = None
+        mock_agent.tmux_session = None
+
+        with app.app_context():
+            app.extensions = {}
+            with patch("src.claude_headspace.routes.hooks.db") as mock_db:
+                _backfill_tmux_pane(mock_agent, "%5", "hs-test-123")
+
+                assert mock_agent.tmux_pane_id == "%5"
+                assert mock_agent.tmux_session == "hs-test-123"
+                mock_db.session.flush.assert_called_once()
+
+    def test_backfill_tmux_session_skips_when_already_set(self, app):
+        """_backfill_tmux_pane should not overwrite existing tmux_session."""
+        from src.claude_headspace.routes.hooks import _backfill_tmux_pane
+
+        mock_agent = MagicMock()
+        mock_agent.tmux_pane_id = "%3"
+        mock_agent.tmux_session = "hs-existing"
+
+        with app.app_context():
+            with patch("src.claude_headspace.routes.hooks.db") as mock_db:
+                _backfill_tmux_pane(mock_agent, "%5", "hs-new")
+
+                assert mock_agent.tmux_session == "hs-existing"
+                mock_db.session.flush.assert_not_called()
+
+    def test_backfill_tmux_session_alone(self, app):
+        """_backfill_tmux_pane should set tmux_session even without pane change."""
+        from src.claude_headspace.routes.hooks import _backfill_tmux_pane
+
+        mock_agent = MagicMock()
+        mock_agent.tmux_pane_id = "%3"  # already set
+        mock_agent.tmux_session = None   # not set
+
+        with app.app_context():
+            app.extensions = {}
+            with patch("src.claude_headspace.routes.hooks.db") as mock_db:
+                _backfill_tmux_pane(mock_agent, "%3", "hs-test-123")
+
+                assert mock_agent.tmux_session == "hs-test-123"
+                mock_db.session.flush.assert_called_once()
+
 
 class TestRateLimiterCleanup:
     """Tests for rate limiter cleanup of empty IP keys."""

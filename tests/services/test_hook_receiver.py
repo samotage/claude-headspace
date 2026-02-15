@@ -226,6 +226,21 @@ class TestProcessUserPromptSubmit:
         # Should auto-transition COMMANDED → PROCESSING
         mock_lifecycle.update_task_state.assert_called_once()
 
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_user_prompt_submit_skips_tool_interruption_artifact(
+        self, mock_db, mock_agent, fresh_state
+    ):
+        """Tool interruption artifacts from tmux key injection are silently skipped."""
+        result = process_user_prompt_submit(
+            mock_agent,
+            "session-123",
+            prompt_text="[Request interrupted by user for tool use]",
+        )
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+
 
 class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
@@ -439,6 +454,20 @@ class TestProcessNotification:
 
         assert result.state_changed is False
         mock_send_notif.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_notification_skips_interruption_artifact(self, mock_db, mock_agent, fresh_state):
+        """Interruption artifact notifications from tmux key injection are silently skipped."""
+        result = process_notification(
+            mock_agent, "session-123",
+            message="Interruption detected",
+        )
+
+        assert result.success is True
+        assert result.state_changed is False
+        assert result.new_state is None
+        # Should still update last_seen_at and commit
+        mock_db.session.commit.assert_called_once()
 
 
 class TestHookEventResult:
@@ -894,7 +923,8 @@ class TestNotificationTurnDedup:
         mock_db.session.add.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_turn_when_no_recent_question(self, mock_db, mock_agent, fresh_state):
+    def test_skips_turn_creation_for_notification_events(self, mock_db, mock_agent, fresh_state):
+        """Notification hooks carry generic text — the stop hook creates the real turn."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
@@ -910,13 +940,13 @@ class TestNotificationTurnDedup:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
-        assert added_turn.text == "[Question] Need your input"
+        # Notification events should NOT create turns (phantom turn fix)
+        mock_db.session.add.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_broadcasts_turn_created_on_transition(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_no_turn_broadcast_for_notification(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+        """Notification hooks should not broadcast turn_created (no turn is created)."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
@@ -931,9 +961,8 @@ class TestNotificationTurnDedup:
         )
 
         assert result.state_changed is True
-        mock_broadcast_turn.assert_called_once()
-        call_args = mock_broadcast_turn.call_args[0]
-        assert call_args[1] == "Need your input"
+        # No turn was created, so no turn_created broadcast
+        mock_broadcast_turn.assert_not_called()
 
 
 class TestStopTurnBroadcast:
@@ -976,6 +1005,7 @@ class TestStopTurnBroadcast:
         assert result.success is True
         mock_broadcast_turn.assert_called_once_with(
             mock_agent, "Do you want to proceed?", mock_task, tool_input=None, turn_id=mock_turn.id,
+            intent='question',
         )
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
@@ -1459,14 +1489,14 @@ class TestPermissionPaneCapture:
 class TestDeferredStopPolling:
     """Tests for the polling loop in _schedule_deferred_stop."""
 
-    @patch("claude_headspace.services.hook_receiver._send_completion_notification")
-    @patch("claude_headspace.services.hook_receiver._execute_pending_summarisations")
-    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
-    @patch("claude_headspace.services.hook_receiver._trigger_priority_scoring")
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_deferred_stop._send_completion_notification")
+    @patch("claude_headspace.services.hook_deferred_stop._execute_pending_summarisations")
+    @patch("claude_headspace.services.card_state.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_deferred_stop._trigger_priority_scoring")
+    @patch("claude_headspace.services.intent_detector.detect_agent_intent")
+    @patch("claude_headspace.services.hook_deferred_stop._extract_transcript_content")
+    @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
+    @patch("claude_headspace.database.db")
     def test_polling_finds_transcript_on_second_attempt(
         self, mock_db, mock_get_lm, mock_extract, mock_detect,
         mock_trigger, mock_broadcast, mock_exec_summ, mock_notif, fresh_state,
@@ -1503,20 +1533,46 @@ class TestDeferredStopPolling:
 
         app = Flask(__name__)
         with app.app_context():
-            # Run the deferred check directly (not in a thread) for testing
-            with patch("time.sleep"):
+            # Capture the thread target so we can run it synchronously
+            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread_cls:
+                mock_thread_instance = MagicMock()
+                mock_thread_cls.return_value = mock_thread_instance
+
                 _schedule_deferred_stop(mock_agent, mock_task)
-                # Extract the thread target and run it synchronously
-                import claude_headspace.services.hook_receiver as hr
-                # The thread was started, but since time.sleep is patched,
-                # we need to check the call was made
-                assert 42 not in _deferred_stop_pending or True  # Thread runs async
 
-        _deferred_stop_pending.clear()
+                # Verify thread was spawned and agent was added to pending set
+                assert mock_thread_cls.call_count == 1
+                mock_thread_instance.start.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+                # Extract the target function and run it synchronously
+                target_fn = mock_thread_cls.call_args[1]["target"]
+
+            # Run the deferred check synchronously (outside the Thread mock)
+            with patch("claude_headspace.services.hook_deferred_stop.time.sleep"):
+                target_fn()
+
+        # Verify transcript extraction was called twice (empty then success)
+        assert mock_extract.call_count == 2
+
+        # Verify intent detection ran on the found transcript
+        mock_detect.assert_called_once()
+        assert "Done. All changes applied." in mock_detect.call_args[0][0]
+
+        # Verify task was completed via lifecycle manager
+        mock_lifecycle.complete_task.assert_called_once()
+
+        # Verify downstream effects fired
+        mock_trigger.assert_called_once()  # priority scoring
+        mock_broadcast.assert_called_once()  # card refresh
+        mock_exec_summ.assert_called_once()  # pending summarisations
+
+        # Verify agent was cleaned up from pending set (via AgentHookState)
+        from claude_headspace.services.hook_agent_state import get_agent_hook_state
+        assert not get_agent_hook_state().is_deferred_stop_pending(42)
+
+    @patch("claude_headspace.services.hook_deferred_stop._extract_transcript_content")
+    @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
+    @patch("claude_headspace.database.db")
     def test_deferred_stop_exits_early_if_task_completed(
         self, mock_db, mock_get_lm, mock_extract, fresh_state,
     ):
@@ -1542,7 +1598,7 @@ class TestDeferredStopPolling:
 
         app = Flask(__name__)
         with app.app_context():
-            with patch("claude_headspace.services.hook_receiver.threading.Thread") as mock_thread:
+            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread:
                 mock_thread_instance = MagicMock()
                 mock_thread.return_value = mock_thread_instance
 
@@ -1551,7 +1607,7 @@ class TestDeferredStopPolling:
                 assert mock_thread.call_count == 1
 
                 # Get the target function and run it
-                target_fn = mock_thread.call_args[1].get('target') or mock_thread.call_args[0][0] if mock_thread.call_args[0] else mock_thread.call_args[1]['target']
+                target_fn = mock_thread.call_args[1]["target"]
 
         _deferred_stop_pending.clear()
 
@@ -1574,6 +1630,7 @@ class TestResetReceiverState:
     def test_deferred_stop_deduplication(self):
         """_schedule_deferred_stop should not spawn duplicate threads for the same agent."""
         from flask import Flask
+        from claude_headspace.services.hook_agent_state import get_agent_hook_state
 
         mock_agent = MagicMock()
         mock_agent.id = 42
@@ -1586,13 +1643,13 @@ class TestResetReceiverState:
 
         app = Flask(__name__)
         with app.app_context():
-            with patch("claude_headspace.services.hook_receiver.threading.Thread") as mock_thread:
+            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread:
                 mock_thread_instance = MagicMock()
                 mock_thread.return_value = mock_thread_instance
 
                 _schedule_deferred_stop(mock_agent, mock_task)
                 assert mock_thread.call_count == 1
-                assert 42 in _deferred_stop_pending
+                assert get_agent_hook_state().is_deferred_stop_pending(42)
 
                 # Second call with same agent should be deduped
                 _schedule_deferred_stop(mock_agent, mock_task)

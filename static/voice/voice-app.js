@@ -13,21 +13,27 @@ window.VoiceApp = (function () {
     cuesEnabled: true,
     verbosity: 'normal',
     fontSize: 15,
-    theme: 'dark'
+    theme: 'dark',
+    showEndedAgents: false
   };
 
   var _settings = {};
   var _agents = [];
+  var _endedAgents = [];
   var _targetAgentId = null;
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat
-  var _chatRenderedTurnIds = new Set();
-  var _chatPendingUserTexts = new Set(); // texts sent from chat, awaiting real turn
+  var _lastSeenTurnId = 0;
+  var _chatPendingUserSends = [];  // {text, sentAt, fakeTurnId} — pending sends awaiting real turn
+  var PENDING_SEND_TTL_MS = 10000; // 10s window for optimistic send confirmation
   var _chatAgentState = null;
+  var _chatAgentStateLabel = null;
   var _chatHasMore = false;
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
-  var _chatTranscriptSeq = 0;  // Sequence counter to discard stale transcript responses
+  // _chatTranscriptSeq kept for initial load guard only (stale navigation detection)
+  var _chatSyncTimer = null;   // Periodic transcript sync timer (safety net)
+  var _responseCatchUpTimers = []; // Aggressive post-send fetch timers
   var _isLocalhost = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
   var _isTrustedNetwork = _isLocalhost
     || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|100\.)/.test(location.hostname)
@@ -36,10 +42,23 @@ window.VoiceApp = (function () {
   var _otherAgentStates = {};   // Map: agentId -> {hero_chars, hero_trail, task_instruction, state, project_name}
   var _pendingAttachment = null; // File object pending upload
   var _pendingBlobUrl = null;    // Blob URL for image preview (revoke on clear)
+  var _pendingNewAgentProject = null; // Project name when awaiting a newly created agent to appear
+
+  // Per-agent scroll position memory (in-memory, dies with tab)
+  var _agentScrollState = {};        // agentId -> { scrollTop, scrollHeight, lastTurnId }
+  var _newMessagesPillVisible = false;
+  var _newMessagesFirstTurnId = null;
 
   // Layout mode state
   var _layoutMode = 'stacked'; // 'stacked' | 'split'
   var SPLIT_BREAKPOINT = 768;
+
+  // FAB / Hamburger / Project Picker state
+  var _fabOpen = false;
+  var _hamburgerOpen = false;
+  var _projectPickerOpen = false;
+  var _allProjects = [];
+  var _fabCloseTimer = null;
 
   // File upload configuration (client-side validation)
   var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -76,7 +95,8 @@ window.VoiceApp = (function () {
       cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
       verbosity: s.verbosity || DEFAULTS.verbosity,
       fontSize: s.fontSize || DEFAULTS.fontSize,
-      theme: s.theme || DEFAULTS.theme
+      theme: s.theme || DEFAULTS.theme,
+      showEndedAgents: s.showEndedAgents !== undefined ? s.showEndedAgents : DEFAULTS.showEndedAgents
     };
 
     // Apply to modules
@@ -117,7 +137,7 @@ window.VoiceApp = (function () {
     } else {
       document.documentElement.setAttribute('data-theme', theme);
     }
-    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#f0f2f5' };
+    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#fbfaf8' };
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta && colors[theme]) meta.setAttribute('content', colors[theme]);
   }
@@ -128,6 +148,8 @@ window.VoiceApp = (function () {
     var newMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
     if (newMode !== _layoutMode) {
       _layoutMode = newMode;
+      _closeFab();
+      _closeHamburger();
       document.body.classList.remove('layout-stacked', 'layout-split');
       document.body.classList.add('layout-' + _layoutMode);
       _applyLayoutMode();
@@ -150,6 +172,8 @@ window.VoiceApp = (function () {
 
   function showScreen(name) {
     _currentScreen = name;
+    // Stop chat sync timer when leaving chat screen
+    if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); }
 
     if (name === 'setup') {
       // Setup screen is outside app-layout, hide app-layout
@@ -238,6 +262,192 @@ window.VoiceApp = (function () {
     if (panel) panel.classList.remove('open');
   }
 
+  // --- FAB (split mode) ---
+
+  function _openFab() {
+    if (_fabOpen) return;
+    _fabOpen = true;
+    if (_fabCloseTimer) { clearTimeout(_fabCloseTimer); _fabCloseTimer = null; }
+    var el = document.getElementById('fab-container');
+    if (el) {
+      el.classList.remove('closing');
+      el.classList.add('open');
+    }
+  }
+
+  function _closeFab() {
+    if (!_fabOpen) return;
+    _fabOpen = false;
+    var el = document.getElementById('fab-container');
+    if (el) {
+      el.classList.remove('open');
+      el.classList.add('closing');
+      if (_fabCloseTimer) clearTimeout(_fabCloseTimer);
+      _fabCloseTimer = setTimeout(function () {
+        el.classList.remove('closing');
+        _fabCloseTimer = null;
+      }, 200);
+    }
+  }
+
+  function _toggleFab() {
+    if (_fabOpen) { _closeFab(); } else { _openFab(); }
+  }
+
+  // --- Hamburger (stacked mode) ---
+
+  function _openHamburger() {
+    if (_hamburgerOpen) return;
+    _hamburgerOpen = true;
+    var dd = document.getElementById('hamburger-dropdown');
+    var bd = document.getElementById('hamburger-backdrop');
+    if (dd) dd.classList.add('open');
+    if (bd) bd.classList.add('open');
+  }
+
+  function _closeHamburger() {
+    if (!_hamburgerOpen) return;
+    _hamburgerOpen = false;
+    var dd = document.getElementById('hamburger-dropdown');
+    var bd = document.getElementById('hamburger-backdrop');
+    if (dd) dd.classList.remove('open');
+    if (bd) bd.classList.remove('open');
+  }
+
+  // --- Menu action dispatcher ---
+
+  function _handleMenuAction(action) {
+    _closeFab();
+    _closeHamburger();
+    if (action === 'new-chat') {
+      _openProjectPicker();
+    } else if (action === 'settings') {
+      _openSettings();
+    } else if (action === 'voice') {
+      _triggerVoiceFromMenu();
+    } else if (action === 'close') {
+      window.location.href = '/';
+    }
+  }
+
+  // --- Voice from FAB/hamburger ---
+
+  function _triggerVoiceFromMenu() {
+    VoiceOutput.initAudio();
+    if (VoiceInput.isListening()) {
+      _stopListening();
+      return;
+    }
+    if (_settings.autoTarget) {
+      var auto = _autoTarget();
+      if (auto) { _showListeningScreen(auto); }
+    }
+    if (!_targetAgentId) {
+      var agentStatus = document.getElementById('agent-status-message');
+      if (agentStatus) {
+        agentStatus.textContent = 'Select an agent first';
+        setTimeout(function () { agentStatus.textContent = ''; }, 2000);
+      }
+      return;
+    }
+    _startListening();
+  }
+
+  // --- Project Picker ---
+
+  function _openProjectPicker() {
+    _projectPickerOpen = true;
+    var bd = document.getElementById('project-picker-backdrop');
+    var pk = document.getElementById('project-picker');
+    var search = document.getElementById('project-picker-search');
+    if (bd) bd.classList.add('open');
+    if (pk) pk.classList.add('open');
+    if (search) { search.value = ''; search.focus(); }
+    _fetchProjects();
+  }
+
+  function _closeProjectPicker() {
+    _projectPickerOpen = false;
+    var bd = document.getElementById('project-picker-backdrop');
+    var pk = document.getElementById('project-picker');
+    if (bd) bd.classList.remove('open');
+    if (pk) pk.classList.remove('open');
+  }
+
+  function _fetchProjects() {
+    var list = document.getElementById('project-picker-list');
+    if (list) list.innerHTML = '<div class="project-picker-empty">Loading\u2026</div>';
+    VoiceAPI.getProjects().then(function (data) {
+      _allProjects = Array.isArray(data) ? data : [];
+      _renderProjectList(_allProjects);
+    }).catch(function () {
+      _allProjects = [];
+      if (list) list.innerHTML = '<div class="project-picker-empty">Failed to load projects</div>';
+    });
+  }
+
+  function _renderProjectList(projects) {
+    var list = document.getElementById('project-picker-list');
+    if (!list) return;
+
+    if (!projects || projects.length === 0) {
+      list.innerHTML = '<div class="project-picker-empty">No projects found</div>';
+      return;
+    }
+
+    // Sort: projects with active agents first, then alphabetical
+    var sorted = projects.slice().sort(function (a, b) {
+      var aCount = a.agent_count || 0;
+      var bCount = b.agent_count || 0;
+      if (aCount > 0 && bCount === 0) return -1;
+      if (aCount === 0 && bCount > 0) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var p = sorted[i];
+      var count = p.agent_count || 0;
+      var badgeClass = count === 0 ? 'project-picker-badge zero' : 'project-picker-badge';
+      var shortPath = (p.path || '').replace(/^\/Users\/[^/]+\//, '~/');
+      html += '<div class="project-picker-row" data-project-name="' + _esc(p.name) + '">'
+        + '<div class="project-picker-info">'
+        + '<div class="project-picker-name">' + _esc(p.name) + '</div>'
+        + '<div class="project-picker-path">' + _esc(shortPath) + '</div>'
+        + '</div>'
+        + '<span class="' + badgeClass + '">' + count + ' agent' + (count !== 1 ? 's' : '') + '</span>'
+        + '</div>';
+    }
+    list.innerHTML = html;
+
+    // Bind click handlers
+    var rows = list.querySelectorAll('.project-picker-row');
+    for (var r = 0; r < rows.length; r++) {
+      rows[r].addEventListener('click', function () {
+        var name = this.getAttribute('data-project-name');
+        _onProjectPicked(this, name);
+      });
+    }
+  }
+
+  function _filterProjectList(query) {
+    if (!query) {
+      _renderProjectList(_allProjects);
+      return;
+    }
+    var q = query.toLowerCase();
+    var filtered = _allProjects.filter(function (p) {
+      return (p.name || '').toLowerCase().indexOf(q) !== -1;
+    });
+    _renderProjectList(filtered);
+  }
+
+  function _onProjectPicked(rowEl, projectName) {
+    if (rowEl) rowEl.classList.add('creating');
+    _closeProjectPicker();
+    _createAgentForProject(projectName);
+  }
+
   // --- Agent highlighting in sidebar ---
 
   function _highlightSelectedAgent() {
@@ -250,21 +460,53 @@ window.VoiceApp = (function () {
 
   // --- Agent list (tasks 2.20, 2.23, 2.24) ---
 
-  function _renderAgentList(agents) {
+  function _renderAgentList(agents, endedAgents) {
+    // Detect newly appeared agents before overwriting _agents
+    var oldIds = {};
+    for (var oi = 0; oi < _agents.length; oi++) {
+      oldIds[_agents[oi].agent_id] = true;
+    }
+
     _agents = agents || [];
     var list = document.getElementById('agent-list');
     if (!list) return;
+
+    // Auto-select a newly created agent when it first appears
+    if (_pendingNewAgentProject) {
+      for (var ni = 0; ni < _agents.length; ni++) {
+        var a = _agents[ni];
+        if (!oldIds[a.agent_id] && (a.project || '').toLowerCase() === _pendingNewAgentProject.toLowerCase()) {
+          var newAgentId = a.agent_id;
+          _pendingNewAgentProject = null;
+          // Defer selection until after render completes
+          setTimeout(function () { _selectAgent(newAgentId); }, 0);
+          break;
+        }
+      }
+    }
 
     // Save scroll position before re-render
     var sidebar = document.getElementById('sidebar');
     var savedScroll = sidebar ? sidebar.scrollTop : 0;
 
-    if (_agents.length === 0) {
+    // Group ended agents by project
+    var endedByProject = {};
+    if (endedAgents && endedAgents.length) {
+      for (var ei = 0; ei < endedAgents.length; ei++) {
+        var ep = endedAgents[ei].project || 'unknown';
+        if (!endedByProject[ep]) endedByProject[ep] = [];
+        endedByProject[ep].push(endedAgents[ei]);
+      }
+    }
+
+    var hasEnded = Object.keys(endedByProject).length > 0;
+
+    if (_agents.length === 0 && !hasEnded) {
       list.innerHTML = '<div class="empty-state">No active agents</div>';
       return;
     }
 
-    // Group agents by project
+    // Group agents by project, newest first within each group
     var projectGroups = {};
     var projectOrder = [];
     for (var i = 0; i < _agents.length; i++) {
@@ -275,11 +517,115 @@ window.VoiceApp = (function () {
       }
       projectGroups[proj].push(_agents[i]);
     }
+    // Add projects that only have ended agents
+    for (var endedProj in endedByProject) {
+      if (!projectGroups[endedProj]) {
+        projectGroups[endedProj] = [];
+        projectOrder.push(endedProj);
+      }
+    }
+    // Sort each group: newest agent first (highest agent_id)
+    for (var si = 0; si < projectOrder.length; si++) {
+      projectGroups[projectOrder[si]].sort(function (a, b) {
+        return b.agent_id - a.agent_id;
+      });
+    }
+
+    // Helper to build a single agent card's HTML
+    function _buildCardHtml(a, isEnded) {
+      var stateClass = isEnded ? 'state-ended' : 'state-' + (a.state || '').toLowerCase();
+      var stateLabel = isEnded ? 'Ended' : (a.state_label || a.state || 'unknown');
+      var heroChars = a.hero_chars || '';
+      var heroTrail = a.hero_trail || '';
+
+      var instructionHtml = a.task_instruction
+        ? '<div class="agent-instruction">' + _esc(a.task_instruction) + '</div>'
+        : '';
+
+      var summaryText = '';
+      if (a.task_completion_summary) {
+        summaryText = a.task_completion_summary;
+      } else if (a.task_summary && a.task_summary !== a.task_instruction) {
+        summaryText = a.task_summary;
+      }
+      var summaryHtml = summaryText
+        ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
+        : '';
+
+      // Context usage display
+      var ctxHtml = '';
+      if (a.context && a.context.percent_used != null) {
+        var pct = a.context.percent_used;
+        var ctxClass = 'ctx-normal';
+        if (pct >= 75) ctxClass = 'ctx-high';
+        else if (pct >= 65) ctxClass = 'ctx-warning';
+        ctxHtml = '<span class="agent-ctx-inline ' + ctxClass + '">'
+          + pct + '% · ' + (a.context.remaining_tokens || '?') + ' rem</span>';
+      }
+
+      var footerParts = [];
+      if (a.turn_count && a.turn_count > 0) {
+        footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
+      }
+      if (isEnded && a.ended_at) {
+        var endedDate = new Date(a.ended_at);
+        var endedElapsed = (Date.now() - endedDate.getTime()) / 1000;
+        if (endedElapsed < 60) footerParts.push('ended ' + Math.floor(endedElapsed) + 's ago');
+        else if (endedElapsed < 3600) footerParts.push('ended ' + Math.floor(endedElapsed / 60) + 'm ago');
+        else footerParts.push('ended ' + Math.floor(endedElapsed / 3600) + 'h ago');
+      } else {
+        footerParts.push(a.last_activity_ago);
+      }
+
+      var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
+      var endedClass = isEnded ? ' ended' : '';
+
+      // Kebab menu: ended agents only get "Fetch context"
+      var kebabMenuHtml;
+      if (isEnded) {
+        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
+          + '<span>Fetch context</span></button>'
+          + '</div>';
+      } else {
+        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
+          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
+          + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
+          + '<span>Dismiss agent</span></button>'
+          + '</div>';
+      }
+
+      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
+        + '<div class="agent-header">'
+        + '<div class="agent-hero-id">'
+        + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
+        + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
+        + '</div>'
+        + '<div class="agent-header-actions">'
+        + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
+        + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
+        + kebabMenuHtml
+        + '</div>'
+        + '</div>'
+        + '<div class="agent-body">'
+        + instructionHtml
+        + summaryHtml
+        + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
+        + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + (ctxHtml ? ' ' + ctxHtml : '') + '</div>'
+        + '</div>'
+        + '</div>';
+    }
 
     var html = '';
     for (var p = 0; p < projectOrder.length; p++) {
       var projName = projectOrder[p];
       var group = projectGroups[projName];
+      var endedGroup = endedByProject[projName] || [];
 
       html += '<div class="project-group">'
         + '<div class="project-group-header">'
@@ -293,65 +639,19 @@ window.VoiceApp = (function () {
         + '</div>'
         + '<div class="project-group-cards">';
 
+      // Active agents
       for (var j = 0; j < group.length; j++) {
-        var a = group[j];
-        var stateClass = 'state-' + (a.state || '').toLowerCase();
-        var stateLabel = a.state_label || a.state || 'unknown';
-        var heroChars = a.hero_chars || '';
-        var heroTrail = a.hero_trail || '';
+        html += _buildCardHtml(group[j], false);
+      }
 
-        // Task instruction line
-        var instructionHtml = a.task_instruction
-          ? '<div class="agent-instruction">' + _esc(a.task_instruction) + '</div>'
-          : '';
-
-        // Summary line (only if different from instruction)
-        var summaryText = '';
-        if (a.task_completion_summary) {
-          summaryText = a.task_completion_summary;
-        } else if (a.task_summary && a.task_summary !== a.task_instruction) {
-          summaryText = a.task_summary;
+      // Ended agents (with divider if there are active agents above)
+      if (endedGroup.length > 0) {
+        if (group.length > 0) {
+          html += '<div class="ended-divider"></div>';
         }
-        var summaryHtml = summaryText
-          ? '<div class="agent-summary">' + _esc(summaryText) + '</div>'
-          : '';
-
-        // Footer: turn count + last activity
-        var footerParts = [];
-        if (a.turn_count && a.turn_count > 0) {
-          footerParts.push(a.turn_count + ' turn' + (a.turn_count !== 1 ? 's' : ''));
+        for (var ej = 0; ej < endedGroup.length; ej++) {
+          html += _buildCardHtml(endedGroup[ej], true);
         }
-        footerParts.push(a.last_activity_ago);
-
-        // Selected class for split mode
-        var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
-
-        html += '<div class="agent-card ' + stateClass + selectedClass + '" data-agent-id="' + a.agent_id + '">'
-          + '<div class="agent-header">'
-          + '<div class="agent-hero-id">'
-          + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
-          + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
-          + '</div>'
-          + '<div class="agent-header-actions">'
-          + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
-          + '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
-          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
-          + '<span>Fetch context</span></button>'
-          + '<div class="kebab-divider"></div>'
-          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
-          + '<span>Dismiss agent</span></button>'
-          + '</div>'
-          + '</div>'
-          + '</div>'
-          + '<div class="agent-body">'
-          + instructionHtml
-          + summaryHtml
-          + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
-          + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + '</div>'
-          + '</div>'
-          + '</div>';
       }
 
       html += '</div></div>';
@@ -441,7 +741,6 @@ window.VoiceApp = (function () {
   }
 
   function _selectAgent(id) {
-    _targetAgentId = id;
     _navStack = [];
     _showChatScreen(id);
   }
@@ -470,20 +769,118 @@ window.VoiceApp = (function () {
   }
 
   function _shutdownAgent(agentId) {
-    if (!confirm('Shut down this agent?')) return;
-    VoiceAPI.shutdownAgent(agentId).then(function () {
-      _refreshAgents();
-    }).catch(function (err) {
-      alert('Shutdown failed: ' + (err.error || 'unknown error'));
-    });
+    if (typeof ConfirmDialog !== 'undefined') {
+      ConfirmDialog.show(
+        'Shut down agent?',
+        'This will send /exit to the agent.',
+        { confirmText: 'Shut down', cancelText: 'Cancel' }
+      ).then(function (confirmed) {
+        if (!confirmed) return;
+        VoiceAPI.shutdownAgent(agentId).then(function () {
+          _refreshAgents();
+        }).catch(function (err) {
+          if (window.Toast) {
+            Toast.error('Shutdown failed', err.error || 'unknown error');
+          } else {
+            alert('Shutdown failed: ' + (err.error || 'unknown error'));
+          }
+        });
+      });
+    } else {
+      if (!confirm('Shut down this agent?')) return;
+      VoiceAPI.shutdownAgent(agentId).then(function () {
+        _refreshAgents();
+      }).catch(function (err) {
+        alert('Shutdown failed: ' + (err.error || 'unknown error'));
+      });
+    }
   }
 
   function _createAgentForProject(projectName) {
+    _pendingNewAgentProject = projectName;
+    _showPendingAgentPlaceholder(projectName);
     VoiceAPI.createAgent(projectName).then(function (data) {
+      _showToast('Agent starting\u2026');
       _refreshAgents();
     }).catch(function (err) {
-      alert('Create failed: ' + (err.error || 'unknown error'));
+      _pendingNewAgentProject = null;
+      _removePendingAgentPlaceholder();
+      if (window.Toast) {
+        Toast.error('Create failed', err.error || 'unknown error');
+      } else {
+        alert('Create failed: ' + (err.error || 'unknown error'));
+      }
     });
+  }
+
+  function _showPendingAgentPlaceholder(projectName) {
+    var list = document.getElementById('agent-list');
+    if (!list) return;
+    // Find the project group matching this project
+    var groups = list.querySelectorAll('.project-group');
+    var targetGroup = null;
+    for (var i = 0; i < groups.length; i++) {
+      var nameEl = groups[i].querySelector('.project-group-name');
+      if (nameEl && nameEl.textContent.trim().toLowerCase() === projectName.toLowerCase()) {
+        targetGroup = groups[i];
+        break;
+      }
+    }
+    // If no matching group exists (project has 0 agents), create a temporary one
+    if (!targetGroup) {
+      targetGroup = document.createElement('div');
+      targetGroup.className = 'project-group';
+      targetGroup.id = 'pending-project-group';
+      targetGroup.innerHTML = '<div class="project-group-header">'
+        + '<span class="project-group-name">' + _esc(projectName) + '</span>'
+        + '</div>'
+        + '<div class="project-group-cards"></div>';
+      list.prepend(targetGroup);
+    }
+    // Remove any existing placeholder
+    _removePendingAgentPlaceholder();
+    // Append placeholder card
+    var cardsContainer = targetGroup.querySelector('.project-group-cards');
+    if (!cardsContainer) return;
+    var placeholder = document.createElement('div');
+    placeholder.className = 'agent-card agent-card-pending';
+    placeholder.id = 'pending-agent-placeholder';
+    placeholder.innerHTML = '<div class="agent-header">'
+      + '<div class="agent-hero-id">'
+      + '<span class="agent-hero">\u2026</span>'
+      + '</div>'
+      + '</div>'
+      + '<div class="agent-body">'
+      + '<div class="agent-instruction pending-pulse">Starting agent\u2026</div>'
+      + '</div>';
+    cardsContainer.prepend(placeholder);
+  }
+
+  function _removePendingAgentPlaceholder() {
+    var el = document.getElementById('pending-agent-placeholder');
+    if (el) el.remove();
+    // Also remove the temporary project group if it was created
+    var tempGroup = document.getElementById('pending-project-group');
+    if (tempGroup) tempGroup.remove();
+  }
+
+  function _showToast(message) {
+    // Lightweight inline toast for voice app (no dependency on dashboard Toast)
+    var existing = document.getElementById('voice-toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = 'voice-toast';
+    toast.className = 'voice-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    // Trigger animation
+    requestAnimationFrame(function () {
+      toast.classList.add('show');
+    });
+    setTimeout(function () {
+      toast.classList.remove('show');
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
   }
 
   // Auto-targeting (task 2.23)
@@ -546,7 +943,7 @@ window.VoiceApp = (function () {
         var html = '';
         for (var i = 0; i < q.question_options.length; i++) {
           var opt = q.question_options[i];
-          html += '<button class="option-btn" data-label="' + _esc(opt.label) + '">'
+          html += '<button class="option-btn" data-label="' + _esc(opt.label) + '" data-opt-idx="' + i + '">'
             + '<strong>' + _esc(opt.label) + '</strong>'
             + (opt.description ? '<br><span class="option-desc">' + _esc(opt.description) + '</span>' : '')
             + '</button>';
@@ -556,7 +953,8 @@ window.VoiceApp = (function () {
         var btns = optionsEl.querySelectorAll('.option-btn');
         for (var j = 0; j < btns.length; j++) {
           btns[j].addEventListener('click', function () {
-            _sendCommand(this.getAttribute('data-label'));
+            var idx = parseInt(this.getAttribute('data-opt-idx'), 10);
+            _sendSelect(idx);
           });
         }
       }
@@ -569,15 +967,52 @@ window.VoiceApp = (function () {
 
   // --- Chat screen ---
 
+  function _stopChatSyncTimer() {
+    if (_chatSyncTimer) { clearInterval(_chatSyncTimer); _chatSyncTimer = null; }
+  }
+
+  function _startChatSyncTimer() {
+    // No-op: SSE is now the primary delivery mechanism for turns.
+    // Transcript fetch is only used for initial load, gap recovery,
+    // and SSE reconnect scenarios.
+    _stopChatSyncTimer();
+  }
+
+  /**
+   * Cancel any active response catch-up timers (no-op — SSE-primary).
+   */
+  function _cancelResponseCatchUp() {
+    // No-op: SSE delivers turns directly; polling catch-up removed
+  }
+
+  /**
+   * Schedule response catch-up (no-op — SSE-primary).
+   * SSE now delivers all turns (user and agent) directly.
+   */
+  function _scheduleResponseCatchUp() {
+    // No-op: SSE delivers turns directly; polling catch-up removed
+  }
+
   function _showChatScreen(agentId) {
+    // Save scroll state for the agent we're leaving
+    var previousAgentId = _targetAgentId;
+    if (previousAgentId && previousAgentId !== agentId) {
+      _saveScrollState(previousAgentId);
+    }
+    _dismissNewMessagesPill();
     _targetAgentId = agentId;
-    _chatRenderedTurnIds.clear();
-    _chatPendingUserTexts.clear();
+    var focusLink = document.getElementById('chat-focus-link');
+    if (focusLink) focusLink.setAttribute('data-agent-id', agentId);
+    _lastSeenTurnId = 0;
+    _chatPendingUserSends = [];
     _chatHasMore = false;
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
-    _chatTranscriptSeq = 0;  // Reset and invalidate any in-flight fetches
+    _fetchInFlight = false; // Reset in-flight guard for new agent
+    if (_fetchDebounceTimer) { clearTimeout(_fetchDebounceTimer); _fetchDebounceTimer = null; }
+    _cancelResponseCatchUp();
+    _startChatSyncTimer();
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) messagesEl.innerHTML = '';
     var bannersEl = document.getElementById('attention-banners');
@@ -602,9 +1037,9 @@ window.VoiceApp = (function () {
       _renderAttentionBanners();
     }).catch(function () { /* ignore */ });
 
-    var initSeq = ++_chatTranscriptSeq;
+    var initAgentId = agentId;
     VoiceAPI.getTranscript(agentId).then(function (data) {
-      if (initSeq !== _chatTranscriptSeq) return; // Stale response — discard
+      if (initAgentId !== _targetAgentId) return; // Stale response — user navigated away
       var nameEl = document.getElementById('chat-agent-name');
       var projEl = document.getElementById('chat-project-name');
       var heroEl = document.getElementById('chat-hero');
@@ -617,11 +1052,38 @@ window.VoiceApp = (function () {
       if (projEl) projEl.textContent = '';
 
       _chatAgentState = data.agent_state;
+      _chatAgentStateLabel = null; // Reset; will be set by SSE with richer label if available
       _chatHasMore = data.has_more || false;
       _chatAgentEnded = data.agent_ended || false;
       _renderTranscriptTurns(data);
-      _scrollChatToBottom();
+      // Restore scroll position if returning to a previously-viewed agent
+      var saved = _agentScrollState[agentId];
+      if (saved) {
+        delete _agentScrollState[agentId]; // one-shot restore
+        // Determine which rendered turn IDs are new (numeric only) via DOM
+        var newTurnIds = [];
+        var renderedBubbles = document.querySelectorAll('.chat-bubble[data-turn-id]');
+        for (var ri = 0; ri < renderedBubbles.length; ri++) {
+          var rid = parseInt(renderedBubbles[ri].getAttribute('data-turn-id'), 10);
+          if (!isNaN(rid) && rid > saved.lastTurnId) newTurnIds.push(rid);
+        }
+        newTurnIds.sort(function (a, b) { return a - b; });
+        var messagesEl = document.getElementById('chat-messages');
+        if (newTurnIds.length === 0) {
+          // No new turns — restore exact position
+          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+        } else {
+          // New turns arrived — restore position + show pill
+          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+          _showNewMessagesPill(newTurnIds.length, newTurnIds[0]);
+        }
+      } else {
+        _scrollChatToBottom();
+      }
       _updateTypingIndicator();
+      _updateChatStatePill();
+      // Show most recent task instruction in header
+      _updateChatTaskInstruction(data.turns || []);
       _updateEndedAgentUI();
       _updateLoadMoreIndicator();
     }).catch(function () {
@@ -860,23 +1322,104 @@ window.VoiceApp = (function () {
     return sep;
   }
 
-  function _renderChatBubble(turn, prevTurn) {
-    var messagesEl = document.getElementById('chat-messages');
-    if (!messagesEl) return;
-    var el = _createBubbleEl(turn, prevTurn);
-    if (el) messagesEl.appendChild(el);
+  /**
+   * Insert a bubble element (or fragment) at the correct chronological
+   * position based on data-timestamp. Walks backwards through existing
+   * bubbles to find the insertion point.
+   *
+   * @param {Element} messagesEl - The chat messages container
+   * @param {Element|DocumentFragment} el - Bubble element or fragment containing one
+   */
+  function _insertBubbleOrdered(messagesEl, el) {
+    // Extract timestamp: fragments don't have getAttribute, so find the bubble child
+    var bubbleChild = el.querySelector ? el.querySelector('.chat-bubble[data-timestamp]') : null;
+    var ts = bubbleChild ? bubbleChild.getAttribute('data-timestamp') : null;
+    if (!ts) {
+      // No timestamp — append at end as fallback
+      messagesEl.appendChild(el);
+      return;
+    }
+    var tsDate = new Date(ts);
+    // Walk backwards through existing timestamped bubbles
+    var existing = messagesEl.querySelectorAll('.chat-bubble[data-timestamp]');
+    for (var i = existing.length - 1; i >= 0; i--) {
+      var existingTs = new Date(existing[i].getAttribute('data-timestamp'));
+      if (existingTs <= tsDate) {
+        // Insert after this element (before its next sibling)
+        var next = existing[i].nextSibling;
+        if (next) {
+          messagesEl.insertBefore(el, next);
+        } else {
+          messagesEl.appendChild(el);
+        }
+        return;
+      }
+    }
+    // Oldest element — insert at the very beginning (after any load-more indicator)
+    var loadMore = document.getElementById('chat-load-more');
+    if (loadMore && loadMore.nextSibling) {
+      messagesEl.insertBefore(el, loadMore.nextSibling);
+    } else if (messagesEl.firstChild) {
+      messagesEl.insertBefore(el, messagesEl.firstChild);
+    } else {
+      messagesEl.appendChild(el);
+    }
   }
 
-  function _createBubbleEl(turn, prevTurn) {
-    // Check all IDs in a group
-    var ids = turn.groupedIds || [turn.id];
-    var allRendered = true;
-    for (var k = 0; k < ids.length; k++) {
-      if (!_chatRenderedTurnIds.has(ids[k])) { allRendered = false; break; }
+  /**
+   * Reorder a bubble in the DOM if its timestamp has changed.
+   * Checks if the bubble is already in the correct position relative
+   * to its siblings; if not, removes and re-inserts it.
+   */
+  function _reorderBubble(bubble) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl || !bubble.parentNode) return;
+    var ts = bubble.getAttribute('data-timestamp');
+    if (!ts) return;
+    var tsDate = new Date(ts);
+
+    // Check if position is correct: previous sibling (if any) should have ts <= ours,
+    // next sibling (if any) should have ts >= ours
+    var prev = bubble.previousElementSibling;
+    var next = bubble.nextElementSibling;
+
+    var prevOk = true;
+    var nextOk = true;
+    if (prev && prev.classList.contains('chat-bubble') && prev.getAttribute('data-timestamp')) {
+      prevOk = new Date(prev.getAttribute('data-timestamp')) <= tsDate;
     }
-    if (allRendered) return null;
+    if (next && next.classList.contains('chat-bubble') && next.getAttribute('data-timestamp')) {
+      nextOk = new Date(next.getAttribute('data-timestamp')) >= tsDate;
+    }
+
+    if (prevOk && nextOk) return; // Already in correct position
+
+    // Remove and re-insert at correct position
+    bubble.parentNode.removeChild(bubble);
+    _insertBubbleOrdered(messagesEl, bubble);
+  }
+
+  function _renderChatBubble(turn, prevTurn, forceRender) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    var el = _createBubbleEl(turn, prevTurn, forceRender);
+    if (el) _insertBubbleOrdered(messagesEl, el);
+  }
+
+  function _createBubbleEl(turn, prevTurn, forceRender) {
+    // DOM-based dedup: check if this turn is already rendered
+    var container = document.getElementById('chat-messages');
+    if (container && container.querySelector('[data-turn-id="' + turn.id + '"]')) {
+      if (!forceRender) return null;
+    }
+    // Track max turn ID for scroll state and gap recovery
+    var numId = typeof turn.id === 'number' ? turn.id : parseInt(turn.id, 10);
+    if (!isNaN(numId) && numId > _lastSeenTurnId) _lastSeenTurnId = numId;
+    // Track grouped IDs too
+    var ids = turn.groupedIds || [];
     for (var k2 = 0; k2 < ids.length; k2++) {
-      _chatRenderedTurnIds.add(ids[k2]);
+      var gid = typeof ids[k2] === 'number' ? ids[k2] : parseInt(ids[k2], 10);
+      if (!isNaN(gid) && gid > _lastSeenTurnId) _lastSeenTurnId = gid;
     }
 
     var frag = document.createDocumentFragment();
@@ -903,6 +1446,8 @@ window.VoiceApp = (function () {
     var isGrouped = turn.groupedTexts && turn.groupedTexts.length > 1;
     bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent') + (isGrouped ? ' grouped' : '');
     bubble.setAttribute('data-turn-id', turn.id);
+    bubble.setAttribute('data-timestamp', turn.timestamp || new Date().toISOString());
+    if (turn.task_id) bubble.setAttribute('data-task-id', turn.task_id);
 
     var html = '';
 
@@ -961,6 +1506,21 @@ window.VoiceApp = (function () {
       }
     }
 
+    // Plan content — render collapsible plan above question options
+    if (turn.intent === 'question') {
+      var toolInput = turn.tool_input || {};
+      if (toolInput.plan_content) {
+        html += '<div class="bubble-plan-content">';
+        html += '<details open>';
+        html += '<summary class="plan-toggle">Plan Details'
+          + (toolInput.plan_file_path ? ' <span class="plan-file-path">' + _esc(toolInput.plan_file_path.split('/').pop()) + '</span>' : '')
+          + '</summary>';
+        html += '<div class="plan-body">' + _renderMd(toolInput.plan_content) + '</div>';
+        html += '</details>';
+        html += '</div>';
+      }
+    }
+
     // Question options inside the bubble
     if (turn.intent === 'question') {
       var opts = turn.question_options;
@@ -993,7 +1553,7 @@ window.VoiceApp = (function () {
         html += '<div class="bubble-options">';
         for (var i = 0; i < opts.length; i++) {
           var opt = opts[i];
-          html += '<button class="bubble-option-btn' + safetyClass + '" data-label="' + _esc(opt.label) + '">'
+          html += '<button class="bubble-option-btn' + safetyClass + '" data-opt-idx="' + i + '" data-label="' + _esc(opt.label) + '">'
             + _esc(opt.label)
             + (opt.description ? '<div class="bubble-option-desc">' + _esc(opt.description) + '</div>' : '')
             + '</button>';
@@ -1002,14 +1562,49 @@ window.VoiceApp = (function () {
       }
     }
 
+    // Copy button for agent bubbles with text content
+    if (!isUser && displayText) {
+      bubble.setAttribute('data-raw-md', displayText);
+      html = '<button class="bubble-copy-btn" aria-label="Copy markdown" title="Copy">'
+        + '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+        + '<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>'
+        + '</svg>'
+        + '</button>' + html;
+    }
+
     bubble.innerHTML = html;
 
-    // Bind image thumbnail click -> open in new tab
+    // Bind copy button click
+    var copyBtn = bubble.querySelector('.bubble-copy-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rawMd = bubble.getAttribute('data-raw-md');
+        if (!rawMd) return;
+        navigator.clipboard.writeText(rawMd).then(function () {
+          copyBtn.classList.add('copied');
+          copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            + '<polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>'
+            + '</svg>';
+          setTimeout(function () {
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+              + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+              + '<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>'
+              + '</svg>';
+          }, 1500);
+        }).catch(function (err) { console.warn('Clipboard copy failed:', err); });
+      });
+    }
+
+    // Bind image thumbnail click -> open in lightbox
     var imgThumb = bubble.querySelector('.bubble-file-image');
     if (imgThumb) {
       imgThumb.addEventListener('click', function () {
         var url = this.getAttribute('data-full-url');
-        if (url) window.open(url, '_blank');
+        var alt = (this.querySelector('img') || {}).alt || 'Image';
+        if (url) _openImageLightbox(url, alt);
       });
     }
 
@@ -1021,7 +1616,9 @@ window.VoiceApp = (function () {
       var optBtns = bubble.querySelectorAll('.bubble-option-btn');
       for (var j = 0; j < optBtns.length; j++) {
         optBtns[j].addEventListener('click', function () {
-          _sendChatCommand(this.getAttribute('data-label'));
+          var idx = parseInt(this.getAttribute('data-opt-idx'), 10);
+          var label = this.getAttribute('data-label');
+          _sendChatSelect(idx, label, bubble);
         });
       }
     }
@@ -1171,11 +1768,89 @@ window.VoiceApp = (function () {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + timeStr;
   }
 
+  /**
+   * Check if the user is scrolled near the bottom of the chat.
+   * "Near" = within 150px of the bottom edge.  If they've scrolled
+   * up to read older messages, we don't want to yank them away.
+   */
+  function _isUserNearBottom() {
+    var el = document.getElementById('chat-messages');
+    if (!el) return true;
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+  }
+
   function _scrollChatToBottom() {
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
+  }
+
+  /**
+   * Scroll to bottom ONLY if the user is already near the bottom.
+   * Call this for incoming messages (SSE, transcript refresh, typing
+   * indicator) — anywhere the user didn't just perform an action.
+   */
+  function _scrollChatToBottomIfNear() {
+    if (_isUserNearBottom()) _scrollChatToBottom();
+  }
+
+  function _saveScrollState(agentId) {
+    if (!agentId) return;
+    var el = document.getElementById('chat-messages');
+    if (!el) return;
+    _agentScrollState[agentId] = {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      lastTurnId: _lastSeenTurnId
+    };
+  }
+
+  function _showNewMessagesPill(count, firstNewTurnId) {
+    _newMessagesFirstTurnId = firstNewTurnId;
+    var pill = document.getElementById('new-messages-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'new-messages-pill';
+      pill.className = 'new-messages-pill';
+      pill.addEventListener('click', function () {
+        if (!_newMessagesFirstTurnId) return;
+        var bubble = document.querySelector('[data-turn-id="' + _newMessagesFirstTurnId + '"]');
+        if (bubble) {
+          bubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        _dismissNewMessagesPill();
+      });
+      // Insert as child of #screen-chat, between attention-banners and chat-messages
+      var chatScreen = document.getElementById('screen-chat');
+      var messagesEl = document.getElementById('chat-messages');
+      if (chatScreen && messagesEl) {
+        chatScreen.insertBefore(pill, messagesEl);
+      }
+    }
+    pill.textContent = count + ' new message' + (count !== 1 ? 's' : '');
+    pill.style.display = '';
+    _newMessagesPillVisible = true;
+  }
+
+  function _dismissNewMessagesPill() {
+    var pill = document.getElementById('new-messages-pill');
+    if (pill) pill.style.display = 'none';
+    _newMessagesPillVisible = false;
+    _newMessagesFirstTurnId = null;
+  }
+
+  var _STATE_LABELS = {
+    idle: 'Idle',
+    commanded: 'Command received',
+    processing: 'Processing\u2026',
+    awaiting_input: 'Input needed',
+    complete: 'Task complete',
+    timed_out: 'Timed out'
+  };
+
+  function _getStateLabel(state) {
+    return _STATE_LABELS[(state || '').toLowerCase()] || state || 'Unknown';
   }
 
   function _updateTypingIndicator() {
@@ -1184,7 +1859,47 @@ window.VoiceApp = (function () {
     var state = (_chatAgentState || '').toLowerCase();
     var isProcessing = state === 'processing' || state === 'commanded';
     typingEl.style.display = isProcessing ? 'block' : 'none';
-    if (isProcessing) _scrollChatToBottom();
+    if (isProcessing) _scrollChatToBottomIfNear();
+  }
+
+  function _updateChatStatePill() {
+    var pill = document.getElementById('chat-state-pill');
+    if (!pill) return;
+    var state = (_chatAgentState || '').toLowerCase();
+    if (!state) { pill.style.display = 'none'; return; }
+    pill.style.display = '';
+    var label = _chatAgentStateLabel || _getStateLabel(state);
+    // Remove previous state-* classes (but not chat-state-pill base class)
+    pill.className = pill.className.replace(/(?:^|\s)state-\S+/g, '').trim();
+    if (pill.className.indexOf('chat-state-pill') === -1) pill.classList.add('chat-state-pill');
+    pill.classList.add('state-' + state);
+    pill.textContent = label;
+    // Pulse animation for active states
+    if (state === 'processing' || state === 'commanded') {
+      pill.classList.add('state-pill-active');
+    } else {
+      pill.classList.remove('state-pill-active');
+    }
+  }
+
+  function _updateChatTaskInstruction(turns) {
+    var el = document.getElementById('chat-task-instruction');
+    if (!el) return;
+    // Find the most recent task_instruction from turns (last non-empty)
+    var instruction = '';
+    for (var i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].task_instruction) {
+        instruction = turns[i].task_instruction;
+        break;
+      }
+    }
+    if (instruction) {
+      el.textContent = instruction.length > 80 ? instruction.substring(0, 80) + '...' : instruction;
+      el.style.display = '';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
   }
 
   function _markAllQuestionsAnswered() {
@@ -1202,7 +1917,7 @@ window.VoiceApp = (function () {
     el.className = 'chat-system-message';
     el.textContent = text;
     messagesEl.appendChild(el);
-    _scrollChatToBottom();
+    _scrollChatToBottomIfNear();
   }
 
   // --- File upload helpers ---
@@ -1347,29 +2062,16 @@ window.VoiceApp = (function () {
       return;
     }
 
-    // Show optimistic user bubble
-    var now = new Date().toISOString();
+    // Show optimistic user bubble via shared helper
     var displayText = trimText ? trimText : '[File: ' + file.name + ']';
-    var fakeTurn = {
-      id: 'pending-' + Date.now(),
-      actor: 'user',
-      intent: 'answer',
-      text: displayText,
-      timestamp: now,
+    var pendingEntry = _renderOptimisticUserBubble(displayText, {
       file_metadata: {
         original_filename: file.name,
         file_type: _isImageFile(file) ? 'image' : 'document',
         file_size: file.size,
         _localPreviewUrl: URL.createObjectURL(file)
       }
-    };
-
-    var messagesEl = document.getElementById('chat-messages');
-    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
-    var prevTurn = lastBubble ? { timestamp: now } : null;
-    _chatPendingUserTexts.add(displayText);
-    _renderChatBubble(fakeTurn, prevTurn);
-    _scrollChatToBottom();
+    });
 
     // Clear input
     var input = document.getElementById('chat-text-input');
@@ -1382,52 +2084,84 @@ window.VoiceApp = (function () {
     // Show progress
     _showUploadProgress(0);
     _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
     _updateTypingIndicator();
+    _updateChatStatePill();
 
     VoiceAPI.uploadFile(_targetAgentId, file, trimText || null, function (pct) {
       _showUploadProgress(pct);
     }).then(function (data) {
       _hideUploadProgress();
-      // Upload success — SSE will update state
+      // Schedule aggressive catch-up fetches in case SSE events are missed
+      _scheduleResponseCatchUp();
     }).catch(function (err) {
       _hideUploadProgress();
+      // Remove the ghost optimistic bubble on failure (Finding 10)
+      _removeOptimisticBubble(pendingEntry);
       var errMsg = (err && err.error) || 'Upload failed';
       _showUploadError(errMsg);
       _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
       _updateTypingIndicator();
+      _updateChatStatePill();
     });
   }
 
-  function _sendChatCommand(text) {
-    if (!text || !text.trim()) return;
-
-    // Guard: if agent is not in a receptive state, don't send stale text.
-    // The question may have been answered in the terminal.
-    var state = (_chatAgentState || '').toLowerCase();
-    if (state === 'processing' || state === 'commanded') {
-      _showChatSystemMessage('Agent is processing \u2014 please wait.');
-      return;
-    }
-
-    // Add user bubble immediately
+  /**
+   * Render an optimistic (provisional) user bubble immediately.
+   * Sets a 10-second timeout to mark as send-failed if not confirmed
+   * by a turn_created SSE event promoting the pending ID to a real ID.
+   *
+   * @param {string} text - The user's message text
+   * @param {object} [extraFields] - Optional extra fields for the turn (e.g., file_metadata)
+   * @returns {object} pendingEntry for tracking
+   */
+  function _renderOptimisticUserBubble(text, extraFields) {
     var now = new Date().toISOString();
+    var fakeId = 'pending-' + Date.now();
     var fakeTurn = {
-      id: 'pending-' + Date.now(),
+      id: fakeId,
       actor: 'user',
       intent: 'answer',
-      text: text.trim(),
+      text: text,
       timestamp: now
     };
+    if (extraFields) {
+      for (var key in extraFields) {
+        if (extraFields.hasOwnProperty(key)) fakeTurn[key] = extraFields[key];
+      }
+    }
 
     var messagesEl = document.getElementById('chat-messages');
     var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
     var prevTurn = null;
     if (lastBubble) {
-      prevTurn = { timestamp: now }; // skip timestamp for immediate send
+      prevTurn = { timestamp: now };
     }
-    _chatPendingUserTexts.add(text.trim());
+    var pendingEntry = { text: text, sentAt: Date.now(), fakeTurnId: fakeId };
+
+    // 10-second timeout: mark as send-failed if not confirmed
+    pendingEntry.failTimer = setTimeout(function () {
+      var bubble = document.querySelector('[data-turn-id="' + fakeId + '"]');
+      if (bubble) {
+        bubble.classList.add('send-failed');
+      }
+      // Remove from pending sends
+      var idx = _chatPendingUserSends.indexOf(pendingEntry);
+      if (idx !== -1) _chatPendingUserSends.splice(idx, 1);
+    }, PENDING_SEND_TTL_MS);
+
+    _chatPendingUserSends.push(pendingEntry);
     _renderChatBubble(fakeTurn, prevTurn);
     _scrollChatToBottom();
+    return pendingEntry;
+  }
+
+  function _sendChatCommand(text) {
+    if (!text || !text.trim()) return;
+
+    // Render optimistic user bubble immediately
+    var pendingEntry = _renderOptimisticUserBubble(text.trim());
 
     // Clear input and reset textarea height
     var input = document.getElementById('chat-text-input');
@@ -1438,19 +2172,75 @@ window.VoiceApp = (function () {
 
     // Show typing indicator (agent will be processing)
     _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
     _updateTypingIndicator();
+    _updateChatStatePill();
 
     VoiceAPI.sendCommand(text.trim(), _targetAgentId).then(function () {
-      // Command sent — SSE will update state
+      // Command sent — schedule aggressive catch-up fetches in case
+      // SSE events are missed (common on iOS Safari).
+      _scheduleResponseCatchUp();
     }).catch(function (err) {
+      // Remove the ghost optimistic bubble on failure (Finding 10)
+      _removeOptimisticBubble(pendingEntry);
       // Show error as system message
       var errBubble = document.createElement('div');
       errBubble.className = 'chat-bubble agent';
       errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Send failed') + '</div>';
-      if (messagesEl) messagesEl.appendChild(errBubble);
+      var msgEl = document.getElementById('chat-messages');
+      if (msgEl) msgEl.appendChild(errBubble);
       _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
       _updateTypingIndicator();
+      _updateChatStatePill();
       _scrollChatToBottom();
+    });
+  }
+
+  function _sendChatSelect(optionIndex, label, bubble) {
+    // Render optimistic user bubble with the label text
+    var pendingEntry = _renderOptimisticUserBubble(label);
+
+    // Disable option buttons in this bubble to prevent double-sends
+    if (bubble) {
+      var allBtns = bubble.querySelectorAll('.bubble-option-btn');
+      for (var k = 0; k < allBtns.length; k++) {
+        allBtns[k].disabled = true;
+        allBtns[k].style.opacity = '0.5';
+        allBtns[k].style.pointerEvents = 'none';
+      }
+    }
+
+    // Show typing indicator
+    _chatAgentState = 'processing';
+    _chatAgentStateLabel = null;
+    _updateTypingIndicator();
+    _updateChatStatePill();
+
+    VoiceAPI.sendSelect(_targetAgentId, optionIndex, label).then(function () {
+      _scheduleResponseCatchUp();
+    }).catch(function (err) {
+      _removeOptimisticBubble(pendingEntry);
+      var errBubble = document.createElement('div');
+      errBubble.className = 'chat-bubble agent';
+      errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Select failed') + '</div>';
+      var msgEl = document.getElementById('chat-messages');
+      if (msgEl) msgEl.appendChild(errBubble);
+      _chatAgentState = 'idle';
+      _chatAgentStateLabel = null;
+      _updateTypingIndicator();
+      _updateChatStatePill();
+      _scrollChatToBottom();
+
+      // Re-enable buttons on error
+      if (bubble) {
+        var btns = bubble.querySelectorAll('.bubble-option-btn');
+        for (var k = 0; k < btns.length; k++) {
+          btns[k].disabled = false;
+          btns[k].style.opacity = '';
+          btns[k].style.pointerEvents = '';
+        }
+      }
     });
   }
 
@@ -1463,7 +2253,9 @@ window.VoiceApp = (function () {
     var newState = data.new_state || data.state;
     if (newState) {
       _chatAgentState = newState;
+      _chatAgentStateLabel = (data.state_info && data.state_info.label) ? data.state_info.label : null;
       _updateTypingIndicator();
+      _updateChatStatePill();
     }
 
     // Recover from false ended state: card_refresh with is_active clears ended
@@ -1475,55 +2267,12 @@ window.VoiceApp = (function () {
     // Check for ended agent
     if (data.agent_ended || (newState && newState.toLowerCase() === 'ended')) {
       _chatAgentEnded = true;
+      delete _agentScrollState[_targetAgentId];
       _updateEndedAgentUI();
     }
 
-    // Fetch only new turns since last rendered
-    var newestRendered = 0;
-    _chatRenderedTurnIds.forEach(function (id) {
-      if (typeof id === 'number' && id > newestRendered) newestRendered = id;
-    });
-
-    // Fetch recent turns (no cursor = latest)
-    var sseSeq = ++_chatTranscriptSeq;
-    VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-      if (sseSeq !== _chatTranscriptSeq) return; // Stale response — discard
-      var turns = resp.turns || [];
-      // Filter to only truly new turns, dedup user echoes from chat send
-      var newTurns = turns.filter(function (t) {
-        if (_chatRenderedTurnIds.has(t.id)) return false;
-        // Skip USER turns whose text matches a pending chat message (already shown as fake bubble)
-        if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
-          _chatRenderedTurnIds.add(t.id); // mark as rendered so it won't appear later
-          _chatPendingUserTexts.delete(t.text.trim());
-          return false;
-        }
-        return true;
-      });
-      if (newTurns.length > 0) {
-        var grouped = _groupTurns(newTurns);
-        var messagesEl = document.getElementById('chat-messages');
-        for (var i = 0; i < grouped.length; i++) {
-          var item = grouped[i];
-          var prev = i > 0 ? grouped[i - 1] : null;
-          if (item.type === 'separator') {
-            _renderTaskSeparator(item);
-          } else {
-            _renderChatBubble(item, prev);
-          }
-        }
-      }
-      if (resp.agent_state) {
-        _chatAgentState = resp.agent_state;
-        _updateTypingIndicator();
-      }
-      if (resp.agent_ended !== undefined) {
-        var wasEnded = _chatAgentEnded;
-        _chatAgentEnded = !!resp.agent_ended;
-        if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-      }
-      _scrollChatToBottom();
-    }).catch(function () { /* ignore */ });
+    // SSE-primary: state changes update indicators only.
+    // Turns are delivered directly via turn_created SSE events.
   }
 
   // --- Command sending ---
@@ -1546,7 +2295,43 @@ window.VoiceApp = (function () {
     });
   }
 
+  function _sendSelect(optionIndex) {
+    var status = document.getElementById('status-message');
+    if (status) status.textContent = 'Sending...';
+
+    VoiceAPI.sendSelect(_targetAgentId, optionIndex).then(function (data) {
+      VoiceOutput.playCue('sent');
+      if (status) status.textContent = 'Sent!';
+      setTimeout(function () { _refreshAgents(); showScreen('agents'); }, 1500);
+    }).catch(function (err) {
+      VoiceOutput.playCue('error');
+      if (status) status.textContent = 'Error: ' + (err.error || 'Select failed');
+    });
+  }
+
   // --- SSE event handling ---
+
+  function _handleGap(data) {
+    // Server detected dropped events — do a full refresh to catch up
+    _refreshAgents();
+    if (_currentScreen === 'chat' && _targetAgentId) {
+      _fetchTranscriptForChat();
+    }
+  }
+
+  function _handleTurnUpdated(data) {
+    if (_currentScreen !== 'chat') return;
+    if (!data || !data.agent_id) return;
+    if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
+
+    if (data.update_type === 'timestamp_correction' && data.turn_id) {
+      var bubble = document.querySelector('[data-turn-id="' + data.turn_id + '"]');
+      if (bubble && data.timestamp) {
+        bubble.setAttribute('data-timestamp', data.timestamp);
+        _reorderBubble(bubble);
+      }
+    }
+  }
 
   function _handleTurnCreated(data) {
     if (_currentScreen !== 'chat') return;
@@ -1554,11 +2339,33 @@ window.VoiceApp = (function () {
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
     if (!data.text || !data.text.trim()) return;
 
-    // Only handle agent turns directly — user turns are handled by
-    // _handleChatSSE via transcript fetch (which includes echo dedup).
-    // Processing user turns here would consume _chatPendingUserTexts
-    // entries before the transcript-based dedup can use them.
-    if (data.actor === 'user') return;
+    // For user turns from SSE: promote optimistic (pending) bubbles if they exist
+    if (data.actor === 'user' && data.turn_id) {
+      var realId = data.turn_id;
+      // Look for a pending optimistic bubble to promote
+      var promoted = false;
+      for (var pi = 0; pi < _chatPendingUserSends.length; pi++) {
+        var pending = _chatPendingUserSends[pi];
+        if (pending.fakeTurnId) {
+          var fakeBubble = document.querySelector('[data-turn-id="' + pending.fakeTurnId + '"]');
+          if (fakeBubble) {
+            // Promote: swap fake ID to real server ID
+            fakeBubble.setAttribute('data-turn-id', realId);
+            if (data.timestamp) fakeBubble.setAttribute('data-timestamp', data.timestamp);
+            // Clear the send-failed timeout
+            if (pending.failTimer) clearTimeout(pending.failTimer);
+            _chatPendingUserSends.splice(pi, 1);
+            promoted = true;
+            break;
+          }
+        }
+      }
+      if (promoted) return;
+      // Not promoted — check if already in DOM (e.g., from initial load)
+      if (document.querySelector('[data-turn-id="' + realId + '"]')) return;
+    }
+
+    var isTerminalIntent = (data.intent === 'completion' || data.intent === 'end_of_task');
 
     // Build a turn-like object for direct rendering
     var turn = {
@@ -1569,22 +2376,31 @@ window.VoiceApp = (function () {
       timestamp: data.timestamp || new Date().toISOString(),
       tool_input: data.tool_input || null,
       question_text: data.text,
-      question_options: null
+      question_options: null,
+      task_id: data.task_id || null
     };
 
     // Extract question_options from tool_input for immediate rendering
     if (data.tool_input && data.tool_input.questions) {
-      var q = data.tool_input.questions[0];
-      if (q && q.options) {
-        turn.question_options = q.options;
+      var questions = data.tool_input.questions;
+      if (questions.length > 1) {
+        // Multi-question: preserve full question objects array
+        // (each element has .question, .header, .multiSelect, .options)
+        turn.question_options = questions;
+      } else if (questions.length > 0 && questions[0].options) {
+        turn.question_options = questions[0].options;
       }
     }
 
-    // Skip if already rendered
-    if (_chatRenderedTurnIds.has(turn.id)) return;
+    // Skip if already rendered in DOM — but always render terminal intents
+    // (completion/end_of_task) so the agent's final response is visible
+    // even if a PROGRESS turn with the same ID was already shown.
+    if (document.querySelector('[data-turn-id="' + turn.id + '"]')) {
+      if (!isTerminalIntent) return;
+    }
 
-    _renderChatBubble(turn, null);
-    _scrollChatToBottom();
+    _renderChatBubble(turn, null, isTerminalIntent);
+    _scrollChatToBottomIfNear();
   }
 
   function _handleAgentUpdate(data) {
@@ -1630,12 +2446,23 @@ window.VoiceApp = (function () {
         if (chatNewState) {
           var prevState = _chatAgentState;
           _chatAgentState = chatNewState;
+          _chatAgentStateLabel = (data.state_info && data.state_info.label) ? data.state_info.label : null;
           _updateTypingIndicator();
+          _updateChatStatePill();
 
           // If state left AWAITING_INPUT, update question options to "answered"
           if (prevState && prevState.toLowerCase() === 'awaiting_input'
               && chatNewState.toLowerCase() !== 'awaiting_input') {
             _markAllQuestionsAnswered();
+          }
+        }
+        // Update task instruction in header if SSE provides it
+        if (data.task_instruction) {
+          var instrEl = document.getElementById('chat-task-instruction');
+          if (instrEl) {
+            var instr = data.task_instruction;
+            instrEl.textContent = instr.length > 80 ? instr.substring(0, 80) + '...' : instr;
+            instrEl.style.display = '';
           }
         }
       }
@@ -1660,45 +2487,23 @@ window.VoiceApp = (function () {
           if (justRecovered || (polledState && polledState.toLowerCase() !== (_chatAgentState || '').toLowerCase())) {
             if (polledState) {
               _chatAgentState = polledState;
+              _chatAgentStateLabel = data.agents[i].state_label || null;
               _updateTypingIndicator();
+              _updateChatStatePill();
             }
-            // Fetch transcript to pick up any new turns
-            var pollSeq = ++_chatTranscriptSeq;
-            VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-              if (pollSeq !== _chatTranscriptSeq) return; // Stale response — discard
-              var turns = resp.turns || [];
-              var newTurns = turns.filter(function (t) { return !_chatRenderedTurnIds.has(t.id); });
-              if (newTurns.length > 0) {
-                var grouped = _groupTurns(newTurns);
-                for (var j = 0; j < grouped.length; j++) {
-                  var item = grouped[j];
-                  var prev = j > 0 ? grouped[j - 1] : null;
-                  if (item.type === 'separator') {
-                    _renderTaskSeparator(item);
-                  } else {
-                    _renderChatBubble(item, prev);
-                  }
-                }
-              }
-              if (resp.agent_state) {
-                _chatAgentState = resp.agent_state;
-                _updateTypingIndicator();
-              }
-              if (resp.agent_ended !== undefined) {
-                var wasEnded = _chatAgentEnded;
-                _chatAgentEnded = !!resp.agent_ended;
-                if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-              }
-              _scrollChatToBottom();
-            }).catch(function () { /* ignore */ });
+            _fetchTranscriptForChat();
           }
           break;
         }
       }
     }
 
-    // Re-fetch agent list on any update
-    _refreshAgents();
+    // Re-fetch agent list on any update (but defer if confirm dialog is open)
+    if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
+      window._sseReloadDeferred = function () { _refreshAgents(); };
+    } else {
+      _refreshAgents();
+    }
 
     // Play cue if an agent transitions to awaiting_input
     if (data && data.new_state === 'awaiting_input') {
@@ -1707,8 +2512,9 @@ window.VoiceApp = (function () {
   }
 
   function _refreshAgents() {
-    VoiceAPI.getSessions(_settings.verbosity).then(function (data) {
-      _renderAgentList(data.agents || []);
+    VoiceAPI.getSessions(_settings.verbosity, _settings.showEndedAgents).then(function (data) {
+      _endedAgents = data.ended_agents || [];
+      _renderAgentList(data.agents || [], _endedAgents);
       // Apply server auto_target setting if user hasn't overridden locally
       if (data.settings && data.settings.auto_target !== undefined) {
         var stored = null;
@@ -1744,6 +2550,8 @@ window.VoiceApp = (function () {
   // --- Connection indicator (task 2.18) ---
 
   var _previousConnectionState = 'disconnected';
+  var _connectionLostTimer = null;
+  var _connectionLostShown = false;
 
   function _updateConnectionIndicator() {
     var el = document.getElementById('connection-status');
@@ -1752,16 +2560,31 @@ window.VoiceApp = (function () {
     el.className = 'connection-dot ' + state;
     el.title = state;
 
-    // On reconnect: catch up on any missed state by re-fetching
     if (state === 'connected' && _previousConnectionState !== 'connected') {
       _catchUpAfterReconnect();
-      if (_currentScreen === 'chat') {
+      // Cancel pending "connection lost" — hiccup recovered before timeout
+      if (_connectionLostTimer) {
+        clearTimeout(_connectionLostTimer);
+        _connectionLostTimer = null;
+      }
+      // Only show "Reconnected" if we actually showed "Connection lost"
+      if (_connectionLostShown && _currentScreen === 'chat') {
         _showChatSystemMessage('Reconnected');
       }
+      _connectionLostShown = false;
     }
     if (state === 'reconnecting' && _previousConnectionState === 'connected') {
-      if (_currentScreen === 'chat') {
-        _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
+      // Debounce: wait 2s before showing. If recovered within window, suppress.
+      if (!_connectionLostTimer) {
+        _connectionLostTimer = setTimeout(function () {
+          _connectionLostTimer = null;
+          if (VoiceAPI.getConnectionState() !== 'connected') {
+            _connectionLostShown = true;
+            if (_currentScreen === 'chat') {
+              _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
+            }
+          }
+        }, 2000);
       }
     }
     _previousConnectionState = state;
@@ -1773,46 +2596,149 @@ window.VoiceApp = (function () {
 
     // If chat screen is active, re-fetch transcript to catch missed events
     if (_currentScreen === 'chat' && _targetAgentId) {
-      var reconnSeq = ++_chatTranscriptSeq;
-      VoiceAPI.getTranscript(_targetAgentId).then(function (resp) {
-        if (reconnSeq !== _chatTranscriptSeq) return; // Stale response — discard
-        var turns = resp.turns || [];
-        var newTurns = turns.filter(function (t) {
-          if (_chatRenderedTurnIds.has(t.id)) return false;
-          if (t.actor === 'user' && t.text && _chatPendingUserTexts.has(t.text.trim())) {
-            _chatRenderedTurnIds.add(t.id);
-            _chatPendingUserTexts.delete(t.text.trim());
-            return false;
+      _fetchTranscriptForChat();
+
+      // Deferred stops create turns 0.5-5s after the initial stop hook.
+      // If we reconnected during that gap the first fetch finds nothing.
+      // A second fetch 3s later catches those late-arriving turns.
+      var deferredAgentId = _targetAgentId;
+      setTimeout(function () {
+        if (_currentScreen === 'chat' && _targetAgentId === deferredAgentId) {
+          _fetchTranscriptForChat();
+        }
+      }, 3000);
+    }
+  }
+
+  /**
+   * Shared transcript fetch + render logic used by reconnect catch-up,
+   * periodic sync, and anywhere else that needs to pull new turns.
+   *
+   * Debounced: multiple calls within 500ms collapse into one fetch.
+   * This prevents SSE event bursts and the sync timer from cancelling
+   * each other's responses (Finding 5).
+   */
+  var _fetchDebounceTimer = null;
+  var _fetchInFlight = false;
+
+  function _fetchTranscriptForChat() {
+    if (!_targetAgentId) return;
+    // If a fetch is already in flight, just schedule another after it finishes
+    if (_fetchInFlight) {
+      _fetchDebounceTimer = _fetchDebounceTimer || setTimeout(function () {
+        _fetchDebounceTimer = null;
+        _fetchTranscriptForChat();
+      }, 500);
+      return;
+    }
+    // Clear any pending debounce since we're about to fetch now
+    if (_fetchDebounceTimer) {
+      clearTimeout(_fetchDebounceTimer);
+      _fetchDebounceTimer = null;
+    }
+    _fetchInFlight = true;
+    var agentId = _targetAgentId;
+    VoiceAPI.getTranscript(agentId).then(function (resp) {
+      _fetchInFlight = false;
+      // Discard if user navigated to a different agent while fetching
+      if (agentId !== _targetAgentId) return;
+      var turns = resp.turns || [];
+      var messagesContainer = document.getElementById('chat-messages');
+
+      for (var ti = 0; ti < turns.length; ti++) {
+        var t = turns[ti];
+        // Track max turn ID for gap recovery
+        var numId = typeof t.id === 'number' ? t.id : parseInt(t.id, 10);
+        if (!isNaN(numId) && numId > _lastSeenTurnId) _lastSeenTurnId = numId;
+
+        // Check if this turn is already in the DOM
+        var existingBubble = messagesContainer
+          ? messagesContainer.querySelector('[data-turn-id="' + t.id + '"]')
+          : null;
+
+        if (existingBubble) {
+          // Already rendered — update timestamp if changed, reorder if needed
+          var currentTs = existingBubble.getAttribute('data-timestamp');
+          if (t.timestamp && currentTs !== t.timestamp) {
+            existingBubble.setAttribute('data-timestamp', t.timestamp);
+            _reorderBubble(existingBubble);
           }
-          return true;
-        });
-        if (newTurns.length > 0) {
-          var grouped = _groupTurns(newTurns);
-          for (var i = 0; i < grouped.length; i++) {
-            var item = grouped[i];
-            var prev = i > 0 ? grouped[i - 1] : null;
-            if (item.type === 'separator') {
-              _renderTaskSeparator(item);
-            } else {
-              _renderChatBubble(item, prev);
-            }
-          }
+        } else {
+          // Not in DOM — render at correct chronological position
+          var prev = ti > 0 ? turns[ti - 1] : null;
+          var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_task');
+          _renderChatBubble(t, prev, forceTerminal);
         }
-        if (resp.agent_state) {
-          _chatAgentState = resp.agent_state;
-          _updateTypingIndicator();
-        }
-        if (resp.agent_ended !== undefined) {
-          var wasEnded = _chatAgentEnded;
-          _chatAgentEnded = !!resp.agent_ended;
-          if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
-        }
-        _scrollChatToBottom();
-      }).catch(function () { /* ignore */ });
+      }
+
+      if (resp.agent_state) {
+        _chatAgentState = resp.agent_state;
+        _updateTypingIndicator();
+        _updateChatStatePill();
+      }
+      if (resp.agent_ended !== undefined) {
+        var wasEnded = _chatAgentEnded;
+        _chatAgentEnded = !!resp.agent_ended;
+        if (_chatAgentEnded !== wasEnded) _updateEndedAgentUI();
+      }
+      // Only auto-scroll if user is near the bottom — don't yank them
+      // away from reading older messages (mobile reading experience)
+      _scrollChatToBottomIfNear();
+    }).catch(function () {
+      _fetchInFlight = false;
+    });
+  }
+
+  /**
+   * Remove an optimistic (fake) user bubble when send fails (Finding 10).
+   * Cleans up both the DOM element and the pending send entry.
+   */
+  function _removeOptimisticBubble(pendingEntry) {
+    // Remove from pending sends list
+    var idx = _chatPendingUserSends.indexOf(pendingEntry);
+    if (idx !== -1) _chatPendingUserSends.splice(idx, 1);
+    // Remove the fake bubble from DOM
+    var messagesEl = document.getElementById('chat-messages');
+    if (messagesEl && pendingEntry.fakeTurnId) {
+      var bubble = messagesEl.querySelector('[data-turn-id="' + pendingEntry.fakeTurnId + '"]');
+      if (bubble) bubble.remove();
     }
   }
 
   // --- Escape HTML ---
+
+  // --- Image Lightbox ---
+
+  function _openImageLightbox(url, alt) {
+    var lb = document.getElementById('image-lightbox');
+    var img = document.getElementById('lightbox-img');
+    if (!lb || !img) return;
+    img.src = url;
+    img.alt = alt || 'Image';
+    lb.style.display = 'flex';
+  }
+
+  function _closeImageLightbox() {
+    var lb = document.getElementById('image-lightbox');
+    var img = document.getElementById('lightbox-img');
+    if (!lb) return;
+    lb.style.display = 'none';
+    if (img) img.src = '';
+  }
+
+  (function _initImageLightbox() {
+    document.addEventListener('click', function (e) {
+      var lb = document.getElementById('image-lightbox');
+      if (!lb || lb.style.display === 'none') return;
+      if (e.target.classList.contains('image-lightbox-backdrop') ||
+          e.target.classList.contains('image-lightbox-close')) {
+        _closeImageLightbox();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') _closeImageLightbox();
+    });
+  })();
 
   function _esc(s) {
     if (!s) return '';
@@ -1821,60 +2747,10 @@ window.VoiceApp = (function () {
     return div.innerHTML;
   }
 
-  // --- Lightweight markdown renderer for agent bubbles ---
+  // --- Markdown renderer for agent bubbles (delegates to marked.js via CHUtils) ---
 
   function _renderMd(text) {
-    if (!text) return '';
-    // Escape HTML first to prevent XSS
-    var html = _esc(text);
-
-    // Code blocks (``` ... ```)
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
-      return '<pre class="md-code-block"><code>' + code.trim() + '</code></pre>';
-    });
-
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
-
-    // Headers
-    html = html.replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
-
-    // Bold and italic
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-    // Horizontal rules
-    html = html.replace(/^---+$/gm, '<hr class="md-hr">');
-
-    // Unordered lists
-    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-    // Ordered lists
-    html = html.replace(/^\d+\. (.+)$/gm, '<li class="md-ol-item">$1</li>');
-    // Wrap consecutive list items
-    html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, function(match) {
-      if (match.indexOf('md-ol-item') !== -1) {
-        return '<ol class="md-ol">' + match + '</ol>';
-      }
-      return '<ul class="md-ul">' + match + '</ul>';
-    });
-
-    // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, linkText, url) {
-      if (!/^https?:\/\//i.test(url)) return _esc(linkText);
-      return '<a href="' + url + '" class="md-link" target="_blank" rel="noopener">' + linkText + '</a>';
-    });
-
-    // Paragraphs (double newline)
-    html = html.replace(/\n\n/g, '</p><p class="md-p">');
-    html = '<p class="md-p">' + html + '</p>';
-    html = html.replace(/<p class="md-p"><\/p>/g, '');
-
-    // Single newlines -> <br> (within paragraphs, after other transforms)
-    html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
-
-    return html;
+    return CHUtils.renderMarkdown(text);
   }
 
   // --- Initialization ---
@@ -1891,6 +2767,26 @@ window.VoiceApp = (function () {
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(_detectLayoutMode, 100);
     });
+
+    // iOS Safari: the bottom toolbar overlaps content.  `100dvh` in CSS
+    // handles the static case, but when the keyboard appears/disappears
+    // or Safari toggles its toolbar, we need to dynamically resize the
+    // app layout so the chat input stays above the toolbar.
+    if (window.visualViewport) {
+      var _vpTimer = null;
+      window.visualViewport.addEventListener('resize', function () {
+        clearTimeout(_vpTimer);
+        _vpTimer = setTimeout(function () {
+          var layout = document.getElementById('app-layout');
+          if (!layout) return;
+          // visualViewport.height is the *actually visible* area,
+          // excluding Safari toolbar and on-screen keyboard.
+          var headerH = 52; // .app-header height
+          var vpH = window.visualViewport.height;
+          layout.style.height = (vpH - headerH) + 'px';
+        }, 50);
+      });
+    }
 
     // Close kebab menus on click/touch outside
     function _handleCloseKebabs(e) {
@@ -1937,8 +2833,6 @@ window.VoiceApp = (function () {
     });
 
     VoiceInput.onStateChange(function (listening) {
-      var btn = document.getElementById('mic-btn');
-      if (btn) btn.classList.toggle('active', listening);
       var chatMic = document.getElementById('chat-mic-btn');
       if (chatMic) chatMic.classList.toggle('active', listening);
     });
@@ -1947,7 +2841,24 @@ window.VoiceApp = (function () {
     VoiceAPI.onConnectionChange(_updateConnectionIndicator);
     VoiceAPI.onAgentUpdate(_handleAgentUpdate);
     VoiceAPI.onTurnCreated(_handleTurnCreated);
+    VoiceAPI.onTurnUpdated(_handleTurnUpdated);
+    VoiceAPI.onGap(_handleGap);
     VoiceAPI.connectSSE();
+
+    // iOS recovery: when the tab returns from background, SSE is dead and
+    // timers were suspended.  Force an immediate catch-up.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      // Reconnect SSE if it died in the background
+      if (VoiceAPI.getConnectionState() !== 'connected') {
+        VoiceAPI.connectSSE();
+      }
+      // Immediately refresh state and transcript
+      _refreshAgents();
+      if (_currentScreen === 'chat' && _targetAgentId) {
+        _fetchTranscriptForChat();
+      }
+    });
 
     // Play ready cue
     VoiceOutput.playCue('ready');
@@ -1986,36 +2897,11 @@ window.VoiceApp = (function () {
     if (titleLink) {
       titleLink.addEventListener('click', function (e) {
         e.preventDefault();
+        if (_currentScreen === 'chat' && _targetAgentId) {
+          _saveScrollState(_targetAgentId);
+        }
         _refreshAgents();
         showScreen('agents');
-      });
-    }
-
-    // Mic button
-    var micBtn = document.getElementById('mic-btn');
-    if (micBtn) {
-      micBtn.addEventListener('click', function () {
-        VoiceOutput.initAudio();
-        if (VoiceInput.isListening()) {
-          _stopListening();
-        } else {
-          // Auto-target if enabled
-          if (_settings.autoTarget) {
-            var auto = _autoTarget();
-            if (auto) {
-              _showListeningScreen(auto);
-            }
-          }
-          if (!_targetAgentId) {
-            var agentStatus = document.getElementById('agent-status-message');
-            if (agentStatus) {
-              agentStatus.textContent = 'Select an agent first';
-              setTimeout(function () { agentStatus.textContent = ''; }, 2000);
-            }
-            return;
-          }
-          _startListening();
-        }
       });
     }
 
@@ -2045,13 +2931,77 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Settings button — open slide-out panel
-    var settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', function () {
-        _openSettings();
+    // --- FAB (split mode) ---
+    var fabBtn = document.getElementById('fab-btn');
+    if (fabBtn) {
+      fabBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _toggleFab();
       });
     }
+    var fabBackdrop = document.getElementById('fab-backdrop');
+    if (fabBackdrop) {
+      fabBackdrop.addEventListener('click', function () { _closeFab(); });
+    }
+    // FAB menu items
+    var fabItems = document.querySelectorAll('.fab-menu-item');
+    for (var fi = 0; fi < fabItems.length; fi++) {
+      fabItems[fi].addEventListener('click', function (e) {
+        e.stopPropagation();
+        _handleMenuAction(this.getAttribute('data-action'));
+      });
+    }
+
+    // --- Hamburger (stacked mode) ---
+    var hamburgerBtn = document.getElementById('hamburger-btn');
+    if (hamburgerBtn) {
+      hamburgerBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (_hamburgerOpen) { _closeHamburger(); } else { _openHamburger(); }
+      });
+    }
+    var hamburgerBackdrop = document.getElementById('hamburger-backdrop');
+    if (hamburgerBackdrop) {
+      hamburgerBackdrop.addEventListener('click', function () { _closeHamburger(); });
+    }
+    var hamburgerItems = document.querySelectorAll('.hamburger-item');
+    for (var hi = 0; hi < hamburgerItems.length; hi++) {
+      hamburgerItems[hi].addEventListener('click', function () {
+        _handleMenuAction(this.getAttribute('data-action'));
+      });
+    }
+
+    // --- Project Picker ---
+    var pickerClose = document.getElementById('project-picker-close');
+    if (pickerClose) {
+      pickerClose.addEventListener('click', function () { _closeProjectPicker(); });
+    }
+    var pickerBackdrop = document.getElementById('project-picker-backdrop');
+    if (pickerBackdrop) {
+      pickerBackdrop.addEventListener('click', function () { _closeProjectPicker(); });
+    }
+    var pickerSearch = document.getElementById('project-picker-search');
+    if (pickerSearch) {
+      pickerSearch.addEventListener('input', function () {
+        _filterProjectList(this.value.trim());
+      });
+    }
+
+    // --- Escape key handler ---
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (_projectPickerOpen) { _closeProjectPicker(); e.preventDefault(); return; }
+        if (_fabOpen) { _closeFab(); e.preventDefault(); return; }
+        if (_hamburgerOpen) { _closeHamburger(); e.preventDefault(); return; }
+      }
+    });
+
+    // Close FAB on outside click
+    document.addEventListener('click', function (e) {
+      if (_fabOpen && !e.target.closest('.fab-container')) {
+        _closeFab();
+      }
+    });
 
     // Settings close button
     var settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -2109,7 +3059,15 @@ window.VoiceApp = (function () {
       // Auto-resize textarea as content grows
       chatInput.addEventListener('input', function () {
         this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        this.style.height = Math.min(this.scrollHeight, 240) + 'px';
+      });
+      // iOS Safari: when keyboard opens, scroll the input into view
+      // after a short delay (let Safari finish its viewport resize).
+      chatInput.addEventListener('focus', function () {
+        var self = this;
+        setTimeout(function () {
+          self.scrollIntoView({ block: 'end', behavior: 'smooth' });
+        }, 300);
       });
     }
 
@@ -2122,6 +3080,21 @@ window.VoiceApp = (function () {
           _stopListening();
         } else {
           _startListening();
+        }
+      });
+    }
+
+    // Attach file button + hidden file input
+    var chatAttachBtn = document.getElementById('chat-attach-btn');
+    var chatFileInput = document.getElementById('chat-file-input');
+    if (chatAttachBtn && chatFileInput) {
+      chatAttachBtn.addEventListener('click', function () {
+        chatFileInput.click();
+      });
+      chatFileInput.addEventListener('change', function () {
+        if (chatFileInput.files && chatFileInput.files[0]) {
+          _handleFileDrop(chatFileInput.files[0]);
+          chatFileInput.value = '';
         }
       });
     }
@@ -2194,6 +3167,29 @@ window.VoiceApp = (function () {
         if (chatMessages.scrollTop < 50) {
           _loadOlderMessages();
         }
+        // Auto-dismiss new messages pill when user scrolls to the first new message
+        if (_newMessagesPillVisible && _newMessagesFirstTurnId) {
+          var bubble = document.querySelector('[data-turn-id="' + _newMessagesFirstTurnId + '"]');
+          if (bubble) {
+            var containerRect = chatMessages.getBoundingClientRect();
+            var bubbleRect = bubble.getBoundingClientRect();
+            if (bubbleRect.top < containerRect.bottom) {
+              _dismissNewMessagesPill();
+            }
+          }
+        }
+      });
+    }
+
+    // Chat header focus link — click to focus iTerm window
+    var chatFocusLink = document.getElementById('chat-focus-link');
+    if (chatFocusLink) {
+      chatFocusLink.addEventListener('click', function () {
+        if (_targetAgentId) {
+          VoiceAPI.focusAgent(_targetAgentId).catch(function (err) {
+            console.warn('Focus failed:', err);
+          });
+        }
       });
     }
 
@@ -2205,6 +3201,7 @@ window.VoiceApp = (function () {
           var prevId = _navStack.pop();
           _showChatScreen(prevId);
         } else {
+          _saveScrollState(_targetAgentId);
           _otherAgentStates = {};
           _refreshAgents();
           showScreen('agents');
@@ -2304,6 +3301,9 @@ window.VoiceApp = (function () {
     el = document.getElementById('setting-verbosity');
     if (el) el.value = _settings.verbosity;
 
+    el = document.getElementById('setting-ended');
+    if (el) el.checked = _settings.showEndedAgents;
+
     el = document.getElementById('setting-url');
     if (el) el.value = _settings.serverUrl;
 
@@ -2335,6 +3335,13 @@ window.VoiceApp = (function () {
 
     el = document.getElementById('setting-verbosity');
     if (el) setSetting('verbosity', el.value);
+
+    el = document.getElementById('setting-ended');
+    if (el) {
+      var prev = _settings.showEndedAgents;
+      setSetting('showEndedAgents', el.checked);
+      if (el.checked !== prev) _refreshAgents();
+    }
 
     el = document.getElementById('setting-url');
     if (el) setSetting('serverUrl', el.value.trim());

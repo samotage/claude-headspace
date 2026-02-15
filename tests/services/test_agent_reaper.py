@@ -23,7 +23,7 @@ PATCH_CHECK_PANE = "claude_headspace.services.iterm_focus.check_pane_exists"
 PATCH_DB = "claude_headspace.database.db"
 PATCH_BROADCASTER = "claude_headspace.services.broadcaster.get_broadcaster"
 PATCH_CLAUDE_RUNNING = "claude_headspace.services.agent_reaper._is_claude_running_in_pane"
-PATCH_GET_LIFECYCLE = "claude_headspace.services.hook_receiver._get_lifecycle_manager"
+PATCH_GET_LIFECYCLE = "claude_headspace.services.task_lifecycle.TaskLifecycleManager"
 
 
 def _make_agent(
@@ -574,7 +574,7 @@ class TestOrphanedTaskCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value="TASK COMPLETE — did stuff"), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="TASK COMPLETE — did stuff")), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
@@ -618,7 +618,7 @@ class TestOrphanedTaskCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value=""), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="")), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
             result = reaper.reap_once()
@@ -693,7 +693,7 @@ class TestOrphanedTaskCompletion:
         from claude_headspace.models.turn import TurnIntent
         mock_intent_result.intent = TurnIntent.END_OF_TASK
 
-        with patch("claude_headspace.services.hook_receiver._extract_transcript_content", return_value="---\nTASK COMPLETE — finished work\n---"), \
+        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="---\nTASK COMPLETE — finished work\n---")), \
              patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result), \
              patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
             reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
@@ -704,80 +704,54 @@ class TestOrphanedTaskCompletion:
         assert call_kwargs["intent"] == TurnIntent.END_OF_TASK
 
 
+PATCH_TMUX_CHECK_HEALTH = "claude_headspace.services.tmux_bridge.check_health"
+
+
 class TestIsClaudeRunningInPane:
-    """Unit tests for _is_claude_running_in_pane() subprocess logic."""
+    """Unit tests for _is_claude_running_in_pane() — now delegates to tmux_bridge.check_health."""
 
-    def _make_ps_output(self, *entries):
-        """Build a mock ps -axo pid,ppid,comm output.
-
-        Each entry is (pid, ppid, comm). A header line is added automatically.
-        """
-        lines = ["  PID  PPID COMM"]
-        for pid, ppid, comm in entries:
-            lines.append(f"{pid} {ppid} {comm}")
-        return "\n".join(lines) + "\n"
-
-    @patch("subprocess.run")
-    def test_returns_true_when_ps_shows_claude(self, mock_run):
-        """ps shows claude as child of pane pid."""
-        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n%6 99999\n")
-        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
-            ("52811", "52807", "claude"),
-        ))
-        mock_run.side_effect = [tmux_result, ps_result]
-
+    @patch(PATCH_TMUX_CHECK_HEALTH)
+    def test_returns_true_when_process_tree_shows_claude(self, mock_health):
+        """check_health PROCESS_TREE returns running=True → True."""
+        from claude_headspace.services.tmux_bridge import HealthResult
+        mock_health.return_value = HealthResult(available=True, running=True, pid=52807)
         assert _is_claude_running_in_pane("%5") is True
 
-    @patch("subprocess.run")
-    def test_returns_false_when_no_claude_process(self, mock_run):
-        """Pane exists but no claude in process tree."""
-        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
-            ("52811", "52807", "bash"),
-        ))
-        mock_run.side_effect = [tmux_result, ps_result]
-
+    @patch(PATCH_TMUX_CHECK_HEALTH)
+    def test_returns_false_when_no_claude_process(self, mock_health):
+        """check_health PROCESS_TREE returns running=False → False."""
+        from claude_headspace.services.tmux_bridge import HealthResult
+        mock_health.return_value = HealthResult(available=True, running=False, pid=52807)
         assert _is_claude_running_in_pane("%5") is False
 
-    @patch("subprocess.run")
-    def test_returns_none_when_pane_not_in_tmux(self, mock_run):
-        """Pane ID not found in tmux output."""
-        tmux_result = MagicMock(returncode=0, stdout="%6 99999\n")
-        mock_run.side_effect = [tmux_result]
-
+    @patch(PATCH_TMUX_CHECK_HEALTH)
+    def test_returns_none_when_pane_not_found(self, mock_health):
+        """check_health returns available=False → None."""
+        from claude_headspace.services.tmux_bridge import HealthResult, TmuxBridgeErrorType
+        mock_health.return_value = HealthResult(
+            available=False,
+            error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
+        )
         assert _is_claude_running_in_pane("%5") is None
 
-    @patch("subprocess.run")
-    def test_returns_none_when_tmux_fails(self, mock_run):
-        """tmux command fails entirely."""
-        tmux_result = MagicMock(returncode=1, stdout="")
-        mock_run.side_effect = [tmux_result]
-
+    @patch(PATCH_TMUX_CHECK_HEALTH)
+    def test_returns_none_when_tmux_fails(self, mock_health):
+        """check_health returns available=False on error → None."""
+        from claude_headspace.services.tmux_bridge import HealthResult, TmuxBridgeErrorType
+        mock_health.return_value = HealthResult(
+            available=False,
+            error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
+        )
         assert _is_claude_running_in_pane("%5") is None
 
-    @patch("subprocess.run")
-    def test_finds_claude_in_grandchildren(self, mock_run):
-        """Claude found as grandchild (bridge → claude)."""
-        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
-            ("52811", "52807", "bash"),       # bridge (child)
-            ("52916", "52811", "claude"),      # claude (grandchild)
-        ))
-        mock_run.side_effect = [tmux_result, ps_result]
-
-        assert _is_claude_running_in_pane("%5") is True
-
-    @patch("subprocess.run")
-    def test_returns_false_when_no_child_processes(self, mock_run):
-        """Pane exists but has no child processes at all."""
-        tmux_result = MagicMock(returncode=0, stdout="%5 52807\n")
-        # No processes with ppid matching pane_pid
-        ps_result = MagicMock(returncode=0, stdout=self._make_ps_output(
-            ("99999", "1", "launchd"),
-        ))
-        mock_run.side_effect = [tmux_result, ps_result]
-
-        assert _is_claude_running_in_pane("%5") is False
+    @patch(PATCH_TMUX_CHECK_HEALTH)
+    def test_uses_process_tree_level(self, mock_health):
+        """Verify _is_claude_running_in_pane passes PROCESS_TREE level."""
+        from claude_headspace.services.tmux_bridge import HealthCheckLevel, HealthResult
+        mock_health.return_value = HealthResult(available=True, running=True)
+        _is_claude_running_in_pane("%5")
+        _, kwargs = mock_health.call_args
+        assert kwargs["level"] == HealthCheckLevel.PROCESS_TREE
 
 
 class TestReapDetail:

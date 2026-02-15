@@ -225,6 +225,28 @@
                 return;
             }
 
+            // Chat (kebab menu item)
+            var chatAction = e.target.closest('.card-chat-action');
+            if (chatAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(chatAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId) window.location.href = '/voice?agent_id=' + agentId;
+                return;
+            }
+
+            // Attach (kebab menu item)
+            var attachAction = e.target.closest('.card-attach-action');
+            if (attachAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(attachAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId && window.FocusAPI) window.FocusAPI.attachAgent(agentId);
+                return;
+            }
+
             // Agent info (kebab menu item)
             var infoAction = e.target.closest('.card-info-action');
             if (infoAction) {
@@ -290,8 +312,15 @@
             }
         });
 
-        // Touch-aware close: touchstart fires on iOS even on non-interactive elements
+        // iOS tap-in-scroll fix: cards sit inside overflow-y:auto columns,
+        // so iOS often treats taps as scroll-start and never fires the click.
+        // Track touch position and synthesize clicks for short, stationary taps.
+        var _touchStartPos = null;
+        var _lastTouchClick = 0;
+
         document.addEventListener('touchstart', function(e) {
+            _touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            // Close menus on tap outside
             if (!e.target.closest('.card-kebab-wrapper')) {
                 closeCardKebabs();
             }
@@ -299,6 +328,39 @@
                 closeNewAgentMenu();
             }
         }, { passive: true });
+
+        document.addEventListener('touchend', function(e) {
+            if (!_touchStartPos) return;
+            var touch = e.changedTouches[0];
+            var dx = touch.clientX - _touchStartPos.x;
+            var dy = touch.clientY - _touchStartPos.y;
+            _touchStartPos = null;
+            // If finger moved more than 10px, it was a scroll — bail
+            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+
+            var kebabBtn = e.target.closest('.card-kebab-btn');
+            var kebabItem = e.target.closest('.card-kebab-item');
+            if (kebabBtn || kebabItem) {
+                e.preventDefault();
+                _lastTouchClick = Date.now();
+                (kebabBtn || kebabItem).click();
+            }
+        });
+
+        // Guard: suppress native click that iOS may fire after our touchend-triggered click
+        document.addEventListener('click', function(e) {
+            if (_lastTouchClick && Date.now() - _lastTouchClick < 500) {
+                var kebab = e.target.closest('.card-kebab-btn') || e.target.closest('.card-kebab-item');
+                if (kebab && !e.isTrusted) return; // skip programmatic duplicates
+                if (kebab && e.isTrusted) {
+                    // Native click arrived after our touchend click — suppress it
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    _lastTouchClick = 0;
+                    return;
+                }
+            }
+        }, true); // capture phase — runs before the main click handler
     }
 
     // Export

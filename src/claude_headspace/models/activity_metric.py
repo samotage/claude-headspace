@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import db
@@ -18,6 +18,14 @@ class ActivityMetric(db.Model):
     """
 
     __tablename__ = "activity_metrics"
+    __table_args__ = (
+        CheckConstraint(
+            "(is_overall = true AND agent_id IS NULL AND project_id IS NULL) OR "
+            "(is_overall = false AND agent_id IS NOT NULL AND project_id IS NULL) OR "
+            "(is_overall = false AND project_id IS NOT NULL AND agent_id IS NULL)",
+            name='ck_activity_metrics_scope_consistency',
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     bucket_start: Mapped[datetime] = mapped_column(

@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import db
@@ -27,6 +27,12 @@ class InferenceCall(db.Model):
     """
 
     __tablename__ = "inference_calls"
+    __table_args__ = (
+        CheckConstraint(
+            'COALESCE(project_id, agent_id, task_id, turn_id) IS NOT NULL',
+            name='ck_inference_calls_has_parent',
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(
@@ -45,12 +51,14 @@ class InferenceCall(db.Model):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     cached: Mapped[bool] = mapped_column(nullable=False, default=False)
 
-    # Optional FK associations to domain entities
+    # FK design: SET NULL on delete — inference cost tracking has independent
+    # value for billing and usage analytics. Records are retained even when
+    # the parent entity (project, agent, task, turn) is deleted.
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     agent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
     )
     task_id: Mapped[int | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True

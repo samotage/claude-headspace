@@ -229,13 +229,14 @@ class FileUploadService:
 
     @staticmethod
     def is_safe_filename(filename: str) -> bool:
-        """Check if filename is safe (no path traversal)."""
+        """Check if filename is safe (no path traversal or dangerous characters)."""
         if not filename:
             return False
         if "/" in filename or "\\" in filename:
             return False
         if ".." in filename:
             return False
-        if "\x00" in filename:
+        # Reject null bytes and other control characters
+        if any(ord(c) < 32 for c in filename):
             return False
         return True

@@ -325,13 +325,13 @@
             var ttTurns = tt.turns || [];
             if (ttTurns.length > 0) {
                 taskTextLines.push('');
-                taskTextLines.push('| ID | Actor | Intent | Time | Frust. |');
-                taskTextLines.push('|----|-------|--------|------|--------|');
                 for (var tui = 0; tui < ttTurns.length; tui++) {
                     var tu = ttTurns[tui];
                     var frustVal = (tu.frustration_score !== null && tu.frustration_score !== undefined) ? tu.frustration_score : '\u2014';
-                    taskTextLines.push('| ' + tu.id + ' | ' + tu.actor + ' | ' + tu.intent + ' | ' + formatTimestampPlain(tu.timestamp) + ' | ' + frustVal + ' |');
-                    if (tu.summary) taskTextLines.push('| | *' + tu.summary + '* ||||');
+                    taskTextLines.push('**' + tu.actor.toUpperCase() + '** [' + tu.intent + '] ' + formatTimestampPlain(tu.timestamp) + (frustVal !== '\u2014' ? ' F:' + frustVal : ''));
+                    if (tu.text) taskTextLines.push(tu.text);
+                    else if (tu.summary) taskTextLines.push('*' + tu.summary + '*');
+                    taskTextLines.push('');
                 }
             }
         }
@@ -362,35 +362,49 @@
                 if (task.completed_at) html += ' &mdash; Completed: ' + formatTimestamp(task.completed_at);
                 html += '</div>';
 
-                // Turns table
+                // Turns — conversation blocks
                 var turns = task.turns || [];
                 if (turns.length > 0) {
                     html += '<div class="text-muted text-[10px] font-mono uppercase mt-2 mb-1">Turns (' + turns.length + ')</div>';
-                    html += '<table class="agent-info-turn-table">';
-                    html += '<thead><tr><th>ID</th><th>Actor</th><th>Intent</th><th>Time</th><th>Frust.</th></tr></thead>';
-                    html += '<tbody>';
+                    html += '<div class="agent-info-turn-blocks">';
                     for (var ui = 0; ui < turns.length; ui++) {
                         var turn = turns[ui];
                         var actorClass = turn.actor === 'user' ? 'text-amber' : 'text-cyan';
-                        var frustCell = '';
+                        var frustBadge = '';
                         if (turn.frustration_score !== null && turn.frustration_score !== undefined) {
                             var fC = turn.frustration_score <= 3 ? 'text-green' : turn.frustration_score <= 6 ? 'text-amber' : 'text-red';
-                            frustCell = '<span class="' + fC + '">' + turn.frustration_score + '</span>';
-                        } else {
-                            frustCell = '<span class="text-muted">\u2014</span>';
+                            frustBadge = '<span class="' + fC + ' text-[10px]">F:' + turn.frustration_score + '</span>';
                         }
-                        html += '<tr>';
-                        html += '<td class="text-muted">' + turn.id + '</td>';
-                        html += '<td class="' + actorClass + '">' + esc(turn.actor) + '</td>';
-                        html += '<td>' + esc(turn.intent) + '</td>';
-                        html += '<td>' + formatTimestamp(turn.timestamp) + '</td>';
-                        html += '<td>' + frustCell + '</td>';
-                        html += '</tr>';
-                        if (turn.summary) {
-                            html += '<tr class="agent-info-turn-summary-row"><td></td><td colspan="4" class="text-muted text-[10px] italic">' + esc(turn.summary) + '</td></tr>';
+                        html += '<div class="agent-info-turn-block">';
+                        // Header row
+                        html += '<div class="flex items-center gap-1.5 flex-wrap">';
+                        html += '<span class="text-muted text-[9px] font-mono">#' + turn.id + '</span>';
+                        html += '<span class="text-[10px] font-medium px-1 py-0.5 rounded ' + actorClass + ' bg-surface">' + esc(turn.actor.toUpperCase()) + '</span>';
+                        html += '<span class="text-[10px] text-muted">' + esc(turn.intent) + '</span>';
+                        if (frustBadge) html += frustBadge;
+                        html += '<span class="text-[10px] text-muted ml-auto">' + formatTimestamp(turn.timestamp) + '</span>';
+                        html += '</div>';
+                        // Primary content: turn text
+                        var turnText = turn.text || '';
+                        var turnSummary = turn.summary || '';
+                        if (turnText) {
+                            var displayText = turnText.length > 300 ? turnText.substring(0, 300) + '...' : turnText;
+                            var textElId = 'ai-turn-text-' + turn.id;
+                            html += '<div class="agent-info-turn-text whitespace-pre-line" id="' + textElId + '">' + esc(displayText) + '</div>';
+                            if (turnText.length > 300) {
+                                html += '<button type="button" class="ai-turn-view-full text-[10px] text-cyan hover:underline" data-turn-idx="' + ui + '" data-task-idx="' + ti + '" data-text-id="' + textElId + '">View full</button>';
+                            }
+                            // Annotation: summary below text if different
+                            if (turnSummary && turnSummary !== turnText && turnSummary !== turnText.substring(0, turnSummary.length)) {
+                                html += '<div class="agent-info-turn-annotation">' + esc(turnSummary) + '</div>';
+                            }
+                        } else if (turnSummary) {
+                            // Fallback: show summary as primary when no text
+                            html += '<div class="agent-info-turn-text">' + esc(turnSummary) + '</div>';
                         }
+                        html += '</div>';
                     }
-                    html += '</tbody></table>';
+                    html += '</div>';
                 } else {
                     html += '<p class="text-muted text-[10px] italic">No turns</p>';
                 }
@@ -403,7 +417,8 @@
 
         contentEl.innerHTML = html;
 
-        // Attach click handlers for section copy buttons
+        // Attach click handlers for section copy buttons.
+        // These don't accumulate because contentEl.innerHTML replaces all prior content.
         var copyBtns = contentEl.querySelectorAll('.agent-info-copy-btn[data-section-id]');
         for (var ci = 0; ci < copyBtns.length; ci++) {
             copyBtns[ci].addEventListener('click', function(e) {
@@ -412,6 +427,32 @@
                 var sid = btn.getAttribute('data-section-id');
                 var text = sectionTexts[sid];
                 if (text) copyToClipboard(text, btn);
+            });
+        }
+
+        // Attach View full toggle handlers for turn text
+        var viewFullBtns = contentEl.querySelectorAll('.ai-turn-view-full');
+        for (var vfi = 0; vfi < viewFullBtns.length; vfi++) {
+            viewFullBtns[vfi].addEventListener('click', function(e) {
+                e.stopPropagation();
+                var btn = e.currentTarget;
+                var taskIdx = parseInt(btn.getAttribute('data-task-idx'), 10);
+                var turnIdx = parseInt(btn.getAttribute('data-turn-idx'), 10);
+                var textElId = btn.getAttribute('data-text-id');
+                var textEl = document.getElementById(textElId);
+                if (!textEl) return;
+                var fullText = (tasks[taskIdx] && tasks[taskIdx].turns && tasks[taskIdx].turns[turnIdx])
+                    ? tasks[taskIdx].turns[turnIdx].text || '' : '';
+                var expanded = btn.getAttribute('data-expanded') === '1';
+                if (expanded) {
+                    textEl.textContent = fullText.substring(0, 300) + '...';
+                    btn.textContent = 'View full';
+                    btn.setAttribute('data-expanded', '0');
+                } else {
+                    textEl.textContent = fullText;
+                    btn.textContent = 'Collapse';
+                    btn.setAttribute('data-expanded', '1');
+                }
             });
         }
     }
