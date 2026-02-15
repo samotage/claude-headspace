@@ -647,6 +647,190 @@ class TestTaskLifecycleManagerUnit:
         assert "No active task" in result.error
 
 
+class TestUserCommandWhileCommanded:
+    """Tests for USER:COMMAND while task is in COMMANDED state (Bug 1 fix).
+
+    When a user sends a follow-up message before the agent starts,
+    the turn should be attached to the existing task instead of failing.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = MagicMock(spec=Session)
+        return session
+
+    @pytest.fixture
+    def mock_event_writer(self):
+        writer = MagicMock(spec=EventWriter)
+        writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        return writer
+
+    @pytest.fixture
+    def mock_agent(self):
+        agent = MagicMock()
+        agent.id = 1
+        return agent
+
+    @pytest.fixture
+    def mock_commanded_task(self, mock_agent):
+        task = MagicMock()
+        task.id = 10
+        task.agent_id = mock_agent.id
+        task.agent = mock_agent
+        task.state = TaskState.COMMANDED
+        task.full_command = "Fix the login bug"
+        task.completed_at = None
+        return task
+
+    def test_user_command_while_commanded_attaches_to_existing_task(
+        self, mock_session, mock_event_writer, mock_agent, mock_commanded_task
+    ):
+        """User COMMAND while COMMANDED should attach to existing task, not fail."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_commanded_task
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="Also fix the logout button",
+        )
+
+        assert result.success is True
+        assert result.new_task_created is False
+        assert result.task == mock_commanded_task
+
+        # Verify turn was created and attached to existing task
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 1
+        turn = turn_adds[0][0][0]
+        assert turn.actor == TurnActor.USER
+        assert turn.intent == TurnIntent.COMMAND
+        assert turn.text == "Also fix the logout button"
+        assert turn.task_id == mock_commanded_task.id
+
+    def test_user_command_while_commanded_appends_full_command(
+        self, mock_session, mock_event_writer, mock_agent, mock_commanded_task
+    ):
+        """Follow-up command should append to task.full_command."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_commanded_task
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="Also fix the logout button",
+        )
+
+        assert result.success is True
+        assert mock_commanded_task.full_command == "Fix the login bug\nAlso fix the logout button"
+
+    def test_multiple_user_commands_while_commanded(
+        self, mock_session, mock_event_writer, mock_agent, mock_commanded_task
+    ):
+        """Multiple follow-up commands should all append."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_commanded_task
+
+        # First follow-up
+        result1 = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="Also fix the logout button",
+        )
+        assert result1.success is True
+
+        # Second follow-up
+        result2 = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="And add error handling",
+        )
+        assert result2.success is True
+
+        assert mock_commanded_task.full_command == "Fix the login bug\nAlso fix the logout button\nAnd add error handling"
+
+        # Both turns should have been added
+        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        assert len(turn_adds) == 2
+
+    def test_user_command_while_commanded_queues_summarisation(
+        self, mock_session, mock_event_writer, mock_agent, mock_commanded_task
+    ):
+        """Follow-up command should queue turn + instruction summarisation."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_commanded_task
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text="Also fix the logout button",
+        )
+
+        assert result.success is True
+        # Should have turn + instruction summarisation requests
+        summ_types = [s.type for s in result.pending_summarisations]
+        assert "turn" in summ_types
+        assert "instruction" in summ_types
+
+    def test_user_command_while_commanded_no_text(
+        self, mock_session, mock_event_writer, mock_agent, mock_commanded_task
+    ):
+        """Follow-up with no text should still succeed (hook path)."""
+        manager = TaskLifecycleManager(
+            session=mock_session,
+            event_writer=mock_event_writer,
+        )
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.first.return_value = mock_commanded_task
+
+        result = manager.process_turn(
+            agent=mock_agent,
+            actor=TurnActor.USER,
+            text=None,
+        )
+
+        assert result.success is True
+        assert result.new_task_created is False
+        # full_command should remain unchanged
+        assert mock_commanded_task.full_command == "Fix the login bug"
+
+
 class TestTaskLifecycleSessionPassThrough:
     """Tests that TaskLifecycleManager passes its session to EventWriter.
 

@@ -16,6 +16,7 @@ from claude_headspace.services.transcript_reconciler import (
     _content_hash,
     _infer_intent,
     broadcast_reconciliation,
+    reconcile_agent_session,
     reconcile_transcript_entries,
 )
 
@@ -718,3 +719,84 @@ class TestBroadcastReconciliationMixed:
         # Second call should be turn_created
         second_call = mock_broadcaster.broadcast.call_args_list[1]
         assert second_call[0][0] == "turn_created"
+
+
+# ---------------------------------------------------------------------------
+# Tests for reconcile_agent_session
+# ---------------------------------------------------------------------------
+
+
+class TestReconcileAgentSession:
+    """Tests for full-session reconciliation at session end."""
+
+    def test_reconcile_agent_session_no_transcript(self, app_ctx, agent, task):
+        """Agent with no transcript_path returns empty result."""
+        agent.transcript_path = None
+        result = reconcile_agent_session(agent)
+        assert result == {"updated": [], "created": []}
+
+    @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
+    def test_reconcile_agent_session_creates_missing_turns(self, mock_read, app_ctx, agent, task):
+        """Missing JSONL entries should be created as new turns."""
+        agent.transcript_path = "/tmp/test-transcript.jsonl"
+        jsonl_ts = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+        mock_read.return_value = (
+            [
+                _make_entry(role="user", content="First command", timestamp=jsonl_ts),
+                _make_entry(role="assistant", content="Working on it", timestamp=jsonl_ts),
+            ],
+            1000,
+        )
+
+        result = reconcile_agent_session(agent)
+
+        assert len(result["created"]) == 2
+        assert len(result["updated"]) == 0
+
+        # Verify turns were created
+        for turn_id in result["created"]:
+            turn = db.session.get(Turn, turn_id)
+            assert turn is not None
+            assert turn.task_id == task.id
+            assert turn.timestamp_source == "jsonl"
+
+    @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
+    def test_reconcile_agent_session_skips_existing_turns(self, mock_read, app_ctx, agent, task):
+        """Turns that already exist in the DB should be skipped."""
+        agent.transcript_path = "/tmp/test-transcript.jsonl"
+        now = datetime.now(timezone.utc)
+
+        # Create existing turn
+        existing = Turn(
+            task_id=task.id,
+            actor=TurnActor.USER,
+            intent=TurnIntent.COMMAND,
+            text="Already recorded",
+            timestamp=now,
+        )
+        db.session.add(existing)
+        db.session.flush()
+
+        mock_read.return_value = (
+            [
+                _make_entry(role="user", content="Already recorded", timestamp=now),
+                _make_entry(role="user", content="New command", timestamp=now),
+            ],
+            1000,
+        )
+
+        result = reconcile_agent_session(agent)
+
+        assert len(result["created"]) == 1
+        new_turn = db.session.get(Turn, result["created"][0])
+        assert new_turn.text == "New command"
+
+    @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
+    def test_reconcile_agent_session_empty_entries(self, mock_read, app_ctx, agent, task):
+        """Empty entries list returns empty result."""
+        agent.transcript_path = "/tmp/test-transcript.jsonl"
+        mock_read.return_value = ([], 0)
+
+        result = reconcile_agent_session(agent)
+        assert result == {"updated": [], "created": []}
