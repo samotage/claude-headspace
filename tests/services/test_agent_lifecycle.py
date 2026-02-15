@@ -79,6 +79,11 @@ class TestCreateAgent:
         assert result.tmux_session_name is not None
         assert "hs-test-project" in result.tmux_session_name
         mock_popen.assert_called_once()
+        # Verify tmux session env var is passed via -e flag
+        popen_args = mock_popen.call_args[0][0]
+        assert "-e" in popen_args
+        e_idx = popen_args.index("-e")
+        assert popen_args[e_idx + 1].startswith("CLAUDE_HEADSPACE_TMUX_SESSION=hs-test-project-")
 
     @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
     @patch("claude_headspace.services.agent_lifecycle.shutil.which")
