@@ -350,20 +350,82 @@ def voice_command():
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
     if is_idle or is_processing:
-        # IDLE/COMPLETE/PROCESSING: just send via tmux — the hook receiver
-        # will handle task creation + turn recording when Claude Code's hooks
-        # fire.  For PROCESSING agents the Escape interrupt was sent first,
-        # then the new command text; the hook's user_prompt_submit will
-        # create the COMMAND turn.
-        # NOTE: Do NOT set _respond_pending_for_agent here. That flag causes
-        # user_prompt_submit to skip turn creation, but this path does NOT
-        # create a turn itself — so setting it would silently drop the user's
-        # command. The AWAITING_INPUT path (below) correctly sets it because
-        # it creates the ANSWER turn itself.
+        # Create turn directly so the user's message is persisted and
+        # broadcast regardless of whether hooks fire.  Previously this path
+        # relied entirely on hook_receiver.process_user_prompt_submit to
+        # create the Turn — but hooks can fail when context compression
+        # changes session_id, after session_end invalidates caches, or if
+        # the Claude Code process has exited.  The optimistic voice chat
+        # bubble would expire after 10s with no SSE confirmation.
+        turn_result = None
+        try:
+            from ..services.task_lifecycle import TaskLifecycleManager
+            event_writer = current_app.extensions.get("event_writer")
+            lifecycle = TaskLifecycleManager(
+                session=db.session,
+                event_writer=event_writer,
+            )
+            turn_result = lifecycle.process_turn(
+                agent=agent, actor=TurnActor.USER, text=send_text,
+            )
+            # Auto-transition COMMANDED → PROCESSING
+            if turn_result.success and turn_result.task and turn_result.task.state == TaskState.COMMANDED:
+                lifecycle.update_task_state(
+                    task=turn_result.task, to_state=TaskState.PROCESSING,
+                    trigger="voice_command", confidence=1.0,
+                )
 
-        agent.last_seen_at = datetime.now(timezone.utc)
-        db.session.commit()
-        broadcast_card_refresh(agent, "voice_command")
+            pending = lifecycle.get_pending_summarisations()
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+            # Broadcast turn_created immediately after commit
+            if turn_result.success and turn_result.task:
+                try:
+                    from ..services.broadcaster import get_broadcaster
+                    user_turn_id = None
+                    if turn_result.task.turns:
+                        for t in reversed(turn_result.task.turns):
+                            if t.actor == TurnActor.USER:
+                                user_turn_id = t.id
+                                break
+                    get_broadcaster().broadcast("turn_created", {
+                        "agent_id": agent.id,
+                        "project_id": agent.project_id,
+                        "text": send_text,
+                        "actor": "user",
+                        "intent": turn_result.intent.intent.value if turn_result.intent else "command",
+                        "task_id": turn_result.task.id,
+                        "turn_id": user_turn_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception as e:
+                    logger.warning(f"Voice command turn_created broadcast failed: {e}")
+
+            # Set respond_pending AFTER commit so hook's user_prompt_submit
+            # skips duplicate turn creation
+            from ..services.hook_agent_state import get_agent_hook_state
+            get_agent_hook_state().set_respond_pending(agent.id)
+
+            broadcast_card_refresh(agent, "voice_command")
+
+            # Execute summarisations (instruction + turn)
+            if pending:
+                try:
+                    summarisation_service = current_app.extensions.get("summarisation_service")
+                    if summarisation_service:
+                        summarisation_service.execute_pending(pending, db.session)
+                except Exception as e:
+                    logger.warning(f"Voice command summarisation failed: {e}")
+
+        except Exception as e:
+            # Lifecycle processing failed but tmux send already succeeded.
+            # Fall back: no turn persisted, hooks may still handle it.
+            logger.warning(f"Voice command turn creation failed (tmux send succeeded): {e}")
+            db.session.rollback()
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            broadcast_card_refresh(agent, "voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
@@ -371,10 +433,14 @@ def voice_command():
         else:
             voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
 
+        new_state = "processing"
+        if turn_result and turn_result.task:
+            new_state = turn_result.task.state.value
+
         return jsonify({
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": "processing",
+            "new_state": new_state,
             "latency_ms": latency_ms,
         }), 200
 

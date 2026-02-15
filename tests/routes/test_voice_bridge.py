@@ -397,12 +397,30 @@ class TestVoiceCommand:
         response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 999})
         assert response.status_code == 404
 
-    def test_agent_not_awaiting(self, client, mock_db, mock_agent_processing):
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_processing_agent_gets_interrupt_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+        """PROCESSING agent gets interrupted via tmux and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
-        assert response.status_code == 409
-        data = response.get_json()
-        assert "processing" in data.get("error", "") or "processing" in str(data.get("voice", {}).get("status_line", "")).lower()
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.task = mock_agent_processing.get_current_task()
+            mock_result.task.state = TaskState.PROCESSING
+            mock_result.task.turns = []
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
+
+            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
+            assert response.status_code == 200
+            mock_bridge.interrupt_and_send_text.assert_called_once()
+            mock_lc.process_turn.assert_called_once()
 
     def test_no_pane_id(self, client, mock_db, mock_agent_no_pane):
         mock_db.session.get.return_value = mock_agent_no_pane
@@ -489,29 +507,46 @@ class TestVoiceCommand:
 class TestVoiceCommandToIdle:
     """Tests for sending commands to idle/complete agents.
 
-    Idle/complete agents receive commands via tmux only — the hook receiver
-    handles task/turn creation when Claude Code's hooks fire.
+    Idle/complete agents get turns created directly via TaskLifecycleManager
+    and respond_pending is set to prevent duplicate turn creation by hooks.
     """
 
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_complete_agent(self, mock_bridge, client, mock_db, mock_agent_complete):
-        """Sending a command to a COMPLETE agent succeeds."""
+    def test_command_to_complete_agent(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """Sending a command to a COMPLETE agent creates a turn and succeeds."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        response = client.post("/api/voice/command", json={"text": "fix the bug", "agent_id": 4})
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data["agent_id"] == 4
-        assert data["new_state"] == "idle"
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_task = MagicMock()
+            mock_task.state = TaskState.COMMANDED
+            mock_task.turns = []
+            mock_result.task = mock_task
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
 
+            response = client.post("/api/voice/command", json={"text": "fix the bug", "agent_id": 4})
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["agent_id"] == 4
+            mock_lc.process_turn.assert_called_once()
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_idle_agent_no_task(self, mock_bridge, client, mock_db, mock_project):
-        """Sending a command to an agent with no current task succeeds."""
+    def test_command_to_idle_agent_no_task(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+        """Sending a command to an agent with no current task creates a turn."""
         agent = MagicMock()
         agent.id = 10
         agent.name = "agent-10"
         agent.project = mock_project
+        agent.project_id = 1
         agent.tmux_pane_id = "%10"
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.get_current_task.return_value = None
@@ -519,50 +554,110 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        response = client.post("/api/voice/command", json={"text": "hello", "agent_id": 10})
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data["new_state"] == "idle"
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_task = MagicMock()
+            mock_task.state = TaskState.COMMANDED
+            mock_task.turns = []
+            mock_result.task = mock_task
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
 
+            response = client.post("/api/voice/command", json={"text": "hello", "agent_id": 10})
+            assert response.status_code == 200
+            mock_lc.process_turn.assert_called_once()
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_command_does_not_create_task(self, mock_bridge, client, mock_db, mock_agent_complete):
-        """Idle path delegates task creation to hook receiver — no db.session.add for Task/Turn."""
+    def test_idle_command_creates_turn_via_lifecycle(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """Idle path creates turn via TaskLifecycleManager."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_task = MagicMock()
+            mock_task.state = TaskState.COMMANDED
+            mock_task.turns = []
+            mock_result.task = mock_task
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
 
-        # Should NOT have called add (no Task or Turn created in this path)
-        mock_db.session.add.assert_not_called()
-
-    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_command_does_not_set_respond_pending(self, mock_bridge, client, mock_db, mock_agent_complete):
-        """Idle path should NOT set respond-pending flag (hook receiver needs to process the prompt)."""
-        mock_db.session.get.return_value = mock_agent_complete
-        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-
-        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
             client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
-            mock_get_state().set_respond_pending.assert_not_called()
+            mock_lc.process_turn.assert_called_once()
 
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_path_returns_idle_state_and_no_respond_pending(self, mock_bridge, client, mock_db, mock_agent_complete):
-        """Idle path should return 'idle' state and NOT set respond-pending flag."""
+    def test_idle_command_sets_respond_pending(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """Idle path sets respond-pending to prevent duplicate turn from hooks."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_task = MagicMock()
+            mock_task.state = TaskState.COMMANDED
+            mock_task.turns = []
+            mock_result.task = mock_task
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
+
+            with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
+                client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+                mock_get_state().set_respond_pending.assert_called_once_with(4)
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_idle_command_lifecycle_failure_falls_back(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+        """If lifecycle processing fails, tmux send already succeeded — returns 200."""
+        mock_db.session.get.return_value = mock_agent_complete
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc_cls.side_effect = Exception("lifecycle error")
+
             response = client.post("/api/voice/command", json={"text": "do something", "agent_id": 4})
             assert response.status_code == 200
-            data = response.get_json()
-            assert data["new_state"] == "idle"
-            mock_get_state().set_respond_pending.assert_not_called()
 
-    def test_command_to_processing_rejected(self, client, mock_db, mock_agent_processing):
-        """Sending a command to a PROCESSING agent is rejected."""
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_processing_command_creates_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+        """PROCESSING agent gets interrupted via tmux and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
-        assert response.status_code == 409
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+            mock_lc = MagicMock()
+            mock_lc_cls.return_value = mock_lc
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.task = mock_agent_processing.get_current_task()
+            mock_result.task.state = TaskState.PROCESSING
+            mock_result.task.turns = []
+            mock_result.intent = MagicMock()
+            mock_result.intent.intent.value = "command"
+            mock_lc.process_turn.return_value = mock_result
+            mock_lc.get_pending_summarisations.return_value = []
+
+            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
+            assert response.status_code == 200
+            mock_bridge.interrupt_and_send_text.assert_called_once()
+            mock_lc.process_turn.assert_called_once()
 
 
 class TestAutoTarget:
