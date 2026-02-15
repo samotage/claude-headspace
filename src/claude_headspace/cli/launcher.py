@@ -118,6 +118,36 @@ def get_bridge_default() -> bool:
     return True
 
 
+def get_bridge_default() -> bool:
+    """
+    Get the default bridge mode from config.
+
+    Reads ``cli.default_bridge`` from config.yaml using the same
+    3-path search as ``get_server_url()``.
+
+    Returns:
+        True if bridge should be enabled by default (also the fallback
+        when no config is found).
+    """
+    config_paths = [
+        Path.cwd() / "config.yaml",
+        Path(__file__).parent.parent.parent.parent.parent / "config.yaml",
+        Path.home() / ".claude-headspace" / "config.yaml",
+    ]
+
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                    return config.get("cli", {}).get("default_bridge", True)
+            except Exception as e:
+                logging.debug(f"Config parse failed for {config_path}: {e}")
+                continue
+
+    return True
+
+
 def get_project_info() -> ProjectInfo:
     """
     Detect project information from the current working directory.
