@@ -104,27 +104,36 @@ def _log_hook_event(event_type: str, session_id: str | None, latency_ms: int) ->
     )
 
 
-def _backfill_tmux_pane(agent, tmux_pane: str | None) -> None:
-    """Store tmux_pane_id on agent if not yet set (late discovery).
+def _backfill_tmux_pane(agent, tmux_pane: str | None, tmux_session: str | None = None) -> None:
+    """Store tmux_pane_id and tmux_session on agent if not yet set (late discovery).
 
-    Flushes (not commits) after setting the pane ID so downstream code
-    within the same request can see the updated value before the final
-    commit in the hook processor.
+    Flushes (not commits) after setting values so downstream code
+    within the same request can see them before the final commit
+    in the hook processor.
 
     Also registers the agent with the availability tracker so health
     checks begin immediately.
     """
-    if not tmux_pane or agent.tmux_pane_id:
+    dirty = False
+    pane_is_new = False
+    if tmux_pane and not agent.tmux_pane_id:
+        agent.tmux_pane_id = tmux_pane
+        dirty = True
+        pane_is_new = True
+    if tmux_session and not agent.tmux_session:
+        agent.tmux_session = tmux_session
+        dirty = True
+    if not dirty:
         return
-    agent.tmux_pane_id = tmux_pane
     db.session.flush()
-    try:
-        from flask import current_app
-        availability = current_app.extensions.get("commander_availability")
-        if availability:
-            availability.register_agent(agent.id, tmux_pane)
-    except RuntimeError:
-        logger.debug("No app context for commander_availability")
+    if pane_is_new:
+        try:
+            from flask import current_app
+            availability = current_app.extensions.get("commander_availability")
+            if availability:
+                availability.register_agent(agent.id, tmux_pane)
+        except RuntimeError:
+            logger.debug("No app context for commander_availability")
 
 
 @hooks_bp.route("/hook/session-start", methods=["POST"])
@@ -161,6 +170,7 @@ def hook_session_start():
     headspace_session_id = data.get("headspace_session_id")
     transcript_path = data.get("transcript_path")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     # SRV-C7: Validate working_directory is a real path
     if working_directory and not os.path.isdir(working_directory):
@@ -177,7 +187,7 @@ def hook_session_start():
         # Process the event
         result = process_session_start(
             correlation.agent, session_id, transcript_path=transcript_path,
-            tmux_pane_id=tmux_pane,
+            tmux_pane_id=tmux_pane, tmux_session=tmux_session,
         )
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -248,10 +258,11 @@ def hook_session_end():
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_session_end(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -309,10 +320,11 @@ def hook_user_prompt_submit():
     headspace_session_id = data.get("headspace_session_id")
     prompt_text = data.get("prompt")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_user_prompt_submit(correlation.agent, session_id, prompt_text=prompt_text)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -370,10 +382,11 @@ def hook_stop():
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_stop(correlation.agent, session_id)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -434,6 +447,7 @@ def hook_notification():
     working_directory = data.get("working_directory")
     headspace_session_id = data.get("headspace_session_id")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     message = data.get("message")
     title = data.get("title")
@@ -441,7 +455,7 @@ def hook_notification():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_notification(
             correlation.agent,
             session_id,
@@ -512,10 +526,11 @@ def hook_post_tool_use():
     tool_name = data.get("tool_name")
     tool_input = data.get("tool_input")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
 
         # Backfill transcript_path if provided and not yet set
         transcript_path = data.get("transcript_path")
@@ -588,10 +603,11 @@ def hook_pre_tool_use():
     tool_name = data.get("tool_name")
     tool_input = data.get("tool_input")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_pre_tool_use(
             correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
         )
@@ -656,10 +672,11 @@ def hook_permission_request():
     tool_name = data.get("tool_name")
     tool_input = data.get("tool_input")
     tmux_pane = data.get("tmux_pane")
+    tmux_session = data.get("tmux_session")
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane)
+        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
         result = process_permission_request(
             correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
         )

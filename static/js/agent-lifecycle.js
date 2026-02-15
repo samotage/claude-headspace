@@ -236,6 +236,17 @@
                 return;
             }
 
+            // Attach (kebab menu item)
+            var attachAction = e.target.closest('.card-attach-action');
+            if (attachAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(attachAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId && window.FocusAPI) window.FocusAPI.attachAgent(agentId);
+                return;
+            }
+
             // Agent info (kebab menu item)
             var infoAction = e.target.closest('.card-info-action');
             if (infoAction) {

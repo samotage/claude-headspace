@@ -537,6 +537,7 @@ def dashboard():
                 "last_seen_at": agent.last_seen_at,
                 "context_percent_used": agent.context_percent_used,
                 "context_remaining_tokens": agent.context_remaining_tokens,
+                "tmux_session": agent.tmux_session,
             }
             # Add current task ID and plan state for on-demand drill-down
             _ct = agent.get_current_task()

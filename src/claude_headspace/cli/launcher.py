@@ -446,6 +446,9 @@ def _wrap_in_tmux(args: argparse.Namespace) -> int:
     # Resolve the CLI entry point for re-execution
     cli_path = shutil.which("claude-headspace") or sys.argv[0]
 
+    # Set env var so hooks can forward the tmux session name to the server
+    os.environ["CLAUDE_HEADSPACE_TMUX_SESSION"] = session_name
+
     print(f"Starting tmux session: {session_name}")
 
     try:

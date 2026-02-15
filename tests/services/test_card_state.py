@@ -66,7 +66,7 @@ class TestBuildCardState:
             "task_completion_summary", "priority", "priority_reason",
             "turn_count", "elapsed", "current_task_id", "is_bridge_connected",
             "project_name", "project_slug", "project_id",
-            "has_plan",
+            "has_plan", "tmux_session", "context",
         }
         assert set(result.keys()) == expected_keys
 
@@ -82,6 +82,28 @@ class TestBuildCardState:
         assert result["is_active"] is True
         assert result["task_summary"] == "No active task"
         assert result["priority"] == 50  # default
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_tmux_session_included(self, mock_config):
+        """Test that tmux_session is included in card state."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        agent = _make_agent()
+        agent.tmux_session = "hs-test-123"
+
+        result = build_card_state(agent)
+
+        assert result["tmux_session"] == "hs-test-123"
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_tmux_session_none_when_not_set(self, mock_config):
+        """Test that tmux_session is None when agent has no tmux session."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        agent = _make_agent()
+        agent.tmux_session = None
+
+        result = build_card_state(agent)
+
+        assert result["tmux_session"] is None
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_with_task_and_turns(self, mock_config):

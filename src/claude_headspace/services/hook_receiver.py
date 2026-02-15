@@ -563,6 +563,7 @@ def process_session_start(
     claude_session_id: str,
     transcript_path: str | None = None,
     tmux_pane_id: str | None = None,
+    tmux_session: str | None = None,
 ) -> HookEventResult:
     state = get_receiver_state()
     state.record_event(HookEventType.SESSION_START)
@@ -592,6 +593,10 @@ def process_session_start(
                     availability.register_agent(agent.id, tmux_pane_id)
             except RuntimeError:
                 logger.debug("No app context for commander_availability")
+
+        # Store tmux session name for dashboard attach action
+        if tmux_session and not agent.tmux_session:
+            agent.tmux_session = tmux_session
 
         db.session.commit()
         broadcast_card_refresh(agent, "session_start")

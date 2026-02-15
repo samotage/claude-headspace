@@ -1161,6 +1161,24 @@
             ctxSpan.remove();
         }
 
+        // Attach button: show/hide based on tmux_session
+        var attachBtn = card.querySelector('.card-attach-action');
+        if (data.tmux_session) {
+            if (!attachBtn) {
+                // Inject attach button before the context action in kebab menu
+                var ctxAction = card.querySelector('.card-ctx-action');
+                if (ctxAction) {
+                    var btn = document.createElement('button');
+                    btn.className = 'card-kebab-item card-attach-action';
+                    btn.setAttribute('data-agent-id', String(data.id));
+                    btn.innerHTML = '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg><span>Attach</span>';
+                    ctxAction.parentElement.insertBefore(btn, ctxAction);
+                }
+            }
+        } else if (attachBtn) {
+            attachBtn.remove();
+        }
+
         // Update tracked state and move card if state changed
         var oldState = agentStates.get(agentId);
         agentStates.set(agentId, state);

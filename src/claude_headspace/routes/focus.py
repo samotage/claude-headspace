@@ -1,4 +1,4 @@
-"""Focus API endpoint for iTerm2 pane focusing and agent dismissal."""
+"""Focus API endpoint for iTerm2 pane focusing, tmux attach, and agent dismissal."""
 
 import logging
 import time
@@ -8,7 +8,15 @@ from flask import Blueprint, jsonify
 
 from ..database import db
 from ..models.agent import Agent
-from ..services.iterm_focus import FocusErrorType, FocusResult, focus_iterm_by_tty, focus_iterm_pane
+from ..services.iterm_focus import (
+    AttachResult,
+    FocusErrorType,
+    FocusResult,
+    attach_tmux_session,
+    check_tmux_session_exists,
+    focus_iterm_by_tty,
+    focus_iterm_pane,
+)
 from ..services.tmux_bridge import get_pane_client_tty, select_pane
 
 logger = logging.getLogger(__name__)
@@ -253,3 +261,107 @@ def dismiss_agent(agent_id: int):
         "status": "ok",
         "agent_id": agent_id,
     }), 200
+
+
+def _log_attach_event(
+    agent_id: int,
+    tmux_session: str | None,
+    success: bool,
+    error_type: str | None,
+    latency_ms: int,
+    method: str | None = None,
+) -> None:
+    """Log a tmux attach attempt event."""
+    outcome = "success" if success else "failure"
+    logger.info(
+        f"attach_attempted: agent_id={agent_id}, tmux_session={tmux_session}, "
+        f"method={method}, outcome={outcome}, error_type={error_type}, "
+        f"latency_ms={latency_ms}"
+    )
+
+
+@focus_bp.route("/api/agents/<int:agent_id>/attach", methods=["POST"])
+def attach_agent(agent_id: int):
+    """
+    Attach to an agent's tmux session via iTerm2.
+
+    Opens a new iTerm2 tab running `tmux attach -t <session_name>`,
+    or focuses an existing tab if one is already attached.
+
+    Args:
+        agent_id: Database ID of the agent
+
+    Returns:
+        200: Attach succeeded
+        400: Agent has no tmux session or session not found
+        404: Agent not found
+        500: Attach failed (iTerm2 error)
+    """
+    start_time = time.time()
+
+    agent = db.session.get(Agent, agent_id)
+
+    if agent is None:
+        _log_attach_event(
+            agent_id=agent_id,
+            tmux_session=None,
+            success=False,
+            error_type="agent_not_found",
+            latency_ms=int((time.time() - start_time) * 1000),
+        )
+        return jsonify({
+            "error": f"Agent with ID {agent_id} not found.",
+            "detail": "agent_not_found",
+        }), 404
+
+    tmux_session_name = agent.tmux_session
+    if not tmux_session_name:
+        _log_attach_event(
+            agent_id=agent_id,
+            tmux_session=None,
+            success=False,
+            error_type="no_tmux_session",
+            latency_ms=int((time.time() - start_time) * 1000),
+        )
+        return jsonify({
+            "error": "This agent does not have a tmux session.",
+            "detail": "no_tmux_session",
+        }), 400
+
+    # Verify the tmux session still exists
+    if not check_tmux_session_exists(tmux_session_name):
+        _log_attach_event(
+            agent_id=agent_id,
+            tmux_session=tmux_session_name,
+            success=False,
+            error_type="session_not_found",
+            latency_ms=int((time.time() - start_time) * 1000),
+        )
+        return jsonify({
+            "error": f"Tmux session '{tmux_session_name}' no longer exists.",
+            "detail": "session_not_found",
+        }), 400
+
+    result = attach_tmux_session(tmux_session_name)
+
+    _log_attach_event(
+        agent_id=agent_id,
+        tmux_session=tmux_session_name,
+        success=result.success,
+        error_type=result.error_type.value if result.error_type else None,
+        latency_ms=result.latency_ms,
+        method=result.method,
+    )
+
+    if result.success:
+        return jsonify({
+            "status": "ok",
+            "agent_id": agent_id,
+            "tmux_session": tmux_session_name,
+            "method": result.method,
+        }), 200
+    else:
+        return jsonify({
+            "error": result.error_message,
+            "detail": result.error_type.value if result.error_type else "unknown",
+        }), 500

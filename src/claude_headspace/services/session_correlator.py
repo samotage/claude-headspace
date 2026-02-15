@@ -232,13 +232,13 @@ def correlate_session(
     """
     Correlate a Claude Code session to an agent.
 
-    Correlation strategy:
+    Correlation strategy (6-step cascade):
     1. Check in-memory cache (fast path)
     2. Check database by claude_session_id (survives server restarts)
-    2.5. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
-    2.75. Match by tmux_pane_id (survives context compression)
-    3. Match by working directory to existing project/agents (unclaimed only)
-    4. Create new agent — only if we have a valid working directory
+    3. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
+    4. Match by tmux_pane_id (survives context compression)
+    5. Match by working directory to existing project/agents (unclaimed only)
+    6. Create new agent — only if we have a valid working directory
 
     Args:
         claude_session_id: The Claude Code session ID
@@ -262,8 +262,8 @@ def correlate_session(
     # Set query timeout to prevent long-running DB queries from blocking hooks
     _set_query_timeout(query_timeout_ms)
 
-    # Strategy 1: Check in-memory session cache — working_directory is ignored
-    # for already-known sessions. The project was determined at first contact.
+    # Strategy 1: In-memory cache — working_directory is ignored for
+    # already-known sessions. The project was determined at first contact.
     cached = _cache_get(claude_session_id)
     if cached is not None:
         agent = db.session.get(Agent, cached.agent_id)
@@ -280,8 +280,8 @@ def correlate_session(
         # Agent no longer exists, remove from cache
         _cache_delete(claude_session_id)
 
-    # Strategy 2: Check database by claude_session_id — this survives server
-    # restarts where the in-memory cache is lost
+    # Strategy 2: DB claude_session_id — survives server restarts where
+    # the in-memory cache is lost
     agent = (
         db.session.query(Agent)
         .filter(Agent.claude_session_id == claude_session_id)
@@ -300,11 +300,10 @@ def correlate_session(
             correlation_method="db_session_id",
         )
 
-    # Strategy 2.5: Match by headspace_session_id → Agent.session_uuid
-    # The CLI wrapper creates agents with session_uuid and sets
-    # CLAUDE_HEADSPACE_SESSION_ID in the env. The hook script forwards this
-    # as headspace_session_id. This bridges the CLI UUID to Claude Code's
-    # internal session_id.
+    # Strategy 3: Headspace session UUID — the CLI wrapper creates agents
+    # with session_uuid and sets CLAUDE_HEADSPACE_SESSION_ID in the env.
+    # The hook script forwards this as headspace_session_id. This bridges
+    # the CLI UUID to Claude Code's internal session_id.
     if headspace_session_id:
         try:
             target_uuid = UUID(headspace_session_id)
@@ -349,11 +348,11 @@ def correlate_session(
                     correlation_method="headspace_session_id",
                 )
 
-    # Strategy 2.75: Match by tmux_pane_id — the primary correlator for
-    # tmux-connected sessions.  tmux pane IDs are stable across context
-    # compression: Claude Code gets a new session_id but stays in the
-    # same pane.  Only one Claude Code process runs per pane, so a match
-    # on (tmux_pane_id, ended_at IS NULL) is unambiguous.
+    # Strategy 4: Tmux pane ID — the primary correlator for tmux-connected
+    # sessions. Pane IDs are stable across context compression: Claude Code
+    # gets a new session_id but stays in the same pane. Only one Claude Code
+    # process runs per pane, so a match on (tmux_pane_id, ended_at IS NULL)
+    # is unambiguous.
     if tmux_pane_id:
         agent = (
             db.session.query(Agent)
@@ -394,10 +393,10 @@ def correlate_session(
             f"proceeding without it"
         )
 
-    # Strategy 3: Match by working directory — only unclaimed, active agents.
-    # An agent is "unclaimed" if claude_session_id is NULL (not yet linked to
-    # a Claude Code session). Excluding ended agents prevents stealing from
-    # sessions that have already finished.
+    # Strategy 5: Working directory — only unclaimed, active agents. An agent
+    # is "unclaimed" if claude_session_id is NULL (not yet linked to a Claude
+    # Code session). Excluding ended agents prevents stealing from sessions
+    # that have already finished.
     if resolved_directory:
         project = (
             db.session.query(Project)
@@ -433,7 +432,7 @@ def correlate_session(
                     correlation_method="working_directory",
                 )
 
-    # Strategy 4: Create new agent — but ONLY with a valid working directory.
+    # Strategy 6: Create new agent — but ONLY with a valid working directory.
     # Never create garbage placeholder projects.
     if not resolved_directory:
         raise ValueError(

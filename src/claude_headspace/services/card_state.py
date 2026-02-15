@@ -607,6 +607,7 @@ def build_card_state(agent: Agent) -> dict:
         "project_name": agent.project.name if agent.project else None,
         "project_slug": agent.project.slug if agent.project else None,
         "project_id": agent.project_id,
+        "tmux_session": agent.tmux_session,
     }
 
     # Plan mode label overrides (before task ID, so state_info is already in card)
