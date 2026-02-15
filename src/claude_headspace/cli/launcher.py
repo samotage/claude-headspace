@@ -557,7 +557,11 @@ def cmd_start(args: argparse.Namespace) -> int:
     if bridge_enabled:
         tmux_pane_id = get_tmux_pane_id()
         if tmux_pane_id:
-            print(f"Input Bridge: enabled (tmux pane {tmux_pane_id})")
+            tmux_session_name = os.environ.get("CLAUDE_HEADSPACE_TMUX_SESSION", "")
+            if tmux_session_name:
+                print(f"Input Bridge: enabled (tmux pane {tmux_pane_id}, session {tmux_session_name})")
+            else:
+                print(f"Input Bridge: enabled (tmux pane {tmux_pane_id})")
         else:
             print(
                 "Input Bridge: unavailable (not in tmux session)",
