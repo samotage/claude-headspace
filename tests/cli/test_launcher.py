@@ -549,6 +549,9 @@ class TestWrapInTmux:
         assert "-c" in argv
         path_idx = argv.index("-c")
         assert argv[path_idx + 1] == "/path/to/my-project"
+        assert "-e" in argv
+        env_idx = argv.index("-e")
+        assert argv[env_idx + 1] == "CLAUDE_HEADSPACE_TMUX_SESSION=hs-my-project-abcdef12"
         assert "--" in argv
 
     def test_tmux_not_installed_returns_fallback(self, capsys):
