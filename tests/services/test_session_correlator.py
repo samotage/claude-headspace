@@ -366,6 +366,153 @@ class TestCorrelateSession:
         assert get_cached_agent_id("claude-id-abc") == 20
 
 
+class TestStrategy275TmuxPaneId:
+    """Tests for Strategy 2.75: correlation by tmux_pane_id.
+
+    Without headspace_session_id, the query sequence is:
+      call 1: Strategy 2 — query(Agent).filter(claude_session_id==...).first()
+      call 2: Strategy 2.75 — query(Agent).filter(tmux_pane_id==..., ended_at IS NULL).order_by(...).first()
+    """
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_correlate_by_tmux_pane_id(self, mock_db):
+        """Strategy 2.75: match active agent by tmux_pane_id."""
+        mock_agent = MagicMock()
+        mock_agent.id = 30
+        mock_agent.tmux_pane_id = "%5"
+        mock_agent.claude_session_id = "old-session-id"
+        mock_agent.ended_at = None
+
+        # Cache miss (Strategy 1)
+        mock_db.session.get.return_value = None
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            q = MagicMock()
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Strategy 2: no match by claude_session_id
+                q.filter.return_value.first.return_value = None
+            elif call_count[0] == 2:
+                # Strategy 2.75: match by tmux_pane_id
+                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+            return q
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        result = correlate_session(
+            "new-session-after-compression",
+            tmux_pane_id="%5",
+        )
+
+        assert result.agent == mock_agent
+        assert result.is_new is False
+        assert result.correlation_method == "tmux_pane_id"
+        # Should have updated claude_session_id on the agent
+        assert mock_agent.claude_session_id == "new-session-after-compression"
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_tmux_pane_id_updates_cache(self, mock_db):
+        """After Strategy 2.75 match, new claude_session_id should be cached."""
+        mock_agent = MagicMock()
+        mock_agent.id = 31
+        mock_agent.tmux_pane_id = "%7"
+        mock_agent.claude_session_id = "old-id"
+        mock_agent.ended_at = None
+
+        mock_db.session.get.return_value = None
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            q = MagicMock()
+            call_count[0] += 1
+            if call_count[0] == 1:
+                q.filter.return_value.first.return_value = None
+            elif call_count[0] == 2:
+                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+            return q
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        correlate_session("new-id-xyz", tmux_pane_id="%7")
+
+        # New session ID should be in cache
+        assert get_cached_agent_id("new-id-xyz") == 31
+
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_tmux_pane_id_same_session_id_no_update(self, mock_db):
+        """If claude_session_id hasn't changed, no DB update needed."""
+        mock_agent = MagicMock()
+        mock_agent.id = 32
+        mock_agent.tmux_pane_id = "%9"
+        mock_agent.claude_session_id = "same-id"
+        mock_agent.ended_at = None
+
+        mock_db.session.get.return_value = None
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            q = MagicMock()
+            call_count[0] += 1
+            if call_count[0] == 1:
+                q.filter.return_value.first.return_value = None
+            elif call_count[0] == 2:
+                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+            return q
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        result = correlate_session("same-id", tmux_pane_id="%9")
+
+        assert result.agent == mock_agent
+        assert result.correlation_method == "tmux_pane_id"
+        # Should NOT have called commit (no change needed)
+        mock_db.session.commit.assert_not_called()
+
+    @patch("claude_headspace.services.session_correlator._resolve_working_directory")
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_tmux_pane_id_skipped_when_none(self, mock_db, mock_resolve):
+        """When tmux_pane_id is None, Strategy 2.75 is skipped."""
+        mock_resolve.return_value = None
+
+        mock_db.session.get.return_value = None
+        mock_db.session.query.return_value.filter.return_value.first.return_value = None
+
+        # Should fall through to Strategy 4 and raise ValueError (no working dir)
+        with pytest.raises(ValueError, match="Cannot correlate session"):
+            correlate_session("some-session", tmux_pane_id=None)
+
+    @patch("claude_headspace.services.session_correlator._resolve_working_directory")
+    @patch("claude_headspace.services.session_correlator.db")
+    def test_tmux_pane_id_no_match_falls_through(self, mock_db, mock_resolve):
+        """When no agent matches tmux_pane_id, falls through to Strategy 3+."""
+        mock_resolve.return_value = None
+
+        mock_db.session.get.return_value = None
+
+        call_count = [0]
+
+        def query_side_effect(model):
+            q = MagicMock()
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Strategy 2: no match
+                q.filter.return_value.first.return_value = None
+            elif call_count[0] == 2:
+                # Strategy 2.75: no match
+                q.filter.return_value.order_by.return_value.first.return_value = None
+            return q
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        # Should fall through past 2.75 to Strategy 3/4
+        with pytest.raises(ValueError, match="Cannot correlate session"):
+            correlate_session("some-session", tmux_pane_id="%99")
+
+
 class TestStrategy3Safety:
     """Tests for Strategy 3 filtering out ended/claimed agents."""
 

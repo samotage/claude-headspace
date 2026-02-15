@@ -172,7 +172,7 @@ def hook_session_start():
 
     try:
         # Correlate session to agent
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
 
         # Process the event
         result = process_session_start(
@@ -250,7 +250,7 @@ def hook_session_end():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_session_end(correlation.agent, session_id)
 
@@ -311,7 +311,7 @@ def hook_user_prompt_submit():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_user_prompt_submit(correlation.agent, session_id, prompt_text=prompt_text)
 
@@ -372,7 +372,7 @@ def hook_stop():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_stop(correlation.agent, session_id)
 
@@ -440,7 +440,7 @@ def hook_notification():
     notification_type = data.get("notification_type")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_notification(
             correlation.agent,
@@ -514,7 +514,7 @@ def hook_post_tool_use():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
 
         # Backfill transcript_path if provided and not yet set
@@ -590,7 +590,7 @@ def hook_pre_tool_use():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_pre_tool_use(
             correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
@@ -658,7 +658,7 @@ def hook_permission_request():
     tmux_pane = data.get("tmux_pane")
 
     try:
-        correlation = correlate_session(session_id, working_directory, headspace_session_id)
+        correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
         _backfill_tmux_pane(correlation.agent, tmux_pane)
         result = process_permission_request(
             correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input

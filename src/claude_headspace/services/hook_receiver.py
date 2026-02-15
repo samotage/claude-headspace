@@ -772,10 +772,12 @@ def process_user_prompt_submit(
         )
 
         # Auto-transition COMMANDED → PROCESSING
+        # Use agent:progress trigger because this transition represents the
+        # agent starting to work, not the user issuing another command.
         if result.success and result.task and result.task.state == TaskState.COMMANDED:
             lifecycle.update_task_state(
                 task=result.task, to_state=TaskState.PROCESSING,
-                trigger="hook:user_prompt_submit", confidence=1.0,
+                trigger="agent:progress", confidence=1.0,
             )
 
         if result.success:

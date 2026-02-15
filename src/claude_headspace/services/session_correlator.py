@@ -45,7 +45,7 @@ class CorrelationResult(NamedTuple):
 
     agent: Agent
     is_new: bool
-    correlation_method: str  # "session_id", "db_session_id", "headspace_session_id", "working_directory", "created"
+    correlation_method: str  # "session_id", "db_session_id", "headspace_session_id", "tmux_pane_id", "working_directory", "created"
 
 
 class CacheEntry(NamedTuple):
@@ -226,6 +226,7 @@ def correlate_session(
     claude_session_id: str,
     working_directory: str | None = None,
     headspace_session_id: str | None = None,
+    tmux_pane_id: str | None = None,
     query_timeout_ms: int = DEFAULT_QUERY_TIMEOUT_MS,
 ) -> CorrelationResult:
     """
@@ -235,6 +236,7 @@ def correlate_session(
     1. Check in-memory cache (fast path)
     2. Check database by claude_session_id (survives server restarts)
     2.5. Match by headspace_session_id → Agent.session_uuid (CLI-created agents)
+    2.75. Match by tmux_pane_id (survives context compression)
     3. Match by working directory to existing project/agents (unclaimed only)
     4. Create new agent — only if we have a valid working directory
 
@@ -243,6 +245,9 @@ def correlate_session(
         working_directory: The working directory of the session
         headspace_session_id: The CLI-assigned session UUID from
             CLAUDE_HEADSPACE_SESSION_ID env var
+        tmux_pane_id: The tmux pane ID from $TMUX_PANE env var.
+            Stable across context compression — the same pane hosts
+            the same Claude Code process even after session ID changes.
 
     Returns:
         CorrelationResult with the matched or created agent
@@ -343,6 +348,43 @@ def correlate_session(
                     is_new=False,
                     correlation_method="headspace_session_id",
                 )
+
+    # Strategy 2.75: Match by tmux_pane_id — the primary correlator for
+    # tmux-connected sessions.  tmux pane IDs are stable across context
+    # compression: Claude Code gets a new session_id but stays in the
+    # same pane.  Only one Claude Code process runs per pane, so a match
+    # on (tmux_pane_id, ended_at IS NULL) is unambiguous.
+    if tmux_pane_id:
+        agent = (
+            db.session.query(Agent)
+            .filter(
+                Agent.tmux_pane_id == tmux_pane_id,
+                Agent.ended_at.is_(None),
+            )
+            .order_by(Agent.last_seen_at.desc())
+            .first()
+        )
+        if agent:
+            old_id = agent.claude_session_id
+            if old_id != claude_session_id:
+                agent.claude_session_id = claude_session_id
+                db.session.commit()
+                logger.info(
+                    f"Session {claude_session_id} matched to agent {agent.id} "
+                    f"via tmux_pane_id {tmux_pane_id} "
+                    f"(claude_session_id updated from {old_id})"
+                )
+
+            _cache_set(claude_session_id, agent.id)
+            logger.debug(
+                f"Session {claude_session_id} matched to agent {agent.id} "
+                f"via tmux_pane_id {tmux_pane_id}"
+            )
+            return CorrelationResult(
+                agent=agent,
+                is_new=False,
+                correlation_method="tmux_pane_id",
+            )
 
     # Resolve working directory to project root, filtering out junk paths
     resolved_directory = _resolve_working_directory(working_directory)
