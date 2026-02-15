@@ -190,6 +190,7 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 - **SessionRegistry** (`session_registry.py`) -- in-memory registry of active sessions for fast lookup
 - **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) -- translates hook events into task lifecycle actions
 - **TranscriptReader** (`transcript_reader.py`) -- reads and parses Claude Code transcript files
+- **TranscriptReconciler** (`transcript_reconciler.py`) -- reconciles JSONL transcript entries against database Turn records; corrects Turn timestamps from approximate (server time) to accurate (JSONL conversation time); creates Turns for events missed by hooks; broadcasts SSE corrections
 - **PermissionSummarizer** (`permission_summarizer.py`) -- summarises permission request details for display
 
 ### Intelligence Layer
@@ -222,7 +223,7 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 
 ### Infrastructure
 
-- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` and transcript files
+- **FileWatcher** (`file_watcher.py`) -- hybrid watchdog + polling monitor for `.jsonl` transcript files; feeds the TranscriptReconciler with JSONL entries containing actual conversation timestamps for Phase 2 reconciliation
 - **ConfigEditor** (`config_editor.py`) -- reads, validates, merges, and saves config.yaml
 - **ArchiveService** (`archive_service.py`) -- archives waypoints and other artifacts with timestamped versions
 - **WaypointEditor** (`waypoint_editor.py`) -- loads, saves, and archives project waypoint files

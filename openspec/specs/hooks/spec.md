@@ -86,6 +86,27 @@ When the state is recorded
 Then the confidence level is recorded as "high"
 And events are emitted for downstream consumers
 
+### Requirement: Hook Turn Creation with SSE Broadcasting (Phase 1)
+
+Hook event processing SHALL create Turn records with server timestamps and broadcast `turn_created` SSE events as Phase 1 of the three-phase event pipeline.
+
+#### Scenario: Turn created from hook with SSE broadcast
+
+- **WHEN** a hook event (stop, user-prompt-submit, post-tool-use) creates a Turn record
+- **THEN** the Turn SHALL have `timestamp=now()` and `timestamp_source="server"`
+- **AND** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, and `timestamp` (ISO format)
+
+#### Scenario: JSONL timestamps used for progress capture
+
+- **WHEN** the hook receiver captures progress text from the transcript JSONL file
+- **THEN** the Turn timestamp SHALL use the JSONL entry's timestamp when available
+- **AND** the `timestamp_source` SHALL be set accordingly
+
+#### Scenario: Broadcast includes timestamp
+
+- **WHEN** any hook event triggers a state change broadcast
+- **THEN** the broadcast payload SHALL include `turn.timestamp.isoformat()` for client-side ordering
+
 ### Requirement: Hybrid Mode
 
 The system SHALL use hooks as the primary event source with polling fallback.

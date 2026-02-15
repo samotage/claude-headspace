@@ -274,7 +274,10 @@ class TestRespondToAgent:
         client.post("/api/respond/1", json={"text": "hello"})
 
         mock_bcast_card.assert_called_once_with(mock_agent, "respond")
-        mock_bcast_state.assert_called_once_with(mock_agent, "hello")
+        mock_bcast_state.assert_called_once()
+        call_args = mock_bcast_state.call_args
+        assert call_args[0][0] == mock_agent
+        assert call_args[0][1] == "hello"
 
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_pane_not_found(self, mock_bridge, client, mock_db, mock_agent):

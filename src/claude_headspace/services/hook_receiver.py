@@ -241,15 +241,16 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
     state.set_transcript_position(agent.id, new_pos)
 
     MIN_PROGRESS_LEN = 10
-    new_texts = []
+    progress_entries = []
     for entry in entries:
         if entry.role == "assistant" and entry.content and len(entry.content.strip()) >= MIN_PROGRESS_LEN:
-            new_texts.append(entry.content.strip())
+            progress_entries.append(entry)
 
-    if not new_texts:
+    if not progress_entries:
         return
 
-    for text in new_texts:
+    for entry in progress_entries:
+        text = entry.content.strip()
         state.append_progress_text(agent.id, text)
 
         turn = Turn(
@@ -257,6 +258,8 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
             actor=TurnActor.AGENT,
             intent=TurnIntent.PROGRESS,
             text=text,
+            timestamp=entry.timestamp or datetime.now(timezone.utc),
+            timestamp_source="jsonl" if entry.timestamp else "server",
         )
         db.session.add(turn)
         db.session.flush()
@@ -271,14 +274,14 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
                 "intent": "progress",
                 "task_id": current_task.id,
                 "turn_id": turn.id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": turn.timestamp.isoformat(),
             })
         except Exception as e:
             logger.warning(f"Progress turn broadcast failed: {e}")
 
     logger.info(
         f"progress_capture: agent_id={agent.id}, task_id={current_task.id}, "
-        f"new_turns={len(new_texts)}, total_captured={len(state.get_progress_texts(agent.id))}"
+        f"new_turns={len(progress_entries)}, total_captured={len(state.get_progress_texts(agent.id))}"
     )
 
 
@@ -767,6 +770,13 @@ def process_user_prompt_submit(
         if prompt_text:
             try:
                 from .broadcaster import get_broadcaster
+                # Find the turn_id for the user turn just created by process_turn
+                user_turn_id = None
+                if result.task and result.task.turns:
+                    for t in reversed(result.task.turns):
+                        if t.actor == TurnActor.USER:
+                            user_turn_id = t.id
+                            break
                 get_broadcaster().broadcast("turn_created", {
                     "agent_id": agent.id,
                     "project_id": agent.project_id,
@@ -774,6 +784,7 @@ def process_user_prompt_submit(
                     "actor": "user",
                     "intent": result.intent.intent.value if result.intent else "command",
                     "task_id": result.task.id if result.task else None,
+                    "turn_id": user_turn_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
@@ -1182,14 +1193,6 @@ def _handle_awaiting_input(
 
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
-        if structured_options:
-            _q_list = structured_options.get("questions", [])
-            logger.info(
-                f"[MULTI-Q DEBUG] Broadcasting turn_created: agent_id={agent.id}, "
-                f"tool_name={tool_name}, questions_count={len(_q_list)}, "
-                f"has_options={bool(_q_list and _q_list[0].get('options'))}, "
-                f"q_source_type={q_source_type}, q_options_count={len(q_options) if q_options else 0}"
-            )
         if question_text:
             _broadcast_turn_created(agent, question_text, current_task,
                                     tool_input=structured_options,

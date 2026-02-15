@@ -15,7 +15,7 @@ The system SHALL provide an API endpoint for submitting text responses to Claude
 - **THEN** the text is sent to the commander socket
 - **AND** a Turn record is created with actor=USER, intent=ANSWER, text="1"
 - **AND** the task state transitions from AWAITING_INPUT to PROCESSING
-- **AND** a state_changed SSE event is broadcast
+- **AND** a state_changed SSE event is broadcast with `turn_id` included in the payload
 - **AND** the response returns HTTP 200 with `{"status": "ok"}`
 
 #### Scenario: Agent not found

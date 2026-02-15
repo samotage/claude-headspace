@@ -132,6 +132,39 @@ Common issues and how to resolve them.
 2. Check server logs for availability check failures
 3. The health check runs every 30 seconds (configurable in `config.yaml` → `tmux_bridge.health_check_interval`)
 
+## Voice Chat Issues
+
+### Messages appearing out of chronological order
+
+**Symptoms:** Turns in the voice chat appear in the wrong order — e.g., a response from 10:40am appears before a message from 10:27am.
+
+**Cause:** This was a known architectural issue that has been resolved. The voice chat now uses timestamp-ordered insertion with JSONL transcript reconciliation. If you still see ordering issues:
+
+**Solutions:**
+1. Wait a few seconds — the transcript reconciler corrects timestamps within the file watcher polling interval (default: 2 seconds)
+2. Reload the chat by navigating away and back to the agent — this re-fetches the full transcript in correct order from the database
+3. Check that the file watcher is enabled in `config.yaml` → `file_watcher.enabled: true`
+4. Lower `file_watcher.polling_interval` for faster timestamp correction (minimum: 0.5 seconds)
+
+### Agent responses not appearing in chat
+
+**Symptoms:** You send a command but no agent response bubble appears.
+
+**Solutions:**
+1. Check the SSE connection indicator (coloured dot in header) — must be green
+2. If disconnected, the app will reconnect automatically; missed turns will appear on reconnect
+3. Navigate away from the agent and back — this triggers a full transcript fetch
+4. Check server logs for hook processing errors
+
+### Duplicate messages in chat
+
+**Symptoms:** The same turn appears twice in the chat.
+
+**Solutions:**
+1. This should not occur with the current architecture — each turn has a unique database ID used for deduplication
+2. If it does occur, reload the chat by navigating away and back
+3. Report as a bug with the turn IDs (visible in browser developer console)
+
 ## Configuration Issues
 
 ### Config page shows validation error

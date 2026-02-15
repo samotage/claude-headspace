@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ class TranscriptEntry:
     type: str
     role: str | None = None
     content: str | None = None
+    timestamp: datetime | None = None
+    raw_data: dict | None = None
 
 
 @dataclass
@@ -32,6 +35,31 @@ class TranscriptReadResult:
     success: bool
     text: str = ""
     error: str | None = None
+    timestamp: datetime | None = None
+
+
+def _parse_jsonl_timestamp(data: dict) -> datetime | None:
+    """Parse a timestamp from a JSONL entry.
+
+    JSONL entries may have a "timestamp" field as an ISO string or unix epoch.
+    Returns a timezone-aware datetime or None if parsing fails.
+    """
+    ts_raw = data.get("timestamp")
+    if not ts_raw:
+        return None
+    try:
+        if isinstance(ts_raw, str):
+            if ts_raw.endswith("Z"):
+                ts_raw = ts_raw[:-1] + "+00:00"
+            ts = datetime.fromisoformat(ts_raw)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        elif isinstance(ts_raw, (int, float)):
+            return datetime.fromtimestamp(ts_raw, tz=timezone.utc)
+    except (ValueError, OSError):
+        pass
+    return None
 
 
 def _extract_text(data: dict) -> tuple[str | None, str | None]:
@@ -86,6 +114,7 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
 
         # Walk backwards, collecting assistant texts until we hit a user message
         parts: list[str] = []
+        result_timestamp: datetime | None = None
         logger.debug(f"TRANSCRIPT_READ: walking backwards through {len(lines)} lines from {transcript_path}")
         lines_scanned = 0
         for line in reversed(lines):
@@ -124,6 +153,9 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
             _role, text = _extract_text(data)
             if text:
                 parts.append(text)
+                # Capture timestamp from the most recent (first found) assistant entry
+                if result_timestamp is None:
+                    result_timestamp = _parse_jsonl_timestamp(data)
                 logger.debug(f"TRANSCRIPT_READ: collected assistant text ({len(text)} chars): {repr(text[:100])}")
 
         if not parts:
@@ -137,7 +169,7 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         if len(combined) > MAX_CONTENT_LENGTH:
             combined = combined[:MAX_CONTENT_LENGTH] + "... [truncated]"
 
-        return TranscriptReadResult(success=True, text=combined)
+        return TranscriptReadResult(success=True, text=combined, timestamp=result_timestamp)
 
     except Exception as e:
         logger.warning(f"Error reading transcript {transcript_path}: {e}")
@@ -244,10 +276,13 @@ def read_new_entries_from_position(
                 continue
 
             role, text = _extract_text(data)
+            ts = _parse_jsonl_timestamp(data)
             entries.append(TranscriptEntry(
                 type=data.get("type", ""),
                 role=role,
                 content=text,
+                timestamp=ts,
+                raw_data=data,
             ))
 
         return entries, new_position

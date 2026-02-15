@@ -121,6 +121,29 @@ When the connection is lost
 Then the client automatically reconnects
 And exponential backoff is applied
 
+### Requirement: Turn Event Types
+
+The system SHALL support SSE event types for turn lifecycle.
+
+#### Scenario: turn_created event
+
+- **WHEN** a new Turn record is created (via hook, voice command, file upload, or reconciliation)
+- **THEN** the broadcaster SHALL emit a `turn_created` SSE event
+- **AND** the payload SHALL include: `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, `timestamp`
+
+#### Scenario: turn_updated event
+
+- **WHEN** a Turn record is updated during transcript reconciliation (Phase 2)
+- **THEN** the broadcaster SHALL emit a `turn_updated` SSE event
+- **AND** the payload SHALL include: `agent_id`, `project_id`, `turn_id`, `timestamp`, `update_type`
+- **AND** `update_type` SHALL be "timestamp_correction" for reconciliation-driven updates
+
+#### Scenario: Client handles turn_updated
+
+- **WHEN** a client receives a `turn_updated` event with `update_type=timestamp_correction`
+- **THEN** the client SHALL update the affected bubble's `data-timestamp` attribute
+- **AND** reorder the bubble to its correct chronological position
+
 ### Requirement: Health Integration
 
 The system SHALL report SSE status in health endpoint.
