@@ -16,6 +16,25 @@ Your phone (PWA)
   → SpeechSynthesis reads the response aloud
 ```
 
+### Chat Display & Turn Ordering
+
+The voice chat displays conversation turns in chronological order based on
+timestamps from the Claude Code JSONL transcript (the ground truth for when
+events actually happened in the conversation).
+
+Turns arrive via two paths:
+1. **SSE push (immediate):** When hooks fire, turns are created and pushed to
+   the chat in real-time. Timestamps are approximate at this stage.
+2. **Transcript reconciliation (seconds later):** The file watcher reads the
+   JSONL transcript and corrects timestamps to their actual conversation time.
+   If turns need reordering, the chat updates automatically.
+
+This means you may occasionally see a turn appear and then shift position
+slightly as its timestamp is corrected. This is normal behaviour — it reflects
+the system ensuring chronological accuracy.
+
+For technical details, see [Transcript & Chat Sequencing](../architecture/transcript-chat-sequencing.md).
+
 ## Prerequisites
 
 - **Voice bridge enabled** in `config.yaml` (disabled by default)
@@ -151,7 +170,7 @@ A coloured dot in the header shows your connection state:
 - **Yellow** — reconnecting (lost connection, retrying with exponential backoff)
 - **Red** — disconnected / offline
 
-If the SSE connection fails repeatedly, the app falls back to polling the agent list every 5 seconds.
+If the SSE connection fails, the app automatically reconnects with exponential backoff (up to 30 seconds between attempts). On reconnect, missed events are replayed from the server's replay buffer.
 
 ## Settings
 
@@ -262,7 +281,7 @@ Commands can only be sent to agents in **AWAITING_INPUT** state. If no agents ar
 - Check that your phone and Mac are on the same Wi-Fi network
 - Verify the server URL is correct (try opening it in your phone's browser)
 - The SSE connection auto-reconnects with exponential backoff (up to 30 seconds between retries)
-- If SSE fails completely, the app falls back to polling every 5 seconds
+- If SSE fails, the app reconnects automatically with exponential backoff
 
 ### "Authentication required" error
 

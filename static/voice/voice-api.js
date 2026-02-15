@@ -15,6 +15,7 @@ window.VoiceAPI = (function () {
   let _onConnectionChange = null;
   let _onAgentUpdate = null;
   let _onTurnCreated = null;
+  let _onTurnUpdated = null;
   let _onGap = null;
 
   function init(baseUrl, token) {
@@ -43,6 +44,7 @@ window.VoiceAPI = (function () {
   function onConnectionChange(fn) { _onConnectionChange = fn; }
   function onAgentUpdate(fn) { _onAgentUpdate = fn; }
   function onTurnCreated(fn) { _onTurnCreated = fn; }
+  function onTurnUpdated(fn) { _onTurnUpdated = fn; }
   function onGap(fn) { _onGap = fn; }
 
   // --- HTTP helpers ---
@@ -234,6 +236,13 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('turn_updated', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onTurnUpdated) _onTurnUpdated(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.addEventListener('session_ended', function (e) {
       try {
         var data = JSON.parse(e.data);
@@ -316,6 +325,7 @@ window.VoiceAPI = (function () {
     onConnectionChange: onConnectionChange,
     onAgentUpdate: onAgentUpdate,
     onTurnCreated: onTurnCreated,
+    onTurnUpdated: onTurnUpdated,
     onGap: onGap,
     getSessions: getSessions,
     sendCommand: sendCommand,

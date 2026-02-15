@@ -201,8 +201,8 @@ The voice bridge transcript endpoint SHALL return an agent-lifetime conversation
 
 - **WHEN** a GET to `/api/voice/agents/<agent_id>/transcript` is made
 - **THEN** the response SHALL include turns from ALL tasks for that agent
-- **AND** turns SHALL be ordered chronologically by timestamp
-- **AND** each turn SHALL include `task_id`, `task_instruction`, and `task_state`
+- **AND** turns SHALL be ordered chronologically by `(timestamp, id)` composite ordering
+- **AND** each turn SHALL include `task_id`, `task_instruction`, `task_state`, `turn_id`, and `timestamp`
 
 #### Scenario: Initial page load (no cursor)
 
@@ -263,4 +263,46 @@ The system SHALL capture agent text output between tool calls as individual PROG
 
 - **WHEN** intermediate text capture occurs during post-tool-use hook processing
 - **THEN** the capture SHALL add no more than 50ms to the hook response time
+
+---
+
+### Requirement: Voice Command Turn Broadcasting
+
+When voice commands or file uploads create Turn records, the system SHALL broadcast SSE `turn_created` events.
+
+#### Scenario: Voice command creates turn with SSE broadcast
+
+- **WHEN** a POST to `/api/voice/command` successfully creates a Turn record
+- **THEN** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, and `timestamp`
+
+#### Scenario: File upload creates turn with SSE broadcast
+
+- **WHEN** a POST to `/api/voice/agents/<agent_id>/upload` successfully creates a Turn record
+- **THEN** a `turn_created` SSE event SHALL be broadcast with the same fields as voice command turns
+
+---
+
+### Requirement: Three-Phase Event Pipeline
+
+The voice bridge transcript system SHALL use a three-phase event pipeline for turn ordering.
+
+#### Scenario: Phase 1 — Hook event creates Turn
+
+- **WHEN** a Claude Code hook event fires (e.g., stop, user-prompt-submit)
+- **THEN** a Turn is created with `timestamp=now()` and `timestamp_source="server"`
+- **AND** a `turn_created` SSE event is broadcast immediately
+
+#### Scenario: Phase 2 — JSONL reconciliation corrects timestamps
+
+- **WHEN** the file watcher reads new JSONL entries
+- **THEN** the TranscriptReconciler matches entries to existing Turns via content hash
+- **AND** corrects Turn timestamps to JSONL values and sets `timestamp_source="jsonl"`
+- **AND** creates missing Turns not captured by hooks
+
+#### Scenario: Phase 3 — SSE corrections for reordering
+
+- **WHEN** the reconciler updates Turn timestamps or creates new Turns
+- **THEN** `turn_updated` SSE events are broadcast for timestamp corrections
+- **AND** `turn_created` SSE events are broadcast for newly discovered Turns
+- **AND** the client reorders chat bubbles based on the corrected timestamps
 

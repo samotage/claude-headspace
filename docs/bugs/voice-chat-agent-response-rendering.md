@@ -178,3 +178,22 @@ Once the root cause is identified:
 - Do NOT switch git branches
 - The application URL is `https://smac.griffin-blenny.ts.net:5055` — never use localhost
 - Test database is `claude_headspace_test`, production is `claude_headspace`
+
+## Resolution (2026-02-15)
+
+This bug was part of a broader architectural issue with the voice chat rendering
+pipeline. The root cause was a dual-path rendering architecture where SSE events
+and periodic transcript polling raced to append turns at the bottom of the DOM,
+combined with progress collapse that removed DOM elements and triggered
+re-rendering at wrong positions.
+
+The fix replaced the dual-path architecture with a single-source-of-truth model:
+- Database stores turns with correct conversation timestamps (from JSONL transcript)
+- All turn creation paths broadcast SSE events
+- Client renders turns in timestamp order using ordered insertion
+- No periodic polling; SSE is the primary delivery mechanism
+- Progress collapse uses CSS (`display:none`) instead of DOM removal
+
+See `docs/architecture/transcript-chat-sequencing.md` for the full architecture
+and `docs/reviews_remediation/2026-02-15-voice-chat-ordering-remediation.md`
+for the implementation plan.

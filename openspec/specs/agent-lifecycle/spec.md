@@ -116,3 +116,22 @@ The voice/text bridge SHALL support commands to create agents, shut down agents,
 - **WHEN** a user sends a context command (e.g., "check context for [agent]")
 - **THEN** the agent's context usage is returned in a voice-formatted response
 
+---
+
+### Requirement: Agent Turn Reconciliation
+
+The system SHALL reconcile agent Turn records against JSONL transcript entries to ensure correct ordering and completeness.
+
+#### Scenario: TranscriptReconciler integration
+
+- **WHEN** new JSONL entries are detected for an agent's transcript
+- **THEN** the TranscriptReconciler service SHALL be invoked to match entries against existing Turns
+- **AND** correct timestamps from approximate (hook-time) to precise (JSONL) values
+- **AND** create missing Turns that were not captured by hooks
+
+#### Scenario: Reconciliation does not affect agent state
+
+- **WHEN** the TranscriptReconciler creates or updates Turns
+- **THEN** the agent's task state SHALL NOT be modified
+- **AND** only Turn-level data (timestamp, timestamp_source, jsonl_entry_hash) SHALL be affected
+

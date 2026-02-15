@@ -154,3 +154,23 @@ curl http://localhost:5055/hook/status
 ```bash
 bin/install-hooks.sh --uninstall
 ```
+
+## Hooks in the Three-Phase Pipeline
+
+Hooks are Phase 1 of the three-phase event pipeline. When a hook fires:
+
+1. The hook receiver creates a Turn record with `timestamp = datetime.now(UTC)`
+2. State transitions are applied via the state machine
+3. SSE events are broadcast immediately (`turn_created`, `state_changed`)
+
+The Turn's timestamp is approximate at this stage — it reflects server processing
+time, not actual conversation time. Phase 2 (file watcher reading the JSONL
+transcript) corrects the timestamp to the actual conversation time from the JSONL
+entry.
+
+This means hooks are optimised for **speed** (immediate state updates and SSE
+delivery) while the file watcher handles **accuracy** (correct timestamps from
+the transcript). Together they provide both fast and accurate turn delivery.
+
+See [Transcript & Chat Sequencing](transcript-chat-sequencing.md) for the full
+pipeline documentation.

@@ -76,7 +76,12 @@ claude:
 
 ### File Watcher
 
-Controls how Claude Headspace monitors Claude Code session files. The file watcher is the fallback mechanism when hooks are not sending events.
+Controls how Claude Headspace reads Claude Code JSONL transcript files. The file watcher is a critical component of the transcript reconciliation pipeline — it reads the JSONL transcript to extract accurate conversation timestamps and reconcile them against Turn records created by hooks.
+
+Even when hooks are active, the file watcher performs essential functions:
+- **Timestamp correction:** Updates Turn timestamps from approximate (server time) to accurate (JSONL conversation time)
+- **Gap filling:** Creates Turn records for conversation events that hooks missed
+- **Progress capture:** Detects intermediate agent output between hook events
 
 ```yaml
 file_watcher:
@@ -86,10 +91,10 @@ file_watcher:
   debounce_interval: 0.5
 ```
 
-- `polling_interval` - Seconds between file change checks. Lower values (0.5-1s) detect changes faster but use more CPU and disk I/O. Higher values (5-10s) save resources but make the dashboard feel sluggish. Default of 2s is a good balance.
-- `reconciliation_interval` - Seconds between full reconciliation scans. This safety net catches events missed by the event-driven watcher. Lower values improve reliability but increase CPU.
+- `polling_interval` - Seconds between JSONL transcript reads. This directly controls how quickly conversation timestamps are corrected and missed turns are discovered. Lower values (1-2s) mean the voice chat displays correct chronological ordering sooner. Higher values (5-10s) save resources but timestamps may be approximate for longer. Default of 2s provides a good balance between accuracy and performance.
+- `reconciliation_interval` - Seconds between full reconciliation scans. This safety net re-reads the entire active portion of the transcript to catch any entries missed by incremental reads. Lower values improve reliability but increase CPU and disk I/O.
 - `inactivity_timeout` - Stop watching a session after this much inactivity (default: 90 minutes). Prevents stale watchers from accumulating. Increase for long-running sessions that may pause for extended periods.
-- `debounce_interval` - Minimum seconds between processing file change events. Claude Code often writes multiple files in quick succession — debouncing prevents redundant processing. Too low causes duplicate work, too high delays detection.
+- `debounce_interval` - Minimum seconds between processing file change events. Claude Code often writes multiple entries in quick succession — debouncing prevents redundant processing. Too low causes duplicate work, too high delays detection.
 
 ### Event System
 
@@ -125,9 +130,18 @@ sse:
 - `connection_timeout_seconds` - Close idle SSE connections after this long. Clients reconnect automatically. Helps clean up abandoned connections.
 - `retry_after_seconds` - Browser reconnect delay after a connection drop. Lower values recover faster; higher values reduce reconnect storms during outages.
 
+The SSE stream delivers several event types to connected clients:
+- `turn_created` — a new conversation turn is available for display
+- `turn_updated` — an existing turn's timestamp has been corrected by the transcript reconciler
+- `state_changed` — an agent's state has transitioned
+- `card_refresh` — an agent card's display data has changed
+- `gap` — the server detected that events were dropped; clients should re-fetch
+
+See [Transcript & Chat Sequencing](../architecture/transcript-chat-sequencing.md) for details on how SSE events drive the voice chat display.
+
 ### Hooks
 
-Claude Code lifecycle hooks provide real-time session events. When hooks are active, the file watcher reduces its polling frequency.
+Claude Code lifecycle hooks provide real-time session events with low latency (<100ms). Hooks create Turn records immediately with approximate timestamps. The file watcher then reads the JSONL transcript to correct these timestamps to actual conversation time. Together, hooks and the file watcher form the two input paths of the three-phase event pipeline (see [Transcript & Chat Sequencing](../architecture/transcript-chat-sequencing.md)).
 
 ```yaml
 hooks:

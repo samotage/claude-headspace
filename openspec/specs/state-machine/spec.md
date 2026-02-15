@@ -72,9 +72,15 @@ Given an agent turn containing "Done" or "Complete" or "Finished"
 When intent detection runs
 Then the intent is classified as completion
 
+#### Scenario: End-of-task detected
+
+Given an agent turn containing end-of-task patterns (e.g., "TASK COMPLETE", signalling task boundary)
+When intent detection runs
+Then the intent is classified as end_of_task
+
 #### Scenario: Progress by default
 
-Given an agent turn that matches no question or completion patterns
+Given an agent turn that matches no question, completion, or end-of-task patterns
 When intent detection runs
 Then the intent is classified as progress
 

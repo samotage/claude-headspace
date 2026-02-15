@@ -396,6 +396,7 @@ def voice_command():
             intent=TurnIntent.ANSWER,
             text=text,
             answered_by_turn_id=answered_turn_id,
+            timestamp_source="user",
         )
         db.session.add(turn)
 
@@ -425,6 +426,22 @@ def voice_command():
         get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "voice_command")
+
+        # Broadcast turn_created for voice command so SSE clients see the user turn
+        try:
+            from ..services.broadcaster import get_broadcaster
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": text,
+                "actor": "user",
+                "intent": "answer",
+                "task_id": current_task.id,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"Voice command turn_created broadcast failed: {e}")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
@@ -593,6 +610,7 @@ def upload_file(agent_id: int):
             text=display_text,
             file_metadata=db_metadata,
             answered_by_turn_id=answered_turn_id,
+            timestamp_source="user",
         )
         db.session.add(turn)
 
@@ -613,6 +631,22 @@ def upload_file(agent_id: int):
         get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "file_upload")
+
+        # Broadcast turn_created for file upload so SSE clients see the user turn
+        try:
+            from ..services.broadcaster import get_broadcaster
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": display_text,
+                "actor": "user",
+                "intent": "answer",
+                "task_id": current_task.id,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"File upload turn_created broadcast failed: {e}")
 
         latency_ms = int((time.time() - start_time) * 1000)
         return jsonify({
@@ -798,10 +832,22 @@ def agent_transcript(agent_id: int):
     )
 
     if before:
-        query = query.filter(Turn.id < before)
+        # Look up the cursor turn's timestamp for composite pagination.
+        # This ensures correct ordering even when timestamps are corrected
+        # by the JSONL reconciler (turn insertion order != conversation order).
+        cursor_turn = db.session.get(Turn, before)
+        if cursor_turn:
+            query = query.filter(
+                db.or_(
+                    Turn.timestamp < cursor_turn.timestamp,
+                    db.and_(Turn.timestamp == cursor_turn.timestamp, Turn.id < before),
+                )
+            )
+        else:
+            query = query.filter(Turn.id < before)
 
-    # Order descending to get most recent first, then reverse for chronological
-    query = query.order_by(Turn.id.desc()).limit(limit + 1)
+    # Order by conversation time (timestamp), then id for deterministic tie-breaking
+    query = query.order_by(Turn.timestamp.desc(), Turn.id.desc()).limit(limit + 1)
     results = query.all()
 
     # Check if there are more older turns

@@ -103,6 +103,13 @@ Given an event with type "turn_detected"
 When the event is validated
 Then validation passes
 
+#### Scenario: Turn lifecycle event types
+
+Given the event type taxonomy
+Then the following SSE event types SHALL be supported for turn lifecycle:
+- `turn_created` — emitted when a new Turn is created (hook, voice command, file upload, or reconciliation)
+- `turn_updated` — emitted when a Turn is modified during transcript reconciliation (timestamp correction)
+
 #### Scenario: Unknown event type rejected
 
 Given an event with type "unknown_event"

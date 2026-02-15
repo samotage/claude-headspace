@@ -271,20 +271,11 @@ def respond_to_agent(agent_id: int):
 
     elif mode == "multi_select":
         keys = _build_multi_select_keys(answers)
-        logger.info(
-            f"[MULTI-Q DEBUG] multi_select respond: agent_id={agent_id}, "
-            f"answers={answers}, keys={keys}, pane={agent.tmux_pane_id}, "
-            f"sequential_delay_ms={sequential_delay_ms}"
-        )
         result = tmux_bridge.send_keys(
             agent.tmux_pane_id,
             *keys,
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
-        )
-        logger.info(
-            f"[MULTI-Q DEBUG] multi_select send_keys result: "
-            f"success={result.success}, error={result.error_message}, latency={result.latency_ms}ms"
         )
         # Build descriptive summary for the turn record
         parts = []
@@ -345,7 +336,7 @@ def respond_to_agent(agent_id: int):
         get_agent_hook_state().set_respond_pending(agent.id)
 
         broadcast_card_refresh(agent, "respond")
-        _broadcast_state_change(agent, record_text)
+        _broadcast_state_change(agent, record_text, turn_id=turn.id)
 
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(
@@ -403,7 +394,7 @@ def check_availability(agent_id: int):
     }), 200
 
 
-def _broadcast_state_change(agent: Agent, response_text: str) -> None:
+def _broadcast_state_change(agent: Agent, response_text: str, turn_id: int | None = None) -> None:
     """Broadcast state change and turn creation after response."""
     try:
         from ..services.broadcaster import get_broadcaster
@@ -414,7 +405,7 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "project_id": agent.project_id,
             "event_type": "respond",
             "new_state": "PROCESSING",
-            "message": f"User responded via dashboard",
+            "message": "User responded via dashboard",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         _task = agent.get_current_task()
@@ -425,6 +416,7 @@ def _broadcast_state_change(agent: Agent, response_text: str) -> None:
             "actor": "user",
             "intent": "answer",
             "task_id": _task.id if _task else None,
+            "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

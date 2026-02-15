@@ -22,9 +22,9 @@ window.VoiceApp = (function () {
   var _endedAgents = [];
   var _targetAgentId = null;
   var _currentScreen = 'setup'; // setup | agents | listening | question | chat
-  var _chatRenderedTurnIds = new Set();
+  var _lastSeenTurnId = 0;
   var _chatPendingUserSends = [];  // {text, sentAt, fakeTurnId} — pending sends awaiting real turn
-  var PENDING_SEND_TTL_MS = 15000; // 15s window for dedup matching
+  var PENDING_SEND_TTL_MS = 10000; // 10s window for optimistic send confirmation
   var _chatAgentState = null;
   var _chatAgentStateLabel = null;
   var _chatHasMore = false;
@@ -972,54 +972,25 @@ window.VoiceApp = (function () {
   }
 
   function _startChatSyncTimer() {
+    // No-op: SSE is now the primary delivery mechanism for turns.
+    // Transcript fetch is only used for initial load, gap recovery,
+    // and SSE reconnect scenarios.
     _stopChatSyncTimer();
-    // Safety-net: poll transcript every 8s while on chat screen.
-    // Catches turns missed by SSE disconnects, deferred stops, and race conditions.
-    _chatSyncTimer = setInterval(function () {
-      if (_currentScreen !== 'chat' || !_targetAgentId) {
-        _stopChatSyncTimer();
-        return;
-      }
-      _fetchTranscriptForChat();
-    }, 8000);
   }
 
   /**
-   * Cancel any active response catch-up timers.
+   * Cancel any active response catch-up timers (no-op — SSE-primary).
    */
   function _cancelResponseCatchUp() {
-    for (var i = 0; i < _responseCatchUpTimers.length; i++) {
-      clearTimeout(_responseCatchUpTimers[i]);
-    }
-    _responseCatchUpTimers = [];
+    // No-op: SSE delivers turns directly; polling catch-up removed
   }
 
   /**
-   * Schedule aggressive transcript fetches after sending a message.
-   *
-   * iOS Safari often drops SSE events, leaving the chat stuck on typing
-   * dots. This watchdog polls at short intervals until the agent state
-   * leaves 'processing'/'commanded', ensuring the response appears
-   * even when SSE is unreliable.
+   * Schedule response catch-up (no-op — SSE-primary).
+   * SSE now delivers all turns (user and agent) directly.
    */
   function _scheduleResponseCatchUp() {
-    _cancelResponseCatchUp();
-    var delays = [1500, 3000, 5000, 8000, 12000, 18000, 25000];
-    var savedAgentId = _targetAgentId;
-    for (var i = 0; i < delays.length; i++) {
-      (function (delay) {
-        _responseCatchUpTimers.push(setTimeout(function () {
-          if (_currentScreen !== 'chat' || _targetAgentId !== savedAgentId) return;
-          // Stop polling once we're no longer waiting for a response
-          var state = (_chatAgentState || '').toLowerCase();
-          if (state !== 'processing' && state !== 'commanded') {
-            _cancelResponseCatchUp();
-            return;
-          }
-          _fetchTranscriptForChat();
-        }, delay));
-      })(delays[i]);
-    }
+    // No-op: SSE delivers turns directly; polling catch-up removed
   }
 
   function _showChatScreen(agentId) {
@@ -1032,7 +1003,7 @@ window.VoiceApp = (function () {
     _targetAgentId = agentId;
     var focusLink = document.getElementById('chat-focus-link');
     if (focusLink) focusLink.setAttribute('data-agent-id', agentId);
-    _chatRenderedTurnIds.clear();
+    _lastSeenTurnId = 0;
     _chatPendingUserSends = [];
     _chatHasMore = false;
     _chatLoadingMore = false;
@@ -1089,16 +1060,13 @@ window.VoiceApp = (function () {
       var saved = _agentScrollState[agentId];
       if (saved) {
         delete _agentScrollState[agentId]; // one-shot restore
-        // Determine which rendered turn IDs are new (numeric only)
-        var maxRenderedId = 0;
+        // Determine which rendered turn IDs are new (numeric only) via DOM
         var newTurnIds = [];
-        _chatRenderedTurnIds.forEach(function (id) {
-          var n = typeof id === 'number' ? id : parseInt(id, 10);
-          if (!isNaN(n)) {
-            if (n > maxRenderedId) maxRenderedId = n;
-            if (n > saved.lastTurnId) newTurnIds.push(n);
-          }
-        });
+        var renderedBubbles = document.querySelectorAll('.chat-bubble[data-turn-id]');
+        for (var ri = 0; ri < renderedBubbles.length; ri++) {
+          var rid = parseInt(renderedBubbles[ri].getAttribute('data-turn-id'), 10);
+          if (!isNaN(rid) && rid > saved.lastTurnId) newTurnIds.push(rid);
+        }
         newTurnIds.sort(function (a, b) { return a - b; });
         var messagesEl = document.getElementById('chat-messages');
         if (newTurnIds.length === 0) {
@@ -1354,6 +1322,83 @@ window.VoiceApp = (function () {
     return sep;
   }
 
+  /**
+   * Insert a bubble element (or fragment) at the correct chronological
+   * position based on data-timestamp. Walks backwards through existing
+   * bubbles to find the insertion point.
+   *
+   * @param {Element} messagesEl - The chat messages container
+   * @param {Element|DocumentFragment} el - Bubble element or fragment containing one
+   */
+  function _insertBubbleOrdered(messagesEl, el) {
+    // Extract timestamp: fragments don't have getAttribute, so find the bubble child
+    var bubbleChild = el.querySelector ? el.querySelector('.chat-bubble[data-timestamp]') : null;
+    var ts = bubbleChild ? bubbleChild.getAttribute('data-timestamp') : null;
+    if (!ts) {
+      // No timestamp — append at end as fallback
+      messagesEl.appendChild(el);
+      return;
+    }
+    var tsDate = new Date(ts);
+    // Walk backwards through existing timestamped bubbles
+    var existing = messagesEl.querySelectorAll('.chat-bubble[data-timestamp]');
+    for (var i = existing.length - 1; i >= 0; i--) {
+      var existingTs = new Date(existing[i].getAttribute('data-timestamp'));
+      if (existingTs <= tsDate) {
+        // Insert after this element (before its next sibling)
+        var next = existing[i].nextSibling;
+        if (next) {
+          messagesEl.insertBefore(el, next);
+        } else {
+          messagesEl.appendChild(el);
+        }
+        return;
+      }
+    }
+    // Oldest element — insert at the very beginning (after any load-more indicator)
+    var loadMore = document.getElementById('chat-load-more');
+    if (loadMore && loadMore.nextSibling) {
+      messagesEl.insertBefore(el, loadMore.nextSibling);
+    } else if (messagesEl.firstChild) {
+      messagesEl.insertBefore(el, messagesEl.firstChild);
+    } else {
+      messagesEl.appendChild(el);
+    }
+  }
+
+  /**
+   * Reorder a bubble in the DOM if its timestamp has changed.
+   * Checks if the bubble is already in the correct position relative
+   * to its siblings; if not, removes and re-inserts it.
+   */
+  function _reorderBubble(bubble) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl || !bubble.parentNode) return;
+    var ts = bubble.getAttribute('data-timestamp');
+    if (!ts) return;
+    var tsDate = new Date(ts);
+
+    // Check if position is correct: previous sibling (if any) should have ts <= ours,
+    // next sibling (if any) should have ts >= ours
+    var prev = bubble.previousElementSibling;
+    var next = bubble.nextElementSibling;
+
+    var prevOk = true;
+    var nextOk = true;
+    if (prev && prev.classList.contains('chat-bubble') && prev.getAttribute('data-timestamp')) {
+      prevOk = new Date(prev.getAttribute('data-timestamp')) <= tsDate;
+    }
+    if (next && next.classList.contains('chat-bubble') && next.getAttribute('data-timestamp')) {
+      nextOk = new Date(next.getAttribute('data-timestamp')) >= tsDate;
+    }
+
+    if (prevOk && nextOk) return; // Already in correct position
+
+    // Remove and re-insert at correct position
+    bubble.parentNode.removeChild(bubble);
+    _insertBubbleOrdered(messagesEl, bubble);
+  }
+
   function _renderChatBubble(turn, prevTurn, forceRender) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
@@ -1365,43 +1410,36 @@ window.VoiceApp = (function () {
       _collapseProgressBubbles(messagesEl, turn.task_id);
     }
     var el = _createBubbleEl(turn, prevTurn, forceRender);
-    if (el) messagesEl.appendChild(el);
+    if (el) _insertBubbleOrdered(messagesEl, el);
   }
 
   /**
-   * Remove PROGRESS bubbles for a given task from the DOM.
-   * Their IDs remain in _chatRenderedTurnIds so transcript fetch
-   * won't re-render them.
+   * Collapse PROGRESS bubbles for a given task (CSS-only hide).
+   * Bubbles stay in DOM but are visually hidden via .collapsed class.
    */
   function _collapseProgressBubbles(container, taskId) {
     var bubbles = container.querySelectorAll('.chat-bubble[data-task-id="' + taskId + '"]');
     for (var i = 0; i < bubbles.length; i++) {
       if (bubbles[i].querySelector('.progress-intent')) {
-        bubbles[i].remove();
+        bubbles[i].classList.add('collapsed');
       }
     }
   }
 
   function _createBubbleEl(turn, prevTurn, forceRender) {
-    // Check all IDs in a group
-    var ids = turn.groupedIds || [turn.id];
-    var allRendered = true;
-    for (var k = 0; k < ids.length; k++) {
-      if (!_chatRenderedTurnIds.has(ids[k])) { allRendered = false; break; }
+    // DOM-based dedup: check if this turn is already rendered
+    var container = document.getElementById('chat-messages');
+    if (container && container.querySelector('[data-turn-id="' + turn.id + '"]')) {
+      if (!forceRender) return null;
     }
-    if (allRendered && !forceRender) return null;
-    // When force-rendering, prevent duplicates by checking the DOM.
-    // forceRender is used for terminal intents (completion/end_of_task)
-    // to ensure they always appear, but we must not create a second
-    // bubble if one is already in the DOM.
-    if (allRendered && forceRender) {
-      var container = document.getElementById('chat-messages');
-      if (container && container.querySelector('[data-turn-id="' + turn.id + '"]')) {
-        return null;
-      }
-    }
+    // Track max turn ID for scroll state and gap recovery
+    var numId = typeof turn.id === 'number' ? turn.id : parseInt(turn.id, 10);
+    if (!isNaN(numId) && numId > _lastSeenTurnId) _lastSeenTurnId = numId;
+    // Track grouped IDs too
+    var ids = turn.groupedIds || [];
     for (var k2 = 0; k2 < ids.length; k2++) {
-      _chatRenderedTurnIds.add(ids[k2]);
+      var gid = typeof ids[k2] === 'number' ? ids[k2] : parseInt(ids[k2], 10);
+      if (!isNaN(gid) && gid > _lastSeenTurnId) _lastSeenTurnId = gid;
     }
 
     var frag = document.createDocumentFragment();
@@ -1428,6 +1466,7 @@ window.VoiceApp = (function () {
     var isGrouped = turn.groupedTexts && turn.groupedTexts.length > 1;
     bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent') + (isGrouped ? ' grouped' : '');
     bubble.setAttribute('data-turn-id', turn.id);
+    bubble.setAttribute('data-timestamp', turn.timestamp || new Date().toISOString());
     if (turn.task_id) bubble.setAttribute('data-task-id', turn.task_id);
 
     var html = '';
@@ -1507,50 +1546,25 @@ window.VoiceApp = (function () {
       var opts = turn.question_options;
       var toolInput = turn.tool_input || {};
       var allQuestions = null;
-      console.log('[MULTI-Q DEBUG] Rendering question turn:', {
-        turnId: turn.id,
-        hasQuestionOptions: !!opts,
-        questionOptionsType: opts ? (Array.isArray(opts) ? 'array[' + opts.length + ']' : typeof opts) : 'null',
-        hasToolInput: !!toolInput,
-        hasToolInputQuestions: !!(toolInput && toolInput.questions),
-        toolInputQuestionsLength: toolInput && toolInput.questions ? toolInput.questions.length : 0,
-        questionOptionsRaw: JSON.stringify(opts),
-        toolInputQuestionsRaw: JSON.stringify(toolInput.questions),
-      });
       if (!opts && toolInput.questions) {
         var questions = toolInput.questions;
-        console.log('[MULTI-Q DEBUG] Checking toolInput.questions:', {
-          length: questions.length,
-          firstHasOptions: questions.length > 0 ? !!questions[0].options : false,
-          firstKeys: questions.length > 0 ? Object.keys(questions[0]) : [],
-        });
         if (questions && questions.length > 1) {
           // Multi-question: check if first element has 'options' (full question objects)
           if (questions[0].options) {
             allQuestions = questions;
-            console.log('[MULTI-Q DEBUG] => Multi-question detected via toolInput.questions (length=' + questions.length + ')');
           }
         } else if (questions && questions.length > 0 && questions[0].options) {
           opts = questions[0].options;
-          console.log('[MULTI-Q DEBUG] => Single question extracted from toolInput.questions[0].options');
         }
       }
       // Also check if q_options itself is multi-question format
       if (!allQuestions && opts && opts.length > 0 && opts[0].options) {
-        console.log('[MULTI-Q DEBUG] => q_options itself is multi-question format, promoting');
         allQuestions = opts;
         opts = null;
       }
       // Extract safety for color-coding option buttons
       var bubbleSafety = toolInput.safety || '';
       var safetyClass = bubbleSafety ? ' safety-' + _esc(bubbleSafety) : '';
-
-      console.log('[MULTI-Q DEBUG] Final rendering decision:', {
-        allQuestions: allQuestions ? allQuestions.length : null,
-        opts: opts ? opts.length : null,
-        willRenderMulti: !!(allQuestions && allQuestions.length > 1),
-        willRenderSingle: !!(opts && opts.length > 0),
-      });
 
       if (allQuestions && allQuestions.length > 1) {
         // Multi-question bubble
@@ -1719,8 +1733,6 @@ window.VoiceApp = (function () {
           answers.push({ option_index: selections[i] });
         }
       }
-      console.log('[MULTI-Q DEBUG] Submit clicked, answers:', JSON.stringify(answers));
-      console.log('[MULTI-Q DEBUG] Sending multi_select to /api/respond/' + _targetAgentId);
       submitBtn.disabled = true;
       submitBtn.textContent = 'Sending...';
 
@@ -1729,10 +1741,8 @@ window.VoiceApp = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'multi_select', answers: answers })
       }).then(function(resp) {
-        console.log('[MULTI-Q DEBUG] Submit response status:', resp.status);
         return resp.json();
       }).then(function(data) {
-        console.log('[MULTI-Q DEBUG] Submit response data:', JSON.stringify(data));
         if (data.status === 'ok') {
           container.classList.add('answered');
           container.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
@@ -1809,16 +1819,10 @@ window.VoiceApp = (function () {
     if (!agentId) return;
     var el = document.getElementById('chat-messages');
     if (!el) return;
-    // Find max numeric turn ID (filter out SSE-generated string IDs like 'sse-...' or 'pending-...')
-    var maxId = 0;
-    _chatRenderedTurnIds.forEach(function (id) {
-      var n = typeof id === 'number' ? id : parseInt(id, 10);
-      if (!isNaN(n) && n > maxId) maxId = n;
-    });
     _agentScrollState[agentId] = {
       scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,
-      lastTurnId: maxId
+      lastTurnId: _lastSeenTurnId
     };
   }
 
@@ -2078,30 +2082,16 @@ window.VoiceApp = (function () {
       return;
     }
 
-    // Show optimistic user bubble
-    var now = new Date().toISOString();
+    // Show optimistic user bubble via shared helper
     var displayText = trimText ? trimText : '[File: ' + file.name + ']';
-    var fakeTurn = {
-      id: 'pending-' + Date.now(),
-      actor: 'user',
-      intent: 'answer',
-      text: displayText,
-      timestamp: now,
+    var pendingEntry = _renderOptimisticUserBubble(displayText, {
       file_metadata: {
         original_filename: file.name,
         file_type: _isImageFile(file) ? 'image' : 'document',
         file_size: file.size,
         _localPreviewUrl: URL.createObjectURL(file)
       }
-    };
-
-    var messagesEl = document.getElementById('chat-messages');
-    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
-    var prevTurn = lastBubble ? { timestamp: now } : null;
-    var pendingEntry = { text: displayText, sentAt: Date.now(), fakeTurnId: fakeTurn.id };
-    _chatPendingUserSends.push(pendingEntry);
-    _renderChatBubble(fakeTurn, prevTurn);
-    _scrollChatToBottom();
+    });
 
     // Clear input
     var input = document.getElementById('chat-text-input');
@@ -2137,29 +2127,61 @@ window.VoiceApp = (function () {
     });
   }
 
-  function _sendChatCommand(text) {
-    if (!text || !text.trim()) return;
-
-    // Add user bubble immediately
+  /**
+   * Render an optimistic (provisional) user bubble immediately.
+   * Sets a 10-second timeout to mark as send-failed if not confirmed
+   * by a turn_created SSE event promoting the pending ID to a real ID.
+   *
+   * @param {string} text - The user's message text
+   * @param {object} [extraFields] - Optional extra fields for the turn (e.g., file_metadata)
+   * @returns {object} pendingEntry for tracking
+   */
+  function _renderOptimisticUserBubble(text, extraFields) {
     var now = new Date().toISOString();
+    var fakeId = 'pending-' + Date.now();
     var fakeTurn = {
-      id: 'pending-' + Date.now(),
+      id: fakeId,
       actor: 'user',
       intent: 'answer',
-      text: text.trim(),
+      text: text,
       timestamp: now
     };
+    if (extraFields) {
+      for (var key in extraFields) {
+        if (extraFields.hasOwnProperty(key)) fakeTurn[key] = extraFields[key];
+      }
+    }
 
     var messagesEl = document.getElementById('chat-messages');
     var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
     var prevTurn = null;
     if (lastBubble) {
-      prevTurn = { timestamp: now }; // skip timestamp for immediate send
+      prevTurn = { timestamp: now };
     }
-    var pendingEntry = { text: text.trim(), sentAt: Date.now(), fakeTurnId: fakeTurn.id };
+    var pendingEntry = { text: text, sentAt: Date.now(), fakeTurnId: fakeId };
+
+    // 10-second timeout: mark as send-failed if not confirmed
+    pendingEntry.failTimer = setTimeout(function () {
+      var bubble = document.querySelector('[data-turn-id="' + fakeId + '"]');
+      if (bubble) {
+        bubble.classList.add('send-failed');
+      }
+      // Remove from pending sends
+      var idx = _chatPendingUserSends.indexOf(pendingEntry);
+      if (idx !== -1) _chatPendingUserSends.splice(idx, 1);
+    }, PENDING_SEND_TTL_MS);
+
     _chatPendingUserSends.push(pendingEntry);
     _renderChatBubble(fakeTurn, prevTurn);
     _scrollChatToBottom();
+    return pendingEntry;
+  }
+
+  function _sendChatCommand(text) {
+    if (!text || !text.trim()) return;
+
+    // Render optimistic user bubble immediately
+    var pendingEntry = _renderOptimisticUserBubble(text.trim());
 
     // Clear input and reset textarea height
     var input = document.getElementById('chat-text-input');
@@ -2185,7 +2207,8 @@ window.VoiceApp = (function () {
       var errBubble = document.createElement('div');
       errBubble.className = 'chat-bubble agent';
       errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Send failed') + '</div>';
-      if (messagesEl) messagesEl.appendChild(errBubble);
+      var msgEl = document.getElementById('chat-messages');
+      if (msgEl) msgEl.appendChild(errBubble);
       _chatAgentState = 'idle';
       _chatAgentStateLabel = null;
       _updateTypingIndicator();
@@ -2195,26 +2218,8 @@ window.VoiceApp = (function () {
   }
 
   function _sendChatSelect(optionIndex, label, bubble) {
-    // Add optimistic user bubble with the label text
-    var now = new Date().toISOString();
-    var fakeTurn = {
-      id: 'pending-' + Date.now(),
-      actor: 'user',
-      intent: 'answer',
-      text: label,
-      timestamp: now
-    };
-
-    var messagesEl = document.getElementById('chat-messages');
-    var lastBubble = messagesEl ? messagesEl.querySelector('.chat-bubble:last-child') : null;
-    var prevTurn = null;
-    if (lastBubble) {
-      prevTurn = { timestamp: now };
-    }
-    var pendingEntry = { text: label, sentAt: Date.now(), fakeTurnId: fakeTurn.id };
-    _chatPendingUserSends.push(pendingEntry);
-    _renderChatBubble(fakeTurn, prevTurn);
-    _scrollChatToBottom();
+    // Render optimistic user bubble with the label text
+    var pendingEntry = _renderOptimisticUserBubble(label);
 
     // Disable option buttons in this bubble to prevent double-sends
     if (bubble) {
@@ -2239,7 +2244,8 @@ window.VoiceApp = (function () {
       var errBubble = document.createElement('div');
       errBubble.className = 'chat-bubble agent';
       errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + _esc(err.error || 'Select failed') + '</div>';
-      if (messagesEl) messagesEl.appendChild(errBubble);
+      var msgEl = document.getElementById('chat-messages');
+      if (msgEl) msgEl.appendChild(errBubble);
       _chatAgentState = 'idle';
       _chatAgentStateLabel = null;
       _updateTypingIndicator();
@@ -2285,8 +2291,8 @@ window.VoiceApp = (function () {
       _updateEndedAgentUI();
     }
 
-    // Fetch new turns via shared transcript fetch
-    _fetchTranscriptForChat();
+    // SSE-primary: state changes update indicators only.
+    // Turns are delivered directly via turn_created SSE events.
   }
 
   // --- Command sending ---
@@ -2333,28 +2339,51 @@ window.VoiceApp = (function () {
     }
   }
 
+  function _handleTurnUpdated(data) {
+    if (_currentScreen !== 'chat') return;
+    if (!data || !data.agent_id) return;
+    if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
+
+    if (data.update_type === 'timestamp_correction' && data.turn_id) {
+      var bubble = document.querySelector('[data-turn-id="' + data.turn_id + '"]');
+      if (bubble && data.timestamp) {
+        bubble.setAttribute('data-timestamp', data.timestamp);
+        _reorderBubble(bubble);
+      }
+    }
+  }
+
   function _handleTurnCreated(data) {
     if (_currentScreen !== 'chat') return;
     if (!data || !data.agent_id) return;
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
     if (!data.text || !data.text.trim()) return;
 
-    console.log('[MULTI-Q DEBUG] _handleTurnCreated SSE:', {
-      turnId: data.turn_id,
-      actor: data.actor,
-      intent: data.intent,
-      hasToolInput: !!data.tool_input,
-      toolInputKeys: data.tool_input ? Object.keys(data.tool_input) : [],
-      hasQuestions: !!(data.tool_input && data.tool_input.questions),
-      questionsLength: data.tool_input && data.tool_input.questions ? data.tool_input.questions.length : 0,
-      textPreview: (data.text || '').substring(0, 100),
-    });
-
-    // Only handle agent turns directly — user turns are handled by
-    // _handleChatSSE via transcript fetch (which includes echo dedup).
-    // Processing user turns here would consume _chatPendingUserTexts
-    // entries before the transcript-based dedup can use them.
-    if (data.actor === 'user') return;
+    // For user turns from SSE: promote optimistic (pending) bubbles if they exist
+    if (data.actor === 'user' && data.turn_id) {
+      var realId = data.turn_id;
+      // Look for a pending optimistic bubble to promote
+      var promoted = false;
+      for (var pi = 0; pi < _chatPendingUserSends.length; pi++) {
+        var pending = _chatPendingUserSends[pi];
+        if (pending.fakeTurnId) {
+          var fakeBubble = document.querySelector('[data-turn-id="' + pending.fakeTurnId + '"]');
+          if (fakeBubble) {
+            // Promote: swap fake ID to real server ID
+            fakeBubble.setAttribute('data-turn-id', realId);
+            if (data.timestamp) fakeBubble.setAttribute('data-timestamp', data.timestamp);
+            // Clear the send-failed timeout
+            if (pending.failTimer) clearTimeout(pending.failTimer);
+            _chatPendingUserSends.splice(pi, 1);
+            promoted = true;
+            break;
+          }
+        }
+      }
+      if (promoted) return;
+      // Not promoted — check if already in DOM (e.g., from initial load)
+      if (document.querySelector('[data-turn-id="' + realId + '"]')) return;
+    }
 
     var isTerminalIntent = (data.intent === 'completion' || data.intent === 'end_of_task');
 
@@ -2383,15 +2412,11 @@ window.VoiceApp = (function () {
       }
     }
 
-    // Skip if already rendered — but always render terminal intents
+    // Skip if already rendered in DOM — but always render terminal intents
     // (completion/end_of_task) so the agent's final response is visible
     // even if a PROGRESS turn with the same ID was already shown.
-    if (_chatRenderedTurnIds.has(turn.id)) {
+    if (document.querySelector('[data-turn-id="' + turn.id + '"]')) {
       if (!isTerminalIntent) return;
-      // Terminal intent: verify it's not already in the DOM (prevent duplicates
-      // from race between sync timer and SSE broadcast)
-      var messagesEl = document.getElementById('chat-messages');
-      if (messagesEl && messagesEl.querySelector('[data-turn-id="' + turn.id + '"]')) return;
     }
 
     _renderChatBubble(turn, null, isTerminalIntent);
@@ -2638,79 +2663,34 @@ window.VoiceApp = (function () {
       // Discard if user navigated to a different agent while fetching
       if (agentId !== _targetAgentId) return;
       var turns = resp.turns || [];
-      // Expire old pending sends (Finding 4 — TTL-based instead of exact text match)
-      var now = Date.now();
-      _chatPendingUserSends = _chatPendingUserSends.filter(function (p) {
-        return (now - p.sentAt) < PENDING_SEND_TTL_MS;
-      });
       var messagesContainer = document.getElementById('chat-messages');
-      // Debug: log any question turns in the transcript
-      for (var _di = 0; _di < turns.length; _di++) {
-        if (turns[_di].intent === 'question') {
-          console.log('[MULTI-Q DEBUG] Transcript question turn:', {
-            id: turns[_di].id,
-            intent: turns[_di].intent,
-            hasQuestionOptions: !!turns[_di].question_options,
-            questionOptionsLength: turns[_di].question_options ? turns[_di].question_options.length : 0,
-            hasToolInput: !!turns[_di].tool_input,
-            toolInputKeys: turns[_di].tool_input ? Object.keys(turns[_di].tool_input) : [],
-            toolInputQuestionsLength: turns[_di].tool_input && turns[_di].tool_input.questions ? turns[_di].tool_input.questions.length : 0,
-            questionOptionsRaw: JSON.stringify(turns[_di].question_options),
-            toolInputQuestionsRaw: JSON.stringify(turns[_di].tool_input && turns[_di].tool_input.questions),
-          });
+
+      for (var ti = 0; ti < turns.length; ti++) {
+        var t = turns[ti];
+        // Track max turn ID for gap recovery
+        var numId = typeof t.id === 'number' ? t.id : parseInt(t.id, 10);
+        if (!isNaN(numId) && numId > _lastSeenTurnId) _lastSeenTurnId = numId;
+
+        // Check if this turn is already in the DOM
+        var existingBubble = messagesContainer
+          ? messagesContainer.querySelector('[data-turn-id="' + t.id + '"]')
+          : null;
+
+        if (existingBubble) {
+          // Already rendered — update timestamp if changed, reorder if needed
+          var currentTs = existingBubble.getAttribute('data-timestamp');
+          if (t.timestamp && currentTs !== t.timestamp) {
+            existingBubble.setAttribute('data-timestamp', t.timestamp);
+            _reorderBubble(existingBubble);
+          }
+        } else {
+          // Not in DOM — render at correct chronological position
+          var prev = ti > 0 ? turns[ti - 1] : null;
+          var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_task');
+          _renderChatBubble(t, prev, forceTerminal);
         }
       }
-      var newTurns = turns.filter(function (t) {
-        if (_chatRenderedTurnIds.has(t.id)) {
-          // Resilience: verify the DOM element still exists.
-          // If the element was removed (e.g., by progress collapse) or never
-          // created (race between SSE turn_created and transcript fetch), the
-          // dedup set is stale — clear it and allow re-rendering.
-          if (messagesContainer && !messagesContainer.querySelector('[data-turn-id="' + t.id + '"]')) {
-            _chatRenderedTurnIds.delete(t.id);
-            return true;
-          }
-          return false;
-        }
-        // Dedup user turns against pending sends using fuzzy time-window matching
-        if (t.actor === 'user') {
-          for (var pi = 0; pi < _chatPendingUserSends.length; pi++) {
-            var pending = _chatPendingUserSends[pi];
-            // Match within TTL window — the server turn corresponds to our optimistic bubble
-            if ((now - pending.sentAt) < PENDING_SEND_TTL_MS) {
-              _chatRenderedTurnIds.add(t.id);
-              // Promote optimistic bubble: swap fake data-turn-id to real server ID
-              // so the DOM resilience check (line ~2529) finds it on subsequent fetches.
-              if (pending.fakeTurnId && messagesContainer) {
-                var fakeBubble = messagesContainer.querySelector(
-                  '[data-turn-id="' + pending.fakeTurnId + '"]'
-                );
-                if (fakeBubble) fakeBubble.setAttribute('data-turn-id', t.id);
-              }
-              _chatRenderedTurnIds.delete(pending.fakeTurnId);
-              _chatPendingUserSends.splice(pi, 1);
-              return false;
-            }
-          }
-        }
-        return true;
-      });
-      if (newTurns.length > 0) {
-        var grouped = _groupTurns(newTurns);
-        for (var i = 0; i < grouped.length; i++) {
-          var item = grouped[i];
-          var prev = i > 0 ? grouped[i - 1] : null;
-          if (item.type === 'separator') {
-            _renderTaskSeparator(item);
-          } else {
-            // Force-render terminal intents (completion/end_of_task) so the
-            // agent's final response is always visible — even if the dedup set
-            // was re-populated between the filter step and this render call.
-            var forceTerminal = (item.intent === 'completion' || item.intent === 'end_of_task');
-            _renderChatBubble(item, prev, forceTerminal);
-          }
-        }
-      }
+
       if (resp.agent_state) {
         _chatAgentState = resp.agent_state;
         _updateTypingIndicator();
@@ -2743,8 +2723,6 @@ window.VoiceApp = (function () {
       var bubble = messagesEl.querySelector('[data-turn-id="' + pendingEntry.fakeTurnId + '"]');
       if (bubble) bubble.remove();
     }
-    // Clean up rendered ID tracking
-    _chatRenderedTurnIds.delete(pendingEntry.fakeTurnId);
   }
 
   // --- Escape HTML ---
@@ -2883,6 +2861,7 @@ window.VoiceApp = (function () {
     VoiceAPI.onConnectionChange(_updateConnectionIndicator);
     VoiceAPI.onAgentUpdate(_handleAgentUpdate);
     VoiceAPI.onTurnCreated(_handleTurnCreated);
+    VoiceAPI.onTurnUpdated(_handleTurnUpdated);
     VoiceAPI.onGap(_handleGap);
     VoiceAPI.connectSSE();
 

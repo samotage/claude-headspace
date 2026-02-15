@@ -71,18 +71,26 @@ Then the file watcher processes the changes once (debounced)
 
 ### Requirement: JSONL Parser
 
-The system SHALL parse Claude Code jsonl files, reading line-by-line and extracting turn data.
+The system SHALL parse Claude Code jsonl files, reading line-by-line and extracting turn data into `TranscriptEntry` dataclass instances with `type`, `role`, `content`, `timestamp`, and `raw_data` fields.
 
 #### Scenario: Parse valid jsonl line
 
 Given a jsonl file with a line containing actor, text, and timestamp
-When read_new_lines is called
-Then it returns a ParsedTurn with the correct actor, text, and timestamp
+When read_new_entries_from_position is called
+Then it returns a TranscriptEntry with the correct type, role, content, timestamp (parsed from ISO or epoch format), and raw_data
+
+#### Scenario: Timestamp parsing
+
+Given a jsonl entry with a "timestamp" field
+When the entry is parsed
+Then ISO-8601 strings (including "Z" suffix) SHALL be parsed to timezone-aware datetime
+And Unix epoch numbers (int/float) SHALL be parsed to timezone-aware datetime
+And entries without timestamps SHALL have timestamp=None
 
 #### Scenario: Handle malformed line
 
 Given a jsonl file with an invalid JSON line
-When read_new_lines is called
+When read_new_entries_from_position is called
 Then it logs a warning
 And skips the malformed line
 And continues processing subsequent lines
@@ -91,7 +99,7 @@ And continues processing subsequent lines
 
 Given a jsonl file has been read once
 When new lines are appended to the file
-And read_new_lines is called again
+And read_new_entries_from_position is called again with the previous byte position
 Then only the new lines are returned
 
 ### Requirement: Project Path Decoder
@@ -142,6 +150,29 @@ Given a registered session
 When a new turn is detected in the session's jsonl file
 Then a turn_detected event is emitted
 And the event contains session_uuid, project_path, actor, text, timestamp, and source="polling"
+
+### Requirement: Transcript Reconciliation (Phase 2)
+
+The file watcher SHALL trigger transcript reconciliation when new JSONL entries are detected, feeding them to the TranscriptReconciler service for Phase 2 of the three-phase event pipeline.
+
+#### Scenario: Reconciliation on JSONL update
+
+- **WHEN** the file watcher detects new entries in a monitored JSONL file
+- **THEN** the TranscriptReconciler SHALL be invoked with the new entries
+- **AND** the reconciler SHALL match entries against existing Turn records via content hash
+- **AND** correct timestamps from JSONL values (setting `timestamp_source="jsonl"`)
+- **AND** create missing Turns not captured by hooks
+
+#### Scenario: Reconciliation SSE broadcasts (Phase 3)
+
+- **WHEN** reconciliation produces updates or creates new Turns
+- **THEN** `turn_updated` SSE events SHALL be broadcast for timestamp corrections
+- **AND** `turn_created` SSE events SHALL be broadcast for newly discovered Turns
+
+#### Scenario: Reconciliation match window
+
+- **WHEN** the reconciler searches for matching hook-created Turns
+- **THEN** it SHALL search within a configurable time window (default 30 seconds) of the current time
 
 ### Requirement: Session Inactivity Detection
 

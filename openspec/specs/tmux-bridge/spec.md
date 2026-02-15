@@ -85,6 +85,7 @@ The respond endpoint SHALL use tmux bridge for input delivery.
 - **THEN** the system sends text via `tmux_bridge.send_text(pane_id, text)`
 - **AND** creates a Turn record (actor=USER, intent=ANSWER)
 - **AND** transitions state AWAITING_INPUT -> PROCESSING
+- **AND** broadcasts a state_changed SSE event with `turn_id` in the payload
 - **AND** returns `{status: "ok", agent_id, new_state, latency_ms}`
 
 #### Scenario: Agent has no pane ID
