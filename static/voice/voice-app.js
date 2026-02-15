@@ -1402,28 +1402,8 @@ window.VoiceApp = (function () {
   function _renderChatBubble(turn, prevTurn, forceRender) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
-    // When a terminal intent (completion/end_of_task) arrives, collapse
-    // intermediate PROGRESS bubbles for the same task to avoid content
-    // overlap — the COMPLETION turn contains the full response.
-    var isTerminal = (turn.intent === 'completion' || turn.intent === 'end_of_task');
-    if (isTerminal && turn.task_id) {
-      _collapseProgressBubbles(messagesEl, turn.task_id);
-    }
     var el = _createBubbleEl(turn, prevTurn, forceRender);
     if (el) _insertBubbleOrdered(messagesEl, el);
-  }
-
-  /**
-   * Collapse PROGRESS bubbles for a given task (CSS-only hide).
-   * Bubbles stay in DOM but are visually hidden via .collapsed class.
-   */
-  function _collapseProgressBubbles(container, taskId) {
-    var bubbles = container.querySelectorAll('.chat-bubble[data-task-id="' + taskId + '"]');
-    for (var i = 0; i < bubbles.length; i++) {
-      if (bubbles[i].querySelector('.progress-intent')) {
-        bubbles[i].classList.add('collapsed');
-      }
-    }
   }
 
   function _createBubbleEl(turn, prevTurn, forceRender) {

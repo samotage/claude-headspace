@@ -377,7 +377,44 @@ class TaskLifecycleManager:
         # This handles IDLE (no active task), AWAITING_INPUT (agent asked a question),
         # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
-            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING):
+            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING, TaskState.COMMANDED):
+                # User sends follow-up before agent starts — append to existing task
+                if current_state == TaskState.COMMANDED and current_task:
+                    if text:
+                        existing = current_task.full_command or ""
+                        current_task.full_command = (existing + "\n" + text).strip() if existing else text
+
+                    turn = Turn(
+                        task_id=current_task.id,
+                        actor=actor,
+                        intent=TurnIntent.COMMAND,
+                        text=text or "",
+                        file_metadata=file_metadata,
+                    )
+                    self._session.add(turn)
+                    self._session.flush()
+
+                    self._pending_summarisations.append(
+                        SummarisationRequest(type="turn", turn=turn)
+                    )
+                    if text:
+                        self._pending_summarisations.append(
+                            SummarisationRequest(type="instruction", task=current_task, command_text=current_task.full_command)
+                        )
+
+                    logger.info(
+                        f"Attached follow-up USER COMMAND to commanded task id={current_task.id} "
+                        f"(agent id={agent.id})"
+                    )
+                    return TurnProcessingResult(
+                        success=True,
+                        task=current_task,
+                        intent=intent_result,
+                        event_written=self._event_writer is not None,
+                        new_task_created=False,
+                        pending_summarisations=list(self._pending_summarisations),
+                    )
+
                 # Race condition fix: if the task is PROCESSING but has no USER
                 # turns, it was created by post_tool_use:inferred before this
                 # user_prompt_submit arrived. Attach the user turn to the

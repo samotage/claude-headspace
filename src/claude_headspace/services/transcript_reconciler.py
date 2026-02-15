@@ -156,6 +156,73 @@ def _content_hash(actor, text):
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
+def reconcile_agent_session(agent):
+    """Full-session reconciliation — run at session end.
+
+    Reads ALL JSONL entries for the agent's transcript and creates
+    Turn records for any entries not already captured by hooks.
+
+    Args:
+        agent: Agent record with transcript_path
+
+    Returns:
+        dict with keys:
+            updated: list (always empty for full-session mode)
+            created: list of turn_id for newly created turns
+    """
+    from .transcript_reader import read_new_entries_from_position
+    from ..models.task import Task
+
+    if not agent.transcript_path:
+        return {"updated": [], "created": []}
+
+    # Read ALL entries from position 0
+    entries, _ = read_new_entries_from_position(agent.transcript_path, position=0)
+    if not entries:
+        return {"updated": [], "created": []}
+
+    # Get ALL turns for this agent's tasks (no time window)
+    task_ids = [t.id for t in Task.query.filter_by(agent_id=agent.id).all()]
+    existing_turns = Turn.query.filter(Turn.task_id.in_(task_ids)).all() if task_ids else []
+
+    # Build hash index from existing turns
+    existing_hashes = set()
+    for turn in existing_turns:
+        h = _content_hash(turn.actor.value, turn.text)
+        existing_hashes.add(h)
+        if turn.jsonl_entry_hash:
+            existing_hashes.add(turn.jsonl_entry_hash)
+
+    # Find the most recent task for creating new turns
+    latest_task = Task.query.filter_by(agent_id=agent.id).order_by(Task.id.desc()).first()
+    if not latest_task:
+        return {"updated": [], "created": []}
+
+    result = {"updated": [], "created": []}
+    for entry in entries:
+        if not entry.content or not entry.content.strip():
+            continue
+        actor = "user" if entry.role == "user" else "agent"
+        content_key = _content_hash(actor, entry.content.strip())
+        if content_key in existing_hashes:
+            continue
+        existing_hashes.add(content_key)
+        turn = Turn(
+            task_id=latest_task.id,
+            actor=TurnActor.USER if actor == "user" else TurnActor.AGENT,
+            intent=_infer_intent(actor, entry),
+            text=entry.content.strip(),
+            timestamp=entry.timestamp or datetime.now(timezone.utc),
+            timestamp_source="jsonl" if entry.timestamp else "server",
+            jsonl_entry_hash=content_key,
+        )
+        db.session.add(turn)
+        db.session.flush()
+        result["created"].append(turn.id)
+
+    return result
+
+
 def _infer_intent(actor, entry):
     """Infer turn intent from transcript entry context."""
     if actor == "user":

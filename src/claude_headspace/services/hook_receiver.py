@@ -569,8 +569,14 @@ def process_session_start(
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None  # Clear ended state for new session
-        if transcript_path and not agent.transcript_path:
+        # Always update transcript_path — context compression creates a new
+        # Claude session (and new JSONL file).  The old guard `not agent.transcript_path`
+        # caused the agent to read a stale file for the rest of its lifetime.
+        if transcript_path:
             agent.transcript_path = transcript_path
+        # Track the current Claude session ID so correlator/reconciler use the right file
+        if claude_session_id:
+            agent.claude_session_id = claude_session_id
 
         # Reset transcript position tracking for new session
         _transcript_positions.pop(agent.id, None)
@@ -621,9 +627,29 @@ def process_session_end(
             lifecycle.complete_task(current_task, trigger="hook:session_end")
         pending = lifecycle.get_pending_summarisations()
 
+        # Phase 2: Reconcile JSONL transcript to backfill missed turns
+        try:
+            from .transcript_reconciler import reconcile_agent_session, broadcast_reconciliation
+            recon_result = reconcile_agent_session(agent)
+            if recon_result["created"]:
+                logger.info(
+                    f"session_end reconciliation: agent_id={agent.id}, "
+                    f"created={len(recon_result['created'])} turns from JSONL"
+                )
+        except Exception as e:
+            recon_result = None
+            logger.warning(f"Session-end reconciliation failed: {e}")
+
         db.session.commit()
         broadcast_card_refresh(agent, "session_end")
         _execute_pending_summarisations(pending)
+
+        # Phase 3: Broadcast reconciliation results after commit
+        if recon_result and recon_result.get("created"):
+            try:
+                broadcast_reconciliation(agent, recon_result)
+            except Exception as e:
+                logger.warning(f"Session-end reconciliation broadcast failed: {e}")
 
         _broadcast_state_change(agent, "session_end", TaskState.COMPLETE.value, message="Session ended")
         try:
@@ -757,16 +783,9 @@ def process_user_prompt_submit(
 
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
-        # Execute summarisations BEFORE the first card refresh so that the
-        # instruction (and turn summary) are already persisted when the card
-        # JSON is built.  Previously the card refresh fired first, producing
-        # a card with instruction=None on line 03.
-        _execute_pending_summarisations(pending)
-        broadcast_card_refresh(agent, "user_prompt_submit")
 
-        new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
-        _broadcast_state_change(agent, "user_prompt_submit", new_state, message=prompt_text)
-
+        # Broadcast user turn for voice chat IMMEDIATELY after commit —
+        # before summarisation and card_refresh so the chat updates first.
         if prompt_text:
             try:
                 from .broadcaster import get_broadcaster
@@ -789,6 +808,16 @@ def process_user_prompt_submit(
                 })
             except Exception as e:
                 logger.warning(f"Turn created broadcast failed: {e}")
+
+        # Execute summarisations BEFORE the card refresh so that the
+        # instruction (and turn summary) are already persisted when the card
+        # JSON is built.  Previously the card refresh fired first, producing
+        # a card with instruction=None on line 03.
+        _execute_pending_summarisations(pending)
+        broadcast_card_refresh(agent, "user_prompt_submit")
+
+        new_state = result.task.state.value if result.task else TaskState.PROCESSING.value
+        _broadcast_state_change(agent, "user_prompt_submit", new_state, message=prompt_text)
 
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
@@ -977,21 +1006,11 @@ def process_stop(
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
-        broadcast_card_refresh(agent, "stop")
-        _execute_pending_summarisations(pending)
 
-        actual_state = current_task.state.value
-        _broadcast_state_change(agent, "stop", actual_state, message=f"\u2192 {actual_state.upper()}")
-
-        # Send completion notification AFTER summarisation so it contains
-        # the AI-generated summary instead of raw transcript text.
-        if current_task.state == TaskState.COMPLETE:
-            _send_completion_notification(agent, current_task)
-
-        # Broadcast agent turn for voice chat — all intent types, not just questions.
-        # Without this, completion/end_of_task turns are invisible via SSE and
-        # the voice chat only picks them up via transcript polling (which can miss
-        # them due to timing gaps with deferred stops and SSE reconnects).
+        # Broadcast agent turn for voice chat IMMEDIATELY after commit —
+        # before card_refresh and summarisation so the chat updates first.
+        # Summarisation involves blocking LLM calls that can delay turn
+        # visibility by several seconds.
         if current_task.turns:
             broadcast_turn = None
             for t in reversed(current_task.turns):
@@ -1014,6 +1033,17 @@ def process_stop(
                     tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
                     intent=broadcast_turn.intent.value,
                 )
+
+        broadcast_card_refresh(agent, "stop")
+        _execute_pending_summarisations(pending)
+
+        actual_state = current_task.state.value
+        _broadcast_state_change(agent, "stop", actual_state, message=f"\u2192 {actual_state.upper()}")
+
+        # Send completion notification AFTER summarisation so it contains
+        # the AI-generated summary instead of raw transcript text.
+        if current_task.state == TaskState.COMPLETE:
+            _send_completion_notification(agent, current_task)
 
         logger.info(
             f"hook_event: type=stop, agent_id={agent.id}, "

@@ -1251,8 +1251,6 @@ body.layout-split .agent-card.selected {
   animation: bubble-in 0.2s ease-out;
 }
 
-.chat-bubble.collapsed { display: none; }
-
 .chat-bubble.send-failed {
   opacity: 0.5;
   border: 1px dashed var(--error);
@@ -2755,12 +2753,12 @@ body.layout-split .hamburger-btn { display: none; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   transition: transform 0.3s ease-out;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .project-picker.open {
   transform: translateX(-50%) translateY(0);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .project-picker-header {
