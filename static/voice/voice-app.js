@@ -1250,6 +1250,19 @@ window.VoiceApp = (function () {
     for (var i = 0; i < turns.length; i++) {
       var turn = turns[i];
 
+      // Synthetic task boundary from backend (task with no turns)
+      if (turn.type === 'task_boundary') {
+        if (currentGroup) { result.push(currentGroup); currentGroup = null; }
+        result.push({
+          type: 'separator',
+          task_instruction: turn.task_instruction || 'New task',
+          task_id: turn.task_id,
+          has_turns: false
+        });
+        lastTaskId = turn.task_id;
+        continue;
+      }
+
       // Track oldest turn ID for pagination
       if (!_chatOldestTurnId || turn.id < _chatOldestTurnId) {
         _chatOldestTurnId = turn.id;
@@ -1318,7 +1331,11 @@ window.VoiceApp = (function () {
   function _createTaskSeparatorEl(item) {
     var sep = document.createElement('div');
     sep.className = 'chat-task-separator';
-    sep.innerHTML = '<span>' + _esc(item.task_instruction) + '</span>';
+    var label = _esc(item.task_instruction);
+    if (item.has_turns === false) {
+      label += ' <span class="text-zinc-500 text-xs">(no captured activity)</span>';
+    }
+    sep.innerHTML = '<span>' + label + '</span>';
     return sep;
   }
 

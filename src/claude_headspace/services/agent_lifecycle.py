@@ -227,6 +227,7 @@ def create_agent(project_id: int) -> CreateResult:
                 "-d",
                 "-s",
                 session_name,
+                "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
                 "-c",
                 str(project_path),
                 "--",

@@ -85,7 +85,7 @@ TMUX_PANE_ID="${TMUX_PANE:-}"
 # Extract tmux session name from environment (set by CLI launcher)
 TMUX_SESSION_NAME="${CLAUDE_HEADSPACE_TMUX_SESSION:-}"
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY}" >> "$DEBUG_LOG"
+echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY} tmux_pane=${TMUX_PANE_ID:-EMPTY} tmux_sess=${TMUX_SESSION_NAME:-EMPTY}" >> "$DEBUG_LOG"
 
 if [ -z "$SESSION_ID" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') EXIT no session_id for event=${EVENT_TYPE}" >> "$DEBUG_LOG"

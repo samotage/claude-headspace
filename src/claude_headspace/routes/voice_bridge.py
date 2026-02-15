@@ -947,6 +947,45 @@ def agent_transcript(agent_id: int):
             "task_state": task.state.value,
         })
 
+    # Inject synthetic task_boundary entries for tasks with no turns in this page.
+    # This ensures task dividers appear at their chronological position even when
+    # a task lost its turns (e.g. during server downtime).
+    if turn_list:
+        seen_task_ids = {t["task_id"] for t in turn_list}
+        min_ts = min(
+            (t["timestamp"] for t in turn_list if t["timestamp"]),
+            default=None,
+        )
+        max_ts = max(
+            (t["timestamp"] for t in turn_list if t["timestamp"]),
+            default=None,
+        )
+        if min_ts and max_ts:
+            min_dt = datetime.fromisoformat(min_ts)
+            max_dt = datetime.fromisoformat(max_ts)
+            empty_tasks = (
+                db.session.query(Task)
+                .filter(
+                    Task.agent_id == agent_id,
+                    Task.started_at >= min_dt,
+                    Task.started_at <= max_dt,
+                    Task.id.notin_(seen_task_ids),
+                )
+                .all()
+            )
+            for task in empty_tasks:
+                ts_iso = task.started_at.isoformat() if task.started_at else None
+                turn_list.append({
+                    "type": "task_boundary",
+                    "task_id": task.id,
+                    "task_instruction": task.instruction,
+                    "task_state": task.state.value,
+                    "timestamp": ts_iso,
+                    "has_turns": False,
+                })
+            # Re-sort by timestamp to place synthetic entries chronologically
+            turn_list.sort(key=lambda x: x.get("timestamp") or "")
+
     # Determine current agent state
     current_task = agent.get_current_task()
     agent_state = current_task.state.value if current_task else "idle"

@@ -957,6 +957,7 @@ class TestAgentTranscript:
         turn1.question_options = None
         turn1.question_source_type = None
         turn1.answered_by_turn_id = None
+        turn1.file_metadata = None
 
         turn2 = MagicMock()
         turn2.id = 2
@@ -970,15 +971,22 @@ class TestAgentTranscript:
         turn2.question_options = None
         turn2.question_source_type = None
         turn2.answered_by_turn_id = None
+        turn2.file_metadata = None
 
         # Mock the query chain: query(Turn, Task).join().filter().order_by().limit()
-        mock_query = MagicMock()
-        mock_db.session.query.return_value = mock_query
-        mock_query.join.return_value = mock_query
-        mock_query.filter.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.limit.return_value = mock_query
-        mock_query.all.return_value = [(turn2, mock_task2), (turn1, mock_task1)]
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(turn2, mock_task2), (turn1, mock_task1)]
+
+        # Empty-task query returns nothing
+        empty_task_query = MagicMock()
+        empty_task_query.filter.return_value = empty_task_query
+        empty_task_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_task_query]
 
         response = client.get("/api/voice/agents/1/transcript")
         assert response.status_code == 200
@@ -1024,6 +1032,7 @@ class TestAgentTranscript:
         mock_turn.question_options = None
         mock_turn.question_source_type = None
         mock_turn.answered_by_turn_id = None
+        mock_turn.file_metadata = None
 
         mock_task = MagicMock()
         mock_task.id = 10
@@ -1031,13 +1040,19 @@ class TestAgentTranscript:
         mock_task.state = TaskState.PROCESSING
 
         # Simulate limit=2 returning 3 results (2+1 extra = has_more)
-        mock_query = MagicMock()
-        mock_db.session.query.return_value = mock_query
-        mock_query.join.return_value = mock_query
-        mock_query.filter.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.limit.return_value = mock_query
-        mock_query.all.return_value = [(mock_turn, mock_task)] * 3
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(mock_turn, mock_task)] * 3
+
+        # Empty-task query returns nothing
+        empty_task_query = MagicMock()
+        empty_task_query.filter.return_value = empty_task_query
+        empty_task_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_task_query]
 
         response = client.get("/api/voice/agents/1/transcript?limit=2")
         assert response.status_code == 200
@@ -1138,3 +1153,89 @@ class TestAgentTranscript:
         client.get("/api/voice/agents/1/transcript?limit=500")
         # Should have been capped to 201 (200+1 for has_more check)
         mock_query.limit.assert_called_with(201)
+
+    def test_includes_task_boundaries_for_empty_tasks(self, client, mock_db, mock_agent):
+        """Synthetic task_boundary entries appear for tasks with no turns."""
+        mock_db.session.get.return_value = mock_agent
+
+        # Task 1 - has turns
+        mock_task1 = MagicMock()
+        mock_task1.id = 10
+        mock_task1.instruction = "First task"
+        mock_task1.state = TaskState.COMPLETE
+
+        # Task 2 - NO turns (lost during server downtime)
+        mock_task2 = MagicMock()
+        mock_task2.id = 20
+        mock_task2.instruction = "Empty task"
+        mock_task2.state = TaskState.COMPLETE
+        mock_task2.started_at = datetime(2026, 2, 10, 1, 3, 0, tzinfo=timezone.utc)
+
+        # Task 3 - has turns
+        mock_task3 = MagicMock()
+        mock_task3.id = 30
+        mock_task3.instruction = "Third task"
+        mock_task3.state = TaskState.PROCESSING
+
+        # Turn for task 1 (01:00)
+        turn1 = MagicMock()
+        turn1.id = 1
+        turn1.actor = TurnActor.USER
+        turn1.intent = TurnIntent.COMMAND
+        turn1.text = "do task 1"
+        turn1.summary = None
+        turn1.timestamp = datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc)
+        turn1.tool_input = None
+        turn1.question_text = None
+        turn1.question_options = None
+        turn1.question_source_type = None
+        turn1.answered_by_turn_id = None
+        turn1.file_metadata = None
+
+        # Turn for task 3 (01:10)
+        turn2 = MagicMock()
+        turn2.id = 2
+        turn2.actor = TurnActor.USER
+        turn2.intent = TurnIntent.COMMAND
+        turn2.text = "do task 3"
+        turn2.summary = None
+        turn2.timestamp = datetime(2026, 2, 10, 1, 10, 0, tzinfo=timezone.utc)
+        turn2.tool_input = None
+        turn2.question_text = None
+        turn2.question_options = None
+        turn2.question_source_type = None
+        turn2.answered_by_turn_id = None
+        turn2.file_metadata = None
+
+        # First db.session.query(Turn, Task) — returns turns
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(turn2, mock_task3), (turn1, mock_task1)]
+
+        # Second db.session.query(Task) — returns the empty task
+        task_query = MagicMock()
+        task_query.filter.return_value = task_query
+        task_query.all.return_value = [mock_task2]
+
+        mock_db.session.query.side_effect = [turn_query, task_query]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # 2 real turns + 1 synthetic task_boundary
+        assert len(data["turns"]) == 3
+
+        # Find the synthetic boundary
+        boundaries = [t for t in data["turns"] if t.get("type") == "task_boundary"]
+        assert len(boundaries) == 1
+        assert boundaries[0]["task_id"] == 20
+        assert boundaries[0]["task_instruction"] == "Empty task"
+        assert boundaries[0]["has_turns"] is False
+
+        # Verify chronological order: turn1 (01:00), boundary (01:03), turn2 (01:10)
+        timestamps = [t["timestamp"] for t in data["turns"]]
+        assert timestamps == sorted(timestamps)

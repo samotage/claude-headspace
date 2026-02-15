@@ -30,8 +30,8 @@
 
 ## 6. Attach — API Endpoint
 
-- [ ] 6.1 Add `POST /api/agents/<id>/attach` route in `routes/focus.py` that validates agent, checks tmux_session exists, calls `attach_tmux_session()`, returns result
-- [ ] 6.2 Add attach event logging following the existing `_log_focus_event` pattern
+- [x] 6.1 Add `POST /api/agents/<id>/attach` route in `routes/focus.py` that validates agent, checks tmux_session exists, calls `attach_tmux_session()`, returns result
+- [x] 6.2 Add attach event logging following the existing `_log_focus_event` pattern
 
 ## 7. Dashboard UI — Attach Button
 

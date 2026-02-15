@@ -549,6 +549,9 @@ class TestWrapInTmux:
         assert "-c" in argv
         path_idx = argv.index("-c")
         assert argv[path_idx + 1] == "/path/to/my-project"
+        assert "-e" in argv
+        env_idx = argv.index("-e")
+        assert argv[env_idx + 1] == "CLAUDE_HEADSPACE_TMUX_SESSION=hs-my-project-abcdef12"
         assert "--" in argv
 
     def test_tmux_not_installed_returns_fallback(self, capsys):
@@ -847,9 +850,9 @@ class TestMain:
         mock_register.assert_called_once()
         call_kwargs = mock_register.call_args
         assert call_kwargs[1]["tmux_pane_id"] == "%5"
-        # Verify output mentions Input Bridge available with pane ID
+        # Verify output mentions Voice Bridge available with pane ID
         captured = capsys.readouterr()
-        assert "Input Bridge: enabled (tmux pane %5)" in captured.out
+        assert "Voice Bridge: enabled (tmux pane %5)" in captured.out
 
     def test_start_command_with_bridge_outside_tmux(self):
         """Test start command with --bridge outside tmux calls _wrap_in_tmux."""
@@ -972,7 +975,7 @@ class TestMain:
         mock_tmux.assert_not_called()
         # Should show disabled message
         captured = capsys.readouterr()
-        assert "Input Bridge: disabled (--no-bridge)" in captured.out
+        assert "Voice Bridge: disabled (--no-bridge)" in captured.out
 
     def test_bridge_flag_is_noop_same_as_default(self):
         """Test that --bridge behaves same as default (both enable bridge)."""
