@@ -459,7 +459,7 @@ def _wrap_in_tmux(args: argparse.Namespace) -> int:
             "╔══════════════════════════════════════════════════════════════╗\n"
             "║  WARNING: tmux is not installed                             ║\n"
             "║                                                             ║\n"
-            "║  The Input Bridge (respond from dashboard) is disabled.     ║\n"
+            "║  The Voice Bridge (respond from dashboard) is disabled.     ║\n"
             "║  Install tmux for the full experience:                      ║\n"
             "║                                                             ║\n"
             "║    brew install tmux                                        ║\n"
@@ -552,24 +552,24 @@ def cmd_start(args: argparse.Namespace) -> int:
     # Get iTerm pane ID
     iterm_pane_id = get_iterm_pane_id()
 
-    # Detect tmux pane for Input Bridge
+    # Detect tmux pane for Voice Bridge
     tmux_pane_id = None
     if bridge_enabled:
         tmux_pane_id = get_tmux_pane_id()
         if tmux_pane_id:
             tmux_session_name = os.environ.get("CLAUDE_HEADSPACE_TMUX_SESSION", "")
             if tmux_session_name:
-                print(f"Input Bridge: enabled (tmux pane {tmux_pane_id}, session {tmux_session_name})")
+                print(f"Voice Bridge: enabled (tmux pane {tmux_pane_id}, session {tmux_session_name})")
             else:
-                print(f"Input Bridge: enabled (tmux pane {tmux_pane_id})")
+                print(f"Voice Bridge: enabled (tmux pane {tmux_pane_id})")
         else:
             print(
-                "Input Bridge: unavailable (not in tmux session)",
+                "Voice Bridge: unavailable (not in tmux session)",
                 file=sys.stderr,
             )
     else:
         if no_bridge:
-            print("Input Bridge: disabled (--no-bridge)")
+            print("Voice Bridge: disabled (--no-bridge)")
 
     # Generate session UUID
     session_uuid = uuid.uuid4()
@@ -617,7 +617,7 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help=(
-            "(default) Enable tmux-based Input Bridge. This is now the "
+            "(default) Enable tmux-based Voice Bridge. This is now the "
             "default and this flag is kept for backwards compatibility."
         ),
     )
