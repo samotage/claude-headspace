@@ -16,6 +16,7 @@ from werkzeug.serving import make_server
 
 from .helpers.dashboard_assertions import DashboardAssertions
 from .helpers.hook_simulator import HookSimulator
+from .helpers.voice_assertions import VoiceAssertions
 
 
 # ---------------------------------------------------------------------------
@@ -261,3 +262,18 @@ def dashboard_page(page, e2e_server):
     page.goto(e2e_server)
     page.wait_for_load_state("domcontentloaded")
     return page
+
+
+# ---------------------------------------------------------------------------
+# Function-scoped: voice app page with credentials
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def voice_page(page, e2e_server):
+    """Navigate to voice app with pre-injected credentials."""
+    va = VoiceAssertions(
+        page,
+        Path(__file__).parent / "screenshots" / "voice",
+    )
+    va.navigate_to_voice(e2e_server)
+    return va
