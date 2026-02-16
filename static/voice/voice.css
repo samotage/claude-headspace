@@ -104,16 +104,34 @@ body {
 }
 
 /* --- Layout --- */
-.app-header {
+.sidebar-header {
+  flex-shrink: 0;
+  min-height: 48px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.main-header {
+  flex-shrink: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
   z-index: 10;
+}
+
+.main-header .chat-focus-link {
+  flex: 1;
+  min-width: 0;
+}
+.main-header .header-actions {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .app-title {
@@ -215,8 +233,8 @@ body {
 /* --- Split-panel layout --- */
 #app-layout {
   display: none; /* hidden until init sets layout mode */
-  height: calc(100vh - 52px);
-  height: calc(100dvh - 52px); /* iOS Safari: tracks actual viewport minus toolbar */
+  height: 100vh;
+  height: 100dvh; /* iOS Safari: tracks actual viewport */
 }
 
 #sidebar {
@@ -226,7 +244,7 @@ body {
   border-right: 1px solid var(--border);
   background: var(--surface);
   position: relative;
-  padding: 16px;
+  padding: 0 16px 16px 16px;
 }
 
 #agent-list {
@@ -321,10 +339,14 @@ body.layout-split .main-panel-empty.show-empty {
 .screen {
   display: none;
   padding: 16px;
-  min-height: calc(100vh - 52px);
-  min-height: calc(100dvh - 52px);
+  min-height: calc(100vh - 48px);
+  min-height: calc(100dvh - 48px);
 }
 .screen.active { display: block; }
+#main-panel .screen.active {
+  flex: 1;
+  min-height: 0;
+}
 
 /* --- Setup screen --- */
 #screen-setup {
@@ -1161,18 +1183,6 @@ body.layout-split .agent-card.selected {
 }
 #screen-chat.active {
   display: flex;
-}
-
-.chat-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
 }
 
 .chat-back-btn {
@@ -2690,7 +2700,7 @@ body.layout-split .hamburger-btn { display: none; }
   display: none;
   flex-direction: column;
   position: fixed;
-  top: 52px;
+  top: 48px;
   right: 12px;
   background: var(--surface-raised);
   border: 1px solid var(--border-emphasis);

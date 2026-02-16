@@ -190,8 +190,19 @@ window.VoiceApp = (function () {
     if (setupEl2) setupEl2.classList.remove('active');
 
     _applyScreenVisibility(name);
+    _updateMainHeaderVisibility(name);
     _updateConnectionIndicator();
     _highlightSelectedAgent();
+  }
+
+  function _updateMainHeaderVisibility(name) {
+    var chatScreen = document.getElementById('screen-chat');
+    var emptyEl = document.getElementById('main-panel-empty');
+    var focusLink = document.getElementById('chat-focus-link');
+    var statePill = document.getElementById('chat-state-pill');
+    var showingChat = chatScreen && chatScreen.classList.contains('active');
+    if (focusLink) focusLink.style.display = showingChat ? '' : 'none';
+    if (statePill) statePill.style.display = showingChat ? '' : 'none';
   }
 
   function _applyScreenVisibility(name) {
@@ -2803,9 +2814,8 @@ window.VoiceApp = (function () {
           if (!layout) return;
           // visualViewport.height is the *actually visible* area,
           // excluding Safari toolbar and on-screen keyboard.
-          var headerH = 52; // .app-header height
           var vpH = window.visualViewport.height;
-          layout.style.height = (vpH - headerH) + 'px';
+          layout.style.height = vpH + 'px';
         }, 50);
       });
     }

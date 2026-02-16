@@ -31,22 +31,6 @@
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="app-header">
-    <a href="/voice" class="app-title" id="app-title-link"><pre class="app-ascii" aria-label="CLAUDE"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
-██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
-██║     ██║     ███████║██║   ██║██║  ██║█████╗
-██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
-╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
- ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="app-brand-cursor">&gt;_</span><span class="app-brand-suffix">chat</span></a>
-    <div class="header-actions">
-      <span id="connection-status" class="connection-dot disconnected"></span>
-      <button id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-  </header>
-
   <!-- Hamburger dropdown (stacked/narrow mode) -->
   <div id="hamburger-backdrop" class="hamburger-backdrop"></div>
   <div id="hamburger-dropdown" class="hamburger-dropdown">
@@ -89,6 +73,14 @@
   <div id="app-layout">
     <!-- Left: sidebar (agent list) -->
     <aside id="sidebar">
+      <div class="sidebar-header">
+        <a href="/voice" class="app-title" id="app-title-link"><pre class="app-ascii" aria-label="CLAUDE"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+██║     ██║     ███████║██║   ██║██║  ██║█████╗
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="app-brand-cursor">&gt;_</span><span class="app-brand-suffix">chat</span></a>
+      </div>
       <div id="agent-list"></div>
       <div id="agent-status-message" class="agent-status-message"></div>
       <!-- FAB (split/wide mode) -->
@@ -120,6 +112,24 @@
 
     <!-- Right: main panel -->
     <main id="main-panel">
+      <header id="main-header" class="main-header">
+        <button class="chat-back-btn" aria-label="Back">&larr;</button>
+        <div id="chat-focus-link" class="chat-focus-link" role="button" tabindex="0" title="Attach to tmux session">
+          <span id="chat-hero" class="chat-hero-badge"></span>
+          <div class="chat-header-info">
+            <span id="chat-agent-name" class="chat-agent-name"></span>
+            <span id="chat-project-name" class="chat-project-name"></span>
+            <span id="chat-task-instruction" class="chat-task-instruction"></span>
+          </div>
+        </div>
+        <span id="chat-state-pill" class="chat-state-pill"></span>
+        <div class="header-actions">
+          <span id="connection-status" class="connection-dot disconnected"></span>
+          <button id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </header>
       <!-- Screen: Listening / Command -->
       <div id="screen-listening" class="screen">
         <div class="screen-header">
@@ -152,18 +162,6 @@
 
       <!-- Screen: Chat Transcript -->
       <div id="screen-chat" class="screen">
-        <div class="chat-header">
-          <button class="chat-back-btn" aria-label="Back">&larr;</button>
-          <div id="chat-focus-link" class="chat-focus-link" role="button" tabindex="0" title="Focus iTerm window">
-            <span id="chat-hero" class="chat-hero-badge"></span>
-            <div class="chat-header-info">
-              <span id="chat-agent-name" class="chat-agent-name"></span>
-              <span id="chat-project-name" class="chat-project-name"></span>
-              <span id="chat-task-instruction" class="chat-task-instruction"></span>
-            </div>
-          </div>
-          <span id="chat-state-pill" class="chat-state-pill"></span>
-        </div>
         <div id="attention-banners" class="attention-banners"></div>
         <!-- Drop zone overlay -->
         <div id="chat-drop-zone" class="chat-drop-zone" style="display:none">
