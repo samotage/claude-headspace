@@ -144,8 +144,19 @@ window.VoiceApp = (function () {
 
   // --- Layout mode detection ---
 
+  function _isPortrait() {
+    return window.matchMedia('(orientation: portrait)').matches;
+  }
+
+  function _shouldUseStackedLayout() {
+    var w = window.innerWidth;
+    if (w < 768) return true;   // Phone: always stacked
+    if (_isPortrait() && w < 1024) return true;  // Tablet portrait: stacked
+    return false;  // Desktop or tablet landscape: split
+  }
+
   function _detectLayoutMode() {
-    var newMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
+    var newMode = _shouldUseStackedLayout() ? 'stacked' : 'split';
     if (newMode !== _layoutMode) {
       _layoutMode = newMode;
       _closeFab();
@@ -157,7 +168,7 @@ window.VoiceApp = (function () {
   }
 
   function _initLayoutMode() {
-    _layoutMode = window.innerWidth >= SPLIT_BREAKPOINT ? 'split' : 'stacked';
+    _layoutMode = _shouldUseStackedLayout() ? 'stacked' : 'split';
     document.body.classList.add('layout-' + _layoutMode);
   }
 
@@ -2794,9 +2805,13 @@ window.VoiceApp = (function () {
     // Initialize layout mode
     _initLayoutMode();
 
-    // Listen for resize to switch layout modes
+    // Listen for resize and orientation to switch layout modes
     var _resizeTimer = null;
     window.addEventListener('resize', function () {
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(_detectLayoutMode, 100);
+    });
+    window.addEventListener('orientationchange', function () {
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(_detectLayoutMode, 100);
     });

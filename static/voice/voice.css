@@ -271,7 +271,7 @@ body {
   justify-content: center;
 }
 
-/* --- Stacked mode (mobile < 768px) --- */
+/* --- Stacked mode (phone < 768px, or tablet portrait < 1024px) --- */
 body.layout-stacked #app-layout {
   display: block;
   position: relative;
@@ -298,7 +298,7 @@ body.layout-stacked #main-panel.show-main {
   display: flex;
 }
 
-/* --- Split mode (>= 768px) --- */
+/* --- Split mode (landscape >= 768px, or width >= 1024px) --- */
 body.layout-split #app-layout {
   display: flex;
 }
@@ -824,6 +824,9 @@ body.layout-split .agent-card.selected {
   line-height: 1.4;
   margin-bottom: 4px;
   font-style: italic;
+  max-height: 8.5em;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .needs-input {
@@ -847,6 +850,16 @@ body.layout-split .agent-card.selected {
 .agent-ctx-inline {
   font-size: 12px;
   font-family: ui-monospace, monospace;
+}
+
+/* Larger agent-ago text on iPads and iPhones for easier reading */
+@media (max-width: 1024px) {
+  .agent-ago {
+    font-size: 16px;
+  }
+  .agent-ago .agent-ctx-inline {
+    font-size: 16px;
+  }
 }
 .agent-ctx-inline.ctx-normal { color: var(--text-muted); }
 .agent-ctx-inline.ctx-warning { color: var(--warning); }
