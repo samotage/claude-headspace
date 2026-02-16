@@ -416,6 +416,7 @@ def _broadcast_state_change(agent: Agent, response_text: str, turn_id: int | Non
             "actor": "user",
             "intent": "answer",
             "task_id": _task.id if _task else None,
+            "task_instruction": _task.instruction if _task else None,
             "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })

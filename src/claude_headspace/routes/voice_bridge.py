@@ -397,6 +397,7 @@ def voice_command():
                         "actor": "user",
                         "intent": turn_result.intent.intent.value if turn_result.intent else "command",
                         "task_id": turn_result.task.id,
+                        "task_instruction": turn_result.task.instruction,
                         "turn_id": user_turn_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
@@ -504,6 +505,7 @@ def voice_command():
                 "actor": "user",
                 "intent": "answer",
                 "task_id": current_task.id,
+                "task_instruction": current_task.instruction,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })
@@ -709,6 +711,7 @@ def upload_file(agent_id: int):
                 "actor": "user",
                 "intent": "answer",
                 "task_id": current_task.id,
+                "task_instruction": current_task.instruction,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })

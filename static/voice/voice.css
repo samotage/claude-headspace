@@ -1815,23 +1815,31 @@ body.layout-split .agent-card.selected {
 .chat-task-separator {
   display: flex;
   align-items: center;
-  margin: 16px 0;
+  margin: 24px 0 16px;
   gap: 12px;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 .chat-task-separator::before,
 .chat-task-separator::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border);
+  background: var(--border-emphasis);
 }
 .chat-task-separator span {
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.chat-task-separator .separator-no-activity {
+  text-transform: none;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 /* --- Load More Indicator --- */

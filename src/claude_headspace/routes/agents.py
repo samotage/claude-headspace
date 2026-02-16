@@ -1,15 +1,19 @@
 """Agent lifecycle API endpoints for creating, shutting down, and monitoring agents."""
 
 import logging
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
+from ..database import db
+from ..models.agent import Agent
 from ..services.agent_lifecycle import (
     create_agent,
     get_agent_info,
     get_context_usage,
     shutdown_agent,
 )
+from ..services.card_state import broadcast_card_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +92,9 @@ def agent_info_endpoint(agent_id: int):
 def agent_context_endpoint(agent_id: int):
     """Get context window usage for an agent (on-demand).
 
+    Persists the result to the Agent record and broadcasts a card refresh
+    so the persistent footer display updates immediately.
+
     Returns:
         200: Context data (available or unavailable with reason)
         404: Agent not found
@@ -99,6 +106,15 @@ def agent_context_endpoint(agent_id: int):
 
     if not result.available:
         return jsonify({"available": False, "reason": result.reason}), 200
+
+    # Persist to Agent record so the card footer shows the latest data
+    agent = db.session.get(Agent, agent_id)
+    if agent:
+        agent.context_percent_used = result.percent_used
+        agent.context_remaining_tokens = result.remaining_tokens
+        agent.context_updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+        broadcast_card_refresh(agent, "context_fetched")
 
     return jsonify({
         "available": True,

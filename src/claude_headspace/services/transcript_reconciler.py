@@ -131,6 +131,9 @@ def broadcast_reconciliation(agent, reconciliation_result):
         try:
             turn = db.session.get(Turn, turn_id)
             if turn:
+                task_instr = None
+                if turn.task:
+                    task_instr = turn.task.instruction
                 broadcaster.broadcast("turn_created", {
                     "agent_id": agent.id,
                     "project_id": agent.project_id,
@@ -138,6 +141,7 @@ def broadcast_reconciliation(agent, reconciliation_result):
                     "actor": turn.actor.value,
                     "intent": turn.intent.value,
                     "task_id": turn.task_id,
+                    "task_instruction": task_instr,
                     "turn_id": turn.id,
                     "timestamp": turn.timestamp.isoformat(),
                 })

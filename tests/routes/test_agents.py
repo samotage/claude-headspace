@@ -76,8 +76,14 @@ class TestShutdownAgentEndpoint:
 class TestAgentContextEndpoint:
     """Tests for GET /api/agents/<id>/context."""
 
+    @patch("claude_headspace.routes.agents.broadcast_card_refresh")
+    @patch("claude_headspace.routes.agents.db")
     @patch("claude_headspace.routes.agents.get_context_usage")
-    def test_success(self, mock_ctx, client):
+    def test_success(self, mock_ctx, mock_db, mock_broadcast, client):
+        from unittest.mock import MagicMock
+
+        mock_agent = MagicMock()
+        mock_db.session.get.return_value = mock_agent
         mock_ctx.return_value = ContextResult(
             available=True,
             percent_used=45,
@@ -89,6 +95,11 @@ class TestAgentContextEndpoint:
         assert response.json["available"] is True
         assert response.json["percent_used"] == 45
         assert response.json["remaining_tokens"] == "110k"
+        # Verify agent record was updated
+        assert mock_agent.context_percent_used == 45
+        assert mock_agent.context_remaining_tokens == "110k"
+        mock_db.session.commit.assert_called_once()
+        mock_broadcast.assert_called_once_with(mock_agent, "context_fetched")
 
     @patch("claude_headspace.routes.agents.get_context_usage")
     def test_not_found(self, mock_ctx, client):

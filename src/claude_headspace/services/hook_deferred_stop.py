@@ -76,6 +76,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "actor": "agent",
             "intent": intent,
             "task_id": task.id if task else None,
+            "task_instruction": task.instruction if task else None,
             "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

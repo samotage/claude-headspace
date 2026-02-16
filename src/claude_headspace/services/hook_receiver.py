@@ -151,6 +151,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "actor": "agent",
             "intent": intent,
             "task_id": task.id if task else None,
+            "task_instruction": task.instruction if task else None,
             "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -273,6 +274,7 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
                 "actor": "agent",
                 "intent": "progress",
                 "task_id": current_task.id,
+                "task_instruction": current_task.instruction,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })
@@ -810,6 +812,7 @@ def process_user_prompt_submit(
                     "actor": "user",
                     "intent": result.intent.intent.value if result.intent else "command",
                     "task_id": result.task.id if result.task else None,
+                    "task_instruction": result.task.instruction if result.task else None,
                     "turn_id": user_turn_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })

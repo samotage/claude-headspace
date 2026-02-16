@@ -31,6 +31,7 @@ window.VoiceApp = (function () {
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
+  var _chatLastTaskId = null;  // Last rendered task ID — for inserting separators on task transitions
   // _chatTranscriptSeq kept for initial load guard only (stale navigation detection)
   var _chatSyncTimer = null;   // Periodic transcript sync timer (safety net)
   var _responseCatchUpTimers = []; // Aggressive post-send fetch timers
@@ -637,7 +638,6 @@ window.VoiceApp = (function () {
         + '<div class="agent-body">'
         + instructionHtml
         + summaryHtml
-        + '<div class="agent-ctx-display" id="ctx-display-' + a.agent_id + '"></div>'
         + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + (ctxHtml ? ' ' + ctxHtml : '') + '</div>'
         + '</div>'
         + '</div>';
@@ -768,25 +768,13 @@ window.VoiceApp = (function () {
   }
 
   function _checkAgentContext(agentId) {
-    var display = document.getElementById('ctx-display-' + agentId);
-    if (display) {
-      display.textContent = 'Checking...';
-      display.className = 'agent-ctx-display loading';
-    }
+    // API persists context to agent record and broadcasts card_refresh via SSE
     VoiceAPI.getAgentContext(agentId).then(function (data) {
-      if (!display) return;
-      if (data.available) {
-        display.textContent = data.percent_used + '% used \u00B7 ' + data.remaining_tokens + ' remaining';
-        display.className = 'agent-ctx-display available';
-      } else {
-        display.textContent = 'Context unavailable';
-        display.className = 'agent-ctx-display unavailable';
+      if (!data.available) {
+        console.warn('Context unavailable for agent ' + agentId + ': ' + (data.reason || 'unknown'));
       }
     }).catch(function () {
-      if (display) {
-        display.textContent = 'Error checking context';
-        display.className = 'agent-ctx-display error';
-      }
+      console.error('Error checking context for agent ' + agentId);
     });
   }
 
@@ -1031,6 +1019,7 @@ window.VoiceApp = (function () {
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
+    _chatLastTaskId = null;
     _fetchInFlight = false; // Reset in-flight guard for new agent
     if (_fetchDebounceTimer) { clearTimeout(_fetchDebounceTimer); _fetchDebounceTimer = null; }
     _cancelResponseCatchUp();
@@ -1234,8 +1223,10 @@ window.VoiceApp = (function () {
       var prev = i > 0 ? grouped[i - 1] : null;
       if (item.type === 'separator') {
         _renderTaskSeparator(item);
+        _chatLastTaskId = item.task_id;
       } else {
         _renderChatBubble(item, prev);
+        if (item.task_id) _chatLastTaskId = item.task_id;
       }
     }
   }
@@ -1358,12 +1349,34 @@ window.VoiceApp = (function () {
   function _createTaskSeparatorEl(item) {
     var sep = document.createElement('div');
     sep.className = 'chat-task-separator';
+    if (item.task_id) sep.setAttribute('data-task-id', item.task_id);
     var label = _esc(item.task_instruction);
     if (item.has_turns === false) {
-      label += ' <span class="text-zinc-500 text-xs">(no captured activity)</span>';
+      label += ' <span class="separator-no-activity">(no captured activity)</span>';
     }
     sep.innerHTML = '<span>' + label + '</span>';
     return sep;
+  }
+
+  /**
+   * Check if a turn crosses a task boundary and insert a separator if needed.
+   * Updates _chatLastTaskId. Call this BEFORE rendering the turn bubble.
+   */
+  function _maybeInsertTaskSeparator(turn) {
+    if (!turn.task_id) return;
+    if (_chatLastTaskId && turn.task_id !== _chatLastTaskId) {
+      // Check if a separator for this task already exists in DOM
+      var messagesEl = document.getElementById('chat-messages');
+      if (messagesEl && !messagesEl.querySelector('.chat-task-separator[data-task-id="' + turn.task_id + '"]')) {
+        var sepEl = _createTaskSeparatorEl({
+          task_instruction: turn.task_instruction || 'New task',
+          task_id: turn.task_id
+        });
+        // Append at end — separators appear in real-time as new tasks arrive
+        messagesEl.appendChild(sepEl);
+      }
+    }
+    _chatLastTaskId = turn.task_id;
   }
 
   /**
@@ -2421,7 +2434,8 @@ window.VoiceApp = (function () {
       tool_input: data.tool_input || null,
       question_text: data.text,
       question_options: null,
-      task_id: data.task_id || null
+      task_id: data.task_id || null,
+      task_instruction: data.task_instruction || null
     };
 
     // Extract question_options from tool_input for immediate rendering
@@ -2442,6 +2456,9 @@ window.VoiceApp = (function () {
     if (document.querySelector('[data-turn-id="' + turn.id + '"]')) {
       if (!isTerminalIntent) return;
     }
+
+    // Insert task separator if this turn starts a new task
+    _maybeInsertTaskSeparator(turn);
 
     _renderChatBubble(turn, null, isTerminalIntent);
     _scrollChatToBottomIfNear();
@@ -2691,6 +2708,16 @@ window.VoiceApp = (function () {
 
       for (var ti = 0; ti < turns.length; ti++) {
         var t = turns[ti];
+
+        // Handle synthetic task_boundary entries from backend
+        if (t.type === 'task_boundary') {
+          if (messagesContainer && !messagesContainer.querySelector('.chat-task-separator[data-task-id="' + t.task_id + '"]')) {
+            messagesContainer.appendChild(_createTaskSeparatorEl(t));
+          }
+          _chatLastTaskId = t.task_id;
+          continue;
+        }
+
         // Track max turn ID for gap recovery
         var numId = typeof t.id === 'number' ? t.id : parseInt(t.id, 10);
         if (!isNaN(numId) && numId > _lastSeenTurnId) _lastSeenTurnId = numId;
@@ -2707,7 +2734,11 @@ window.VoiceApp = (function () {
             existingBubble.setAttribute('data-timestamp', t.timestamp);
             _reorderBubble(existingBubble);
           }
+          // Still track task ID for boundary detection
+          if (t.task_id) _chatLastTaskId = t.task_id;
         } else {
+          // Insert task separator if this turn starts a new task
+          _maybeInsertTaskSeparator(t);
           // Not in DOM — render at correct chronological position
           var prev = ti > 0 ? turns[ti - 1] : null;
           var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_task');
@@ -3089,18 +3120,6 @@ window.VoiceApp = (function () {
           if (chatInput) chatInput.style.height = 'auto';
         }
       });
-    }
-    // Enter-to-submit on desktop; iOS keeps button-only behaviour
-    if (chatInput) {
-      var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-      if (!isIOS) {
-        chatInput.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            chatForm.requestSubmit();
-          }
-        });
-      }
     }
     if (chatInput) {
       // Auto-resize textarea as content grows

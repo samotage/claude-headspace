@@ -593,11 +593,15 @@ class TestBroadcastReconciliationCreated:
 
         ts = datetime(2026, 2, 15, 10, 0, 0, tzinfo=timezone.utc)
 
+        mock_task = MagicMock()
+        mock_task.instruction = "Do something"
+
         mock_turn = MagicMock()
         mock_turn.text = "Hello world"
         mock_turn.actor.value = "user"
         mock_turn.intent.value = "command"
         mock_turn.task_id = 5
+        mock_turn.task = mock_task
         mock_turn.id = 99
         mock_turn.timestamp.isoformat.return_value = ts.isoformat()
 
@@ -619,6 +623,7 @@ class TestBroadcastReconciliationCreated:
                 "actor": "user",
                 "intent": "command",
                 "task_id": 5,
+                "task_instruction": "Do something",
                 "turn_id": 99,
                 "timestamp": ts.isoformat(),
             },

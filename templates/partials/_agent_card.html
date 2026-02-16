@@ -90,8 +90,6 @@
     </div>
     {% endif %}
   </div>
-  <!-- Context usage display (populated on-demand via JS) -->
-  <div class="agent-ctx-display px-3 py-1 text-xs hidden" data-agent-id="{{ agent.id }}"></div>
   <!-- 05: Respond widget (AWAITING_INPUT only, hidden until commander availability confirmed) -->
   {% if agent.state_name == 'AWAITING_INPUT' %}
   {% set safety = agent.question_options.safety if agent.question_options and agent.question_options.safety is defined else '' %}

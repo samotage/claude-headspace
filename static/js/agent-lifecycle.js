@@ -63,34 +63,23 @@
     }
 
     /**
-     * Fetch context usage for an agent and display it.
+     * Fetch context usage for an agent.
+     * The API persists the result and broadcasts a card_refresh via SSE,
+     * so the persistent footer display updates automatically.
      * @param {number} agentId - The agent ID
      */
     function checkContext(agentId) {
-        var display = document.querySelector('.agent-ctx-display[data-agent-id="' + agentId + '"]');
-        if (!display) return;
-
-        display.classList.remove('hidden');
-        display.textContent = 'Checking...';
-        display.className = 'agent-ctx-display px-3 py-1 text-xs text-muted';
-
         fetch(API_BASE + '/' + agentId + '/context')
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                if (data.available) {
-                    var pct = data.percent_used;
-                    var colorClass = pct >= 80 ? 'text-red' : pct >= 60 ? 'text-amber' : 'text-green';
-                    display.innerHTML = '<span class="' + colorClass + ' font-medium">' + pct + '% used</span>' +
-                        ' <span class="text-muted">\u00B7</span> ' +
-                        '<span class="text-secondary">' + data.remaining_tokens + ' remaining</span>';
-                } else {
-                    display.textContent = 'Context unavailable';
-                    display.className = 'agent-ctx-display px-3 py-1 text-xs text-muted italic';
+                if (!data.available && global.Toast) {
+                    global.Toast.error('Context unavailable', data.reason || 'Unknown');
                 }
             })
             .catch(function() {
-                display.textContent = 'Error checking context';
-                display.className = 'agent-ctx-display px-3 py-1 text-xs text-red italic';
+                if (global.Toast) {
+                    global.Toast.error('Context check failed', 'Could not reach server');
+                }
             });
     }
 
