@@ -797,7 +797,7 @@ body.layout-split .agent-card.selected {
 }
 
 .agent-summary {
-  font-size: calc(var(--chat-font-size, 15px) - 2px);
+  font-size: var(--chat-font-size, 15px);
   color: var(--text-dim);
   line-height: 1.4;
   margin-bottom: 4px;
@@ -811,12 +811,19 @@ body.layout-split .agent-card.selected {
 }
 
 .agent-ago {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.agent-ago .agent-ctx-inline {
+  flex-shrink: 0;
 }
 
 .agent-ctx-inline {
-  font-size: 10px;
+  font-size: 12px;
   font-family: ui-monospace, monospace;
 }
 .agent-ctx-inline.ctx-normal { color: var(--text-muted); }
@@ -1181,7 +1188,7 @@ body.layout-split .agent-card.selected {
 
 .chat-focus-link {
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   gap: 12px;
   cursor: pointer;
   text-decoration: none;
@@ -1198,6 +1205,12 @@ body.layout-split .agent-card.selected {
   display: flex;
   align-items: baseline;
   flex-shrink: 0;
+}
+.chat-hero-badge .agent-hero {
+  font-size: 1.6rem;
+}
+.chat-hero-badge .agent-hero-trail {
+  font-size: 0.9rem;
 }
 
 .chat-header-info {
