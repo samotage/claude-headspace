@@ -534,8 +534,8 @@ body.layout-split .main-panel-empty.show-empty {
 }
 
 /* --- Agent list --- */
-a.agent-card {
-  display: block;
+.agent-card-link {
+  display: contents;
   color: inherit;
   text-decoration: none;
 }

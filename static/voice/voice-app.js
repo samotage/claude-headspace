@@ -623,24 +623,28 @@ window.VoiceApp = (function () {
           + '</div>';
       }
 
-      return '<a class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '" href="/voice?agent_id=' + a.agent_id + '">'
+      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
         + '<div class="agent-header">'
+        + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
         + '<div class="agent-hero-id">'
         + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
         + '<span class="agent-hero-trail">' + _esc(heroTrail) + '</span>'
         + '</div>'
+        + '</a>'
         + '<div class="agent-header-actions">'
         + '<span class="agent-state ' + stateClass + '">' + _esc(stateLabel) + '</span>'
         + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
         + kebabMenuHtml
         + '</div>'
         + '</div>'
+        + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
         + '<div class="agent-body">'
         + instructionHtml
         + summaryHtml
         + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + (ctxHtml ? ' ' + ctxHtml : '') + '</div>'
         + '</div>'
-        + '</a>';
+        + '</a>'
+        + '</div>';
     }
 
     var html = '';
@@ -687,6 +691,14 @@ window.VoiceApp = (function () {
     var cards = list.querySelectorAll('.agent-card');
     for (var j = 0; j < cards.length; j++) {
       cards[j].addEventListener('click', _onAgentCardClick);
+    }
+    // Prevent default on card links for regular clicks (SPA navigation),
+    // but allow right-click / cmd+click to open in new tab natively
+    var cardLinks = list.querySelectorAll('.agent-card-link');
+    for (var cl = 0; cl < cardLinks.length; cl++) {
+      cardLinks[cl].addEventListener('click', function (e) {
+        e.preventDefault();
+      });
     }
 
     // Bind kebab menu buttons
@@ -756,7 +768,6 @@ window.VoiceApp = (function () {
   }
 
   function _onAgentCardClick(e) {
-    e.preventDefault();
     var card = e.currentTarget;
     var id = parseInt(card.getAttribute('data-agent-id'), 10);
     _selectAgent(id);
