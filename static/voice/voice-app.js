@@ -185,7 +185,7 @@ window.VoiceApp = (function () {
   function showScreen(name) {
     _currentScreen = name;
     // Stop chat sync timer when leaving chat screen
-    if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); }
+    if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); document.title = 'Claude Chat'; }
 
     if (name === 'setup') {
       // Setup screen is outside app-layout, hide app-layout
@@ -603,19 +603,26 @@ window.VoiceApp = (function () {
       var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
-      // Kebab menu: ended agents only get "Fetch context"
+      // Kebab menu: ended agents only get "Fetch context" + "Open in tab"
+      var openTabItem = '<button class="kebab-menu-item agent-open-tab-action" data-agent-id="' + a.agent_id + '">'
+        + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h4"/></svg>'
+        + '<span>Open in tab</span></button>';
       var kebabMenuHtml;
       if (isEnded) {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + openTabItem
           + '</div>';
       } else {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + openTabItem
           + '<div class="kebab-divider"></div>'
           + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
@@ -722,6 +729,15 @@ window.VoiceApp = (function () {
         var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
         _closeAllKebabMenus();
         _shutdownAgent(agentId);
+      });
+    }
+    var openTabActions = list.querySelectorAll('.agent-open-tab-action');
+    for (var ot = 0; ot < openTabActions.length; ot++) {
+      openTabActions[ot].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
+        _closeAllKebabMenus();
+        window.open('/voice?agent_id=' + agentId, '_blank');
       });
     }
 
@@ -1061,6 +1077,11 @@ window.VoiceApp = (function () {
       }
       if (nameEl) nameEl.textContent = data.project || 'Agent';
       if (projEl) projEl.textContent = '';
+
+      // Update browser tab title with agent identity
+      var titleHero = (data.hero_chars || '').trim();
+      var titleProject = (data.project || 'Agent').trim();
+      document.title = titleHero + ' ' + titleProject + ' \u2014 Claude Chat';
 
       _chatAgentState = data.agent_state;
       _chatAgentStateLabel = null; // Reset; will be set by SSE with richer label if available
