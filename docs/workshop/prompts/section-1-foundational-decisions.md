@@ -63,7 +63,7 @@ Config.yaml would only store `data.base_path: data/` (or similar) — telling th
 
 - **1.2 (Config Location):** RESOLVED. Convention-based `data/` directory at project root. Persona/pool definitions in DB. Skill assets at `data/personas/{role}-{name}-{id}/`. No config.yaml key — the path is a project convention, not a configurable setting.
 - **1.3 (Organisation Model):** RESOLVED. Yes — minimal Organisation table in v1. Exact schema deferred to ERD design session.
-- **1.4 (Agent Mode Field):** Persona has a `role_type`. The question is whether Agent also needs a `mode` field or whether mode derives from persona's role_type.
+- **1.4 (Agent Mode Field):** RESOLVED. No mode field on Agent. Mode is a prompt-level concern expressed through the persona's skill.md content.
 
 ## Your Task
 

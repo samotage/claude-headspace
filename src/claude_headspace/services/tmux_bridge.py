@@ -780,6 +780,9 @@ def parse_permission_options(pane_text: str) -> list[dict[str, str]] | None:
       ❯ 2. Yes, and don't ask again
         3. No
 
+    Extracts the LAST group of sequential numbered options starting from 1,
+    so earlier numbered lists in the terminal output don't interfere.
+
     Args:
         pane_text: Raw captured pane text (may contain ANSI escape codes)
 
@@ -792,19 +795,40 @@ def parse_permission_options(pane_text: str) -> list[dict[str, str]] | None:
     # Strip ANSI escape codes
     clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", pane_text)
 
-    # Match numbered option lines (with optional arrow indicator prefix)
-    pattern = r"^\s*(?:[❯›>]\s*)?(\d+)\.\s+(.+?)\s*$"
+    # Match numbered option lines (with optional arrow indicator prefix).
+    # Space after period is optional — tmux wrapping can compress "2. Yes" to "2.Yes"
+    # when the cursor arrow (❯) on option 1 shifts alignment.
+    pattern = r"^\s*(?:[❯›>]\s*)?(\d+)\.\s*(.+?)\s*$"
     matches = re.findall(pattern, clean, re.MULTILINE)
 
     if len(matches) < 2:
         return None
 
-    # Validate sequential numbering starting from 1
-    for i, (num_str, _label) in enumerate(matches):
-        if int(num_str) != i + 1:
-            return None
+    # Find the LAST group of sequential options starting from 1.
+    # Earlier numbered lists (agent output, etc.) should be ignored.
+    best_group = None
+    current_group = []
+    for num_str, label in matches:
+        num = int(num_str)
+        if num == 1:
+            # Start a new group
+            current_group = [(num, label)]
+        elif current_group and num == current_group[-1][0] + 1:
+            # Continue the current group
+            current_group.append((num, label))
+        else:
+            # Break in sequence — save current group if valid and reset
+            if len(current_group) >= 2:
+                best_group = current_group
+            current_group = []
+    # Check final group
+    if len(current_group) >= 2:
+        best_group = current_group
 
-    return [{"label": label} for _num, label in matches]
+    if not best_group:
+        return None
+
+    return [{"label": label} for _num, label in best_group]
 
 
 def parse_permission_context(pane_text: str) -> dict | None:
@@ -839,30 +863,32 @@ def parse_permission_context(pane_text: str) -> dict | None:
     if not options:
         return None
 
-    # Find the "Do you want to proceed?" line (or similar prompt)
+    # Find the LAST "Do you want to proceed?" line (or similar prompt)
     prompt_pattern = r"^\s*(Do you want to (?:proceed|allow|continue)\??|Allow this .*\??)\s*$"
-    prompt_match = re.search(prompt_pattern, clean, re.MULTILINE | re.IGNORECASE)
+    prompt_matches = list(re.finditer(prompt_pattern, clean, re.MULTILINE | re.IGNORECASE))
+    prompt_match = prompt_matches[-1] if prompt_matches else None
 
     # Find tool type header — a line like "Bash command", "Read file", etc.
-    # The header is typically a short line (< 40 chars) before the command block
+    # Use the LAST match to handle panes with multiple tool outputs.
     tool_type = None
     command_text = None
     description = None
 
-    # Look for known tool header patterns
+    # Look for known tool header patterns — find the LAST one
     header_pattern = r"^\s*((?:Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|NotebookEdit)\s+\w*)\s*$"
-    header_match = re.search(header_pattern, clean, re.MULTILINE | re.IGNORECASE)
+    header_matches = list(re.finditer(header_pattern, clean, re.MULTILINE | re.IGNORECASE))
+    header_match = header_matches[-1] if header_matches else None
 
     if header_match:
         tool_type = header_match.group(1).strip()
         header_end = header_match.end()
 
         # The command block is indented text between the header and the prompt
-        if prompt_match:
+        if prompt_match and prompt_match.start() > header_end:
             block_text = clean[header_end:prompt_match.start()]
         else:
-            # No prompt found — take text up to the first option line
-            first_option_match = re.search(r"^\s*(?:[❯›>]\s*)?\d+\.\s+", clean[header_end:], re.MULTILINE)
+            # No prompt found after header — take text up to the first option line after header
+            first_option_match = re.search(r"^\s*(?:[❯›>]\s*)?\d+\.\s*", clean[header_end:], re.MULTILINE)
             if first_option_match:
                 block_text = clean[header_end:header_end + first_option_match.start()]
             else:
@@ -910,7 +936,7 @@ def _looks_like_description(line: str) -> bool:
 
 def capture_permission_options(
     pane_id: str,
-    max_attempts: int = 3,
+    max_attempts: int = 10,
     retry_delay_ms: int = 200,
     capture_lines: int = 30,
 ) -> list[dict[str, str]] | None:
@@ -933,7 +959,7 @@ def capture_permission_options(
     timeout_ms = max_attempts * retry_delay_ms + retry_delay_ms
     wait = wait_for_pattern(
         pane_id,
-        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s+",
+        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s*\S",
         timeout_ms=timeout_ms,
         poll_interval_ms=retry_delay_ms,
         capture_lines=capture_lines,
@@ -955,7 +981,7 @@ def capture_permission_options(
 
 def capture_permission_context(
     pane_id: str,
-    max_attempts: int = 3,
+    max_attempts: int = 10,
     retry_delay_ms: int = 200,
     capture_lines: int = 30,
 ) -> dict | None:
@@ -981,7 +1007,7 @@ def capture_permission_context(
     timeout_ms = max_attempts * retry_delay_ms + retry_delay_ms
     wait = wait_for_pattern(
         pane_id,
-        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s+",
+        pattern=r"^\s*(?:[❯›>]\s*)?\d+\.\s*\S",
         timeout_ms=timeout_ms,
         poll_interval_ms=retry_delay_ms,
         capture_lines=capture_lines,

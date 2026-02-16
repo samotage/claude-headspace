@@ -639,19 +639,28 @@ window.VoiceChatRenderer = (function () {
   // --- Transcript rendering ---
 
   function renderTranscriptTurns(data) {
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
     var turns = data.turns || [];
     var grouped = groupTurns(turns);
+    // Use a document fragment with sequential appends (NOT insertBubbleOrdered)
+    // because groupTurns already returns items in correct chronological order.
+    // Using insertBubbleOrdered here would push separators to the end since
+    // it only considers .chat-bubble[data-timestamp] elements for positioning.
+    var frag = document.createDocumentFragment();
     for (var i = 0; i < grouped.length; i++) {
       var item = grouped[i];
       var prev = i > 0 ? grouped[i - 1] : null;
       if (item.type === 'separator') {
-        renderTaskSeparator(item);
+        frag.appendChild(createTaskSeparatorEl(item));
         VoiceState.chatLastTaskId = item.task_id;
       } else {
-        renderChatBubble(item, prev);
+        var bubbleEl = createBubbleEl(item, prev);
+        if (bubbleEl) frag.appendChild(bubbleEl);
         if (item.task_id) VoiceState.chatLastTaskId = item.task_id;
       }
     }
+    messagesEl.appendChild(frag);
   }
 
   function prependTranscriptTurns(turns) {
@@ -726,6 +735,44 @@ window.VoiceChatRenderer = (function () {
     }
   }
 
+  // --- Inject options into existing bubble (recapture fallback) ---
+
+  function injectOptionsIntoBubble(turnId, options, safetyClass) {
+    var bubble = document.querySelector('[data-turn-id="' + turnId + '"]');
+    if (!bubble) return false;
+    // Don't inject if options already present
+    if (bubble.querySelector('.bubble-options') || bubble.querySelector('.bubble-multi-question')) return false;
+
+    var html = '<div class="bubble-options">';
+    for (var i = 0; i < options.length; i++) {
+      var opt = options[i];
+      html += '<button class="bubble-option-btn' + (safetyClass || '') + '" data-opt-idx="' + i + '" data-label="' + esc(opt.label) + '">'
+        + esc(opt.label)
+        + (opt.description ? '<div class="bubble-option-desc">' + esc(opt.description) + '</div>' : '')
+        + '</button>';
+    }
+    html += '</div>';
+
+    // Insert before the closing div of bubble-text's parent
+    var bubbleText = bubble.querySelector('.bubble-text');
+    if (bubbleText) {
+      bubbleText.insertAdjacentHTML('afterend', html);
+    } else {
+      bubble.insertAdjacentHTML('beforeend', html);
+    }
+
+    // Bind click handlers
+    var optBtns = bubble.querySelectorAll('.bubble-option-btn');
+    for (var j = 0; j < optBtns.length; j++) {
+      optBtns[j].addEventListener('click', function () {
+        var idx = parseInt(this.getAttribute('data-opt-idx'), 10);
+        var label = this.getAttribute('data-label');
+        if (_onOptionSelect) _onOptionSelect(idx, label, bubble);
+      });
+    }
+    return true;
+  }
+
   // --- Public API ---
 
   return {
@@ -749,6 +796,7 @@ window.VoiceChatRenderer = (function () {
     bindMultiQuestionBubble: bindMultiQuestionBubble,
     renderTranscriptTurns: renderTranscriptTurns,
     prependTranscriptTurns: prependTranscriptTurns,
-    renderAttentionBanners: renderAttentionBanners
+    renderAttentionBanners: renderAttentionBanners,
+    injectOptionsIntoBubble: injectOptionsIntoBubble
   };
 })();

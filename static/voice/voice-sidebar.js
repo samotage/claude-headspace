@@ -293,9 +293,10 @@ window.VoiceSidebar = (function () {
       var group = projectGroups[projName];
       var endedGroup = endedByProject[projName] || [];
 
-      html += '<div class="project-group">'
+      var activeCount = group.length;
+      html += '<div class="project-group" data-project="' + VoiceChatRenderer.esc(projName) + '">'
         + '<div class="project-group-header">'
-        + '<span class="project-group-name">' + VoiceChatRenderer.esc(projName) + '</span>'
+        + '<span class="project-group-name">' + VoiceChatRenderer.esc(projName) + ' (' + activeCount + ')</span>'
         + '<button class="project-kebab-btn" data-project="' + VoiceChatRenderer.esc(projName) + '" title="Project actions">&#8942;</button>'
         + '<div class="project-kebab-menu" data-project="' + VoiceChatRenderer.esc(projName) + '">'
         + '<button class="kebab-menu-item project-add-agent" data-project="' + VoiceChatRenderer.esc(projName) + '">'
@@ -497,8 +498,8 @@ window.VoiceSidebar = (function () {
     var groups = list.querySelectorAll('.project-group');
     var targetGroup = null;
     for (var i = 0; i < groups.length; i++) {
-      var nameEl = groups[i].querySelector('.project-group-name');
-      if (nameEl && nameEl.textContent.trim().toLowerCase() === projectName.toLowerCase()) {
+      var proj = groups[i].getAttribute('data-project');
+      if (proj && proj.toLowerCase() === projectName.toLowerCase()) {
         targetGroup = groups[i];
         break;
       }
@@ -508,8 +509,9 @@ window.VoiceSidebar = (function () {
       targetGroup = document.createElement('div');
       targetGroup.className = 'project-group';
       targetGroup.id = 'pending-project-group';
+      targetGroup.setAttribute('data-project', projectName);
       targetGroup.innerHTML = '<div class="project-group-header">'
-        + '<span class="project-group-name">' + VoiceChatRenderer.esc(projectName) + '</span>'
+        + '<span class="project-group-name">' + VoiceChatRenderer.esc(projectName) + ' (0)</span>'
         + '</div>'
         + '<div class="project-group-cards"></div>';
       list.prepend(targetGroup);

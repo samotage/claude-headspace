@@ -93,6 +93,22 @@ window.VoiceSSEHandler = (function () {
         VoiceChatRenderer.reorderBubble(bubble);
       }
     }
+
+    if (data.update_type === 'options_recaptured' && data.turn_id && data.question_options) {
+      var safetyClass = data.safety ? ' safety-' + data.safety : '';
+      var injected = VoiceChatRenderer.injectOptionsIntoBubble(data.turn_id, data.question_options, safetyClass);
+      if (injected) {
+        // Update bubble text if a better question_text was captured
+        if (data.question_text) {
+          var bub = document.querySelector('[data-turn-id="' + data.turn_id + '"]');
+          if (bub) {
+            var textEl = bub.querySelector('.bubble-text');
+            if (textEl) textEl.innerHTML = VoiceChatRenderer.renderMd(data.question_text);
+          }
+        }
+        _scrollIfNear();
+      }
+    }
   }
 
   function handleTurnCreated(data) {
@@ -164,11 +180,20 @@ window.VoiceSSEHandler = (function () {
       if (!isTerminalIntent) return;
     }
 
-    // Insert task separator if this turn starts a new task
+    // Insert task separator + bubble via appendChild (not insertBubbleOrdered)
+    // so the separator stays immediately before its bubble.
+    // SSE turns are always the newest, so append order is correct.
     VoiceChatRenderer.maybeInsertTaskSeparator(turn);
-
-    VoiceChatRenderer.renderChatBubble(turn, null, isTerminalIntent);
+    var messagesEl = document.getElementById('chat-messages');
+    var bubbleEl = VoiceChatRenderer.createBubbleEl(turn, null, isTerminalIntent);
+    if (bubbleEl && messagesEl) messagesEl.appendChild(bubbleEl);
     _scrollIfNear();
+
+    // If this is a question with no options, trigger recapture after a delay
+    // to give the terminal time to render the options
+    if (turn.intent === 'question' && !turn.question_options) {
+      _scheduleRecapture(parseInt(data.agent_id, 10), turn.id);
+    }
   }
 
   function handleAgentUpdate(data) {
@@ -403,12 +428,14 @@ window.VoiceSSEHandler = (function () {
           // Still track task ID for boundary detection
           if (t.task_id) VoiceState.chatLastTaskId = t.task_id;
         } else {
-          // Insert task separator if this turn starts a new task
+          // Insert task separator + bubble via appendChild (not insertBubbleOrdered)
+          // so the separator stays immediately before its bubble.
+          // Sync turns arrive in chronological order; new turns are appended.
           VoiceChatRenderer.maybeInsertTaskSeparator(t);
-          // Not in DOM -- render at correct chronological position
           var prev = ti > 0 ? turns[ti - 1] : null;
           var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_task');
-          VoiceChatRenderer.renderChatBubble(t, prev, forceTerminal);
+          var bubbleEl = VoiceChatRenderer.createBubbleEl(t, prev, forceTerminal);
+          if (bubbleEl && messagesContainer) messagesContainer.appendChild(bubbleEl);
         }
       }
 
@@ -424,12 +451,78 @@ window.VoiceSSEHandler = (function () {
           if (_onUpdateEndedUI) _onUpdateEndedUI();
         }
       }
+      // Check if the last turn is a question with no options — trigger recapture
+      if (turns.length > 0) {
+        var lastTurn = turns[turns.length - 1];
+        if (lastTurn.intent === 'question' && !lastTurn.question_options && !lastTurn.answered_by_turn_id) {
+          // Also check tool_input fallback
+          var hasFallbackOpts = lastTurn.tool_input && lastTurn.tool_input.questions;
+          if (!hasFallbackOpts) {
+            _scheduleRecapture(parseInt(agentId, 10), lastTurn.id);
+          }
+        }
+      }
+
       // Only auto-scroll if user is near the bottom -- don't yank them
       // away from reading older messages (mobile reading experience)
       _scrollIfNear();
     }).catch(function () {
       VoiceState.fetchInFlight = false;
     });
+  }
+
+  // --- Permission options recapture ---
+
+  var _recaptureTimer = null;
+  var _recaptureAttempts = 0;
+  var _MAX_RECAPTURE_ATTEMPTS = 5;
+
+  function _scheduleRecapture(agentId, turnId) {
+    if (_recaptureTimer) clearTimeout(_recaptureTimer);
+    _recaptureAttempts = 0;
+    _attemptRecapture(agentId, turnId);
+  }
+
+  function _attemptRecapture(agentId, turnId) {
+    _recaptureAttempts++;
+    // Increasing delay: 1.5s, 3s, 4.5s, 6s, 7.5s
+    var delayMs = _recaptureAttempts * 1500;
+    _recaptureTimer = setTimeout(function () {
+      // Don't recapture if user navigated away
+      if (parseInt(VoiceState.targetAgentId, 10) !== agentId) return;
+      // Don't recapture if bubble already has options
+      var bubble = document.querySelector('[data-turn-id="' + turnId + '"]');
+      if (bubble && (bubble.querySelector('.bubble-options') || bubble.querySelector('.bubble-multi-question'))) return;
+
+      fetch('/api/voice/agents/' + agentId + '/recapture-permission', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.recaptured && data.question_options) {
+            var safetyClass = (data.tool_input && data.tool_input.safety) ? ' safety-' + data.tool_input.safety : '';
+            VoiceChatRenderer.injectOptionsIntoBubble(data.turn_id, data.question_options, safetyClass);
+            if (data.question_text) {
+              var bub = document.querySelector('[data-turn-id="' + data.turn_id + '"]');
+              if (bub) {
+                var textEl = bub.querySelector('.bubble-text');
+                if (textEl) textEl.innerHTML = VoiceChatRenderer.renderMd(data.question_text);
+              }
+            }
+            _scrollIfNear();
+          } else if (data.already_present && data.question_options) {
+            // Options were already in DB, inject them
+            VoiceChatRenderer.injectOptionsIntoBubble(data.turn_id, data.question_options, '');
+            _scrollIfNear();
+          } else if (_recaptureAttempts < _MAX_RECAPTURE_ATTEMPTS) {
+            // Retry with increasing delay
+            _attemptRecapture(agentId, turnId);
+          }
+        })
+        .catch(function () {
+          if (_recaptureAttempts < _MAX_RECAPTURE_ATTEMPTS) {
+            _attemptRecapture(agentId, turnId);
+          }
+        });
+    }, delayMs);
   }
 
   // --- Optimistic bubble cleanup ---

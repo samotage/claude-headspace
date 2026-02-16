@@ -298,6 +298,21 @@ body.layout-stacked #main-panel.show-main {
   display: flex;
 }
 
+/* Compact header on stacked (phone) mode */
+body.layout-stacked .main-header {
+  gap: 8px;
+  padding: 8px 12px;
+}
+body.layout-stacked .chat-focus-link {
+  gap: 8px;
+}
+body.layout-stacked .chat-hero-badge .agent-hero {
+  font-size: 1.2rem;
+}
+body.layout-stacked .chat-hero-badge .agent-hero-trail {
+  font-size: 0.7rem;
+}
+
 /* --- Split mode (landscape >= 768px, or width >= 1024px) --- */
 body.layout-split #app-layout {
   display: flex;
@@ -1261,6 +1276,14 @@ body.layout-split .agent-card.selected {
   color: var(--text-dim);
 }
 
+.chat-task-instruction {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Chat messages area */
 .chat-messages {
   flex: 1;
@@ -1820,24 +1843,26 @@ body.layout-split .agent-card.selected {
 .chat-task-separator {
   display: flex;
   align-items: center;
-  margin: 24px 0 16px;
-  gap: 12px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  margin: 40px 0 24px;
+  gap: 16px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .chat-task-separator::before,
 .chat-task-separator::after {
   content: '';
   flex: 1;
-  height: 1px;
-  background: var(--border-emphasis);
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.6;
+  border-radius: 1px;
 }
 .chat-task-separator span {
   white-space: nowrap;
-  max-width: 280px;
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
 }

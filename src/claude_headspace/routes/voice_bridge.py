@@ -1162,3 +1162,145 @@ def voice_agent_context(agent_id: int):
         "raw": result.raw,
         "latency_ms": latency_ms,
     }), 200
+
+
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/recapture-permission", methods=["POST"])
+def recapture_permission_options(agent_id: int):
+    """Re-capture permission options from tmux when initial capture timed out.
+
+    Called by the voice chat frontend when it detects a question bubble
+    with no options for a permission_request turn. Retries the tmux pane
+    capture with a generous timeout, updates the turn in the DB, and
+    broadcasts a turn_updated SSE event so all connected clients get
+    the options.
+    """
+    start_time = time.time()
+
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found"}), 404
+
+    if not agent.tmux_pane_id:
+        return jsonify({"error": "Agent has no tmux pane"}), 400
+
+    # Find the latest QUESTION turn with missing options
+    current_task = (
+        db.session.query(Task)
+        .filter(Task.agent_id == agent_id)
+        .order_by(Task.id.desc())
+        .first()
+    )
+    if not current_task:
+        return jsonify({"error": "No active task"}), 404
+
+    question_turn = None
+    for t in reversed(current_task.turns):
+        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+            question_turn = t
+            break
+
+    if not question_turn:
+        return jsonify({"error": "No question turn found"}), 404
+
+    # If options already exist, return them immediately
+    existing_options = question_turn.question_options
+    if not existing_options and question_turn.tool_input:
+        ti = question_turn.tool_input
+        questions = ti.get("questions", [])
+        if questions and isinstance(questions, list):
+            opts = questions[0].get("options", []) if questions else []
+            if opts:
+                existing_options = [
+                    {"label": o.get("label", ""), "description": o.get("description", "")}
+                    for o in opts if isinstance(o, dict)
+                ]
+
+    if existing_options:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return jsonify({
+            "recaptured": False,
+            "already_present": True,
+            "turn_id": question_turn.id,
+            "question_options": existing_options,
+            "latency_ms": latency_ms,
+        }), 200
+
+    # Attempt to capture from tmux with generous timeout
+    from ..services.hook_extractors import synthesize_permission_options
+    structured_options = synthesize_permission_options(
+        agent,
+        tool_name=None,  # Unknown at this point
+        tool_input=None,
+    )
+
+    if not structured_options:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return jsonify({
+            "recaptured": False,
+            "already_present": False,
+            "error": "Could not capture options from terminal",
+            "turn_id": question_turn.id,
+            "latency_ms": latency_ms,
+        }), 200
+
+    # Extract options from the synthesized structure
+    synth_questions = structured_options.get("questions", [])
+    q_options = None
+    if synth_questions:
+        opts = synth_questions[0].get("options", [])
+        if opts:
+            q_options = [
+                {"label": o.get("label", ""), "description": o.get("description", "")}
+                for o in opts if isinstance(o, dict)
+            ]
+
+    if not q_options:
+        latency_ms = int((time.time() - start_time) * 1000)
+        return jsonify({
+            "recaptured": False,
+            "already_present": False,
+            "error": "Captured context but no options found",
+            "turn_id": question_turn.id,
+            "latency_ms": latency_ms,
+        }), 200
+
+    # Update question text if we got a better one
+    if synth_questions and synth_questions[0].get("question"):
+        question_turn.question_text = synth_questions[0]["question"]
+        question_turn.text = synth_questions[0]["question"]
+
+    # Update the turn
+    question_turn.question_options = q_options
+    structured_options["status"] = "pending"
+    question_turn.tool_input = structured_options
+    db.session.commit()
+
+    # Broadcast turn_updated so all clients get the options
+    try:
+        from ..services.broadcaster import get_broadcaster
+        get_broadcaster().broadcast("turn_updated", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "turn_id": question_turn.id,
+            "update_type": "options_recaptured",
+            "question_options": q_options,
+            "question_text": question_turn.question_text,
+            "tool_input": structured_options,
+            "safety": structured_options.get("safety", ""),
+        })
+    except Exception as e:
+        logger.warning(f"Failed to broadcast recaptured options: {e}")
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    logger.info(
+        f"Recaptured permission options for agent {agent_id}, "
+        f"turn {question_turn.id}: {len(q_options)} options ({latency_ms}ms)"
+    )
+    return jsonify({
+        "recaptured": True,
+        "turn_id": question_turn.id,
+        "question_options": q_options,
+        "question_text": question_turn.question_text,
+        "tool_input": structured_options,
+        "latency_ms": latency_ms,
+    }), 200

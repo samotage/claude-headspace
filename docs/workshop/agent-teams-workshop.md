@@ -97,7 +97,7 @@ These shape everything downstream. Resolve first.
 ---
 
 ### 1.4 Agent Mode Field
-- [ ] **Decision: How do we represent workshop vs execution mode?**
+- [x] **Decision: How do we represent workshop vs execution mode?**
 
 **Context:** The functional outline (§9.1) says Agent gains a `mode` field: `workshop` | `execution`. Workshop mode (Robbo) is "collaborative, iterative, document-producing." Execution mode is "task-scoped, code-producing."
 
@@ -112,7 +112,7 @@ These shape everything downstream. Resolve first.
 - If mode always derives from persona, the field is redundant
 - If a persona can switch modes, the field has value
 
-**Resolution:** _pending_
+**Resolution:** **No mode field on Agent. Mode is a prompt-level concern, not a data model concern.** An agent's behaviour (workshop vs execution) is determined by the persona's `skill.md` content — the system prompt instructions that shape how the agent operates. The database models identity and relationships; behaviour comes from the prompt. A database enum cannot meaningfully constrain or describe what an agent actually does (execute code, read/write files, produce documents, etc.).
 
 ---
 
@@ -376,6 +376,7 @@ Track decisions and rationale as we resolve them.
 | 2026-02-16 | 1.1 Persona Storage Model | DB + Filesystem hybrid: Persona table in PostgreSQL (identity, metadata, relational queries) + markdown files on disk (skill.md, experience.md as system prompt assets). Config.yaml excluded — app config only. | Codebase is fully relational (FK integrity required). Markdown files are accessible to system agents, support version control, and map to real-world modelling (people have skills and accumulate experience). |
 | 2026-02-16 | 1.2 Config Location | Convention-based `data/` directory at project root. Persona/pool definitions in DB. Skill assets at `data/personas/{role}-{name}-{id}/`. No config.yaml involvement — path is a project convention, not a setting. | Domain data belongs in the project tree (not hidden dot-paths), organised by subsystem. Slug format `{role}-{name}-{id}` gives natural filesystem sorting by role then name. Config.yaml stays pure app config. |
 | 2026-02-16 | 1.3 Organisation Model | Yes — minimal Organisation table in v1. Exact schema deferred to ERD design session. | One small migration now avoids a disruptive one later. The platform vision makes orgs first-class; having the table from the start means Persona/Agent can reference it cleanly when relationships are defined. |
+| 2026-02-16 | 1.4 Agent Mode Field | No mode field on Agent. Mode is a prompt-level concern expressed through persona skill.md content, not a database column. | A DB enum cannot meaningfully describe or constrain agent behaviour. Agents can execute code, read/write files, produce documents — their mode is shaped by system prompt instructions, not schema. |
 
 ---
 
