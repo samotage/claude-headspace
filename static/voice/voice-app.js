@@ -2,22 +2,9 @@
 window.VoiceApp = (function () {
   'use strict';
 
-  // --- Settings defaults ---
-  var DEFAULTS = {
-    serverUrl: '',
-    token: '',
-    silenceTimeout: 800,
-    doneWord: 'send',
-    autoTarget: false,
-    ttsEnabled: true,
-    cuesEnabled: true,
-    verbosity: 'normal',
-    fontSize: 15,
-    theme: 'dark',
-    showEndedAgents: false
-  };
+  // Settings defaults now in VoiceState.DEFAULTS
 
-  var _settings = {};
+  // _settings now managed by VoiceState.settings via VoiceSettings module
   var _agents = [];
   var _endedAgents = [];
   var _targetAgentId = null;
@@ -63,71 +50,7 @@ window.VoiceApp = (function () {
 
   // File upload constants now in VoiceState
 
-  // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
-
-  function loadSettings() {
-    var s = {};
-    try {
-      var stored = localStorage.getItem('voice_settings');
-      if (stored) s = JSON.parse(stored);
-    } catch (e) { /* ignore */ }
-
-    _settings = {
-      serverUrl: s.serverUrl || DEFAULTS.serverUrl,
-      token: s.token || DEFAULTS.token,
-      silenceTimeout: s.silenceTimeout || DEFAULTS.silenceTimeout,
-      doneWord: s.doneWord || DEFAULTS.doneWord,
-      autoTarget: s.autoTarget !== undefined ? s.autoTarget : DEFAULTS.autoTarget,
-      ttsEnabled: s.ttsEnabled !== undefined ? s.ttsEnabled : DEFAULTS.ttsEnabled,
-      cuesEnabled: s.cuesEnabled !== undefined ? s.cuesEnabled : DEFAULTS.cuesEnabled,
-      verbosity: s.verbosity || DEFAULTS.verbosity,
-      fontSize: s.fontSize || DEFAULTS.fontSize,
-      theme: s.theme || DEFAULTS.theme,
-      showEndedAgents: s.showEndedAgents !== undefined ? s.showEndedAgents : DEFAULTS.showEndedAgents
-    };
-
-    // Apply to modules
-    VoiceInput.setSilenceTimeout(_settings.silenceTimeout);
-    VoiceInput.setDoneWords([_settings.doneWord]);
-    VoiceOutput.setTTSEnabled(_settings.ttsEnabled);
-    VoiceOutput.setCuesEnabled(_settings.cuesEnabled);
-    _applyFontSize();
-    _applyTheme();
-  }
-
-  function saveSettings() {
-    try {
-      localStorage.setItem('voice_settings', JSON.stringify(_settings));
-    } catch (e) { /* ignore */ }
-    // Apply immediately
-    VoiceInput.setSilenceTimeout(_settings.silenceTimeout);
-    VoiceInput.setDoneWords([_settings.doneWord]);
-    VoiceOutput.setTTSEnabled(_settings.ttsEnabled);
-    VoiceOutput.setCuesEnabled(_settings.cuesEnabled);
-  }
-
-  function getSetting(key) { return _settings[key]; }
-
-  function setSetting(key, value) {
-    _settings[key] = value;
-    saveSettings();
-  }
-
-  function _applyFontSize() {
-    document.documentElement.style.setProperty('--chat-font-size', _settings.fontSize + 'px');
-  }
-
-  function _applyTheme() {
-    var theme = _settings.theme || 'dark';
-    if (theme === 'dark') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-    var colors = { dark: '#0d1117', warm: '#f5f0e8', cool: '#fbfaf8' };
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta && colors[theme]) meta.setAttribute('content', colors[theme]);
-  }
+  // --- Settings (delegated to VoiceSettings module) ---
 
   // --- Layout mode detection ---
 
@@ -254,22 +177,7 @@ window.VoiceApp = (function () {
 
   function getCurrentScreen() { return _currentScreen; }
 
-  // --- Settings slide-out panel ---
-
-  function _openSettings() {
-    _populateSettingsForm();
-    var overlay = document.getElementById('settings-overlay');
-    var panel = document.getElementById('settings-panel');
-    if (overlay) overlay.classList.add('open');
-    if (panel) panel.classList.add('open');
-  }
-
-  function _closeSettings() {
-    var overlay = document.getElementById('settings-overlay');
-    var panel = document.getElementById('settings-panel');
-    if (overlay) overlay.classList.remove('open');
-    if (panel) panel.classList.remove('open');
-  }
+  // --- Settings panel (delegated to VoiceSettings module) ---
 
   // --- FAB (split mode) ---
 
@@ -331,7 +239,7 @@ window.VoiceApp = (function () {
     if (action === 'new-chat') {
       _openProjectPicker();
     } else if (action === 'settings') {
-      _openSettings();
+      VoiceSettings.openSettings();
     } else if (action === 'voice') {
       _triggerVoiceFromMenu();
     } else if (action === 'close') {
@@ -347,7 +255,7 @@ window.VoiceApp = (function () {
       _stopListening();
       return;
     }
-    if (_settings.autoTarget) {
+    if (VoiceState.settings.autoTarget) {
       var auto = _autoTarget();
       if (auto) { _showListeningScreen(auto); }
     }
@@ -2454,7 +2362,7 @@ window.VoiceApp = (function () {
   }
 
   function _refreshAgents() {
-    VoiceAPI.getSessions(_settings.verbosity, _settings.showEndedAgents).then(function (data) {
+    VoiceAPI.getSessions(VoiceState.settings.verbosity, VoiceState.settings.showEndedAgents).then(function (data) {
       _endedAgents = data.ended_agents || [];
       _renderAgentList(data.agents || [], _endedAgents);
       // Apply server auto_target setting if user hasn't overridden locally
@@ -2465,7 +2373,7 @@ window.VoiceApp = (function () {
           if (raw) stored = JSON.parse(raw);
         } catch (e) { /* ignore */ }
         if (!stored || stored.autoTarget === undefined) {
-          _settings.autoTarget = data.settings.auto_target;
+          VoiceState.settings.autoTarget = data.settings.auto_target;
         }
       }
       // Sync attention banners when on chat screen
@@ -2712,7 +2620,9 @@ window.VoiceApp = (function () {
   // --- Initialization ---
 
   function init() {
-    loadSettings();
+    // Wire callbacks before loading settings
+    VoiceSettings.setRefreshAgentsHandler(_refreshAgents);
+    VoiceSettings.loadSettings();
 
     // Initialize layout mode
     _initLayoutMode();
@@ -2762,20 +2672,20 @@ window.VoiceApp = (function () {
     var paramAgentId = urlParams.get('agent_id');
 
     // Trusted network (localhost, LAN, Tailscale): skip setup, use current origin
-    if (_isTrustedNetwork && (!_settings.serverUrl || !_settings.token)) {
-      _settings.serverUrl = window.location.origin;
-      _settings.token = _isLocalhost ? 'localhost' : 'lan';
-      saveSettings();
+    if (_isTrustedNetwork && (!VoiceState.settings.serverUrl || !VoiceState.settings.token)) {
+      VoiceState.settings.serverUrl = window.location.origin;
+      VoiceState.settings.token = _isLocalhost ? 'localhost' : 'lan';
+      VoiceSettings.saveSettings();
     }
 
     // Check if we have credentials
-    if (!_settings.serverUrl || !_settings.token) {
+    if (!VoiceState.settings.serverUrl || !VoiceState.settings.token) {
       showScreen('setup');
       return;
     }
 
     // Initialize API
-    VoiceAPI.init(_settings.serverUrl, _settings.token);
+    VoiceAPI.init(VoiceState.settings.serverUrl, VoiceState.settings.token);
 
     // Wire up speech input callbacks
     VoiceInput.onResult(function (text) {
@@ -2844,8 +2754,8 @@ window.VoiceApp = (function () {
         var url = document.getElementById('setup-url').value.trim();
         var token = document.getElementById('setup-token').value.trim();
         if (url && token) {
-          setSetting('serverUrl', url);
-          setSetting('token', token);
+          VoiceSettings.setSetting('serverUrl', url);
+          VoiceSettings.setSetting('token', token);
           init();
         }
       });
@@ -2966,7 +2876,7 @@ window.VoiceApp = (function () {
     var settingsCloseBtn = document.getElementById('settings-close-btn');
     if (settingsCloseBtn) {
       settingsCloseBtn.addEventListener('click', function () {
-        _closeSettings();
+        VoiceSettings.closeSettings();
       });
     }
 
@@ -2974,7 +2884,7 @@ window.VoiceApp = (function () {
     var settingsOverlay = document.getElementById('settings-overlay');
     if (settingsOverlay) {
       settingsOverlay.addEventListener('click', function () {
-        _closeSettings();
+        VoiceSettings.closeSettings();
       });
     }
 
@@ -2983,8 +2893,8 @@ window.VoiceApp = (function () {
     if (settingsForm) {
       settingsForm.addEventListener('submit', function (e) {
         e.preventDefault();
-        _applySettingsForm();
-        _closeSettings();
+        VoiceSettings.applySettingsForm();
+        VoiceSettings.closeSettings();
       });
     }
 
@@ -3194,8 +3104,8 @@ window.VoiceApp = (function () {
           chips[tc].classList.toggle('active', chips[tc] === chip);
         }
         // Apply immediately
-        setSetting('theme', theme);
-        _applyTheme();
+        VoiceSettings.setSetting('theme', theme);
+        VoiceSettings.applyTheme();
       });
     }
 
@@ -3218,102 +3128,11 @@ window.VoiceApp = (function () {
     }
   }
 
-  function _populateSettingsForm() {
-    var el;
-
-    // Theme chips
-    var themeSelector = document.getElementById('theme-selector');
-    if (themeSelector) {
-      var chips = themeSelector.querySelectorAll('.theme-chip');
-      for (var tc = 0; tc < chips.length; tc++) {
-        chips[tc].classList.toggle('active', chips[tc].getAttribute('data-theme') === _settings.theme);
-      }
-    }
-
-    el = document.getElementById('setting-fontsize');
-    if (el) el.value = _settings.fontSize;
-    var fsDisplay = document.getElementById('fontsize-value');
-    if (fsDisplay) fsDisplay.textContent = _settings.fontSize + 'px';
-
-    el = document.getElementById('setting-silence');
-    if (el) el.value = _settings.silenceTimeout;
-    var display = document.getElementById('silence-value');
-    if (display) display.textContent = _settings.silenceTimeout + 'ms';
-
-    el = document.getElementById('setting-doneword');
-    if (el) el.value = _settings.doneWord;
-
-    el = document.getElementById('setting-autotarget');
-    if (el) el.checked = _settings.autoTarget;
-
-    el = document.getElementById('setting-tts');
-    if (el) el.checked = _settings.ttsEnabled;
-
-    el = document.getElementById('setting-cues');
-    if (el) el.checked = _settings.cuesEnabled;
-
-    el = document.getElementById('setting-verbosity');
-    if (el) el.value = _settings.verbosity;
-
-    el = document.getElementById('setting-ended');
-    if (el) el.checked = _settings.showEndedAgents;
-
-    el = document.getElementById('setting-url');
-    if (el) el.value = _settings.serverUrl;
-
-    el = document.getElementById('setting-token');
-    if (el) el.value = _settings.token;
-  }
-
-  function _applySettingsForm() {
-    var el;
-
-    el = document.getElementById('setting-fontsize');
-    if (el) setSetting('fontSize', parseInt(el.value, 10));
-    _applyFontSize();
-
-    el = document.getElementById('setting-silence');
-    if (el) setSetting('silenceTimeout', parseInt(el.value, 10));
-
-    el = document.getElementById('setting-doneword');
-    if (el) setSetting('doneWord', el.value);
-
-    el = document.getElementById('setting-autotarget');
-    if (el) setSetting('autoTarget', el.checked);
-
-    el = document.getElementById('setting-tts');
-    if (el) setSetting('ttsEnabled', el.checked);
-
-    el = document.getElementById('setting-cues');
-    if (el) setSetting('cuesEnabled', el.checked);
-
-    el = document.getElementById('setting-verbosity');
-    if (el) setSetting('verbosity', el.value);
-
-    el = document.getElementById('setting-ended');
-    if (el) {
-      var prev = _settings.showEndedAgents;
-      setSetting('showEndedAgents', el.checked);
-      if (el.checked !== prev) _refreshAgents();
-    }
-
-    el = document.getElementById('setting-url');
-    if (el) setSetting('serverUrl', el.value.trim());
-
-    el = document.getElementById('setting-token');
-    if (el) setSetting('token', el.value.trim());
-
-    // Re-init API with new settings
-    VoiceAPI.init(_settings.serverUrl, _settings.token);
-  }
+  // _populateSettingsForm and _applySettingsForm moved to VoiceSettings
 
   return {
     init: init,
     bindEvents: bindEvents,
-    loadSettings: loadSettings,
-    saveSettings: saveSettings,
-    getSetting: getSetting,
-    setSetting: setSetting,
     showScreen: showScreen,
     getCurrentScreen: getCurrentScreen,
     _renderAgentList: _renderAgentList,
