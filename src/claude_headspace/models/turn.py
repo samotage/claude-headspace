@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +60,13 @@ class Turn(db.Model):
     frustration_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tool_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     file_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Team-internal content: sub-agent communications (SendMessage, shutdown,
+    # idle notifications, etc.) that should be hidden from the voice chat UI.
+    # Data is preserved in the DB for debugging; filtered at display time.
+    is_internal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Transcript reconciliation: tracks timestamp provenance and JSONL dedup
     timestamp_source: Mapped[str | None] = mapped_column(

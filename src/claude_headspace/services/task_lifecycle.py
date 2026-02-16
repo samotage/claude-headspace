@@ -14,6 +14,7 @@ from ..models.turn import Turn, TurnActor, TurnIntent
 from .event_writer import EventWriter, WriteResult
 from .intent_detector import IntentResult, detect_intent
 from .state_machine import InvalidTransitionError, TransitionResult, validate_transition
+from .team_content_detector import is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +308,7 @@ class TaskLifecycleManager:
                 actor=TurnActor.AGENT,
                 intent=intent,
                 text=agent_text,
+                is_internal=is_team_internal_content(agent_text),
             )
             self._session.add(turn)
             self._session.flush()
@@ -345,6 +347,7 @@ class TaskLifecycleManager:
         actor: TurnActor,
         text: Optional[str],
         file_metadata: Optional[dict] = None,
+        is_internal: bool = False,
     ) -> TurnProcessingResult:
         """
         Process a turn and update task state accordingly.
@@ -390,6 +393,7 @@ class TaskLifecycleManager:
                         intent=TurnIntent.COMMAND,
                         text=text or "",
                         file_metadata=file_metadata,
+                        is_internal=is_internal,
                     )
                     self._session.add(turn)
                     self._session.flush()
@@ -436,6 +440,7 @@ class TaskLifecycleManager:
                         intent=intent_result.intent,
                         text=text or "",
                         file_metadata=file_metadata,
+                        is_internal=is_internal,
                     )
                     self._session.add(turn)
                     self._session.flush()
@@ -479,6 +484,7 @@ class TaskLifecycleManager:
                     intent=intent_result.intent,
                     text=text or "",
                     file_metadata=file_metadata,
+                    is_internal=is_internal,
                 )
                 self._session.add(turn)
                 self._session.flush()
@@ -545,6 +551,7 @@ class TaskLifecycleManager:
                 intent=intent_result.intent,
                 text=text or "",
                 file_metadata=file_metadata,
+                is_internal=is_internal,
             )
             self._session.add(turn)
             self._session.flush()

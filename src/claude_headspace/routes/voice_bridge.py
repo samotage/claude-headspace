@@ -919,11 +919,12 @@ def agent_transcript(agent_id: int):
     before = request.args.get("before", type=int)
     limit = min(request.args.get("limit", 50, type=int), 200)
 
-    # Query turns across ALL tasks for this agent
+    # Query turns across ALL tasks for this agent (excluding team-internal turns)
     query = (
         db.session.query(Turn, Task)
         .join(Task, Turn.task_id == Task.id)
         .filter(Task.agent_id == agent_id)
+        .filter(Turn.is_internal == False)  # noqa: E712
     )
 
     if before:

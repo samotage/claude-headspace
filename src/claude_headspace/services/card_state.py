@@ -175,14 +175,18 @@ def _get_completed_task_summary(task) -> str:
         return task.completion_summary
 
     if task.turns:
-        last_turn = task.turns[-1]
-        if last_turn.summary:
-            return last_turn.summary
-        if last_turn.text:
-            text = last_turn.text
-            if len(text) > 100:
-                return text[:100] + "..."
-            return text
+        # Find the last non-internal turn for display
+        for last_turn in reversed(task.turns):
+            if last_turn.is_internal:
+                continue
+            if last_turn.summary:
+                return last_turn.summary
+            if last_turn.text:
+                text = last_turn.text
+                if len(text) > 100:
+                    return text[:100] + "..."
+                return text
+            break
 
     return "Summarising..."
 
@@ -218,6 +222,8 @@ def get_task_summary(agent: Agent, _current_task=None) -> str:
     # When AWAITING_INPUT, find the most recent AGENT QUESTION turn
     if current_task.state == TaskState.AWAITING_INPUT and current_task.turns:
         for turn in reversed(current_task.turns):
+            if turn.is_internal:
+                continue
             if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
                 if turn.summary:
                     return turn.summary
@@ -233,6 +239,8 @@ def get_task_summary(agent: Agent, _current_task=None) -> str:
     # once the agent resumes, the stale question should not linger on line 04.
     if current_task.turns:
         for turn in reversed(current_task.turns):
+            if turn.is_internal:
+                continue
             if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
                 continue
             if turn.summary:
@@ -242,7 +250,7 @@ def get_task_summary(agent: Agent, _current_task=None) -> str:
                 if len(text) > 100:
                     return text[:100] + "..."
                 return text
-        # All turns were questions — nothing relevant to show
+        # All turns were questions or internal — nothing relevant to show
         return ""
 
     return "No active task"

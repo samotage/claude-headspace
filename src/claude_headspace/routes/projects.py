@@ -651,6 +651,7 @@ def get_task_turns(task_id: int):
         turns = (
             db.session.query(Turn)
             .filter(Turn.task_id == task_id)
+            .filter(Turn.is_internal == False)  # noqa: E712
             .order_by(Turn.timestamp.asc())
             .all()
         )

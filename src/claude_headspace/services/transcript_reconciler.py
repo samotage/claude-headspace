@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..database import db
 from ..models.turn import Turn, TurnActor, TurnIntent
+from .team_content_detector import is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ def reconcile_transcript_entries(agent, task, entries):
                 timestamp=entry.timestamp or datetime.now(timezone.utc),
                 timestamp_source="jsonl" if entry.timestamp else "server",
                 jsonl_entry_hash=content_key,
+                is_internal=is_team_internal_content(entry.content.strip()),
             )
             db.session.add(turn)
             db.session.flush()
@@ -219,6 +221,7 @@ def reconcile_agent_session(agent):
             timestamp=entry.timestamp or datetime.now(timezone.utc),
             timestamp_source="jsonl" if entry.timestamp else "server",
             jsonl_entry_hash=content_key,
+            is_internal=is_team_internal_content(entry.content.strip()),
         )
         db.session.add(turn)
         db.session.flush()

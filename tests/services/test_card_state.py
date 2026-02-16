@@ -116,6 +116,7 @@ class TestBuildCardState:
         mock_turn.actor.value = "agent"
         mock_turn.intent = MagicMock()
         mock_turn.intent.value = "progress"
+        mock_turn.is_internal = False
 
         mock_task = MagicMock()
         mock_task.state = TaskState.PROCESSING
@@ -343,6 +344,7 @@ class TestGetQuestionOptions:
         mock_turn.tool_input = tool_input
         mock_turn.summary = None
         mock_turn.text = "Which?"
+        mock_turn.is_internal = False
 
         mock_task = MagicMock()
         mock_task.state = TaskState.AWAITING_INPUT

@@ -27,6 +27,7 @@ from .hook_extractors import (
 from .hook_agent_state import _RESPOND_PENDING_TTL
 from .intent_detector import detect_agent_intent
 from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_instruction_for_notification
+from .team_content_detector import is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "task_id": task.id if task else None,
             "task_instruction": task.instruction if task else None,
             "turn_id": turn_id,
+            "is_internal": is_team_internal_content(text),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if tool_input:
@@ -254,6 +256,7 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
         text = entry.content.strip()
         state.append_progress_text(agent.id, text)
 
+        internal = is_team_internal_content(text)
         turn = Turn(
             task_id=current_task.id,
             actor=TurnActor.AGENT,
@@ -261,6 +264,7 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
             text=text,
             timestamp=entry.timestamp or datetime.now(timezone.utc),
             timestamp_source="jsonl" if entry.timestamp else "server",
+            is_internal=internal,
         )
         db.session.add(turn)
         db.session.flush()
@@ -276,6 +280,7 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
                 "task_id": current_task.id,
                 "task_instruction": current_task.instruction,
                 "turn_id": turn.id,
+                "is_internal": internal,
                 "timestamp": turn.timestamp.isoformat(),
             })
         except Exception as e:
@@ -776,6 +781,7 @@ def process_user_prompt_submit(
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,
+            is_internal=is_team_internal_content(prompt_text),
         )
 
         # Auto-transition COMMANDED → PROCESSING
@@ -814,6 +820,7 @@ def process_user_prompt_submit(
                     "task_id": result.task.id if result.task else None,
                     "task_instruction": result.task.instruction if result.task else None,
                     "turn_id": user_turn_id,
+                    "is_internal": is_team_internal_content(prompt_text),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
@@ -984,6 +991,7 @@ def process_stop(
                     intent=TurnIntent.QUESTION, text=full_agent_text or "",
                     question_text=full_agent_text or "",
                     question_source_type="free_text",
+                    is_internal=is_team_internal_content(full_agent_text),
                 )
                 db.session.add(turn)
             lifecycle.update_task_state(
@@ -1187,6 +1195,7 @@ def _handle_awaiting_input(
                 question_text=question_text,
                 question_options=q_options,
                 question_source_type=q_source_type,
+                is_internal=is_team_internal_content(question_text),
             )
             db.session.add(question_turn)
         elif message or title:
@@ -1213,6 +1222,7 @@ def _handle_awaiting_input(
                             intent=TurnIntent.QUESTION, text=question_text,
                             question_text=question_text,
                             question_source_type="free_text",
+                            is_internal=is_team_internal_content(question_text),
                         )
                         db.session.add(question_turn)
 
@@ -1269,6 +1279,23 @@ def process_notification(
     title: str | None = None,
     notification_type: str | None = None,
 ) -> HookEventResult:
+    # Filter team-internal XML notifications (sub-agent comms).
+    if message and (
+        "<task-notification>" in message
+        or "<system-reminder>" in message
+    ):
+        state = get_receiver_state()
+        state.record_event(HookEventType.NOTIFICATION)
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+        logger.info(
+            f"hook_event: type=notification, agent_id={agent.id}, "
+            f"session_id={claude_session_id}, skipped=system_xml"
+        )
+        return HookEventResult(
+            success=True, agent_id=agent.id,
+            state_changed=False, new_state=None,
+        )
     # Filter interruption artifact notifications from tmux key injection.
     if message and "Interruption detected" in message:
         state = get_receiver_state()
