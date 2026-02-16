@@ -61,21 +61,7 @@ window.VoiceApp = (function () {
   var _allProjects = [];
   var _fabCloseTimer = null;
 
-  // File upload configuration (client-side validation)
-  var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-  var ALLOWED_MIME_TYPES = [
-    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
-    'application/pdf',
-    'text/plain', 'text/markdown', 'text/x-python', 'text/javascript',
-    'text/html', 'text/css', 'text/csv', 'text/yaml',
-    'application/json', 'application/x-yaml',
-  ];
-  var ALLOWED_EXTENSIONS = [
-    'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf',
-    'txt', 'md', 'py', 'js', 'ts', 'json', 'yaml', 'yml',
-    'html', 'css', 'rb', 'sh', 'sql', 'csv', 'log'
-  ];
-  var MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  // File upload constants now in VoiceState
 
   // --- Settings persistence (tasks 2.25, 2.26, 2.27) ---
 
@@ -1993,129 +1979,7 @@ window.VoiceApp = (function () {
     _scrollChatToBottomIfNear();
   }
 
-  // --- File upload helpers ---
-
-  function _getFileExtension(filename) {
-    if (!filename || filename.indexOf('.') === -1) return '';
-    return filename.split('.').pop().toLowerCase();
-  }
-
-  function _isAllowedFile(file) {
-    var ext = _getFileExtension(file.name);
-    return ALLOWED_EXTENSIONS.indexOf(ext) !== -1;
-  }
-
-  function _isImageFile(file) {
-    return ALLOWED_IMAGE_TYPES.indexOf(file.type) !== -1;
-  }
-
-  function _formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-
-  function _getFileTypeIcon(filename) {
-    var ext = _getFileExtension(filename);
-    var icons = {
-      pdf: '\uD83D\uDCC4', // page facing up
-      txt: '\uD83D\uDCDD', // memo
-      md: '\uD83D\uDCDD',
-      py: '\uD83D\uDC0D',  // snake
-      js: '\uD83D\uDCDC',  // scroll
-      ts: '\uD83D\uDCDC',
-      json: '{ }',
-      yaml: '\u2699\uFE0F', // gear
-      yml: '\u2699\uFE0F',
-      html: '\uD83C\uDF10', // globe
-      css: '\uD83C\uDFA8', // palette
-      rb: '\uD83D\uDC8E',  // gem
-      sh: '\uD83D\uDCBB',  // computer
-      sql: '\uD83D\uDDD1\uFE0F', // wastebasket -> use generic
-      csv: '\uD83D\uDCCA', // chart
-      log: '\uD83D\uDCCB', // clipboard
-    };
-    return icons[ext] || '\uD83D\uDCC1'; // file folder
-  }
-
-  function _showPendingAttachment(file) {
-    _pendingAttachment = file;
-    var previewEl = document.getElementById('chat-attachment-preview');
-    var thumbEl = document.getElementById('attachment-thumb');
-    var nameEl = document.getElementById('attachment-name');
-    var sizeEl = document.getElementById('attachment-size');
-    if (!previewEl || !thumbEl || !nameEl || !sizeEl) return;
-
-    nameEl.textContent = file.name;
-    sizeEl.textContent = _formatFileSize(file.size);
-
-    if (_isImageFile(file)) {
-      if (_pendingBlobUrl) URL.revokeObjectURL(_pendingBlobUrl);
-      _pendingBlobUrl = URL.createObjectURL(file);
-      thumbEl.innerHTML = '<img src="' + _pendingBlobUrl + '" alt="Preview">';
-    } else {
-      thumbEl.innerHTML = '<span class="file-icon">' + _getFileTypeIcon(file.name) + '</span>';
-    }
-
-    previewEl.style.display = 'flex';
-    _hideUploadError();
-  }
-
-  function _clearPendingAttachment() {
-    _pendingAttachment = null;
-    if (_pendingBlobUrl) { URL.revokeObjectURL(_pendingBlobUrl); _pendingBlobUrl = null; }
-    var previewEl = document.getElementById('chat-attachment-preview');
-    var thumbEl = document.getElementById('attachment-thumb');
-    if (previewEl) previewEl.style.display = 'none';
-    if (thumbEl) thumbEl.innerHTML = '';
-  }
-
-  function _showUploadProgress(pct) {
-    var progressEl = document.getElementById('chat-upload-progress');
-    var barEl = document.getElementById('chat-upload-bar');
-    if (progressEl) progressEl.style.display = 'block';
-    if (barEl) barEl.style.width = pct + '%';
-  }
-
-  function _hideUploadProgress() {
-    var progressEl = document.getElementById('chat-upload-progress');
-    var barEl = document.getElementById('chat-upload-bar');
-    if (progressEl) progressEl.style.display = 'none';
-    if (barEl) barEl.style.width = '0%';
-  }
-
-  function _showUploadError(msg) {
-    var el = document.getElementById('chat-upload-error');
-    if (el) {
-      el.textContent = msg;
-      el.style.display = 'block';
-    }
-  }
-
-  function _hideUploadError() {
-    var el = document.getElementById('chat-upload-error');
-    if (el) el.style.display = 'none';
-  }
-
-  function _validateFileClientSide(file) {
-    if (!_isAllowedFile(file)) {
-      var ext = _getFileExtension(file.name);
-      return 'File type .' + ext + ' is not supported. Accepted: ' + ALLOWED_EXTENSIONS.join(', ');
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return 'File too large (' + _formatFileSize(file.size) + '). Maximum: ' + _formatFileSize(MAX_FILE_SIZE);
-    }
-    return null;
-  }
-
-  function _handleFileDrop(file) {
-    var error = _validateFileClientSide(file);
-    if (error) {
-      _showUploadError(error);
-      return;
-    }
-    _showPendingAttachment(file);
-  }
+  // --- File upload helpers (delegated to VoiceFileUpload module) ---
 
   // --- Chat send with attachment ---
 
@@ -2140,7 +2004,7 @@ window.VoiceApp = (function () {
     var pendingEntry = _renderOptimisticUserBubble(displayText, {
       file_metadata: {
         original_filename: file.name,
-        file_type: _isImageFile(file) ? 'image' : 'document',
+        file_type: VoiceFileUpload.isImageFile(file) ? 'image' : 'document',
         file_size: file.size,
         _localPreviewUrl: URL.createObjectURL(file)
       }
@@ -2152,27 +2016,27 @@ window.VoiceApp = (function () {
       input.value = '';
       input.style.height = 'auto';
     }
-    _clearPendingAttachment();
+    VoiceFileUpload.clearPendingAttachment();
 
     // Show progress
-    _showUploadProgress(0);
+    VoiceFileUpload.showUploadProgress(0);
     _chatAgentState = 'processing';
     _chatAgentStateLabel = null;
     _updateTypingIndicator();
     _updateChatStatePill();
 
     VoiceAPI.uploadFile(_targetAgentId, file, trimText || null, function (pct) {
-      _showUploadProgress(pct);
+      VoiceFileUpload.showUploadProgress(pct);
     }).then(function (data) {
-      _hideUploadProgress();
+      VoiceFileUpload.hideUploadProgress();
       // Schedule aggressive catch-up fetches in case SSE events are missed
       _scheduleResponseCatchUp();
     }).catch(function (err) {
-      _hideUploadProgress();
+      VoiceFileUpload.hideUploadProgress();
       // Remove the ghost optimistic bubble on failure (Finding 10)
       _removeOptimisticBubble(pendingEntry);
       var errMsg = (err && err.error) || 'Upload failed';
-      _showUploadError(errMsg);
+      VoiceFileUpload.showUploadError(errMsg);
       _chatAgentState = 'idle';
       _chatAgentStateLabel = null;
       _updateTypingIndicator();
@@ -2410,6 +2274,7 @@ window.VoiceApp = (function () {
     if (_currentScreen !== 'chat') return;
     if (!data || !data.agent_id) return;
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
+    if (data.is_internal) return;
     if (!data.text || !data.text.trim()) return;
 
     // For user turns from SSE: promote optimistic (pending) bubbles if they exist
@@ -3175,7 +3040,7 @@ window.VoiceApp = (function () {
       });
       chatFileInput.addEventListener('change', function () {
         if (chatFileInput.files && chatFileInput.files[0]) {
-          _handleFileDrop(chatFileInput.files[0]);
+          VoiceFileUpload.handleFileDrop(chatFileInput.files[0]);
           chatFileInput.value = '';
         }
       });
@@ -3185,7 +3050,7 @@ window.VoiceApp = (function () {
     var attachRemoveBtn = document.getElementById('attachment-remove');
     if (attachRemoveBtn) {
       attachRemoveBtn.addEventListener('click', function () {
-        _clearPendingAttachment();
+        VoiceFileUpload.clearPendingAttachment();
       });
     }
 
@@ -3215,7 +3080,7 @@ window.VoiceApp = (function () {
         _dragCounter = 0;
         dropZone.style.display = 'none';
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          _handleFileDrop(e.dataTransfer.files[0]);
+          VoiceFileUpload.handleFileDrop(e.dataTransfer.files[0]);
         }
       });
     }
@@ -3234,7 +3099,7 @@ window.VoiceApp = (function () {
               var ext = file.type.split('/')[1] || 'png';
               if (ext === 'jpeg') ext = 'jpg';
               var pastedFile = new File([file], 'pasted-image.' + ext, { type: file.type });
-              _handleFileDrop(pastedFile);
+              VoiceFileUpload.handleFileDrop(pastedFile);
             }
             break;
           }
