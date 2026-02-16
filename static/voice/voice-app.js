@@ -8,7 +8,7 @@ window.VoiceApp = (function () {
   var _agents = [];
   var _endedAgents = [];
   var _targetAgentId = null;
-  var _currentScreen = 'setup'; // setup | agents | listening | question | chat
+  // VoiceState.currentScreen now in VoiceState.currentScreen
   var _lastSeenTurnId = 0;
   var _chatPendingUserSends = [];  // {text, sentAt, fakeTurnId} — pending sends awaiting real turn
   var PENDING_SEND_TTL_MS = 10000; // 10s window for optimistic send confirmation
@@ -37,13 +37,7 @@ window.VoiceApp = (function () {
   var _newMessagesPillVisible = false;
   var _newMessagesFirstTurnId = null;
 
-  // Layout mode state
-  var _layoutMode = 'stacked'; // 'stacked' | 'split'
-  var SPLIT_BREAKPOINT = 768;
-
-  // FAB / Hamburger / Project Picker state
-  var _fabOpen = false;
-  var _hamburgerOpen = false;
+  // Layout/FAB/hamburger state now in VoiceState
   var _projectPickerOpen = false;
   var _allProjects = [];
   var _fabCloseTimer = null;
@@ -52,200 +46,7 @@ window.VoiceApp = (function () {
 
   // --- Settings (delegated to VoiceSettings module) ---
 
-  // --- Layout mode detection ---
-
-  function _isPortrait() {
-    return window.matchMedia('(orientation: portrait)').matches;
-  }
-
-  function _shouldUseStackedLayout() {
-    var w = window.innerWidth;
-    if (w < 768) return true;   // Phone: always stacked
-    if (_isPortrait() && w < 1024) return true;  // Tablet portrait: stacked
-    return false;  // Desktop or tablet landscape: split
-  }
-
-  function _detectLayoutMode() {
-    var newMode = _shouldUseStackedLayout() ? 'stacked' : 'split';
-    if (newMode !== _layoutMode) {
-      _layoutMode = newMode;
-      _closeFab();
-      _closeHamburger();
-      document.body.classList.remove('layout-stacked', 'layout-split');
-      document.body.classList.add('layout-' + _layoutMode);
-      _applyLayoutMode();
-    }
-  }
-
-  function _initLayoutMode() {
-    _layoutMode = _shouldUseStackedLayout() ? 'stacked' : 'split';
-    document.body.classList.add('layout-' + _layoutMode);
-  }
-
-  function _applyLayoutMode() {
-    // Re-apply current screen visibility for the new layout mode
-    if (_currentScreen === 'setup') return; // setup is outside app-layout
-    _applyScreenVisibility(_currentScreen);
-    _highlightSelectedAgent();
-  }
-
-  // --- Screen management ---
-
-  function showScreen(name) {
-    _currentScreen = name;
-    // Stop chat sync timer when leaving chat screen
-    if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); document.title = 'Claude Chat'; }
-
-    if (name === 'setup') {
-      // Setup screen is outside app-layout, hide app-layout
-      var setupEl = document.getElementById('screen-setup');
-      var layoutEl = document.getElementById('app-layout');
-      if (setupEl) setupEl.classList.add('active');
-      if (layoutEl) layoutEl.style.display = 'none';
-      _updateConnectionIndicator();
-      return;
-    }
-
-    // Hide setup, show app-layout
-    var setupEl2 = document.getElementById('screen-setup');
-    if (setupEl2) setupEl2.classList.remove('active');
-
-    _applyScreenVisibility(name);
-    _updateMainHeaderVisibility(name);
-    _updateConnectionIndicator();
-    _highlightSelectedAgent();
-  }
-
-  function _updateMainHeaderVisibility(name) {
-    var chatScreen = document.getElementById('screen-chat');
-    var emptyEl = document.getElementById('main-panel-empty');
-    var focusLink = document.getElementById('chat-focus-link');
-    var statePill = document.getElementById('chat-state-pill');
-    var showingChat = chatScreen && chatScreen.classList.contains('active');
-    if (focusLink) focusLink.style.display = showingChat ? '' : 'none';
-    if (statePill) statePill.style.display = showingChat ? '' : 'none';
-  }
-
-  function _applyScreenVisibility(name) {
-    var sidebar = document.getElementById('sidebar');
-    var mainPanel = document.getElementById('main-panel');
-    var emptyEl = document.getElementById('main-panel-empty');
-
-    // Hide all screens in main-panel
-    var screens = mainPanel ? mainPanel.querySelectorAll('.screen') : [];
-    for (var i = 0; i < screens.length; i++) {
-      screens[i].classList.remove('active');
-    }
-    if (emptyEl) emptyEl.classList.remove('show-empty');
-
-    if (_layoutMode === 'split') {
-      // Split mode: sidebar always visible, main panel shows content
-      if (sidebar) {
-        sidebar.classList.remove('show-sidebar');
-      }
-      if (mainPanel) {
-        mainPanel.classList.remove('show-main');
-      }
-
-      if (name === 'agents') {
-        // Show empty placeholder in main panel (no agent selected yet)
-        if (emptyEl && !_targetAgentId) {
-          emptyEl.classList.add('show-empty');
-        } else if (_targetAgentId) {
-          // If an agent was selected, show the chat
-          var chatEl = document.getElementById('screen-chat');
-          if (chatEl) chatEl.classList.add('active');
-        }
-      } else {
-        // Show the requested screen in main panel
-        var screenEl = document.getElementById('screen-' + name);
-        if (screenEl) screenEl.classList.add('active');
-      }
-    } else {
-      // Stacked mode: show one panel at a time
-      if (name === 'agents') {
-        if (sidebar) sidebar.classList.add('show-sidebar');
-        if (mainPanel) mainPanel.classList.remove('show-main');
-      } else {
-        if (sidebar) sidebar.classList.remove('show-sidebar');
-        if (mainPanel) mainPanel.classList.add('show-main');
-        var screenEl2 = document.getElementById('screen-' + name);
-        if (screenEl2) screenEl2.classList.add('active');
-      }
-    }
-  }
-
-  function getCurrentScreen() { return _currentScreen; }
-
-  // --- Settings panel (delegated to VoiceSettings module) ---
-
-  // --- FAB (split mode) ---
-
-  function _openFab() {
-    if (_fabOpen) return;
-    _fabOpen = true;
-    if (_fabCloseTimer) { clearTimeout(_fabCloseTimer); _fabCloseTimer = null; }
-    var el = document.getElementById('fab-container');
-    if (el) {
-      el.classList.remove('closing');
-      el.classList.add('open');
-    }
-  }
-
-  function _closeFab() {
-    if (!_fabOpen) return;
-    _fabOpen = false;
-    var el = document.getElementById('fab-container');
-    if (el) {
-      el.classList.remove('open');
-      el.classList.add('closing');
-      if (_fabCloseTimer) clearTimeout(_fabCloseTimer);
-      _fabCloseTimer = setTimeout(function () {
-        el.classList.remove('closing');
-        _fabCloseTimer = null;
-      }, 200);
-    }
-  }
-
-  function _toggleFab() {
-    if (_fabOpen) { _closeFab(); } else { _openFab(); }
-  }
-
-  // --- Hamburger (stacked mode) ---
-
-  function _openHamburger() {
-    if (_hamburgerOpen) return;
-    _hamburgerOpen = true;
-    var dd = document.getElementById('hamburger-dropdown');
-    var bd = document.getElementById('hamburger-backdrop');
-    if (dd) dd.classList.add('open');
-    if (bd) bd.classList.add('open');
-  }
-
-  function _closeHamburger() {
-    if (!_hamburgerOpen) return;
-    _hamburgerOpen = false;
-    var dd = document.getElementById('hamburger-dropdown');
-    var bd = document.getElementById('hamburger-backdrop');
-    if (dd) dd.classList.remove('open');
-    if (bd) bd.classList.remove('open');
-  }
-
-  // --- Menu action dispatcher ---
-
-  function _handleMenuAction(action) {
-    _closeFab();
-    _closeHamburger();
-    if (action === 'new-chat') {
-      _openProjectPicker();
-    } else if (action === 'settings') {
-      VoiceSettings.openSettings();
-    } else if (action === 'voice') {
-      _triggerVoiceFromMenu();
-    } else if (action === 'close') {
-      window.location.href = '/';
-    }
-  }
+  // --- Layout, screen, FAB, hamburger, menu (delegated to VoiceLayout module) ---
 
   // --- Voice from FAB/hamburger ---
 
@@ -371,7 +172,7 @@ window.VoiceApp = (function () {
     var cards = document.querySelectorAll('.agent-card');
     for (var i = 0; i < cards.length; i++) {
       var id = parseInt(cards[i].getAttribute('data-agent-id'), 10);
-      cards[i].classList.toggle('selected', id === _targetAgentId && _layoutMode === 'split');
+      cards[i].classList.toggle('selected', id === _targetAgentId && VoiceState.layoutMode === 'split');
     }
   }
 
@@ -494,7 +295,7 @@ window.VoiceApp = (function () {
         footerParts.push(a.last_activity_ago);
       }
 
-      var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
+      var selectedClass = (VoiceState.layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
       // Kebab menu: ended agents only get "Fetch context"
@@ -816,7 +617,7 @@ window.VoiceApp = (function () {
   function _showListeningScreen(agent) {
     var el = document.getElementById('listening-target');
     if (el && agent) el.textContent = agent.project;
-    showScreen('listening');
+    VoiceLayout.showScreen('listening');
   }
 
   function _startListening() {
@@ -833,7 +634,7 @@ window.VoiceApp = (function () {
   function _loadQuestion(agentId) {
     VoiceAPI.getQuestion(agentId).then(function (data) {
       _renderQuestion(data);
-      showScreen('question');
+      VoiceLayout.showScreen('question');
     }).catch(function () {
       _showListeningScreen(null);
     });
@@ -1017,7 +818,7 @@ window.VoiceApp = (function () {
       if (nameEl) nameEl.textContent = 'Agent ' + agentId;
     });
 
-    showScreen('chat');
+    VoiceLayout.showScreen('chat');
     _highlightSelectedAgent();
   }
 
@@ -2090,7 +1891,7 @@ window.VoiceApp = (function () {
   }
 
   function _handleChatSSE(data) {
-    if (_currentScreen !== 'chat') return;
+    if (VoiceState.currentScreen !== 'chat') return;
 
     var agentId = data.agent_id || data.id;
     if (parseInt(agentId, 10) !== parseInt(_targetAgentId, 10)) return;
@@ -2133,7 +1934,7 @@ window.VoiceApp = (function () {
       if (data.voice) VoiceOutput.speakResponse(data.voice);
       if (status) status.textContent = 'Sent!';
       // Return to agent list after a moment
-      setTimeout(function () { _refreshAgents(); showScreen('agents'); }, 1500);
+      setTimeout(function () { _refreshAgents(); VoiceLayout.showScreen('agents'); }, 1500);
     }).catch(function (err) {
       VoiceOutput.playCue('error');
       if (status) status.textContent = 'Error: ' + (err.error || 'Send failed');
@@ -2147,7 +1948,7 @@ window.VoiceApp = (function () {
     VoiceAPI.sendSelect(_targetAgentId, optionIndex).then(function (data) {
       VoiceOutput.playCue('sent');
       if (status) status.textContent = 'Sent!';
-      setTimeout(function () { _refreshAgents(); showScreen('agents'); }, 1500);
+      setTimeout(function () { _refreshAgents(); VoiceLayout.showScreen('agents'); }, 1500);
     }).catch(function (err) {
       VoiceOutput.playCue('error');
       if (status) status.textContent = 'Error: ' + (err.error || 'Select failed');
@@ -2159,13 +1960,13 @@ window.VoiceApp = (function () {
   function _handleGap(data) {
     // Server detected dropped events — do a full refresh to catch up
     _refreshAgents();
-    if (_currentScreen === 'chat' && _targetAgentId) {
+    if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
       _fetchTranscriptForChat();
     }
   }
 
   function _handleTurnUpdated(data) {
-    if (_currentScreen !== 'chat') return;
+    if (VoiceState.currentScreen !== 'chat') return;
     if (!data || !data.agent_id) return;
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
 
@@ -2179,7 +1980,7 @@ window.VoiceApp = (function () {
   }
 
   function _handleTurnCreated(data) {
-    if (_currentScreen !== 'chat') return;
+    if (VoiceState.currentScreen !== 'chat') return;
     if (!data || !data.agent_id) return;
     if (parseInt(data.agent_id, 10) !== parseInt(_targetAgentId, 10)) return;
     if (data.is_internal) return;
@@ -2259,12 +2060,12 @@ window.VoiceApp = (function () {
       var endedId = data.agent_id || data.id;
       if (endedId && _otherAgentStates[endedId]) {
         delete _otherAgentStates[endedId];
-        if (_currentScreen === 'chat') _renderAttentionBanners();
+        if (VoiceState.currentScreen === 'chat') _renderAttentionBanners();
       }
     }
 
     // Update attention banners for non-target agents on chat screen
-    if (_currentScreen === 'chat') {
+    if (VoiceState.currentScreen === 'chat') {
       var agentId = data.agent_id || data.id;
       if (agentId && parseInt(agentId, 10) !== parseInt(_targetAgentId, 10)) {
         var newState = data.new_state || data.state;
@@ -2289,7 +2090,7 @@ window.VoiceApp = (function () {
     }
 
     // Sync state to chat if this is the target agent
-    if (_currentScreen === 'chat' && _targetAgentId) {
+    if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
       var updateAgentId = data.agent_id || data.id;
       if (parseInt(updateAgentId, 10) === parseInt(_targetAgentId, 10)) {
         var chatNewState = data.new_state || data.state;
@@ -2323,7 +2124,7 @@ window.VoiceApp = (function () {
 
     // Polling fallback: if data is a sessions list (no agent_id), and chat
     // is active, check if the target agent's state changed
-    if (!data.agent_id && !data.id && data.agents && _currentScreen === 'chat' && _targetAgentId) {
+    if (!data.agent_id && !data.id && data.agents && VoiceState.currentScreen === 'chat' && _targetAgentId) {
       for (var i = 0; i < data.agents.length; i++) {
         if (data.agents[i].agent_id === _targetAgentId) {
           // Recover from false ended state via polling (agent reappeared in active list)
@@ -2377,7 +2178,7 @@ window.VoiceApp = (function () {
         }
       }
       // Sync attention banners when on chat screen
-      if (_currentScreen === 'chat' && _targetAgentId) {
+      if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
         var agents = data.agents || [];
         _otherAgentStates = {};
         for (var i = 0; i < agents.length; i++) {
@@ -2418,7 +2219,7 @@ window.VoiceApp = (function () {
         _connectionLostTimer = null;
       }
       // Only show "Reconnected" if we actually showed "Connection lost"
-      if (_connectionLostShown && _currentScreen === 'chat') {
+      if (_connectionLostShown && VoiceState.currentScreen === 'chat') {
         _showChatSystemMessage('Reconnected');
       }
       _connectionLostShown = false;
@@ -2430,7 +2231,7 @@ window.VoiceApp = (function () {
           _connectionLostTimer = null;
           if (VoiceAPI.getConnectionState() !== 'connected') {
             _connectionLostShown = true;
-            if (_currentScreen === 'chat') {
+            if (VoiceState.currentScreen === 'chat') {
               _showChatSystemMessage('Connection lost \u2014 reconnecting\u2026');
             }
           }
@@ -2445,7 +2246,7 @@ window.VoiceApp = (function () {
     _refreshAgents();
 
     // If chat screen is active, re-fetch transcript to catch missed events
-    if (_currentScreen === 'chat' && _targetAgentId) {
+    if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
       _fetchTranscriptForChat();
 
       // Deferred stops create turns 0.5-5s after the initial stop hook.
@@ -2453,7 +2254,7 @@ window.VoiceApp = (function () {
       // A second fetch 3s later catches those late-arriving turns.
       var deferredAgentId = _targetAgentId;
       setTimeout(function () {
-        if (_currentScreen === 'chat' && _targetAgentId === deferredAgentId) {
+        if (VoiceState.currentScreen === 'chat' && _targetAgentId === deferredAgentId) {
           _fetchTranscriptForChat();
         }
       }, 3000);
@@ -2622,20 +2423,34 @@ window.VoiceApp = (function () {
   function init() {
     // Wire callbacks before loading settings
     VoiceSettings.setRefreshAgentsHandler(_refreshAgents);
+    VoiceLayout.setScreenChangeHandler(function (name) {
+      if (name !== 'chat') { _stopChatSyncTimer(); _cancelResponseCatchUp(); document.title = 'Claude Chat'; }
+      _updateConnectionIndicator();
+    });
+    VoiceLayout.setHighlightHandler(_highlightSelectedAgent);
+    VoiceLayout.setMenuHandler(function (action) {
+      if (action === 'new-chat') {
+        _openProjectPicker();
+      } else if (action === 'voice') {
+        _triggerVoiceFromMenu();
+      } else if (action === 'close') {
+        window.location.href = '/';
+      }
+    });
     VoiceSettings.loadSettings();
 
     // Initialize layout mode
-    _initLayoutMode();
+    VoiceLayout.initLayoutMode();
 
     // Listen for resize and orientation to switch layout modes
     var _resizeTimer = null;
     window.addEventListener('resize', function () {
       clearTimeout(_resizeTimer);
-      _resizeTimer = setTimeout(_detectLayoutMode, 100);
+      _resizeTimer = setTimeout(VoiceLayout.detectLayoutMode, 100);
     });
     window.addEventListener('orientationchange', function () {
       clearTimeout(_resizeTimer);
-      _resizeTimer = setTimeout(_detectLayoutMode, 100);
+      _resizeTimer = setTimeout(VoiceLayout.detectLayoutMode, 100);
     });
 
     // iOS Safari: the bottom toolbar overlaps content.  `100dvh` in CSS
@@ -2680,7 +2495,7 @@ window.VoiceApp = (function () {
 
     // Check if we have credentials
     if (!VoiceState.settings.serverUrl || !VoiceState.settings.token) {
-      showScreen('setup');
+      VoiceLayout.showScreen('setup');
       return;
     }
 
@@ -2689,7 +2504,7 @@ window.VoiceApp = (function () {
 
     // Wire up speech input callbacks
     VoiceInput.onResult(function (text) {
-      if (_currentScreen === 'chat') {
+      if (VoiceState.currentScreen === 'chat') {
         _sendChatCommand(text);
       } else {
         _sendCommand(text);
@@ -2724,7 +2539,7 @@ window.VoiceApp = (function () {
       }
       // Immediately refresh state and transcript
       _refreshAgents();
-      if (_currentScreen === 'chat' && _targetAgentId) {
+      if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
         _fetchTranscriptForChat();
       }
     });
@@ -2740,7 +2555,7 @@ window.VoiceApp = (function () {
 
     // Load agents and show list
     _refreshAgents();
-    showScreen('agents');
+    VoiceLayout.showScreen('agents');
   }
 
   // --- Event binding (called once DOM is ready) ---
@@ -2766,11 +2581,11 @@ window.VoiceApp = (function () {
     if (titleLink) {
       titleLink.addEventListener('click', function (e) {
         e.preventDefault();
-        if (_currentScreen === 'chat' && _targetAgentId) {
+        if (VoiceState.currentScreen === 'chat' && _targetAgentId) {
           _saveScrollState(_targetAgentId);
         }
         _refreshAgents();
-        showScreen('agents');
+        VoiceLayout.showScreen('agents');
       });
     }
 
@@ -2805,19 +2620,19 @@ window.VoiceApp = (function () {
     if (fabBtn) {
       fabBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        _toggleFab();
+        VoiceLayout.toggleFab();
       });
     }
     var fabBackdrop = document.getElementById('fab-backdrop');
     if (fabBackdrop) {
-      fabBackdrop.addEventListener('click', function () { _closeFab(); });
+      fabBackdrop.addEventListener('click', function () { VoiceLayout.closeFab(); });
     }
     // FAB menu items
     var fabItems = document.querySelectorAll('.fab-menu-item');
     for (var fi = 0; fi < fabItems.length; fi++) {
       fabItems[fi].addEventListener('click', function (e) {
         e.stopPropagation();
-        _handleMenuAction(this.getAttribute('data-action'));
+        VoiceLayout.handleMenuAction(this.getAttribute('data-action'));
       });
     }
 
@@ -2826,17 +2641,17 @@ window.VoiceApp = (function () {
     if (hamburgerBtn) {
       hamburgerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        if (_hamburgerOpen) { _closeHamburger(); } else { _openHamburger(); }
+        if (VoiceState.hamburgerOpen) { VoiceLayout.closeHamburger(); } else { VoiceLayout.openHamburger(); }
       });
     }
     var hamburgerBackdrop = document.getElementById('hamburger-backdrop');
     if (hamburgerBackdrop) {
-      hamburgerBackdrop.addEventListener('click', function () { _closeHamburger(); });
+      hamburgerBackdrop.addEventListener('click', function () { VoiceLayout.closeHamburger(); });
     }
     var hamburgerItems = document.querySelectorAll('.hamburger-item');
     for (var hi = 0; hi < hamburgerItems.length; hi++) {
       hamburgerItems[hi].addEventListener('click', function () {
-        _handleMenuAction(this.getAttribute('data-action'));
+        VoiceLayout.handleMenuAction(this.getAttribute('data-action'));
       });
     }
 
@@ -2860,15 +2675,15 @@ window.VoiceApp = (function () {
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         if (_projectPickerOpen) { _closeProjectPicker(); e.preventDefault(); return; }
-        if (_fabOpen) { _closeFab(); e.preventDefault(); return; }
-        if (_hamburgerOpen) { _closeHamburger(); e.preventDefault(); return; }
+        if (VoiceState.fabOpen) { VoiceLayout.closeFab(); e.preventDefault(); return; }
+        if (VoiceState.hamburgerOpen) { VoiceLayout.closeHamburger(); e.preventDefault(); return; }
       }
     });
 
     // Close FAB on outside click
     document.addEventListener('click', function (e) {
-      if (_fabOpen && !e.target.closest('.fab-container')) {
-        _closeFab();
+      if (VoiceState.fabOpen && !e.target.closest('.fab-container')) {
+        VoiceLayout.closeFab();
       }
     });
 
@@ -3068,7 +2883,7 @@ window.VoiceApp = (function () {
           _saveScrollState(_targetAgentId);
           _otherAgentStates = {};
           _refreshAgents();
-          showScreen('agents');
+          VoiceLayout.showScreen('agents');
         }
       });
     }
@@ -3077,15 +2892,15 @@ window.VoiceApp = (function () {
     var backBtns = document.querySelectorAll('.back-btn');
     for (var i = 0; i < backBtns.length; i++) {
       backBtns[i].addEventListener('click', function () {
-        if (_layoutMode === 'split') {
+        if (VoiceState.layoutMode === 'split') {
           // In split mode, back from listening/question goes to chat or agents
           if (_targetAgentId) {
             _showChatScreen(_targetAgentId);
           } else {
-            showScreen('agents');
+            VoiceLayout.showScreen('agents');
           }
         } else {
-          showScreen('agents');
+          VoiceLayout.showScreen('agents');
         }
       });
     }
@@ -3133,8 +2948,6 @@ window.VoiceApp = (function () {
   return {
     init: init,
     bindEvents: bindEvents,
-    showScreen: showScreen,
-    getCurrentScreen: getCurrentScreen,
     _renderAgentList: _renderAgentList,
     _autoTarget: _autoTarget,
     _sendCommand: _sendCommand,
