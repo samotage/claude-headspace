@@ -603,18 +603,13 @@ window.VoiceApp = (function () {
       var selectedClass = (_layoutMode === 'split' && a.agent_id === _targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
-      // Kebab menu: ended agents only get "Fetch context" + "Open in tab"
-      var openTabItem = '<button class="kebab-menu-item agent-open-tab-action" data-agent-id="' + a.agent_id + '">'
-        + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h4"/></svg>'
-        + '<span>Open in tab</span></button>';
+      // Kebab menu: ended agents only get "Fetch context"
       var kebabMenuHtml;
       if (isEnded) {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
-          + '<div class="kebab-divider"></div>'
-          + openTabItem
           + '</div>';
       } else {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
@@ -622,15 +617,13 @@ window.VoiceApp = (function () {
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
           + '<div class="kebab-divider"></div>'
-          + openTabItem
-          + '<div class="kebab-divider"></div>'
           + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
           + '<span>Dismiss agent</span></button>'
           + '</div>';
       }
 
-      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
+      return '<a class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '" href="/voice?agent_id=' + a.agent_id + '">'
         + '<div class="agent-header">'
         + '<div class="agent-hero-id">'
         + '<span class="agent-hero">' + _esc(heroChars) + '</span>'
@@ -647,7 +640,7 @@ window.VoiceApp = (function () {
         + summaryHtml
         + '<div class="agent-ago">' + _esc(footerParts.join(' · ')) + (ctxHtml ? ' ' + ctxHtml : '') + '</div>'
         + '</div>'
-        + '</div>';
+        + '</a>';
     }
 
     var html = '';
@@ -731,16 +724,6 @@ window.VoiceApp = (function () {
         _shutdownAgent(agentId);
       });
     }
-    var openTabActions = list.querySelectorAll('.agent-open-tab-action');
-    for (var ot = 0; ot < openTabActions.length; ot++) {
-      openTabActions[ot].addEventListener('click', function (e) {
-        e.stopPropagation();
-        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
-        _closeAllKebabMenus();
-        window.open('/voice?agent_id=' + agentId, '_blank');
-      });
-    }
-
     // Bind project kebab menu buttons
     var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
     for (var pk = 0; pk < projKebabBtns.length; pk++) {
@@ -773,6 +756,7 @@ window.VoiceApp = (function () {
   }
 
   function _onAgentCardClick(e) {
+    e.preventDefault();
     var card = e.currentTarget;
     var id = parseInt(card.getAttribute('data-agent-id'), 10);
     _selectAgent(id);
