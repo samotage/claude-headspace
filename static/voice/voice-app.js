@@ -2,20 +2,6 @@
 window.VoiceApp = (function () {
   'use strict';
 
-  // Settings defaults now in VoiceState.DEFAULTS
-
-  // _settings now managed by VoiceState.settings via VoiceSettings module
-
-  // Layout/FAB/hamburger state now in VoiceState
-
-  // File upload constants now in VoiceState
-
-  // --- Settings (delegated to VoiceSettings module) ---
-
-  // --- Layout, screen, FAB, hamburger, menu (delegated to VoiceLayout module) ---
-
-  // --- Chat screen, scroll, state display, sending (delegated to VoiceChatController module, Phase 8) ---
-
   // --- Voice from FAB/hamburger ---
 
   function _triggerVoiceFromMenu() {
@@ -39,9 +25,7 @@ window.VoiceApp = (function () {
     _startListening();
   }
 
-  // --- Sidebar functions moved to VoiceSidebar module (Phase 6) ---
-
-  // --- Listening / Command mode (task 2.21) ---
+  // --- Listening / Command mode ---
 
   function _showListeningScreen(agent) {
     var el = document.getElementById('listening-target');
@@ -58,7 +42,7 @@ window.VoiceApp = (function () {
     VoiceInput.stop();
   }
 
-  // --- Question / Response mode (task 2.22) ---
+  // --- Question / Response mode ---
 
   function _loadQuestion(agentId) {
     VoiceAPI.getQuestion(agentId).then(function (data) {
@@ -261,7 +245,7 @@ window.VoiceApp = (function () {
     VoiceLayout.showScreen('agents');
   }
 
-  // --- Event binding (called once DOM is ready) ---
+  // --- Event binding ---
 
   function bindEvents() {
     // Setup form
@@ -292,7 +276,7 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Text input fallback (task 2.10)
+    // Text input fallback
     var textForm = document.getElementById('text-form');
     if (textForm) {
       textForm.addEventListener('submit', function (e) {
@@ -645,8 +629,6 @@ window.VoiceApp = (function () {
       });
     }
   }
-
-  // _populateSettingsForm and _applySettingsForm moved to VoiceSettings
 
   return {
     init: init,
