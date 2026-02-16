@@ -302,6 +302,28 @@ def voice_command():
     is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
     is_processing = current_state in (TaskState.PROCESSING, TaskState.COMMANDED)
 
+    # Detect if the agent's current question has structured options (picker).
+    # Voice chat always sends free text, which works fine for free-text prompts
+    # but may not interact correctly with AskUserQuestion picker UIs.
+    has_picker = False
+    if is_answering and current_task and current_task.turns:
+        for t in reversed(current_task.turns):
+            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                if t.question_options:
+                    has_picker = True
+                elif t.tool_input and isinstance(t.tool_input, dict):
+                    questions = t.tool_input.get("questions", [])
+                    if questions and isinstance(questions, list):
+                        opts = questions[0].get("options", []) if questions else []
+                        if opts and isinstance(opts, list) and len(opts) > 0:
+                            has_picker = True
+                break
+        if has_picker:
+            logger.warning(
+                f"Voice command to agent {agent.id} targeting a picker question "
+                f"(has structured options). Free text will be sent as override."
+            )
+
     # Check tmux pane
     if not agent.tmux_pane_id:
         return _voice_error(
@@ -518,12 +540,15 @@ def voice_command():
         else:
             voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
 
-        return jsonify({
+        response_data = {
             "voice": voice,
             "agent_id": agent.id,
             "new_state": current_task.state.value,
             "latency_ms": latency_ms,
-        }), 200
+        }
+        if has_picker:
+            response_data["has_picker"] = True
+        return jsonify(response_data), 200
 
     except Exception as e:
         db.session.rollback()

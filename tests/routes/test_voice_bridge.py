@@ -507,6 +507,102 @@ class TestVoiceCommand:
             # respond-pending should NOT be set on commit failure
             mock_get_state().set_respond_pending.assert_not_called()
 
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_picker_detection_sets_has_picker(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+        """When agent has structured options (picker), response includes has_picker flag."""
+        mock_db.session.get.return_value = mock_agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["has_picker"] is True
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_no_picker_when_free_text_question(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+        """When agent has a free-text question (no options), has_picker is not in response."""
+        agent = MagicMock()
+        agent.id = 11
+        agent.name = "agent-11"
+        agent.project = mock_project
+        agent.tmux_pane_id = "%11"
+        agent.tmux_session = None
+        agent.last_seen_at = datetime.now(timezone.utc)
+        agent.ended_at = None
+
+        task = MagicMock()
+        task.id = 110
+        task.state = TaskState.AWAITING_INPUT
+        task.instruction = "Do something"
+
+        q_turn = MagicMock()
+        q_turn.id = 1100
+        q_turn.actor = TurnActor.AGENT
+        q_turn.intent = TurnIntent.QUESTION
+        q_turn.text = "What should we name it?"
+        q_turn.question_text = "What should we name it?"
+        q_turn.question_options = None
+        q_turn.question_source_type = "free_text"
+        q_turn.tool_input = None
+
+        task.turns = [q_turn]
+        agent.get_current_task.return_value = task
+        mock_db.session.get.return_value = agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post("/api/voice/command", json={"text": "my-api", "agent_id": 11})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "has_picker" not in data
+
+    @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
+    @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
+    def test_picker_detection_via_tool_input_fallback(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+        """Picker detection works via tool_input fallback when question_options is None."""
+        agent = MagicMock()
+        agent.id = 12
+        agent.name = "agent-12"
+        agent.project = mock_project
+        agent.tmux_pane_id = "%12"
+        agent.tmux_session = None
+        agent.last_seen_at = datetime.now(timezone.utc)
+        agent.ended_at = None
+
+        task = MagicMock()
+        task.id = 120
+        task.state = TaskState.AWAITING_INPUT
+        task.instruction = "Choose DB"
+
+        q_turn = MagicMock()
+        q_turn.id = 1200
+        q_turn.actor = TurnActor.AGENT
+        q_turn.intent = TurnIntent.QUESTION
+        q_turn.text = "Which DB?"
+        q_turn.question_text = "Which DB?"
+        q_turn.question_options = None
+        q_turn.question_source_type = "unknown"
+        q_turn.tool_input = {
+            "questions": [{
+                "question": "Which DB?",
+                "options": [
+                    {"label": "Postgres", "description": "SQL"},
+                    {"label": "Mongo", "description": "NoSQL"},
+                ],
+            }]
+        }
+
+        task.turns = [q_turn]
+        agent.get_current_task.return_value = task
+        mock_db.session.get.return_value = agent
+        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+
+        response = client.post("/api/voice/command", json={"text": "postgres", "agent_id": 12})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["has_picker"] is True
+
 
 class TestVoiceCommandToIdle:
     """Tests for sending commands to idle/complete agents.

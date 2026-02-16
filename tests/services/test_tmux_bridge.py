@@ -208,12 +208,12 @@ class TestSendText:
 
         assert result.success is True
         assert result.latency_ms >= 0
-        # Three subprocess calls: Ctrl+C + text send + Enter send
+        # Three subprocess calls: Escape + text send + Enter send
         assert mock_run.call_count == 3
 
-        # First call: Ctrl+C to clear autocomplete
+        # First call: Escape to dismiss autocomplete
         first_call = mock_run.call_args_list[0]
-        assert first_call[0][0] == ["tmux", "send-keys", "-t", "%5", "C-c"]
+        assert first_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Escape"]
 
         # Second call: literal text
         second_call = mock_run.call_args_list[1]

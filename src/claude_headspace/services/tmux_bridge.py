@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_SUBPROCESS_TIMEOUT = 5  # seconds
 DEFAULT_TEXT_ENTER_DELAY_MS = 100  # ms between text send and Enter
-DEFAULT_CLEAR_DELAY_MS = 200  # ms after Ctrl+C before sending text
+DEFAULT_CLEAR_DELAY_MS = 200  # ms after Escape before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 
 # Per-pane send lock registry — prevents concurrent sends to the same pane
@@ -243,7 +243,7 @@ def send_text(
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
     Uses three separate subprocess calls with configurable delays:
-    1. Ctrl+C to clear pending autocomplete (+ clear_delay_ms)
+    1. Escape to dismiss pending autocomplete (+ clear_delay_ms)
     2. send-keys -l for literal text (+ text_enter_delay_ms)
     3. send-keys Enter to submit
 
@@ -256,7 +256,7 @@ def send_text(
         text: The text to send
         timeout: Subprocess timeout in seconds
         text_enter_delay_ms: Delay in ms between text send and Enter send
-        clear_delay_ms: Delay in ms after Ctrl+C before sending text
+        clear_delay_ms: Delay in ms after Escape before sending text
 
     Returns:
         SendResult with success status and optional error information
@@ -272,12 +272,12 @@ def send_text(
         start_time = time.time()
 
         try:
-            # Clear any pending autocomplete or partial input first.
-            # Claude Code's interactive prompt has autocomplete that can
-            # intercept typed text (especially /commands), causing the wrong
-            # command to be submitted. Ctrl+C ensures a clean prompt.
+            # Dismiss any pending autocomplete ghost suggestion first.
+            # Claude Code's Ink-based TUI has autocomplete that pre-fills
+            # ghost text. Escape dismisses it cleanly (C-c does NOT dismiss
+            # autocomplete — it clears typed text or triggers exit prompt).
             subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, "C-c"],
+                ["tmux", "send-keys", "-t", pane_id, "Escape"],
                 check=True,
                 timeout=timeout,
                 capture_output=True,
