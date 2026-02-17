@@ -16,6 +16,7 @@ from claude_headspace.services.tmux_bridge import (
     _classify_subprocess_error,
     _diagnostic_dump,
     _get_send_lock,
+    _has_autocomplete_ghost,
     _is_process_in_tree,
     _send_locks,
     _validate_pane_id,
@@ -187,6 +188,42 @@ class TestPaneIdValidationInPublicFunctions:
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
 
+class TestHasAutocompleteGhost:
+    """Tests for _has_autocomplete_ghost detection."""
+
+    def test_empty_content(self):
+        assert _has_autocomplete_ghost("") is False
+
+    def test_none_content(self):
+        assert _has_autocomplete_ghost(None) is False
+
+    def test_clean_prompt_no_ghost(self):
+        assert _has_autocomplete_ghost("> ") is False
+
+    def test_normal_text_no_ghost(self):
+        assert _has_autocomplete_ghost("Some output\n> ") is False
+
+    def test_dim_sgr2_detected(self):
+        """SGR 2 (dim/faint) indicates autocomplete ghost text."""
+        content = "> \x1b[2msome suggestion\x1b[22m"
+        assert _has_autocomplete_ghost(content) is True
+
+    def test_gray_sgr90_detected(self):
+        """SGR 90 (dark gray) indicates autocomplete ghost text."""
+        content = "> \x1b[90msome suggestion\x1b[39m"
+        assert _has_autocomplete_ghost(content) is True
+
+    def test_dim_on_earlier_line_ignored(self):
+        """Dim text on earlier lines (not input area) is ignored."""
+        content = "\x1b[2mdim header\x1b[22m\nsome output\nmore output\n> "
+        assert _has_autocomplete_ghost(content) is False
+
+    def test_whitespace_only_lines_skipped(self):
+        """Blank lines are filtered out before checking last 2 lines."""
+        content = "> \n\n\n"
+        assert _has_autocomplete_ghost(content) is False
+
+
 class TestSendText:
     """Tests for send_text function."""
 
@@ -200,14 +237,39 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_send_success(self, mock_run):
+    def test_send_success_no_ghost(self, mock_run, mock_capture):
+        """Without autocomplete ghost text, only text + Enter are sent (no Escape)."""
         mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "  # clean prompt, no ghost text
 
         result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0)
 
         assert result.success is True
         assert result.latency_ms >= 0
+        # Two subprocess calls: text send + Enter send (no Escape)
+        assert mock_run.call_count == 2
+
+        # First call: literal text
+        first_call = mock_run.call_args_list[0]
+        assert first_call[0][0] == ["tmux", "send-keys", "-t", "%5", "-l", "1"]
+
+        # Second call: Enter key
+        second_call = mock_run.call_args_list[1]
+        assert second_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_send_success_with_ghost(self, mock_run, mock_capture):
+        """With autocomplete ghost text detected, Escape is sent first."""
+        mock_run.return_value = MagicMock(returncode=0)
+        # Simulate ghost text with dim ANSI styling (SGR 2)
+        mock_capture.return_value = "> \x1b[2msome suggestion\x1b[22m"
+
+        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0)
+
+        assert result.success is True
         # Three subprocess calls: Escape + text send + Enter send
         assert mock_run.call_count == 3
 
@@ -223,8 +285,10 @@ class TestSendText:
         third_call = mock_run.call_args_list[2]
         assert third_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_tmux_not_installed(self, mock_run):
+    def test_tmux_not_installed(self, mock_run, mock_capture):
+        mock_capture.return_value = ""
         mock_run.side_effect = FileNotFoundError("tmux not found")
 
         result = send_text("%5", "hello")
@@ -232,8 +296,10 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_pane_not_found(self, mock_run):
+    def test_pane_not_found(self, mock_run, mock_capture):
+        mock_capture.return_value = ""
         mock_run.side_effect = subprocess.CalledProcessError(
             1, "tmux", stderr=b"can't find pane: %99"
         )
@@ -243,8 +309,10 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_timeout(self, mock_run):
+    def test_timeout(self, mock_run, mock_capture):
+        mock_capture.return_value = ""
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
 
         result = send_text("%5", "hello")
@@ -252,8 +320,10 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_unexpected_error(self, mock_run):
+    def test_unexpected_error(self, mock_run, mock_capture):
+        mock_capture.return_value = ""
         mock_run.side_effect = RuntimeError("something broke")
 
         result = send_text("%5", "hello")
@@ -1392,10 +1462,12 @@ class TestSendLockRegistry:
         release_send_lock("%51")
         release_send_lock("%52")
 
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_interrupt_and_send_text_reentrant(self, mock_run):
+    def test_interrupt_and_send_text_reentrant(self, mock_run, mock_capture):
         """interrupt_and_send_text can call send_text without deadlocking (RLock)."""
         mock_run.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
+        mock_capture.return_value = ""
 
         result = interrupt_and_send_text(
             "%53", "hello",

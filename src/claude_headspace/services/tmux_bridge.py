@@ -233,6 +233,36 @@ def wait_for_pattern(
         time.sleep(poll_interval_ms / 1000.0)
 
 
+def _has_autocomplete_ghost(pane_content: str) -> bool:
+    """Check if pane content shows autocomplete ghost text.
+
+    Ghost text is rendered with dim/faint ANSI styling (SGR 2 or color 90).
+    We check the last non-empty lines (the input area) for these indicators.
+
+    Args:
+        pane_content: Pane content captured with escape sequences (-e flag)
+
+    Returns:
+        True if autocomplete ghost text is likely present
+    """
+    if not pane_content:
+        return False
+
+    # Check the last few non-empty lines for dim text indicators.
+    # SGR 2 = dim/faint, SGR 90 = dark gray (bright black).
+    # Claude Code renders autocomplete ghost suggestions with these styles.
+    lines = [line for line in pane_content.split("\n") if line.strip()]
+    if not lines:
+        return False
+
+    # Only check the last 2 lines (input area)
+    for line in lines[-2:]:
+        if "\x1b[2m" in line or "\x1b[90m" in line:
+            return True
+
+    return False
+
+
 def send_text(
     pane_id: str,
     text: str,
@@ -242,14 +272,10 @@ def send_text(
 ) -> SendResult:
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
-    Uses three separate subprocess calls with configurable delays:
-    1. Escape to dismiss pending autocomplete (+ clear_delay_ms)
-    2. send-keys -l for literal text (+ text_enter_delay_ms)
-    3. send-keys Enter to submit
-
-    This deliberate split-with-delays pattern prevents tmux from merging
-    the text and Enter into a single PTY write, which Ink's onSubmit
-    handler may not recognise as keyboard input.
+    First captures the pane to check for autocomplete ghost text. If ghost
+    text is detected, sends Escape to dismiss it before typing. Otherwise
+    skips Escape to avoid triggering unintended TUI mode changes that can
+    prevent Enter from submitting.
 
     Args:
         pane_id: The tmux pane ID (format: %0, %5, etc.)
@@ -272,17 +298,25 @@ def send_text(
         start_time = time.time()
 
         try:
-            # Dismiss any pending autocomplete ghost suggestion first.
-            # Claude Code's Ink-based TUI has autocomplete that pre-fills
-            # ghost text. Escape dismisses it cleanly (C-c does NOT dismiss
-            # autocomplete — it clears typed text or triggers exit prompt).
-            subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, "Escape"],
-                check=True,
-                timeout=timeout,
-                capture_output=True,
+            # Capture pane to check for autocomplete ghost text.
+            # Only send Escape when ghost text is detected — unconditional
+            # Escape can trigger TUI mode changes (e.g. multi-line toggle)
+            # that prevent Enter from submitting.
+            pane_content = capture_pane(
+                pane_id, lines=3, include_escapes=True, timeout=timeout,
             )
-            time.sleep(clear_delay_ms / 1000.0)  # longer to let TUI stabilise
+            if _has_autocomplete_ghost(pane_content):
+                logger.debug(
+                    f"Autocomplete ghost detected in pane {pane_id}, "
+                    f"sending Escape to dismiss"
+                )
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                    check=True,
+                    timeout=timeout,
+                    capture_output=True,
+                )
+                time.sleep(clear_delay_ms / 1000.0)
 
             # Send literal text (does NOT interpret key names)
             subprocess.run(
@@ -740,6 +774,7 @@ def capture_pane(
     lines: int = 50,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     join_wrapped: bool = False,
+    include_escapes: bool = False,
 ) -> str:
     """Capture the last N lines of a tmux pane's visible content.
 
@@ -748,6 +783,7 @@ def capture_pane(
         lines: Number of lines to capture from the end
         timeout: Subprocess timeout in seconds
         join_wrapped: If True, include -J flag to join wrapped lines
+        include_escapes: If True, include ANSI escape sequences (-e flag)
 
     Returns:
         Captured text content (empty string on error)
@@ -758,6 +794,8 @@ def capture_pane(
     cmd = ["tmux", "capture-pane", "-t", pane_id, "-p", "-S", f"-{lines}"]
     if join_wrapped:
         cmd.append("-J")
+    if include_escapes:
+        cmd.append("-e")
 
     try:
         result = subprocess.run(
