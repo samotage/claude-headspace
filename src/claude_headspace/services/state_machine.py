@@ -48,6 +48,10 @@ VALID_TRANSITIONS: dict[tuple[TaskState, TurnActor, TurnIntent], TaskState] = {
     (TaskState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
     # From AWAITING_INPUT: User answers and agent resumes
     (TaskState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
+    # From AWAITING_INPUT: Agent asks follow-up question or provides progress
+    # (e.g., background Task agent completes, main agent outputs additional text)
+    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
+    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.AWAITING_INPUT,
     # From AWAITING_INPUT: Agent completes while awaiting (session_end forced completion)
     (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
     (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,

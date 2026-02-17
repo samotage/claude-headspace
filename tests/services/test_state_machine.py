@@ -144,9 +144,11 @@ class TestGetValidTransitionsFrom:
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
         transitions = get_valid_transitions_from(TaskState.AWAITING_INPUT)
-        assert len(transitions) == 3  # USER ANSWER, AGENT COMPLETION, AGENT END_OF_TASK
+        assert len(transitions) == 5  # USER ANSWER, AGENT QUESTION, AGENT PROGRESS, AGENT COMPLETION, AGENT END_OF_TASK
         intents = {(a.value, i.value) for a, i, _ in transitions}
         assert ("user", "answer") in intents
+        assert ("agent", "question") in intents
+        assert ("agent", "progress") in intents
         assert ("agent", "completion") in intents
         assert ("agent", "end_of_task") in intents
 
