@@ -189,9 +189,12 @@ window.VoiceSSEHandler = (function () {
     if (bubbleEl && messagesEl) messagesEl.appendChild(bubbleEl);
     _scrollIfNear();
 
-    // If this is a question with no options, trigger recapture after a delay
-    // to give the terminal time to render the options
-    if (turn.intent === 'question' && !turn.question_options) {
+    // If this is a permission question with no options, trigger recapture after
+    // a delay to give the terminal time to render the options.
+    // Only recapture for permission_request turns — free_text questions are
+    // conversational and should never get Yes/No permission buttons.
+    if (turn.intent === 'question' && !turn.question_options
+        && turn.question_source_type === 'permission_request') {
       _scheduleRecapture(parseInt(data.agent_id, 10), turn.id);
     }
   }
@@ -451,10 +454,13 @@ window.VoiceSSEHandler = (function () {
           if (_onUpdateEndedUI) _onUpdateEndedUI();
         }
       }
-      // Check if the last turn is a question with no options — trigger recapture
+      // Check if the last turn is a permission question with no options — trigger recapture.
+      // Only recapture for permission_request turns — free_text questions are conversational
+      // and should never get Yes/No permission buttons injected.
       if (turns.length > 0) {
         var lastTurn = turns[turns.length - 1];
-        if (lastTurn.intent === 'question' && !lastTurn.question_options && !lastTurn.answered_by_turn_id) {
+        if (lastTurn.intent === 'question' && !lastTurn.question_options && !lastTurn.answered_by_turn_id
+            && lastTurn.question_source_type === 'permission_request') {
           // Also check tool_input fallback
           var hasFallbackOpts = lastTurn.tool_input && lastTurn.tool_input.questions;
           if (!hasFallbackOpts) {

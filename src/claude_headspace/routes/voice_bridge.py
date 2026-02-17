@@ -1202,6 +1202,16 @@ def recapture_permission_options(agent_id: int):
     if not question_turn:
         return jsonify({"error": "No question turn found"}), 404
 
+    # Only recapture permission_request turns — free_text questions are
+    # conversational and must not be overwritten with Yes/No buttons.
+    if question_turn.question_source_type and question_turn.question_source_type != "permission_request":
+        return jsonify({
+            "recaptured": False,
+            "already_present": False,
+            "error": f"Turn is {question_turn.question_source_type}, not a permission request",
+            "turn_id": question_turn.id,
+        }), 200
+
     # If options already exist, return them immediately
     existing_options = question_turn.question_options
     if not existing_options and question_turn.tool_input:

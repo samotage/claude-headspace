@@ -54,6 +54,21 @@ def extract_structured_options(tool_name: str | None, tool_input: dict | None) -
     return tool_input
 
 
+def _default_permission_options(tool_name: str | None) -> list[dict[str, str]]:
+    """Return safe default permission options when tmux capture fails.
+
+    Claude Code permission dialogs always present some variant of Yes/No.
+    These defaults ensure the voice chat always renders actionable buttons
+    even when the terminal capture can't find a properly-structured dialog
+    (e.g. the pane contains numbered agent output that isn't a dialog).
+    """
+    return [
+        {"label": "Yes"},
+        {"label": "Yes, and don't ask again for this session"},
+        {"label": "No"},
+    ]
+
+
 def synthesize_permission_options(
     agent,
     tool_name: str | None,
@@ -69,43 +84,54 @@ def synthesize_permission_options(
     Also generates a meaningful summary (e.g. "Bash: curl from localhost:5055") instead of
     the generic "Permission needed: Bash" using pattern matching on the tool_input.
 
-    Returns None if the agent has no tmux_pane_id or if capture/parse fails.
+    Falls back to default permission options (Yes/No) when the tmux capture fails to find
+    a properly-structured dialog (preventing numbered agent output from being misidentified
+    as permission choices).
     """
+    from .permission_summarizer import summarize_permission_command, classify_safety
+
     if not agent.tmux_pane_id:
         return None
 
+    pane_context = None
     try:
         from . import tmux_bridge
         pane_context = tmux_bridge.capture_permission_context(agent.tmux_pane_id)
     except Exception as e:
         logger.warning(f"Permission context capture failed for agent {agent.id}: {e}")
-        return None
 
-    if not pane_context:
-        return None
-
-    options = pane_context.get("options")
-    if not options:
-        return None
+    if pane_context and pane_context.get("options"):
+        # Tmux captured a real permission dialog — use its options
+        options = pane_context["options"]
+        source = "permission_pane_capture"
+    else:
+        # No dialog structure found in pane (agent output, off-screen, etc.)
+        # Fall back to safe defaults so the voice chat still renders buttons.
+        options = _default_permission_options(tool_name)
+        source = "permission_default_fallback"
+        logger.debug(
+            f"Permission dialog not found in tmux pane for agent {agent.id}, "
+            f"using default options"
+        )
 
     # Generate meaningful summary using permission summarizer
-    from .permission_summarizer import summarize_permission_command, classify_safety
     question_text = summarize_permission_command(tool_name, tool_input, pane_context)
     safety = classify_safety(tool_name, tool_input, pane_context)
 
     # Build command context for future auto-responder
     command_context = {}
-    if pane_context.get("command"):
-        command_context["command"] = pane_context["command"]
-    if pane_context.get("description"):
-        command_context["description"] = pane_context["description"]
+    if pane_context:
+        if pane_context.get("command"):
+            command_context["command"] = pane_context["command"]
+        if pane_context.get("description"):
+            command_context["description"] = pane_context["description"]
 
     result = {
         "questions": [{
             "question": question_text,
             "options": options,
         }],
-        "source": "permission_pane_capture",
+        "source": source,
         "safety": safety,
     }
     if command_context:

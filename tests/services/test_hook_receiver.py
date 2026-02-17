@@ -703,7 +703,9 @@ class TestProcessPermissionRequest:
         mock_broadcast_turn.assert_called_once()
         call_args = mock_broadcast_turn.call_args[0]
         assert call_args[0] == mock_agent
-        assert call_args[1] == "Permission needed: Bash"  # No tool_input, falls back to generic
+        # With default-fallback permission options, the summarizer generates
+        # a meaningful description even without tool_input
+        assert "Bash" in call_args[1]
 
 
 class TestExtractQuestionText:
@@ -819,7 +821,8 @@ class TestPreToolUseTurnToolInput:
         assert added_turn.tool_input == tool_input
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_tool_input_none_for_non_ask_user_question(self, mock_db, mock_agent, fresh_state):
+    def test_tool_input_has_default_options_for_non_ask_user_question(self, mock_db, mock_agent, fresh_state):
+        """Permission requests always get options — defaults when tmux capture fails."""
         from claude_headspace.models.task import TaskState
 
         mock_task = MagicMock()
@@ -835,7 +838,13 @@ class TestPreToolUseTurnToolInput:
         assert result.success is True
         mock_db.session.add.assert_called_once()
         added_turn = mock_db.session.add.call_args[0][0]
-        assert added_turn.tool_input is None
+        # Default fallback options are provided when tmux capture can't find a dialog
+        assert added_turn.tool_input is not None
+        assert added_turn.tool_input["source"] == "permission_default_fallback"
+        opts = added_turn.tool_input["questions"][0]["options"]
+        labels = [o["label"] for o in opts]
+        assert "Yes" in labels
+        assert "No" in labels
 
 
 class TestPreToolUseTurnCreation:
@@ -1329,22 +1338,32 @@ class TestSynthesizePermissionOptions:
         assert result is None
 
     @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
-    def test_returns_none_on_capture_failure(self, mock_capture, mock_agent):
+    def test_falls_back_to_defaults_on_capture_failure(self, mock_capture, mock_agent):
+        """When tmux capture fails, default Yes/No options are returned."""
         mock_agent.tmux_pane_id = "%5"
         mock_capture.return_value = None
 
         result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls"})
 
-        assert result is None
+        assert result is not None
+        assert result["source"] == "permission_default_fallback"
+        labels = [o["label"] for o in result["questions"][0]["options"]]
+        assert "Yes" in labels
+        assert "No" in labels
 
     @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
-    def test_returns_none_on_exception(self, mock_capture, mock_agent):
+    def test_falls_back_to_defaults_on_exception(self, mock_capture, mock_agent):
+        """When tmux capture raises, default Yes/No options are returned."""
         mock_agent.tmux_pane_id = "%5"
         mock_capture.side_effect = RuntimeError("tmux error")
 
         result = _synthesize_permission_options(mock_agent, "Bash", None)
 
-        assert result is None
+        assert result is not None
+        assert result["source"] == "permission_default_fallback"
+        labels = [o["label"] for o in result["questions"][0]["options"]]
+        assert "Yes" in labels
+        assert "No" in labels
 
     @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
     def test_question_text_with_no_tool_name(self, mock_capture, mock_agent):
