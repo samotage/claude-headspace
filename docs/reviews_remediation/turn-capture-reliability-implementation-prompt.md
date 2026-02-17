@@ -21,9 +21,9 @@ Agent turns are silently lost when hook processing fails. The `process_stop` met
 |------|--------|---------|-------------|------|
 | 1 | Hooks | <100ms | Unreliable | Fast path — optimistic UI updates |
 | 2 | JSONL Transcripts | 2-10s | Authoritative | Gold standard — guarantees completeness |
-| 3 | Tmux Pane | ~1s | Visual ground truth | Growth phase — not in this implementation |
+| 3 | Tmux Pane | ~1s | Visual ground truth | Real-time watchdog — bridges "hook didn't fire" to "transcript hasn't arrived" |
 
-**The inversion:** Hooks are the preview. JSONL is the authority. If a hook fails, the reconciler MUST create the missing turn from the JSONL entry.
+**The inversion:** Hooks are the preview. JSONL is the authority. Tmux is the early warning. If a hook fails, the tmux watchdog detects the gap within seconds and triggers reconciliation. The reconciler MUST create the missing turn from the JSONL entry.
 
 ## Implementation Tasks (in dependency order)
 
@@ -172,6 +172,32 @@ if (reconcileAction) {
 }
 ```
 
+### Task 7: Tmux Pane Watchdog
+
+**File:** `src/claude_headspace/services/commander_availability.py` (extend or extract new service)
+**Related:** `src/claude_headspace/services/tmux_bridge.py`
+
+**Current behavior:** `CommanderAvailability` already monitors tmux panes on a background thread to track whether agents are available for commander input. It reads pane content but only checks for availability indicators — it does NOT compare pane output against database turns.
+
+**Required behavior:** Add a turn gap detection layer that:
+
+1. **Captures tmux pane content** on each monitoring cycle (already happening)
+2. **Detects new agent output** — compare current pane content against last-seen content to identify new output since last check
+3. **Checks for unrepresented turns** — when new agent output is detected, query the database for a matching Turn within the last N seconds. If no match exists after 5 seconds, flag a gap.
+4. **Triggers early reconciliation** — when a gap is detected, trigger the reconciler for that agent immediately rather than waiting for the file watcher's next JSONL poll cycle
+5. **Graceful degradation** — when tmux is unavailable (agent not in tmux session), skip watchdog silently. The system falls back to JSONL-only reconciliation (Tier 2). Log at DEBUG level.
+
+**Key considerations:**
+- The watchdog runs on the existing `CommanderAvailability` background thread (or a new lightweight thread if separation is cleaner)
+- Pane content comparison should be lightweight — hash-based, not full diff
+- The 5-second threshold is configurable via `config.yaml` (suggest `headspace.tmux_watchdog.gap_threshold_seconds`)
+- Must not interfere with the existing commander availability checks
+- Agent must have a `tmux_pane_id` set — skip agents without one
+
+**Logging:**
+- **INFO:** `[TMUX_WATCHDOG] Gap detected for agent {agent_id} — new output in pane {pane_id} with no matching turn after {threshold}s, triggering reconciliation`
+- **DEBUG:** `[TMUX_WATCHDOG] Agent {agent_id} pane content unchanged` / `[TMUX_WATCHDOG] Agent {agent_id} no tmux pane — skipping`
+
 ## Key Files Reference
 
 | File | Role | What Changes |
@@ -182,6 +208,7 @@ if (reconcileAction) {
 | `src/claude_headspace/services/state_machine.py` | Valid transition definitions | Audit for gaps (Task 4) |
 | `src/claude_headspace/services/file_watcher.py` | Watches JSONL, feeds reconciler | Investigate if entries are being dropped (Task 2) |
 | `src/claude_headspace/services/intent_detector.py` | Classifies agent intent | Used by Task 3 for recovered turn intent detection |
+| `src/claude_headspace/services/commander_availability.py` | Tmux pane monitoring | Add turn gap detection watchdog (Task 7) |
 | `templates/partials/_agent_card.html` | Agent card template | Add reconcile kebab item (Task 6) |
 | `static/js/agent-lifecycle.js` | Kebab menu JS handlers | Add reconcile click handler (Task 6) |
 
@@ -202,6 +229,9 @@ if (reconcileAction) {
 - Test that a reconciler-created Turn triggers a state transition
 - Test that force reconciliation endpoint works
 - Test idempotency: reconciler run twice on same data produces no duplicates
+- Test that tmux watchdog detects new pane output with no matching turn and triggers reconciliation
+- Test that tmux watchdog skips agents without a tmux pane (graceful degradation)
+- Test that tmux watchdog does not interfere with commander availability checks
 
 **Test database:** Tests use `claude_headspace_test` (enforced by `_force_test_database` fixture). Before running tests: `createdb claude_headspace_test` if it doesn't exist.
 
@@ -222,4 +252,4 @@ if (reconcileAction) {
 - SSE event type definitions (`turn_created`, `turn_updated`)
 - Database schema (no new tables; possible new columns on Turn if needed)
 - Service registration patterns (`app.extensions`)
-- Any file outside the scope of Tasks 1-6
+- Any file outside the scope of Tasks 1-7

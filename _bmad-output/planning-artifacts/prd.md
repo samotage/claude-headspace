@@ -69,7 +69,7 @@ This PRD defines the requirements for fixing the turn capture pipeline so that e
 
 - **Three-tier reliability pipeline operational:**
   - Hooks deliver optimistic turns in <100ms (when they fire)
-  - Tmux watchdog detects unrepresented agent output within 5 seconds (Growth phase)
+  - Tmux watchdog detects unrepresented agent output within 5 seconds
   - Transcript reconciler guarantees completeness within 10 seconds of JSONL write
 - **Reconciler creates missing turns:** When a JSONL entry has no matching database turn (e.g., rolled back by exception), the reconciler creates a new turn — no silent skipping.
 - **State machine does not destroy data:** If a state transition fails, the turn is still committed. State stays unchanged; turn gets saved. Decoupled operations.
@@ -121,17 +121,17 @@ A Claude Code agent is asked to investigate why a turn appeared with a slight de
 | Timestamp correction & chronological ordering | Journey 3 |
 | Structured recovery logging (INFO/DEBUG) | Journey 4 |
 | Full recovery chain traceability | Journey 4 |
-| Tmux watchdog for early gap detection (when available) | Journeys 2, 3 (Growth) |
+| Tmux watchdog for early gap detection (when available) | Journeys 2, 3 |
 
 ## Product Scope
 
-### MVP (Phase 1) — Fix the Broken Safety Net
+### Scope
 
-**MVP Approach:** Problem-solving — fix the reliability pipeline so turns are never silently lost.
+**Approach:** Problem-solving — fix the reliability pipeline so turns are never silently lost.
 
 **Resource Requirements:** Single developer. Changes to existing Python services only — no new infrastructure, dependencies, or frontend changes.
 
-**Core Journeys Supported:** Journey 2 (hook fails, system self-heals) and Journey 4 (agent debugging recovery events).
+**Core Journeys Supported:** All four journeys.
 
 **Must-Have Capabilities:**
 
@@ -141,25 +141,21 @@ A Claude Code agent is asked to investigate why a turn appeared with a slight de
 4. **Recovered turns feed into lifecycle** — Reconciler-created turns call into `TaskLifecycleManager` to trigger implied state transitions.
 5. **Recovery logging** — INFO for recovery actions, WARNING for hook failures, DEBUG for full diagnostic chain.
 6. **Force reconciliation** — On-demand reconciliation trigger from agent card kebab menu.
+7. **Tmux pane watchdog** — Detects agent output not reflected in the database within 5 seconds, triggers early reconciliation before JSONL arrives. Operates as the real-time bridge between "hook didn't fire" and "transcript hasn't arrived yet." Degrades gracefully when tmux is unavailable (relies on JSONL reconciliation alone).
 
-**Explicit MVP exclusions:**
-- No tmux pane monitoring (Phase 2)
-- No dashboard metrics for recovery health (Phase 2)
+**Explicit exclusions:**
+- No dashboard metrics for recovery health
 - No client-side changes
 - No new SSE event types
 - No changes to file watcher polling interval
 
-### Phase 2 (Growth) — Early Detection
+### Future Considerations
 
-1. **Tmux pane watchdog** — Detects agent output not reflected in the database, triggers early reconciliation before JSONL arrives
-2. **Reconciliation health metrics** — Dashboard visibility into recovery frequency per agent
-3. **Proactive gap detection** — SSE `gap` events when the system detects a potential missed turn
+These are out of scope for this change but noted for reference:
 
-### Phase 3 (Vision) — Self-Tuning
-
-1. **Self-tuning reliability** — System learns which hook events are unreliable and pre-emptively triggers transcript checks
-2. **Hook reliability scoring** — Per-event-type reliability metrics
-3. **Upstream fix advocacy** — Documented hook failure patterns for Anthropic
+- **Self-tuning reliability** — System learns which hook events are unreliable and pre-emptively triggers transcript checks
+- **Hook reliability scoring** — Per-event-type reliability metrics
+- **Reconciliation health metrics** — Dashboard visibility into recovery frequency per agent
 
 ### Risk Mitigation
 
@@ -244,7 +240,7 @@ This PRD targets the server-side turn capture reliability pipeline within an exi
 
 - **FR23:** The user can trigger a forced reconciliation for a specific agent from the agent card's kebab menu in the dashboard
 
-### Tmux Gap Detection (Growth — Phase 2)
+### Tmux Gap Detection
 
 - **FR24:** The system can monitor tmux pane output for agent content not reflected in the database
 - **FR25:** The system can trigger early reconciliation when tmux monitoring detects a gap between pane output and database state
