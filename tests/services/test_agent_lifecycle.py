@@ -135,7 +135,7 @@ class TestShutdownAgent:
         assert result.success
         assert "shutdown" in result.message.lower()
         mock_tmux.send_text.assert_called_once_with(
-            pane_id="%5", text="/exit", timeout=5
+            pane_id="%5", text="/exit", timeout=5, verify_enter=False,
         )
 
     @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")

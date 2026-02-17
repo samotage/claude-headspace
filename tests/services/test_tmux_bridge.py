@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from claude_headspace.services.tmux_bridge import (
+    DEFAULT_ENTER_VERIFY_LINES,
     HealthCheckLevel,
     HealthResult,
     PaneInfo,
@@ -18,8 +19,10 @@ from claude_headspace.services.tmux_bridge import (
     _get_send_lock,
     _has_autocomplete_ghost,
     _is_process_in_tree,
+    _pane_content_changed,
     _send_locks,
     _validate_pane_id,
+    _verify_submission,
     capture_pane,
     capture_permission_context,
     capture_permission_options,
@@ -244,7 +247,7 @@ class TestSendText:
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "  # clean prompt, no ghost text
 
-        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0)
+        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
 
         assert result.success is True
         assert result.latency_ms >= 0
@@ -262,12 +265,15 @@ class TestSendText:
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_send_success_with_ghost(self, mock_run, mock_capture):
-        """With autocomplete ghost text detected, Escape is sent first."""
+        """With autocomplete ghost text detected pre-typing, Escape is sent first."""
         mock_run.return_value = MagicMock(returncode=0)
-        # Simulate ghost text with dim ANSI styling (SGR 2)
-        mock_capture.return_value = "> \x1b[2msome suggestion\x1b[22m"
+        # Pre-typing: ghost text. Post-typing: clean (Escape dismissed it).
+        mock_capture.side_effect = [
+            "> \x1b[2msome suggestion\x1b[22m",  # pre-typing ghost check
+            "> ",  # post-typing ghost check (clean after Escape)
+        ]
 
-        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0)
+        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
 
         assert result.success is True
         # Three subprocess calls: Escape + text send + Enter send
@@ -794,6 +800,28 @@ class TestParsePermissionContext:
         assert result["tool_type"] is None
         assert result["options"] is not None
         assert len(result["options"]) == 2
+
+    def test_numbered_agent_output_rejected_without_dialog_structure(self):
+        """Numbered agent output must NOT be parsed as permission options.
+
+        When the pane contains numbered discussion points (e.g. resolved items)
+        but no tool header or 'Do you want to proceed?' prompt, the function
+        should return None — these are not permission dialogs.
+        """
+        text = (
+            " Good. Let me process what's resolved and what needs discussion.\n"
+            "\n"
+            " Resolved — I'll update the ERDs:\n"
+            " 1. Integer PKs, not UUIDs\n"
+            " 2. Persona keeps slug and role_type — slug generation belongs to Persona\n"
+            " 3. Drop can_use_tools from Role\n"
+            " 4. Drop PositionAssignment table — agent status tells you everything\n"
+            " 5. Drop availability constraint (2.3) — multiple Cons are fine\n"
+            "\n"
+            " Needs workshopping — point 3:\n"
+        )
+        result = parse_permission_context(text)
+        assert result is None
 
     def test_multiline_command(self):
         text = (
@@ -1411,7 +1439,7 @@ class TestSendLockRegistry:
         def tracked_send(label):
             """Send text and record when we enter/exit the lock."""
             call_order.append(f"{label}_start")
-            send_text("%50", f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0)
+            send_text("%50", f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
             call_order.append(f"{label}_end")
 
         t1 = threading.Thread(target=tracked_send, args=("A",))
@@ -1447,7 +1475,7 @@ class TestSendLockRegistry:
         results = {}
 
         def send_to_pane(pane_id, label):
-            result = send_text(pane_id, f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0)
+            result = send_text(pane_id, f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
             results[label] = result.success
 
         t1 = threading.Thread(target=send_to_pane, args=("%51", "A"))
@@ -1473,6 +1501,7 @@ class TestSendLockRegistry:
             "%53", "hello",
             text_enter_delay_ms=0,
             interrupt_settle_ms=0,
+            verify_enter=False,
         )
         assert result.success is True
         release_send_lock("%53")
@@ -1546,3 +1575,294 @@ class TestListPanesSocketPath:
         result = list_panes(socket_path="/tmp/tmux-hs")
         cmd = mock_run.call_args[0][0]
         assert cmd[1:3] == ["-S", "/tmp/tmux-hs"]
+
+
+class TestPaneContentChanged:
+    """Tests for _pane_content_changed helper."""
+
+    def test_identical_content(self):
+        assert _pane_content_changed("line1\nline2\n", "line1\nline2\n") is False
+
+    def test_different_content(self):
+        assert _pane_content_changed("line1\nline2\n", "line1\nline3\n") is True
+
+    def test_whitespace_differences_ignored(self):
+        assert _pane_content_changed("  line1  \n", "line1\n") is False
+
+    def test_blank_lines_ignored(self):
+        assert _pane_content_changed("line1\n\n\n", "line1\n") is False
+
+    def test_both_empty(self):
+        assert _pane_content_changed("", "") is False
+
+    def test_empty_vs_content(self):
+        assert _pane_content_changed("", "something\n") is True
+
+    def test_content_vs_empty(self):
+        assert _pane_content_changed("something\n", "") is True
+
+    def test_additional_line_detected(self):
+        assert _pane_content_changed("line1\n", "line1\nline2\n") is True
+
+
+class TestVerifySubmission:
+    """Tests for _verify_submission helper."""
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_first_attempt_success(self, mock_capture, mock_dump):
+        """Content changes on first check → success."""
+        mock_capture.return_value = "Processing...\n> "
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="Your input here\n> ",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+        )
+
+        assert result is True
+        mock_dump.assert_not_called()
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_retry_success(self, mock_capture, mock_run, mock_dump):
+        """Content unchanged on first check, changes on second → success after retry."""
+        mock_run.return_value = MagicMock(returncode=0)
+        # First verify check: unchanged. Ghost check: clean. Second verify check: changed.
+        mock_capture.side_effect = [
+            "Your input here\n> ",  # first verify check (unchanged)
+            "> ",  # ghost check (no ghost)
+            "Processing...\n",  # second verify check (changed!)
+        ]
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="Your input here\n> ",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+        )
+
+        assert result is True
+        mock_dump.assert_not_called()
+        # Enter was retried once
+        enter_calls = [
+            c for c in mock_run.call_args_list
+            if c[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
+        ]
+        assert len(enter_calls) == 1
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_all_retries_exhausted(self, mock_capture, mock_run, mock_dump):
+        """Content never changes → returns False after all retries."""
+        mock_run.return_value = MagicMock(returncode=0)
+        # Always return the same content (unchanged)
+        mock_capture.return_value = "Stuck input\n> "
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="Stuck input\n> ",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=2,
+        )
+
+        assert result is False
+        mock_dump.assert_called_once()
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_ghost_dismiss_during_retry(self, mock_capture, mock_run, mock_dump):
+        """Ghost text detected during retry → dismissed with Escape before retrying Enter."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.side_effect = [
+            "Your input here\n> ",  # first verify check (unchanged)
+            "> \x1b[2mghost\x1b[22m",  # ghost check: ghost detected!
+            "Processing...\n",  # second verify check (changed!)
+        ]
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="Your input here\n> ",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+        )
+
+        assert result is True
+        # Should have sent Escape (dismiss ghost) + Enter (retry)
+        calls = [c[0][0] for c in mock_run.call_args_list]
+        assert ["tmux", "send-keys", "-t", "%5", "Escape"] in calls
+        assert ["tmux", "send-keys", "-t", "%5", "Enter"] in calls
+
+
+class TestSendTextVerifyEnter:
+    """Tests for send_text with verify_enter=True."""
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_true_calls_verification(self, mock_run, mock_capture, mock_verify):
+        """verify_enter=True triggers _verify_submission after Enter."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+        mock_verify.return_value = True
+
+        result = send_text(
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=True,
+        )
+
+        assert result.success is True
+        mock_verify.assert_called_once()
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_false_skips_verification(self, mock_run, mock_capture, mock_verify):
+        """verify_enter=False skips _verify_submission entirely."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+
+        result = send_text(
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+        )
+
+        assert result.success is True
+        mock_verify.assert_not_called()
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_failure_returns_send_failed(self, mock_run, mock_capture, mock_verify):
+        """When verification fails, returns SEND_FAILED error."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+        mock_verify.return_value = False
+
+        result = send_text(
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=True,
+        )
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.SEND_FAILED
+        assert "Enter key not accepted" in result.error_message
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_post_typing_ghost_dismissed(self, mock_run, mock_capture):
+        """Ghost text appearing after typing is dismissed before Enter."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.side_effect = [
+            "> ",  # pre-typing: clean
+            "> \x1b[2mghost\x1b[22m",  # post-typing: ghost appeared!
+        ]
+
+        result = send_text(
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+        )
+
+        assert result.success is True
+        # Should have: text + Escape (post-typing ghost) + Enter = 3 subprocess calls
+        assert mock_run.call_count == 3
+        escape_call = mock_run.call_args_list[1]
+        assert escape_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Escape"]
+
+
+class TestSendTextSanitisation:
+    """Tests for send_text text sanitisation (rstrip only)."""
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_newlines_preserved_in_body(self, mock_run, mock_capture, mock_verify):
+        """Internal newlines are preserved (not flattened to spaces)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+        mock_verify.return_value = True
+
+        text_with_newlines = "line1\nline2\nline3"
+        send_text("%5", text_with_newlines, text_enter_delay_ms=0, clear_delay_ms=0)
+
+        # Find the literal text send call (has -l flag)
+        text_call = [
+            c for c in mock_run.call_args_list
+            if "-l" in c[0][0]
+        ]
+        assert len(text_call) == 1
+        # The text should still contain newlines
+        sent_text = text_call[0][0][0][-1]
+        assert "\n" in sent_text
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_trailing_whitespace_stripped(self, mock_run, mock_capture):
+        """Trailing whitespace is stripped."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+
+        send_text("%5", "hello   \n\n", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+
+        text_call = [c for c in mock_run.call_args_list if "-l" in c[0][0]]
+        sent_text = text_call[0][0][0][-1]
+        assert sent_text == "hello"
+
+
+class TestSendKeysVerifyEnter:
+    """Tests for send_keys with verify_enter parameter."""
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_true_triggers_verification(self, mock_run, mock_capture, mock_verify):
+        """verify_enter=True captures baseline and calls _verify_submission."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "  1. Yes\n  2. No\n"
+        mock_verify.return_value = True
+
+        result = send_keys(
+            "%5", "Down", "Enter",
+            sequential_delay_ms=0, verify_enter=True,
+        )
+
+        assert result.success is True
+        mock_verify.assert_called_once()
+        # Baseline capture should have been called
+        mock_capture.assert_called_once()
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_false_skips_verification(self, mock_run, mock_verify):
+        """Default verify_enter=False does not verify."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = send_keys("%5", "Down", "Enter", sequential_delay_ms=0)
+
+        assert result.success is True
+        mock_verify.assert_not_called()
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_verify_enter_failure_returns_send_failed(self, mock_run, mock_capture, mock_verify):
+        """When verification fails, returns SEND_FAILED."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "options still showing\n"
+        mock_verify.return_value = False
+
+        result = send_keys(
+            "%5", "Down", "Enter",
+            sequential_delay_ms=0, verify_enter=True,
+        )
+
+        assert result.success is False
+        assert result.error_type == TmuxBridgeErrorType.SEND_FAILED

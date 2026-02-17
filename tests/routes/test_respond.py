@@ -422,7 +422,7 @@ class TestSelectMode:
 
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
@@ -443,7 +443,7 @@ class TestSelectMode:
         assert response.status_code == 200
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Down", "Down", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
@@ -568,7 +568,7 @@ class TestOtherMode:
         # Navigate: Down × 2 (num_options) + Enter
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Down", "Down", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
         # Wait, then type text
         mock_time.sleep.assert_called_with(0.5)  # select_other_delay_ms=500
@@ -625,7 +625,7 @@ class TestMultiSelectMode:
         # Q1: Down, Enter; Q2: Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Down", "Enter", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
@@ -653,7 +653,7 @@ class TestMultiSelectMode:
         # Q1: Down, Down, Enter; Q2: Space (idx 0), Down, Down, Space (idx 2), Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Down", "Down", "Enter", "Space", "Down", "Down", "Space", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
@@ -678,7 +678,7 @@ class TestMultiSelectMode:
         # Q1: Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
             "%5", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150,
+            timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
     def test_empty_answers_returns_400(self, client, mock_db, mock_agent):

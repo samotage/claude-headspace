@@ -278,11 +278,13 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
             message="Agent has no tmux pane — cannot send graceful shutdown",
         )
 
-    # Send /exit via tmux send-keys
+    # Send /exit via tmux send-keys — skip Enter verification because
+    # the pane may vanish immediately after the agent shuts down
     result = tmux_bridge.send_text(
         pane_id=agent.tmux_pane_id,
         text="/exit",
         timeout=5,
+        verify_enter=False,
     )
 
     if not result.success:

@@ -237,7 +237,7 @@ CONFIG_SCHEMA = [
                          help_text="How often to check if tmux panes are available for each agent. Lower values update availability status faster. Too low wastes CPU on frequent tmux subprocess calls."),
             FieldSchema("subprocess_timeout", "integer", "Timeout for tmux subprocess calls (seconds)", min_value=1, max_value=30, default=10,
                          help_text="Maximum seconds to wait for a tmux command to complete. Increase if you see timeout errors, but high values can block the thread if tmux hangs."),
-            FieldSchema("text_enter_delay_ms", "integer", "Delay between sending text and pressing Enter (ms)", min_value=0, max_value=5000, default=100,
+            FieldSchema("text_enter_delay_ms", "integer", "Delay between sending text and pressing Enter (ms)", min_value=0, max_value=5000, default=120,
                          help_text="Milliseconds to wait between sending text and pressing Enter in tmux. Some terminals need a small delay to process text before the Enter key arrives. Increase if text appears garbled."),
         ],
     ),

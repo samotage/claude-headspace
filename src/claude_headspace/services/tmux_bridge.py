@@ -21,6 +21,9 @@ DEFAULT_SUBPROCESS_TIMEOUT = 5  # seconds
 DEFAULT_TEXT_ENTER_DELAY_MS = 120  # ms between text send and Enter
 DEFAULT_CLEAR_DELAY_MS = 200  # ms after Escape before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
+DEFAULT_ENTER_VERIFY_DELAY_MS = 200  # ms between Enter and verification check
+DEFAULT_MAX_ENTER_RETRIES = 3  # max Enter retry attempts after verification failure
+DEFAULT_ENTER_VERIFY_LINES = 5  # pane lines to capture for Enter verification
 
 # Per-pane send lock registry — prevents concurrent sends to the same pane
 # from interleaving text and corrupting the prompt.
@@ -263,12 +266,114 @@ def _has_autocomplete_ghost(pane_content: str) -> bool:
     return False
 
 
+def _pane_content_changed(before: str, after: str) -> bool:
+    """Compare two pane captures to detect meaningful content change.
+
+    Strips blank lines and whitespace from each line before comparison.
+    Any difference in the non-empty lines indicates the agent has started
+    processing (input cleared, tool output appeared, etc.).
+
+    Args:
+        before: Pane content captured before Enter
+        after: Pane content captured after Enter
+
+    Returns:
+        True if the pane content has changed meaningfully
+    """
+    def _significant_lines(text: str) -> list[str]:
+        return [line.strip() for line in text.strip().splitlines() if line.strip()]
+
+    return _significant_lines(before) != _significant_lines(after)
+
+
+def _verify_submission(
+    pane_id: str,
+    pre_submit_content: str,
+    timeout: float,
+    clear_delay_ms: int,
+    verify_delay_ms: int = DEFAULT_ENTER_VERIFY_DELAY_MS,
+    max_retries: int = DEFAULT_MAX_ENTER_RETRIES,
+) -> bool:
+    """Verify that Enter was accepted by watching for pane content changes.
+
+    Polls the pane after Enter and compares with the pre-Enter baseline.
+    If the content hasn't changed, Enter was likely lost (e.g. swallowed
+    by autocomplete). Dismisses ghost text if found and retries Enter.
+
+    Args:
+        pane_id: The tmux pane ID
+        pre_submit_content: Pane content captured before Enter was sent
+        timeout: Subprocess timeout in seconds
+        clear_delay_ms: Delay in ms after Escape before retrying Enter
+        verify_delay_ms: Delay in ms before each verification check
+        max_retries: Maximum number of Enter retries
+
+    Returns:
+        True if submission was confirmed (content changed), False if all retries exhausted
+    """
+    for attempt in range(1, max_retries + 1):
+        time.sleep(verify_delay_ms / 1000.0)
+        post_content = capture_pane(
+            pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+        )
+
+        if _pane_content_changed(pre_submit_content, post_content):
+            logger.info(
+                f"Enter confirmed after {attempt} attempt(s) for pane {pane_id}"
+            )
+            return True
+
+        # Enter was lost — try to recover
+        logger.debug(
+            f"Pane {pane_id} unchanged after Enter "
+            f"(attempt {attempt}/{max_retries})"
+        )
+
+        # Check for autocomplete ghost text that may have appeared
+        ghost_content = capture_pane(
+            pane_id, lines=3, include_escapes=True, timeout=timeout,
+        )
+        if _has_autocomplete_ghost(ghost_content):
+            logger.debug(
+                f"Ghost text detected during retry for pane {pane_id}, "
+                f"dismissing with Escape"
+            )
+            try:
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                    check=True,
+                    timeout=timeout,
+                    capture_output=True,
+                )
+                time.sleep(clear_delay_ms / 1000.0)
+            except Exception:
+                pass
+
+        # Retry Enter
+        try:
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "Enter"],
+                check=True,
+                timeout=timeout,
+                capture_output=True,
+            )
+        except Exception as e:
+            logger.warning(f"Enter retry failed for pane {pane_id}: {e}")
+
+    # All retries exhausted
+    _diagnostic_dump(pane_id, "Enter verification failed after all retries")
+    return False
+
+
 def send_text(
     pane_id: str,
     text: str,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
     clear_delay_ms: int = DEFAULT_CLEAR_DELAY_MS,
+    verify_enter: bool = True,
+    enter_verify_delay_ms: int = DEFAULT_ENTER_VERIFY_DELAY_MS,
+    max_enter_retries: int = DEFAULT_MAX_ENTER_RETRIES,
 ) -> SendResult:
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
@@ -297,13 +402,11 @@ def send_text(
     with _get_send_lock(pane_id):
         start_time = time.time()
 
-        # Sanitise for PTY transport: send-keys -l passes raw bytes, so
-        # \n and \r are interpreted as Enter by the TUI — causing premature
-        # submission or multi-line mode toggle that swallows the real Enter.
-        # After replacing newlines, strip trailing whitespace so the last
-        # byte through the PTY is actual content, not junk that interferes
-        # with the deliberate Enter we send after the delay.
-        sanitised = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
+        # Strip trailing whitespace so the last byte through the PTY is
+        # actual content, not junk that interferes with the deliberate Enter
+        # we send after the delay.  Internal newlines and formatting are
+        # preserved — send-keys -l passes them as literal characters.
+        sanitised = text.rstrip()
         if sanitised != text:
             logger.debug(
                 f"Sanitised text for pane {pane_id}: "
@@ -342,6 +445,30 @@ def send_text(
             # Delay between text and Enter
             time.sleep(text_enter_delay_ms / 1000.0)
 
+            # Post-typing ghost check: typing may trigger new autocomplete
+            post_type_content = capture_pane(
+                pane_id, lines=3, include_escapes=True, timeout=timeout,
+            )
+            if _has_autocomplete_ghost(post_type_content):
+                logger.debug(
+                    f"Post-typing ghost detected in pane {pane_id}, "
+                    f"sending Escape to dismiss"
+                )
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                    check=True,
+                    timeout=timeout,
+                    capture_output=True,
+                )
+                time.sleep(clear_delay_ms / 1000.0)
+
+            # Capture pre-Enter baseline for verification
+            pre_enter_content = ""
+            if verify_enter:
+                pre_enter_content = capture_pane(
+                    pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+                )
+
             # Send Enter as a key (triggers Ink's onSubmit)
             subprocess.run(
                 ["tmux", "send-keys", "-t", pane_id, "Enter"],
@@ -349,6 +476,28 @@ def send_text(
                 timeout=timeout,
                 capture_output=True,
             )
+
+            # Verify Enter was accepted by watching for pane content change
+            if verify_enter:
+                if not _verify_submission(
+                    pane_id,
+                    pre_enter_content,
+                    timeout=timeout,
+                    clear_delay_ms=clear_delay_ms,
+                    verify_delay_ms=enter_verify_delay_ms,
+                    max_retries=max_enter_retries,
+                ):
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    logger.warning(
+                        f"Enter verification failed for pane {pane_id} "
+                        f"after {max_enter_retries} retries ({latency_ms}ms)"
+                    )
+                    return SendResult(
+                        success=False,
+                        error_type=TmuxBridgeErrorType.SEND_FAILED,
+                        error_message="Enter key not accepted after retries",
+                        latency_ms=latency_ms,
+                    )
 
             latency_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Sent text to tmux pane {pane_id} ({latency_ms}ms)")
@@ -403,6 +552,7 @@ def interrupt_and_send_text(
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     text_enter_delay_ms: int = DEFAULT_TEXT_ENTER_DELAY_MS,
     interrupt_settle_ms: int = 500,
+    verify_enter: bool = True,
 ) -> SendResult:
     """Interrupt a processing Claude Code agent, then send text.
 
@@ -476,6 +626,7 @@ def interrupt_and_send_text(
             text=text,
             timeout=timeout,
             text_enter_delay_ms=text_enter_delay_ms,
+            verify_enter=verify_enter,
         )
 
         if result.success:
@@ -491,6 +642,10 @@ def send_keys(
     *keys: str,
     timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
     sequential_delay_ms: int = DEFAULT_SEQUENTIAL_SEND_DELAY_MS,
+    verify_enter: bool = False,
+    enter_verify_delay_ms: int = DEFAULT_ENTER_VERIFY_DELAY_MS,
+    max_enter_retries: int = DEFAULT_MAX_ENTER_RETRIES,
+    clear_delay_ms: int = DEFAULT_CLEAR_DELAY_MS,
 ) -> SendResult:
     """Send special keys to a tmux pane.
 
@@ -502,6 +657,11 @@ def send_keys(
         *keys: Key names to send (e.g., "Enter", "Escape", "C-c")
         timeout: Subprocess timeout in seconds
         sequential_delay_ms: Delay in ms between sequential key sends
+        verify_enter: If True, verify that Enter was accepted after sending
+            all keys by watching for pane content changes. Default False.
+        enter_verify_delay_ms: Delay in ms before each verification check
+        max_enter_retries: Maximum number of Enter retries
+        clear_delay_ms: Delay in ms after Escape before retrying Enter
 
     Returns:
         SendResult with success status
@@ -517,6 +677,13 @@ def send_keys(
         start_time = time.time()
 
         try:
+            # Capture baseline before keys if verification requested
+            pre_keys_content = ""
+            if verify_enter:
+                pre_keys_content = capture_pane(
+                    pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+                )
+
             for i, key in enumerate(keys):
                 if i > 0:
                     time.sleep(sequential_delay_ms / 1000.0)
@@ -526,6 +693,28 @@ def send_keys(
                     timeout=timeout,
                     capture_output=True,
                 )
+
+            # Verify Enter was accepted by watching for pane content change
+            if verify_enter:
+                if not _verify_submission(
+                    pane_id,
+                    pre_keys_content,
+                    timeout=timeout,
+                    clear_delay_ms=clear_delay_ms,
+                    verify_delay_ms=enter_verify_delay_ms,
+                    max_retries=max_enter_retries,
+                ):
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    logger.warning(
+                        f"Enter verification failed for pane {pane_id} "
+                        f"after {max_enter_retries} retries ({latency_ms}ms)"
+                    )
+                    return SendResult(
+                        success=False,
+                        error_type=TmuxBridgeErrorType.SEND_FAILED,
+                        error_message="Enter key not accepted after retries",
+                        latency_ms=latency_ms,
+                    )
 
             latency_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Sent keys {keys} to tmux pane {pane_id} ({latency_ms}ms)")
@@ -957,6 +1146,15 @@ def parse_permission_context(pane_text: str) -> dict | None:
                 description = block_lines[-1]
             else:
                 command_text = "\n".join(block_lines)
+
+    # Require at least one structural signal that this is actually a
+    # permission dialog, not just numbered agent output (e.g. "1. Fix bug,
+    # 2. Add test, 3. Refactor").  A valid dialog has a tool header
+    # ("Bash command", "Read file") and/or a confirmation prompt
+    # ("Do you want to proceed?").
+    if not header_match and not prompt_match:
+        logger.debug("Rejecting numbered list — no dialog structure found (no header or prompt)")
+        return None
 
     return {
         "tool_type": tool_type,

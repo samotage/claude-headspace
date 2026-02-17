@@ -242,6 +242,7 @@ def respond_to_agent(agent_id: int):
             *keys,
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
         )
         option_label = data.get("option_label", "").strip()
         record_text = option_label if option_label else f"[selected option {option_index}]"
@@ -256,6 +257,7 @@ def respond_to_agent(agent_id: int):
             *keys,
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
         )
         if result.success:
             # Wait for the "Other" text input to appear
@@ -276,6 +278,7 @@ def respond_to_agent(agent_id: int):
             *keys,
             timeout=subprocess_timeout,
             sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
         )
         # Build descriptive summary for the turn record
         parts = []

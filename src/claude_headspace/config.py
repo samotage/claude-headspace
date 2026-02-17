@@ -86,7 +86,7 @@ DEFAULTS = {
     "tmux_bridge": {
         "health_check_interval": 30,
         "subprocess_timeout": 5,
-        "text_enter_delay_ms": 100,
+        "text_enter_delay_ms": 120,
         "sequential_delay_ms": 150,
         "select_other_delay_ms": 500,
     },
