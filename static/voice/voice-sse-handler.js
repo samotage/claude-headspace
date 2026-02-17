@@ -184,11 +184,14 @@ window.VoiceSSEHandler = (function () {
     // Insert task separator + bubble via appendChild (not insertBubbleOrdered)
     // so the separator stays immediately before its bubble.
     // SSE turns are always the newest, so append order is correct.
+    // Capture scroll position BEFORE appending — after append, scrollHeight
+    // increases and the near-bottom check would see stale distance.
+    var wasNearBottom = VoiceChatController.isUserNearBottom();
     VoiceChatRenderer.maybeInsertTaskSeparator(turn);
     var messagesEl = document.getElementById('chat-messages');
     var bubbleEl = VoiceChatRenderer.createBubbleEl(turn, null, isTerminalIntent);
     if (bubbleEl && messagesEl) messagesEl.appendChild(bubbleEl);
-    _scrollIfNear();
+    if (wasNearBottom && _onScrollChat) _onScrollChat(false);
 
     // If this is a permission question with no options, trigger recapture after
     // a delay to give the terminal time to render the options.
@@ -398,6 +401,8 @@ window.VoiceSSEHandler = (function () {
       VoiceState.fetchInFlight = false;
       // Discard if user navigated to a different agent while fetching
       if (agentId !== VoiceState.targetAgentId) return;
+      // Capture scroll position BEFORE appending new turns
+      var wasNearBottom = VoiceChatController.isUserNearBottom();
       var turns = resp.turns || [];
       var messagesContainer = document.getElementById('chat-messages');
 
@@ -470,9 +475,8 @@ window.VoiceSSEHandler = (function () {
         }
       }
 
-      // Only auto-scroll if user is near the bottom -- don't yank them
-      // away from reading older messages (mobile reading experience)
-      _scrollIfNear();
+      // Auto-scroll if user was near the bottom before new turns were appended
+      if (wasNearBottom && _onScrollChat) _onScrollChat(false);
     }).catch(function () {
       VoiceState.fetchInFlight = false;
     });

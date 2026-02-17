@@ -218,7 +218,7 @@ window.VoiceChatController = (function () {
   function isUserNearBottom() {
     var el = document.getElementById('chat-messages');
     if (!el) return true;
-    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 300;
   }
 
   function scrollChatToBottom() {
