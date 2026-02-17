@@ -415,6 +415,17 @@ window.VoiceApp = (function () {
       });
     }
     if (chatInput) {
+      // Enter key behavior:
+      //   Desktop: Enter submits, Shift+Enter inserts newline
+      //   Mobile/tablet: Enter inserts newline, only Send button submits
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      chatInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+          e.preventDefault();
+          chatForm.requestSubmit();
+        }
+      });
       // Auto-resize textarea as content grows
       chatInput.addEventListener('input', function () {
         this.style.height = 'auto';
