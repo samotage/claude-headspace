@@ -1759,23 +1759,35 @@ class TestSendTextVerifyEnter:
 
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_post_typing_ghost_dismissed(self, mock_run, mock_capture):
-        """Ghost text appearing after typing is dismissed before Enter."""
+    def test_detect_ghost_text_false_skips_ghost_detection(self, mock_run, mock_capture):
+        """detect_ghost_text=False skips all ghost detection and Escape sends."""
         mock_run.return_value = MagicMock(returncode=0)
-        mock_capture.side_effect = [
-            "> ",  # pre-typing: clean
-            "> \x1b[2mghost\x1b[22m",  # post-typing: ghost appeared!
-        ]
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0,
+            verify_enter=False, detect_ghost_text=False,
         )
 
         assert result.success is True
-        # Should have: text + Escape (post-typing ghost) + Enter = 3 subprocess calls
-        assert mock_run.call_count == 3
-        escape_call = mock_run.call_args_list[1]
-        assert escape_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Escape"]
+        # Only text + Enter — no ghost capture at all
+        assert mock_run.call_count == 2
+        mock_capture.assert_not_called()
+
+    @patch("claude_headspace.services.tmux_bridge._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_skip_verify_hint_skips_verification(self, mock_run, mock_capture, mock_verify):
+        """skip_verify_hint=True skips verification even when verify_enter=True."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "
+
+        result = send_text(
+            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0,
+            verify_enter=True, skip_verify_hint=True,
+        )
+
+        assert result.success is True
+        mock_verify.assert_not_called()
 
 
 class TestSendTextSanitisation:

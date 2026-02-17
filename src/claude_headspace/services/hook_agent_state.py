@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 # How long (seconds) a respond-pending flag remains valid.
 _RESPOND_PENDING_TTL = 10.0
+_RESPOND_INFLIGHT_TTL = 10.0
 
 
 class AgentHookState:
@@ -34,6 +35,11 @@ class AgentHookState:
         # Track agents that just received a respond via the dashboard tmux bridge.
         # Value is time.time() when the flag was set.
         self._respond_pending: dict[int, float] = {}
+
+        # Track agents with an in-flight voice/respond send (pre-commit).
+        # Set before tmux send, cleared when respond_pending is set (after commit).
+        # Value is time.time() when the flag was set.
+        self._respond_inflight: dict[int, float] = {}
 
         # Track agents with an in-flight deferred stop thread
         self._deferred_stop_pending: set[int] = set()
@@ -66,6 +72,7 @@ class AgentHookState:
     def set_respond_pending(self, agent_id: int) -> None:
         with self._lock:
             self._respond_pending[agent_id] = time.time()
+            self._respond_inflight.pop(agent_id, None)  # Upgrade: inflight → pending
 
     def consume_respond_pending(self, agent_id: int) -> bool:
         """Atomically check, validate TTL, and clear respond-pending flag.
@@ -77,6 +84,29 @@ class AgentHookState:
             if ts is None:
                 return False
             return (time.time() - ts) < _RESPOND_PENDING_TTL
+
+    # ── Respond Inflight ─────────────────────────────────────────────
+
+    def set_respond_inflight(self, agent_id: int) -> None:
+        """Mark that a voice/respond send is in-flight (pre-commit).
+
+        Set before the tmux send so the hook knows to skip turn creation
+        even before respond_pending is set (which happens after commit).
+        """
+        with self._lock:
+            self._respond_inflight[agent_id] = time.time()
+
+    def is_respond_inflight(self, agent_id: int) -> bool:
+        """Check if a respond is in-flight (with TTL)."""
+        with self._lock:
+            ts = self._respond_inflight.get(agent_id)
+            if ts is None:
+                return False
+            return (time.time() - ts) < _RESPOND_INFLIGHT_TTL
+
+    def clear_respond_inflight(self, agent_id: int) -> None:
+        with self._lock:
+            self._respond_inflight.pop(agent_id, None)
 
     # ── Deferred Stop ────────────────────────────────────────────────
 
@@ -159,6 +189,7 @@ class AgentHookState:
         """Clear all per-agent state when a session ends."""
         with self._lock:
             self._awaiting_tool.pop(agent_id, None)
+            self._respond_inflight.pop(agent_id, None)
             self._transcript_positions.pop(agent_id, None)
             self._progress_texts.pop(agent_id, None)
 
@@ -175,6 +206,7 @@ class AgentHookState:
         with self._lock:
             self._awaiting_tool.clear()
             self._respond_pending.clear()
+            self._respond_inflight.clear()
             self._deferred_stop_pending.clear()
             self._transcript_positions.clear()
             self._progress_texts.clear()

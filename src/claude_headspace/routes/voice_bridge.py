@@ -353,15 +353,13 @@ def voice_command():
         else:
             send_text = file_path
 
-    if is_processing:
-        # Agent is busy — send Escape to interrupt first, then deliver message
-        result = tmux_bridge.interrupt_and_send_text(
-            pane_id=agent.tmux_pane_id,
-            text=send_text,
-            timeout=subprocess_timeout,
-            text_enter_delay_ms=text_enter_delay_ms,
-        )
-    elif has_picker and is_answering:
+    # Set inflight flag BEFORE tmux send to close the race window between
+    # send and respond_pending (set after commit).  The hook's
+    # process_user_prompt_submit checks this to skip duplicate turn creation.
+    from ..services.hook_agent_state import get_agent_hook_state
+    get_agent_hook_state().set_respond_inflight(agent.id)
+
+    if has_picker and is_answering:
         # Picker question active — navigate to "Other" option then type text,
         # instead of sending literal text into the TUI arrow-key selector (C2).
         sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
@@ -386,14 +384,18 @@ def voice_command():
                 text_enter_delay_ms=text_enter_delay_ms,
             )
     else:
+        # Skip verification when agent was processing — pane content is
+        # volatile from agent output, making comparison unreliable (H1).
         result = tmux_bridge.send_text(
             pane_id=agent.tmux_pane_id,
             text=send_text,
             timeout=subprocess_timeout,
             text_enter_delay_ms=text_enter_delay_ms,
+            verify_enter=not is_processing,
         )
 
     if not result.success:
+        get_agent_hook_state().clear_respond_inflight(agent.id)
         error_msg = result.error_message or "Send failed"
         if formatter:
             voice = formatter.format_command_result(agent.name, False, error_msg)
@@ -476,6 +478,7 @@ def voice_command():
             # Fall back: no turn persisted, hooks may still handle it.
             logger.warning(f"Voice command turn creation failed (tmux send succeeded): {e}")
             db.session.rollback()
+            get_agent_hook_state().clear_respond_inflight(agent.id)
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
             broadcast_card_refresh(agent, "voice_command")
@@ -581,6 +584,7 @@ def voice_command():
 
     except Exception as e:
         db.session.rollback()
+        get_agent_hook_state().clear_respond_inflight(agent.id)
         logger.exception(f"Error recording voice command for agent {agent.id}: {e}")
         return _voice_error(
             "Command was sent but recording failed.",

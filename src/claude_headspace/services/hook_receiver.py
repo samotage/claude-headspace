@@ -696,6 +696,22 @@ def process_user_prompt_submit(
         # When a user responds via the tmux bridge, the respond handler creates the
         # turn and transitions AWAITING_INPUT -> PROCESSING.  Claude Code then fires
         # user_prompt_submit for the same text — skip it to avoid a duplicate task.
+        # Check if a voice/respond send is in-flight (pre-commit).
+        # The voice bridge sets this before tmux send to close the race
+        # window between send and respond_pending (set after commit).
+        if get_agent_hook_state().is_respond_inflight(agent.id):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            broadcast_card_refresh(agent, "user_prompt_submit_respond_inflight")
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=respond_inflight"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
         import time as _time
         respond_ts = _respond_pending_for_agent.pop(agent.id, None)
         if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:

@@ -22,7 +22,7 @@ DEFAULT_TEXT_ENTER_DELAY_MS = 120  # ms between text send and Enter
 DEFAULT_CLEAR_DELAY_MS = 200  # ms after Escape before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 DEFAULT_ENTER_VERIFY_DELAY_MS = 200  # ms between Enter and verification check
-DEFAULT_MAX_ENTER_RETRIES = 3  # max Enter retry attempts after verification failure
+DEFAULT_MAX_ENTER_RETRIES = 1  # max Enter retry attempts after verification failure
 DEFAULT_ENTER_VERIFY_LINES = 5  # pane lines to capture for Enter verification
 
 # Per-pane send lock registry — prevents concurrent sends to the same pane
@@ -374,13 +374,18 @@ def send_text(
     verify_enter: bool = True,
     enter_verify_delay_ms: int = DEFAULT_ENTER_VERIFY_DELAY_MS,
     max_enter_retries: int = DEFAULT_MAX_ENTER_RETRIES,
+    detect_ghost_text: bool = True,
+    skip_verify_hint: bool = False,
 ) -> SendResult:
     """Send text followed by Enter to a Claude Code session's tmux pane.
 
-    First captures the pane to check for autocomplete ghost text. If ghost
-    text is detected, sends Escape to dismiss it before typing. Otherwise
-    skips Escape to avoid triggering unintended TUI mode changes that can
-    prevent Enter from submitting.
+    Simplified pipeline (max ~6 subprocess calls in typical case):
+      1. Capture pane to check for ghost text (optional via detect_ghost_text)
+      2. If ghost: Escape + delay
+      3. send-keys -l <text>
+      4. delay (text_enter_delay_ms)
+      5. send-keys Enter
+      6. If verify_enter and not skip_verify_hint: capture + compare, one retry
 
     Args:
         pane_id: The tmux pane ID (format: %0, %5, etc.)
@@ -388,6 +393,15 @@ def send_text(
         timeout: Subprocess timeout in seconds
         text_enter_delay_ms: Delay in ms between text send and Enter send
         clear_delay_ms: Delay in ms after Escape before sending text
+        verify_enter: If True, verify Enter was accepted by watching for
+            pane content changes. Overridden by skip_verify_hint.
+        enter_verify_delay_ms: Delay in ms before each verification check
+        max_enter_retries: Maximum number of Enter retries on verification failure
+        detect_ghost_text: If False, skip all ghost text detection and Escape
+            sends. Useful when callers know ghost text isn't relevant.
+        skip_verify_hint: If True, skip the entire verification block even
+            when verify_enter is True. Use when the pane is too volatile for
+            content comparison (e.g. after an interrupt).
 
     Returns:
         SendResult with success status and optional error information
@@ -414,27 +428,25 @@ def send_text(
             )
 
         try:
-            # Capture pane to check for autocomplete ghost text.
-            # Only send Escape when ghost text is detected — unconditional
-            # Escape can trigger TUI mode changes (e.g. multi-line toggle)
-            # that prevent Enter from submitting.
-            pane_content = capture_pane(
-                pane_id, lines=3, include_escapes=True, timeout=timeout,
-            )
-            if _has_autocomplete_ghost(pane_content):
-                logger.debug(
-                    f"Autocomplete ghost detected in pane {pane_id}, "
-                    f"sending Escape to dismiss"
+            # Step 1: Ghost text detection (configurable — skip when not relevant)
+            if detect_ghost_text:
+                pane_content = capture_pane(
+                    pane_id, lines=3, include_escapes=True, timeout=timeout,
                 )
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", pane_id, "Escape"],
-                    check=True,
-                    timeout=timeout,
-                    capture_output=True,
-                )
-                time.sleep(clear_delay_ms / 1000.0)
+                if _has_autocomplete_ghost(pane_content):
+                    logger.debug(
+                        f"Autocomplete ghost detected in pane {pane_id}, "
+                        f"sending Escape to dismiss"
+                    )
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                        check=True,
+                        timeout=timeout,
+                        capture_output=True,
+                    )
+                    time.sleep(clear_delay_ms / 1000.0)
 
-            # Send literal text (does NOT interpret key names)
+            # Step 2: Send literal text (does NOT interpret key names)
             subprocess.run(
                 ["tmux", "send-keys", "-t", pane_id, "-l", sanitised],
                 check=True,
@@ -442,34 +454,18 @@ def send_text(
                 capture_output=True,
             )
 
-            # Delay between text and Enter
+            # Step 3: Delay between text and Enter
             time.sleep(text_enter_delay_ms / 1000.0)
 
-            # Post-typing ghost check: typing may trigger new autocomplete
-            post_type_content = capture_pane(
-                pane_id, lines=3, include_escapes=True, timeout=timeout,
-            )
-            if _has_autocomplete_ghost(post_type_content):
-                logger.debug(
-                    f"Post-typing ghost detected in pane {pane_id}, "
-                    f"sending Escape to dismiss"
-                )
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", pane_id, "Escape"],
-                    check=True,
-                    timeout=timeout,
-                    capture_output=True,
-                )
-                time.sleep(clear_delay_ms / 1000.0)
-
-            # Capture pre-Enter baseline for verification
+            # Step 4: Capture pre-Enter baseline for verification
+            should_verify = verify_enter and not skip_verify_hint
             pre_enter_content = ""
-            if verify_enter:
+            if should_verify:
                 pre_enter_content = capture_pane(
                     pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
                 )
 
-            # Send Enter as a key (triggers Ink's onSubmit)
+            # Step 5: Send Enter as a key (triggers Ink's onSubmit)
             subprocess.run(
                 ["tmux", "send-keys", "-t", pane_id, "Enter"],
                 check=True,
@@ -477,8 +473,10 @@ def send_text(
                 capture_output=True,
             )
 
-            # Verify Enter was accepted by watching for pane content change
-            if verify_enter:
+            # Step 6: Verify Enter was accepted (one capture + compare,
+            # one retry on failure). Skipped when skip_verify_hint is set
+            # because pane content is too volatile for comparison.
+            if should_verify:
                 if not _verify_submission(
                     pane_id,
                     pre_enter_content,
@@ -562,12 +560,23 @@ def interrupt_and_send_text(
 
     Used by voice_bridge.py for interrupting agents via voice commands.
 
+    Note: The settle period (interrupt_settle_ms) uses a blocking
+    time.sleep() which holds the Flask worker thread. This is not
+    easily fixable without async, but callers can tune the value down
+    to reduce blocking time at the risk of sending before the agent
+    has returned to its prompt.
+
     Args:
         pane_id: The tmux pane ID (format: %0, %5, etc.)
         text: The text to send after interrupting
         timeout: Subprocess timeout in seconds
         text_enter_delay_ms: Delay in ms between text send and Enter send
-        interrupt_settle_ms: Delay in ms after Escape before sending text
+        interrupt_settle_ms: Delay in ms after Escape before sending text.
+            Blocks the calling thread. Tune down to reduce latency at the
+            risk of the agent not being ready for input yet.
+        verify_enter: If True, attempt Enter verification in send_text.
+            Note: skip_verify_hint=True is always passed to send_text after
+            an interrupt since the pane is too volatile for content comparison.
     """
     if not _validate_pane_id(pane_id):
         return SendResult(
@@ -589,7 +598,9 @@ def interrupt_and_send_text(
             )
             logger.info(f"Sent Escape interrupt to tmux pane {pane_id}")
 
-            # Wait for Claude Code to process the interrupt and return to prompt
+            # Wait for Claude Code to process the interrupt and return to prompt.
+            # BLOCKING: holds the Flask worker thread for interrupt_settle_ms.
+            # Callers can tune this value down to reduce latency.
             time.sleep(interrupt_settle_ms / 1000.0)
 
         except FileNotFoundError:
@@ -620,13 +631,16 @@ def interrupt_and_send_text(
                 latency_ms=latency_ms,
             )
 
-        # Now send the actual text (RLock allows re-entrance)
+        # Now send the actual text (RLock allows re-entrance).
+        # skip_verify_hint=True: after an interrupt, the pane is too volatile
+        # for content comparison — agent stop/cleanup output is still flowing.
         result = send_text(
             pane_id=pane_id,
             text=text,
             timeout=timeout,
             text_enter_delay_ms=text_enter_delay_ms,
             verify_enter=verify_enter,
+            skip_verify_hint=True,
         )
 
         if result.success:
