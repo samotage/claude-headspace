@@ -217,7 +217,7 @@ Key changes from original draft:
 ## 3. Skill File Infrastructure
 
 ### 3.1 Skill File Location & Structure
-- [ ] **Decision: Where do skill files live and what's the directory layout?**
+- [x] **Decision: Where do skill files live and what's the directory layout?**
 
 **Context:** Functional outline §5.3 proposes:
 ```
@@ -228,17 +228,21 @@ Key changes from original draft:
 ```
 
 **Open questions:**
-- [ ] Is `~/.headspace/` the right root? Or `~/.claude/headspace/` to co-locate with Claude Code's own config?
-- [ ] Per-org skill extensions (vision §4.4): Where do "Con's dev-org-specific skills" vs "Con's global skills" live?
-- [ ] Who creates the directory structure? App startup? CLI command? Manual setup?
-- [ ] Token budget management (outline §7.3: 300-500 tokens target): Enforced by the app or advisory?
+- [x] Is `~/.headspace/` the right root? Or `~/.claude/headspace/` to co-locate with Claude Code's own config?
+- [x] Per-org skill extensions (vision §4.4): Where do "Con's dev-org-specific skills" vs "Con's global skills" live?
+- [x] Who creates the directory structure? App startup? CLI command? Manual setup?
+- [x] Token budget management (outline §7.3: 300-500 tokens target): Enforced by the app or advisory?
 
-**Resolution:** _pending_
+**Resolution:** **Location resolved in 1.2: `data/personas/{slug}/skill.md` and `data/personas/{slug}/experience.md`.** Remaining sub-questions:
+
+- **Per-org skill extensions:** Deferred. Personas are org-independent (2.1). V1 has one org. Org-specific overlays are Phase 2+ if the need emerges.
+- **Directory creation:** The application manages it. Persona registration (via CLI command or API) creates the directory and seeds template files. CLI is the preferred interface because it's agent-operable via tools — no MCP context pollution. Agents can also update skill files and experience logs through the same filesystem path as part of their self-improvement loop.
+- **Token budget:** No management. Skill files are lightweight priming signals that activate training the model already has, not knowledge dumps. Token limits will continue increasing. If skill file size ever becomes an issue, we'll address it then. No advisory display, no enforcement, no target range.
 
 ---
 
 ### 3.2 Skill File Loading Mechanism
-- [ ] **Decision: How do skill files get into the agent's Claude Code context?**
+- [x] **Decision: How do skill files get into the agent's Claude Code context?**
 
 **Context:** The functional outline says agents spin up "with persona identity + skill file loaded into context." But Claude Code sessions start independently — Headspace learns about them via hooks. The skill file needs to be in the context *at launch*.
 
@@ -254,7 +258,21 @@ Key changes from original draft:
 - Option D risks CLAUDE.md conflicts if multiple personas run on the same project
 - The functional outline's v1 has operator-as-Gavin, so the operator is already manually launching sessions — they could use the CLI flag
 
-**Resolution:** _pending_
+**Resolution:** **First-prompt injection via tmux bridge, triggered post-registration (BMAD pattern).**
+
+The existing `agent_lifecycle.create_agent()` already spins up Claude Code sessions in detached tmux sessions via `claude-headspace start`. The persona layer adds:
+
+1. `create_agent()` gains an optional `persona_slug` parameter
+2. Persona slug is passed through the CLI to the registration payload
+3. Hook receiver processes `session-start` → detects persona slug → looks up Persona → sets `agent.persona_id`
+4. **Post-registration:** Headspace reads `data/personas/{slug}/skill.md` + `experience.md` and sends the combined content as the **first user message** via the existing tmux bridge `send_text()`
+5. Agent reads its skill file and responds in character (e.g., "Hi, I'm Con. Backend developer. What would you like me to work on?")
+
+Key design points:
+- **No system prompt hacking.** Persona identity is a conversation-level concern, injected as a user message — the same BMAD priming pattern that's proven effective.
+- **`claude-headspace start` unchanged for general sessions.** Persona injection only applies when the system creates an agent for a specific persona. General-purpose sessions (operator launches CLI directly) remain anonymous.
+- **Existing infrastructure.** The tmux bridge `send_text()` is battle-tested. No new transport mechanism needed.
+- **Two creation paths preserved:** CLI (`claude-headspace start`) for general sessions, system-initiated (`create_agent()` with persona) for persona-backed agents.
 
 ---
 
@@ -406,6 +424,8 @@ Track decisions and rationale as we resolve them.
 | 2026-02-17 | 2.1 Persona Table Schema | Persona: id, slug (generated {role}-{name}-{id}), name, description, status, role_id FK, created_at. Role extracted as shared lookup table. | Role is system-wide vocabulary shared by Persona ("I am") and Position ("I need"). Slug belongs to Persona for filesystem path. Status replaces is_active. No org_id on Persona — org relationship through Position via Agent. |
 | 2026-02-17 | 2.2 Agent Extensions | Two new nullable FKs: persona_id, position_id. No mode field. Agent is the join between Persona and Position. | Nullable FKs for backward compat. Agent having both FKs means it serves as the PositionAssignment — no separate join table needed. |
 | 2026-02-17 | 2.3 Availability Constraint | No constraint. Multiple agents can share the same persona simultaneously. | Enforcing human scarcity on digital entities is unnecessary. Duplicating a persona (multiple Cons) is advantageous. |
+| 2026-02-17 | 3.1 Skill File Location & Structure | Location resolved by 1.2. App manages directory creation via CLI/API on persona registration. Per-org extensions deferred. No token budget management. | Skill files are lightweight priming signals, not knowledge dumps — no budget needed. CLI is the preferred management interface because agents can operate it via tools (no MCP pollution). Org-specific overlays are Phase 2+ if the need emerges. |
+| 2026-02-17 | 3.2 Skill File Loading Mechanism | First-prompt injection via tmux bridge (BMAD pattern). `create_agent()` gains optional `persona_slug`. Post-registration, Headspace reads skill.md + experience.md and sends as first user message via existing `send_text()`. Agent responds in character. General sessions unchanged. | Proven BMAD priming pattern. Uses existing tmux bridge infrastructure. No system prompt hacking — persona is conversation-level. Two creation paths: CLI for general, `create_agent()` for persona-backed. Grounded in existing `agent_lifecycle.create_agent()` mechanism. |
 
 ---
 
