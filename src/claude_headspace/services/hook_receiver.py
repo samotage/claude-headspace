@@ -141,7 +141,7 @@ def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, messa
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question") -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
     """Broadcast a turn_created SSE event."""
     try:
         from .broadcaster import get_broadcaster
@@ -155,6 +155,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "task_instruction": task.instruction if task else None,
             "turn_id": turn_id,
             "is_internal": is_team_internal_content(text),
+            "question_source_type": question_source_type,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if tool_input:
@@ -1050,6 +1051,7 @@ def process_stop(
                     agent, broadcast_turn.text, current_task,
                     tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
                     intent=broadcast_turn.intent.value,
+                    question_source_type=broadcast_turn.question_source_type,
                 )
 
         broadcast_card_refresh(agent, "stop")
@@ -1246,12 +1248,14 @@ def _handle_awaiting_input(
         if question_text:
             _broadcast_turn_created(agent, question_text, current_task,
                                     tool_input=structured_options,
-                                    turn_id=question_turn.id if question_turn else None)
+                                    turn_id=question_turn.id if question_turn else None,
+                                    question_source_type=question_turn.question_source_type if question_turn else None)
         elif current_task.turns:
             # Broadcast existing turn (dedup case: pre_tool_use fired first)
             for t in reversed(current_task.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id)
+                    _broadcast_turn_created(agent, t.text, current_task, tool_input=t.tool_input, turn_id=t.id,
+                                            question_source_type=t.question_source_type)
                     break
 
         # Queue LLM fallback for generic permission summaries

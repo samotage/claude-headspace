@@ -65,7 +65,7 @@ def _execute_pending_summarisations(pending: list) -> None:
         logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question") -> None:
+def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
     """Broadcast a turn_created SSE event."""
     try:
         from .broadcaster import get_broadcaster
@@ -78,6 +78,7 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "task_id": task.id if task else None,
             "task_instruction": task.instruction if task else None,
             "turn_id": turn_id,
+            "question_source_type": question_source_type,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if tool_input:
@@ -347,6 +348,7 @@ def _run_deferred_stop(
                 agent_obj, broadcast_turn.text, task,
                 tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
                 intent=broadcast_turn.intent.value,
+                question_source_type=broadcast_turn.question_source_type,
             )
 
     logger.info(

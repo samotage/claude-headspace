@@ -1015,6 +1015,7 @@ class TestStopTurnBroadcast:
         mock_broadcast_turn.assert_called_once_with(
             mock_agent, "Do you want to proceed?", mock_task, tool_input=None, turn_id=mock_turn.id,
             intent='question',
+            question_source_type=mock_turn.question_source_type,
         )
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")

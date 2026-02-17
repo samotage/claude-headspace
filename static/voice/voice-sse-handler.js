@@ -157,6 +157,7 @@ window.VoiceSSEHandler = (function () {
       tool_input: data.tool_input || null,
       question_text: data.text,
       question_options: null,
+      question_source_type: data.question_source_type || null,
       task_id: data.task_id || null,
       task_instruction: data.task_instruction || null
     };

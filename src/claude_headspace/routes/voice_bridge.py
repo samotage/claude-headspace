@@ -304,24 +304,29 @@ def voice_command():
 
     # Detect if the agent's current question has structured options (picker).
     # Voice chat always sends free text, which works fine for free-text prompts
-    # but may not interact correctly with AskUserQuestion picker UIs.
+    # but garbles AskUserQuestion picker UIs (C2 bug). When a picker is active,
+    # route through the "Other" option instead of typing literal text.
     has_picker = False
+    picker_option_count = 0
     if is_answering and current_task and current_task.turns:
         for t in reversed(current_task.turns):
             if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                if t.question_options:
-                    has_picker = True
-                elif t.tool_input and isinstance(t.tool_input, dict):
+                # Count options from tool_input (canonical source for TUI navigation)
+                if t.tool_input and isinstance(t.tool_input, dict):
                     questions = t.tool_input.get("questions", [])
-                    if questions and isinstance(questions, list):
-                        opts = questions[0].get("options", []) if questions else []
-                        if opts and isinstance(opts, list) and len(opts) > 0:
+                    if questions and isinstance(questions, list) and len(questions) > 0:
+                        opts = questions[0].get("options", [])
+                        if isinstance(opts, list) and len(opts) > 0:
                             has_picker = True
+                            picker_option_count = len(opts)
+                # Fallback: question_options column (may not have tool_input)
+                if not has_picker and t.question_options:
+                    has_picker = True
                 break
         if has_picker:
-            logger.warning(
+            logger.info(
                 f"Voice command to agent {agent.id} targeting a picker question "
-                f"(has structured options). Free text will be sent as override."
+                f"({picker_option_count} options). Will route through 'Other'."
             )
 
     # Check tmux pane
@@ -356,6 +361,30 @@ def voice_command():
             timeout=subprocess_timeout,
             text_enter_delay_ms=text_enter_delay_ms,
         )
+    elif has_picker and is_answering:
+        # Picker question active — navigate to "Other" option then type text,
+        # instead of sending literal text into the TUI arrow-key selector (C2).
+        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
+        select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)
+        # "Other" is always appended after all options by AskUserQuestion
+        keys = ["Down"] * picker_option_count + ["Enter"]
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
+        )
+        if result.success:
+            # Wait for the "Other" text input to appear
+            time.sleep(select_other_delay_ms / 1000.0)
+            # Type the custom text
+            result = tmux_bridge.send_text(
+                pane_id=agent.tmux_pane_id,
+                text=send_text,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+            )
     else:
         result = tmux_bridge.send_text(
             pane_id=agent.tmux_pane_id,

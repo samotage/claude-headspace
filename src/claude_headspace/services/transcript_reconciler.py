@@ -145,6 +145,7 @@ def broadcast_reconciliation(agent, reconciliation_result):
                     "task_id": turn.task_id,
                     "task_instruction": task_instr,
                     "turn_id": turn.id,
+                    "question_source_type": turn.question_source_type,
                     "timestamp": turn.timestamp.isoformat(),
                 })
         except Exception as e:
