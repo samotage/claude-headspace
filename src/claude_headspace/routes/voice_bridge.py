@@ -336,7 +336,7 @@ def voice_command():
     config = current_app.config.get("APP_CONFIG", {})
     bridge_config = config.get("tmux_bridge", {})
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
-    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
 
     # Prepend file_path reference if provided (file before text so the
     # instruction can reference it).  Single line — no embedded newlines
@@ -644,7 +644,7 @@ def upload_file(agent_id: int):
     config = current_app.config.get("APP_CONFIG", {})
     bridge_config = config.get("tmux_bridge", {})
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
-    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
 
     result = tmux_bridge.send_text(
         pane_id=agent.tmux_pane_id,

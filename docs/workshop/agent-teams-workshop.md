@@ -121,7 +121,7 @@ These shape everything downstream. Resolve first.
 Specific schema questions once foundational decisions are made.
 
 ### 2.1 Persona Table Schema
-- [ ] **Decision: What fields does the Persona model need?**
+- [x] **Decision: What fields does the Persona model need?**
 
 **Depends on:** 1.1, 1.3
 
@@ -139,16 +139,42 @@ Persona
 ```
 
 **Open sub-questions:**
-- [ ] Pool membership: JSONB array on Persona (`pools = ["backend", "database"]`) vs. separate Pool/PoolMembership tables?
-- [ ] Org FK: Include nullable `org_id` now (forward-compatible) or add later?
-- [ ] Skill file path: Store the path to `~/.headspace/personas/{slug}/skill.md` on the model, or derive from slug convention?
+- [x] Pool membership: JSONB array on Persona (`pools = ["backend", "database"]`) vs. separate Pool/PoolMembership tables?
+- [x] Org FK: Include nullable `org_id` now (forward-compatible) or add later?
+- [x] Skill file path: Store the path to `~/.headspace/personas/{slug}/skill.md` on the model, or derive from slug convention?
 
-**Resolution:** _pending_
+**Resolution:** **Resolved via ERD workshop. See `docs/workshop/erds/headspace-org-erd-full.md`.**
+
+Schema:
+```
+Role
+  id              int (PK)
+  name            str — "developer", "tester", "pm", "architect"
+  description     text
+  created_at      datetime
+
+Persona
+  id              int (PK)
+  slug            str (unique) — generated as "{role}-{name}-{id}"
+  name            str — "Con", "Robbo", "Gavin"
+  description     text
+  status          str — "active" | "archived"
+  role_id         int (FK to Role)
+  created_at      datetime
+```
+
+Key changes from original draft:
+- **`role_type` moved to Role table** — Role is a shared lookup referenced by both Persona and Position. Persona has `role_id` FK.
+- **`slug` is generated** from `{role_name}-{persona_name}-{id}` for filesystem path (`data/personas/{slug}/`). Belongs to Persona — single join to Role for the role name.
+- **`status` replaces `is_active`** — allows `active|archived` (extensible).
+- **Pool membership deferred** — not modelled in v1 ERD. Pools may emerge as a view over Position/Role relationships.
+- **No `org_id` on Persona** — Persona is org-independent. Org relationship is through Position (via Agent).
+- **Skill file path derived from slug convention** — not stored on the model.
 
 ---
 
 ### 2.2 Agent Model Extensions
-- [ ] **Decision: What fields does Agent gain?**
+- [x] **Decision: What fields does Agent gain?**
 
 **Depends on:** 1.1, 1.4, 2.1
 
@@ -163,12 +189,12 @@ Persona
 - `Agent.name` property currently returns `"ProjectName/uuid-prefix"` — with persona, returns `persona.name`
 - Agent.state property is derived from current task — unchanged
 
-**Resolution:** _pending_
+**Resolution:** **Two new nullable FKs: `persona_id` (FK to Persona) and `position_id` (FK to Position).** No `mode` field (resolved in 1.4 — mode is prompt-level). Both nullable for backward compatibility with existing agents. Agent serves as the join between Persona and Position — when an agent is active with both FKs set, that persona is filling that position.
 
 ---
 
 ### 2.3 Persona Availability Constraint
-- [ ] **Decision: How do we enforce "one persona, one active agent at a time"?**
+- [x] **Decision: How do we enforce "one persona, one active agent at a time"?**
 
 **Depends on:** 2.1, 2.2
 
@@ -184,7 +210,7 @@ Persona
 - Application check gives better error messages
 - Need to handle the case where reaper hasn't cleaned up a dead agent yet (persona appears "busy" but isn't)
 
-**Resolution:** _pending_
+**Resolution:** **No constraint. Multiple agents can share the same persona simultaneously.** The "one persona, one active agent" rule from the functional outline is dropped. This is a computer system — duplicating a persona (spinning up multiple Cons) is advantageous. Enforcing human-based scarcity constraints on digital entities is unnecessary.
 
 ---
 
@@ -377,6 +403,9 @@ Track decisions and rationale as we resolve them.
 | 2026-02-16 | 1.2 Config Location | Convention-based `data/` directory at project root. Persona/pool definitions in DB. Skill assets at `data/personas/{role}-{name}-{id}/`. No config.yaml involvement — path is a project convention, not a setting. | Domain data belongs in the project tree (not hidden dot-paths), organised by subsystem. Slug format `{role}-{name}-{id}` gives natural filesystem sorting by role then name. Config.yaml stays pure app config. |
 | 2026-02-16 | 1.3 Organisation Model | Yes — minimal Organisation table in v1. Exact schema deferred to ERD design session. | One small migration now avoids a disruptive one later. The platform vision makes orgs first-class; having the table from the start means Persona/Agent can reference it cleanly when relationships are defined. |
 | 2026-02-16 | 1.4 Agent Mode Field | No mode field on Agent. Mode is a prompt-level concern expressed through persona skill.md content, not a database column. | A DB enum cannot meaningfully describe or constrain agent behaviour. Agents can execute code, read/write files, produce documents — their mode is shaped by system prompt instructions, not schema. |
+| 2026-02-17 | 2.1 Persona Table Schema | Persona: id, slug (generated {role}-{name}-{id}), name, description, status, role_id FK, created_at. Role extracted as shared lookup table. | Role is system-wide vocabulary shared by Persona ("I am") and Position ("I need"). Slug belongs to Persona for filesystem path. Status replaces is_active. No org_id on Persona — org relationship through Position via Agent. |
+| 2026-02-17 | 2.2 Agent Extensions | Two new nullable FKs: persona_id, position_id. No mode field. Agent is the join between Persona and Position. | Nullable FKs for backward compat. Agent having both FKs means it serves as the PositionAssignment — no separate join table needed. |
+| 2026-02-17 | 2.3 Availability Constraint | No constraint. Multiple agents can share the same persona simultaneously. | Enforcing human scarcity on digital entities is unnecessary. Duplicating a persona (multiple Cons) is advantageous. |
 
 ---
 

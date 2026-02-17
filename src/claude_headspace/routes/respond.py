@@ -220,7 +220,7 @@ def respond_to_agent(agent_id: int):
     config = current_app.config.get("APP_CONFIG", {})
     bridge_config = config.get("tmux_bridge", {})
     subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
-    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 100)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
     sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
     select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)
 

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_SUBPROCESS_TIMEOUT = 5  # seconds
-DEFAULT_TEXT_ENTER_DELAY_MS = 100  # ms between text send and Enter
+DEFAULT_TEXT_ENTER_DELAY_MS = 120  # ms between text send and Enter
 DEFAULT_CLEAR_DELAY_MS = 200  # ms after Escape before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 
@@ -297,6 +297,19 @@ def send_text(
     with _get_send_lock(pane_id):
         start_time = time.time()
 
+        # Sanitise for PTY transport: send-keys -l passes raw bytes, so
+        # \n and \r are interpreted as Enter by the TUI — causing premature
+        # submission or multi-line mode toggle that swallows the real Enter.
+        # After replacing newlines, strip trailing whitespace so the last
+        # byte through the PTY is actual content, not junk that interferes
+        # with the deliberate Enter we send after the delay.
+        sanitised = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
+        if sanitised != text:
+            logger.debug(
+                f"Sanitised text for pane {pane_id}: "
+                f"original {len(text)} chars -> {len(sanitised)} chars"
+            )
+
         try:
             # Capture pane to check for autocomplete ghost text.
             # Only send Escape when ghost text is detected — unconditional
@@ -320,7 +333,7 @@ def send_text(
 
             # Send literal text (does NOT interpret key names)
             subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, "-l", text],
+                ["tmux", "send-keys", "-t", pane_id, "-l", sanitised],
                 check=True,
                 timeout=timeout,
                 capture_output=True,

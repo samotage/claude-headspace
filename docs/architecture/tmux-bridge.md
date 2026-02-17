@@ -150,13 +150,15 @@ tmux send-keys -t %5 C-c
 
 ### Timing
 
-A small delay (100ms) between sending text and Enter prevents race conditions:
+A delay (120ms) between sending text and Enter prevents race conditions where the TUI hasn't finished processing the text buffer before Enter arrives:
 
 ```python
 subprocess.run(["tmux", "send-keys", "-t", pane_id, "-l", text])
-time.sleep(0.1)
+time.sleep(0.12)
 subprocess.run(["tmux", "send-keys", "-t", pane_id, "Enter"])
 ```
+
+**Important:** Text must be sanitised before sending — embedded newlines (`\n`, `\r`) in `-l` mode are sent as raw bytes through the PTY, where the TUI interprets them as Enter keypresses. This causes premature submission or multi-line mode toggle that swallows the real Enter. Replace newlines with spaces before sending.
 
 For rapid sequential sends, 150ms between operations was tested reliable.
 
