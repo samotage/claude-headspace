@@ -262,8 +262,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         except Exception as e:
             logger.warning(f"Startup orphan cleanup failed (non-fatal): {e}")
 
-    # Initialize agent reaper (only in non-testing environments)
-    if not app.config.get("TESTING"):
+    # Initialize agent reaper (only in non-testing environments, requires database)
+    if not app.config.get("TESTING") and db_connected:
         from .services.agent_reaper import AgentReaper
         reaper = AgentReaper(app=app, config=config)
         reaper.start()

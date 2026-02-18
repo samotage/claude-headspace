@@ -43,8 +43,11 @@ def init_database(app: Flask, config: dict) -> bool:
     pool_size = get_value(config, "database", "pool_size", default=10)
     pool_timeout = get_value(config, "database", "pool_timeout", default=30)
 
+    max_overflow = get_value(config, "database", "max_overflow", default=5)
+
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_size": pool_size,
+        "max_overflow": max_overflow,
         "pool_timeout": pool_timeout,
         "pool_recycle": 3600,  # Recycle connections after 1 hour
         "pool_pre_ping": True,  # Verify connections before use

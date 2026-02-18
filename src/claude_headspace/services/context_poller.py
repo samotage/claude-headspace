@@ -91,13 +91,21 @@ class ContextPoller:
 
     def _poll_loop(self) -> None:
         """Background loop that calls poll_once at the configured interval."""
+        consecutive_failures = 0
+        max_backoff = 300  # 5 minutes cap
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
+                consecutive_failures = 0
             except Exception:
-                logger.exception("Context poller pass failed")
+                consecutive_failures += 1
+                if consecutive_failures <= 3:
+                    logger.exception("Context poller pass failed")
+                else:
+                    logger.error("Context poller pass failed (repeated, suppressing traceback)")
 
-            self._stop_event.wait(timeout=self._interval)
+            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            self._stop_event.wait(timeout=backoff)
 
     def poll_once(self) -> int:
         """Run a single polling pass over all active agents.

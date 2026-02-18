@@ -123,9 +123,12 @@ class AgentReaper:
 
     def _reap_loop(self) -> None:
         """Background loop that calls reap_once at the configured interval."""
+        consecutive_failures = 0
+        max_backoff = 300  # 5 minutes cap
         while not self._stop_event.is_set():
             try:
                 result = self.reap_once()
+                consecutive_failures = 0
                 if result.reaped > 0:
                     logger.info(
                         f"Reaper pass: checked={result.checked}, "
@@ -138,9 +141,14 @@ class AgentReaper:
                         f"reaped=0"
                     )
             except Exception:
-                logger.exception("Reaper pass failed")
+                consecutive_failures += 1
+                if consecutive_failures <= 3:
+                    logger.exception("Reaper pass failed")
+                else:
+                    logger.error("Reaper pass failed (repeated, suppressing traceback)")
 
-            self._stop_event.wait(timeout=self._interval)
+            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            self._stop_event.wait(timeout=backoff)
 
     def reap_once(self) -> ReapResult:
         """Run a single reaper pass. Safe to call from any context.

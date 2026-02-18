@@ -60,7 +60,8 @@ class InferenceService:
 
         self._independent_engine = create_engine(
             database_url,
-            pool_size=2,
+            pool_size=1,
+            max_overflow=2,
             pool_pre_ping=True,
         )
         self._log_session_factory = sessionmaker(bind=self._independent_engine)

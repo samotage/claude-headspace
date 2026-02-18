@@ -80,7 +80,8 @@ class EventWriter:
         self._retry_attempts = retry_attempts
         self._retry_delay_ms = retry_delay_ms
         self._engine = create_engine(
-            database_url, pool_size=5, pool_pre_ping=True, pool_recycle=3600,
+            database_url, pool_size=2, max_overflow=3,
+            pool_pre_ping=True, pool_recycle=3600,
         )
         self._session_factory = sessionmaker(bind=self._engine)
         self._metrics = EventWriterMetrics()

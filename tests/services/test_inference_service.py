@@ -268,7 +268,8 @@ class TestLogging:
 
                 mock_create_engine.assert_called_once_with(
                     "postgresql://test@localhost/test_db",
-                    pool_size=2,
+                    pool_size=1,
+                    max_overflow=2,
                     pool_pre_ping=True,
                 )
                 assert service._independent_engine is mock_engine

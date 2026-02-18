@@ -70,14 +70,22 @@ class ActivityAggregator:
 
     def _loop(self) -> None:
         """Background loop that calls aggregate_once at the configured interval."""
+        consecutive_failures = 0
+        max_backoff = 600  # 10 minutes cap (base interval is 300s)
         while not self._stop_event.is_set():
             try:
                 self.aggregate_once()
                 self.prune_old_records()
+                consecutive_failures = 0
             except Exception:
-                logger.exception("Activity aggregation pass failed")
+                consecutive_failures += 1
+                if consecutive_failures <= 3:
+                    logger.exception("Activity aggregation pass failed")
+                else:
+                    logger.error("Activity aggregation pass failed (repeated, suppressing traceback)")
 
-            self._stop_event.wait(timeout=self._interval)
+            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            self._stop_event.wait(timeout=backoff)
 
     def aggregate_once(self) -> dict:
         """Run a single aggregation pass for the current hour bucket.
