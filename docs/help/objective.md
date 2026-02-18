@@ -20,7 +20,7 @@ The objective is saved to `config.yaml` and used to calculate agent priority sco
 
 ## How Objectives Affect Priority
 
-Agents whose tasks align with the objective receive higher priority scores. This means:
+Agents whose commands align with the objective receive higher priority scores. This means:
 
 - Relevant agents appear higher in the priority-sorted view
 - The recommended next agent reflects your current focus

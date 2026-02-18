@@ -284,7 +284,7 @@ class AgentReaper:
         return result
 
     def _reap_agent(self, agent, reason: str, now: datetime) -> None:
-        """Mark an agent as ended, complete orphaned tasks, and broadcast."""
+        """Mark an agent as ended, complete orphaned commands, and broadcast."""
         from ..database import db
 
         agent.ended_at = now

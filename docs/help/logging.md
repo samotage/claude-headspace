@@ -44,7 +44,7 @@ Click the **Inference** tab to view LLM inference calls.
 ### Filters
 
 - **Search** - Full-text search across input text, result text, and purpose
-- **Level** - Filter by inference level (turn, task, project, objective)
+- **Level** - Filter by inference level (turn, command, project, objective)
 - **Model** - Filter by model used
 - **Project** - Filter by project
 - **Agent** - Filter by agent
@@ -56,7 +56,7 @@ Each inference call shows:
 
 - **Timestamp** - When the call was made
 - **Agent** - Which agent triggered it
-- **Level** - Turn, task, project, or objective
+- **Level** - Turn, command, project, or objective
 - **Model** - Which LLM model was used
 - **Purpose** - What the call was for (e.g., turn_summary, frustration_detection)
 - **Tokens** - Input and output token counts

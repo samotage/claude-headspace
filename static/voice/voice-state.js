@@ -56,7 +56,7 @@ window.VoiceState = (function () {
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
-  var _chatLastTaskId = null;
+  var _chatLastCommandId = null;
 
   // ---- Timers & Guards ----
   var _chatSyncTimer = null;
@@ -106,7 +106,7 @@ window.VoiceState = (function () {
     commanded: 'Command received',
     processing: 'Processing\u2026',
     awaiting_input: 'Input needed',
-    complete: 'Task complete',
+    complete: 'Command complete',
     timed_out: 'Timed out'
   };
 
@@ -120,7 +120,7 @@ window.VoiceState = (function () {
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
-    _chatLastTaskId = null;
+    _chatLastCommandId = null;
     _chatSyncTimer = null;
     _newMessagesPillVisible = false;
     _newMessagesFirstTurnId = null;
@@ -193,8 +193,8 @@ window.VoiceState = (function () {
     set chatOldestTurnId(v) { _chatOldestTurnId = v; },
     get chatAgentEnded() { return _chatAgentEnded; },
     set chatAgentEnded(v) { _chatAgentEnded = v; },
-    get chatLastTaskId() { return _chatLastTaskId; },
-    set chatLastTaskId(v) { _chatLastTaskId = v; },
+    get chatLastCommandId() { return _chatLastCommandId; },
+    set chatLastCommandId(v) { _chatLastCommandId = v; },
 
     // Timers & Guards
     get chatSyncTimer() { return _chatSyncTimer; },

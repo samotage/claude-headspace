@@ -93,24 +93,24 @@ window.VoiceChatRenderer = (function () {
 
   function groupTurns(turns) {
     // Group consecutive agent turns within 2s into single items,
-    // insert task separators between task boundaries
+    // insert command separators between command boundaries
     var result = [];
     var currentGroup = null;
-    var lastTaskId = null;
+    var lastCommandId = null;
 
     for (var i = 0; i < turns.length; i++) {
       var turn = turns[i];
 
-      // Synthetic task boundary from backend (task with no turns)
-      if (turn.type === 'task_boundary') {
+      // Synthetic command boundary from backend (command with no turns)
+      if (turn.type === 'command_boundary') {
         if (currentGroup) { result.push(currentGroup); currentGroup = null; }
         result.push({
           type: 'separator',
-          task_instruction: turn.task_instruction || 'New task',
-          task_id: turn.task_id,
+          command_instruction: turn.command_instruction || 'New command',
+          command_id: turn.command_id,
           has_turns: false
         });
-        lastTaskId = turn.task_id;
+        lastCommandId = turn.command_id;
         continue;
       }
 
@@ -119,17 +119,17 @@ window.VoiceChatRenderer = (function () {
         VoiceState.chatOldestTurnId = turn.id;
       }
 
-      // Task boundary separator
-      if (turn.task_id && lastTaskId && turn.task_id !== lastTaskId) {
+      // Command boundary separator
+      if (turn.command_id && lastCommandId && turn.command_id !== lastCommandId) {
         // Flush current group
         if (currentGroup) { result.push(currentGroup); currentGroup = null; }
         result.push({
           type: 'separator',
-          task_instruction: turn.task_instruction || 'New task',
-          task_id: turn.task_id
+          command_instruction: turn.command_instruction || 'New command',
+          command_id: turn.command_id
         });
       }
-      lastTaskId = turn.task_id;
+      lastCommandId = turn.command_id;
 
       var isUser = turn.actor === 'user';
       if (isUser) {
@@ -173,13 +173,13 @@ window.VoiceChatRenderer = (function () {
     return gap <= 2000;
   }
 
-  // --- Task separators ---
+  // --- Command separators ---
 
-  function createTaskSeparatorEl(item) {
+  function createCommandSeparatorEl(item) {
     var sep = document.createElement('div');
-    sep.className = 'chat-task-separator';
-    if (item.task_id) sep.setAttribute('data-task-id', item.task_id);
-    var label = esc(item.task_instruction);
+    sep.className = 'chat-command-separator';
+    if (item.command_id) sep.setAttribute('data-command-id', item.command_id);
+    var label = esc(item.command_instruction);
     if (item.has_turns === false) {
       label += ' <span class="separator-no-activity">(no captured activity)</span>';
     }
@@ -187,31 +187,31 @@ window.VoiceChatRenderer = (function () {
     return sep;
   }
 
-  function renderTaskSeparator(item) {
+  function renderCommandSeparator(item) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
-    messagesEl.appendChild(createTaskSeparatorEl(item));
+    messagesEl.appendChild(createCommandSeparatorEl(item));
   }
 
   /**
-   * Check if a turn crosses a task boundary and insert a separator if needed.
-   * Updates VoiceState.chatLastTaskId. Call this BEFORE rendering the turn bubble.
+   * Check if a turn crosses a command boundary and insert a separator if needed.
+   * Updates VoiceState.chatLastCommandId. Call this BEFORE rendering the turn bubble.
    */
-  function maybeInsertTaskSeparator(turn) {
-    if (!turn.task_id) return;
-    if (VoiceState.chatLastTaskId && turn.task_id !== VoiceState.chatLastTaskId) {
-      // Check if a separator for this task already exists in DOM
+  function maybeInsertCommandSeparator(turn) {
+    if (!turn.command_id) return;
+    if (VoiceState.chatLastCommandId && turn.command_id !== VoiceState.chatLastCommandId) {
+      // Check if a separator for this command already exists in DOM
       var messagesEl = document.getElementById('chat-messages');
-      if (messagesEl && !messagesEl.querySelector('.chat-task-separator[data-task-id="' + turn.task_id + '"]')) {
-        var sepEl = createTaskSeparatorEl({
-          task_instruction: turn.task_instruction || 'New task',
-          task_id: turn.task_id
+      if (messagesEl && !messagesEl.querySelector('.chat-command-separator[data-command-id="' + turn.command_id + '"]')) {
+        var sepEl = createCommandSeparatorEl({
+          command_instruction: turn.command_instruction || 'New command',
+          command_id: turn.command_id
         });
-        // Append at end — separators appear in real-time as new tasks arrive
+        // Append at end — separators appear in real-time as new commands arrive
         messagesEl.appendChild(sepEl);
       }
     }
-    VoiceState.chatLastTaskId = turn.task_id;
+    VoiceState.chatLastCommandId = turn.command_id;
   }
 
   // --- Bubble ordering ---
@@ -343,7 +343,7 @@ window.VoiceChatRenderer = (function () {
     bubble.className = 'chat-bubble ' + (isUser ? 'user' : 'agent') + (isGrouped ? ' grouped' : '');
     bubble.setAttribute('data-turn-id', turn.id);
     bubble.setAttribute('data-timestamp', turn.timestamp || new Date().toISOString());
-    if (turn.task_id) bubble.setAttribute('data-task-id', turn.task_id);
+    if (turn.command_id) bubble.setAttribute('data-command-id', turn.command_id);
 
     var html = '';
 
@@ -652,12 +652,12 @@ window.VoiceChatRenderer = (function () {
       var item = grouped[i];
       var prev = i > 0 ? grouped[i - 1] : null;
       if (item.type === 'separator') {
-        frag.appendChild(createTaskSeparatorEl(item));
-        VoiceState.chatLastTaskId = item.task_id;
+        frag.appendChild(createCommandSeparatorEl(item));
+        VoiceState.chatLastCommandId = item.command_id;
       } else {
         var bubbleEl = createBubbleEl(item, prev);
         if (bubbleEl) frag.appendChild(bubbleEl);
-        if (item.task_id) VoiceState.chatLastTaskId = item.task_id;
+        if (item.command_id) VoiceState.chatLastCommandId = item.command_id;
       }
     }
     messagesEl.appendChild(frag);
@@ -674,7 +674,7 @@ window.VoiceChatRenderer = (function () {
       var item = grouped[i];
       var prev = i > 0 ? grouped[i - 1] : null;
       if (item.type === 'separator') {
-        var sepEl = createTaskSeparatorEl(item);
+        var sepEl = createCommandSeparatorEl(item);
         frag.appendChild(sepEl);
       } else {
         var bubbleEl = createBubbleEl(item, prev);
@@ -714,7 +714,7 @@ window.VoiceChatRenderer = (function () {
     var html = '';
     for (var j = 0; j < bannerAgents.length; j++) {
       var ba = bannerAgents[j];
-      var text = ba.info.task_instruction || 'Needs input';
+      var text = ba.info.command_instruction || 'Needs input';
       html += '<div class="attention-banner" data-agent-id="' + ba.id + '">'
         + '<div class="attention-banner-hero">'
         + '<span class="agent-hero">' + esc(ba.info.hero_chars) + '</span>'
@@ -785,9 +785,9 @@ window.VoiceChatRenderer = (function () {
     closeImageLightbox: closeImageLightbox,
     groupTurns: groupTurns,
     shouldGroup: shouldGroup,
-    createTaskSeparatorEl: createTaskSeparatorEl,
-    renderTaskSeparator: renderTaskSeparator,
-    maybeInsertTaskSeparator: maybeInsertTaskSeparator,
+    createCommandSeparatorEl: createCommandSeparatorEl,
+    renderCommandSeparator: renderCommandSeparator,
+    maybeInsertCommandSeparator: maybeInsertCommandSeparator,
     insertBubbleOrdered: insertBubbleOrdered,
     reorderBubble: reorderBubble,
     renderChatBubble: renderChatBubble,

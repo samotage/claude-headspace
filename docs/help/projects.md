@@ -46,7 +46,7 @@ Click any project name to open the detail page. The show page includes:
 
 ### Agents
 - Collapsible accordion showing all agents (active and ended)
-- Each agent expands to show tasks, which expand to show turns
+- Each agent expands to show commands, which expand to show turns
 - Displays state, timing, and AI-generated summaries at each level
 
 ### Activity Metrics
@@ -74,4 +74,4 @@ Each project has inference settings:
 1. Open the project show page
 2. Click **Delete**
 3. Confirm in the dialog
-4. All associated agents, tasks, turns, and events are deleted
+4. All associated agents, commands, turns, and events are deleted

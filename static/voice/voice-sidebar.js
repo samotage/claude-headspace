@@ -201,15 +201,15 @@ window.VoiceSidebar = (function () {
       var heroChars = a.hero_chars || '';
       var heroTrail = a.hero_trail || '';
 
-      var instructionHtml = a.task_instruction
-        ? '<div class="agent-instruction">' + VoiceChatRenderer.esc(a.task_instruction) + '</div>'
+      var instructionHtml = a.command_instruction
+        ? '<div class="agent-instruction">' + VoiceChatRenderer.esc(a.command_instruction) + '</div>'
         : '';
 
       var summaryText = '';
-      if (a.task_completion_summary) {
-        summaryText = a.task_completion_summary;
-      } else if (a.task_summary && a.task_summary !== a.task_instruction) {
-        summaryText = a.task_summary;
+      if (a.command_completion_summary) {
+        summaryText = a.command_completion_summary;
+      } else if (a.command_summary && a.command_summary !== a.command_instruction) {
+        summaryText = a.command_summary;
       }
       var summaryHtml = summaryText
         ? '<div class="agent-summary">' + VoiceChatRenderer.esc(summaryText) + '</div>'
@@ -606,7 +606,7 @@ window.VoiceSidebar = (function () {
             VoiceState.otherAgentStates[a.agent_id] = {
               hero_chars: a.hero_chars || '',
               hero_trail: a.hero_trail || '',
-              task_instruction: a.task_instruction || '',
+              command_instruction: a.command_instruction || '',
               state: (a.state || '').toLowerCase(),
               project_name: a.project || ''
             };

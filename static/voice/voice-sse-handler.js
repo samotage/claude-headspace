@@ -3,7 +3,7 @@
  *
  * Reads/writes VoiceState for chatAgentState, chatAgentStateLabel,
  * chatAgentEnded, chatPendingUserSends, agentScrollState, otherAgentStates,
- * chatLastTaskId, lastSeenTurnId, previousConnectionState,
+ * chatLastCommandId, lastSeenTurnId, previousConnectionState,
  * connectionLostTimer, connectionLostShown, fetchDebounceTimer, fetchInFlight.
  *
  * Uses callbacks for UI updates that remain in VoiceApp (typing indicator,
@@ -145,7 +145,7 @@ window.VoiceSSEHandler = (function () {
       if (document.querySelector('[data-turn-id="' + realId + '"]')) return;
     }
 
-    var isTerminalIntent = (data.intent === 'completion' || data.intent === 'end_of_task');
+    var isTerminalIntent = (data.intent === 'completion' || data.intent === 'end_of_command');
 
     // Build a turn-like object for direct rendering
     var turn = {
@@ -158,8 +158,8 @@ window.VoiceSSEHandler = (function () {
       question_text: data.text,
       question_options: null,
       question_source_type: data.question_source_type || null,
-      task_id: data.task_id || null,
-      task_instruction: data.task_instruction || null
+      command_id: data.command_id || null,
+      command_instruction: data.command_instruction || null
     };
 
     // Extract question_options from tool_input for immediate rendering
@@ -175,19 +175,19 @@ window.VoiceSSEHandler = (function () {
     }
 
     // Skip if already rendered in DOM -- but always render terminal intents
-    // (completion/end_of_task) so the agent's final response is visible
+    // (completion/end_of_command) so the agent's final response is visible
     // even if a PROGRESS turn with the same ID was already shown.
     if (document.querySelector('[data-turn-id="' + turn.id + '"]')) {
       if (!isTerminalIntent) return;
     }
 
-    // Insert task separator + bubble via appendChild (not insertBubbleOrdered)
+    // Insert command separator + bubble via appendChild (not insertBubbleOrdered)
     // so the separator stays immediately before its bubble.
     // SSE turns are always the newest, so append order is correct.
     // Capture scroll position BEFORE appending — after append, scrollHeight
     // increases and the near-bottom check would see stale distance.
     var wasNearBottom = VoiceChatController.isUserNearBottom();
-    VoiceChatRenderer.maybeInsertTaskSeparator(turn);
+    VoiceChatRenderer.maybeInsertCommandSeparator(turn);
     var messagesEl = document.getElementById('chat-messages');
     var bubbleEl = VoiceChatRenderer.createBubbleEl(turn, null, isTerminalIntent);
     if (bubbleEl && messagesEl) messagesEl.appendChild(bubbleEl);
@@ -220,7 +220,7 @@ window.VoiceSSEHandler = (function () {
         var newState = data.new_state || data.state;
         if (newState && VoiceState.otherAgentStates[agentId]) {
           VoiceState.otherAgentStates[agentId].state = newState.toLowerCase();
-          if (data.task_instruction) VoiceState.otherAgentStates[agentId].task_instruction = data.task_instruction;
+          if (data.command_instruction) VoiceState.otherAgentStates[agentId].command_instruction = data.command_instruction;
           if (data.hero_chars) VoiceState.otherAgentStates[agentId].hero_chars = data.hero_chars;
           if (data.hero_trail) VoiceState.otherAgentStates[agentId].hero_trail = data.hero_trail;
           VoiceChatRenderer.renderAttentionBanners();
@@ -229,7 +229,7 @@ window.VoiceSSEHandler = (function () {
           VoiceState.otherAgentStates[agentId] = {
             hero_chars: data.hero_chars || '',
             hero_trail: data.hero_trail || '',
-            task_instruction: data.task_instruction || '',
+            command_instruction: data.command_instruction || '',
             state: newState.toLowerCase(),
             project_name: data.project || ''
           };
@@ -256,11 +256,11 @@ window.VoiceSSEHandler = (function () {
             if (_onMarkQuestionsAnswered) _onMarkQuestionsAnswered();
           }
         }
-        // Update task instruction in header if SSE provides it
-        if (data.task_instruction) {
-          var instrEl = document.getElementById('chat-task-instruction');
+        // Update command instruction in header if SSE provides it
+        if (data.command_instruction) {
+          var instrEl = document.getElementById('chat-command-instruction');
           if (instrEl) {
-            var instr = data.task_instruction;
+            var instr = data.command_instruction;
             instrEl.textContent = instr.length > 80 ? instr.substring(0, 80) + '...' : instr;
             instrEl.style.display = '';
           }
@@ -409,12 +409,12 @@ window.VoiceSSEHandler = (function () {
       for (var ti = 0; ti < turns.length; ti++) {
         var t = turns[ti];
 
-        // Handle synthetic task_boundary entries from backend
-        if (t.type === 'task_boundary') {
-          if (messagesContainer && !messagesContainer.querySelector('.chat-task-separator[data-task-id="' + t.task_id + '"]')) {
-            messagesContainer.appendChild(VoiceChatRenderer.createTaskSeparatorEl(t));
+        // Handle synthetic command_boundary entries from backend
+        if (t.type === 'command_boundary') {
+          if (messagesContainer && !messagesContainer.querySelector('.chat-command-separator[data-command-id="' + t.command_id + '"]')) {
+            messagesContainer.appendChild(VoiceChatRenderer.createCommandSeparatorEl(t));
           }
-          VoiceState.chatLastTaskId = t.task_id;
+          VoiceState.chatLastCommandId = t.command_id;
           continue;
         }
 
@@ -434,15 +434,15 @@ window.VoiceSSEHandler = (function () {
             existingBubble.setAttribute('data-timestamp', t.timestamp);
             VoiceChatRenderer.reorderBubble(existingBubble);
           }
-          // Still track task ID for boundary detection
-          if (t.task_id) VoiceState.chatLastTaskId = t.task_id;
+          // Still track command ID for boundary detection
+          if (t.command_id) VoiceState.chatLastCommandId = t.command_id;
         } else {
-          // Insert task separator + bubble via appendChild (not insertBubbleOrdered)
+          // Insert command separator + bubble via appendChild (not insertBubbleOrdered)
           // so the separator stays immediately before its bubble.
           // Sync turns arrive in chronological order; new turns are appended.
-          VoiceChatRenderer.maybeInsertTaskSeparator(t);
+          VoiceChatRenderer.maybeInsertCommandSeparator(t);
           var prev = ti > 0 ? turns[ti - 1] : null;
-          var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_task');
+          var forceTerminal = (t.intent === 'completion' || t.intent === 'end_of_command');
           var bubbleEl = VoiceChatRenderer.createBubbleEl(t, prev, forceTerminal);
           if (bubbleEl && messagesContainer) messagesContainer.appendChild(bubbleEl);
         }

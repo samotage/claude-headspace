@@ -298,7 +298,7 @@ CONFIG_SCHEMA = [
     SectionSchema(
         name="notifications",
         title="Notifications",
-        section_description="macOS desktop notifications via terminal-notifier. Alerts you when agents need input or complete tasks.",
+        section_description="macOS desktop notifications via terminal-notifier. Alerts you when agents need input or complete commands.",
         fields=[
             FieldSchema("enabled", "boolean", "Enable macOS notifications (requires terminal-notifier)", default=True,
                          help_text="Enable desktop notifications for agent events. Requires terminal-notifier to be installed via Homebrew (brew install terminal-notifier). Disable if you find notifications distracting."),

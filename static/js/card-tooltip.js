@@ -1,7 +1,7 @@
 /**
  * Card Text Tooltip — shows full text for truncated card lines.
  *
- * Desktop: hover over truncated .task-instruction or .task-summary to reveal.
+ * Desktop: hover over truncated .command-instruction or .command-summary to reveal.
  *          Click also works (pins the tooltip until click-away).
  * Touch:   tap truncated text to show; tap elsewhere to dismiss.
  *
@@ -118,7 +118,7 @@
 
     document.addEventListener('mouseover', function(e) {
         if (isTouch) return;
-        var el = e.target.closest('.task-instruction, .task-summary');
+        var el = e.target.closest('.command-instruction, .command-summary');
         if (el) {
             if (activeEl === el) return; // already showing for this element
             if (pinned) return; // don't replace a pinned tooltip
@@ -138,7 +138,7 @@
 
     document.addEventListener('mouseout', function(e) {
         if (isTouch || pinned) return;
-        var el = e.target.closest('.task-instruction, .task-summary');
+        var el = e.target.closest('.command-instruction, .command-summary');
         if (!el && !(tooltip && (e.target === tooltip || tooltip.contains(e.target)))) return;
 
         var related = e.relatedTarget;
@@ -153,7 +153,7 @@
     // --- Click: pin on desktop, toggle on touch ---
 
     document.addEventListener('click', function(e) {
-        var el = e.target.closest('.task-instruction, .task-summary');
+        var el = e.target.closest('.command-instruction, .command-summary');
         if (el && isTruncated(el)) {
             if (pinned && activeEl === el) {
                 // Clicking a pinned tooltip's source: unpin and hide
@@ -193,7 +193,7 @@
             if (el) markTruncated(el);
         },
         refreshAll: function() {
-            document.querySelectorAll('.task-instruction, .task-summary').forEach(markTruncated);
+            document.querySelectorAll('.command-instruction, .command-summary').forEach(markTruncated);
         }
     };
 

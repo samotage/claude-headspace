@@ -235,7 +235,7 @@ Voice Bridge uses four API endpoints (all require Bearer token auth unless local
 |----------|--------|-------------|
 | `/api/voice/sessions` | GET | List active agents with voice-formatted status |
 | `/api/voice/command` | POST | Send a command to an agent |
-| `/api/voice/agents/<id>/output` | GET | Get recent output/tasks for an agent |
+| `/api/voice/agents/<id>/output` | GET | Get recent output/commands for an agent |
 | `/api/voice/agents/<id>/question` | GET | Get full question context for an awaiting agent |
 
 The `/voice` page itself is served without authentication so the PWA can load before credentials are entered.

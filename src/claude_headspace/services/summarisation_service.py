@@ -39,7 +39,7 @@ _TRIVIAL_MAX_LENGTH = 40
 
 
 class SummarisationService:
-    """Generates AI summaries for turns and tasks using the inference service."""
+    """Generates AI summaries for turns and commands using the inference service."""
 
     def __init__(self, inference_service: InferenceService, config: dict | None = None):
         """Initialize the summarisation service.

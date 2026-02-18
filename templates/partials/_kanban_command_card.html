@@ -27,13 +27,13 @@
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.FocusAPI && window.FocusAPI.focusAgent({{ item.agent.id }});}">
             <span class="state-label">{{ item.agent.state_info.label }}</span>
         </div>
-        <!-- Task instruction -->
+        <!-- Command instruction -->
         {% if item.command_instruction %}
-            <p class="task-instruction text-primary text-sm font-medium mb-1">{{ item.command_instruction }}</p>
+            <p class="command-instruction text-primary text-sm font-medium mb-1">{{ item.command_instruction }}</p>
         {% endif %}
         <!-- Command summary -->
         {% if item.command_summary %}
-            <p class="task-summary text-secondary text-xs italic">{{ item.command_summary }}</p>
+            <p class="command-summary text-secondary text-xs italic">{{ item.command_summary }}</p>
         {% endif %}
     </div>
     <!-- Priority footer -->

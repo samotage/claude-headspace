@@ -67,11 +67,11 @@ BLOCKED_PATTERNS = [
 
 # Regex patterns for completion detection
 COMPLETION_PATTERNS = [
-    # TASK COMPLETE marker (structured completion signal from CLAUDE.md instructions)
-    r"(?i)TASK COMPLETE\s*[—\-–]",    
+    # COMMAND COMPLETE marker (also matches legacy TASK COMPLETE)
+    r"(?i)(?:COMMAND|TASK) COMPLETE\s*[—\-–]",
     # Direct completion phrases
     r"(?i)^(?:done|complete|finished|all (?:done|set|finished))[\.!\s]*$",
-    # Task completion phrases
+    # Command completion phrases
     r"(?i)(?:i'?(?:ve|m) (?:finished|completed|done)|task (?:complete|finished|done))",
     r"(?i)(?:successfully (?:completed|finished)|changes (?:have been )?(?:made|applied|committed))",
     # Summary completion phrases (tightened to avoid false positives)

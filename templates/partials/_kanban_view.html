@@ -1,4 +1,4 @@
-<!-- Kanban View: Tasks grouped by lifecycle state -->
+<!-- Kanban View: Commands grouped by lifecycle state -->
 {% for kproject in kanban_data %}
 <section class="mb-8 bg-surface rounded-lg border border-border overflow-hidden" data-project-id="{{ kproject.id }}">
     <!-- Column header -->
@@ -64,32 +64,32 @@
             <div class="kanban-column-body">
                 {% for item in kproject.columns[col_name] %}
                     {% if item.type == 'agent' or item.type == 'command' %}
-                        {# Unified agent card for all agent/task items #}
+                        {# Unified agent card for all agent/command items #}
                         {% set agent = item.agent %}
                         {% include "partials/_agent_card.html" %}
                     {% elif item.type == 'completed_command' %}
-                        {# Completed task card: card-editor style with accordion #}
-                        <details class="kanban-completed-task bg-elevated rounded-lg border border-green/20 overflow-hidden" data-agent-id="{{ item.agent.id }}">
+                        {# Completed command card: card-editor style with accordion #}
+                        <details class="kanban-completed-command bg-elevated rounded-lg border border-green/20 overflow-hidden" data-agent-id="{{ item.agent.id }}">
                             <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-hover transition-colors">
                                 <span class="text-xs text-muted">&#9654;</span>
                                 <span class="flex items-baseline gap-0.5">
                                     <span class="agent-hero text-sm">{{ item.agent.hero_chars }}</span><span class="agent-hero-trail">{{ item.agent.hero_trail }}</span>
                                 </span>
-                                <span class="task-instruction text-primary text-sm font-medium truncate flex-1" title="{{ item.instruction }}">{{ item.instruction }}</span>
+                                <span class="command-instruction text-primary text-sm font-medium truncate flex-1" title="{{ item.instruction }}">{{ item.instruction }}</span>
                             </summary>
                             <div class="card-editor border-t border-green/10">
-                                {# 01: Task instruction #}
+                                {# 01: Command instruction #}
                                 <div class="card-line">
                                     <span class="line-num">01</span>
                                     <div class="line-content">
-                                        <p class="task-instruction text-primary text-sm font-medium">{{ item.instruction }}</p>
+                                        <p class="command-instruction text-primary text-sm font-medium">{{ item.instruction }}</p>
                                     </div>
                                 </div>
                                 {# 02: Completion summary #}
                                 <div class="card-line">
                                     <span class="line-num">02</span>
                                     <div class="line-content">
-                                        <p class="task-summary text-green text-sm italic">{{ item.completion_summary }}</p>
+                                        <p class="command-summary text-green text-sm italic">{{ item.completion_summary }}</p>
                                     </div>
                                 </div>
                                 {# 03: Turn count + elapsed time #}
@@ -104,7 +104,7 @@
                     {% endif %}
                 {% else %}
                     {% if col_name != 'COMPLETE' %}
-                    <p class="text-muted text-xs italic px-2">No {{ meta.label|lower }} tasks</p>
+                    <p class="text-muted text-xs italic px-2">No {{ meta.label|lower }} commands</p>
                     {% endif %}
                 {% endfor %}
             </div>

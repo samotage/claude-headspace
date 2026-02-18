@@ -115,7 +115,7 @@ Each agent card shows its current state:
 
 - **Working** (blue) - Claude is actively processing
 - **Input Needed** (amber) - Claude is waiting for your response. A respond widget appears with quick-action buttons and a text input so you can reply from the dashboard.
-- **Idle** (gray) - Claude has completed its task
+- **Idle** (gray) - Claude has completed its command
 
 ## Focus on a Session
 

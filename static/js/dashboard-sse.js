@@ -10,7 +10,7 @@
  * Updates DOM elements:
  * - Status counts in header
  * - State indicator dots on project groups
- * - Agent card state bars, status badges, task summaries
+ * - Agent card state bars, status badges, command summaries
  * - Recommended next panel
  * - Connection status indicator
  */
@@ -30,11 +30,11 @@
 
     // State info mapping (matches Python get_state_info)
     const STATE_INFO = {
-        'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle - ready for task' },
+        'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle - ready for command' },
         'COMMANDED': { color: 'yellow', bg_class: 'bg-amber', label: 'Command received' },
         'PROCESSING': { color: 'blue', bg_class: 'bg-blue', label: 'Processing...' },
         'AWAITING_INPUT': { color: 'orange', bg_class: 'bg-amber', label: 'Input needed' },
-        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Task complete' },
+        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Command complete' },
         'TIMED_OUT': { color: 'red', bg_class: 'bg-red', label: 'Timed out' }
     };
 
@@ -192,7 +192,7 @@
                     'PROCESSING': 'processing',
                     'AWAITING_INPUT': 'input needed'
                 };
-                var emptyText = 'No ' + (emptyLabels[currentColName] || currentColName.toLowerCase()) + ' tasks';
+                var emptyText = 'No ' + (emptyLabels[currentColName] || currentColName.toLowerCase()) + ' commands';
                 var placeholder = document.createElement('p');
                 placeholder.className = 'text-muted text-xs italic px-2';
                 placeholder.textContent = emptyText;
@@ -452,7 +452,7 @@
 
         console.log('Turn created:', agentId);
 
-        // Update task summary (scope to article to avoid recommended panel)
+        // Update command summary (scope to article to avoid recommended panel)
         const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
         if (!card) return;
 
@@ -554,7 +554,7 @@
                             };
                             var placeholder = document.createElement('p');
                             placeholder.className = 'text-muted text-xs italic px-2';
-                            placeholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                            placeholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' commands';
                             body.appendChild(placeholder);
                         }
                     }
@@ -574,7 +574,7 @@
     }
 
     /**
-     * Handle instruction summary events (AI-generated task instruction)
+     * Handle instruction summary events (AI-generated command instruction)
      */
     function handleInstructionSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -689,11 +689,11 @@
     }
 
     /**
-     * Build a condensed completed-task accordion element for the COMPLETE column.
+     * Build a condensed completed-command accordion element for the COMPLETE column.
      * Matches the server-side template in _kanban_view.html.
      * Uses innerHTML with all dynamic values escaped via CHUtils.escapeHtml.
      */
-    function buildCompletedTaskCard(data) {
+    function buildCompletedCommandCard(data) {
         var details = document.createElement('details');
         details.className = 'kanban-completed-command bg-elevated rounded-lg border border-green/20 overflow-hidden';
         details.setAttribute('data-agent-id', data.id);
@@ -788,7 +788,7 @@
 
     /**
      * Find an agent's card element — may be an <article> (full card) or
-     * a <details> (condensed completed-task card).
+     * a <details> (condensed completed-command card).
      */
     function findAgentCard(agentId) {
         return document.querySelector('article[data-agent-id="' + agentId + '"]') ||
@@ -841,7 +841,7 @@
         if (!isCondensed && state === 'COMPLETE' && isKanbanView()) {
             agentStates.set(agentId, 'IDLE');
 
-            var condensedCard = buildCompletedTaskCard(data);
+            var condensedCard = buildCompletedCommandCard(data);
 
             var projectSection = card.closest('[data-project-id]');
             var sourceColumn = card.closest('[data-kanban-state]');
@@ -917,7 +917,7 @@
                                 };
                                 var emptyPlaceholder = document.createElement('p');
                                 emptyPlaceholder.className = 'text-muted text-xs italic px-2';
-                                emptyPlaceholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' tasks';
+                                emptyPlaceholder.textContent = 'No ' + (emptyLabels[colName] || colName.toLowerCase()) + ' commands';
                                 sourceBody.appendChild(emptyPlaceholder);
                             }
                         }

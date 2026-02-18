@@ -569,7 +569,7 @@
       switch (level) {
         case "turn":
           return baseClass + " bg-blue/20 text-blue";
-        case "task":
+        case "command":
           return baseClass + " bg-cyan/20 text-cyan";
         case "project":
           return baseClass + " bg-amber/20 text-amber";

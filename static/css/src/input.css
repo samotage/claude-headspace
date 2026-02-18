@@ -518,16 +518,16 @@ article.kebab-open {
 }
 
 /* Card text truncation — 3-line clamp with ellipsis */
-.task-instruction,
-.task-summary {
+.command-instruction,
+.command-summary {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.task-instruction.is-truncated,
-.task-summary.is-truncated {
+.command-instruction.is-truncated,
+.command-summary.is-truncated {
     cursor: pointer;
 }
 
@@ -741,15 +741,15 @@ article.kebab-open {
     border-color: var(--green) !important;
 }
 
-/* Task details collapsible */
-.agent-info-task-details {
+/* Command details collapsible */
+.agent-info-command-details {
     border: 1px solid var(--border);
     border-radius: 4px;
     margin-bottom: 0.375rem;
     background: var(--bg-deep);
 }
 
-.agent-info-task-header {
+.agent-info-command-header {
     display: flex;
     align-items: baseline;
     gap: 0.375rem;
@@ -759,11 +759,11 @@ article.kebab-open {
     user-select: none;
 }
 
-.agent-info-task-header:hover {
+.agent-info-command-header:hover {
     background: var(--bg-hover);
 }
 
-.agent-info-task-body {
+.agent-info-command-body {
     padding: 0.5rem;
     border-top: 1px solid var(--border);
 }
@@ -826,8 +826,8 @@ article.kebab-open {
     margin-top: 0.125rem;
 }
 
-/* Voice chat task instruction in header */
-.chat-task-instruction {
+/* Voice chat command instruction in header */
+.chat-command-instruction {
     display: block;
     font-size: 0.6875rem;
     color: var(--text-muted);
@@ -1318,19 +1318,19 @@ article.kebab-open {
 }
 
 
-.kanban-completed-task {
+.kanban-completed-command {
     flex-shrink: 0;
 }
 
-.kanban-completed-task summary {
+.kanban-completed-command summary {
     list-style: none;
 }
 
-.kanban-completed-task summary::-webkit-details-marker {
+.kanban-completed-command summary::-webkit-details-marker {
     display: none;
 }
 
-.kanban-completed-task[open] summary .text-muted {
+.kanban-completed-command[open] summary .text-muted {
     transform: rotate(90deg);
     display: inline-block;
 }

@@ -26,7 +26,7 @@ window.VoiceChatController = (function () {
     commanded: 'Command received',
     processing: 'Processing\u2026',
     awaiting_input: 'Input needed',
-    complete: 'Task complete',
+    complete: 'Command complete',
     timed_out: 'Timed out'
   };
 
@@ -50,7 +50,7 @@ window.VoiceChatController = (function () {
     VoiceState.chatLoadingMore = false;
     VoiceState.chatOldestTurnId = null;
     VoiceState.chatAgentEnded = false;
-    VoiceState.chatLastTaskId = null;
+    VoiceState.chatLastCommandId = null;
     VoiceState.fetchInFlight = false; // Reset in-flight guard for new agent
     if (VoiceState.fetchDebounceTimer) { clearTimeout(VoiceState.fetchDebounceTimer); VoiceState.fetchDebounceTimer = null; }
     var messagesEl = document.getElementById('chat-messages');
@@ -68,7 +68,7 @@ window.VoiceChatController = (function () {
           VoiceState.otherAgentStates[a.agent_id] = {
             hero_chars: a.hero_chars || '',
             hero_trail: a.hero_trail || '',
-            task_instruction: a.task_instruction || '',
+            command_instruction: a.command_instruction || '',
             state: (a.state || '').toLowerCase(),
             project_name: a.project || ''
           };
@@ -132,8 +132,8 @@ window.VoiceChatController = (function () {
       }
       updateTypingIndicator();
       updateChatStatePill();
-      // Show most recent task instruction in header
-      updateChatTaskInstruction(data.turns || []);
+      // Show most recent command instruction in header
+      updateChatCommandInstruction(data.turns || []);
       updateEndedAgentUI();
       updateLoadMoreIndicator();
     }).catch(function () {
@@ -319,14 +319,14 @@ window.VoiceChatController = (function () {
     }
   }
 
-  function updateChatTaskInstruction(turns) {
-    var el = document.getElementById('chat-task-instruction');
+  function updateChatCommandInstruction(turns) {
+    var el = document.getElementById('chat-command-instruction');
     if (!el) return;
-    // Find the most recent task_instruction from turns (last non-empty)
+    // Find the most recent command_instruction from turns (last non-empty)
     var instruction = '';
     for (var i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].task_instruction) {
-        instruction = turns[i].task_instruction;
+      if (turns[i].command_instruction) {
+        instruction = turns[i].command_instruction;
         break;
       }
     }
@@ -610,7 +610,7 @@ window.VoiceChatController = (function () {
     getStateLabel: getStateLabel,
     updateTypingIndicator: updateTypingIndicator,
     updateChatStatePill: updateChatStatePill,
-    updateChatTaskInstruction: updateChatTaskInstruction,
+    updateChatCommandInstruction: updateChatCommandInstruction,
     markAllQuestionsAnswered: markAllQuestionsAnswered,
     showChatSystemMessage: showChatSystemMessage,
     renderOptimisticUserBubble: renderOptimisticUserBubble,

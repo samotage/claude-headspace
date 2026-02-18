@@ -3,7 +3,7 @@
  *
  * Loads project data, waypoint, brain reboot, and progress summary.
  * Handles control actions: edit, delete, pause/resume, regenerate, export.
- * Accordion object tree: Agents -> Tasks -> Turns with lazy loading.
+ * Accordion object tree: Agents -> Commands -> Turns with lazy loading.
  * Activity metrics with day/week/month toggle and Chart.js visualization.
  * Archive history and inference usage summary.
  */
@@ -217,7 +217,7 @@
                 agentsExpanded = false;
                 // Collapse all children
                 expandedAgents = {};
-                expandedTasks = {};
+                expandedCommands = {};
             } else {
                 // Expand
                 body.style.display = 'block';
@@ -439,7 +439,7 @@
                 var isComplete = stateValue.toLowerCase() === 'complete';
                 var borderColor = isComplete ? 'border-green/20' : 'border-border';
 
-                html += '<div class="accordion-task-row">';
+                html += '<div class="accordion-command-row">';
                 // Header row (clickable, expands turns)
                 html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleCommandTurns(' + commandId + ', ' + agentId + ')">';
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="command-arrow-' + commandId + '">&#9654;</span>';
@@ -580,7 +580,7 @@
                     var displayText = text.length > 300 ? text.substring(0, 300) + '...' : text;
                     html += '<p class="text-xs text-secondary mt-1 whitespace-pre-line" id="' + turnId + '">' + CHUtils.escapeHtml(displayText) + '</p>';
                     if (text.length > 300) {
-                        html += '<button type="button" class="turn-view-full-btn text-[10px] text-cyan hover:underline mt-0.5" data-turn-id="' + turn.id + '" data-command-id="' + taskId + '">View full</button>';
+                        html += '<button type="button" class="turn-view-full-btn text-[10px] text-cyan hover:underline mt-0.5" data-turn-id="' + turn.id + '" data-command-id="' + commandId + '">View full</button>';
                     }
                 }
                 // Annotation: summary shown in muted italic if it exists and differs from text
@@ -1505,7 +1505,7 @@
 
             client.on('state_transition', function(data) {
                 if (!data) return;
-                self._scheduleAccordionUpdate('tasks', data);
+                self._scheduleAccordionUpdate('commands', data);
             });
         },
 
@@ -1558,7 +1558,7 @@
             }
 
             // Refresh command accordions if expanded
-            if (pending.tasks) {
+            if (pending.commands) {
                 Object.keys(expandedCommands).forEach(function(commandId) {
                     delete cache.commandTurns[commandId];
                     var container = document.getElementById('command-turns-' + commandId);

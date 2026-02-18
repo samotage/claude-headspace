@@ -260,7 +260,7 @@ def reconcile_agent_session(agent):
     if not entries:
         return {"updated": [], "created": []}
 
-    # Get ALL turns for this agent's tasks (no time window)
+    # Get ALL turns for this agent's commands (no time window)
     command_ids = [t.id for t in Command.query.filter_by(agent_id=agent.id).all()]
     existing_turns = Turn.query.filter(Turn.command_id.in_(command_ids)).all() if command_ids else []
 

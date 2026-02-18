@@ -49,14 +49,14 @@
         </div>
       </div>
     </div>
-    <!-- 03: Task instruction (primary line) -->
+    <!-- 03: Command instruction (primary line) -->
     <div class="card-line">
       <span class="line-num">03</span>
       <div class="line-content flex items-baseline justify-between gap-2">
         {% if agent.command_instruction %}
-          <p class="task-instruction text-primary text-sm font-medium flex-1 min-w-0">{{ agent.command_instruction }}</p>
+          <p class="command-instruction text-primary text-sm font-medium flex-1 min-w-0">{{ agent.command_instruction }}</p>
         {% else %}
-          <p class="task-instruction text-muted text-sm italic">No active command</p>
+          <p class="command-instruction text-muted text-sm italic">No active command</p>
         {% endif %}
         {% if agent.has_plan and agent.current_command_id %}
           <button type="button" class="plan-indicator plan-indicator-btn" title="View plan" aria-label="View agent plan"
@@ -64,7 +64,7 @@
         {% endif %}
       </div>
     </div>
-    <!-- 04: Turn summary (active task) or completion summary (complete task) -->
+    <!-- 04: Turn summary (active command) or completion summary (complete command) -->
     <!-- Hidden when it would just repeat line 03 -->
     {% set line04_text = '' %}
     {% if agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE' %}
@@ -82,9 +82,9 @@
       <span class="line-num">04</span>
       <div class="line-content flex items-baseline justify-between gap-2">
         {% if (agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE') and agent.command_completion_summary %}
-          <p class="task-summary text-green text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
+          <p class="command-summary text-green text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
         {% else %}
-          <p class="task-summary text-secondary text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
+          <p class="command-summary text-secondary text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
         {% endif %}
       </div>
     </div>
@@ -113,12 +113,12 @@
     </form>
   </div>
   {% endif %}
-  <!-- Priority + task stats footer -->
+  <!-- Priority + command stats footer -->
   <div class="relative z-[1] flex items-center justify-between gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
     <div class="flex items-center gap-3">
       <span class="priority-score px-1.5 py-0.5 text-[11px] font-mono font-medium rounded-sm" data-priority="{{ agent.priority }}">{{ agent.priority }}</span>
       {% if agent.turn_count and agent.turn_count > 0 %}
-        <span class="task-stats text-muted text-xs">{{ agent.turn_count }} turn{{ 's' if agent.turn_count != 1 else '' }}{% if agent.elapsed %} · {{ agent.elapsed }}{% endif %}</span>
+        <span class="command-stats text-muted text-xs">{{ agent.turn_count }} turn{{ 's' if agent.turn_count != 1 else '' }}{% if agent.elapsed %} · {{ agent.elapsed }}{% endif %}</span>
       {% endif %}
       {% if agent.context_percent_used is not none %}
         {% set ctx_class = 'text-muted' %}

@@ -361,7 +361,7 @@ openrouter:
 - `base_url` - OpenRouter API endpoint. Only change if using a proxy or alternative service.
 - `timeout` - Maximum seconds for an LLM API response. Increase for complex prompts or high API load.
 - `models.turn` - Model for turn summaries and frustration scoring. Use a fast, cheap model (Haiku) for high-frequency calls.
-- `models.task` - Model for command-level summaries. Can be the same as turn or slightly more capable.
+- `models.command` - Model for command-level summaries. Can be the same as turn or slightly more capable.
 - `models.project` - Model for project progress analysis. Use a capable model (Sonnet) for deeper reasoning.
 - `models.objective` - Model for cross-project priority scoring.
 - `rate_limits.calls_per_minute` - API call cap per minute. Prevents runaway costs.
