@@ -371,7 +371,7 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
             from .card_state import broadcast_card_refresh
             broadcast_card_refresh(agent, "reconciler")
         except Exception:
-            pass
+            logger.debug("Card refresh broadcast failed during reconciliation")
     except InvalidTransitionError as e:
         db.session.rollback()
         logger.warning(

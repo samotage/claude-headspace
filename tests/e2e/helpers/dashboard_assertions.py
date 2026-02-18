@@ -29,32 +29,32 @@ class DashboardAssertions:
         )
         expect(locator).to_contain_text(text, timeout=timeout)
 
-    def assert_task_summary_contains(
+    def assert_command_summary_contains(
         self, agent_id: int, text: str, timeout: int = 10000
     ):
-        """Wait for .task-summary to contain text."""
+        """Wait for .command-summary to contain text."""
         locator = self.page.locator(
-            f'article[data-agent-id="{agent_id}"] .task-summary'
+            f'article[data-agent-id="{agent_id}"] .command-summary'
         )
         expect(locator).to_contain_text(text, timeout=timeout)
 
-    def assert_task_instruction_contains(
+    def assert_command_instruction_contains(
         self, agent_id: int, text: str, timeout: int = 10000
     ):
-        """Wait for .task-instruction to contain text."""
+        """Wait for .command-instruction to contain text."""
         locator = self.page.locator(
-            f'article[data-agent-id="{agent_id}"] .task-instruction'
+            f'article[data-agent-id="{agent_id}"] .command-instruction'
         )
         expect(locator).to_contain_text(text, timeout=timeout)
 
-    def assert_task_completed(self, agent_id: int, timeout: int = 10000):
+    def assert_command_completed(self, agent_id: int, timeout: int = 10000):
         """Wait for command completion in kanban view.
 
         In kanban view, COMPLETE creates a condensed <details> card and
         resets the <article> card to IDLE. Check for the condensed card.
         """
         locator = self.page.locator(
-            f'details.kanban-completed-task[data-agent-id="{agent_id}"]'
+            f'details.kanban-completed-command[data-agent-id="{agent_id}"]'
         )
         expect(locator).to_be_visible(timeout=timeout)
 

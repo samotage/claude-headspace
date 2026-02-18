@@ -47,7 +47,7 @@ class TestEdgeCases:
         # Second prompt while still processing
         hook_client.user_prompt_submit(prompt="Second command")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        dashboard.assert_task_instruction_contains(agent_id, "Second command")
+        dashboard.assert_command_instruction_contains(agent_id, "Second command")
         dashboard.capture("double_prompt")
 
     def test_session_end_during_awaiting_input(

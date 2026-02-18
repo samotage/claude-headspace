@@ -35,7 +35,7 @@ class TestStopAndNotificationBehaviour:
 
         # Fire stop — should immediately complete the command
         hook_client.stop()
-        dashboard.assert_task_completed(agent_id, timeout=3000)
+        dashboard.assert_command_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
         dashboard.capture("stop_immediate_complete")
 

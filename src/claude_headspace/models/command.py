@@ -28,6 +28,12 @@ class Command(db.Model):
     """
 
     __tablename__ = "commands"
+    __table_args__ = (
+        db.CheckConstraint(
+            'completed_at IS NULL OR completed_at >= started_at',
+            name='ck_commands_completed_after_started',
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(

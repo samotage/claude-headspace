@@ -197,17 +197,17 @@ class TestChatScreen:
         voice_page.select_agent(agent_id)
         voice_page.assert_ended_banner_visible(timeout=10000)
 
-    def test_task_separator_on_new_task(self, voice_page, hook_client):
-        """Task separators appear between different tasks."""
+    def test_command_separator_on_new_command(self, voice_page, hook_client):
+        """Command separators appear between different commands."""
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         voice_page.assert_agent_card_visible(agent_id)
-        # First task
+        # First command
         hook_client.user_prompt_submit("first task")
         voice_page.page.wait_for_timeout(500)
         hook_client.stop()
         voice_page.page.wait_for_timeout(500)
-        # Second task
+        # Second command
         hook_client.user_prompt_submit("second task")
         voice_page.page.wait_for_timeout(500)
         hook_client.stop()
@@ -215,10 +215,10 @@ class TestChatScreen:
         # Navigate to chat
         voice_page.select_agent(agent_id)
         voice_page.page.wait_for_timeout(2000)
-        # Should have task separators in the transcript
-        separators = voice_page.page.locator(".chat-task-separator")
+        # Should have command separators in the transcript
+        separators = voice_page.page.locator(".chat-command-separator")
         count = separators.count()
-        assert count >= 1, f"Expected at least 1 task separator, got {count}"
+        assert count >= 1, f"Expected at least 1 command separator, got {count}"
 
 
 # ---------------------------------------------------------------------------

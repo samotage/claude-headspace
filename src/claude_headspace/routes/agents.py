@@ -161,6 +161,12 @@ def reconcile_agent_endpoint(agent_id: int):
         except Exception as e:
             logger.warning(f"Reconcile broadcast failed for agent {agent_id}: {e}")
         db.session.commit()
+    except Exception as e:
+        logger.error(f"Reconciliation failed for agent {agent_id}: {e}")
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+        }), 500
     finally:
         lock.release()
 

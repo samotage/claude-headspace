@@ -283,9 +283,9 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
             jsonl_entry_hash=content_key,
         )
         db.session.add(turn)
-        db.session.flush()
-        # No downstream exceptions can roll back this turn — the broadcast
-        # below is in a try/except. Committed by caller or next flush cycle.
+        # Commit PROGRESS turn immediately — turn must survive even if the
+        # caller's subsequent operations (state transitions, etc.) fail.
+        db.session.commit()
 
         try:
             from .broadcaster import get_broadcaster
@@ -1074,6 +1074,8 @@ def process_stop(
                     jsonl_entry_hash=agent_content_key,
                 )
                 db.session.add(turn)
+            # Commit turn FIRST — turn must survive even if state transition fails.
+            db.session.commit()
         elif intent_result.intent == TurnIntent.END_OF_COMMAND:
             if stale_notification_turn:
                 stale_notification_turn.text = completion_text or ""
@@ -1081,17 +1083,24 @@ def process_stop(
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
                 stale_notification_turn.jsonl_entry_hash = agent_content_key
-            # NOTE: complete_command() is advisory (never raises InvalidTransitionError).
-            # It runs before the commit because it force-sets state to COMPLETE.
-            # If complete_command() is ever changed to enforce strict transitions,
-            # this call must move after the commit (two-commit pattern).
-            lifecycle.complete_command(
-                command=current_command, trigger="hook:stop:end_of_command",
-                agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
-            )
-            # Preserve full output even when completion turn is deduplicated
-            if completion_text != full_agent_text:
-                current_command.full_output = full_agent_text
+            # Commit turn FIRST — turn must survive even if complete_command fails.
+            db.session.commit()
+            # Now attempt completion in a separate commit scope.
+            try:
+                lifecycle.complete_command(
+                    command=current_command, trigger="hook:stop:end_of_command",
+                    agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
+                )
+                # Preserve full output even when completion turn is deduplicated
+                if completion_text != full_agent_text:
+                    current_command.full_output = full_agent_text
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"[HOOK_RECEIVER] process_stop complete_command (END_OF_COMMAND) failed: "
+                    f"error={e} — turn preserved"
+                )
         else:
             if stale_notification_turn:
                 stale_notification_turn.text = completion_text or ""
@@ -1099,19 +1108,25 @@ def process_stop(
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
                 stale_notification_turn.jsonl_entry_hash = agent_content_key
-            # NOTE: complete_command() is advisory — see comment above.
-            lifecycle.complete_command(command=current_command, trigger="hook:stop", agent_text=completion_text)
-            if completion_text != full_agent_text:
-                current_command.full_output = full_agent_text
+            # Commit turn FIRST — turn must survive even if complete_command fails.
+            db.session.commit()
+            # Now attempt completion in a separate commit scope.
+            try:
+                lifecycle.complete_command(command=current_command, trigger="hook:stop", agent_text=completion_text)
+                if completion_text != full_agent_text:
+                    current_command.full_output = full_agent_text
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"[HOOK_RECEIVER] process_stop complete_command (COMPLETION) failed: "
+                    f"error={e} — turn preserved"
+                )
 
-        # Commit turn FIRST — turn must survive even if state transition fails.
-        # This is the "two-commit" pattern: turn data is committed separately
-        # from state transitions so a rollback of the latter cannot destroy the turn.
-        # For COMPLETION/END_OF_COMMAND, complete_command() already ran above (advisory,
-        # never raises) so the state change is committed here together with the turn.
+        # Two-commit pattern complete: turns committed above, state transitions
+        # (complete_command or QUESTION handling below) in separate commit scopes.
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
-        db.session.commit()
 
         # Now attempt state transition (for QUESTION intent only — complete_command
         # handles its own transitions advisorily and already ran above).
@@ -1599,13 +1614,25 @@ def process_post_tool_use(
                 except Exception as e:
                     logger.warning(f"Failed to recover user command from transcript: {e}")
 
-            lifecycle.update_command_state(
-                command=new_command, to_state=CommandState.PROCESSING,
-                trigger="hook:post_tool_use:inferred", confidence=0.9,
-            )
+            # Commit turn FIRST — turn must survive even if state transition fails.
             _trigger_priority_scoring()
             pending = lifecycle.get_pending_summarisations()
             db.session.commit()
+
+            # Now attempt state transition in a separate commit scope.
+            try:
+                lifecycle.update_command_state(
+                    command=new_command, to_state=CommandState.PROCESSING,
+                    trigger="hook:post_tool_use:inferred", confidence=0.9,
+                )
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"[HOOK_RECEIVER] process_post_tool_use inferred command state transition failed: "
+                    f"error={e} — turn(s) preserved"
+                )
+
             broadcast_card_refresh(agent, "post_tool_use_inferred")
             _execute_pending_summarisations(pending)
             _broadcast_state_change(agent, "post_tool_use", CommandState.PROCESSING.value)

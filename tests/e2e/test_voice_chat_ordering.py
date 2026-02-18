@@ -47,7 +47,7 @@ class TestTranscriptOrdering:
 
         # Stop -> COMPLETE (creates COMPLETION turn)
         hook_client.stop()
-        dashboard.assert_task_completed(agent_id, timeout=5000)
+        dashboard.assert_command_completed(agent_id, timeout=5000)
 
         # Now fetch the transcript API and verify ordering
         resp = requests.get(
@@ -318,7 +318,7 @@ class TestProgressCollapsePreservesDOM:
             const progressBubble = document.createElement('div');
             progressBubble.className = 'chat-bubble agent';
             progressBubble.setAttribute('data-turn-id', '999');
-            progressBubble.setAttribute('data-task-id', '100');
+            progressBubble.setAttribute('data-command-id', '100');
             progressBubble.setAttribute('data-timestamp', new Date().toISOString());
             progressBubble.innerHTML = '<div class="progress-intent">Working on it...</div>';
             container.appendChild(progressBubble);
@@ -327,13 +327,13 @@ class TestProgressCollapsePreservesDOM:
             const progressBubble2 = document.createElement('div');
             progressBubble2.className = 'chat-bubble agent';
             progressBubble2.setAttribute('data-turn-id', '1000');
-            progressBubble2.setAttribute('data-task-id', '100');
+            progressBubble2.setAttribute('data-command-id', '100');
             progressBubble2.setAttribute('data-timestamp', new Date().toISOString());
             progressBubble2.innerHTML = '<div class="progress-intent">Still working...</div>';
             container.appendChild(progressBubble2);
 
             // Now simulate what _collapseProgressBubbles does
-            const bubbles = container.querySelectorAll('.chat-bubble[data-task-id="100"]');
+            const bubbles = container.querySelectorAll('.chat-bubble[data-command-id="100"]');
             for (let i = 0; i < bubbles.length; i++) {
                 if (bubbles[i].querySelector('.progress-intent')) {
                     bubbles[i].classList.add('collapsed');
@@ -345,18 +345,18 @@ class TestProgressCollapsePreservesDOM:
 
         # Verify PROGRESS bubbles have .collapsed class but are still in DOM
         progress_bubbles = page.locator(
-            '.chat-bubble[data-task-id="100"] .progress-intent'
+            '.chat-bubble[data-command-id="100"] .progress-intent'
         )
         expect(progress_bubbles).to_have_count(2, timeout=3000)
 
         collapsed_bubbles = page.locator(
-            '.chat-bubble.collapsed[data-task-id="100"]'
+            '.chat-bubble.collapsed[data-command-id="100"]'
         )
         expect(collapsed_bubbles).to_have_count(2, timeout=3000)
 
         # Verify they are still in the DOM (not removed)
-        all_task_bubbles = page.locator('.chat-bubble[data-task-id="100"]')
-        expect(all_task_bubbles).to_have_count(2, timeout=3000)
+        all_command_bubbles = page.locator('.chat-bubble[data-command-id="100"]')
+        expect(all_command_bubbles).to_have_count(2, timeout=3000)
 
         dashboard.capture("collapsed_class_dom")
 

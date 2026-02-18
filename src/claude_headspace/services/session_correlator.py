@@ -621,5 +621,3 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
         remove_reconcile_lock(agent_id)
     except Exception as e:
         logger.debug(f"Reconcile lock cleanup failed for agent {agent_id}: {e}")
-    except Exception as e:
-        logger.debug(f"Commander availability cleanup failed for agent {agent_id}: {e}")

@@ -55,7 +55,7 @@ class TestSingleAgentTurnLifecycle:
 
         # SSE updates state without reload
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        dashboard.assert_task_instruction_contains(agent_id, "Fix the login bug")
+        dashboard.assert_command_instruction_contains(agent_id, "Fix the login bug")
         dashboard.assert_status_counts(input_needed=0, working=1, idle=0)
         dashboard.capture("processing")
 
@@ -77,7 +77,7 @@ class TestSingleAgentTurnLifecycle:
         # Fire stop hook — immediate command completion
         hook_client.stop()
 
-        dashboard.assert_task_completed(agent_id, timeout=3000)
+        dashboard.assert_command_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
         dashboard.capture("command_complete")
 
@@ -101,7 +101,7 @@ class TestSingleAgentTurnLifecycle:
         # Fire answer
         hook_client.user_prompt_submit(prompt="Yes, proceed")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
-        dashboard.assert_task_summary_contains(agent_id, "Yes, proceed")
+        dashboard.assert_command_summary_contains(agent_id, "Yes, proceed")
         dashboard.capture("answer_processing")
 
     def test_session_end_removes_card(

@@ -445,6 +445,8 @@
      * Handle turn created events
      */
     function handleTurnCreated(data, eventType) {
+        if (data.is_internal) return;
+
         const agentId = data.agent_id;
         const turnText = data.text || data.turn_text || '';
 

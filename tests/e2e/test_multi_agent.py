@@ -103,7 +103,7 @@ class TestMultiAgent:
 
         # Agent A stops → command completes (kanban creates condensed card + resets to IDLE)
         client_a.stop()
-        dashboard.assert_task_completed(agent_a, timeout=3000)
+        dashboard.assert_command_completed(agent_a, timeout=3000)
         dashboard.assert_agent_state(agent_b, "PROCESSING")
         dashboard.assert_status_counts(input_needed=0, working=1, idle=1)
         dashboard.capture("multi_04_a_complete")
