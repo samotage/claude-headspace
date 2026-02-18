@@ -295,10 +295,6 @@ def _run_deferred_stop(
                 question_source_type="free_text",
             )
             db.session.add(turn)
-        lifecycle.update_task_state(
-            task=task, to_state=TaskState.AWAITING_INPUT,
-            trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
-        )
     elif intent_result.intent == TurnIntent.END_OF_TASK:
         if stale_notification_turn:
             stale_notification_turn.text = completion_text or ""
@@ -321,9 +317,26 @@ def _run_deferred_stop(
         if completion_text != full_agent_text:
             task.full_output = full_agent_text
 
+    # Commit turn FIRST — turn must survive even if state transition fails.
     _trigger_priority_scoring()
     pending = lifecycle.get_pending_summarisations()
     db.session.commit()
+
+    # Now attempt state transition for QUESTION intent in a separate commit scope.
+    # complete_task handles its own transitions advisorily (doesn't raise).
+    if intent_result.intent == TurnIntent.QUESTION:
+        try:
+            lifecycle.update_task_state(
+                task=task, to_state=TaskState.AWAITING_INPUT,
+                trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
+            )
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(
+                f"[DEFERRED_STOP] state transition failed: "
+                f"error={e} — turn preserved"
+            )
     broadcast_card_refresh(agent_obj, "stop_deferred")
     _execute_pending_summarisations(pending)
 

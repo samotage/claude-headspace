@@ -322,13 +322,21 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         commander_availability.start()
     logger.info("Commander availability service initialized")
 
+    # Initialize tmux watchdog (near-real-time turn gap detection)
+    from .services.tmux_watchdog import TmuxWatchdog
+    tmux_watchdog = TmuxWatchdog(app=app, config=config)
+    app.extensions["tmux_watchdog"] = tmux_watchdog
+    if not app.config.get("TESTING"):
+        tmux_watchdog.start()
+    logger.info("Tmux watchdog service initialized")
+
     # Background thread health monitor
     _thread_health_stop = threading.Event()
 
     def _get_background_thread_status():
         """Get the alive status of all background threads."""
         status = {}
-        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability", "context_poller"):
+        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability", "context_poller", "tmux_watchdog"):
             svc = app.extensions.get(name)
             if svc is None:
                 status[name] = "disabled"
@@ -370,6 +378,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
                 app.extensions["file_watcher"].stop()
             if "commander_availability" in app.extensions:
                 app.extensions["commander_availability"].stop()
+            if "tmux_watchdog" in app.extensions:
+                app.extensions["tmux_watchdog"].stop()
             if "context_poller" in app.extensions:
                 app.extensions["context_poller"].stop()
             # Stop event writer to close database connections

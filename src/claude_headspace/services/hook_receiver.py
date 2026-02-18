@@ -269,6 +269,8 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
         )
         db.session.add(turn)
         db.session.flush()
+        # Commit PROGRESS turn immediately so it survives downstream exceptions
+        db.session.commit()
 
         try:
             from .broadcaster import get_broadcaster
@@ -591,7 +593,7 @@ def process_session_start(
         _transcript_positions.pop(agent.id, None)
         _progress_texts_for_agent.pop(agent.id, None)
 
-        # Store tmux pane ID and register with availability tracker
+        # Store tmux pane ID and register with availability tracker + watchdog
         if tmux_pane_id:
             agent.tmux_pane_id = tmux_pane_id
             try:
@@ -599,8 +601,11 @@ def process_session_start(
                 availability = current_app.extensions.get("commander_availability")
                 if availability:
                     availability.register_agent(agent.id, tmux_pane_id)
+                watchdog = current_app.extensions.get("tmux_watchdog")
+                if watchdog:
+                    watchdog.register_agent(agent.id, tmux_pane_id)
             except RuntimeError:
-                logger.debug("No app context for commander_availability")
+                logger.debug("No app context for commander_availability/tmux_watchdog")
 
         # Store tmux session name for dashboard attach action
         if tmux_session and not agent.tmux_session:
@@ -630,9 +635,16 @@ def process_session_end(
         _transcript_positions.pop(agent.id, None)
         _progress_texts_for_agent.pop(agent.id, None)
 
-        # Centralized cache cleanup (correlator, hook_agent_state, commander)
+        # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)
         from .session_correlator import invalidate_agent_caches
         invalidate_agent_caches(agent.id, session_id=claude_session_id)
+        try:
+            from flask import current_app
+            watchdog = current_app.extensions.get("tmux_watchdog")
+            if watchdog:
+                watchdog.unregister_agent(agent.id)
+        except RuntimeError:
+            pass
 
         lifecycle = _get_lifecycle_manager()
         current_task = lifecycle.get_current_task(agent)
@@ -801,20 +813,30 @@ def process_user_prompt_submit(
             is_internal=is_team_internal_content(prompt_text),
         )
 
+        if result.success:
+            _trigger_priority_scoring()
+
+        # Commit turn FIRST — turn must survive even if state transition fails.
+        pending = lifecycle.get_pending_summarisations()
+        db.session.commit()
+
+        # Now attempt state transition in a separate commit scope.
         # Auto-transition COMMANDED → PROCESSING
         # Use agent:progress trigger because this transition represents the
         # agent starting to work, not the user issuing another command.
         if result.success and result.task and result.task.state == TaskState.COMMANDED:
-            lifecycle.update_task_state(
-                task=result.task, to_state=TaskState.PROCESSING,
-                trigger="agent:progress", confidence=1.0,
-            )
-
-        if result.success:
-            _trigger_priority_scoring()
-
-        pending = lifecycle.get_pending_summarisations()
-        db.session.commit()
+            try:
+                lifecycle.update_task_state(
+                    task=result.task, to_state=TaskState.PROCESSING,
+                    trigger="agent:progress", confidence=1.0,
+                )
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"[HOOK_RECEIVER] process_user_prompt_submit state transition failed: "
+                    f"error={e} — turn(s) preserved"
+                )
 
         # Broadcast user turn for voice chat IMMEDIATELY after commit —
         # before summarisation and card_refresh so the chat updates first.
@@ -1011,10 +1033,6 @@ def process_stop(
                     is_internal=is_team_internal_content(full_agent_text),
                 )
                 db.session.add(turn)
-            lifecycle.update_task_state(
-                task=current_task, to_state=TaskState.AWAITING_INPUT,
-                trigger="hook:stop:question_detected", confidence=intent_result.confidence,
-            )
         elif intent_result.intent == TurnIntent.END_OF_TASK:
             if stale_notification_turn:
                 stale_notification_turn.text = completion_text or ""
@@ -1038,9 +1056,29 @@ def process_stop(
             if completion_text != full_agent_text:
                 current_task.full_output = full_agent_text
 
+        # Commit turn FIRST — turn must survive even if state transition fails.
+        # This is the "two-commit" pattern: turn data is committed separately
+        # from state transitions so a rollback of the latter cannot destroy the turn.
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
+
+        # Now attempt state transition (for QUESTION intent only — complete_task
+        # handles its own transitions advisorily and already ran above).
+        if intent_result.intent == TurnIntent.QUESTION:
+            try:
+                lifecycle.update_task_state(
+                    task=current_task, to_state=TaskState.AWAITING_INPUT,
+                    trigger="hook:stop:question_detected", confidence=intent_result.confidence,
+                )
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"[HOOK_RECEIVER] process_stop state transition failed: "
+                    f"from={current_task.state.value} actor=AGENT intent=QUESTION "
+                    f"error={e} — turn preserved"
+                )
 
         # Broadcast agent turn for voice chat IMMEDIATELY after commit —
         # before card_refresh and summarisation so the chat updates first.
@@ -1244,19 +1282,28 @@ def _handle_awaiting_input(
                         )
                         db.session.add(question_turn)
 
-        # Use lifecycle manager for state transition (writes event + sends notification)
-        lifecycle = _get_lifecycle_manager()
-        lifecycle.update_task_state(
-            current_task, TaskState.AWAITING_INPUT,
-            trigger=event_type_str, confidence=1.0,
-        )
-
         # Track which tool triggered AWAITING_INPUT so post_tool_use only
         # resumes when the matching tool completes (not unrelated tools)
         if tool_name:
             _awaiting_tool_for_agent[agent.id] = tool_name
 
+        # Commit turn FIRST — turn must survive even if state transition fails.
         db.session.commit()
+
+        # Now attempt state transition in a separate commit scope.
+        lifecycle = _get_lifecycle_manager()
+        try:
+            lifecycle.update_task_state(
+                current_task, TaskState.AWAITING_INPUT,
+                trigger=event_type_str, confidence=1.0,
+            )
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(
+                f"[HOOK_RECEIVER] _handle_awaiting_input state transition failed: "
+                f"error={e} — turn preserved"
+            )
         broadcast_card_refresh(agent, event_type_str)
 
         # Broadcast

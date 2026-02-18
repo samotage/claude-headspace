@@ -85,9 +85,9 @@ class TestValidateTransition:
 
     def test_invalid_transition_returns_invalid_result(self):
         """Invalid transition should return valid=False."""
-        # Agent can't act from IDLE state
+        # User can't answer from IDLE state (no question asked)
         result = validate_transition(
-            TaskState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS
+            TaskState.IDLE, TurnActor.USER, TurnIntent.ANSWER
         )
         assert result.valid is False
         assert result.from_state == TaskState.IDLE
@@ -102,11 +102,18 @@ class TestValidateTransition:
         assert result.valid is False
         assert "should create new task" in result.reason
 
-    def test_agent_action_from_idle_invalid(self):
-        """Agent actions from IDLE should be invalid."""
-        for intent in [TurnIntent.PROGRESS, TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK]:
+    def test_agent_action_from_idle_valid(self):
+        """Agent actions from IDLE should be valid (defensive transitions for race/resumption)."""
+        expected = {
+            TurnIntent.PROGRESS: TaskState.PROCESSING,
+            TurnIntent.QUESTION: TaskState.AWAITING_INPUT,
+            TurnIntent.COMPLETION: TaskState.COMPLETE,
+            TurnIntent.END_OF_TASK: TaskState.COMPLETE,
+        }
+        for intent, expected_state in expected.items():
             result = validate_transition(TaskState.IDLE, TurnActor.AGENT, intent)
-            assert result.valid is False
+            assert result.valid is True, f"Expected valid for IDLE + AGENT:{intent.value}"
+            assert result.to_state == expected_state
 
     def test_complete_state_is_terminal(self):
         """No transitions should be valid from COMPLETE state."""
@@ -122,8 +129,11 @@ class TestGetValidTransitionsFrom:
     def test_get_from_idle(self):
         """Get valid transitions from IDLE state."""
         transitions = get_valid_transitions_from(TaskState.IDLE)
-        assert len(transitions) == 1
-        actor, intent, to_state = transitions[0]
+        assert len(transitions) == 5  # USER:COMMAND + 4 AGENT defensive transitions
+        # Verify USER:COMMAND is present
+        user_transitions = [(a, i, s) for a, i, s in transitions if a == TurnActor.USER]
+        assert len(user_transitions) == 1
+        actor, intent, to_state = user_transitions[0]
         assert actor == TurnActor.USER
         assert intent == TurnIntent.COMMAND
         assert to_state == TaskState.COMMANDED
@@ -131,15 +141,12 @@ class TestGetValidTransitionsFrom:
     def test_get_from_commanded(self):
         """Get valid transitions from COMMANDED state."""
         transitions = get_valid_transitions_from(TaskState.COMMANDED)
-        assert len(transitions) == 4
-        # All should be agent actions
-        for actor, intent, to_state in transitions:
-            assert actor == TurnActor.AGENT
+        assert len(transitions) == 5  # 4 agent actions + USER:COMMAND follow-up
 
     def test_get_from_processing(self):
         """Get valid transitions from PROCESSING state."""
         transitions = get_valid_transitions_from(TaskState.PROCESSING)
-        assert len(transitions) == 5
+        assert len(transitions) == 6  # 4 agent actions + USER:ANSWER + USER:COMMAND
 
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
@@ -261,12 +268,13 @@ class TestEndOfTaskTransitions:
         assert result.valid is True
         assert result.to_state == TaskState.COMPLETE
 
-    def test_end_of_task_invalid_from_idle(self):
-        """END_OF_TASK from IDLE should be invalid."""
+    def test_end_of_task_valid_from_idle(self):
+        """END_OF_TASK from IDLE should be valid (defensive transition)."""
         result = validate_transition(
             TaskState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_TASK
         )
-        assert result.valid is False
+        assert result.valid is True
+        assert result.to_state == TaskState.COMPLETE
 
     def test_end_of_task_invalid_from_complete(self):
         """END_OF_TASK from COMPLETE should be invalid."""
@@ -275,15 +283,15 @@ class TestEndOfTaskTransitions:
         )
         assert result.valid is False
 
-    def test_commanded_now_has_four_transitions(self):
-        """COMMANDED should now have 4 valid agent transitions (PROGRESS, QUESTION, COMPLETION, END_OF_TASK)."""
+    def test_commanded_now_has_five_transitions(self):
+        """COMMANDED should now have 5 valid transitions (4 agent + USER:COMMAND follow-up)."""
         transitions = get_valid_transitions_from(TaskState.COMMANDED)
-        assert len(transitions) == 4
-
-    def test_processing_now_has_five_transitions(self):
-        """PROCESSING should have 5 valid transitions (4 agent + user confirmation)."""
-        transitions = get_valid_transitions_from(TaskState.PROCESSING)
         assert len(transitions) == 5
+
+    def test_processing_now_has_six_transitions(self):
+        """PROCESSING should have 6 valid transitions (4 agent + USER:ANSWER + USER:COMMAND)."""
+        transitions = get_valid_transitions_from(TaskState.PROCESSING)
+        assert len(transitions) == 6
 
     def test_user_answer_while_processing_stays_processing(self):
         """User ANSWER while PROCESSING should stay in PROCESSING (confirmation/approval)."""
