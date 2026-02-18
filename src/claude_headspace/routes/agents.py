@@ -149,10 +149,10 @@ def reconcile_agent_endpoint(agent_id: int):
     lock = get_reconcile_lock(agent_id)
     if not lock.acquire(blocking=False):
         return jsonify({
-            "status": "ok",
+            "status": "busy",
             "created": 0,
             "message": "Reconciliation already in progress",
-        })
+        }), 409
 
     try:
         result = reconcile_agent_session(agent)

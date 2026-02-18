@@ -152,8 +152,10 @@ class TmuxWatchdog:
                 self._gap_detected_at.pop(agent_id, None)
             return
 
-        # No matching turn — track gap
+        # No matching turn — track gap (check agent still registered to avoid race with unregister)
         with self._lock:
+            if agent_id not in self._pane_ids:
+                return  # Agent was unregistered between hash check and here
             if agent_id not in self._gap_detected_at:
                 self._gap_detected_at[agent_id] = now
                 return  # Wait for threshold before triggering
@@ -185,24 +187,20 @@ class TmuxWatchdog:
         try:
             with self._app.app_context():
                 from ..database import db
+                from ..models.task import Task
                 from ..models.turn import Turn, TurnActor
 
                 cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
-                recent_turns = (
+                agent_turns = (
                     Turn.query
                     .join(Turn.task)
                     .filter(
+                        Task.agent_id == agent_id,
                         Turn.actor == TurnActor.AGENT,
                         Turn.timestamp >= cutoff,
                     )
                     .all()
                 )
-
-                # Filter to turns belonging to this agent
-                agent_turns = [
-                    t for t in recent_turns
-                    if t.task and t.task.agent_id == agent_id
-                ]
 
                 if not agent_turns:
                     return False

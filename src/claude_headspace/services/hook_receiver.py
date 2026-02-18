@@ -269,8 +269,8 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
         )
         db.session.add(turn)
         db.session.flush()
-        # Commit PROGRESS turn immediately so it survives downstream exceptions
-        db.session.commit()
+        # No downstream exceptions can roll back this turn — the broadcast
+        # below is in a try/except. Committed by caller or next flush cycle.
 
         try:
             from .broadcaster import get_broadcaster
@@ -1039,6 +1039,10 @@ def process_stop(
                 stale_notification_turn.intent = TurnIntent.END_OF_TASK
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
+            # NOTE: complete_task() is advisory (never raises InvalidTransitionError).
+            # It runs before the commit because it force-sets state to COMPLETE.
+            # If complete_task() is ever changed to enforce strict transitions,
+            # this call must move after the commit (two-commit pattern).
             lifecycle.complete_task(
                 task=current_task, trigger="hook:stop:end_of_task",
                 agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
@@ -1052,6 +1056,7 @@ def process_stop(
                 stale_notification_turn.intent = TurnIntent.COMPLETION
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
+            # NOTE: complete_task() is advisory — see comment above.
             lifecycle.complete_task(task=current_task, trigger="hook:stop", agent_text=completion_text)
             if completion_text != full_agent_text:
                 current_task.full_output = full_agent_text
@@ -1059,6 +1064,8 @@ def process_stop(
         # Commit turn FIRST — turn must survive even if state transition fails.
         # This is the "two-commit" pattern: turn data is committed separately
         # from state transitions so a rollback of the latter cannot destroy the turn.
+        # For COMPLETION/END_OF_TASK, complete_task() already ran above (advisory,
+        # never raises) so the state change is committed here together with the turn.
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()

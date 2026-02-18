@@ -38,6 +38,12 @@ def get_reconcile_lock(agent_id: int) -> threading.Lock:
         return _reconcile_locks[agent_id]
 
 
+def remove_reconcile_lock(agent_id: int) -> None:
+    """Remove a per-agent reconciliation lock (cleanup on session end / reap)."""
+    with _reconcile_locks_guard:
+        _reconcile_locks.pop(agent_id, None)
+
+
 def reconcile_transcript_entries(agent, task, entries):
     """Reconcile JSONL transcript entries against existing Turns.
 
@@ -89,6 +95,14 @@ def reconcile_transcript_entries(agent, task, entries):
         if not matched_turn:
             matched_turn = turn_index.pop(legacy_key, None)
 
+        if matched_turn:
+            # Remove the other key for this turn to prevent double-matching (H3).
+            # Each turn has two keys (new + legacy); popping one leaves the other.
+            other_new = _content_hash(matched_turn.actor.value, matched_turn.text)
+            other_old = _legacy_content_hash(matched_turn.actor.value, matched_turn.text)
+            turn_index.pop(other_new, None)
+            turn_index.pop(other_old, None)
+
         if matched_turn and entry.timestamp:
             # Phase 2: Update timestamp to JSONL value
             old_ts = matched_turn.timestamp
@@ -132,10 +146,15 @@ def reconcile_transcript_entries(agent, task, entries):
                 f"(agent={agent.id}, intent={turn.intent.value}, hash={content_key}) "
                 f"— no matching hook-created turn found"
             )
-            # Feed recovered turns with state-changing intents into lifecycle
+            # Commit turn BEFORE lifecycle call — the two-commit pattern.
+            # This also commits any pending timestamp updates from earlier iterations.
+            db.session.commit()
+            # Feed recovered turns with state-changing intents into lifecycle.
+            # The turn is now safe in DB — a failed transition cannot destroy it.
             _apply_recovered_turn_lifecycle(agent, task, turn, intent_result)
 
-    if result["updated"] or result["created"]:
+    # Commit any remaining timestamp updates not yet committed
+    if result["updated"]:
         db.session.commit()
 
     return result
@@ -296,6 +315,10 @@ def reconcile_agent_session(agent):
             f"(agent={agent.id}, intent={turn.intent.value}, hash={content_key}) "
             f"— no matching hook-created turn found (session reconciliation)"
         )
+        # Commit turn BEFORE lifecycle call — the two-commit pattern.
+        db.session.commit()
+        # Feed recovered turns into lifecycle (same as reconcile_transcript_entries).
+        _apply_recovered_turn_lifecycle(agent, latest_task, turn, intent_result)
 
     return result
 
@@ -305,7 +328,10 @@ def _apply_recovered_turn_lifecycle(agent, task, turn, intent_result):
 
     Only triggers state changes for state-relevant intents (QUESTION, COMPLETION,
     END_OF_TASK). PROGRESS turns are informational and don't change state.
-    The turn is already committed — a failed transition cannot destroy it.
+
+    IMPORTANT: The caller MUST commit the turn to the database BEFORE calling
+    this function. This ensures a failed state transition rollback cannot
+    destroy the turn (the "two-commit" pattern).
     """
     if turn.intent not in (TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
         return
@@ -316,6 +342,7 @@ def _apply_recovered_turn_lifecycle(agent, task, turn, intent_result):
         if not lifecycle:
             return
 
+        from_state = task.state
         if turn.intent == TurnIntent.QUESTION:
             lifecycle.update_task_state(
                 task=task, to_state=TaskState.AWAITING_INPUT,
@@ -323,14 +350,21 @@ def _apply_recovered_turn_lifecycle(agent, task, turn, intent_result):
                 confidence=intent_result.confidence,
             )
         elif turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
+            # Set full_output directly — do NOT pass agent_text to complete_task
+            # because the recovered turn already exists (committed above via
+            # two-commit pattern). Passing agent_text would create a duplicate.
+            task.full_output = turn.text
             lifecycle.complete_task(
                 task=task, trigger="reconciler:recovered_turn",
-                agent_text=turn.text, intent=turn.intent,
+                agent_text="", intent=turn.intent,
             )
+        # Drain pending summarisation requests to prevent leaking into next
+        # hook event's batch (lifecycle manager is a shared singleton).
+        lifecycle.get_pending_summarisations()
         db.session.commit()
         logger.info(
             f"[RECONCILER] Recovered turn {turn.id} triggered state transition: "
-            f"{task.state.value}"
+            f"{from_state.value} -> {task.state.value}"
         )
         # Broadcast card refresh for state change
         try:

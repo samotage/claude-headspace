@@ -256,11 +256,13 @@
                 closeCardKebabs();
                 if (agentId) {
                     fetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
+                        .then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status }; }); })
+                        .then(function(res) {
                             if (global.Toast) {
-                                if (data.created > 0) {
-                                    global.Toast.success('Reconciled', data.created + ' turn(s) recovered');
+                                if (res.status === 409) {
+                                    global.Toast.info('Reconcile', 'Already in progress');
+                                } else if (res.data.created > 0) {
+                                    global.Toast.success('Reconciled', res.data.created + ' turn(s) recovered');
                                 } else {
                                     global.Toast.info('Reconcile', 'No missing turns found');
                                 }
