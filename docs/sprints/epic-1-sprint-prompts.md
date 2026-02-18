@@ -9,7 +9,7 @@
 
 | Document                                                                          | Purpose                                           |
 | --------------------------------------------------------------------------------- | ------------------------------------------------- |
-| [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md) | Core concepts, domain model, 5-state task model   |
+| [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md) | Core concepts, domain model, 5-state command model   |
 | [Epic 1 Guidance](../conceptual/claude_headspace_v3.1_epic1_guidance.md)          | Implementation guidance, patterns, decisions      |
 | [Claude Code Hooks Architecture](../architecture/claude-code-hooks.md)            | Hook integration, event flow, session correlation |
 | [Overarching Roadmap](../roadmap/claude_headspace_v3.1_overarching_roadmap.md)    | Epic structure, project goals, success criteria   |
@@ -38,7 +38,7 @@
 
 **PRD:** `docs/prds/core/e1-s3-domain-models-prd.md`
 
-> Create a PRD for the domain models subsystem. Reference Sprint 3 in the [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md#sprint-3-domain-models--database-schema) and the domain model in the [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md). Include Objective (with history), Project, Agent, Task (5-state), Turn (actor/intent), and Event models with relationships, migrations, and validation rules.
+> Create a PRD for the domain models subsystem. Reference Sprint 3 in the [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md#sprint-3-domain-models--database-schema) and the domain model in the [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md). Include Objective (with history), Project, Agent, Command (5-state), Turn (actor/intent), and Event models with relationships, migrations, and validation rules.
 
 ---
 
@@ -79,7 +79,7 @@ docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
 
 **PRD:** `docs/prds/state/e1-s6-state-machine-prd.md`
 
-> Create a PRD for the state machine subsystem. Reference Sprint 6 in the [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md#sprint-6-taskturn-state-machine) and the 5-state model in the [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md). Include Task state transitions (idle → commanded → processing → awaiting_input/complete), turn intent detection (regex-based), state transition validator, task lifecycle management, and agent state derivation.
+> Create a PRD for the state machine subsystem. Reference Sprint 6 in the [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md#sprint-6-taskturn-state-machine) and the 5-state model in the [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md). Include Command state transitions (idle → commanded → processing → awaiting_input/complete), turn intent detection (regex-based), state transition validator, command lifecycle management, and agent state derivation.
 
 Review conceptual design and guidance at:
 docs/conceptual/claude_headspace_v3.1_conceptual_overview.md

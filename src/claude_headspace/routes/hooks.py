@@ -394,7 +394,7 @@ def hook_stop():
 
         if result.success:
             # The stop hook fires at end-of-turn only, so this indicates
-            # the agent has finished its current turn and the task is complete.
+            # the agent has finished its current turn and the command is complete.
 
             return jsonify({
                 "status": "ok",

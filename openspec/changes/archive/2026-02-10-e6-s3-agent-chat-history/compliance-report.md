@@ -14,7 +14,7 @@ All acceptance criteria, PRD functional requirements, and delta spec requirement
 | Agent-lifetime conversation across all tasks | ✓ | Transcript endpoint queries via Turn→Task join for agent_id |
 | Intermediate messages appear within 5s | ✓ | PROGRESS turns captured on every post-tool-use hook |
 | Scroll-up loads older messages seamlessly | ✓ | Cursor-based pagination with scroll position preservation |
-| Task separators with instruction text | ✓ | Client detects task_id changes, renders centered separators |
+| Command separators with instruction text | ✓ | Client detects command_id changes, renders centered separators |
 | Rapid agent messages grouped (2s window) | ✓ | Client-side _groupTurns() with _shouldGroup() check |
 | Chat accessible for ended agents (read-only) | ✓ | agent_ended flag, hidden input bar, ended banner |
 | iMessage timestamp conventions | ✓ | Time-only today, Yesterday, day-of-week, date for older |
@@ -22,7 +22,7 @@ All acceptance criteria, PRD functional requirements, and delta spec requirement
 ## Requirements Coverage
 
 - **PRD Requirements:** 23/23 covered (FR1–FR23)
-- **Tasks Completed:** 22/22 implementation + 7/7 testing
+- **Commands Completed:** 22/22 implementation + 7/7 testing
 - **Design Compliance:** Yes — no design.md, but proposal-summary patterns followed
 
 ## Delta Spec Compliance
@@ -32,7 +32,7 @@ All acceptance criteria, PRD functional requirements, and delta spec requirement
 |-------------|--------|
 | Agent-lifetime transcript (all tasks) | ✓ |
 | Chronological ordering | ✓ |
-| task_id, task_instruction, task_state in response | ✓ |
+| command_id, command_instruction, task_state in response | ✓ |
 | Initial page load (default 50, no cursor) | ✓ |
 | has_more boolean | ✓ |
 | Cursor-based older page loading | ✓ |

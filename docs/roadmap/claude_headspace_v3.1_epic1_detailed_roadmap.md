@@ -12,11 +12,11 @@
 
 This document serves as the **high-level roadmap and baseline** for Epic 1 implementation. It breaks Epic 1 into 13 logical sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem.
 
-**Epic 1 Goal:** Establish the foundational event-driven architecture and prove the Task/Turn state machine works with a functional dashboard. Integrate Claude Code hooks for instant, high-confidence state updates.
+**Epic 1 Goal:** Establish the foundational event-driven architecture and prove the Command/Turn state machine works with a functional dashboard. Integrate Claude Code hooks for instant, high-confidence state updates.
 
 **The Differentiator:** Claude Headspace's core value proposition is **not** "view Claude Code sessions" (generic) or simple process monitoring. It is:
 
-- **5-state task model** with turn-level granularity (not just idle/busy)
+- **5-state command model** with turn-level granularity (not just idle/busy)
 - **Dual event sources:** Claude Code hooks (instant) + terminal polling (fallback)
 - **Cross-project objective alignment** (not just per-project tracking)
 - **Click-to-focus iTerm integration** (not just links)
@@ -25,13 +25,13 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 **Success Criteria:**
 
 - Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each
-- Dashboard reflects correct Task/Turn states in real-time (<1 second latency)
+- Dashboard reflects correct Command/Turn states in real-time (<1 second latency)
 - Click agent cards → iTerm window focuses correctly
 - Hook events update agent state instantly (<100ms from Claude Code)
 - Can set objective and view history
 - Event log viewable with filtering
 
-**Architectural Foundation:** Event-driven architecture with Postgres event log, 5-state task model, dual event sources (hooks + polling), SSE real-time updates. See detailed decisions in conceptual overview and Claude Code hooks architecture (`docs/architecture/claude-code-hooks.md`).
+**Architectural Foundation:** Event-driven architecture with Postgres event log, 5-state command model, dual event sources (hooks + polling), SSE real-time updates. See detailed decisions in conceptual overview and Claude Code hooks architecture (`docs/architecture/claude-code-hooks.md`).
 
 ---
 
@@ -44,7 +44,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 | E1-S3    | Domain models track agents, tasks, turns    | `domain-models`           | core/         | 3      | P0       |
 | E1-S4    | Watch Claude Code sessions for changes      | `file-watcher`            | events/       | 4      | P0       |
 | E1-S5    | Event system writes to Postgres             | `event-system`            | events/       | 5      | P0       |
-| E1-S6    | Task state machine transitions correctly    | `state-machine`           | state/        | 6      | P0       |
+| E1-S6    | Command state machine transitions correctly    | `state-machine`           | state/        | 6      | P0       |
 | E1-S7    | Server-sent events for real-time updates    | `sse-system`              | api/          | 7      | P0       |
 | E1-S8    | Dashboard UI with agent cards               | `dashboard-ui`            | ui/           | 8      | P0       |
 | E1-S9    | Set and view objectives                     | `objective-tab`           | ui/           | 9      | P0       |
@@ -160,7 +160,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ### Sprint 3: Domain Models & Database Schema
 
-**Goal:** Database schema for core domain model (Objective, Project, Agent, Task, Turn, Event).
+**Goal:** Database schema for core domain model (Objective, Project, Agent, Command, Turn, Event).
 
 **Duration:** 1-2 weeks  
 **Dependencies:** Sprint 2 complete (database connection exists)
@@ -190,7 +190,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 **Technical Decisions Required:**
 
-- State enum values for Task (idle, commanded, processing, awaiting_input, complete)
+- State enum values for Command (idle, commanded, processing, awaiting_input, complete)
 - Intent enum values for Turn (command, answer, question, completion, progress)
 - Actor enum values for Turn (user, agent)
 - Event type taxonomy (session_start, turn_detected, state_transition, etc.)
@@ -210,8 +210,8 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 - Database migrations run cleanly
 - Foreign key relationships enforced
 - Enum fields validate correctly
-- Can create: Objective with history, Project, Agent, Task with Turns, Events
-- Query patterns work (e.g., "get current task for agent")
+- Can create: Objective with history, Project, Agent, Command with Turns, Events
+- Query patterns work (e.g., "get current command for agent")
 
 ---
 
@@ -313,7 +313,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 ---
 
-### Sprint 6: Task/Turn State Machine
+### Sprint 6: Command/Turn State Machine
 
 **Goal:** Events correctly update Task and Turn state based on 5-state model.
 
@@ -322,31 +322,31 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 **Deliverables:**
 
-- Task state transition logic (idle → commanded → processing → awaiting_input/complete)
+- Command state transition logic (idle → commanded → processing → awaiting_input/complete)
 - Turn intent detection (parse turn content to determine intent)
 - State transition validator (enforce valid transitions)
-- Task lifecycle management (start on command, end on completion)
-- Agent state derivation (agent.state = current_task.state)
+- Command lifecycle management (start on command, end on completion)
+- Agent state derivation (agent.state = current_command.state)
 - Unit tests for state machine (all valid/invalid transitions)
 - State transition event logging
 
 **Subsystem Requiring PRD:**
 
-6. `state-machine` — Task state logic, turn intent mapping, validators, lifecycle
+6. `state-machine` — Command state logic, turn intent mapping, validators, lifecycle
 
 **PRD Location:** `docs/prds/state/e1-s6-state-machine-prd.md`
 
 **Stories:**
 
-- E1-S6: Task state machine transitions correctly
+- E1-S6: Command state machine transitions correctly
 
 **Technical Decisions Required:**
 
 - Turn intent detection: regex-based vs LLM-based — **recommend regex for Epic 1, LLM in Epic 3**
 - Intent detection patterns (what patterns indicate "question" vs "completion"?)
 - State transition rules (which transitions are valid)
-- Edge case handling: agent crashes mid-task → what state?
-- Task completion detection: explicit marker vs timeout
+- Edge case handling: agent crashes mid-command → what state?
+- Command completion detection: explicit marker vs timeout
 
 **Risks:**
 
@@ -357,11 +357,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 
 **Acceptance Criteria:**
 
-- User issues command → Task created in `commanded` state
-- Agent starts responding → Task transitions to `processing`
-- Agent asks question → Task transitions to `awaiting_input`
-- User answers → Task transitions back to `processing`
-- Agent completes → Task transitions to `complete`, then `idle`
+- User issues command → Command created in `commanded` state
+- Agent starts responding → Command transitions to `processing`
+- Agent asks question → Command transitions to `awaiting_input`
+- User answers → Command transitions back to `processing`
+- Agent completes → Command transitions to `complete`, then `idle`
 - Invalid transitions rejected with error log
 - Unit tests cover all state transitions (happy path + edge cases)
 
@@ -471,7 +471,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
 - Recommended next panel highlights highest priority agent
 - Sort by project groups agents correctly
 - Sort by priority orders agents by score
-- Agent cards show: state, task summary, priority, uptime
+- Agent cards show: state, command summary, priority, uptime
 - State bars colour-coded correctly
 - HTMX click events work (e.g., expand/collapse projects)
 - SSE updates refresh dashboard in real-time
@@ -812,7 +812,7 @@ def correlate_session(claude_session_id, cwd):
 
 - HookReceiver service processes all hook events correctly
 - Hook endpoints receive events from Claude Code
-- Hook events update Agent/Task/Turn state with confidence=1.0
+- Hook events update Agent/Command/Turn state with confidence=1.0
 - State updates faster than polling (<100ms vs ~2 seconds)
 - Hook status dashboard shows "Hooks: enabled" and last event times
 - Graceful degradation: hooks silent >300s → revert to 2s polling
@@ -976,7 +976,7 @@ database:
 - Must use enums for state, intent, actor
 - Must enforce foreign key relationships
 - Must validate required fields
-- Must support querying current state (e.g., agent's current task)
+- Must support querying current state (e.g., agent's current command)
 
 **OpenSpec Spec:** `openspec/specs/e1-s3-domain-models/spec.md`
 
@@ -986,7 +986,7 @@ database:
 - `src/models/objective.py`
 - `src/models/project.py`
 - `src/models/agent.py`
-- `src/models/task.py`
+- `src/models/command.py`
 - `src/models/turn.py`
 - `src/models/event.py`
 - `migrations/versions/*.py`
@@ -1009,17 +1009,17 @@ projects
 agents
   id, session_uuid, project_id, iterm_pane_id, started_at, last_seen_at, is_active
 
-# Tasks
+# Commands
 tasks
   id, agent_id, state (enum), started_at, completed_at
 
 # Turns
 turns
-  id, task_id, actor (enum), text, intent (enum), timestamp
+  id, command_id, actor (enum), text, intent (enum), timestamp
 
 # Events
 events
-  id, timestamp, project_id, agent_id, task_id, turn_id, event_type, payload (JSON)
+  id, timestamp, project_id, agent_id, command_id, turn_id, event_type, payload (JSON)
 ```
 
 **Dependencies:** Sprint 2 complete (database setup)
@@ -1029,7 +1029,7 @@ events
 - Create all models successfully
 - Foreign keys enforced
 - Enums validate correctly
-- Query patterns work (current task, recent turns)
+- Query patterns work (current command, recent turns)
 
 ---
 
@@ -1135,10 +1135,10 @@ events
 
 **Scope:**
 
-- Task state transition logic
+- Command state transition logic
 - Turn intent detection (regex-based)
 - State transition validator
-- Task lifecycle management
+- Command lifecycle management
 - Agent state derivation
 - Unit tests for all transitions
 
@@ -1148,7 +1148,7 @@ events
 - Must detect turn intent from content (command, answer, question, completion, progress)
 - Must validate state transitions (reject invalid)
 - Must create tasks on command, complete on completion
-- Must derive agent state from current task
+- Must derive agent state from current command
 - Must have comprehensive unit tests
 
 **OpenSpec Spec:** `openspec/specs/e1-s6-state-machine/spec.md`
@@ -1159,7 +1159,7 @@ events
 - `src/services/intent_detector.py`
 - `tests/test_state_machine.py`
 
-**Data Model Changes:** None (uses Task/Turn models)
+**Data Model Changes:** None (uses Command/Turn models)
 
 **Dependencies:** Sprint 5 complete (events flowing)
 
@@ -1167,7 +1167,7 @@ events
 
 - All valid transitions succeed
 - Invalid transitions rejected
-- Task lifecycle correct (start, transitions, end)
+- Command lifecycle correct (start, transitions, end)
 - Agent state derived correctly
 - Intent detection accurate (>90% on test cases)
 - Unit tests pass
@@ -1529,7 +1529,7 @@ events
 - Must receive hook events from Claude Code with <100ms latency
 - Must process events with confidence=1.0 (not inferred)
 - Must correlate Claude session IDs to agents via working directory
-- Must update Agent/Task/Turn state from hook events
+- Must update Agent/Command/Turn state from hook events
 - Must implement hybrid mode: hooks primary (60s polling), fallback (2s polling after 300s silence)
 - Must provide hook status dashboard with last event times
 - Must degrade gracefully if hooks not installed
@@ -1698,7 +1698,7 @@ Sprint 1 (Flask Bootstrap)
 
 ---
 
-### Decision 2: 5-State Task Model
+### Decision 2: 5-State Command Model
 
 **Decision:** Use 5-state model (idle, commanded, processing, awaiting_input, complete) instead of 3-state.
 
@@ -1718,13 +1718,13 @@ Sprint 1 (Flask Bootstrap)
 
 ### Decision 3: Turn-Level Granularity
 
-**Decision:** Track every turn (user/agent exchange), not just task-level.
+**Decision:** Track every turn (user/agent exchange), not just command-level.
 
 **Rationale:**
 
 - Foundation for Epic 3 turn summarisation
 - Enables fine-grained audit trail
-- Better understanding of agent behavior (how many turns per task?)
+- Better understanding of agent behavior (how many turns per command?)
 
 **Impact:**
 
@@ -1975,9 +1975,9 @@ From Epic 1 Acceptance Criteria:
 **Success:**
 
 - ✅ Session discovered and appears in dashboard
-- ✅ Issue command → Task created in `commanded` state
-- ✅ Agent responds → Task transitions to `processing`
-- ✅ Agent completes → Task transitions to `complete`, then `idle`
+- ✅ Issue command → Command created in `commanded` state
+- ✅ Agent responds → Command transitions to `processing`
+- ✅ Agent completes → Command transitions to `complete`, then `idle`
 - ✅ Dashboard updates in real-time (<1 second latency)
 
 ---
@@ -2055,7 +2055,7 @@ From Epic 1 Acceptance Criteria:
 
 **The differentiator IS:**
 
-- ✅ **5-state task model with turn-level granularity**
+- ✅ **5-state command model with turn-level granularity**
 - ✅ **Dual event sources (hooks + polling) for instant updates**
 - ✅ **Event-driven architecture (not polling-first)**
 - ✅ **Click-to-focus iTerm integration**
@@ -2095,7 +2095,7 @@ Generate OpenSpec PRDs in implementation order with rationale:
 
 ### Phase 4: State Machine (Week 8)
 
-6. **state-machine** (`docs/prds/state/e1-s6-state-machine-prd.md`) — Task state logic, turn intent mapping
+6. **state-machine** (`docs/prds/state/e1-s6-state-machine-prd.md`) — Command state logic, turn intent mapping
 
 **Rationale:** State machine is core logic, needs events flowing.
 

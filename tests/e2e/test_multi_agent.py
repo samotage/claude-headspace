@@ -101,7 +101,7 @@ class TestMultiAgent:
         dashboard.assert_status_counts(input_needed=0, working=2, idle=0)
         dashboard.capture("multi_03_both_processing")
 
-        # Agent A stops → task completes (kanban creates condensed card + resets to IDLE)
+        # Agent A stops → command completes (kanban creates condensed card + resets to IDLE)
         client_a.stop()
         dashboard.assert_task_completed(agent_a, timeout=3000)
         dashboard.assert_agent_state(agent_b, "PROCESSING")

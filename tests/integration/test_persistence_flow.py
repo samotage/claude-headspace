@@ -1,6 +1,6 @@
 """End-to-end persistence flow tests.
 
-Verifies the complete entity chain: Project -> Agent -> Task -> Turn -> Event
+Verifies the complete entity chain: Project -> Agent -> Command -> Turn -> Event
 can be created, persisted, retrieved, and all relationships are intact.
 """
 
@@ -17,8 +17,8 @@ from claude_headspace.models import (
     Objective,
     ObjectiveHistory,
     Project,
-    Task,
-    TaskState,
+    Command,
+    CommandState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -30,7 +30,7 @@ from .factories import (
     ObjectiveFactory,
     ObjectiveHistoryFactory,
     ProjectFactory,
-    TaskFactory,
+    CommandFactory,
     TurnFactory,
 )
 
@@ -40,7 +40,7 @@ def _set_factory_session(db_session):
     """Inject the test db_session into all factories."""
     ProjectFactory._meta.sqlalchemy_session = db_session
     AgentFactory._meta.sqlalchemy_session = db_session
-    TaskFactory._meta.sqlalchemy_session = db_session
+    CommandFactory._meta.sqlalchemy_session = db_session
     TurnFactory._meta.sqlalchemy_session = db_session
     EventFactory._meta.sqlalchemy_session = db_session
     ObjectiveFactory._meta.sqlalchemy_session = db_session
@@ -48,7 +48,7 @@ def _set_factory_session(db_session):
 
 
 class TestFullEntityChain:
-    """Verify the complete Project -> Agent -> Task -> Turn -> Event chain."""
+    """Verify the complete Project -> Agent -> Command -> Turn -> Event chain."""
 
     def test_create_and_retrieve_full_chain(self, db_session):
         """FR9: Create full entity chain, persist, retrieve, assert integrity."""
@@ -67,14 +67,14 @@ class TestFullEntityChain:
         )
         db_session.flush()
 
-        task = TaskFactory(
+        command = CommandFactory(
             agent=agent,
-            state=TaskState.PROCESSING,
+            state=CommandState.PROCESSING,
         )
         db_session.flush()
 
         turn = TurnFactory(
-            task=task,
+            command=command,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Implement the feature",
@@ -84,7 +84,7 @@ class TestFullEntityChain:
         event = EventFactory(
             project_id=project.id,
             agent_id=agent.id,
-            task_id=task.id,
+            command_id=command.id,
             turn_id=turn.id,
             event_type=EventType.TURN_DETECTED,
             payload={"action": "user_command"},
@@ -98,8 +98,8 @@ class TestFullEntityChain:
         retrieved_agent = db_session.execute(
             select(Agent).where(Agent.id == agent.id)
         ).scalar_one()
-        retrieved_task = db_session.execute(
-            select(Task).where(Task.id == task.id)
+        retrieved_command = db_session.execute(
+            select(Command).where(Command.id == command.id)
         ).scalar_one()
         retrieved_turn = db_session.execute(
             select(Turn).where(Turn.id == turn.id)
@@ -119,12 +119,12 @@ class TestFullEntityChain:
         assert retrieved_agent.session_uuid == agent.session_uuid
         assert retrieved_agent.iterm_pane_id == "pane-42"
 
-        # Assert Task fields and relationship
-        assert retrieved_task.agent_id == agent.id
-        assert retrieved_task.state == TaskState.PROCESSING
+        # Assert Command fields and relationship
+        assert retrieved_command.agent_id == agent.id
+        assert retrieved_command.state == CommandState.PROCESSING
 
         # Assert Turn fields and relationship
-        assert retrieved_turn.task_id == task.id
+        assert retrieved_turn.command_id == command.id
         assert retrieved_turn.actor == TurnActor.USER
         assert retrieved_turn.intent == TurnIntent.COMMAND
         assert retrieved_turn.text == "Implement the feature"
@@ -132,25 +132,25 @@ class TestFullEntityChain:
         # Assert Event fields and relationships
         assert retrieved_event.project_id == project.id
         assert retrieved_event.agent_id == agent.id
-        assert retrieved_event.task_id == task.id
+        assert retrieved_event.command_id == command.id
         assert retrieved_event.turn_id == turn.id
         assert retrieved_event.event_type == EventType.TURN_DETECTED
         assert retrieved_event.payload == {"action": "user_command"}
 
-    def test_multiple_turns_per_task(self, db_session):
-        """Verify a task can have multiple turns."""
-        task = TaskFactory(state=TaskState.PROCESSING)
+    def test_multiple_turns_per_command(self, db_session):
+        """Verify a command can have multiple turns."""
+        command = CommandFactory(state=CommandState.PROCESSING)
         db_session.flush()
 
         turns = [
-            TurnFactory(task=task, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="Do X"),
-            TurnFactory(task=task, actor=TurnActor.AGENT, intent=TurnIntent.PROGRESS, text="Working on X"),
-            TurnFactory(task=task, actor=TurnActor.AGENT, intent=TurnIntent.COMPLETION, text="Done with X"),
+            TurnFactory(command=command, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="Do X"),
+            TurnFactory(command=command, actor=TurnActor.AGENT, intent=TurnIntent.PROGRESS, text="Working on X"),
+            TurnFactory(command=command, actor=TurnActor.AGENT, intent=TurnIntent.COMPLETION, text="Done with X"),
         ]
         db_session.flush()
 
         results = db_session.execute(
-            select(Turn).where(Turn.task_id == task.id)
+            select(Turn).where(Turn.command_id == command.id)
         ).scalars().all()
 
         assert len(results) == 3
@@ -158,19 +158,19 @@ class TestFullEntityChain:
         assert TurnActor.USER in actors
         assert TurnActor.AGENT in actors
 
-    def test_multiple_tasks_per_agent(self, db_session):
-        """Verify an agent can have multiple tasks."""
+    def test_multiple_commands_per_agent(self, db_session):
+        """Verify an agent can have multiple commands."""
         agent = AgentFactory()
         db_session.flush()
 
-        tasks = [
-            TaskFactory(agent=agent, state=TaskState.COMPLETE),
-            TaskFactory(agent=agent, state=TaskState.IDLE),
+        commands = [
+            CommandFactory(agent=agent, state=CommandState.COMPLETE),
+            CommandFactory(agent=agent, state=CommandState.IDLE),
         ]
         db_session.flush()
 
         results = db_session.execute(
-            select(Task).where(Task.agent_id == agent.id)
+            select(Command).where(Command.agent_id == agent.id)
         ).scalars().all()
 
         assert len(results) == 2
@@ -251,7 +251,7 @@ class TestEventAuditTrail:
 
         assert result.project_id is None
         assert result.agent_id is None
-        assert result.task_id is None
+        assert result.command_id is None
         assert result.turn_id is None
 
     def test_event_with_partial_references(self, db_session):

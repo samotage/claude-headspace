@@ -4,8 +4,8 @@ The project show page (E5-S2) provides metadata, controls, waypoint, brain reboo
 
 ## What Changes
 
-- Add accordion object tree to project show page: agents → tasks → turns with lazy loading
-- Add new API endpoints: `GET /api/agents/<id>/tasks`, `GET /api/tasks/<id>/turns`, `GET /api/projects/<id>/inference-summary`
+- Add accordion object tree to project show page: agents → commands → turns with lazy loading
+- Add new API endpoints: `GET /api/agents/<id>/commands`, `GET /api/commands/<id>/turns`, `GET /api/projects/<id>/inference-summary`
 - Add activity metrics section with day/week/month toggle and period navigation (reusing activity.js patterns)
 - Add archive history section listing archived artifacts with view action
 - Add inference metrics summary showing aggregate calls, tokens, and cost
@@ -18,7 +18,7 @@ The project show page (E5-S2) provides metadata, controls, waypoint, brain reboo
 - Affected code:
   - `templates/project_show.html` — add accordion tree, metrics, archive, inference sections
   - `static/js/project_show.js` — add accordion logic, lazy loading, metrics, enhanced SSE
-  - `src/claude_headspace/routes/projects.py` — add agent tasks, task turns, inference summary endpoints
+  - `src/claude_headspace/routes/projects.py` — add agent tasks, command turns, inference summary endpoints
   - `static/css/src/input.css` — add accordion transition styles
 - New files:
   - `tests/routes/test_project_show_tree.py` — tests for new API endpoints

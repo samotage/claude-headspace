@@ -127,6 +127,6 @@ def read_skill_files(data_dir: Path, slug: str) -> tuple[str, str]:
 
 ## Future Considerations
 
-- **Task injection:** When the PM layer (v3) assigns a specific task, the initiating prompt could include the task instruction after the persona priming: "Your first task is: {task_instruction}". This combines identity priming with immediate work assignment in a single message.
+- **Task injection:** When the PM layer (v3) assigns a specific task, the initiating prompt could include the command instruction after the persona priming: "Your first task is: {command_instruction}". This combines identity priming with immediate work assignment in a single message.
 - **Project context:** The initiating prompt could optionally include a project summary or waypoint if one exists, giving the agent immediate project awareness beyond its skill profile.
 - **Handoff context (v2):** For continuation sessions after a context handoff, the initiating prompt includes the handoff artifact in addition to the skill file: persona identity + skill + handoff notes = full continuity.

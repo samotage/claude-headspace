@@ -1,4 +1,4 @@
-# Tasks: e1-s8-dashboard-ui
+# Commands: e1-s8-dashboard-ui
 
 ## Phase 1: Setup
 
@@ -37,7 +37,7 @@
 - [x] Add status badge (ACTIVE/IDLE based on last_seen_at)
 - [x] Show uptime as human-readable duration
 - [x] Create state bar with colour coding (5 states)
-- [x] Display task summary (100 char truncation)
+- [x] Display command summary (100 char truncation)
 - [x] Add priority score badge (default 50)
 - [x] Add "Headspace" button placeholder
 

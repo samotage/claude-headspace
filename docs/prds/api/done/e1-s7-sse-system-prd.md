@@ -34,7 +34,7 @@ File Watcher → Event System → State Machine → SSE System → Browser Dashb
    (S4)           (S5)           (S6)           (S7)           (S8)
 ```
 
-Sprint 6 produces state transitions (Task state changes, Turn detections). Sprint 7 delivers these to the browser in real-time. Sprint 8 renders the updates in the dashboard UI.
+Sprint 6 produces state transitions (Command state changes, Turn detections). Sprint 7 delivers these to the browser in real-time. Sprint 8 renders the updates in the dashboard UI.
 
 SSE is chosen over WebSockets because:
 - Server-to-client push only (no bidirectional needed for Epic 1)
@@ -364,8 +364,8 @@ def event_stream():
 
 | Event Type | Source | Payload |
 |------------|--------|---------|
-| `state_transition` | State Machine (S6) | agent_id, task_id, from_state, to_state |
-| `turn_detected` | Event System (S5) | agent_id, task_id, actor, intent |
+| `state_transition` | State Machine (S6) | agent_id, command_id, from_state, to_state |
+| `turn_detected` | Event System (S5) | agent_id, command_id, actor, intent |
 | `session_discovered` | Event System (S5) | agent_id, project_id, session_uuid |
 | `session_ended` | Event System (S5) | agent_id, reason |
 | `objective_changed` | Objective API (S9) | objective_id, text |

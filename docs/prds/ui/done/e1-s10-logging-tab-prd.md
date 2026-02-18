@@ -263,7 +263,7 @@ When a row is clicked, it expands below the summary row to show the full payload
 
 The Event model (`src/claude_headspace/models/event.py`) already provides:
 
-- Fields: `id`, `timestamp`, `project_id`, `agent_id`, `task_id`, `turn_id`, `event_type`, `payload`
+- Fields: `id`, `timestamp`, `project_id`, `agent_id`, `command_id`, `turn_id`, `event_type`, `payload`
 - EventType constants: `SESSION_DISCOVERED`, `SESSION_ENDED`, `TURN_DETECTED`, `STATE_TRANSITION`, `HOOK_RECEIVED`, `OBJECTIVE_CHANGED`
 - Composite indexes for efficient filtering: `ix_events_project_id_timestamp`, `ix_events_agent_id_timestamp`, `ix_events_event_type_timestamp`
 
@@ -274,7 +274,7 @@ The Event model (`src/claude_headspace/models/event.py`) already provides:
 | SESSION_DISCOVERED | Session Discovered | New agent session detected |
 | SESSION_ENDED | Session Ended | Agent session closed |
 | TURN_DETECTED | Turn Detected | New turn in conversation |
-| STATE_TRANSITION | State Transition | Task state changed |
+| STATE_TRANSITION | State Transition | Command state changed |
 | HOOK_RECEIVED | Hook Received | Claude Code hook event |
 | OBJECTIVE_CHANGED | Objective Changed | Global objective updated |
 

@@ -59,10 +59,10 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_status_counts(input_needed=0, working=1, idle=0)
         dashboard.capture("processing")
 
-    def test_stop_completes_task(
+    def test_stop_completes_command(
         self, page, e2e_server, hook_client, dashboard
     ):
-        """stop hook immediately transitions task to COMPLETE."""
+        """stop hook immediately transitions command to COMPLETE."""
         # Setup: session-start → user-prompt-submit → PROCESSING
         result = hook_client.session_start()
         agent_id = result["agent_id"]
@@ -74,12 +74,12 @@ class TestSingleAgentTurnLifecycle:
         hook_client.user_prompt_submit(prompt="Test stop")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
 
-        # Fire stop hook — immediate task completion
+        # Fire stop hook — immediate command completion
         hook_client.stop()
 
         dashboard.assert_task_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
-        dashboard.capture("task_complete")
+        dashboard.capture("command_complete")
 
     def test_answer_returns_to_processing(
         self, page, e2e_server, hook_client, dashboard

@@ -3,7 +3,7 @@
 **Date:** 17 February 2026
 **Status:** Simplified view — entities and relationships only, no field details
 **Revised:** Workshop review session — resolved integer PKs, shared Role lookup, dropped PositionAssignment/can_use_tools/availability constraint
-**Note:** Agent, Task, and Turn are existing Headspace 3.1 entities. SkillFile and ExperienceLog are version-managed files in the `data/` directory, not database tables. See headspace-org-erd-full.md for field-level detail.
+**Note:** Agent, Command, and Turn are existing Headspace 3.1 entities. SkillFile and ExperienceLog are version-managed files in the `data/` directory, not database tables. See headspace-org-erd-full.md for field-level detail.
 
 ---
 
@@ -43,7 +43,7 @@ erDiagram
 | Position | DB table | New (self-referential hierarchy, role_id FK) |
 | Handoff | DB table | New |
 | Agent | DB table | Existing — extended with persona_id, position_id |
-| Task | DB table | Existing — unchanged |
+| Command | DB table | Existing — unchanged |
 | Turn | DB table | Existing — unchanged |
 | SkillFile | File reference | Version-managed file at `data/personas/{slug}/skill.md` |
 | ExperienceLog | File reference | Version-managed file at `data/personas/{slug}/experience.md` |

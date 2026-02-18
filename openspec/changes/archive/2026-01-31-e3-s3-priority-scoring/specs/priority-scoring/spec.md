@@ -8,7 +8,7 @@ The system SHALL provide a priority scoring service that evaluates all active ag
 
 - **WHEN** batch scoring is triggered and an objective is set
 - **THEN** the system SHALL gather all active agents (ended_at IS NULL, last_seen within timeout)
-- **AND** the system SHALL build a scoring prompt including the objective text, constraints, and each agent's metadata (project name, state, task summary, task duration, waypoint next-up items)
+- **AND** the system SHALL build a scoring prompt including the objective text, constraints, and each agent's metadata (project name, state, command summary, task duration, waypoint next-up items)
 - **AND** the system SHALL make a single inference call at the "objective" level via the E3-S1 inference service
 - **AND** the LLM response SHALL be parsed as structured JSON: `[{"agent_id": N, "score": N, "reason": "..."}]`
 - **AND** each agent's `priority_score`, `priority_reason`, and `priority_updated_at` SHALL be persisted to the database
@@ -56,7 +56,7 @@ Scoring triggers SHALL be rate-limited to prevent redundant inference calls duri
 
 #### Scenario: State change triggers debounced scoring
 
-- **WHEN** a task state change occurs on any agent
+- **WHEN** a command state change occurs on any agent
 - **THEN** the system SHALL schedule a re-score of all active agents with a 5-second debounce delay
 - **AND** multiple rapid state changes within the 5-second window SHALL consolidate into a single scoring call
 

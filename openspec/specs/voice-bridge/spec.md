@@ -40,13 +40,13 @@ The voice bridge SHALL provide an endpoint listing all active agents in voice-fr
 #### Scenario: Multiple active agents
 
 - **WHEN** a GET to `/api/voice/sessions` is made
-- **THEN** the response SHALL include each active agent with: project name, state, awaiting input flag, current task summary, time since last activity
+- **THEN** the response SHALL include each active agent with: project name, state, awaiting input flag, current command summary, time since last activity
 - **AND** the format SHALL be status line + key results + next action
 
 #### Scenario: Verbosity parameter
 
 - **WHEN** a GET to `/api/voice/sessions?verbosity=detailed` is made
-- **THEN** the response SHALL include additional detail per agent (full task instruction, recent turns)
+- **THEN** the response SHALL include additional detail per agent (full command instruction, recent turns)
 
 ---
 
@@ -202,7 +202,7 @@ The voice bridge transcript endpoint SHALL return an agent-lifetime conversation
 - **WHEN** a GET to `/api/voice/agents/<agent_id>/transcript` is made
 - **THEN** the response SHALL include turns from ALL tasks for that agent
 - **AND** turns SHALL be ordered chronologically by `(timestamp, id)` composite ordering
-- **AND** each turn SHALL include `task_id`, `task_instruction`, `task_state`, `turn_id`, and `timestamp`
+- **AND** each turn SHALL include `command_id`, `command_instruction`, `task_state`, `turn_id`, and `timestamp`
 
 #### Scenario: Initial page load (no cursor)
 
@@ -239,7 +239,7 @@ The system SHALL capture agent text output between tool calls as individual PROG
 - **WHEN** a post-tool-use hook fires
 - **AND** the agent's transcript contains new text since the last read position
 - **THEN** a PROGRESS turn SHALL be created with the new text content
-- **AND** the turn SHALL be linked to the agent's current task
+- **AND** the turn SHALL be linked to the agent's current command
 
 #### Scenario: Incremental transcript reading
 
@@ -273,7 +273,7 @@ When voice commands or file uploads create Turn records, the system SHALL broadc
 #### Scenario: Voice command creates turn with SSE broadcast
 
 - **WHEN** a POST to `/api/voice/command` successfully creates a Turn record
-- **THEN** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, and `timestamp`
+- **THEN** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `command_id`, `turn_id`, and `timestamp`
 
 #### Scenario: File upload creates turn with SSE broadcast
 

@@ -35,7 +35,7 @@ File Watcher (Sprint 4) → Event System (Sprint 5) → State Machine (Sprint 6)
    Detects turns           Persists events            Transitions state
 ```
 
-Sprint 4 detects events from Claude Code jsonl files but does not persist them. Sprint 5 receives these events and writes them to Postgres. Sprint 6 then processes persisted events to update Task/Turn state.
+Sprint 4 detects events from Claude Code jsonl files but does not persist them. Sprint 5 receives these events and writes them to Postgres. Sprint 6 then processes persisted events to update Command/Turn state.
 
 The event system must run continuously as a background process, independent of Flask HTTP request cycles. This ensures events are captured even when no web requests are active and survives web server restarts.
 
@@ -136,7 +136,7 @@ A developer issues commands in Claude Code, and every turn is reliably captured 
 The system shall provide an event writer service that:
 - Accepts events from internal event sources (file watcher)
 - Writes events to the Postgres Event table
-- Includes timestamp, event_type, payload, and optional foreign keys (project_id, agent_id, task_id, turn_id)
+- Includes timestamp, event_type, payload, and optional foreign keys (project_id, agent_id, command_id, turn_id)
 - Returns success/failure status for each write
 
 ### FR2: Atomic Event Writes
@@ -187,7 +187,7 @@ The system shall define and enforce these event types:
 | `session_registered` | Session registered for monitoring | Launcher (Sprint 11) |
 | `session_ended` | Session inactive or unregistered | File Watcher |
 | `turn_detected` | New turn parsed from jsonl | File Watcher |
-| `state_transition` | Task state changed | State Machine (Sprint 6) |
+| `state_transition` | Command state changed | State Machine (Sprint 6) |
 | `hook_received` | Event from Claude Code hook | Hook Receiver (Sprint 13) |
 
 ### FR8: Event Payload Schemas
@@ -228,7 +228,7 @@ The system shall enforce payload schemas per event type:
 ```json
 {
   "agent_id": "integer (required)",
-  "task_id": "integer (required)",
+  "command_id": "integer (required)",
   "from_state": "string (required)",
   "to_state": "string (required)",
   "trigger": "string (required: turn|timeout|manual)"

@@ -1,4 +1,4 @@
-# Tasks: e1-s10-logging-tab
+# Commands: e1-s10-logging-tab
 
 ## Phase 1: Setup
 

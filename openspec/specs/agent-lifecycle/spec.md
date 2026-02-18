@@ -180,6 +180,6 @@ The system SHALL reconcile agent Turn records against JSONL transcript entries t
 #### Scenario: Reconciliation does not affect agent state
 
 - **WHEN** the TranscriptReconciler creates or updates Turns
-- **THEN** the agent's task state SHALL NOT be modified
+- **THEN** the agent's command state SHALL NOT be modified
 - **AND** only Turn-level data (timestamp, timestamp_source, jsonl_entry_hash) SHALL be affected
 

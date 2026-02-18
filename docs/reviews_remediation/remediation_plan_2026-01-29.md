@@ -42,7 +42,7 @@ These issues will cause runtime errors and must be fixed first.
 **Files:**
 - `src/claude_headspace/models/agent.py`
 - `src/claude_headspace/routes/hooks.py:265`
-- `src/claude_headspace/services/task_lifecycle.py:164`
+- `src/claude_headspace/services/command_lifecycle.py:164`
 
 **Problem:**
 Code references `agent.name` but the Agent model has no `name` field. This causes `AttributeError` at runtime when hook events are processed.
@@ -121,14 +121,14 @@ project = Project(
 **Severity:** 🔴 HIGH
 **Files:**
 - `src/claude_headspace/services/hook_receiver.py` (entire file)
-- `src/claude_headspace/services/task_lifecycle.py`
+- `src/claude_headspace/services/command_lifecycle.py`
 - `src/claude_headspace/services/state_machine.py`
 
 **Problem:**
-Hook receiver directly manipulates task states without using the `StateMachine` service, bypassing validation. This can lead to invalid state transitions.
+Hook receiver directly manipulates command states without using the `StateMachine` service, bypassing validation. This can lead to invalid state transitions.
 
 **Solution:**
-Refactor hook receiver to use `TaskLifecycleManager` for state transitions.
+Refactor hook receiver to use `CommandLifecycleManager` for state transitions.
 
 **Implementation:**
 
@@ -136,7 +136,7 @@ Refactor hook receiver to use `TaskLifecycleManager` for state transitions.
 # In src/claude_headspace/services/hook_receiver.py
 
 # 1. Add import at top:
-from .task_lifecycle import TaskLifecycleManager
+from .command_lifecycle import CommandLifecycleManager
 
 # 2. Refactor process_user_prompt_submit() to use lifecycle manager:
 def process_user_prompt_submit(
@@ -149,8 +149,8 @@ def process_user_prompt_submit(
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
 
-        # Use TaskLifecycleManager instead of direct manipulation
-        lifecycle = TaskLifecycleManager(db.session)
+        # Use CommandLifecycleManager instead of direct manipulation
+        lifecycle = CommandLifecycleManager(db.session)
         result = lifecycle.process_turn(
             agent=agent,
             actor=TurnActor.USER,
@@ -160,7 +160,7 @@ def process_user_prompt_submit(
         db.session.commit()
 
         current_task = lifecycle.get_current_task(agent)
-        new_state = current_task.state.value if current_task else "idle"
+        new_state = current_command.state.value if current_task else "idle"
 
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
@@ -374,7 +374,7 @@ _session_cache: dict[str, int] = {}
 **Severity:** 🟡 MEDIUM
 **Files:**
 - `src/claude_headspace/routes/hooks.py:267`
-- `src/claude_headspace/services/task_lifecycle.py:165`
+- `src/claude_headspace/services/command_lifecycle.py:165`
 
 **Problem:**
 Code passes `agent.project` expecting a string, but it's a relationship to Project model.
@@ -386,22 +386,22 @@ Change to `agent.project.name if agent.project else None`.
 
 ```python
 # In src/claude_headspace/routes/hooks.py:265-267, change:
-notification_service.notify_task_complete(
+notification_service.notify_command_complete(
     agent_id=str(result.agent_id),
     agent_name=correlation.agent.name,
     project=correlation.agent.project.name if correlation.agent.project else None,
 )
 
-# In src/claude_headspace/services/task_lifecycle.py:164-166, change:
+# In src/claude_headspace/services/command_lifecycle.py:164-166, change:
 notification_service.notify_awaiting_input(
-    agent_id=str(task.agent_id),
+    agent_id=str(command.agent_id),
     agent_name=task.agent.name,
     project=task.agent.project.name if task.agent.project else None,
 )
 ```
 
 **Verification:**
-- Run: `pytest tests/routes/test_hooks.py tests/services/test_task_lifecycle.py -v`
+- Run: `pytest tests/routes/test_hooks.py tests/services/test_command_lifecycle.py -v`
 
 ---
 
@@ -456,7 +456,7 @@ def _write_hook_event(
 
 ---
 
-### Issue 10: Inconsistent Task State Handling in Hook Receiver
+### Issue 10: Inconsistent Command State Handling in Hook Receiver
 
 **Severity:** 🟡 MEDIUM
 **Files:**
@@ -466,7 +466,7 @@ def _write_hook_event(
 `process_stop()` marks task COMPLETE but `process_user_prompt_submit()` skips the COMMANDED state. Inconsistent with the 5-state model.
 
 **Solution:**
-This is resolved by Issue 3 (using TaskLifecycleManager). Ensure all hook handlers use the same approach.
+This is resolved by Issue 3 (using CommandLifecycleManager). Ensure all hook handlers use the same approach.
 
 **Verification:**
 - Covered by Issue 3 verification

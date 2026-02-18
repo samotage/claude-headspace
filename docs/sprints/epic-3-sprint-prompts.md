@@ -12,7 +12,7 @@
 | [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md) | Primary reference for sprint scope, deliverables, acceptance criteria        |
 | [Conceptual Overview](../conceptual/claude_headspace_v3.1_conceptual_overview.md)     | Domain concepts (inference levels, brain_reboot, waypoint, progress_summary) |
 | [Overarching Roadmap](../roadmap/claude_headspace_v3.1_overarching_roadmap.md)        | Epic 3 goals, success criteria, dependencies                                 |
-| [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md) | Context on existing infrastructure (Task/Turn models, SSE, dashboard)        |
+| [Epic 1 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic1_detailed_roadmap.md) | Context on existing infrastructure (Command/Turn models, SSE, dashboard)        |
 
 ---
 
@@ -27,7 +27,7 @@
 > **Deliverables:**
 >
 > - OpenRouter API client with retry/exponential backoff
-> - Inference service with model selection by level (Haiku for turn/task, Sonnet for project/objective)
+> - Inference service with model selection by level (Haiku for turn/command, Sonnet for project/objective)
 > - InferenceCall database model for logging all LLM calls
 > - Database migration for InferenceCall table
 > - Rate limiting (configurable calls per minute, tokens per minute)
@@ -73,26 +73,26 @@ And also the roadmap artifacts:
 
 ---
 
-### Epic 3 Sprint 2: Turn & Task Summarisation
+### Epic 3 Sprint 2: Turn & Command Summarisation
 
-**PRD:** `docs/prds/inference/e3-s2-turn-task-summarisation-prd.md`
+**PRD:** `docs/prds/inference/e3-s2-turn-command-summarisation-prd.md`
 
-> Create a PRD for the Turn & Task Summarisation subsystem. Reference Sprint 2 (E3-S2) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-2-turn--task-summarisation-e3-s2).
+> Create a PRD for the Turn & Command Summarisation subsystem. Reference Sprint 2 (E3-S2) in the [Epic 3 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic3_detailed_roadmap.md#sprint-2-turn--task-summarisation-e3-s2).
 >
 > **Deliverables:**
 >
 > - Turn summarisation service (Haiku, triggered real-time as turns arrive)
-> - Task summarisation service (Haiku, triggered on task completion)
+> - Command summarisation service (Haiku, triggered on command completion)
 > - Summary caching by content hash (avoid re-summarising identical content)
 > - Dashboard integration (display summaries on agent cards)
 > - Async processing (don't block SSE updates during inference)
-> - Summary fields added to Turn and Task models
+> - Summary fields added to Turn and Command models
 > - Database migration for summary fields
 >
 > **API Endpoints:**
 >
 > - POST `/api/summarise/turn/<id>` — trigger turn summarisation (or automatic)
-> - POST `/api/summarise/task/<id>` — trigger task summarisation (or automatic)
+> - POST `/api/summarise/command/<id>` — trigger command summarisation (or automatic)
 >
 > **Turn Summary Prompt Template:**
 >
@@ -104,13 +104,13 @@ And also the roadmap artifacts:
 > Intent: {turn.intent}
 > ```
 >
-> **Task Summary Prompt Template:**
+> **Command Summary Prompt Template:**
 >
 > ```
 > Summarise the outcome of this completed task in 2-3 sentences:
 >
-> Task started: {task.started_at}
-> Task completed: {task.completed_at}
+> Command started: {command.started_at}
+> Command completed: {command.completed_at}
 > Turns: {turn_count}
 > Final outcome: {final_turn.text}
 > ```
@@ -118,7 +118,7 @@ And also the roadmap artifacts:
 > **Integration Points:**
 >
 > - Uses E3-S1 inference service for LLM calls
-> - Integrates with Epic 1 Turn and Task models
+> - Integrates with Epic 1 Turn and Command models
 > - Updates dashboard agent cards via Epic 1 SSE system
 > - Caching uses InferenceCall.input_hash from E3-S1
 >
@@ -127,7 +127,7 @@ And also the roadmap artifacts:
 > - Summarisation trigger: real-time on turn arrival (decided)
 > - Cache storage: database (InferenceCall table) vs in-memory
 > - Summary length: 1-2 sentences for turns, 2-3 for tasks
-> - Async implementation: background thread vs task queue
+> - Async implementation: background thread vs command queue
 
 Review conceptual design and guidance at:
 
@@ -154,7 +154,7 @@ And also the roadmap artifacts:
 > - Priority score (0-100) and reason stored on Agent model
 > - Dashboard integration (priority badges on agent cards)
 > - Recommended next panel uses priority scores
-> - Scoring triggers: task state change, objective change
+> - Scoring triggers: command state change, objective change
 > - Re-score all agents when objective changes
 > - Database migration for priority fields on Agent
 >
@@ -186,7 +186,7 @@ And also the roadmap artifacts:
 > - Agent: {agent.session_uuid}
 >   Project: {agent.project.name}
 >   State: {agent.state}
->   Current Task: {agent.current_task.summary or "None"}
+>   Current Command: {agent.current_command.summary or "None"}
 >   Task Duration: {task_duration}
 >   Waypoint Next Up: {agent.project.waypoint.next_up}
 > {endfor}
@@ -198,7 +198,7 @@ And also the roadmap artifacts:
 > **Integration Points:**
 >
 > - Uses E3-S1 inference service for LLM calls
-> - Uses E3-S2 task summaries for context in scoring prompt
+> - Uses E3-S2 command summaries for context in scoring prompt
 > - Integrates with Epic 1 Objective model and Agent model
 > - Updates dashboard recommended next panel
 > - Updates agent card priority badges
@@ -416,7 +416,7 @@ And also the roadmap artifacts:
        ▼
    E3-S1 (OpenRouter Integration)
        │
-       ├──▶ E3-S2 (Turn/Task Summarisation)
+       ├──▶ E3-S2 (Turn/Command Summarisation)
        │        │
        │        └──▶ E3-S3 (Priority Scoring)
        │

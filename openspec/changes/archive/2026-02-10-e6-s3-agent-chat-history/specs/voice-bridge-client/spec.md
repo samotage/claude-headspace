@@ -54,15 +54,15 @@ The chat view SHALL display timestamps following iMessage conventions.
 
 The chat view SHALL display visual separators between task boundaries.
 
-#### Scenario: Task transition in conversation
+#### Scenario: Command transition in conversation
 
 - **WHEN** consecutive turns belong to different tasks
 - **THEN** a visual separator SHALL be rendered between them
-- **AND** the separator SHALL show the task instruction text
+- **AND** the separator SHALL show the command instruction text
 
 #### Scenario: Separator styling
 
-- **WHEN** a task separator is rendered
+- **WHEN** a command separator is rendered
 - **THEN** it SHALL be centered text with horizontal rules
 - **AND** it SHALL be visually distinct from messages but unobtrusive
 

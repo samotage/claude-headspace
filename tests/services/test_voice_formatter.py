@@ -153,35 +153,35 @@ class TestFormatQuestion:
 class TestFormatOutput:
     """Test output formatting with verbosity levels (task 3.3)."""
 
-    def test_no_tasks(self, formatter):
+    def test_no_commands(self, formatter):
         result = formatter.format_output("agent-1", [])
         assert "No recent activity" in result["status_line"]
         assert result["results"] == []
 
     def test_concise_verbosity(self, formatter):
-        tasks = [
+        commands = [
             {"instruction": "Fix login bug", "completion_summary": "Fixed auth validation", "state": "complete", "full_command": None, "full_output": None},
         ]
-        result = formatter.format_output("agent-1", tasks, verbosity="concise")
+        result = formatter.format_output("agent-1", commands, verbosity="concise")
         assert len(result["results"]) == 1
         assert result["results"][0] == "Fixed auth validation"
 
     def test_concise_falls_back_to_instruction(self, formatter):
-        tasks = [
+        commands = [
             {"instruction": "Fix login bug", "completion_summary": None, "state": "processing", "full_command": None, "full_output": None},
         ]
-        result = formatter.format_output("agent-1", tasks, verbosity="concise")
+        result = formatter.format_output("agent-1", commands, verbosity="concise")
         assert result["results"][0] == "Fix login bug"
 
     def test_normal_verbosity(self, formatter):
-        tasks = [
+        commands = [
             {"instruction": "Fix login bug", "completion_summary": "Fixed it", "state": "complete", "full_command": None, "full_output": None},
         ]
-        result = formatter.format_output("agent-1", tasks, verbosity="normal")
+        result = formatter.format_output("agent-1", commands, verbosity="normal")
         assert "Fix login bug: Fixed it" in result["results"][0]
 
     def test_detailed_verbosity_includes_command_and_output(self, formatter):
-        tasks = [
+        commands = [
             {
                 "instruction": "Run tests",
                 "completion_summary": "All passed",
@@ -190,26 +190,26 @@ class TestFormatOutput:
                 "full_output": "5 passed, 0 failed",
             },
         ]
-        result = formatter.format_output("agent-1", tasks, verbosity="detailed")
-        assert any("Task: Run tests" in r for r in result["results"])
-        assert any("Command: pytest" in r for r in result["results"])
+        result = formatter.format_output("agent-1", commands, verbosity="detailed")
+        assert any("Command: Run tests" in r for r in result["results"])
+        assert any("Full command: pytest" in r for r in result["results"])
         assert any("Output: 5 passed" in r for r in result["results"])
 
     def test_status_line_includes_count(self, formatter):
-        tasks = [
+        commands = [
             {"instruction": "t1", "completion_summary": "done", "state": "complete", "full_command": None, "full_output": None},
             {"instruction": "t2", "completion_summary": "done", "state": "complete", "full_command": None, "full_output": None},
         ]
-        result = formatter.format_output("agent-1", tasks)
-        assert "2 tasks" in result["status_line"]
+        result = formatter.format_output("agent-1", commands)
+        assert "2 commands" in result["status_line"]
 
     def test_default_verbosity_from_config(self):
         config = {"voice_bridge": {"default_verbosity": "normal"}}
         formatter = VoiceFormatter(config=config)
-        tasks = [
+        commands = [
             {"instruction": "Fix bug", "completion_summary": "Fixed", "state": "complete", "full_command": None, "full_output": None},
         ]
-        result = formatter.format_output("agent-1", tasks)
+        result = formatter.format_output("agent-1", commands)
         # normal includes both instruction and summary
         assert "Fix bug: Fixed" in result["results"][0]
 

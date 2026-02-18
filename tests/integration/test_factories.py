@@ -8,12 +8,12 @@ from sqlalchemy import select
 
 from claude_headspace.models import (
     Agent,
+    Command,
+    CommandState,
     Event,
     Objective,
     ObjectiveHistory,
     Project,
-    Task,
-    TaskState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -21,11 +21,11 @@ from claude_headspace.models import (
 
 from .factories import (
     AgentFactory,
+    CommandFactory,
     EventFactory,
     ObjectiveFactory,
     ObjectiveHistoryFactory,
     ProjectFactory,
-    TaskFactory,
     TurnFactory,
 )
 
@@ -35,7 +35,7 @@ def _set_factory_session(db_session):
     """Inject the test db_session into all factories."""
     ProjectFactory._meta.sqlalchemy_session = db_session
     AgentFactory._meta.sqlalchemy_session = db_session
-    TaskFactory._meta.sqlalchemy_session = db_session
+    CommandFactory._meta.sqlalchemy_session = db_session
     TurnFactory._meta.sqlalchemy_session = db_session
     EventFactory._meta.sqlalchemy_session = db_session
     ObjectiveFactory._meta.sqlalchemy_session = db_session
@@ -96,25 +96,25 @@ class TestAgentFactory:
         assert a1.session_uuid != a2.session_uuid
 
 
-class TestTaskFactory:
-    def test_creates_valid_task(self, db_session):
-        task = TaskFactory()
+class TestCommandFactory:
+    def test_creates_valid_command(self, db_session):
+        command = CommandFactory()
         db_session.flush()
 
         result = db_session.execute(
-            select(Task).where(Task.id == task.id)
+            select(Command).where(Command.id == command.id)
         ).scalar_one()
 
-        assert result.state == TaskState.IDLE
+        assert result.state == CommandState.IDLE
         assert result.agent_id is not None
         assert result.started_at.tzinfo is not None
 
     def test_creates_parent_agent(self, db_session):
-        task = TaskFactory()
+        command = CommandFactory()
         db_session.flush()
 
         agent = db_session.execute(
-            select(Agent).where(Agent.id == task.agent_id)
+            select(Agent).where(Agent.id == command.agent_id)
         ).scalar_one()
 
         assert agent is not None
@@ -133,18 +133,18 @@ class TestTurnFactory:
         assert result.actor == TurnActor.USER
         assert result.intent == TurnIntent.COMMAND
         assert result.text is not None
-        assert result.task_id is not None
+        assert result.command_id is not None
         assert result.timestamp.tzinfo is not None
 
-    def test_creates_parent_task(self, db_session):
+    def test_creates_parent_command(self, db_session):
         turn = TurnFactory()
         db_session.flush()
 
-        task = db_session.execute(
-            select(Task).where(Task.id == turn.task_id)
+        command = db_session.execute(
+            select(Command).where(Command.id == turn.command_id)
         ).scalar_one()
 
-        assert task is not None
+        assert command is not None
 
 
 class TestEventFactory:
@@ -163,14 +163,14 @@ class TestEventFactory:
     def test_creates_event_with_references(self, db_session):
         project = ProjectFactory()
         agent = AgentFactory(project=project)
-        task = TaskFactory(agent=agent)
-        turn = TurnFactory(task=task)
+        command = CommandFactory(agent=agent)
+        turn = TurnFactory(command=command)
         db_session.flush()
 
         event = EventFactory(
             project_id=project.id,
             agent_id=agent.id,
-            task_id=task.id,
+            command_id=command.id,
             turn_id=turn.id,
         )
         db_session.flush()
@@ -181,7 +181,7 @@ class TestEventFactory:
 
         assert result.project_id == project.id
         assert result.agent_id == agent.id
-        assert result.task_id == task.id
+        assert result.command_id == command.id
         assert result.turn_id == turn.id
 
 

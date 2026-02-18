@@ -119,19 +119,19 @@ class ActivityAggregator:
             project_max_frustration_at: dict[int, datetime | None] = {}
 
             # Single bulk query: fetch all turns in this bucket for all relevant agents
-            from ..models.task import Task
+            from ..models.command import Command
             agent_ids = [a.id for a in relevant_agents]
             agent_map = {a.id: a for a in relevant_agents}
 
             all_turns = (
-                db.session.query(Turn, Task.agent_id)
-                .join(Task, Turn.task_id == Task.id)
+                db.session.query(Turn, Command.agent_id)
+                .join(Command, Turn.command_id == Command.id)
                 .filter(
-                    Task.agent_id.in_(agent_ids),
+                    Command.agent_id.in_(agent_ids),
                     Turn.timestamp >= bucket_start,
                     Turn.timestamp < bucket_end,
                 )
-                .order_by(Task.agent_id, Turn.timestamp.asc())
+                .order_by(Command.agent_id, Turn.timestamp.asc())
                 .all()
             ) if agent_ids else []
 

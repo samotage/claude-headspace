@@ -1,4 +1,4 @@
-# Tasks: e3-s4-git-analyzer
+# Commands: e3-s4-git-analyzer
 
 ## Phase 1: Git Analyzer Service
 

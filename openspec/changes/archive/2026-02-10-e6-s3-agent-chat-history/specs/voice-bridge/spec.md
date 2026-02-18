@@ -9,7 +9,7 @@ The voice bridge transcript endpoint SHALL return an agent-lifetime conversation
 - **WHEN** a GET to `/api/voice/agents/<agent_id>/transcript` is made
 - **THEN** the response SHALL include turns from ALL tasks for that agent
 - **AND** turns SHALL be ordered chronologically by timestamp
-- **AND** each turn SHALL include `task_id`, `task_instruction`, and `task_state`
+- **AND** each turn SHALL include `command_id`, `command_instruction`, and `task_state`
 
 #### Scenario: Initial page load (no cursor)
 
@@ -46,7 +46,7 @@ The system SHALL capture agent text output between tool calls as individual PROG
 - **WHEN** a post-tool-use hook fires
 - **AND** the agent's transcript contains new text since the last read position
 - **THEN** a PROGRESS turn SHALL be created with the new text content
-- **AND** the turn SHALL be linked to the agent's current task
+- **AND** the turn SHALL be linked to the agent's current command
 
 #### Scenario: Incremental transcript reading
 

@@ -6,7 +6,7 @@ Add an LLM-driven cross-project priority scoring service that evaluates all acti
 
 ## Motivation
 
-The dashboard currently hardcodes `"priority": 50` for every agent and uses state-based sorting (AWAITING_INPUT > PROCESSING > IDLE). This provides no differentiation when multiple agents share the same state. With the inference infrastructure from E3-S1 and task summaries from E3-S2, we can now score agents based on objective alignment, state urgency, task duration, and project context — giving the user actionable guidance on where to focus attention.
+The dashboard currently hardcodes `"priority": 50` for every agent and uses state-based sorting (AWAITING_INPUT > PROCESSING > IDLE). This provides no differentiation when multiple agents share the same state. With the inference infrastructure from E3-S1 and command summaries from E3-S2, we can now score agents based on objective alignment, state urgency, task duration, and project context — giving the user actionable guidance on where to focus attention.
 
 ## Impact
 
@@ -37,7 +37,7 @@ The dashboard currently hardcodes `"priority": 50` for every agent and uses stat
 ### Integration Points
 
 - **E3-S1 InferenceService:** Uses `infer(level="objective", purpose="priority_scoring", ...)` for batch scoring
-- **E3-S2 SummarisationService:** Uses task summaries as scoring context (graceful degradation if unavailable)
+- **E3-S2 SummarisationService:** Uses command summaries as scoring context (graceful degradation if unavailable)
 - **Objective model:** Reads `current_text` and `constraints` for primary scoring context
 - **Waypoint editor:** Uses `load_waypoint()` to read project waypoint Next Up/Upcoming sections as fallback
 - **HookLifecycleBridge:** Triggers rate-limited re-scoring on state changes
@@ -46,7 +46,7 @@ The dashboard currently hardcodes `"priority": 50` for every agent and uses stat
 ### Recent Changes (from E3-S2)
 
 - Agent model has no priority fields yet — clean addition
-- SummarisationService provides task summaries accessible via `turn.summary`
+- SummarisationService provides command summaries accessible via `turn.summary`
 - Latest migration is `d6e7f8a9b0c1` — new migration chains from this
 
 ## Approach

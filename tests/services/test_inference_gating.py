@@ -62,16 +62,16 @@ class TestSummariseTurnGating:
 
     def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
         """summarise_turn should return None when project inference is paused."""
-        task = MagicMock()
-        task.agent = mock_agent_paused
-        task.agent_id = mock_agent_paused.id
+        cmd = MagicMock()
+        cmd.agent = mock_agent_paused
+        cmd.agent_id = mock_agent_paused.id
 
         turn = MagicMock()
         turn.id = 1
         turn.summary = None
         turn.text = "Some text"
-        turn.task = task
-        turn.task_id = task.id
+        turn.command = cmd
+        turn.command_id = cmd.id
 
         result = summarisation_service.summarise_turn(turn)
 
@@ -80,17 +80,17 @@ class TestSummariseTurnGating:
 
     def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
         """summarise_turn should call inference when project is active."""
-        task = MagicMock()
-        task.agent = mock_agent_active
-        task.agent_id = mock_agent_active.id
-        task.instruction = None
+        cmd = MagicMock()
+        cmd.agent = mock_agent_active
+        cmd.agent_id = mock_agent_active.id
+        cmd.instruction = None
 
         turn = MagicMock()
         turn.id = 1
         turn.summary = None
         turn.text = "Some text"
-        turn.task = task
-        turn.task_id = task.id
+        turn.command = cmd
+        turn.command_id = cmd.id
         turn.intent.value = "command"
         turn.actor.value = "user"
 
@@ -102,41 +102,41 @@ class TestSummariseTurnGating:
         mock_inference.infer.assert_called_once()
 
 
-class TestSummariseTaskGating:
-    """Tests for inference gating in summarise_task."""
+class TestSummariseCommandGating:
+    """Tests for inference gating in summarise_command."""
 
     def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
-        """summarise_task should return None when project inference is paused."""
-        task = MagicMock()
-        task.id = 1
-        task.completion_summary = None
-        task.agent = mock_agent_paused
-        task.agent_id = mock_agent_paused.id
+        """summarise_command should return None when project inference is paused."""
+        cmd = MagicMock()
+        cmd.id = 1
+        cmd.completion_summary = None
+        cmd.agent = mock_agent_paused
+        cmd.agent_id = mock_agent_paused.id
 
-        result = summarisation_service.summarise_task(task)
+        result = summarisation_service.summarise_command(cmd)
 
         assert result is None
         mock_inference.infer.assert_not_called()
 
     def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
-        """summarise_task should call inference when project is active."""
+        """summarise_command should call inference when project is active."""
         turn = MagicMock()
         turn.text = "Final turn text"
         turn.intent.value = "completion"
         turn.actor.value = "agent"
         turn.summary = None
 
-        task = MagicMock()
-        task.id = 1
-        task.completion_summary = None
-        task.agent = mock_agent_active
-        task.agent_id = mock_agent_active.id
-        task.instruction = "Do something"
-        task.turns = [turn]
+        cmd = MagicMock()
+        cmd.id = 1
+        cmd.completion_summary = None
+        cmd.agent = mock_agent_active
+        cmd.agent_id = mock_agent_active.id
+        cmd.instruction = "Do something"
+        cmd.turns = [turn]
 
-        mock_inference.infer.return_value = MagicMock(text="Task summary")
+        mock_inference.infer.return_value = MagicMock(text="Command summary")
 
-        result = summarisation_service.summarise_task(task)
+        result = summarisation_service.summarise_command(cmd)
 
         assert result is not None
         mock_inference.infer.assert_called_once()
@@ -147,28 +147,28 @@ class TestSummariseInstructionGating:
 
     def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
         """summarise_instruction should return None when project inference is paused."""
-        task = MagicMock()
-        task.id = 1
-        task.instruction = None
-        task.agent = mock_agent_paused
-        task.agent_id = mock_agent_paused.id
+        cmd = MagicMock()
+        cmd.id = 1
+        cmd.instruction = None
+        cmd.agent = mock_agent_paused
+        cmd.agent_id = mock_agent_paused.id
 
-        result = summarisation_service.summarise_instruction(task, "Do something")
+        result = summarisation_service.summarise_instruction(cmd, "Do something")
 
         assert result is None
         mock_inference.infer.assert_not_called()
 
     def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
         """summarise_instruction should call inference when project is active."""
-        task = MagicMock()
-        task.id = 1
-        task.instruction = None
-        task.agent = mock_agent_active
-        task.agent_id = mock_agent_active.id
+        cmd = MagicMock()
+        cmd.id = 1
+        cmd.instruction = None
+        cmd.agent = mock_agent_active
+        cmd.agent_id = mock_agent_active.id
 
         mock_inference.infer.return_value = MagicMock(text="Instruction summary")
 
-        result = summarisation_service.summarise_instruction(task, "Do something")
+        result = summarisation_service.summarise_instruction(cmd, "Do something")
 
         assert result is not None
         mock_inference.infer.assert_called_once()
@@ -224,7 +224,7 @@ class TestPriorityScoringGating:
         agent.project = active_project
         agent.state.value = "idle"
         agent.priority_score = None
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         # Objective query
         db_session.query.return_value.first.return_value = mock_objective

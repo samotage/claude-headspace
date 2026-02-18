@@ -12,7 +12,7 @@ Track Claude AI subscription usage (session and weekly limits) to enable better 
 
 ### Core Problem
 
-Running out of Claude turns/budget mid-task causes:
+Running out of Claude turns/budget mid-command causes:
 - Loss of mental context (expensive cognitive cost)
 - Disruption to flow state and headspace
 - Uncertainty about whether to pace usage or go full-tilt

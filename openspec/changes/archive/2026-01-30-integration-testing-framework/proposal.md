@@ -6,7 +6,7 @@ The current test suite (780+ tests) mocks SQLAlchemy sessions, engines, and repo
 
 - Add `factory-boy` dev dependency for test data generation
 - Create `tests/integration/conftest.py` with database lifecycle fixtures (create/teardown test DB, session management, per-test cleanup)
-- Create Factory Boy factories for all 7 models: Project, Agent, Task, Turn, Event, Objective, ObjectiveHistory
+- Create Factory Boy factories for all 7 models: Project, Agent, Command, Turn, Event, Objective, ObjectiveHistory
 - Create `tests/integration/` directory with proof-of-concept integration tests
 - Add integration testing pattern documentation
 - Configure test database connection (`claude_headspace_test`) separate from production

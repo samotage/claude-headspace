@@ -25,7 +25,7 @@ Beads provides persistent, structured memory for AI coding agents by replacing a
 
 AI agents lose context during extended tasks. They work from markdown files, forget what they've done, can't track dependencies between subtasks, and create merge conflicts when multiple agents operate concurrently. Beads addresses this with:
 
-1. A proper task graph with dependencies and blocking semantics
+1. A proper command graph with dependencies and blocking semantics
 2. Hash-based IDs that prevent merge collisions
 3. Memory compaction that preserves context without consuming the full window
 4. A `ready` command that answers "what should I work on next?"
@@ -68,7 +68,7 @@ Directory structure per project:
 | `assignee` | Who's working on it |
 | `spec_id` | Link to specification file |
 | `external_ref` | Link to external tracker (gh-123, jira-PROJ-456) |
-| `parent_id` | Hierarchical nesting (epic → task → subtask) |
+| `parent_id` | Hierarchical nesting (epic → command → subtask) |
 | `notes`, `design` | Working notes, design decisions |
 
 **Dependencies** (relationships between issues):
@@ -154,7 +154,7 @@ bd-a3f8.1.1   (subtask)
 
 ### Operational Modes
 
-- **Standard:** Tasks committed to the repo alongside code
+- **Standard:** Commands committed to the repo alongside code
 - **Stealth** (`bd init --stealth`): Local-only, nothing committed
 - **Contributor** (`bd init --contributor`): Routes planning to `~/.beads-planning`, keeping experimental work out of PRs
 
@@ -182,44 +182,44 @@ We implement these Beads concepts natively in Python/Postgres within the existin
 
 #### 1. The Task/Command Rename
 
-**Beads insight:** A "task" is a project-level work unit, not a single prompt→response cycle.
+**Beads insight:** A "command" is a project-level work unit, not a single prompt→response cycle.
 
 **Headspace change:** Rename the current `Task` model to `Command`. A Command is a single user instruction cycle within an Agent session (the current 5-state lifecycle: COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE). This frees "Task" to mean a project-level work unit.
 
 **New hierarchy:**
 ```
-Project → Task (project-level work) → Command (session-level execution) → Turn (individual exchange)
+Project → Command (project-level work) → Command (session-level execution) → Turn (individual exchange)
 ```
 
 A single Task may span multiple Commands across multiple Agent sessions and Personas.
 
-#### 2. Hash-Based Task IDs
+#### 2. Hash-Based Command IDs
 
 **Beads insight:** Sequential IDs collide when multiple agents create tasks concurrently. Short hash-based IDs are human-readable and merge-safe.
 
 **Headspace implementation:**
 - Generate short hex prefixes from UUIDs (e.g., `hs-a1b2`)
-- Adaptive length based on task count (4–6 chars)
+- Adaptive length based on command count (4–6 chars)
 - Collision resolution via progressive lengthening
 - Standard integer PKs remain in Postgres for joins; hash IDs are the display/reference format
 
 #### 3. Dependency Graph + `ready` Semantics
 
-**Beads insight:** Tasks have blocking relationships. The most valuable query is "what has no open blockers?" (`bd ready`).
+**Beads insight:** Commands have blocking relationships. The most valuable query is "what has no open blockers?" (`bd ready`).
 
 **Headspace implementation:**
-- `task_dependencies` join table with `blocker_task_id` and `blocked_task_id`
+- `task_dependencies` join table with `blocker_command_id` and `blocked_command_id`
 - Dependency types: `blocks` (sequential), `parent-child` (hierarchical), `related` (informational)
 - `ready` query: tasks where status is open, no unresolved blockers, optionally filtered by assignee persona
 - Materialised/cached result for dashboard performance (rebuild on dependency or status change)
-- Dashboard integration: project cards show ready task count; PM persona (Gavin) uses this to assign work
+- Dashboard integration: project cards show ready command count; PM persona (Gavin) uses this to assign work
 
 #### 4. Hierarchical Task Nesting
 
 **Beads insight:** Epics contain tasks which contain subtasks. Parent-child via self-referential FK with dotted notation for display.
 
 **Headspace implementation:**
-- `parent_id` self-referential FK on Task model
+- `parent_id` self-referential FK on Command model
 - Display format: `hs-a3f8.1.1` (dotted notation derived from hash + child index)
 - Gavin (PM persona) creates epics from specs, decomposes into tasks, and agents may create subtasks during execution
 - Dashboard shows collapsible hierarchy
@@ -234,13 +234,13 @@ A single Task may span multiple Commands across multiple Agent sessions and Pers
 - Returns error if already claimed by another persona
 - Gavin assigns, or personas self-claim from the ready pool
 
-#### 6. Memory Compaction for Tasks
+#### 6. Memory Compaction for Commands
 
 **Beads insight:** Completed work accumulates detail that wastes context. Summarise and archive progressively.
 
 **Headspace implementation:**
-- Extend existing `SummarisationService` to generate Task-level completion summaries (currently only generates Command/Turn summaries)
-- When a Task completes: LLM generates a compressed summary, full detail remains in Postgres but is excluded from context assembly
+- Extend existing `SummarisationService` to generate Command-level completion summaries (currently only generates Command/Turn summaries)
+- When a Command completes: LLM generates a compressed summary, full detail remains in Postgres but is excluded from context assembly
 - Progressive compaction: recent completions keep more detail; older ones compress further
 - Brain reboot integration: include task graph state + completion summaries in exported context
 
@@ -254,12 +254,12 @@ A single Task may span multiple Commands across multiple Agent sessions and Pers
 - Simpler than Beads' chemistry metaphor: just templates with variable substitution, no proto/mol/wisp phases
 - Templates evolve through use: skill file learning captures which templates work well
 
-#### 8. Task States
+#### 8. Command States
 
 **Beads insight:** Issues have clear status progression with meaningful states.
 
 **Headspace implementation:**
-- Task states: `backlog`, `ready`, `in_progress`, `blocked`, `review`, `done`, `deferred`
+- Command states: `backlog`, `ready`, `in_progress`, `blocked`, `review`, `done`, `deferred`
 - `ready` is computed (no open blockers + not assigned), but can also be explicitly set
 - `blocked` is auto-set when a blocking dependency is added
 - State transitions are validated (e.g., can't go from `backlog` to `done` directly)
@@ -283,7 +283,7 @@ A single Task may span multiple Commands across multiple Agent sessions and Pers
 
 ## Part 3: Integration with Agent Teams Vision
 
-### How Tasks Flow Through the Team
+### How Commands Flow Through the Team
 
 ```
 Operator + Robbo (Workshop)
@@ -292,7 +292,7 @@ Operator + Robbo (Workshop)
 Gavin (PM Persona)
     │
     ├─ Creates Epic (hs-a3f8) from spec
-    ├─ Decomposes into Tasks (hs-a3f8.1, hs-a3f8.2, hs-a3f8.3)
+    ├─ Decomposes into Commands (hs-a3f8.1, hs-a3f8.2, hs-a3f8.3)
     ├─ Sets dependencies (hs-a3f8.2 blocks hs-a3f8.3)
     └─ Assigns by skill domain (Con: backend, Al: frontend)
     │
@@ -306,7 +306,7 @@ Con (Backend Developer Persona)
     │   └─ Command 3: "write tests"
     ├─ Hits context limit → handoff to fresh Con session
     │   └─ New session picks up hs-a3f8.1 (Task persists)
-    └─ Completes → Task state: done, summary generated
+    └─ Completes → Command state: done, summary generated
     │
     ▼
 Verner (QA Persona)
@@ -332,7 +332,7 @@ CREATE TABLE task (
     title           TEXT NOT NULL,
     description     TEXT,
     acceptance_criteria TEXT,
-    type            VARCHAR(20) DEFAULT 'task',     -- epic, task, subtask, chore, bug
+    type            VARCHAR(20) DEFAULT 'command',     -- epic, task, subtask, chore, bug
     state           VARCHAR(20) DEFAULT 'backlog',  -- backlog, ready, in_progress, blocked, review, done, deferred
     priority        SMALLINT DEFAULT 2,             -- 0=critical, 4=backlog
     assignee_persona_id INTEGER REFERENCES persona(id),
@@ -348,22 +348,22 @@ CREATE TABLE task (
 -- Dependencies between tasks
 CREATE TABLE task_dependency (
     id              SERIAL PRIMARY KEY,
-    blocker_task_id INTEGER REFERENCES task(id) NOT NULL,
-    blocked_task_id INTEGER REFERENCES task(id) NOT NULL,
+    blocker_command_id INTEGER REFERENCES task(id) NOT NULL,
+    blocked_command_id INTEGER REFERENCES task(id) NOT NULL,
     dep_type        VARCHAR(20) DEFAULT 'blocks',   -- blocks, parent_child, related
     created_at      TIMESTAMP DEFAULT NOW(),
-    UNIQUE(blocker_task_id, blocked_task_id)
+    UNIQUE(blocker_command_id, blocked_command_id)
 );
 
 -- Renamed: Session-level execution unit (currently called Task)
 -- ALTER TABLE task RENAME TO command;
--- command.task_id (FK → task) links execution to project-level work
+-- command.command_id (FK → command) links execution to project-level work
 ```
 
 ### Dashboard Integration
 
-- **Project cards:** Show ready task count, in-progress tasks by persona, blocked count
-- **Task board view:** Kanban columns by state (backlog → ready → in_progress → review → done)
+- **Project cards:** Show ready command count, in-progress tasks by persona, blocked count
+- **Command board view:** Kanban columns by state (backlog → ready → in_progress → review → done)
 - **Dependency visualisation:** Simple tree/graph view per epic
 - **Priority scoring enhancement:** Use task priority + dependency graph position + objective alignment
 - **Persona workload:** Which personas have what claimed, what's ready for each skill domain
@@ -376,17 +376,17 @@ This work spans multiple epics and depends on the Agent Teams foundation (person
 
 1. **Task/Command rename** — Mechanical refactor of existing model/services/routes/tests. No new features, just terminology alignment. Can be done independently.
 
-2. **Task model + dependency graph** — New model, join table, basic CRUD API. Core schema from the data model sketch above.
+2. **Command model + dependency graph** — New model, join table, basic CRUD API. Core schema from the data model sketch above.
 
-3. **Hash ID generation** — Utility service for adaptive hash IDs. Applied to Task model.
+3. **Hash ID generation** — Utility service for adaptive hash IDs. Applied to Command model.
 
 4. **Ready query + claim semantics** — API endpoints for `ready` (filtered by persona/project) and atomic `claim`. Dashboard integration.
 
-5. **Task ↔ Command linking** — Add `task_id` FK to Command (renamed Task). Connect session-level execution to project-level work.
+5. **Task ↔ Command linking** — Add `command_id` FK to Command (renamed Task). Connect session-level execution to project-level work.
 
-6. **Dashboard task board** — Kanban view for project-level tasks. Dependency tree visualisation. Ready/blocked indicators.
+6. **Dashboard command board** — Kanban view for project-level tasks. Dependency tree visualisation. Ready/blocked indicators.
 
-7. **Task-level summarisation** — Extend SummarisationService for project-level task completion summaries. Memory compaction on older completed tasks.
+7. **Command-level summarisation** — Extend SummarisationService for project-level command completion summaries. Memory compaction on older completed tasks.
 
 8. **Workflow templates** — Reusable epic/task structures. Gavin instantiates them during spec decomposition.
 

@@ -4,10 +4,10 @@ validation:
   validated_at: '2026-01-29T10:07:56+11:00'
 ---
 
-## Product Requirements Document (PRD) — Task/Turn State Machine
+## Product Requirements Document (PRD) — Command/Turn State Machine
 
 **Project:** Claude Headspace v3.1
-**Scope:** Epic 1, Sprint 6 — Task state machine transitions correctly
+**Scope:** Epic 1, Sprint 6 — Command state machine transitions correctly
 **Author:** PRD Workshop
 **Status:** Draft
 
@@ -15,9 +15,9 @@ validation:
 
 ## Executive Summary
 
-The Task/Turn State Machine is the core behavioral logic of Claude Headspace. It implements the 5-state model that differentiates this system from simple process monitoring—enabling granular visibility into whether an agent is idle, processing, or awaiting user input.
+The Command/Turn State Machine is the core behavioral logic of Claude Headspace. It implements the 5-state model that differentiates this system from simple process monitoring—enabling granular visibility into whether an agent is idle, processing, or awaiting user input.
 
-This sprint delivers the state transition logic that reacts to events from the Event System (Sprint 5), validates transitions, detects turn intents via regex patterns, and manages the Task lifecycle. The state machine consumes `turn_detected` events and produces `state_transition` events, completing the event-driven pipeline that feeds the SSE system (Sprint 7) and dashboard UI (Sprint 8).
+This sprint delivers the state transition logic that reacts to events from the Event System (Sprint 5), validates transitions, detects turn intents via regex patterns, and manages the Command lifecycle. The state machine consumes `turn_detected` events and produces `state_transition` events, completing the event-driven pipeline that feeds the SSE system (Sprint 7) and dashboard UI (Sprint 8).
 
 Without a reliable state machine, the dashboard cannot accurately reflect agent status, prioritisation is meaningless, and the core value proposition of Claude Headspace collapses. This sprint is the bridge between raw events and meaningful state.
 
@@ -27,7 +27,7 @@ Without a reliable state machine, the dashboard cannot accurately reflect agent 
 
 ### 1.1 Context
 
-Claude Headspace tracks Claude Code agents performing Tasks with Turn-level granularity. Each Task progresses through a 5-state lifecycle:
+Claude Headspace tracks Claude Code agents performing Commands with Turn-level granularity. Each Command progresses through a 5-state lifecycle:
 
 ```
 idle → commanded → processing → awaiting_input/complete → idle
@@ -38,7 +38,7 @@ The state machine:
 2. Detects turn intent (command, answer, question, completion, progress)
 3. Validates and applies state transitions
 4. Writes `state_transition` events for audit trail
-5. Derives Agent state from current Task state
+5. Derives Agent state from current Command state
 
 This positions Sprint 6 as the behavioral core—Sprint 5 provides events, Sprint 6 interprets them, Sprint 7 broadcasts the results.
 
@@ -56,11 +56,11 @@ A developer watches the dashboard as they interact with Claude Code. When they i
 
 ### 2.1 In Scope
 
-- **Task state transition logic** — Enforce valid transitions between 5 states (idle, commanded, processing, awaiting_input, complete)
+- **Command state transition logic** — Enforce valid transitions between 5 states (idle, commanded, processing, awaiting_input, complete)
 - **Turn intent detection (regex-based)** — Parse turn content to determine intent (command, answer, question, completion, progress)
 - **State transition validator** — Reject invalid transitions with error logging
-- **Task lifecycle management** — Create tasks on user command, complete tasks on agent completion
-- **Agent state derivation** — Agent.state reflects current_task.state (or idle if no active task)
+- **Command lifecycle management** — Create tasks on user command, complete tasks on agent completion
+- **Agent state derivation** — Agent.state reflects current_command.state (or idle if no active command)
 - **State transition event logging** — Write `state_transition` events to Event table via Event Writer
 - **Confidence tracking** — Record confidence level for each transition (1.0 for regex matches)
 - **Unit tests** — Cover all valid transitions, invalid transitions, and edge cases
@@ -74,7 +74,7 @@ A developer watches the dashboard as they interact with Claude Code. When they i
 - SSE broadcasting of state changes (Sprint 7)
 - Dashboard UI (Sprint 8)
 - Priority scoring (Epic 3)
-- Task summarisation (Epic 3)
+- Command summarisation (Epic 3)
 - Timeout-based automatic state transitions (future enhancement)
 
 ---
@@ -83,12 +83,12 @@ A developer watches the dashboard as they interact with Claude Code. When they i
 
 ### 3.1 Functional Success Criteria
 
-1. User issues command → Task created in `commanded` state
-2. Agent starts responding → Task transitions to `processing`
-3. Agent asks question → Task transitions to `awaiting_input`
-4. User answers question → Task transitions back to `processing`
-5. Agent signals completion → Task transitions to `complete`
-6. Task completes → Agent returns to `idle` state (no active task)
+1. User issues command → Command created in `commanded` state
+2. Agent starts responding → Command transitions to `processing`
+3. Agent asks question → Command transitions to `awaiting_input`
+4. User answers question → Command transitions back to `processing`
+5. Agent signals completion → Command transitions to `complete`
+6. Command completes → Agent returns to `idle` state (no active command)
 7. Invalid transitions are rejected with error log (e.g., `idle` → `processing` without `commanded`)
 8. Intent detection achieves >90% accuracy on representative test cases
 9. `state_transition` events written to Event table with from_state, to_state, trigger, confidence
@@ -107,9 +107,9 @@ A developer watches the dashboard as they interact with Claude Code. When they i
 
 ## 4. Functional Requirements (FRs)
 
-### FR1: Task State Enum
+### FR1: Command State Enum
 
-The system shall enforce exactly 5 task states:
+The system shall enforce exactly 5 command states:
 
 | State | Description |
 |-------|-------------|
@@ -117,7 +117,7 @@ The system shall enforce exactly 5 task states:
 | `commanded` | User has issued a command; agent has not yet responded |
 | `processing` | Agent is actively working on the task |
 | `awaiting_input` | Agent has asked a question; waiting for user response |
-| `complete` | Agent has signaled task completion |
+| `complete` | Agent has signaled command completion |
 
 ### FR2: Turn Intent Enum
 
@@ -167,34 +167,34 @@ The system shall validate transitions before applying:
 The system shall detect turn intent from text content using regex patterns:
 
 **User Intents:**
-- `command`: Default for user turns when no active task or task is idle/complete
+- `command`: Default for user turns when no active command or task is idle/complete
 - `answer`: User turn when current state is `awaiting_input`
 
 **Agent Intents:**
 - `question`: Text ends with `?` OR contains phrases like "Would you like", "Should I", "Do you want", "Can you", "Could you"
-- `completion`: Text contains phrases like "Done", "Complete", "Finished", "I've completed", "Task complete", "Ready for"
+- `completion`: Text contains phrases like "Done", "Complete", "Finished", "I've completed", "Command complete", "Ready for"
 - `progress`: Default for agent turns that don't match question/completion
 
-### FR6: Task Lifecycle Management
+### FR6: Command Lifecycle Management
 
-The system shall manage Task lifecycle:
-- **Task Creation:** When user issues command (intent=command) and no active incomplete task, create new Task with state=commanded
-- **Task Continuation:** When turn detected for active task, update task state per transition rules
-- **Task Completion:** When state transitions to complete, set Task.completed_at timestamp
-- **Task End:** After completion, agent has no active task (state derived as idle)
+The system shall manage Command lifecycle:
+- **Command Creation:** When user issues command (intent=command) and no active incomplete command, create new Command with state=commanded
+- **Command Continuation:** When turn detected for active command, update command state per transition rules
+- **Command Completion:** When state transitions to complete, set Command.completed_at timestamp
+- **Command End:** After completion, agent has no active command (state derived as idle)
 
 ### FR7: Agent State Derivation
 
-The system shall derive Agent state from current Task:
-- If agent has an incomplete task → Agent.state = Task.state
-- If agent has no incomplete task → Agent.state = idle
+The system shall derive Agent state from current Command:
+- If agent has an incomplete command → Agent.state = Command.state
+- If agent has no incomplete command → Agent.state = idle
 - State is derived (computed property), not stored separately
 
 ### FR8: State Transition Event Logging
 
 The system shall write events for every state transition:
 - Event type: `state_transition`
-- Payload includes: agent_id, task_id, from_state, to_state, trigger, confidence
+- Payload includes: agent_id, command_id, from_state, to_state, trigger, confidence
 - Trigger values: `turn` (from turn detection), `manual` (admin override), `timeout` (future)
 - Confidence: 1.0 for regex-matched intents
 
@@ -202,7 +202,7 @@ Payload schema (aligned with Sprint 5):
 ```json
 {
   "agent_id": "integer",
-  "task_id": "integer",
+  "command_id": "integer",
   "from_state": "string",
   "to_state": "string",
   "trigger": "turn|timeout|manual",
@@ -233,7 +233,7 @@ The system shall handle these edge cases:
 
 | Scenario | Behavior |
 |----------|----------|
-| Agent crash mid-task | Task remains in current state; agent marked inactive by session end (Sprint 4/13) |
+| Agent crash mid-command | Command remains in current state; agent marked inactive by session end (Sprint 4/13) |
 | Multiple rapid turns | Process sequentially; each transition validated against updated state |
 | User command while awaiting_input | Valid transition; starts new task (abandons previous) |
 | Agent speaks when not expected | Invalid transition; logged and rejected |
@@ -308,7 +308,7 @@ The system shall handle duplicate event processing safely:
               │                └────┬─────┘           │       │   │
               │                     │                 ▼       │   │
               │                     │          ┌────────────┐ │   │
-              │  task complete      │          │  awaiting  │ │   │
+              │  command complete      │          │  awaiting  │ │   │
               └─────────────────────┘          │   input    │─┘   │
                                                │            │     │
                                                └──────┬─────┘     │
@@ -352,13 +352,13 @@ src/claude_headspace/
 ├── services/
 │   ├── state_machine.py      # StateMachine class - core transition logic
 │   ├── intent_detector.py    # IntentDetector class - regex-based detection
-│   └── task_lifecycle.py     # TaskLifecycleManager - create/complete tasks
+│   └── command_lifecycle.py     # CommandLifecycleManager - create/complete tasks
 
 tests/
 ├── services/
 │   ├── test_state_machine.py      # Transition tests
 │   ├── test_intent_detector.py    # Intent detection tests
-│   └── test_task_lifecycle.py     # Lifecycle tests
+│   └── test_command_lifecycle.py     # Lifecycle tests
 ```
 
 ### Integration with Sprint 5
@@ -381,7 +381,7 @@ def process_turn_event(event: Event) -> None:
     if result.valid:
         event_writer.write("state_transition", {
             "agent_id": agent.id,
-            "task_id": result.task_id,
+            "command_id": result.command_id,
             "from_state": result.from_state,
             "to_state": result.to_state,
             "trigger": "turn",
@@ -395,7 +395,7 @@ def process_turn_event(event: Event) -> None:
 
 ### Prerequisites
 
-- Sprint 3 (Domain Models) complete — Task, Turn, Event models exist
+- Sprint 3 (Domain Models) complete — Command, Turn, Event models exist
 - Sprint 5 (Event System) complete — Events are being written to database
 
 ### Blocking

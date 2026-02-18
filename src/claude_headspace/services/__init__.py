@@ -35,7 +35,7 @@ from .state_machine import (
     is_terminal_state,
     VALID_TRANSITIONS,
 )
-from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult, get_instruction_for_notification
+from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
 from .broadcaster import (
     Broadcaster,
     SSEClient,
@@ -88,8 +88,8 @@ __all__ = [
     "get_valid_transitions_from",
     "is_terminal_state",
     "VALID_TRANSITIONS",
-    # Task lifecycle
-    "TaskLifecycleManager",
+    # Command lifecycle
+    "CommandLifecycleManager",
     "TurnProcessingResult",
     "get_instruction_for_notification",
     # Broadcaster

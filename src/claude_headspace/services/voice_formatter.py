@@ -111,17 +111,17 @@ class VoiceFormatter:
             "next_action": next_action,
         }
 
-    def format_output(self, agent_name: str, tasks: list[dict], verbosity: str | None = None) -> dict:
+    def format_output(self, agent_name: str, commands: list[dict], verbosity: str | None = None) -> dict:
         """Format recent agent output for voice consumption.
 
         Args:
             agent_name: Agent display name
-            tasks: List of task dicts with keys: instruction, completion_summary,
-                   full_command, full_output, state
+            commands: List of command dicts with keys: instruction, completion_summary,
+                      full_command, full_output, state
             verbosity: concise, normal, or detailed
         """
         v = verbosity or self.default_verbosity
-        if not tasks:
+        if not commands:
             return {
                 "status_line": f"No recent activity for {agent_name}.",
                 "results": [],
@@ -129,24 +129,24 @@ class VoiceFormatter:
             }
 
         results = []
-        for task in tasks:
+        for cmd in commands:
             if v == "concise":
-                summary = task.get("completion_summary") or task.get("instruction") or "Task completed"
+                summary = cmd.get("completion_summary") or cmd.get("instruction") or "Command completed"
                 results.append(summary)
             elif v == "normal":
-                instr = task.get("instruction") or "Unknown task"
-                summary = task.get("completion_summary") or "Completed"
+                instr = cmd.get("instruction") or "Unknown command"
+                summary = cmd.get("completion_summary") or "Completed"
                 results.append(f"{instr}: {summary}")
             else:  # detailed
-                instr = task.get("instruction") or "Unknown task"
-                results.append(f"Task: {instr}")
-                if task.get("full_command"):
-                    results.append(f"Command: {task['full_command'][:200]}")
-                if task.get("full_output"):
-                    results.append(f"Output: {task['full_output'][:500]}")
+                instr = cmd.get("instruction") or "Unknown command"
+                results.append(f"Command: {instr}")
+                if cmd.get("full_command"):
+                    results.append(f"Full command: {cmd['full_command'][:200]}")
+                if cmd.get("full_output"):
+                    results.append(f"Output: {cmd['full_output'][:500]}")
 
         return {
-            "status_line": f"Recent activity for {agent_name}: {len(tasks)} task{'s' if len(tasks) != 1 else ''}.",
+            "status_line": f"Recent activity for {agent_name}: {len(commands)} command{'s' if len(commands) != 1 else ''}.",
             "results": results,
             "next_action": "none",
         }

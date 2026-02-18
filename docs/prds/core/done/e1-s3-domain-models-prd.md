@@ -15,7 +15,7 @@ validation:
 
 ## Executive Summary
 
-Claude Headspace requires a foundational data layer to track Claude Code sessions (Agents) working on Tasks with Turn-level granularity. This PRD defines the core domain models that enable the 5-state Task/Turn state machine—the primary differentiator of Claude Headspace from simple process monitoring.
+Claude Headspace requires a foundational data layer to track Claude Code sessions (Agents) working on Commands with Turn-level granularity. This PRD defines the core domain models that enable the 5-state Command/Turn state machine—the primary differentiator of Claude Headspace from simple process monitoring.
 
 The domain models provide the data foundation that all subsequent sprints depend upon: file watcher (Sprint 4), event system (Sprint 5), state machine (Sprint 6), and the dashboard UI (Sprint 8). Without these models, there is no way to persist agents, tasks, turns, or events.
 
@@ -32,11 +32,11 @@ Claude Headspace monitors multiple Claude Code sessions across projects, trackin
 - **Objectives** that guide prioritisation across all projects
 - **Projects** auto-discovered from the filesystem
 - **Agents** representing individual Claude Code sessions
-- **Tasks** representing units of work with a 5-state lifecycle
+- **Commands** representing units of work with a 5-state lifecycle
 - **Turns** representing individual exchanges (user ↔ agent)
 - **Events** providing an audit trail of all system activity
 
-The 5-state task model (idle → commanded → processing → awaiting_input → complete) enables the dashboard to show exactly when an agent needs user input vs. when it's actively working.
+The 5-state command model (idle → commanded → processing → awaiting_input → complete) enables the dashboard to show exactly when an agent needs user input vs. when it's actively working.
 
 ### 1.2 Target User
 
@@ -44,7 +44,7 @@ Developers using Claude Code across multiple projects who need visibility into a
 
 ### 1.3 Success Moment
 
-A developer can query the database to see all active agents, their current task states, and recent turns—providing the data foundation for the real-time dashboard.
+A developer can query the database to see all active agents, their current command states, and recent turns—providing the data foundation for the real-time dashboard.
 
 ---
 
@@ -57,13 +57,13 @@ A developer can query the database to see all active agents, their current task 
 - `Project` model with name, path, github_repo, current_branch
 - `Agent` model with session_uuid, project_id (FK), iterm_pane_id, started_at, last_seen_at
 - `Task` model with agent_id (FK), 5-state enum, started_at, completed_at
-- `Turn` model with task_id (FK), actor enum, intent enum, text, timestamp
+- `Turn` model with command_id (FK), actor enum, intent enum, text, timestamp
 - `Event` model with nullable FKs, event_type, JSON payload, timestamp
 - Database migrations for all models via Flask-Migrate
 - Foreign key relationships and constraints
-- Enum definitions for TaskState, TurnActor, TurnIntent
-- Derived property for Agent.state (from current task)
-- Basic query patterns (current task for agent, recent turns for task)
+- Enum definitions for CommandState, TurnActor, TurnIntent
+- Derived property for Agent.state (from current command)
+- Basic query patterns (current command for agent, recent turns for task)
 
 ### 2.2 Out of Scope
 
@@ -86,11 +86,11 @@ A developer can query the database to see all active agents, their current task 
 1. All 7 models can be instantiated via SQLAlchemy ORM
 2. Database migrations run cleanly (`flask db upgrade`) with no errors
 3. Foreign key relationships are enforced at the database level
-4. Enum fields reject invalid values (e.g., invalid TaskState raises error)
-5. Can create complete object graph: Objective → Project → Agent → Task → Turn, plus Events
+4. Enum fields reject invalid values (e.g., invalid CommandState raises error)
+5. Can create complete object graph: Objective → Project → Agent → Command → Turn, plus Events
 6. Query patterns work correctly:
-   - Get current (most recent incomplete) task for an agent
-   - Get recent turns for a task ordered by timestamp
+   - Get current (most recent incomplete) command for an agent
+   - Get recent turns for a command ordered by timestamp
    - Get events filtered by project/agent/event_type
 7. ObjectiveHistory records are created when objective changes (started_at/ended_at tracked)
 
@@ -143,11 +143,11 @@ The system shall persist Agents with:
 - `iterm_pane_id`: iTerm2 pane identifier for AppleScript focus (nullable)
 - `started_at`: Timestamp when session started
 - `last_seen_at`: Timestamp of last activity
-- Derived property `state`: Returns current task's state, or `idle` if no active task
+- Derived property `state`: Returns current command's state, or `idle` if no active command
 
-### FR5: Task Model
+### FR5: Command Model
 
-The system shall persist Tasks with:
+The system shall persist Commands with:
 - `id`: Primary key
 - `agent_id`: Foreign key to Agent
 - `state`: Enum constrained to exactly 5 values:
@@ -156,14 +156,14 @@ The system shall persist Tasks with:
   - `processing`
   - `awaiting_input`
   - `complete`
-- `started_at`: Timestamp when task started
-- `completed_at`: Timestamp when task completed (nullable)
+- `started_at`: Timestamp when command started
+- `completed_at`: Timestamp when command completed (nullable)
 
 ### FR6: Turn Model
 
 The system shall persist Turns with:
 - `id`: Primary key
-- `task_id`: Foreign key to Task
+- `command_id`: Foreign key to Task
 - `actor`: Enum constrained to exactly 2 values:
   - `user`
   - `agent`
@@ -183,7 +183,7 @@ The system shall persist Events with:
 - `timestamp`: When the event occurred
 - `project_id`: Foreign key to Project (nullable)
 - `agent_id`: Foreign key to Agent (nullable)
-- `task_id`: Foreign key to Task (nullable)
+- `command_id`: Foreign key to Task (nullable)
 - `turn_id`: Foreign key to Turn (nullable)
 - `event_type`: String identifying the event type
 - `payload`: JSON field for event-specific data
@@ -194,7 +194,7 @@ The system shall support the following event types:
 - `session_discovered`: New Claude Code session detected
 - `session_ended`: Claude Code session terminated
 - `turn_detected`: New turn parsed from jsonl
-- `state_transition`: Task state changed
+- `state_transition`: Command state changed
 - `hook_received`: Event received from Claude Code hook
 - `objective_changed`: Objective was updated
 
@@ -202,8 +202,8 @@ The system shall support the following event types:
 
 The system shall enforce the following relationships:
 - Project has many Agents (one-to-many)
-- Agent has many Tasks (one-to-many)
-- Task has many Turns (one-to-many)
+- Agent has many Commands (one-to-many)
+- Command has many Turns (one-to-many)
 - Objective has many ObjectiveHistory records (one-to-many)
 - Event references are nullable (events may occur at any level)
 
@@ -211,7 +211,7 @@ The system shall enforce the following relationships:
 
 The system shall implement the following cascade behavior:
 - Project delete → cascades to Agents
-- Agent delete → cascades to Tasks
+- Agent delete → cascades to Commands
 - Task delete → cascades to Turns
 - Event foreign keys → SET NULL on referenced entity delete (preserve audit trail)
 
@@ -226,7 +226,7 @@ The system shall create indexes for common query patterns:
 - `agents.session_uuid` — for looking up agent by session
 - `tasks.agent_id` — for querying tasks by agent
 - `tasks.state` — for filtering tasks by state
-- `turns.task_id` — for querying turns by task
+- `turns.command_id` — for querying turns by task
 - `events.timestamp` — for time-range queries
 - `events.event_type` — for filtering by event type
 - `events.project_id`, `events.agent_id` — for filtering by entity
@@ -269,7 +269,7 @@ src/claude_headspace/
 │   ├── objective.py     # Objective, ObjectiveHistory
 │   ├── project.py       # Project
 │   ├── agent.py         # Agent
-│   ├── task.py          # Task, TaskState enum
+│   ├── task.py          # Command, CommandState enum
 │   ├── turn.py          # Turn, TurnActor, TurnIntent enums
 │   └── event.py         # Event
 ```
@@ -277,7 +277,7 @@ src/claude_headspace/
 ### Enum Definitions
 
 ```python
-class TaskState(enum.Enum):
+class CommandState(enum.Enum):
     IDLE = "idle"
     COMMANDED = "commanded"
     PROCESSING = "processing"
@@ -300,12 +300,12 @@ class TurnIntent(enum.Enum):
 
 ```python
 @property
-def state(self) -> TaskState:
-    """Derive agent state from current task."""
+def state(self) -> CommandState:
+    """Derive agent state from current command."""
     current_task = self.get_current_task()
     if current_task is None:
-        return TaskState.IDLE
-    return current_task.state
+        return CommandState.IDLE
+    return current_command.state
 ```
 
 ---
@@ -324,7 +324,7 @@ def state(self) -> TaskState:
 This sprint blocks:
 - Sprint 4 (File Watcher) — needs Event model
 - Sprint 5 (Event System) — needs all models
-- Sprint 6 (State Machine) — needs Task, Turn models
+- Sprint 6 (State Machine) — needs Command, Turn models
 - Sprint 9 (Objective Tab) — needs Objective model
 
 ---

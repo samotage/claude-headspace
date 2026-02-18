@@ -32,7 +32,7 @@ All 19 functional requirements, 5 non-functional requirements, and 8 delta spec 
 
 - **PRD Functional Requirements:** 19/19 covered (FR1-FR19)
 - **PRD Non-Functional Requirements:** 5/5 covered (NFR1-NFR5)
-- **Tasks Completed:** 29/29 implementation tasks
+- **Commands Completed:** 29/29 implementation tasks
 - **Delta Spec Requirements:** 8/8 ADDED requirements implemented
 - **Design Compliance:** N/A (no design.md — patterns followed from proposal-summary)
 - **Tests:** 107 passed (69 new + 38 regression)

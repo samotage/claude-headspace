@@ -1,4 +1,4 @@
-# Tasks: e2-s4-macos-notifications
+# Commands: e2-s4-macos-notifications
 
 ## Phase 1: Setup
 
@@ -34,7 +34,7 @@
 - [x] Add notifications section to config.yaml defaults
 - [x] Add enabled: true/false global toggle
 - [x] Add sound: true/false toggle
-- [x] Add events.task_complete: true/false
+- [x] Add events.command_complete: true/false
 - [x] Add events.awaiting_input: true/false
 - [x] Add rate_limit_seconds: 5 default
 - [x] Update config_manager.py to load notifications config
@@ -49,7 +49,7 @@
 
 ### Hook Integration (FR1, FR2)
 - [x] Integrate with hook_receiver.py process_stop event
-- [x] Trigger notification on task_complete
+- [x] Trigger notification on command_complete
 - [x] Trigger notification on awaiting_input state
 - [x] Pass agent context (name, project) to notification
 
@@ -85,7 +85,7 @@
 - [ ] All tests passing
 - [ ] Notifications appear within 500ms
 - [ ] No console errors
-- [ ] Manual test: task_complete notification
+- [ ] Manual test: command_complete notification
 - [ ] Manual test: awaiting_input notification
 - [ ] Manual test: click-to-navigate works
 - [ ] Manual test: rate limiting works

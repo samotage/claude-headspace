@@ -1,4 +1,4 @@
-# Tasks: e1-s3-domain-models
+# Commands: e1-s3-domain-models
 
 ## 1. Planning (Phase 1)
 
@@ -9,7 +9,7 @@
 ## 2. Implementation (Phase 2)
 
 ### 2.1 Enum Definitions
-- [x] 2.1.1 Create TaskState enum (idle, commanded, processing, awaiting_input, complete)
+- [x] 2.1.1 Create CommandState enum (idle, commanded, processing, awaiting_input, complete)
 - [x] 2.1.2 Create TurnActor enum (user, agent)
 - [x] 2.1.3 Create TurnIntent enum (command, answer, question, completion, progress)
 
@@ -19,7 +19,7 @@
 - [x] 2.2.3 Create `models/objective.py` - Objective and ObjectiveHistory models
 - [x] 2.2.4 Create `models/project.py` - Project model
 - [x] 2.2.5 Create `models/agent.py` - Agent model with state derived property
-- [x] 2.2.6 Create `models/task.py` - Task model with TaskState enum
+- [x] 2.2.6 Create `models/command.py` - Command model with CommandState enum
 - [x] 2.2.7 Create `models/turn.py` - Turn model with TurnActor, TurnIntent enums
 - [x] 2.2.8 Create `models/event.py` - Event model with nullable FKs
 
@@ -35,13 +35,13 @@
 - [x] 2.4.2 Add index on agents.session_uuid
 - [x] 2.4.3 Add index on tasks.agent_id
 - [x] 2.4.4 Add index on tasks.state
-- [x] 2.4.5 Add index on turns.task_id
+- [x] 2.4.5 Add index on turns.command_id
 - [x] 2.4.6 Add index on events.timestamp
 - [x] 2.4.7 Add index on events.event_type
 - [x] 2.4.8 Add indexes on events.project_id, events.agent_id
 
 ### 2.5 Query Methods
-- [x] 2.5.1 Implement Agent.get_current_task() - most recent incomplete task
+- [x] 2.5.1 Implement Agent.get_current_command() - most recent incomplete command
 - [x] 2.5.2 Implement Agent.state derived property
 - [x] 2.5.3 Implement Task.get_recent_turns() - ordered by timestamp
 
@@ -64,7 +64,7 @@
 - [ ] 3.2.3 Test SET NULL on Event FK deletes
 
 ### 3.3 Query Pattern Tests
-- [ ] 3.3.1 Test Agent.get_current_task() returns correct task
+- [ ] 3.3.1 Test Agent.get_current_command() returns correct task
 - [ ] 3.3.2 Test Agent.state derived property
 - [ ] 3.3.3 Test Task.get_recent_turns() ordering
 - [ ] 3.3.4 Test Event filtering by project/agent/event_type

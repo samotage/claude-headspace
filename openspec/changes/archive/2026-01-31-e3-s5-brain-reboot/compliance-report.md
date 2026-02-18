@@ -31,7 +31,7 @@ Implementation fully satisfies all 28 functional requirements, 5 non-functional 
 
 - **PRD Requirements:** 28/28 covered (FR1-FR28)
 - **Non-Functional Requirements:** 5/5 covered (NFR1-NFR5)
-- **Tasks Completed:** 34/34 complete
+- **Commands Completed:** 34/34 complete
 - **Design Compliance:** Yes — follows established service, route, modal, and clipboard patterns
 
 ## Issues Found

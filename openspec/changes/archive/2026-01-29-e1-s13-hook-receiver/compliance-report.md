@@ -14,7 +14,7 @@ Implementation fully satisfies all core requirements. UI tasks (FR19-FR21) are d
 | POST /hook/session-start creates/activates agent | ✓ | Implemented in routes/hooks.py |
 | POST /hook/user-prompt-submit transitions to processing | ✓ | State transition via hook_receiver.py |
 | POST /hook/stop transitions to idle | ✓ | Completes task, returns to idle |
-| POST /hook/session-end marks agent inactive | ✓ | Marks task complete |
+| POST /hook/session-end marks agent inactive | ✓ | Marks command complete |
 | GET /hook/status returns status | ✓ | Returns enabled, mode, timestamps |
 | Session correlation by session ID | ✓ | Cache lookup in session_correlator.py |
 | Session correlation by working directory | ✓ | Project path matching |
@@ -31,7 +31,7 @@ Implementation fully satisfies all core requirements. UI tasks (FR19-FR21) are d
 ## Requirements Coverage
 
 - **PRD Requirements:** 20/23 covered (3 UI requirements deferred per Sprint 8 dependency)
-- **Tasks Completed:** 49/55 complete (6 UI tasks deferred)
+- **Commands Completed:** 49/55 complete (6 UI tasks deferred)
 - **Design Compliance:** Yes - follows existing Flask blueprint patterns
 
 ## Issues Found

@@ -9,9 +9,9 @@
 
 ## Implementation Approach
 - Create `tests/integration/` as a self-contained test package with its own `conftest.py` managing the full database lifecycle
-- Factories defined in a single `factories.py` module — 7 factories matching the 7 models (Project, Agent, Task, Turn, Event, Objective, ObjectiveHistory)
+- Factories defined in a single `factories.py` module — 7 factories matching the 7 models (Project, Agent, Command, Turn, Event, Objective, ObjectiveHistory)
 - Factories use `SubFactory` for parent relationships to auto-create dependency chains
-- Proof-of-concept tests cover: factory validation (all 7 produce persistable instances), end-to-end persistence flow (Project → Agent → Task → Turn → Event), and constraint verification
+- Proof-of-concept tests cover: factory validation (all 7 produce persistable instances), end-to-end persistence flow (Project → Agent → Command → Turn → Event), and constraint verification
 - Database URL configurable via `TEST_DATABASE_URL` env var, with fallback to config.yaml values + `_test` suffix on database name
 
 ## Files to Modify
@@ -31,25 +31,25 @@
 - Test database created automatically at session start, destroyed at session end
 - Each test starts with clean database state (no data leaks)
 - Factory Boy factories for all 7 models produce valid, persistable instances
-- At least one test verifies full entity chain: Project → Agent → Task → Turn → Event
+- At least one test verifies full entity chain: Project → Agent → Command → Turn → Event
 - Integration tests coexist with existing unit tests (`pytest` runs everything)
 - Pattern documentation enables writing new integration tests by example
 
 ## Constraints and Gotchas
 - **Postgres required** — tests will skip/fail without a running Postgres instance; SQLite not acceptable
 - **Database user needs CREATE DATABASE privilege** — the test fixture creates/drops databases
-- **Enum types are PostgreSQL-specific** — TaskState, TurnActor, TurnIntent use `create_constraint=True` with PG enum types
+- **Enum types are PostgreSQL-specific** — CommandState, TurnActor, TurnIntent use `create_constraint=True` with PG enum types
 - **Event model uses JSONB** — PostgreSQL-specific column type for `payload` field
 - **Timezone-aware datetimes** — all DateTime columns use `timezone=True`, factories must generate timezone-aware timestamps
 - **Unique constraints** — Project.path (unique), Agent.session_uuid (unique index) must be unique per factory instance
-- **Cascade deletes** — Agent → Task → Turn cascades; Objective → ObjectiveHistory cascades; Event FKs use SET NULL
+- **Cascade deletes** — Agent → Command → Turn cascades; Objective → ObjectiveHistory cascades; Event FKs use SET NULL
 - **Flask-SQLAlchemy context** — `db.session` requires Flask app context; integration test fixtures need to handle app context properly
 - **Existing test isolation** — integration tests must not interfere with mock-based unit tests (separate conftest.py, separate database)
 
 ## Git Change History
 
 ### Related Files
-- Models: `src/claude_headspace/models/project.py`, `agent.py`, `task.py`, `turn.py`, `event.py`, `objective.py`
+- Models: `src/claude_headspace/models/project.py`, `agent.py`, `command.py`, `turn.py`, `event.py`, `objective.py`
 - Database: `src/claude_headspace/database.py` (SQLAlchemy init, engine config, health checks)
 - Config: `src/claude_headspace/config.py` (database env var mappings, config loading)
 - Migrations: `migrations/versions/` (4 migration files defining schema evolution)
@@ -77,7 +77,7 @@
 
 ## Testing Strategy
 - **Factory validation tests** — each of 7 factories creates an instance, persists it, retrieves it, asserts field values
-- **End-to-end persistence test** — full chain: Project → Agent → Task → Turn → Event creation, persistence, retrieval, assertion
+- **End-to-end persistence test** — full chain: Project → Agent → Command → Turn → Event creation, persistence, retrieval, assertion
 - **Constraint tests** — unique constraints, NOT NULL enforcement, enum validation, cascade delete behavior
 - **Isolation tests** — verify no data leaks between test functions
 - **Coexistence test** — run full `pytest` suite to verify no interference with existing unit tests

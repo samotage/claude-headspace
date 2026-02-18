@@ -3,20 +3,20 @@
 ## Purpose
 TBD - created by archiving change e2-s4-macos-notifications. Update Purpose after archive.
 ## Requirements
-### Requirement: Task Complete Notification
+### Requirement: Command Complete Notification
 
 The system SHALL send a macOS notification when an agent's task transitions to the complete state.
 
-#### Scenario: Task completes with notifications enabled
+#### Scenario: Command completes with notifications enabled
 
 When an agent completes a task
 And notifications are globally enabled
-And task_complete notifications are enabled
+And command_complete notifications are enabled
 Then a macOS notification appears within 500ms
 And the notification includes the agent name
 And the notification includes the project context
 
-#### Scenario: Task completes with notifications disabled
+#### Scenario: Command completes with notifications disabled
 
 When an agent completes a task
 And notifications are globally disabled
@@ -85,7 +85,7 @@ Then no notifications are sent for any event type
 
 #### Scenario: Per-event toggle disabled
 
-When the user disables task_complete notifications
+When the user disables command_complete notifications
 And awaiting_input notifications are enabled
 Then only awaiting_input notifications are sent
 

@@ -48,7 +48,7 @@ The system SHALL persist Agents with id, session_uuid (UUID), project_id FK, ite
 
 #### Scenario: Agent State Derivation
 - **WHEN** Agent.state is accessed
-- **THEN** it returns the current task's state, or IDLE if no active task
+- **THEN** it returns the current command's state, or IDLE if no active command
 
 #### Scenario: Agent with tmux session name
 
@@ -64,46 +64,46 @@ The system SHALL persist Agents with id, session_uuid (UUID), project_id FK, ite
 
 ---
 
-### Requirement: Task Model
+### Requirement: Command Model
 
-The Task model SHALL include fields for instruction tracking and renamed completion summary.
+The Command model SHALL include fields for instruction tracking and renamed completion summary.
 
-#### Scenario: Task instruction field
+#### Scenario: Command instruction field
 
 - **WHEN** the migration is applied
 - **THEN** the tasks table SHALL have a nullable `instruction` text field
 - **AND** a nullable `instruction_generated_at` timestamp field
 
-#### Scenario: Task completion summary field rename
+#### Scenario: Command completion summary field rename
 
 - **WHEN** the migration is applied
 - **THEN** the tasks table `summary` column SHALL be renamed to `completion_summary`
 - **AND** the `summary_generated_at` column SHALL be renamed to `completion_summary_generated_at`
 - **AND** existing data SHALL be preserved during the rename
 
-#### Scenario: Backward compatibility with existing tasks
+#### Scenario: Backward compatibility with existing commands
 
 - **WHEN** a task exists from before this change with NULL `completion_summary` and NULL `instruction`
 - **THEN** the task SHALL display without errors in the dashboard
 - **AND** the agent card SHALL show appropriate fallback text
 
-### Requirement: TaskState Enum
+### Requirement: CommandState Enum
 
-The TaskState enum SHALL contain exactly 5 values: idle, commanded, processing, awaiting_input, complete.
+The CommandState enum SHALL contain exactly 5 values: idle, commanded, processing, awaiting_input, complete.
 
 #### Scenario: Enum Values
-- **WHEN** TaskState enum is queried for values
+- **WHEN** CommandState enum is queried for values
 - **THEN** exactly 5 values are returned matching the specification
 
 ---
 
 ### Requirement: Turn Model
 
-The system SHALL persist Turns with id, task_id FK, actor (2-value enum), intent (6-value enum), text, timestamp, timestamp_source (String(20), nullable, default="server"), and jsonl_entry_hash (String(64), nullable, indexed).
+The system SHALL persist Turns with id, command_id FK, actor (2-value enum), intent (6-value enum), text, timestamp, timestamp_source (String(20), nullable, default="server"), and jsonl_entry_hash (String(64), nullable, indexed).
 
 #### Scenario: Create Turn
-- **WHEN** a Turn is created with task_id, actor="user", intent="command", text
-- **THEN** the turn is persisted with FK relationship to Task
+- **WHEN** a Turn is created with command_id, actor="user", intent="command", text
+- **THEN** the turn is persisted with FK relationship to Command
 - **AND** `timestamp_source` defaults to "server"
 - **AND** `jsonl_entry_hash` defaults to NULL
 
@@ -138,17 +138,17 @@ The TurnActor enum SHALL contain exactly 2 values: user, agent.
 
 ### Requirement: TurnIntent Enum
 
-The TurnIntent enum SHALL contain exactly 6 values: command, answer, question, completion, progress, end_of_task.
+The TurnIntent enum SHALL contain exactly 6 values: command, answer, question, completion, progress, end_of_command.
 
 #### Scenario: TurnIntent Enum Values
 - **WHEN** TurnIntent enum is queried for values
-- **THEN** exactly 6 values are returned: command, answer, question, completion, progress, end_of_task
+- **THEN** exactly 6 values are returned: command, answer, question, completion, progress, end_of_command
 
 ---
 
 ### Requirement: Event Model
 
-The system SHALL persist Events with id, timestamp, project_id (nullable FK), agent_id (nullable FK), task_id (nullable FK), turn_id (nullable FK), event_type (string), and payload (JSON).
+The system SHALL persist Events with id, timestamp, project_id (nullable FK), agent_id (nullable FK), command_id (nullable FK), turn_id (nullable FK), event_type (string), and payload (JSON).
 
 #### Scenario: Event with Partial FKs
 - **WHEN** an Event is created with only project_id set
@@ -164,8 +164,8 @@ The system SHALL persist Events with id, timestamp, project_id (nullable FK), ag
 
 The system SHALL enforce:
 - Project has many Agents (one-to-many)
-- Agent has many Tasks (one-to-many)
-- Task has many Turns (one-to-many)
+- Agent has many Commands (one-to-many)
+- Command has many Turns (one-to-many)
 - Objective has many ObjectiveHistory records (one-to-many)
 
 #### Scenario: FK Constraint Violation
@@ -176,11 +176,11 @@ The system SHALL enforce:
 
 ### Requirement: Cascade Delete Behavior
 
-The system SHALL cascade deletes: Project→Agents→Tasks→Turns.
+The system SHALL cascade deletes: Project→Agents→Commands→Turns.
 
 #### Scenario: Project Delete Cascade
 - **WHEN** a Project is deleted
-- **THEN** all associated Agents, Tasks, and Turns are deleted
+- **THEN** all associated Agents, Commands, and Turns are deleted
 
 ---
 
@@ -189,7 +189,7 @@ The system SHALL cascade deletes: Project→Agents→Tasks→Turns.
 The system SHALL create indexes for:
 - agents.project_id, agents.session_uuid
 - tasks.agent_id, tasks.state
-- turns.task_id, turns.timestamp (individual), turns.(task_id, timestamp) (composite), turns.(task_id, actor) (composite), turns.jsonl_entry_hash
+- turns.command_id, turns.timestamp (individual), turns.(command_id, timestamp) (composite), turns.(command_id, actor) (composite), turns.jsonl_entry_hash
 - events.timestamp, events.event_type, events.project_id, events.agent_id
 
 #### Scenario: Query Performance
@@ -201,15 +201,15 @@ The system SHALL create indexes for:
 ### Requirement: Query Patterns
 
 The system SHALL support these query patterns:
-1. Get current (most recent incomplete) task for an agent
-2. Get recent turns for a task ordered by timestamp
+1. Get current (most recent incomplete) command for an agent
+2. Get recent turns for a command ordered by timestamp
 3. Get events filtered by project/agent/event_type
 
-#### Scenario: Get Current Task
-- **WHEN** Agent.get_current_task() is called
-- **THEN** the most recent task with state != 'complete' is returned
+#### Scenario: Get Current Command
+- **WHEN** Agent.get_current_command() is called
+- **THEN** the most recent command with state != 'complete' is returned
 
-#### Scenario: No Current Task
-- **WHEN** Agent.get_current_task() is called on agent with no tasks
+#### Scenario: No Current Command
+- **WHEN** Agent.get_current_command() is called on agent with no commands
 - **THEN** None is returned
 

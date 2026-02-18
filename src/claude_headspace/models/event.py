@@ -14,7 +14,7 @@ class Event(db.Model):
     """
     Represents an audit trail event.
 
-    Events can reference any combination of project, agent, task, and turn.
+    Events can reference any combination of project, agent, command, and turn.
     All foreign keys are nullable and use SET NULL on delete to preserve
     the audit trail even when referenced entities are deleted.
     """
@@ -34,8 +34,8 @@ class Event(db.Model):
     agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    task_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    command_id: Mapped[int | None] = mapped_column(
+        ForeignKey("commands.id", ondelete="SET NULL"), nullable=True, index=True
     )
     turn_id: Mapped[int | None] = mapped_column(
         ForeignKey("turns.id", ondelete="SET NULL"), nullable=True, index=True

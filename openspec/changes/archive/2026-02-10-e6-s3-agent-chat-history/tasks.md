@@ -17,7 +17,7 @@
 
 - [x] 2.5 Modify transcript endpoint in `voice_bridge.py` to query turns across ALL tasks for an agent (join through Task to get all turns for agent_id), ordered chronologically
 - [x] 2.6 Add cursor-based pagination to transcript endpoint — accept `before` (turn ID cursor) and `limit` (default 50) query params, return `has_more` flag
-- [x] 2.7 Include `task_id`, `task_instruction`, and `task_state` in each turn response for client-side task boundary rendering
+- [x] 2.7 Include `command_id`, `command_instruction`, and `task_state` in each turn response for client-side command boundary rendering
 - [x] 2.8 Support ended agents in transcript endpoint — return full history regardless of agent.ended_at status
 
 ### Frontend: Chat UI Enhancements (voice-app.js)
@@ -27,7 +27,7 @@
 - [x] 2.11 Add loading indicator at top during page fetch and "All history loaded" indicator when `has_more` is false
 - [x] 2.12 Implement smart message grouping — group consecutive agent turns within 2 seconds into single bubbles with line breaks; break groups on intent change or user turns
 - [x] 2.13 Implement iMessage-style timestamps — show on first message and after 5+ minute gaps; format: time-only today, "Yesterday HH:MM", day-of-week this week, date for older
-- [x] 2.14 Add task boundary separators — detect task_id changes between consecutive turns, render centered separator with task instruction text
+- [x] 2.14 Add command boundary separators — detect command_id changes between consecutive turns, render centered separator with command instruction text
 - [x] 2.15 Add ended agent support — detect ended agent state, hide input bar, show "Agent ended" banner, disable typing indicator
 
 ### Frontend: Chat Links (voice-api.js, project_show.js, activity.js)
@@ -38,7 +38,7 @@
 
 ### Frontend: Styles (voice.css)
 
-- [x] 2.19 Add CSS for task boundary separators (centered text with horizontal rules, subtle/unobtrusive)
+- [x] 2.19 Add CSS for command boundary separators (centered text with horizontal rules, subtle/unobtrusive)
 - [x] 2.20 Add CSS for scroll-up loading indicator
 - [x] 2.21 Add CSS for ended agent banner and disabled input bar state
 - [x] 2.22 Add CSS for smart-grouped bubble variant (multiple texts with line break separators)

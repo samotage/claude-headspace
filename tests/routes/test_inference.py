@@ -2,7 +2,7 @@
 
 Expands test coverage for all inference-related routes including:
 - Inference status/usage endpoints
-- Summarisation endpoints (turn + task)
+- Summarisation endpoints (turn + command)
 - Priority scoring + rankings endpoints
 - Error recovery, input validation, rate limiting behavior
 """
@@ -298,60 +298,60 @@ class TestSummariseTurn:
         assert response.status_code == 500
 
 
-class TestSummariseTask:
+class TestSummariseCommand:
 
     def test_success_generates_summary(self, app, client, mock_summarisation, mock_inference):
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.completion_summary_generated_at = None
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.completion_summary_generated_at = None
 
-        def set_summary(task, db_session=None):
-            task.completion_summary = "Task done summary"
-            task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
-            return "Task done summary"
+        def set_summary(cmd, db_session=None):
+            cmd.completion_summary = "Command done summary"
+            cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+            return "Command done summary"
 
-        mock_summarisation.summarise_task.side_effect = set_summary
+        mock_summarisation.summarise_command.side_effect = set_summary
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["summary"] == "Task done summary"
+        assert data["summary"] == "Command done summary"
         assert data["cached"] is False
 
     def test_returns_cached_summary(self, app, client, mock_summarisation):
         app.extensions["summarisation_service"] = mock_summarisation
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = "Already summarised"
-        mock_task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = "Already summarised"
+        mock_cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 200
         data = response.get_json()
         assert data["cached"] is True
-        mock_summarisation.summarise_task.assert_not_called()
+        mock_summarisation.summarise_command.assert_not_called()
 
-    def test_task_not_found_returns_404(self, app, client, mock_summarisation):
+    def test_command_not_found_returns_404(self, app, client, mock_summarisation):
         app.extensions["summarisation_service"] = mock_summarisation
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = None
-            response = client.post("/api/summarise/task/999")
+            response = client.post("/api/summarise/command/999")
 
         assert response.status_code == 404
 
     def test_no_service_returns_503(self, app, client):
         app.extensions.pop("summarisation_service", None)
-        response = client.post("/api/summarise/task/1")
+        response = client.post("/api/summarise/command/1")
         assert response.status_code == 503
 
     def test_inference_unavailable_returns_503(self, app, client, mock_summarisation):
@@ -360,12 +360,12 @@ class TestSummariseTask:
         mock_inf.is_available = False
         app.extensions["inference_service"] = mock_inf
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 503
 
@@ -373,13 +373,13 @@ class TestSummariseTask:
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_summarisation.summarise_task.return_value = None
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_summarisation.summarise_command.return_value = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 500
 

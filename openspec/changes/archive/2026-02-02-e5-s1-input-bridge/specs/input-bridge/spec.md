@@ -52,7 +52,7 @@ The system SHALL provide an API endpoint for submitting text responses to Claude
 - **AND** the agent has a reachable commander socket
 - **THEN** the text is sent to the commander socket
 - **AND** a Turn record is created with actor=USER, intent=ANSWER, text="1"
-- **AND** the task state transitions from AWAITING_INPUT to PROCESSING
+- **AND** the command state transitions from AWAITING_INPUT to PROCESSING
 - **AND** a state_changed SSE event is broadcast
 - **AND** the response returns HTTP 200 with `{"status": "ok"}`
 

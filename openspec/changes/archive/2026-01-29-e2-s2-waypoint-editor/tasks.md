@@ -1,4 +1,4 @@
-# Tasks: e2-s2-waypoint-editor
+# Commands: e2-s2-waypoint-editor
 
 ## Phase 1: Setup
 

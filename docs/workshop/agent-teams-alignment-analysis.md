@@ -11,7 +11,7 @@ Sam, here's what I found. I'm going to walk through each major concept from your
 ### CLEAN ALIGNMENTS (These Just Work)
 
 **1. State Machine — Unchanged** ✅
-The functional outline (§9.2) says the existing Task state machine is unaffected. Confirmed. The state machine is a pure stateless validator: `IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE`. Personas layer above this. No modifications needed for v1.
+The functional outline (§9.2) says the existing Command state machine is unaffected. Confirmed. The state machine is a pure stateless validator: `IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE`. Personas layer above this. No modifications needed for v1.
 
 **2. Task & Turn Models — Unchanged** ✅
 Task (5-state lifecycle with instruction, completion_summary, plan support) and Turn (actor, intent, text, summary, frustration_score) are exactly as described. The persona system sits above these — they're about execution mechanics, not identity.
@@ -128,7 +128,7 @@ Not v1, but the design of how personas map to sessions needs to not preclude thi
 
 ### THE BOTTOM LINE
 
-**What's surprisingly well-aligned:** The core domain model (Agent → Task → Turn), state machine, SSE pipeline, card state computation, priority scoring, and context monitoring are all solid foundations. The persona system genuinely layers on top without breaking existing abstractions.
+**What's surprisingly well-aligned:** The core domain model (Agent → Command → Turn), state machine, SSE pipeline, card state computation, priority scoring, and context monitoring are all solid foundations. The persona system genuinely layers on top without breaking existing abstractions.
 
 **What's the biggest new work:** Persona model + availability tracking, skill file infrastructure, and pool selection logic. These are genuinely new subsystems.
 
@@ -142,6 +142,6 @@ That last agent was the config/services one — its findings were already incorp
 
 Over to you, Sam — where do you want to dig in first?
 
-Yes — I pulled its full output via TaskOutput while we were waiting, and all of its findings are baked into the alignment analysis I gave you. The config loader's `deep_merge()`, the SessionCorrelator's 6-strategy cascade, the state machine's transition map, TaskLifecycleManager's `process_turn()` flow, the reaper's liveness checks, card_state's `build_card_state()` — all mapped against your concept docs.
+Yes — I pulled its full output via TaskOutput while we were waiting, and all of its findings are baked into the alignment analysis I gave you. The config loader's `deep_merge()`, the SessionCorrelator's 6-strategy cascade, the state machine's transition map, CommandLifecycleManager's `process_turn()` flow, the reaper's liveness checks, card_state's `build_card_state()` — all mapped against your concept docs.
 
 The 20 alignment points I walked through cover everything those four agents surfaced.

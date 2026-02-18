@@ -35,7 +35,7 @@ Developers working on Claude Headspace — primarily AI-assisted development wor
 
 ### 1.3 Success Moment
 
-A developer runs `pytest tests/integration/` and gets real confidence that the persistence layer works. A test creates a Project, attaches an Agent, creates a Task with Turns, writes an Event, retrieves them all back, and every assertion passes against actual Postgres data.
+A developer runs `pytest tests/integration/` and gets real confidence that the persistence layer works. A test creates a Project, attaches an Agent, creates a Command with Turns, writes an Event, retrieves them all back, and every assertion passes against actual Postgres data.
 
 ---
 
@@ -46,9 +46,9 @@ A developer runs `pytest tests/integration/` and gets real confidence that the p
 - Automatic creation and teardown of a dedicated Postgres test database per test session
 - Schema creation in the test database using existing Alembic migrations or model metadata
 - Shared pytest fixtures for database session management with per-test cleanup
-- Factory Boy factory definitions for all 6 existing domain models (Project, Agent, Task, Turn, Event, Objective) and ObjectiveHistory
+- Factory Boy factory definitions for all 6 existing domain models (Project, Agent, Command, Turn, Event, Objective) and ObjectiveHistory
 - A `tests/integration/` directory for tests that verify real database operations
-- Proof-of-concept integration tests covering the core persistence flow (Project → Agent → Task → Turn → Event)
+- Proof-of-concept integration tests covering the core persistence flow (Project → Agent → Command → Turn → Event)
 - Addition of required dev dependencies (factory-boy and any test database utilities)
 - A brief pattern document so future tests follow the same approach
 
@@ -72,7 +72,7 @@ A developer runs `pytest tests/integration/` and gets real confidence that the p
 3. Database schema matches production schema (all tables, indexes, constraints, enums present)
 4. Each test starts with a clean database state — no data leaks between tests
 5. Factory Boy factories exist for all 6 domain models plus ObjectiveHistory, and each factory produces a valid, persistable model instance
-6. At least one end-to-end persistence test creates a full entity chain (Project → Agent → Task → Turn → Event), persists it, retrieves it, and asserts data integrity
+6. At least one end-to-end persistence test creates a full entity chain (Project → Agent → Command → Turn → Event), persists it, retrieves it, and asserts data integrity
 7. Integration tests can run alongside existing mock-based tests without interference (`pytest` runs everything, `pytest tests/integration/` runs only integration tests)
 
 ### 3.2 Non-Functional Success Criteria
@@ -93,15 +93,15 @@ A developer runs `pytest tests/integration/` and gets real confidence that the p
 
 **FR4:** A shared pytest fixture must provide a database session scoped appropriately for test isolation, ensuring each test operates on a clean database state.
 
-**FR5:** Factory Boy factories must be defined for each of the 6 domain models: Project, Agent, Task, Turn, Event, and Objective — plus ObjectiveHistory. Each factory must be bound to the test database session and must use `SQLAlchemyModelFactory`.
+**FR5:** Factory Boy factories must be defined for each of the 6 domain models: Project, Agent, Command, Turn, Event, and Objective — plus ObjectiveHistory. Each factory must be bound to the test database session and must use `SQLAlchemyModelFactory`.
 
 **FR6:** Each factory must produce a fully valid model instance that can be persisted to the database without constraint violations (correct foreign keys, valid enum values, non-null required fields, valid UUIDs).
 
-**FR7:** Factory definitions must respect model relationships — e.g., an Agent factory must create or reference a valid Project, a Task factory must create or reference a valid Agent, a Turn factory must create or reference a valid Task.
+**FR7:** Factory definitions must respect model relationships — e.g., an Agent factory must create or reference a valid Project, a Command factory must create or reference a valid Agent, a Turn factory must create or reference a valid Command.
 
 **FR8:** Integration tests must be located in `tests/integration/` and must be independently runnable via `pytest tests/integration/`.
 
-**FR9:** A proof-of-concept integration test must verify the complete persistence flow: create a Project, attach an Agent, create a Task for that Agent, add Turns to the Task, write an Event referencing the chain, then retrieve all entities and assert data equality.
+**FR9:** A proof-of-concept integration test must verify the complete persistence flow: create a Project, attach an Agent, create a Command for that Agent, add Turns to the Command, write an Event referencing the chain, then retrieve all entities and assert data equality.
 
 **FR10:** Integration tests must not mock SQLAlchemy sessions, queries, engines, or repository methods. All database operations must execute against the real test database.
 

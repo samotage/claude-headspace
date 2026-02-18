@@ -84,7 +84,7 @@ This is a new subsystem (events/hooks) - no existing files to reference.
 ## Dependencies
 - **No new pip packages required** - uses stdlib and existing Flask
 - **Sprint 5 (Event System):** Event writer, event schemas - **Complete**
-- **Sprint 6 (State Machine):** Task state transitions - **Available**
+- **Sprint 6 (State Machine):** Command state transitions - **Available**
 - **Sprint 8 (Dashboard UI):** Agent cards, Logging tab - **Available**
 - **macOS with bash shell** - Required for hook scripts
 

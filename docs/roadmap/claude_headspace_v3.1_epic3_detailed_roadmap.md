@@ -17,7 +17,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 **Epic 3 Value Proposition:**
 
 - **Turn Summarisation** — Real-time AI summaries of each turn for dashboard display
-- **Task Summarisation** — AI-generated summaries when tasks complete
+- **Command Summarisation** — AI-generated summaries when commands complete
 - **Priority Scoring** — Cross-project AI ranking aligned to current objective
 - **Progress Summary** — LLM-generated narrative from git commit history
 - **Brain Reboot** — Combined waypoint + progress_summary for rapid mental context restoration
@@ -30,7 +30,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 - Project progress_summary generated from git commits
 - Brain reboot combines progress_summary + waypoint for context restoration
 
-**Architectural Foundation:** Builds on Epic 1's Flask application, database, SSE system, Task/Turn models, and dashboard UI. Epic 3 adds the intelligence layer via OpenRouter API integration.
+**Architectural Foundation:** Builds on Epic 1's Flask application, database, SSE system, Command/Turn models, and dashboard UI. Epic 3 adds the intelligence layer via OpenRouter API integration.
 
 **Dependency:** Epic 1 must be complete before Epic 3 begins.
 
@@ -41,7 +41,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 | Story ID | Story Name                                       | Subsystem                 | PRD Directory | Sprint | Priority |
 | -------- | ------------------------------------------------ | ------------------------- | ------------- | ------ | -------- |
 | E3-S1    | OpenRouter API integration and inference service | `openrouter-integration`  | inference/    | 1      | P1       |
-| E3-S2    | Turn and task summarisation                      | `turn-task-summarisation` | inference/    | 2      | P1       |
+| E3-S2    | Turn and command summarisation                      | `turn-command-summarisation` | inference/    | 2      | P1       |
 | E3-S3    | Cross-project priority scoring                   | `priority-scoring`        | inference/    | 3      | P1       |
 | E3-S4    | Git analyzer and progress summary generation     | `git-analyzer`            | inference/    | 4      | P1       |
 | E3-S5    | Brain reboot generation                          | `brain-reboot`            | inference/    | 5      | P1       |
@@ -99,7 +99,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 **Acceptance Criteria:**
 
 - Inference service can call OpenRouter API successfully
-- Model selection works by level (turn/task → Haiku, project/objective → Sonnet)
+- Model selection works by level (turn/command → Haiku, project/objective → Sonnet)
 - InferenceCall records logged to Postgres with all metadata
 - Rate limiting enforced (configurable calls/tokens per minute)
 - API errors handled gracefully (retry with backoff, fallback behavior)
@@ -108,9 +108,9 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 
 ---
 
-### Sprint 2: Turn & Task Summarisation (E3-S2)
+### Sprint 2: Turn & Command Summarisation (E3-S2)
 
-**Goal:** Real-time turn summarisation and task completion summaries for dashboard display.
+**Goal:** Real-time turn summarisation and command completion summaries for dashboard display.
 
 **Duration:** 1-2 weeks  
 **Dependencies:** E3-S1 complete (inference service available)
@@ -118,26 +118,26 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 **Deliverables:**
 
 - Turn summarisation service (Haiku, triggered on turn arrival)
-- Task summarisation service (Haiku, triggered on task completion)
+- Command summarisation service (Haiku, triggered on command completion)
 - Summary caching by content hash (avoid re-summarising identical content)
 - Dashboard integration (display summaries on agent cards)
 - Turn summary displayed inline on agent card
-- Task summary displayed on task completion
-- Prompt templates for turn and task summarisation
+- Command summary displayed on command completion
+- Prompt templates for turn and command summarisation
 - Async processing (don't block SSE updates on inference)
-- Summary field additions to Turn and Task models
+- Summary field additions to Turn and Command models
 - Database migration for summary fields
-- API endpoints: POST `/api/summarise/turn/<id>`, POST `/api/summarise/task/<id>`
+- API endpoints: POST `/api/summarise/turn/<id>`, POST `/api/summarise/command/<id>`
 
 **Subsystem Requiring PRD:**
 
-2. `turn-task-summarisation` — Turn/task summarisers, caching, dashboard integration
+2. `turn-command-summarisation` — Turn/command summarisers, caching, dashboard integration
 
-**PRD Location:** `docs/prds/inference/e3-s2-turn-task-summarisation-prd.md`
+**PRD Location:** `docs/prds/inference/e3-s2-turn-command-summarisation-prd.md`
 
 **Stories:**
 
-- E3-S2: Turn and task summarisation
+- E3-S2: Turn and command summarisation
 
 **Technical Decisions Required:**
 
@@ -145,7 +145,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 3 imple
 - Cache storage: in-memory vs database — **recommend database for persistence**
 - Cache key: content hash (SHA256 of turn.text)
 - Summary length: concise (1-2 sentences) — **decided**
-- Async implementation: background thread vs task queue — **recommend background thread for simplicity**
+- Async implementation: background thread vs command queue — **recommend background thread for simplicity**
 
 **Prompt Templates:**
 
@@ -156,10 +156,10 @@ Turn: {turn.text}
 Actor: {turn.actor}
 Intent: {turn.intent}
 
-Task Summary Prompt:
+Command Summary Prompt:
 Summarise the outcome of this completed task in 2-3 sentences:
-Task started: {task.started_at}
-Task completed: {task.completed_at}
+Command started: {command.started_at}
+Command completed: {command.completed_at}
 Turns: {turn_count}
 Final outcome: {final_turn.text}
 ```
@@ -174,10 +174,10 @@ Final outcome: {final_turn.text}
 **Acceptance Criteria:**
 
 - Turn arrives → summary generated within 2 seconds → displayed on dashboard
-- Task completes → summary generated → displayed on agent card
+- Command completes → summary generated → displayed on agent card
 - Identical turns return cached summary (no duplicate API calls)
 - Dashboard shows turn summaries inline
-- Task summaries visible in task history
+- Command summaries visible in command history
 - Async processing doesn't block SSE updates
 - Summary fields persisted to database
 
@@ -188,7 +188,7 @@ Final outcome: {final_turn.text}
 **Goal:** AI-driven cross-project priority scoring aligned to current objective.
 
 **Duration:** 1-2 weeks  
-**Dependencies:** E3-S2 complete (task summaries provide context)
+**Dependencies:** E3-S2 complete (command summaries provide context)
 
 **Deliverables:**
 
@@ -198,7 +198,7 @@ Final outcome: {final_turn.text}
 - Score factors: objective relevance, agent state, task duration, project context
 - Priority score (0-100) and reason stored on Agent model
 - Dashboard integration (priority badges, recommended next panel)
-- Scoring triggers: task state change, objective change
+- Scoring triggers: command state change, objective change
 - Re-score on objective update (all agents)
 - Priority field additions to Agent model
 - Database migration for priority fields
@@ -247,7 +247,7 @@ Agents to score:
 - Agent: {agent.session_uuid}
   Project: {agent.project.name}
   State: {agent.state}
-  Current Task: {agent.current_task.summary or "None"}
+  Current Command: {agent.current_command.summary or "None"}
   Task Duration: {task_duration}
   Waypoint Next Up: {agent.project.waypoint.next_up}
 {endfor}
@@ -260,7 +260,7 @@ Return JSON: [{"agent_id": "...", "score": N, "reason": "..."}]
 
 - Batch scoring latency for many agents
 - Objective changes causing scoring storms
-- Score quality dependent on task summaries
+- Score quality dependent on command summaries
 - Users disagreeing with AI prioritisation
 
 **Acceptance Criteria:**
@@ -269,7 +269,7 @@ Return JSON: [{"agent_id": "...", "score": N, "reason": "..."}]
 - Recommended next panel shows highest priority agent
 - Priority badges displayed on agent cards
 - Objective change triggers re-scoring of all agents
-- Task state change triggers score update for that agent
+- Command state change triggers score update for that agent
 - Priority reasons visible on hover/expand
 - Scores persist across page reloads
 
@@ -487,7 +487,7 @@ The following 5 subsystems need detailed PRDs created via OpenSpec. Each PRD wil
 docs/prds/
 └── inference/                    # Intelligence layer components
     ├── e3-s1-openrouter-integration-prd.md
-    ├── e3-s2-turn-task-summarisation-prd.md
+    ├── e3-s2-turn-command-summarisation-prd.md
     ├── e3-s3-priority-scoring-prd.md
     ├── e3-s4-git-analyzer-prd.md
     └── e3-s5-brain-reboot-prd.md
@@ -540,7 +540,7 @@ class InferenceCall(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(default=func.now())
     level: Mapped[str]  # turn, task, project, objective
-    purpose: Mapped[str]  # turn_summary, task_summary, priority_score, etc.
+    purpose: Mapped[str]  # turn_summary, command_summary, priority_score, etc.
     model: Mapped[str]  # anthropic/claude-3-haiku, etc.
     input_tokens: Mapped[int]
     output_tokens: Mapped[int]
@@ -551,7 +551,7 @@ class InferenceCall(Base):
     # Optional foreign keys
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"))
     agent_id: Mapped[UUID | None] = mapped_column(ForeignKey("agents.id"))
-    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"))
+    command_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"))
     turn_id: Mapped[UUID | None] = mapped_column(ForeignKey("turns.id"))
 ```
 
@@ -568,17 +568,17 @@ class InferenceCall(Base):
 
 ---
 
-### 2. Turn/Task Summarisation
+### 2. Turn/Command Summarisation
 
-**Subsystem ID:** `turn-task-summarisation`  
+**Subsystem ID:** `turn-command-summarisation`  
 **Sprint:** E3-S2  
 **Priority:** P1  
-**PRD Location:** `docs/prds/inference/e3-s2-turn-task-summarisation-prd.md`
+**PRD Location:** `docs/prds/inference/e3-s2-turn-command-summarisation-prd.md`
 
 **Scope:**
 
 - Turn summarisation service (Haiku, real-time)
-- Task summarisation service (Haiku, on completion)
+- Command summarisation service (Haiku, on completion)
 - Summary caching by content hash
 - Dashboard integration
 - Async processing
@@ -593,14 +593,14 @@ class InferenceCall(Base):
 - Must not block SSE updates during inference
 - Must use Haiku model for speed/cost efficiency
 
-**OpenSpec Spec:** `openspec/specs/turn-task-summarisation/spec.md`
+**OpenSpec Spec:** `openspec/specs/turn-command-summarisation/spec.md`
 
 **Related Files:**
 
 - `src/services/turn_summariser.py` (new)
 - `src/services/task_summariser.py` (new)
 - `src/models/turn.py` (add summary field)
-- `src/models/task.py` (add summary field)
+- `src/models/command.py` (add summary field)
 - `templates/partials/_agent_card.html` (update)
 
 **Data Model Changes:**
@@ -611,7 +611,7 @@ class Turn(Base):
     ...
     summary: Mapped[str | None]  # Generated by turn summariser
 
-# Add to Task model
+# Add to Command model
 class Task(Base):
     ...
     summary: Mapped[str | None]  # Generated on completion
@@ -622,7 +622,7 @@ class Task(Base):
 **Acceptance Tests:**
 
 - Turn arrives → summary generated < 2 seconds
-- Task completes → summary generated
+- Command completes → summary generated
 - Cached summaries returned instantly
 - Dashboard shows turn summaries
 - SSE updates not blocked
@@ -650,7 +650,7 @@ class Task(Base):
 - Must provide priority reason for each score
 - Must batch score for efficiency
 - Must re-score on objective change
-- Must update score on task state change
+- Must update score on command state change
 - Must use Sonnet model for intelligence
 
 **OpenSpec Spec:** `openspec/specs/priority-scoring/spec.md`
@@ -673,7 +673,7 @@ class Agent(Base):
     priority_updated_at: Mapped[datetime | None]
 ```
 
-**Dependencies:** E3-S2 complete (task summaries for context)
+**Dependencies:** E3-S2 complete (command summaries for context)
 
 **Acceptance Tests:**
 
@@ -797,7 +797,7 @@ None (combines existing files)
        ▼
    E3-S1 (OpenRouter Integration)
        │
-       ├──▶ E3-S2 (Turn/Task Summarisation)
+       ├──▶ E3-S2 (Turn/Command Summarisation)
        │        │
        │        └──▶ E3-S3 (Priority Scoring)
        │
@@ -816,9 +816,9 @@ None (combines existing files)
 **Recommended Sequence:**
 
 1. E3-S1 (OpenRouter Integration) — foundational, blocks all other sprints
-2. E3-S2 (Turn/Task Summarisation) — core intelligence feature
+2. E3-S2 (Turn/Command Summarisation) — core intelligence feature
 3. E3-S4 (Git Analyzer) — can start in parallel with E3-S3
-4. E3-S3 (Priority Scoring) — needs task summaries from E3-S2
+4. E3-S3 (Priority Scoring) — needs command summaries from E3-S2
 5. E3-S5 (Brain Reboot) — final sprint, needs progress_summary from E3-S4
 
 **Total Duration:** 5-7 weeks
@@ -829,7 +829,7 @@ None (combines existing files)
 
 ### Decision 1: Model Selection by Level
 
-**Decision:** Use Haiku for turn/task summarisation, Sonnet for project/objective level.
+**Decision:** Use Haiku for turn/command summarisation, Sonnet for project/objective level.
 
 **Rationale:**
 
@@ -996,7 +996,7 @@ None (combines existing files)
 
 **Mitigation:**
 
-- Use Haiku for high-volume operations (turn/task)
+- Use Haiku for high-volume operations (turn/command)
 - Implement caching to avoid duplicate calls
 - Rate limiting to prevent runaway costs
 - Cost tracking and alerts
@@ -1094,13 +1094,13 @@ From Epic 3 Acceptance Criteria:
 
 ---
 
-### Test Case 2: Task Summarisation
+### Test Case 2: Command Summarisation
 
 **Setup:** Complete a task in Claude Code session.
 
 **Success:**
 
-- ✅ Task completes → summary generated
+- ✅ Command completes → summary generated
 - ✅ Summary displayed on agent card
 - ✅ Summary persisted to database
 - ✅ InferenceCall logged
@@ -1157,7 +1157,7 @@ From Epic 3 Acceptance Criteria:
 
 - ✅ Set objective → agents scored
 - ✅ Start Claude Code session → turns summarised
-- ✅ Complete task → task summarised, priority updated
+- ✅ Complete command → command summarised, priority updated
 - ✅ Generate progress summary → narrative from commits
 - ✅ View brain reboot → context restoration available
 
@@ -1174,7 +1174,7 @@ class InferenceCall(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     timestamp: Mapped[datetime] = mapped_column(default=func.now())
     level: Mapped[str]  # turn, task, project, objective
-    purpose: Mapped[str]  # turn_summary, task_summary, priority_score, progress_summary
+    purpose: Mapped[str]  # turn_summary, command_summary, priority_score, progress_summary
     model: Mapped[str]  # anthropic/claude-3-haiku, anthropic/claude-3-5-sonnet
     input_tokens: Mapped[int]
     output_tokens: Mapped[int]
@@ -1186,13 +1186,13 @@ class InferenceCall(Base):
     # Foreign keys (all optional)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"))
     agent_id: Mapped[UUID | None] = mapped_column(ForeignKey("agents.id"))
-    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"))
+    command_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"))
     turn_id: Mapped[UUID | None] = mapped_column(ForeignKey("turns.id"))
 
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="inference_calls")
     agent: Mapped["Agent"] = relationship(back_populates="inference_calls")
-    task: Mapped["Task"] = relationship(back_populates="inference_calls")
+    command: Mapped["Task"] = relationship(back_populates="inference_calls")
     turn: Mapped["Turn"] = relationship(back_populates="inference_calls")
 ```
 
@@ -1205,7 +1205,7 @@ class Turn(Base):
     summary: Mapped[str | None]  # Generated by turn summariser
     summary_generated_at: Mapped[datetime | None]
 
-# Task model additions
+# Command model additions
 class Task(Base):
     ...
     summary: Mapped[str | None]  # Generated on completion
@@ -1232,7 +1232,7 @@ openrouter:
   # Model selection by inference level
   models:
     turn: anthropic/claude-3-haiku # Fast, cheap for high-volume
-    task: anthropic/claude-3-haiku # Fast, cheap for high-volume
+    command: anthropic/claude-3-haiku # Fast, cheap for high-volume
     project: anthropic/claude-3-5-sonnet # Smarter for narratives
     objective: anthropic/claude-3-5-sonnet # Smarter for prioritisation
 
@@ -1279,7 +1279,7 @@ Generate OpenSpec PRDs in implementation order:
 
 ### Phase 2: Core Intelligence (Week 3-4)
 
-2. **turn-task-summarisation** (`docs/prds/inference/e3-s2-turn-task-summarisation-prd.md`) — Turn/task summarisers, caching, dashboard
+2. **turn-command-summarisation** (`docs/prds/inference/e3-s2-turn-command-summarisation-prd.md`) — Turn/command summarisers, caching, dashboard
 
 **Rationale:** Most visible intelligence feature, provides context for priority scoring.
 
@@ -1289,7 +1289,7 @@ Generate OpenSpec PRDs in implementation order:
 
 3. **priority-scoring** (`docs/prds/inference/e3-s3-priority-scoring-prd.md`) — Priority scorer, objective alignment, dashboard
 
-**Rationale:** Uses task summaries from E3-S2, drives recommended next feature.
+**Rationale:** Uses command summaries from E3-S2, drives recommended next feature.
 
 ---
 

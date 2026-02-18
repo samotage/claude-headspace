@@ -112,74 +112,74 @@ class TestTurnSummarisationEndpoint:
         assert response.status_code == 503
 
 
-class TestTaskSummarisationEndpoint:
+class TestCommandSummarisationEndpoint:
 
-    def test_summarise_task_success(self, app, client, mock_service, mock_inference):
+    def test_summarise_command_success(self, app, client, mock_service, mock_inference):
         app.extensions["summarisation_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.completion_summary_generated_at = None
-        def set_summary(task, db_session=None):
-            task.completion_summary = "Task summary"
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.completion_summary_generated_at = None
+        def set_summary(cmd, db_session=None):
+            cmd.completion_summary = "Command summary"
             from datetime import datetime, timezone
-            task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
-            return "Task summary"
-        mock_service.summarise_task.side_effect = set_summary
+            cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+            return "Command summary"
+        mock_service.summarise_command.side_effect = set_summary
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["summary"] == "Task summary"
-        assert data["task_id"] == 1
+        assert data["summary"] == "Command summary"
+        assert data["command_id"] == 1
 
-    def test_summarise_task_existing_summary(self, app, client, mock_service):
+    def test_summarise_command_existing_summary(self, app, client, mock_service):
         app.extensions["summarisation_service"] = mock_service
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = "Already done"
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = "Already done"
         from datetime import datetime, timezone
-        mock_task.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+        mock_cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 200
         data = response.get_json()
         assert data["cached"] is True
-        mock_service.summarise_task.assert_not_called()
+        mock_service.summarise_command.assert_not_called()
 
-    def test_summarise_task_not_found(self, app, client, mock_service):
+    def test_summarise_command_not_found(self, app, client, mock_service):
         app.extensions["summarisation_service"] = mock_service
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = None
-            response = client.post("/api/summarise/task/999")
+            response = client.post("/api/summarise/command/999")
 
         assert response.status_code == 404
 
-    def test_summarise_task_no_service(self, app, client):
+    def test_summarise_command_no_service(self, app, client):
         app.extensions.pop("summarisation_service", None)
-        response = client.post("/api/summarise/task/1")
+        response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 503
 
-    def test_summarise_task_inference_unavailable(self, app, client, mock_service):
+    def test_summarise_command_inference_unavailable(self, app, client, mock_service):
         app.extensions["summarisation_service"] = mock_service
         mock_inference = MagicMock()
         mock_inference.is_available = False
         app.extensions["inference_service"] = mock_inference
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.get.return_value = mock_task
-            response = client.post("/api/summarise/task/1")
+            mock_db.session.get.return_value = mock_cmd
+            response = client.post("/api/summarise/command/1")
 
         assert response.status_code == 503

@@ -10,7 +10,7 @@ These 3 tests currently fail:
 
 1. `tests/e2e/test_debounce.py::TestStopAndNotificationBehaviour::test_stop_without_prior_processing_is_harmless`
    - Expects IDLE after firing stop on an IDLE agent, but gets COMPLETE
-   - The stop hook broadcasts COMPLETE even when there's no task (fallback default)
+   - The stop hook broadcasts COMPLETE even when there's no command (fallback default)
    - The test file header says "The stop-hook debounce mechanism was deprecated" — this test may be testing assumptions that no longer hold
 
 2. `tests/e2e/test_edge_cases.py::TestEdgeCases::test_session_end_during_awaiting_input`

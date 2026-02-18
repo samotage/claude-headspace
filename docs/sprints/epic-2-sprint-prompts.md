@@ -189,7 +189,7 @@ And also the roadmap artifacts:
 >
 > - Notification service (`src/services/notification_service.py`)
 > - terminal-notifier integration via subprocess call
-> - Trigger notifications on events: `task_complete`, `awaiting_input`
+> - Trigger notifications on events: `command_complete`, `awaiting_input`
 > - Notification preferences UI (settings panel or preferences modal)
 > - Rate limiting: 5-second cooldown per agent to prevent spam
 > - Click action: focus browser dashboard and highlight relevant agent
@@ -207,15 +207,15 @@ And also the roadmap artifacts:
 >   enabled: true
 >   sound: true
 >   events:
->     task_complete: true
+>     command_complete: true
 >     awaiting_input: true
 >   rate_limit_seconds: 5
 > ```
 >
 > **Integration Points:**
 >
-> - Subscribes to Epic 1 SSE event stream for task state changes
-> - Uses Epic 1 task state machine events (`task_complete`, `awaiting_input`)
+> - Subscribes to Epic 1 SSE event stream for command state changes
+> - Uses Epic 1 command state machine events (`command_complete`, `awaiting_input`)
 > - Preferences stored in config.yaml (managed by E2-S1 Config UI)
 >
 > **Technical Decisions to Address:**

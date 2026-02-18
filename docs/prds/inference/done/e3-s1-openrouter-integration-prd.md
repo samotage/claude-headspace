@@ -15,7 +15,7 @@ validation:
 
 ## Executive Summary
 
-Claude Headspace requires an LLM inference layer to power its intelligence features: turn summarisation, task summarisation, cross-project priority scoring, progress summary generation, and brain reboot. This PRD defines the foundational infrastructure — an OpenRouter API client, inference service with model selection by level, call logging, rate limiting, cost tracking, and caching — that all subsequent Epic 3 sprints depend on.
+Claude Headspace requires an LLM inference layer to power its intelligence features: turn summarisation, command summarisation, cross-project priority scoring, progress summary generation, and brain reboot. This PRD defines the foundational infrastructure — an OpenRouter API client, inference service with model selection by level, call logging, rate limiting, cost tracking, and caching — that all subsequent Epic 3 sprints depend on.
 
 The inference service connects to OpenRouter's API to access multiple Anthropic models. It selects the appropriate model based on inference level: lightweight models (Haiku) for high-volume turn and task operations, and more capable models (Sonnet) for project-level and objective-level analysis. Every call is logged to the database with full metadata for auditability and cost visibility.
 
@@ -29,13 +29,13 @@ This is a backend infrastructure sprint with no frontend changes. Success is mea
 
 Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. Epics 1 and 2 established the core event-driven architecture, state machine, dashboard UI, configuration, and notifications. Epic 3 adds an intelligence layer powered by LLM inference via OpenRouter.
 
-All five Epic 3 sprints (turn/task summarisation, priority scoring, git analysis, brain reboot) depend on a shared inference infrastructure. This sprint establishes that foundation as a standalone, reusable service within the existing Flask application.
+All five Epic 3 sprints (turn/command summarisation, priority scoring, git analysis, brain reboot) depend on a shared inference infrastructure. This sprint establishes that foundation as a standalone, reusable service within the existing Flask application.
 
 The system already has:
 - Flask application with blueprints and service injection (`app.extensions`)
 - PostgreSQL database with SQLAlchemy models and Alembic migrations
 - Configuration via `config.yaml` with environment variable overrides
-- Domain models for Project, Agent, Task, Turn, Event, and Objective
+- Domain models for Project, Agent, Command, Turn, Event, and Objective
 - `.env` with `OPENROUTER_API_KEY` already provisioned
 
 ### 1.2 Target User
@@ -71,7 +71,7 @@ An internal service requests an inference call at a given level (e.g., "turn"). 
 ### 2.2 Out of Scope
 
 - Turn summarisation service (E3-S2)
-- Task summarisation service (E3-S2)
+- Command summarisation service (E3-S2)
 - Priority scoring service (E3-S3)
 - Git analyzer and progress summary generation (E3-S4)
 - Brain reboot generation (E3-S5)
@@ -79,7 +79,7 @@ An internal service requests an inference call at a given level (e.g., "turn"). 
 - Dashboard UI changes (no frontend work)
 - Cost budget caps or spending alerts
 - Summary feedback mechanisms
-- Async task queue infrastructure (background threads are sufficient for this sprint)
+- Async command queue infrastructure (background threads are sufficient for this sprint)
 
 ---
 
@@ -89,7 +89,7 @@ An internal service requests an inference call at a given level (e.g., "turn"). 
 
 1. The inference service connects to OpenRouter API and receives valid LLM responses
 2. Model selection correctly routes inference calls by level: turn and task levels use a lightweight model; project and objective levels use a more capable model
-3. All inference calls are logged to the InferenceCall table with: timestamp, level, purpose, model, input tokens, output tokens, input content hash, result text, latency, and optional associations to project/agent/task/turn
+3. All inference calls are logged to the InferenceCall table with: timestamp, level, purpose, model, input tokens, output tokens, input content hash, result text, latency, and optional associations to project/agent/command/turn
 4. Rate limiting is enforced — requests exceeding the configured calls-per-minute or tokens-per-minute limits are queued or rejected gracefully with appropriate feedback
 5. Identical inference inputs (same content hash) return cached results without making a duplicate API call; cached results expire after a configurable time-to-live
 6. API failures are retried with configurable increasing delays before giving up; after retry exhaustion, the service degrades gracefully (returns error, does not crash)
@@ -119,7 +119,7 @@ An internal service requests an inference call at a given level (e.g., "turn"). 
 
 ### Inference Service
 
-**FR4:** The inference service shall accept inference requests specifying: level (turn, task, project, objective), purpose (free-text description), input text, and optional associations (project ID, agent ID, task ID, turn ID).
+**FR4:** The inference service shall accept inference requests specifying: level (turn, task, project, objective), purpose (free-text description), input text, and optional associations (project ID, agent ID, command ID, turn ID).
 
 **FR5:** The inference service shall select the appropriate model based on the inference level, using a configurable mapping of level-to-model in `config.yaml`.
 

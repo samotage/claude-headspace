@@ -31,8 +31,8 @@ Agents work "shifts" with structured handoff when context limits are reached, ma
 2. **Personas are lightweight, not elaborate.** A name, a paragraph of identity, and 5–10 behavioural preferences. Not a job description.
 3. **Skill files are living documents.** Stored on disk, editable by agents, curated by the operator. They grow through work, not just configuration.
 4. **Start simple, earn complexity.** Operator is the high-level orchestrator throughout. Gavin's autonomy increases incrementally across versions.
-5. **Human-legible over technically clever.** "Con finished the auth migration" beats "agent-4b6f task complete."
-6. **Two distinct modes.** Workshop (collaborative, document-producing) and Execution (task-scoped, code-producing) are first-class concepts, not afterthoughts.
+5. **Human-legible over technically clever.** "Con finished the auth migration" beats "agent-4b6f command complete."
+6. **Two distinct modes.** Workshop (collaborative, document-producing) and Execution (command-scoped, code-producing) are first-class concepts, not afterthoughts.
 
 ---
 
@@ -61,13 +61,13 @@ Agents work "shifts" with structured handoff when context limits are reached, ma
 
 **Purpose:** Receives a clean specification from Robbo's workshop, decomposes it into tasks, assigns tasks to personas based on skill match and pool availability.
 
-**Mode:** Execution — task-scoped, code-producing.
+**Mode:** Execution — command-scoped, code-producing.
 
 **How it works:**
 - Operator assigns the workshop output (a tight spec) to Gavin
 - Gavin decomposes into discrete, well-scoped tasks with clear acceptance criteria
 - Each task is tagged with required skill domain (backend, frontend, database, devops, etc.)
-- Tasks are assigned to available personas from the matching skill pool
+- Commands are assigned to available personas from the matching skill pool
 - Gavin manages sequencing, dependencies, and escalation
 
 **Evolution path:**
@@ -87,7 +87,7 @@ Agents work "shifts" with structured handoff when context limits are reached, ma
 - Agent spins up with persona identity + skill file loaded into context
 - Executes the assigned task within its context window ("one day's work")
 - When context approaches limits, performs structured handoff (see §6)
-- On task completion, may propose updates to its skill file (see §7)
+- On command completion, may propose updates to its skill file (see §7)
 - Persona returns to available pool
 
 ### 4.4 QA Layer (Verner)
@@ -177,7 +177,7 @@ Agents work "shifts" with structured handoff when context limits are reached, ma
 │  Decomposes tasks   │                        │
 │  Assigns to team    │                        │
 └──────────┬──────────┘                        │
-           │ 3. Tasks assigned                 │
+           │ 3. Commands assigned                 │
            ▼                                   │
 ┌─────────────────────┐                        │
 │  TEAM               │                        │
@@ -364,7 +364,7 @@ Stored on disk so they can be iterated on — by the operator, by the agent itse
 - Experienced with Turbo Streams for real-time updates from monitoring dashboard work (2026-02-08)
 ```
 
-**experience.md** is the append-only log of task completions and learnings. Periodically summarised/pruned — either by the operator or by an automated curation step.
+**experience.md** is the append-only log of command completions and learnings. Periodically summarised/pruned — either by the operator or by an automated curation step.
 
 ### 5.4 Persona Pools
 
@@ -398,7 +398,7 @@ pools:
 
 ### 5.5 Persona Selection
 
-When spinning up an agent for a task:
+When spinning up an agent for a command:
 
 1. Identify required skill domain from task metadata
 2. Filter pool to available personas (not currently assigned to an active agent)
@@ -465,7 +465,7 @@ In progress — 70% complete
 1. Outgoing agent writes handoff artefact to disk (project-level)
 2. Outgoing agent session ends
 3. New agent session spins up with same persona (Con)
-4. New agent receives: persona identity + skill file + handoff artefact + task context
+4. New agent receives: persona identity + skill file + handoff artefact + command context
 5. New agent continues from where the previous session left off
 
 ### 6.5 Separation of Concerns
@@ -474,7 +474,7 @@ In progress — 70% complete
 |------|-------|----------|----------|
 | **Handoff notes** | Today's work-in-progress | Project directory | Ephemeral — consumed by next session |
 | **Skill file updates** | Durable capability growth | `~/.headspace/personas/` | Persistent — curated over time |
-| **Task completion record** | What was delivered | Headspace state / logs | Persistent — audit trail |
+| **Command completion record** | What was delivered | Headspace state / logs | Persistent — audit trail |
 
 ---
 
@@ -482,7 +482,7 @@ In progress — 70% complete
 
 ### 7.1 Self-Improvement
 
-At session close (task complete or handoff), the agent may propose additions to its skill file. These represent durable learnings — not task-specific state.
+At session close (command complete or handoff), the agent may propose additions to its skill file. These represent durable learnings — not task-specific state.
 
 **Example:** Con finishes a task that involved unexpected Stimulus controller work. Con proposes appending to `skill.md`:
 > "Has working familiarity with Stimulus controllers from auth UI task (2026-02-15)"
@@ -514,9 +514,9 @@ Maximum concurrent agents is operator-configured (default: 3). This is a hard li
 
 ### 8.2 Pool Exhaustion
 
-If all personas in a required pool are active, the task queues until a persona becomes available. The operator is notified.
+If all personas in a required pool are active, the command queues until a persona becomes available. The operator is notified.
 
-### 8.3 Cross-Cutting Tasks
+### 8.3 Cross-Cutting Commands
 
 Some tasks span multiple skill domains. Options:
 
@@ -530,7 +530,7 @@ Some tasks span multiple skill domains. Options:
 
 ### 9.1 Domain Model Extension
 
-The existing Headspace 3.1 domain model (Objective → Project → Agent → Task → Turn) extends as follows:
+The existing Headspace 3.1 domain model (Objective → Project → Agent → Command → Turn) extends as follows:
 
 ```
 Persona (pool of named identities)
@@ -541,10 +541,10 @@ Persona (pool of named identities)
                           │
                           ├── mode: workshop | execution
                           │
-                          └── Task → Turn (existing model unchanged)
+                          └── Command → Turn (existing model unchanged)
 ```
 
-The Persona is a new first-class entity. The Agent gains a `persona_id` field and a `mode` field. Everything downstream (Task, Turn, state machine) is unchanged.
+The Persona is a new first-class entity. The Agent gains a `persona_id` field and a `mode` field. Everything downstream (Command, Turn, state machine) is unchanged.
 
 **Persona role types:**
 - **workshop** — Robbo. Produces documents, not code. Collaborative with operator.
@@ -555,11 +555,11 @@ The Persona is a new first-class entity. The Agent gains a `persona_id` field an
 
 **Agent modes:**
 - **workshop** — Collaborative, iterative, document-producing. Used by Robbo.
-- **execution** — Task-scoped, code-producing. Used by everyone else.
+- **execution** — Command-scoped, code-producing. Used by everyone else.
 
 ### 9.2 State Model Impact
 
-The existing Task state machine (idle → commanded → processing → awaiting_input → complete) is unaffected. Personas layer above this — they're about identity and skill loading, not execution mechanics.
+The existing Command state machine (idle → commanded → processing → awaiting_input → complete) is unaffected. Personas layer above this — they're about identity and skill loading, not execution mechanics.
 
 One new state transition is added: **handoff** — triggered by context threshold, results in session teardown and fresh session spinup with same persona.
 
@@ -659,7 +659,7 @@ New directory structure alongside existing Headspace config:
 1. **Handoff trigger mechanism:** Token counting vs turn counting vs model self-assessment? Each has tradeoffs in accuracy and implementation complexity.
 2. **Skill file format:** Plain markdown as proposed, or structured YAML/TOML for machine-readability? Markdown is more natural for LLM consumption but harder to parse programmatically.
 3. **Persona count:** How many personas per pool is optimal? Too few and you hit pool exhaustion; too many and the naming loses memorability.
-4. **PM layer scope:** Should Gavin have visibility into agent progress (turn-level), or only task-level status? More visibility = better orchestration but more complexity.
+4. **PM layer scope:** Should Gavin have visibility into agent progress (turn-level), or only command-level status? More visibility = better orchestration but more complexity.
 5. **Skill file scope:** Global personas (shared across all projects) vs project-specific personas? Global is simpler; project-specific allows specialisation.
 6. **Experience persistence:** How long before experience entries are pruned? Time-based? Token-budget-based? Manual only?
 
@@ -670,7 +670,7 @@ New directory structure alongside existing Headspace config:
 This design draws from observed patterns in the agentic development ecosystem:
 
 - **Claude Code Teams:** Validated the pattern that clean specs → good multi-agent execution (Maybell project, Feb 2026)
-- **TD (Task-Driven) pattern:** Context limit detection and state summarisation for handoff
+- **TD (Command-Driven) pattern:** Context limit detection and state summarisation for handoff
 - **Sidecar pattern:** Companion process monitoring agent state
 - **OpenClaw team skills:** Community convergence on role-based agent specialisation
 
@@ -684,7 +684,7 @@ This document is the root artefact for the Agent Teams module. The following epi
 
 | Epic | Scope | Dependencies | Approx. Version |
 |------|-------|-------------|-----------------|
-| **1. Persona System & Workshop Mode** | Persona config, skill files on disk, pool definitions, workshop as first-class mode, Robbo as workshop partner, basic persona selection | Headspace 3.1 core (Agent, Task, Turn model) | v1 |
+| **1. Persona System & Workshop Mode** | Persona config, skill files on disk, pool definitions, workshop as first-class mode, Robbo as workshop partner, basic persona selection | Headspace 3.1 core (Agent, Command, Turn model) | v1 |
 | **2. QA Integration** | Verner persona, test-from-spec workflow, feedback loop between QA and execution team, escalation paths | Epic 1 | v1 |
 | **3. Context Handoff** | Threshold detection, handoff artefact generation/consumption, session teardown and respawn with same persona, experience logging | Epic 1 | v2 |
 | **4. Skill File Evolution** | Self-improvement proposals, experience log curation, token budget management, pending review workflow | Epic 1, Epic 3 | v2 |

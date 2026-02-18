@@ -50,7 +50,7 @@ Factory Boy factories SHALL exist for all domain models and produce valid, persi
 
 #### Scenario: Factory creates valid model instance
 
-- **WHEN** any factory (Project, Agent, Task, Turn, Event, Objective, ObjectiveHistory) builds an instance
+- **WHEN** any factory (Project, Agent, Command, Turn, Event, Objective, ObjectiveHistory) builds an instance
 - **THEN** the instance SHALL have all required fields populated with valid values
 - **AND** the instance SHALL be persistable to Postgres without constraint violations
 - **AND** foreign key relationships SHALL reference valid parent entities
@@ -59,7 +59,7 @@ Factory Boy factories SHALL exist for all domain models and produce valid, persi
 
 - **WHEN** `AgentFactory` creates an Agent
 - **THEN** it SHALL automatically create or reference a valid Project via SubFactory
-- **WHEN** `TaskFactory` creates a Task
+- **WHEN** `CommandFactory` creates a Command
 - **THEN** it SHALL automatically create or reference a valid Agent via SubFactory
 - **WHEN** `TurnFactory` creates a Turn
 - **THEN** it SHALL automatically create or reference a valid Task via SubFactory
@@ -68,8 +68,8 @@ Factory Boy factories SHALL exist for all domain models and produce valid, persi
 
 #### Scenario: Factory generates valid enum values
 
-- **WHEN** `TaskFactory` generates a Task
-- **THEN** the `state` field SHALL be a valid `TaskState` enum value
+- **WHEN** `CommandFactory` generates a Command
+- **THEN** the `state` field SHALL be a valid `CommandState` enum value
 - **WHEN** `TurnFactory` generates a Turn
 - **THEN** the `actor` field SHALL be a valid `TurnActor` enum value
 - **AND** the `intent` field SHALL be a valid `TurnIntent` enum value
@@ -100,7 +100,7 @@ At least one integration test SHALL verify the complete entity chain persistence
 
 #### Scenario: Full entity chain persistence
 
-- **WHEN** a test creates Project → Agent → Task → Turn → Event
+- **WHEN** a test creates Project → Agent → Command → Turn → Event
 - **AND** persists all entities to the test database
 - **AND** retrieves all entities via fresh database queries
 - **THEN** all field values SHALL match the original data

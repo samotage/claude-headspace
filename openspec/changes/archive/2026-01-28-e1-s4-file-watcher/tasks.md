@@ -1,4 +1,4 @@
-# Tasks: e1-s4-file-watcher
+# Commands: e1-s4-file-watcher
 
 ## Phase 1: Setup
 

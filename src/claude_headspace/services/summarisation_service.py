@@ -1,4 +1,4 @@
-"""Summarisation service for generating turn and task summaries via the inference layer."""
+"""Summarisation service for generating turn and command summaries via the inference layer."""
 
 import json
 import logging
@@ -75,7 +75,7 @@ class SummarisationService:
 
         Handles two cases:
         1. Slash commands (/start-queue, /commit, etc.) — the command name is
-           used directly as the summary since it IS the task description.
+           used directly as the summary since it IS the command description.
         2. Short confirmations (yes, ok, go ahead, etc.) — returns a brief
            confirmation label instead of wasting an LLM call on one word.
 
@@ -104,7 +104,7 @@ class SummarisationService:
         If the turn already has a summary, returns the existing summary.
         Skips summarisation when turn text is None or empty.
         Bypasses LLM for trivial inputs (slash commands, short confirmations).
-        Uses intent-aware prompts with task instruction context.
+        Uses intent-aware prompts with command instruction context.
 
         Args:
             turn: Turn model instance with text, actor, intent
@@ -138,8 +138,8 @@ class SummarisationService:
             return None
 
         # Check if project inference is paused
-        if hasattr(turn, "task") and turn.task:
-            agent = getattr(turn.task, "agent", None)
+        if hasattr(turn, "command") and turn.command:
+            agent = getattr(turn.command, "agent", None)
             if agent:
                 project = getattr(agent, "project", None)
                 if project and getattr(project, "inference_paused", None) is True:
@@ -157,13 +157,13 @@ class SummarisationService:
             input_text = self._resolve_turn_prompt(turn)
 
         # Get entity associations for InferenceCall logging
-        task_id = turn.task_id if turn.task_id else None
+        command_id = turn.command_id if turn.command_id else None
         agent_id = None
         project_id = None
-        if hasattr(turn, "task") and turn.task:
-            agent_id = turn.task.agent_id if hasattr(turn.task, "agent_id") else None
-            if hasattr(turn.task, "agent") and turn.task.agent:
-                project_id = turn.task.agent.project_id if hasattr(turn.task.agent, "project_id") else None
+        if hasattr(turn, "command") and turn.command:
+            agent_id = turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            if hasattr(turn.command, "agent") and turn.command.agent:
+                project_id = turn.command.agent.project_id if hasattr(turn.command.agent, "project_id") else None
 
         # Step 1: Inference call
         try:
@@ -173,7 +173,7 @@ class SummarisationService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn.id,
             )
         except (InferenceServiceError, Exception) as e:
@@ -275,13 +275,13 @@ class SummarisationService:
         )
 
         # Get entity associations
-        task_id = turn.task_id if turn.task_id else None
+        command_id = turn.command_id if turn.command_id else None
         agent_id = None
         project_id = None
-        if hasattr(turn, "task") and turn.task:
-            agent_id = turn.task.agent_id if hasattr(turn.task, "agent_id") else None
-            if hasattr(turn.task, "agent") and turn.task.agent:
-                project_id = turn.task.agent.project_id if hasattr(turn.task.agent, "project_id") else None
+        if hasattr(turn, "command") and turn.command:
+            agent_id = turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            if hasattr(turn.command, "agent") and turn.command.agent:
+                project_id = turn.command.agent.project_id if hasattr(turn.command.agent, "project_id") else None
 
         try:
             result = self._inference.infer(
@@ -290,7 +290,7 @@ class SummarisationService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn.id,
             )
 
@@ -308,74 +308,74 @@ class SummarisationService:
             logger.error(f"Permission summarisation failed for turn {turn.id}: {e}")
             return None
 
-    def summarise_task(self, task, db_session=None) -> str | None:
-        """Generate a completion summary for a completed task.
+    def summarise_command(self, command, db_session=None) -> str | None:
+        """Generate a completion summary for a completed command.
 
-        If the task already has a completion_summary, returns it.
+        If the command already has a completion_summary, returns it.
         Skips summarisation if the final turn text is empty.
-        Uses task instruction + final agent message as primary inputs.
+        Uses command instruction + final agent message as primary inputs.
 
         Args:
-            task: Task model instance with turns, instruction
+            command: Command model instance with turns, instruction
             db_session: Database session for persisting the summary
 
         Returns:
             The summary text, or None if generation failed or skipped
         """
         # Return existing summary if present (permanent caching via DB)
-        if task.completion_summary:
-            return task.completion_summary
+        if command.completion_summary:
+            return command.completion_summary
 
         if not self._inference.is_available:
-            logger.debug("Inference service unavailable, skipping task summarisation")
+            logger.debug("Inference service unavailable, skipping command summarisation")
             return None
 
         # Check if project inference is paused
-        agent = getattr(task, "agent", None)
+        agent = getattr(command, "agent", None)
         if agent:
             project = getattr(agent, "project", None)
             if project and getattr(project, "inference_paused", None) is True:
-                logger.debug("Skipping task summarisation for task %s: project %s inference paused", task.id, project.id)
+                logger.debug("Skipping command summarisation for command %s: project %s inference paused", command.id, project.id)
                 return None
 
         # Build prompt — returns None when there's nothing to summarise
-        input_text = self._resolve_task_prompt(task)
+        input_text = self._resolve_command_prompt(command)
         if input_text is None:
-            logger.debug("No content to summarise for task %s, skipping", task.id)
+            logger.debug("No content to summarise for command %s, skipping", command.id)
             return None
 
         # Get entity associations for InferenceCall logging
-        agent_id = task.agent_id if hasattr(task, "agent_id") else None
+        agent_id = command.agent_id if hasattr(command, "agent_id") else None
         project_id = None
-        if hasattr(task, "agent") and task.agent:
-            project_id = task.agent.project_id if hasattr(task.agent, "project_id") else None
+        if hasattr(command, "agent") and command.agent:
+            project_id = command.agent.project_id if hasattr(command.agent, "project_id") else None
 
         try:
             result = self._inference.infer(
-                level="task",
-                purpose="summarise_task",
+                level="command",
+                purpose="summarise_command",
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task.id,
+                command_id=command.id,
             )
 
-            # Persist summary to task model (strip LLM preamble)
+            # Persist summary to command model (strip LLM preamble)
             summary = self._clean_response(result.text)
-            task.completion_summary = summary
-            task.completion_summary_generated_at = datetime.now(timezone.utc)
+            command.completion_summary = summary
+            command.completion_summary_generated_at = datetime.now(timezone.utc)
 
             if db_session:
-                db_session.add(task)
+                db_session.add(command)
                 db_session.commit()
 
             return summary
 
         except (InferenceServiceError, Exception) as e:
-            logger.error(f"Task summarisation failed for task {task.id}: {e}")
+            logger.error(f"Command summarisation failed for command {command.id}: {e}")
             return None
 
-    def summarise_instruction(self, task, command_text: str, db_session=None, reuse_summary: str | None = None) -> str | None:
+    def summarise_instruction(self, command, command_text: str, db_session=None, reuse_summary: str | None = None) -> str | None:
         """Generate an instruction summary from the user's command text.
 
         Produces a 1-2 sentence summary of what the user instructed.
@@ -383,7 +383,7 @@ class SummarisationService:
         command), it is used directly instead of making a separate LLM call.
 
         Args:
-            task: Task model instance to persist the instruction to
+            command: Command model instance to persist the instruction to
             command_text: The full text of the user's command
             db_session: Database session for persisting
             reuse_summary: Pre-computed summary to reuse (avoids duplicate LLM call)
@@ -392,56 +392,56 @@ class SummarisationService:
             The instruction text, or None if generation failed or skipped
         """
         # Return existing instruction if present
-        if task.instruction:
-            return task.instruction
+        if command.instruction:
+            return command.instruction
 
         # Empty text guard
         if not command_text or not command_text.strip():
-            logger.debug(f"Skipping instruction summarisation for task {task.id}: empty command text")
+            logger.debug(f"Skipping instruction summarisation for command {command.id}: empty command text")
             return None
 
         # Slash command bypass: use the command name directly as the instruction
         stripped = command_text.strip()
         m = _SLASH_COMMAND_RE.match(stripped)
         if m:
-            task.instruction = m.group(1)
-            task.instruction_generated_at = datetime.now(timezone.utc)
+            command.instruction = m.group(1)
+            command.instruction_generated_at = datetime.now(timezone.utc)
             if db_session:
-                db_session.add(task)
+                db_session.add(command)
                 db_session.commit()
-            logger.info(f"Slash command bypass for task {task.id}: {task.instruction!r}")
-            return task.instruction
+            logger.info(f"Slash command bypass for command {command.id}: {command.instruction!r}")
+            return command.instruction
 
         # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
         if reuse_summary:
-            task.instruction = self._clean_response(reuse_summary)
-            task.instruction_generated_at = datetime.now(timezone.utc)
+            command.instruction = self._clean_response(reuse_summary)
+            command.instruction_generated_at = datetime.now(timezone.utc)
 
             if db_session:
-                db_session.add(task)
+                db_session.add(command)
                 db_session.commit()
 
-            logger.debug(f"Reused turn summary as instruction for task {task.id}")
-            return task.instruction
+            logger.debug(f"Reused turn summary as instruction for command {command.id}")
+            return command.instruction
 
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping instruction summarisation")
             return None
 
         # Check if project inference is paused
-        agent = getattr(task, "agent", None)
+        agent = getattr(command, "agent", None)
         if agent:
             project = getattr(agent, "project", None)
             if project and getattr(project, "inference_paused", None) is True:
-                logger.debug("Skipping instruction summarisation for task %s: project %s inference paused", task.id, project.id)
+                logger.debug("Skipping instruction summarisation for command %s: project %s inference paused", command.id, project.id)
                 return None
 
         input_text = build_prompt("instruction", command_text=command_text)
 
-        agent_id = task.agent_id if hasattr(task, "agent_id") else None
+        agent_id = command.agent_id if hasattr(command, "agent_id") else None
         project_id = None
-        if hasattr(task, "agent") and task.agent:
-            project_id = task.agent.project_id if hasattr(task.agent, "project_id") else None
+        if hasattr(command, "agent") and command.agent:
+            project_id = command.agent.project_id if hasattr(command.agent, "project_id") else None
 
         try:
             result = self._inference.infer(
@@ -450,21 +450,21 @@ class SummarisationService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task.id,
+                command_id=command.id,
             )
 
             instruction = self._clean_response(result.text)
-            task.instruction = instruction
-            task.instruction_generated_at = datetime.now(timezone.utc)
+            command.instruction = instruction
+            command.instruction_generated_at = datetime.now(timezone.utc)
 
             if db_session:
-                db_session.add(task)
+                db_session.add(command)
                 db_session.commit()
 
             return instruction
 
         except (InferenceServiceError, Exception) as e:
-            logger.error(f"Instruction summarisation failed for task {task.id}: {e}")
+            logger.error(f"Instruction summarisation failed for command {command.id}: {e}")
             return None
 
     def execute_pending(self, requests, db_session) -> None:
@@ -499,8 +499,8 @@ class SummarisationService:
                         if intent_value == "command":
                             last_command_turn_summary = summary
 
-                        agent_id = req.turn.task.agent_id if req.turn.task else None
-                        project_id = req.turn.task.agent.project_id if req.turn.task and req.turn.task.agent else None
+                        agent_id = req.turn.command.agent_id if req.turn.command else None
+                        project_id = req.turn.command.agent.project_id if req.turn.command and req.turn.command.agent else None
                         self._broadcast_summary_update(
                             event_type="turn_summary",
                             entity_id=req.turn.id,
@@ -511,42 +511,42 @@ class SummarisationService:
                         if not has_instruction_request:
                             self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
 
-                elif req.type == "instruction" and req.task:
+                elif req.type == "instruction" and req.command:
                     instruction = self.summarise_instruction(
-                        req.task, req.command_text, db_session=db_session,
+                        req.command, req.command_text, db_session=db_session,
                         reuse_summary=last_command_turn_summary,
                     )
                     if instruction:
-                        agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None
-                        project_id = req.task.agent.project_id if hasattr(req.task, "agent") and req.task.agent else None
+                        agent_id = req.command.agent_id if hasattr(req.command, "agent_id") else None
+                        project_id = req.command.agent.project_id if hasattr(req.command, "agent") and req.command.agent else None
                         self._broadcast_summary_update(
                             event_type="instruction_summary",
-                            entity_id=req.task.id,
+                            entity_id=req.command.id,
                             summary=instruction,
                             agent_id=agent_id,
                             project_id=project_id,
                         )
                         self._broadcast_card_refresh_for_agent(agent_id, db_session, "instruction_updated")
 
-                elif req.type == "task_completion" and req.task:
-                    completion = self.summarise_task(req.task, db_session=db_session)
+                elif req.type == "command_completion" and req.command:
+                    completion = self.summarise_command(req.command, db_session=db_session)
                     if completion:
-                        agent_id = req.task.agent_id if hasattr(req.task, "agent_id") else None
-                        project_id = req.task.agent.project_id if hasattr(req.task, "agent") and req.task.agent else None
+                        agent_id = req.command.agent_id if hasattr(req.command, "agent_id") else None
+                        project_id = req.command.agent.project_id if hasattr(req.command, "agent") and req.command.agent else None
                         self._broadcast_summary_update(
-                            event_type="task_summary",
-                            entity_id=req.task.id,
+                            event_type="command_summary",
+                            entity_id=req.command.id,
                             summary=completion,
                             agent_id=agent_id,
                             project_id=project_id,
                             extra={"is_completion": True},
                         )
-                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "task_summary_updated")
+                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "command_summary_updated")
 
                 elif req.type == "permission_summary" and req.turn:
                     summary = self.summarise_permission(req.turn, db_session=db_session)
                     if summary:
-                        agent_id = req.turn.task.agent_id if req.turn.task else None
+                        agent_id = req.turn.command.agent_id if req.turn.command else None
                         self._broadcast_card_refresh_for_agent(agent_id, db_session, "permission_summary_updated")
 
             except Exception as e:
@@ -598,37 +598,37 @@ class SummarisationService:
             logger.warning(f"Failed to broadcast summary update (non-fatal): {e}")
 
     @staticmethod
-    def _get_prior_task_context(turn) -> str:
-        """Get context from the previous task for this agent.
+    def _get_prior_command_context(turn) -> str:
+        """Get context from the previous command for this agent.
 
-        For COMMAND turns that create a new task, the current task has no
+        For COMMAND turns that create a new command, the current command has no
         instruction yet. The user's command may implicitly reference work
-        from the previous task (e.g. "verify" without saying what).
+        from the previous command (e.g. "verify" without saying what).
         This method provides that continuity.
         """
         try:
-            task = turn.task if hasattr(turn, "task") else None
-            if not task:
+            command = turn.command if hasattr(turn, "command") else None
+            if not command:
                 return ""
-            agent = getattr(task, "agent", None)
-            if not agent or not hasattr(agent, "tasks"):
+            agent = getattr(command, "agent", None)
+            if not agent or not hasattr(agent, "commands"):
                 return ""
 
-            # Find the previous task (the one before the current one)
-            prior_tasks = [
-                t for t in agent.tasks
-                if t.id < task.id and t.instruction
+            # Find the previous command (the one before the current one)
+            prior_commands = [
+                t for t in agent.commands
+                if t.id < command.id and t.instruction
             ]
-            if not prior_tasks:
+            if not prior_commands:
                 return ""
 
-            prior = prior_tasks[0]  # Most recent prior task with an instruction
-            parts = [f"Prior task: {prior.instruction}"]
+            prior = prior_commands[0]  # Most recent prior command with an instruction
+            parts = [f"Prior command: {prior.instruction}"]
             if prior.completion_summary:
                 parts.append(f"Prior outcome: {prior.completion_summary}")
             return "\n".join(parts) + "\n\n"
         except Exception as e:
-            logger.warning(f"Failed to fetch prior task context: {e}")
+            logger.warning(f"Failed to fetch prior command context: {e}")
             return ""
 
     @staticmethod
@@ -636,22 +636,22 @@ class SummarisationService:
         """Build an intent-aware summarisation prompt for a turn.
 
         Uses different prompt templates based on the turn's intent,
-        and includes the task instruction as context when available.
-        For COMMAND turns without a task instruction, includes prior
-        task context to help the LLM understand implicit references.
+        and includes the command instruction as context when available.
+        For COMMAND turns without a command instruction, includes prior
+        command context to help the LLM understand implicit references.
         """
         intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
         actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
 
-        # Get task instruction context if available
+        # Get command instruction context if available
         instruction_context = ""
-        if hasattr(turn, "task") and turn.task:
-            instruction = getattr(turn.task, "instruction", None)
+        if hasattr(turn, "command") and turn.command:
+            instruction = getattr(turn.command, "instruction", None)
             if instruction:
-                instruction_context = f"Task instruction: {instruction}\n\n"
+                instruction_context = f"Command instruction: {instruction}\n\n"
             elif intent_value == "command":
-                # COMMAND turns have no instruction yet — use prior task for context
-                instruction_context = SummarisationService._get_prior_task_context(turn)
+                # COMMAND turns have no instruction yet — use prior command for context
+                instruction_context = SummarisationService._get_prior_command_context(turn)
 
         # Select intent-specific template key
         prompt_type = f"turn_{intent_value}"
@@ -673,27 +673,27 @@ class SummarisationService:
             )
 
     @staticmethod
-    def _resolve_task_prompt(task) -> str | None:
-        """Build the completion summary prompt for a task.
+    def _resolve_command_prompt(command) -> str | None:
+        """Build the completion summary prompt for a command.
 
-        Primary inputs are the task instruction and the agent's final message.
+        Primary inputs are the command instruction and the agent's final message.
         When the final turn text is empty, falls back to a summary of
         non-command turn activity to give the LLM context about what happened.
         """
-        instruction = getattr(task, "instruction", None) or "No instruction recorded"
+        instruction = getattr(command, "instruction", None) or "No instruction recorded"
 
         try:
-            turns = task.turns if hasattr(task, "turns") and task.turns else []
+            turns = command.turns if hasattr(command, "turns") and command.turns else []
         except Exception as e:
-            # Guard against DetachedInstanceError when task was loaded in a
+            # Guard against DetachedInstanceError when command was loaded in a
             # different session context (e.g. post-commit summarisation).
-            logger.warning(f"Failed to access task.turns for task {task.id} (defaulting to empty): {e}")
+            logger.warning(f"Failed to access command.turns for command {command.id} (defaulting to empty): {e}")
             turns = []
         final_turn_text = turns[-1].text.strip() if turns and turns[-1].text else ""
 
         if final_turn_text:
             return build_prompt(
-                "task_completion",
+                "command_completion",
                 instruction=instruction,
                 final_turn_text=final_turn_text,
             )
@@ -711,7 +711,7 @@ class SummarisationService:
         if activity_lines:
             turn_activity = "\n".join(activity_lines)
             return build_prompt(
-                "task_completion_from_activity",
+                "command_completion_from_activity",
                 instruction=instruction,
                 turn_activity=turn_activity,
             )
@@ -719,7 +719,7 @@ class SummarisationService:
         # No turn activity — fall back to instruction-only prompt
         if instruction and instruction != "No instruction recorded":
             return build_prompt(
-                "task_completion_from_instruction",
+                "command_completion_from_instruction",
                 instruction=instruction,
             )
 
@@ -729,18 +729,18 @@ class SummarisationService:
     def _resolve_frustration_prompt(turn) -> str:
         """Build the frustration-aware summarisation prompt for a user turn.
 
-        For COMMAND turns where the current task has no instruction yet,
-        includes prior task context to help the LLM understand implicit
+        For COMMAND turns where the current command has no instruction yet,
+        includes prior command context to help the LLM understand implicit
         references in the user's message.
         """
         instruction_context = ""
-        if hasattr(turn, "task") and turn.task:
-            instruction = getattr(turn.task, "instruction", None)
+        if hasattr(turn, "command") and turn.command:
+            instruction = getattr(turn.command, "instruction", None)
             if instruction:
-                instruction_context = f"Task instruction: {instruction}\n\n"
+                instruction_context = f"Command instruction: {instruction}\n\n"
             else:
-                # No instruction yet — use prior task for context
-                instruction_context = SummarisationService._get_prior_task_context(turn)
+                # No instruction yet — use prior command for context
+                instruction_context = SummarisationService._get_prior_command_context(turn)
 
         return build_prompt(
             "turn_frustration",

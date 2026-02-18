@@ -187,15 +187,15 @@ class TmuxWatchdog:
         try:
             with self._app.app_context():
                 from ..database import db
-                from ..models.task import Task
+                from ..models.command import Command
                 from ..models.turn import Turn, TurnActor
 
                 cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
                 agent_turns = (
                     Turn.query
-                    .join(Turn.task)
+                    .join(Turn.command)
                     .filter(
-                        Task.agent_id == agent_id,
+                        Command.agent_id == agent_id,
                         Turn.actor == TurnActor.AGENT,
                         Turn.timestamp >= cutoff,
                     )

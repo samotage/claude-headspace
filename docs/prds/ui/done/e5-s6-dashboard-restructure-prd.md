@@ -16,9 +16,9 @@ validation:
 
 ## Executive Summary
 
-The Claude Headspace dashboard is maturing and requires polish to make it more intuitive and information-dense. This PRD covers three complementary improvements: a distinctive "hero style" agent identity system, a task-based Kanban layout, and surfacing real-time activity metrics directly on the dashboard.
+The Claude Headspace dashboard is maturing and requires polish to make it more intuitive and information-dense. This PRD covers three complementary improvements: a distinctive "hero style" agent identity system, a command-based Kanban layout, and surfacing real-time activity metrics directly on the dashboard.
 
-The agent hero style replaces the current `#xxxxxxxx` identifier with a two-character prominent display (e.g., "0A") that makes agents instantly recognizable across all views — dashboard, projects, activity, and logging. The Kanban layout introduces a universally understood task-flow view organised by task lifecycle state, replacing the current agent-centric card layout as the default view. Activity metrics from the overall section of the activity page are surfaced on the dashboard with real-time SSE updates, putting system health at a glance without navigation.
+The agent hero style replaces the current `#xxxxxxxx` identifier with a two-character prominent display (e.g., "0A") that makes agents instantly recognizable across all views — dashboard, projects, activity, and logging. The Kanban layout introduces a universally understood task-flow view organised by command lifecycle state, replacing the current agent-centric card layout as the default view. Activity metrics from the overall section of the activity page are surfaced on the dashboard with real-time SSE updates, putting system health at a glance without navigation.
 
 These changes are display and layout refinements — no changes to underlying models, state machine, or API contracts.
 
@@ -30,7 +30,7 @@ These changes are display and layout refinements — no changes to underlying mo
 The dashboard currently displays agents as cards identified by an 8-character truncated UUID with a `#` prefix. While functional, agents lack visual personality and are hard to distinguish at a glance. The current sort modes (By Project, By Priority) show agent-centric views, but lack a task-flow perspective that maps to how work actually progresses through the system. Key activity health metrics require navigating to a separate page.
 
 ### 1.2 Target User
-Developers and operators monitoring multiple Claude Code sessions across projects who need to quickly identify agents, understand task flow, and assess system health.
+Developers and operators monitoring multiple Claude Code sessions across projects who need to quickly identify agents, understand command flow, and assess system health.
 
 ### 1.3 Success Moment
 A user opens the dashboard, immediately sees activity health metrics, scans the Kanban columns to understand where work is flowing, and recognises agents by their two-character hero identity without needing to read full UUIDs.
@@ -44,20 +44,20 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 - Hero style applied across all views: dashboard cards, project agent lists, activity page agent sections, logging event/inference tables, logging agent filter dropdowns
 - Active indicator repositioned to far right of card header, preceded by uptime
 - New "Kanban" sort option as the first/default sort mode
-- Task-based Kanban columns organised by task lifecycle state
-- Idle agents column for agents without active tasks
+- Task-based Kanban columns organised by command lifecycle state
+- Idle agents column for agents without active commands
 - Completed tasks rendered as collapsed accordions in a scrollable COMPLETE column
 - Completed tasks retained until parent agent is reaped
 - Priority-based ordering within Kanban columns when prioritisation is enabled
 - Horizontal project sections in Kanban view when multiple projects are active
-- Same agent can appear in multiple Kanban columns (one per task)
+- Same agent can appear in multiple Kanban columns (one per command)
 - Overall activity metrics bar on dashboard (below menu, above state summary)
 - Real-time SSE updates for dashboard activity metrics on every turn
 - Frustration metric changed to immediate (last 10 turns) on dashboard and activity page (overall, project, and agent sections)
 - Agent filter dropdown format changed to: `0a - 0a5510d4`
 
 ### 2.2 Out of Scope
-- Changes to task lifecycle states or state machine logic
+- Changes to command lifecycle states or state machine logic
 - New API endpoints (reuse existing activity/metrics endpoints)
 - Changes to SSE event structure (use existing event types)
 - Agent model or database schema changes
@@ -72,7 +72,7 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 1. Agents are displayed with two-character hero identity (first two hex characters large, remainder trailing smaller) in all views where agents are referenced
 2. The `#` prefix is removed from all agent ID displays
 3. Kanban view is available as a sort option and is the first/default option
-4. Tasks appear in the correct lifecycle state column in the Kanban view
+4. Commands appear in the correct lifecycle state column in the Kanban view
 5. Idle agents appear in a dedicated IDLE column
 6. Completed tasks collapse to an accordion in a scrollable COMPLETE column
 7. Completed tasks persist until their parent agent is reaped
@@ -84,7 +84,7 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 
 ### 3.2 Non-Functional Success Criteria
 1. Dashboard remains responsive and usable on smaller viewports
-2. Kanban view renders without perceptible delay for up to 20 concurrent tasks across projects
+2. Kanban view renders without perceptible delay for up to 20 concurrent commands across projects
 
 ---
 
@@ -106,11 +106,11 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 
 **FR6:** A new "Kanban" sort option is added to the dashboard sort controls, positioned as the first option in the list.
 
-**FR7:** The Kanban view displays tasks organised into columns by task lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
+**FR7:** The Kanban view displays tasks organised into columns by command lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
 
-**FR8:** Agents without active tasks appear in the IDLE column, displayed as their current agent card representation.
+**FR8:** Agents without active commands appear in the IDLE column, displayed as their current agent card representation.
 
-**FR9:** When an agent has an active task, that task appears in the column matching its current lifecycle state. The task card displays the agent hero identity, task instruction/summary, and relevant task metadata.
+**FR9:** When an agent has an active command, that command appears in the column matching its current lifecycle state. The command card displays the agent hero identity, command instruction/summary, and relevant task metadata.
 
 **FR10:** The same agent can appear in multiple columns simultaneously if it has tasks in different states.
 
@@ -118,7 +118,7 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 
 **FR12:** When multiple projects have active agents, the Kanban view displays horizontal sections for each project, with each section containing its own set of state columns.
 
-**FR13:** Completed tasks in the COMPLETE column render as collapsed accordions showing the agent hero identity and task completion summary. The accordion can be expanded to reveal full task details.
+**FR13:** Completed tasks in the COMPLETE column render as collapsed accordions showing the agent hero identity and command completion summary. The accordion can be expanded to reveal full task details.
 
 **FR14:** The COMPLETE column has a fixed height and scrolls independently to accommodate accumulated completed tasks.
 
@@ -140,7 +140,7 @@ A user opens the dashboard, immediately sees activity health metrics, scans the 
 
 ## 5. Non-Functional Requirements (NFRs)
 
-**NFR1:** The Kanban view renders and updates without layout shift when tasks transition between columns via SSE updates.
+**NFR1:** The Kanban view renders and updates without layout shift when commands transition between columns via SSE updates.
 
 **NFR2:** The dashboard remains functional and readable on viewports down to tablet width (768px).
 
@@ -155,7 +155,7 @@ Each agent is identified by its first two hex characters rendered at prominent s
 The card header reorders to: Agent Hero Identity (left), then project name, with uptime and active indicator pushed to the far right.
 
 ### Kanban View
-The default dashboard view shows vertical columns for each task lifecycle state. Each column is headed by the state name. Task cards within columns show the agent hero, task instruction or summary, and state-relevant information. The IDLE column contains full agent cards for agents not currently working on tasks. The COMPLETE column is scrollable with accordion-collapsed task cards. When multiple projects are active, each project gets its own horizontal band with its own set of columns.
+The default dashboard view shows vertical columns for each command lifecycle state. Each column is headed by the state name. Command cards within columns show the agent hero, command instruction or summary, and state-relevant information. The IDLE column contains full agent cards for agents not currently working on tasks. The COMPLETE column is scrollable with accordion-collapsed command cards. When multiple projects are active, each project gets its own horizontal band with its own set of columns.
 
 ### Activity Metrics Bar
 A compact horizontal bar of metric cards sits between the navigation menu and the state summary counts. Cards match the style of the activity page overall section: Total Turns, Turns/Hour, Avg Turn Time, Active Agents, Frustration (immediate). Values update in real-time.

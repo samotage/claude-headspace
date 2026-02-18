@@ -67,7 +67,7 @@ The voice bridge client SHALL display active agents with real-time status.
 #### Scenario: Agent list rendering
 
 - **WHEN** the agent list screen is displayed
-- **THEN** each active agent SHALL show: project name, state (colour-coded), input-needed indicator, task summary
+- **THEN** each active agent SHALL show: project name, state (colour-coded), input-needed indicator, command summary
 
 #### Scenario: Real-time updates via SSE
 

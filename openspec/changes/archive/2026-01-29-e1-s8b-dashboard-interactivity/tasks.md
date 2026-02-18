@@ -1,4 +1,4 @@
-# Tasks: e1-s8b-dashboard-interactivity
+# Commands: e1-s8b-dashboard-interactivity
 
 ## Phase 1: Setup
 
@@ -34,7 +34,7 @@
   - Recalculate header status counts
   - Recalculate project traffic lights
   - Update recommended next panel
-- [x] Handle `turn_created` events (update task summary)
+- [x] Handle `turn_created` events (update command summary)
 - [x] Handle `agent_activity` events (update status badge, uptime)
 - [x] Handle `session_ended` events (mark agent inactive)
 - [x] Implement automatic reconnection with progressive delays

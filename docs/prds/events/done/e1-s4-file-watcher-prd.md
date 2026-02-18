@@ -107,7 +107,7 @@ A developer runs `claude-headspace start`, issues commands in Claude Code, and t
 - **Event persistence to database** — Sprint 5 writes events to Postgres
 - **Intent detection** — Sprint 6 determines turn intent (command/question/etc.)
 - **SSE broadcasting** — Sprint 7 pushes updates to browser
-- **Agent/Task/Turn record creation** — Sprint 5 event handler creates records
+- **Agent/Command/Turn record creation** — Sprint 5 event handler creates records
 
 ---
 

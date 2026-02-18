@@ -20,7 +20,7 @@ These shape everything downstream. Resolve first.
 ### 1.1 Persona Storage Model
 - [x] **Decision: How are personas represented in the system?**
 
-**Context:** The functional outline puts persona identity in config.yaml (§5.2) and skill files on disk (§5.3). The codebase is fully relational — Agent, Task, Turn, Event all use PostgreSQL FKs. Agent currently has no persona concept.
+**Context:** The functional outline puts persona identity in config.yaml (§5.2) and skill files on disk (§5.3). The codebase is fully relational — Agent, Command, Turn, Event all use PostgreSQL FKs. Agent currently has no persona concept.
 
 **Options:**
 - **A) Config-only** — Personas defined in YAML. Agent gets `persona_slug` string field (no FK). Simple, but no relational queries or FK integrity.
@@ -99,7 +99,7 @@ These shape everything downstream. Resolve first.
 ### 1.4 Agent Mode Field
 - [x] **Decision: How do we represent workshop vs execution mode?**
 
-**Context:** The functional outline (§9.1) says Agent gains a `mode` field: `workshop` | `execution`. Workshop mode (Robbo) is "collaborative, iterative, document-producing." Execution mode is "task-scoped, code-producing."
+**Context:** The functional outline (§9.1) says Agent gains a `mode` field: `workshop` | `execution`. Workshop mode (Robbo) is "collaborative, iterative, document-producing." Execution mode is "command-scoped, code-producing."
 
 **Options:**
 - **A) Enum field on Agent** — `mode = Column(Enum(AgentMode), default='execution')`. Simple, direct.
@@ -187,7 +187,7 @@ Key changes from original draft:
 **Considerations:**
 - Nullable FK means existing agents (pre-persona) still work
 - `Agent.name` property currently returns `"ProjectName/uuid-prefix"` — with persona, returns `persona.name`
-- Agent.state property is derived from current task — unchanged
+- Agent.state property is derived from current command — unchanged
 
 **Resolution:** **Two new nullable FKs: `persona_id` (FK to Persona) and `position_id` (FK to Position).** No `mode` field (resolved in 1.4 — mode is prompt-level). Both nullable for backward compatibility with existing agents. Agent serves as the join between Persona and Position — when an agent is active with both FKs set, that persona is filling that position.
 
@@ -348,7 +348,7 @@ Design now, build later. These ensure v1 choices don't paint us into a corner.
 **Context:** Handoff (§6) requires: detect context threshold → produce handoff artefact → end session → spin up new session with same persona. v2 scope, but v1 data model choices affect it.
 
 **Considerations:**
-- Agent model needs to support "this agent is a continuation of that agent" (linked list of sessions per persona per task?)
+- Agent model needs to support "this agent is a continuation of that agent" (linked list of sessions per persona per command?)
 - Handoff artefact storage: ephemeral files at `~/.headspace/handoffs/{project}/{persona}-{timestamp}.md`
 - Persona must be re-assignable to a new agent without breaking the "one active agent per persona" constraint (old agent ends first)
 - Does the current Agent model need a `predecessor_id` FK? Or is that v2 migration territory?
@@ -360,13 +360,13 @@ Design now, build later. These ensure v1 choices don't paint us into a corner.
 ### 5.2 PM Layer Hooks (v3)
 - [ ] **Decision: What v1 design choices does Gavin's PM automation (v3) need us to make now?**
 
-**Context:** In v3, Gavin receives specs and drafts task decomposition. Currently, Tasks belong to Agents (1:N). There's no concept of "a PM assigns tasks across agents."
+**Context:** In v3, Gavin receives specs and drafts task decomposition. Currently, Commands belong to Agents (1:N). There's no concept of "a PM assigns tasks across agents."
 
 **Considerations:**
-- Task model may eventually need a `assigned_by_persona_id` or `parent_task_id` for PM-decomposed work
-- The current Task belongs to one Agent. Cross-agent task assignment would need a different model (WorkItem? Assignment?)
+- Command model may eventually need a `assigned_by_persona_id` or `parent_command_id` for PM-decomposed work
+- The current Command belongs to one Agent. Cross-agent task assignment would need a different model (WorkItem? Assignment?)
 - For v1, operator-as-Gavin means no code changes — but should we add nullable fields now?
-- Or: keep Task model as-is, add a higher-level WorkItem model in v3 that links to multiple Tasks across Agents?
+- Or: keep Command model as-is, add a higher-level WorkItem model in v3 that links to multiple Commands across Agents?
 
 **Resolution:** _pending_
 

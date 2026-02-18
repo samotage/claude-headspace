@@ -39,7 +39,7 @@
 - `tests/routes/test_notifications.py` - NEW
 
 ## Acceptance Criteria
-- Notifications for task_complete events
+- Notifications for command_complete events
 - Notifications for awaiting_input events
 - Click-to-navigate with agent highlight
 - Global and per-event toggles

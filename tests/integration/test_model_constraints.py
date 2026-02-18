@@ -20,8 +20,8 @@ from claude_headspace.models import (
     Objective,
     ObjectiveHistory,
     Project,
-    Task,
-    TaskState,
+    Command,
+    CommandState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -33,7 +33,7 @@ from .factories import (
     ObjectiveFactory,
     ObjectiveHistoryFactory,
     ProjectFactory,
-    TaskFactory,
+    CommandFactory,
     TurnFactory,
 )
 
@@ -43,7 +43,7 @@ def _set_factory_session(db_session):
     """Inject the test db_session into all factories."""
     ProjectFactory._meta.sqlalchemy_session = db_session
     AgentFactory._meta.sqlalchemy_session = db_session
-    TaskFactory._meta.sqlalchemy_session = db_session
+    CommandFactory._meta.sqlalchemy_session = db_session
     TurnFactory._meta.sqlalchemy_session = db_session
     EventFactory._meta.sqlalchemy_session = db_session
     ObjectiveFactory._meta.sqlalchemy_session = db_session
@@ -96,21 +96,21 @@ class TestNotNullConstraints:
             db_session.add(agent)
             db_session.flush()
 
-    def test_task_agent_id_not_null(self, db_session):
-        """Task.agent_id cannot be null."""
+    def test_command_agent_id_not_null(self, db_session):
+        """Command.agent_id cannot be null."""
         with pytest.raises(IntegrityError):
-            task = Task(agent_id=None, state=TaskState.IDLE, started_at=datetime.now(timezone.utc))
-            db_session.add(task)
+            command = Command(agent_id=None, state=CommandState.IDLE, started_at=datetime.now(timezone.utc))
+            db_session.add(command)
             db_session.flush()
 
     def test_turn_text_not_null(self, db_session):
         """Turn.text cannot be null."""
-        task = TaskFactory()
+        command = CommandFactory()
         db_session.flush()
 
         with pytest.raises(IntegrityError):
             turn = Turn(
-                task_id=task.id,
+                command_id=command.id,
                 actor=TurnActor.USER,
                 intent=TurnIntent.COMMAND,
                 text=None,
@@ -154,31 +154,31 @@ class TestCascadeDeletes:
         ).scalar_one_or_none()
         assert result is None
 
-    def test_delete_agent_cascades_to_tasks(self, db_session):
-        """Deleting an agent should cascade delete its tasks."""
+    def test_delete_agent_cascades_to_commands(self, db_session):
+        """Deleting an agent should cascade delete its commands."""
         agent = AgentFactory()
         db_session.flush()
-        task = TaskFactory(agent=agent)
+        command = CommandFactory(agent=agent)
         db_session.flush()
 
-        task_id = task.id
+        command_id = command.id
         db_session.delete(agent)
         db_session.flush()
 
         result = db_session.execute(
-            select(Task).where(Task.id == task_id)
+            select(Command).where(Command.id == command_id)
         ).scalar_one_or_none()
         assert result is None
 
-    def test_delete_task_cascades_to_turns(self, db_session):
-        """Deleting a task should cascade delete its turns."""
-        task = TaskFactory()
+    def test_delete_command_cascades_to_turns(self, db_session):
+        """Deleting a command should cascade delete its turns."""
+        command = CommandFactory()
         db_session.flush()
-        turn = TurnFactory(task=task)
+        turn = TurnFactory(command=command)
         db_session.flush()
 
         turn_id = turn.id
-        db_session.delete(task)
+        db_session.delete(command)
         db_session.flush()
 
         result = db_session.execute(
@@ -229,32 +229,32 @@ class TestCascadeDeletes:
 
 
 class TestEnumConstraints:
-    def test_task_state_valid_values(self, db_session):
-        """All TaskState enum values are valid in the database."""
+    def test_command_state_valid_values(self, db_session):
+        """All CommandState enum values are valid in the database."""
         agent = AgentFactory()
         db_session.flush()
 
-        for state in TaskState:
-            task = TaskFactory(agent=agent, state=state)
+        for state in CommandState:
+            command = CommandFactory(agent=agent, state=state)
             db_session.flush()
-            assert task.state == state
+            assert command.state == state
 
     def test_turn_actor_valid_values(self, db_session):
         """All TurnActor enum values are valid in the database."""
-        task = TaskFactory()
+        command = CommandFactory()
         db_session.flush()
 
         for actor in TurnActor:
-            turn = TurnFactory(task=task, actor=actor)
+            turn = TurnFactory(command=command, actor=actor)
             db_session.flush()
             assert turn.actor == actor
 
     def test_turn_intent_valid_values(self, db_session):
         """All TurnIntent enum values are valid in the database."""
-        task = TaskFactory()
+        command = CommandFactory()
         db_session.flush()
 
         for intent in TurnIntent:
-            turn = TurnFactory(task=task, intent=intent)
+            turn = TurnFactory(command=command, intent=intent)
             db_session.flush()
             assert turn.intent == intent

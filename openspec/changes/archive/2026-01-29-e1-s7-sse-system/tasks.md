@@ -1,4 +1,4 @@
-# Tasks: e1-s7-sse-system
+# Commands: e1-s7-sse-system
 
 ## Phase 1: Setup
 

@@ -13,10 +13,10 @@ The dashboard needs visual polish and information density improvements. Agents a
 
 ### Kanban Layout (FR6-FR15)
 - Add "Kanban" as first/default sort option in dashboard sort controls
-- Display tasks organised into columns by task lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE
-- Idle agents (no active tasks) appear in dedicated IDLE column as current agent card representation
+- Display tasks organised into columns by command lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE
+- Idle agents (no active commands) appear in dedicated IDLE column as current agent card representation
 - Active tasks appear in column matching their lifecycle state with agent hero identity, instruction/summary, metadata
-- Same agent can appear in multiple columns (one per task)
+- Same agent can appear in multiple columns (one per command)
 - Priority ordering within columns when prioritisation is enabled
 - Multiple projects display as horizontal sections with own column sets
 - Completed tasks collapse to accordion in scrollable COMPLETE column

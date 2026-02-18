@@ -19,14 +19,14 @@ This document serves as the **high-level roadmap and baseline** for Epic 2 imple
 - **Config UI Tab** — Edit application settings via web UI instead of manually editing YAML
 - **Waypoint Editing** — Manage project waypoints (the path ahead) directly from the dashboard
 - **Help System** — Searchable documentation for users to understand and use the system
-- **macOS Notifications** — Native system notifications when tasks complete or need input
+- **macOS Notifications** — Native system notifications when commands complete or need input
 
 **Success Criteria:**
 
 - Edit `config.yaml` via web UI, changes persist and apply
 - Edit `waypoint.md` via web UI for any monitored project
 - Search help documentation, find relevant topics quickly
-- Receive macOS notification banner when task completes or needs input
+- Receive macOS notification banner when command completes or needs input
 - Toggle notification preferences per event type
 
 **Architectural Foundation:** Builds on Epic 1's Flask application, database, SSE system, and dashboard UI. Epic 2 adds configuration management, file editing capabilities, documentation rendering, and macOS integration.
@@ -228,16 +228,16 @@ This document serves as the **high-level roadmap and baseline** for Epic 2 imple
 
 ### Sprint 4: macOS Notifications (E2-S4)
 
-**Goal:** Native macOS system notifications when tasks complete or need user input.
+**Goal:** Native macOS system notifications when commands complete or need user input.
 
 **Duration:** 1 week  
-**Dependencies:** Epic 1 complete (SSE event stream, task state machine)
+**Dependencies:** Epic 1 complete (SSE event stream, command state machine)
 
 **Deliverables:**
 
 - macOS notification integration via `terminal-notifier` or native APIs
 - Trigger notifications on specific events:
-  - `task_complete` — Agent finished a task
+  - `command_complete` — Agent finished a task
   - `awaiting_input` — Agent needs user response
 - Notification preferences stored in `config.yaml`
 - Enable/disable notifications globally
@@ -276,11 +276,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 2 imple
 
 **Acceptance Criteria:**
 
-- Task completes → macOS notification banner appears
+- Command completes → macOS notification banner appears
 - Agent enters `awaiting_input` → macOS notification appears
 - Click notification → browser focuses, dashboard shows relevant agent
 - Preferences UI: toggle notifications on/off globally
-- Preferences UI: toggle per event type (task_complete, awaiting_input)
+- Preferences UI: toggle per event type (command_complete, awaiting_input)
 - Notifications respect rate limiting (no spam)
 - Works on macOS Monterey, Ventura, Sonoma, Sequoia
 - Clear error message if `terminal-notifier` not installed
@@ -512,7 +512,7 @@ None (reads markdown files)
 
 **Key Requirements:**
 
-- Must send macOS notifications on task_complete and awaiting_input events
+- Must send macOS notifications on command_complete and awaiting_input events
 - Must integrate with SSE event stream
 - Must allow enable/disable globally and per event type
 - Must rate limit to prevent spam
@@ -539,16 +539,16 @@ notifications:
   enabled: true
   sound: true
   events:
-    task_complete: true
+    command_complete: true
     awaiting_input: true
   rate_limit_seconds: 5
 ```
 
-**Dependencies:** Epic 1 complete (SSE, task state machine)
+**Dependencies:** Epic 1 complete (SSE, command state machine)
 
 **Acceptance Tests:**
 
-- Task completes → notification appears
+- Command completes → notification appears
 - Awaiting input → notification appears
 - Preferences toggle works
 - Rate limiting prevents spam
@@ -900,7 +900,7 @@ From Epic 2 Acceptance Criteria:
 
 **Success:**
 
-- ✅ Task completes → macOS notification banner appears
+- ✅ Command completes → macOS notification banner appears
 - ✅ Agent enters `awaiting_input` → notification appears
 - ✅ Click notification → browser focuses, dashboard shows agent
 - ✅ Preferences: toggle notifications on/off globally
@@ -918,7 +918,7 @@ From Epic 2 Acceptance Criteria:
 - ✅ Edit config via UI → application behavior changes
 - ✅ Edit waypoint for project → file persisted in project repo
 - ✅ Search help → find answer to question
-- ✅ Complete task → notification received → click → dashboard focused
+- ✅ Complete command → notification received → click → dashboard focused
 
 ---
 

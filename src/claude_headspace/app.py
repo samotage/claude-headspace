@@ -194,7 +194,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     configure_notification_service(NotificationPreferences(
         enabled=notif_config.get("enabled", True),
         sound=notif_config.get("sound", True),
-        events=notif_config.get("events", {"task_complete": True, "awaiting_input": True}),
+        events=notif_config.get("events", {"command_complete": True, "awaiting_input": True}),
         rate_limit_seconds=notif_config.get("rate_limit_seconds", 5),
         dashboard_url=dashboard_url,
     ))
@@ -229,7 +229,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     app.extensions["brain_reboot_service"] = brain_reboot_service
     logger.info("Brain reboot service initialized")
 
-    # Initialize staleness service (requires database for task queries)
+    # Initialize staleness service (requires database for command queries)
     if db_connected:
         from .services.staleness import StalenessService
         staleness_service = StalenessService(app=app)
@@ -344,6 +344,8 @@ def create_app(config_path: str = "config.yaml") -> Flask:
                 status[name] = "alive" if svc._thread.is_alive() else "dead"
             elif hasattr(svc, "thread") and isinstance(svc.thread, threading.Thread):
                 status[name] = "alive" if svc.thread.is_alive() else "dead"
+            elif hasattr(svc, "_observer") and isinstance(svc._observer, threading.Thread):
+                status[name] = "alive" if svc._observer.is_alive() else "dead"
             else:
                 status[name] = "unknown"
         return status

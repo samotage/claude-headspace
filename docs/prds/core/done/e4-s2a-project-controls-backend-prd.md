@@ -22,7 +22,7 @@ Claude Headspace currently auto-discovers projects from the filesystem — any C
 
 This PRD defines the backend services for a project lifecycle management system. It replaces auto-discovery with explicit manual registration via REST API endpoints for creating, reading, updating, and deleting projects. Sessions for unregistered projects are rejected with a clear error message directing the user to register the project first.
 
-Additionally, this sprint adds per-project inference controls — the ability to pause and resume LLM inference calls (turn summarisation, task summarisation, instruction summarisation, priority scoring) without affecting session tracking, hooks, or dashboard updates. This gives users cost and noise control over the intelligence layer on a project-by-project basis.
+Additionally, this sprint adds per-project inference controls — the ability to pause and resume LLM inference calls (turn summarisation, command summarisation, instruction summarisation, priority scoring) without affecting session tracking, hooks, or dashboard updates. This gives users cost and noise control over the intelligence layer on a project-by-project basis.
 
 The companion PRD (E4-S2b) covers the UI layer that consumes these API endpoints.
 
@@ -63,7 +63,7 @@ The user registers three projects via the API. They pause inference on a project
 - **Project CRUD API:** REST endpoints for listing, creating, reading, updating, and deleting projects
 - **Project settings API:** Dedicated endpoints for getting/setting project-level settings (inference pause)
 - **Manual registration only:** Disable auto-discovery in `session_correlator.py` and `sessions.py`; reject unregistered project sessions with clear error
-- **Inference pause/resume:** Per-project toggle to pause all inference calls (turn summarisation, task summarisation, instruction summarisation, priority scoring)
+- **Inference pause/resume:** Per-project toggle to pause all inference calls (turn summarisation, command summarisation, instruction summarisation, priority scoring)
 - **Inference gating:** Check pause state before every inference call in summarisation service and priority scoring service
 - **Database migration:** Add `description`, `inference_paused`, `inference_paused_at`, `inference_paused_reason` columns to the `projects` table
 - **SSE broadcast:** Broadcast project changes and settings changes so the dashboard updates in real-time
@@ -147,7 +147,7 @@ The user registers three projects via the API. They pause inference on a project
 
 **FR14:** The `PriorityScoringService.score_all_agents()` shall exclude agents belonging to paused projects from the scoring batch. If all active agents belong to paused projects, scoring shall be skipped entirely.
 
-**FR15:** The inference gating check shall query the project's `inference_paused` field via the agent's relationship chain (turn → task → agent → project, or task → agent → project). The check shall use the already-loaded ORM relationships to avoid additional database queries.
+**FR15:** The inference gating check shall query the project's `inference_paused` field via the agent's relationship chain (turn → command → agent → project, or command → agent → project). The check shall use the already-loaded ORM relationships to avoid additional database queries.
 
 **FR16:** The following operations shall continue normally regardless of inference pause state: hook event processing, session correlation, file watching, SSE broadcasting, dashboard rendering, agent state transitions.
 
@@ -223,7 +223,7 @@ def summarise_turn(self, turn, db_session=None) -> str | None:
     # ... existing inference call ...
 ```
 
-The `_get_project_for_turn` helper traverses `turn.task.agent.project` using already-loaded ORM relationships. The same pattern applies to `summarise_task()` and `summarise_instruction()` (via `task.agent.project`).
+The `_get_project_for_turn` helper traverses `turn.command.agent.project` using already-loaded ORM relationships. The same pattern applies to `summarise_task()` and `summarise_instruction()` (via `task.agent.project`).
 
 **Priority Scoring gating pattern:**
 
@@ -347,7 +347,7 @@ broadcaster.broadcast("project_changed", {
 | Pauses (Inference) | Continues (Everything Else) |
 |---|---|
 | Turn summarisation | Hook event processing |
-| Task summarisation | Session correlation & tracking |
+| Command summarisation | Session correlation & tracking |
 | Instruction summarisation | File watching |
 | Priority scoring (for that project's agents) | Dashboard display & rendering |
 | | SSE broadcasting |
@@ -401,7 +401,7 @@ broadcaster.broadcast("project_changed", {
 ### Inference Controls
 
 - [ ] `PUT /api/projects/<id>/settings` with `inference_paused: true` pauses inference
-- [ ] Paused project — no inference calls made (turn/task/instruction summary, priority scoring)
+- [ ] Paused project — no inference calls made (turn/command/instruction summary, priority scoring)
 - [ ] Paused project — file watching, hooks, dashboard continue working
 - [ ] `PUT /api/projects/<id>/settings` with `inference_paused: false` resumes inference
 - [ ] Pause state persists across server restarts

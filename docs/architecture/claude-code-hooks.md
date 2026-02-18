@@ -11,15 +11,15 @@ Claude Headspace uses Claude Code's lifecycle hooks to receive real-time events 
 | Hook Event | Endpoint | When It Fires | Effect |
 |------------|----------|---------------|--------|
 | `SessionStart` | `/hook/session-start` | Claude Code session begins | Create/link agent via SessionCorrelator, set IDLE |
-| `SessionEnd` | `/hook/session-end` | Session closes | Complete active task, mark agent ended |
-| `Stop` | `/hook/stop` | Agent turn completes | Create AGENT turn, detect intent (COMPLETION/END_OF_TASK/QUESTION), transition state |
+| `SessionEnd` | `/hook/session-end` | Session closes | Complete active command, mark agent ended |
+| `Stop` | `/hook/stop` | Agent turn completes | Create AGENT turn, detect intent (COMPLETION/END_OF_COMMAND/QUESTION), transition state |
 | `Notification` | `/hook/notification` | Various (elicitation, permission, idle) | Timestamp update, may trigger AWAITING_INPUT |
-| `UserPromptSubmit` | `/hook/user-prompt-submit` | User sends a message | Create task (if needed), USER turn with COMMAND intent, transition IDLE→COMMANDED→PROCESSING |
+| `UserPromptSubmit` | `/hook/user-prompt-submit` | User sends a message | Create command (if needed), USER turn with COMMAND intent, transition IDLE→COMMANDED→PROCESSING |
 | `PreToolUse` | `/hook/pre-tool-use` | Before tool execution | For AskUserQuestion/ExitPlanMode: transition PROCESSING→AWAITING_INPUT |
 | `PostToolUse` | `/hook/post-tool-use` | After tool execution | Transition AWAITING_INPUT→PROCESSING, update timestamp |
 | `PermissionRequest` | `/hook/permission-request` | Permission prompt shown | Transition to AWAITING_INPUT, trigger notification |
 
-## Task State Machine (5-State)
+## Command State Machine (5-State)
 
 ```
                                 ┌─────────────────────────────────┐
@@ -40,7 +40,7 @@ Claude Headspace uses Claude Code's lifecycle hooks to receive real-time events 
               │                └─────┬──────┘         │       │   │
               │                      │                │       │   │
               │     agent completes  │                │       │   │
-              │     or end_of_task   │                │       │   │
+              │     or end_of_command   │                │       │   │
               │                      ▼                │       │   │
               │                ┌──────────┐           │       │   │
               │                │          │   agent   │       │   │
@@ -49,7 +49,7 @@ Claude Headspace uses Claude Code's lifecycle hooks to receive real-time events 
               │                └────┬─────┘   (pre-   │       │   │
               │                     │        tool-use)│       │   │
               │                     │                 ▼       │   │
-              │  task complete      │          ┌────────────┐ │   │
+              │  command complete      │          ┌────────────┐ │   │
               └─────────────────────┘          │  AWAITING  │ │   │
                                                │   INPUT    │─┘   │
                                                │            │     │
@@ -67,15 +67,15 @@ Claude Headspace uses Claude Code's lifecycle hooks to receive real-time events 
 | COMMANDED | AGENT | PROGRESS | PROCESSING |
 | COMMANDED | AGENT | QUESTION | AWAITING_INPUT |
 | COMMANDED | AGENT | COMPLETION | COMPLETE |
-| COMMANDED | AGENT | END_OF_TASK | COMPLETE |
+| COMMANDED | AGENT | END_OF_COMMAND | COMPLETE |
 | PROCESSING | AGENT | PROGRESS | PROCESSING |
 | PROCESSING | AGENT | QUESTION | AWAITING_INPUT |
 | PROCESSING | AGENT | COMPLETION | COMPLETE |
-| PROCESSING | AGENT | END_OF_TASK | COMPLETE |
+| PROCESSING | AGENT | END_OF_COMMAND | COMPLETE |
 | PROCESSING | USER | ANSWER | PROCESSING |
 | AWAITING_INPUT | USER | ANSWER | PROCESSING |
 | AWAITING_INPUT | AGENT | COMPLETION | COMPLETE |
-| AWAITING_INPUT | AGENT | END_OF_TASK | COMPLETE |
+| AWAITING_INPUT | AGENT | END_OF_COMMAND | COMPLETE |
 
 The state machine is implemented in `src/claude_headspace/services/state_machine.py` as a pure stateless function: `validate_transition(from_state, actor, intent) -> TransitionResult`.
 
@@ -120,8 +120,8 @@ When a hook event arrives, it flows through:
 
 1. **HookReceiver** (`hook_receiver.py`) — receives the HTTP POST, extracts session data
 2. **SessionCorrelator** (`session_correlator.py`) — maps the Claude Code session to an Agent record via 5-strategy cascade: memory cache, DB lookup, headspace UUID, working directory, or new agent creation
-3. **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) — translates hook events into task lifecycle actions
-4. **TaskLifecycleManager** (`task_lifecycle.py`) — manages task creation, turn processing, state transitions
+3. **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) — translates hook events into command lifecycle actions
+4. **CommandLifecycleManager** (`command_lifecycle.py`) — manages command creation, turn processing, state transitions
 5. **IntentDetector** (`intent_detector.py`) — determines turn intent (COMMAND, QUESTION, COMPLETION, etc.)
 6. **StateMachine** (`state_machine.py`) — validates the proposed transition
 7. **Broadcaster** (`broadcaster.py`) — pushes SSE events to the dashboard

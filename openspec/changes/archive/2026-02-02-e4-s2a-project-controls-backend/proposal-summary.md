@@ -48,7 +48,7 @@
 ## Constraints and Gotchas
 - **Session correlator auto-discovery is in TWO places** — both `_create_agent_for_session()` in session_correlator.py AND `create_session()` in routes/sessions.py. Both must be updated.
 - **routes/__init__.py only exports 3 of 17 blueprints** — don't add projects_bp there; just import directly in app.py register_blueprints()
-- **Inference gating must traverse ORM relationships** — turn.task.agent.project for summarisation, agent.project for priority scoring. Use already-loaded relationships to avoid N+1 queries.
+- **Inference gating must traverse ORM relationships** — turn.command.agent.project for summarisation, agent.project for priority scoring. Use already-loaded relationships to avoid N+1 queries.
 - **Cascade delete already configured** — Project.agents relationship has `cascade="all, delete-orphan"`. No additional configuration needed.
 - **Priority scoring already has a disabled check** — uses `objective.priority_enabled`. The inference_paused check is a different gate (per-project vs global).
 - **Summarisation availability check pattern** — existing pattern is `if not self._inference.is_available: return None`. The pause check should follow the same pattern.

@@ -36,37 +36,37 @@ def mock_db():
         yield mock
 
 
-# --- GET /api/agents/<id>/tasks ---
+# --- GET /api/agents/<id>/commands ---
 
 
-class TestGetAgentTasks:
-    """Tests for the agent tasks endpoint."""
+class TestGetAgentCommands:
+    """Tests for the agent commands endpoint."""
 
-    def test_returns_tasks_for_agent(self, client, mock_db):
-        """Test 200 response with tasks list."""
+    def test_returns_commands_for_agent(self, client, mock_db):
+        """Test 200 response with commands list."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_db.session.get.return_value = mock_agent
 
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_task.state = MagicMock()
-        mock_task.state.value = "PROCESSING"
-        mock_task.instruction = "Fix the bug"
-        mock_task.completion_summary = None
-        mock_task.started_at = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_task.completed_at = None
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_cmd.state = MagicMock()
+        mock_cmd.state.value = "PROCESSING"
+        mock_cmd.instruction = "Fix the bug"
+        mock_cmd.completion_summary = None
+        mock_cmd.started_at = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_cmd.completed_at = None
 
-        # First query: tasks (filter -> order_by -> all -> [mock_task])
-        # Second query: turn counts (filter -> group_by -> all -> [(task_id, count)])
+        # First query: commands (filter -> order_by -> all -> [mock_cmd])
+        # Second query: turn counts (filter -> group_by -> all -> [(command_id, count)])
         query_mock = MagicMock()
         query_mock.filter.return_value = query_mock
         query_mock.order_by.return_value = query_mock
         query_mock.group_by.return_value = query_mock
-        query_mock.all.side_effect = [[mock_task], [(10, 5)]]  # tasks, then turn counts
+        query_mock.all.side_effect = [[mock_cmd], [(10, 5)]]  # commands, then turn counts
         mock_db.session.query.return_value = query_mock
 
-        resp = client.get("/api/agents/1/tasks")
+        resp = client.get("/api/agents/1/commands")
         assert resp.status_code == 200
 
         data = resp.get_json()
@@ -81,12 +81,12 @@ class TestGetAgentTasks:
         """Test 404 when agent doesn't exist."""
         mock_db.session.get.return_value = None
 
-        resp = client.get("/api/agents/999/tasks")
+        resp = client.get("/api/agents/999/commands")
         assert resp.status_code == 404
         assert "not found" in resp.get_json()["error"].lower()
 
-    def test_empty_tasks(self, client, mock_db):
-        """Test 200 with empty list when agent has no tasks."""
+    def test_empty_commands(self, client, mock_db):
+        """Test 200 with empty list when agent has no commands."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_db.session.get.return_value = mock_agent
@@ -97,22 +97,22 @@ class TestGetAgentTasks:
         query_mock.all.return_value = []
         mock_db.session.query.return_value = query_mock
 
-        resp = client.get("/api/agents/1/tasks")
+        resp = client.get("/api/agents/1/commands")
         assert resp.status_code == 200
         assert resp.get_json() == []
 
 
-# --- GET /api/tasks/<id>/turns ---
+# --- GET /api/commands/<id>/turns ---
 
 
-class TestGetTaskTurns:
-    """Tests for the task turns endpoint."""
+class TestGetCommandTurns:
+    """Tests for the command turns endpoint."""
 
-    def test_returns_turns_for_task(self, client, mock_db):
+    def test_returns_turns_for_command(self, client, mock_db):
         """Test 200 response with turns list."""
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_db.session.get.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_db.session.get.return_value = mock_cmd
 
         mock_turn = MagicMock()
         mock_turn.id = 100
@@ -130,7 +130,7 @@ class TestGetTaskTurns:
         query_mock.all.return_value = [mock_turn]
         mock_db.session.query.return_value = query_mock
 
-        resp = client.get("/api/tasks/10/turns")
+        resp = client.get("/api/commands/10/turns")
         assert resp.status_code == 200
 
         data = resp.get_json()
@@ -142,19 +142,19 @@ class TestGetTaskTurns:
         assert data[0]["summary"] == "User asked to fix the bug"
         assert data[0]["frustration_score"] == 3
 
-    def test_task_not_found(self, client, mock_db):
-        """Test 404 when task doesn't exist."""
+    def test_command_not_found(self, client, mock_db):
+        """Test 404 when command doesn't exist."""
         mock_db.session.get.return_value = None
 
-        resp = client.get("/api/tasks/999/turns")
+        resp = client.get("/api/commands/999/turns")
         assert resp.status_code == 404
         assert "not found" in resp.get_json()["error"].lower()
 
     def test_turns_with_null_frustration(self, client, mock_db):
         """Test turns with null frustration score (agent turns)."""
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_db.session.get.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_db.session.get.return_value = mock_cmd
 
         mock_turn = MagicMock()
         mock_turn.id = 101
@@ -172,17 +172,17 @@ class TestGetTaskTurns:
         query_mock.all.return_value = [mock_turn]
         mock_db.session.query.return_value = query_mock
 
-        resp = client.get("/api/tasks/10/turns")
+        resp = client.get("/api/commands/10/turns")
         assert resp.status_code == 200
 
         data = resp.get_json()
         assert data[0]["frustration_score"] is None
 
     def test_empty_turns(self, client, mock_db):
-        """Test 200 with empty list when task has no turns."""
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_db.session.get.return_value = mock_task
+        """Test 200 with empty list when command has no turns."""
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_db.session.get.return_value = mock_cmd
 
         query_mock = MagicMock()
         query_mock.filter.return_value = query_mock
@@ -190,7 +190,7 @@ class TestGetTaskTurns:
         query_mock.all.return_value = []
         mock_db.session.query.return_value = query_mock
 
-        resp = client.get("/api/tasks/10/turns")
+        resp = client.get("/api/commands/10/turns")
         assert resp.status_code == 200
         assert resp.get_json() == []
 

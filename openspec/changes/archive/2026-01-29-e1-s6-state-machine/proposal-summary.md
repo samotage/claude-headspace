@@ -3,14 +3,14 @@
 ## Architecture Decisions
 - Stateless/reentrant state machine design - no global mutable state
 - Regex-based intent detection for Epic 1 (LLM deferred to Epic 3)
-- Agent state as derived/computed property from current task state
+- Agent state as derived/computed property from current command state
 - Dependency injection for EventWriter integration
 - Pure functions for core transition logic (testable without database)
 
 ## Implementation Approach
 - Create IntentDetector service with regex patterns for question/completion detection
 - Create StateMachine service with VALID_TRANSITIONS mapping
-- Create TaskLifecycleManager for task creation/completion
+- Create CommandLifecycleManager for task creation/completion
 - Integrate with EventWriter from Sprint 5 for state_transition events
 - Process turn_detected events sequentially to handle rapid turns
 
@@ -21,22 +21,22 @@
 **New Files:**
 - `src/claude_headspace/services/state_machine.py` - StateMachine class
 - `src/claude_headspace/services/intent_detector.py` - IntentDetector with regex
-- `src/claude_headspace/services/task_lifecycle.py` - TaskLifecycleManager
+- `src/claude_headspace/services/command_lifecycle.py` - CommandLifecycleManager
 - `tests/services/test_state_machine.py` - Transition tests
 - `tests/services/test_intent_detector.py` - Intent detection tests
-- `tests/services/test_task_lifecycle.py` - Lifecycle tests
+- `tests/services/test_command_lifecycle.py` - Lifecycle tests
 
 ## Acceptance Criteria
 - Valid transitions between all 5 states (idle, commanded, processing, awaiting_input, complete)
 - Invalid transitions rejected with descriptive error
 - Intent detection >90% accuracy on test cases
 - State transition events written to Event table
-- Task creation on user command
-- Task completion with timestamp
-- Agent state derived from current task
+- Command creation on user command
+- Command completion with timestamp
+- Agent state derived from current command
 
 ## Constraints and Gotchas
-- TaskState enum already exists in models (idle, commanded, processing, awaiting_input, complete)
+- CommandState enum already exists in models (idle, commanded, processing, awaiting_input, complete)
 - TurnIntent enum already exists in models (command, answer, question, progress, completion)
 - Use EventWriter from Sprint 5 for writing state_transition events
 - Session UUID correlation to Agent - must handle unknown sessions gracefully
@@ -47,8 +47,8 @@
 
 ### Related Files
 **Models:**
-- src/claude_headspace/models/enums.py (TaskState, TurnIntent, TurnActor)
-- src/claude_headspace/models/task.py (Task model)
+- src/claude_headspace/models/enums.py (CommandState, TurnIntent, TurnActor)
+- src/claude_headspace/models/command.py (Command model)
 - src/claude_headspace/models/agent.py (Agent model)
 
 **Services:**
@@ -57,7 +57,7 @@
 
 ### OpenSpec History
 - e1-s5-event-system: Event writer service (just completed)
-- e1-s3-domain-models: Created Task, Agent models with TaskState enum
+- e1-s3-domain-models: Created Command, Agent models with CommandState enum
 
 ### Implementation Patterns
 **Detected structure from Sprint 5:**
@@ -72,9 +72,9 @@
 
 ## Dependencies
 - **No new pip packages required**
-- **Task/Turn models:** Already exist from Sprint 3
+- **Command/Turn models:** Already exist from Sprint 3
 - **EventWriter:** Sprint 5 provides event writing capability
-- **TaskState/TurnIntent enums:** Already defined in models
+- **CommandState/TurnIntent enums:** Already defined in models
 
 ## Testing Strategy
 - Test all valid state transitions (happy path matrix)

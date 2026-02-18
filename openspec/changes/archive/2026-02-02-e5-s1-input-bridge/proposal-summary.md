@@ -10,7 +10,7 @@
 ## Implementation Approach
 - **Backend-first approach:** Build commander service and response endpoint first, then dashboard UI
 - Socket communication uses Python's `socket` module with `AF_UNIX` — newline-delimited JSON protocol matching claude-commander's spec
-- Response endpoint creates Turn records and triggers state transitions through `TaskLifecycleManager.process_turn()` to stay consistent with hook-driven flows
+- Response endpoint creates Turn records and triggers state transitions through `CommandLifecycleManager.process_turn()` to stay consistent with hook-driven flows
 - Availability tracking runs in a background thread (similar to `AgentReaper`, `ActivityAggregator`) — only in non-testing environments
 
 ## Files to Modify
@@ -49,8 +49,8 @@
 ## Git Change History
 
 ### Related Files
-- Models: `src/claude_headspace/models/agent.py` (has `claude_session_id`), `models/turn.py` (Turn with ANSWER intent), `models/task.py` (TaskState.AWAITING_INPUT)
-- Services: `services/iterm_focus.py` (pattern template), `services/hook_receiver.py` (AWAITING_INPUT flow), `services/state_machine.py` (transition rules), `services/task_lifecycle.py` (Turn processing), `services/broadcaster.py` (SSE)
+- Models: `src/claude_headspace/models/agent.py` (has `claude_session_id`), `models/turn.py` (Turn with ANSWER intent), `models/command.py` (CommandState.AWAITING_INPUT)
+- Services: `services/iterm_focus.py` (pattern template), `services/hook_receiver.py` (AWAITING_INPUT flow), `services/state_machine.py` (transition rules), `services/command_lifecycle.py` (Turn processing), `services/broadcaster.py` (SSE)
 - Routes: `routes/focus.py` (pattern template)
 - Static: `static/js/focus-api.js` (pattern template)
 - Templates: `templates/dashboard.html` (agent cards)
@@ -73,7 +73,7 @@
 ## Dependencies
 - No new packages needed — Python's `socket` module handles Unix domain sockets natively
 - Requires claude-commander (`claudec`) binary installed separately by user
-- No database migrations needed — uses existing Turn and Task models
+- No database migrations needed — uses existing Turn and Command models
 
 ## Testing Strategy
 - **Unit tests:** Commander service (mock socket), availability tracking (thread safety)

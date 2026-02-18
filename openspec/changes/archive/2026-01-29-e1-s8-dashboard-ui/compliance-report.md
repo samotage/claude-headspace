@@ -16,8 +16,8 @@ The implementation fully satisfies all acceptance criteria from the PRD and prop
 | All agents displayed within projects | ✓ | Nested in project groups |
 | Header status counts accurate | ✓ | INPUT NEEDED, WORKING, IDLE calculated correctly |
 | Traffic lights reflect state | ✓ | Red/yellow/green logic implemented |
-| Agent cards display all fields | ✓ | Session ID, status, uptime, state bar, task summary, priority |
-| State bars colour-coded | ✓ | 5 distinct colours matching TaskState |
+| Agent cards display all fields | ✓ | Session ID, status, uptime, state bar, command summary, priority |
+| State bars colour-coded | ✓ | 5 distinct colours matching CommandState |
 | Project sections collapsible | ✓ | HTMX toggle with keyboard support |
 | Responsive on mobile | ✓ | Single column at <768px |
 | Responsive on tablet | ✓ | Two columns at 768px-1023px |
@@ -26,7 +26,7 @@ The implementation fully satisfies all acceptance criteria from the PRD and prop
 ## Requirements Coverage
 
 - **PRD Requirements:** 24/24 covered (FR1-FR24)
-- **Tasks Completed:** 42/42 complete
+- **Commands Completed:** 42/42 complete
 - **Design Compliance:** Yes - follows Jinja partials, HTMX, Tailwind patterns
 
 ## Issues Found

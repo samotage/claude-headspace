@@ -67,8 +67,8 @@ class TestInferenceCallPersistence:
         """Test creating a cached inference call."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
-            level=InferenceLevel.TASK.value,
-            purpose="Task summarisation",
+            level=InferenceLevel.COMMAND.value,
+            purpose="Command summarisation",
             model="anthropic/claude-3-haiku",
             input_tokens=100,
             output_tokens=40,
@@ -111,7 +111,7 @@ class TestInferenceCallPersistence:
             cached=False,
             project_id=None,
             agent_id=None,
-            task_id=None,
+            command_id=None,
             turn_id=None,
         )
         db_session.add(call)
@@ -120,7 +120,7 @@ class TestInferenceCallPersistence:
         fetched = db_session.query(InferenceCall).filter_by(id=call.id).one()
         assert fetched.project_id is None
         assert fetched.agent_id is None
-        assert fetched.task_id is None
+        assert fetched.command_id is None
         assert fetched.turn_id is None
 
     def test_query_by_level(self, db_session):

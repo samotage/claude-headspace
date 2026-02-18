@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The `hook_receiver.py` service currently performs direct state manipulation without using the established `StateMachine` and `TaskLifecycleManager` services. This bypasses validation logic and fails to write events to the audit log. This remediation plan outlines a refactoring approach to integrate these services properly.
+The `hook_receiver.py` service currently performs direct state manipulation without using the established `StateMachine` and `CommandLifecycleManager` services. This bypasses validation logic and fails to write events to the audit log. This remediation plan outlines a refactoring approach to integrate these services properly.
 
 ---
 
@@ -20,20 +20,20 @@ The `hook_receiver.py` service currently performs direct state manipulation with
 **Current Behavior:**
 ```python
 # hook_receiver.py - Direct state manipulation
-current_task.state = TaskState.PROCESSING  # No validation!
-current_task.state = TaskState.COMPLETE    # No validation!
+current_command.state = CommandState.PROCESSING  # No validation!
+current_command.state = CommandState.COMPLETE    # No validation!
 ```
 
 **Expected Behavior:**
 ```python
 # Should use StateMachine for validation
-lifecycle = TaskLifecycleManager(db.session, event_writer)
+lifecycle = CommandLifecycleManager(db.session, event_writer)
 result = lifecycle.process_turn(agent, TurnActor.USER, text=None)
 ```
 
 **Specific Problems:**
 
-1. **No Transition Validation:** The hook receiver sets `TaskState` directly without checking if the transition is valid according to the 5-state model.
+1. **No Transition Validation:** The hook receiver sets `CommandState` directly without checking if the transition is valid according to the 5-state model.
 
 2. **Inconsistent State Transitions:**
    - `process_user_prompt_submit()` transitions to `PROCESSING` but skips `COMMANDED` state
@@ -42,7 +42,7 @@ result = lifecycle.process_turn(agent, TurnActor.USER, text=None)
 
 3. **No Intent Detection:** The hook receiver doesn't use intent detection to determine the appropriate state transition.
 
-4. **Task Creation Outside Manager:** Tasks are created directly in `process_user_prompt_submit()` instead of using `TaskLifecycleManager.create_task()`.
+4. **Command Creation Outside Manager:** Commands are created directly in `process_user_prompt_submit()` instead of using `CommandLifecycleManager.create_command()`.
 
 ### Issue 9: Missing Event Logging
 
@@ -65,7 +65,7 @@ result = lifecycle.process_turn(agent, TurnActor.USER, text=None)
 | Service | Purpose | Location |
 |---------|---------|----------|
 | `StateMachine` | Validates state transitions | `services/state_machine.py` |
-| `TaskLifecycleManager` | Manages task lifecycle, writes events | `services/task_lifecycle.py` |
+| `CommandLifecycleManager` | Manages command lifecycle, writes events | `services/command_lifecycle.py` |
 | `EventWriter` | Writes events to database | `services/event_writer.py` |
 
 ### Current Data Flow (Problematic)
@@ -78,7 +78,7 @@ Hook Event → hook_receiver.py → Direct DB manipulation
 ### Target Data Flow
 
 ```
-Hook Event → hook_receiver.py → TaskLifecycleManager → StateMachine (validation)
+Hook Event → hook_receiver.py → CommandLifecycleManager → StateMachine (validation)
                                          ↓
                                     EventWriter (audit log)
                                          ↓
@@ -96,7 +96,7 @@ Create a new module that bridges hook events to the lifecycle manager.
 **File:** `src/claude_headspace/services/hook_lifecycle_bridge.py`
 
 ```python
-"""Bridge between hook events and task lifecycle management."""
+"""Bridge between hook events and command lifecycle management."""
 
 import logging
 from datetime import datetime, timezone
@@ -104,17 +104,17 @@ from typing import Optional
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 from .event_writer import EventWriter, create_event_writer
-from .task_lifecycle import TaskLifecycleManager, TurnProcessingResult
+from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult
 
 logger = logging.getLogger(__name__)
 
 
 class HookLifecycleBridge:
     """
-    Bridge between hook events and the task lifecycle system.
+    Bridge between hook events and the command lifecycle system.
 
     Translates hook events into lifecycle operations with proper
     state machine validation and event logging.
@@ -137,7 +137,7 @@ class HookLifecycleBridge:
         Maps to: USER + COMMAND intent
         Expected transition: IDLE/AWAITING_INPUT → COMMANDED → PROCESSING
         """
-        lifecycle = TaskLifecycleManager(
+        lifecycle = CommandLifecycleManager(
             session=db.session,
             event_writer=self._event_writer,
         )
@@ -151,13 +151,13 @@ class HookLifecycleBridge:
 
         # After user command, immediately transition to processing
         # since Claude will start working
-        if result.success and result.task:
-            current_state = result.task.state
-            if current_state == TaskState.COMMANDED:
+        if result.success and result.command:
+            current_state = result.command.state
+            if current_state == CommandState.COMMANDED:
                 # Simulate agent starting work
                 lifecycle.update_task_state(
                     task=result.task,
-                    to_state=TaskState.PROCESSING,
+                    to_state=CommandState.PROCESSING,
                     trigger="hook:user_prompt_submit",
                     confidence=1.0,
                 )
@@ -175,17 +175,17 @@ class HookLifecycleBridge:
         Maps to: AGENT + COMPLETION intent
         Expected transition: PROCESSING → COMPLETE
         """
-        lifecycle = TaskLifecycleManager(
+        lifecycle = CommandLifecycleManager(
             session=db.session,
             event_writer=self._event_writer,
         )
 
         current_task = lifecycle.get_current_task(agent)
-        if not current_task:
-            # No active task - nothing to complete
+        if not current_command:
+            # No active command - nothing to complete
             return TurnProcessingResult(
                 success=True,
-                error="No active task to complete",
+                error="No active command to complete",
             )
 
         # Complete the task
@@ -206,17 +206,17 @@ class HookLifecycleBridge:
         claude_session_id: str,
     ) -> TurnProcessingResult:
         """
-        Process a session_end hook by completing any active task.
+        Process a session_end hook by completing any active command.
 
         This is a forced completion regardless of current state.
         """
-        lifecycle = TaskLifecycleManager(
+        lifecycle = CommandLifecycleManager(
             session=db.session,
             event_writer=self._event_writer,
         )
 
         current_task = lifecycle.get_current_task(agent)
-        if current_task:
+        if current_command:
             lifecycle.complete_task(
                 task=current_task,
                 trigger="hook:session_end",
@@ -296,7 +296,7 @@ def process_user_prompt_submit(
         db.session.commit()
 
         # Broadcast state change
-        new_state = result.task.state.value if result.task else TaskState.IDLE.value
+        new_state = result.command.state.value if result.task else CommandState.IDLE.value
         _broadcast_state_change(agent, "user_prompt_submit", new_state)
 
         logger.info(
@@ -444,7 +444,7 @@ def _write_hook_event(
        """User prompt should create task via lifecycle manager."""
 
    def test_bridge_stop_completes_task():
-       """Stop hook should complete active task."""
+       """Stop hook should complete active command."""
 
    def test_bridge_validates_transitions():
        """Invalid transitions should be rejected."""

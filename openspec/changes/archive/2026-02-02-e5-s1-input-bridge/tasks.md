@@ -35,7 +35,7 @@
   - Validates: agent exists, agent in AWAITING_INPUT state, has `claude_session_id`, commander socket reachable
   - Sends text via commander service
   - Creates Turn record (actor: USER, intent: ANSWER) with response text
-  - Triggers state transition (AWAITING_INPUT → PROCESSING) via `TaskLifecycleManager.process_turn()`
+  - Triggers state transition (AWAITING_INPUT → PROCESSING) via `CommandLifecycleManager.process_turn()`
   - Broadcasts state change via SSE
   - Returns JSON response with status
   - `GET /api/respond/<int:agent_id>/availability` — check commander availability for agent
@@ -106,7 +106,7 @@
   - Create agent in AWAITING_INPUT state via factories
   - Submit response via API (with mock commander socket)
   - Verify Turn record created with correct actor/intent
-  - Verify task state transition to PROCESSING
+  - Verify command state transition to PROCESSING
   - Verify SSE broadcast fired
 
 ## 4. Final Verification

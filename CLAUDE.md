@@ -12,7 +12,7 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 - Respond to agents directly from the dashboard via tmux bridge
 - Native macOS notifications when input is needed or tasks complete
 - Real-time updates via Server-Sent Events (SSE)
-- LLM-powered turn/task summarisation, frustration detection, and cross-project priority scoring
+- LLM-powered turn/command summarisation, frustration detection, and cross-project priority scoring
 - Headspace monitoring: frustration tracking, flow state detection, traffic-light alerting
 - Brain reboot: generate waypoint + progress summary snapshots for project context resets
 - Project management with inference pause controls, metadata detection, and per-project settings
@@ -72,11 +72,11 @@ Flask application factory (`app.py`) with:
 +---------------------------------------------------------+
 |           Claude Headspace (Flask)                       |
 |                                                         |
-|  Hook Receiver -> Session Correlator -> Task Lifecycle  |
-|       Intent Detector -> State Machine (5-state)        |
-|                                                         |
-|  Inference Service (OpenRouter)                         |
-|    +-- Summarisation (turn/task + frustration scoring)  |
+|  Hook Receiver -> Session Correlator -> Command Lifecycle  |
+|       Intent Detector -> State Machine (5-state)           |
+|                                                            |
+|  Inference Service (OpenRouter)                            |
+|    +-- Summarisation (turn/command + frustration scoring)  |
 |    +-- Priority Scoring (agent ranking 0-100)           |
 |    +-- Progress Summary (project-level analysis)        |
 |    +-- Brain Reboot (waypoint + progress export)        |
@@ -99,7 +99,7 @@ Flask application factory (`app.py`) with:
 - **Build:** Hatchling (pyproject.toml)
 - **Config:** PyYAML + python-dotenv
 - **CSS:** Tailwind CSS 3.x (via Node.js: postcss, autoprefixer)
-- **LLM:** OpenRouter API (Claude Haiku for turns/tasks, Sonnet for project/objective)
+- **LLM:** OpenRouter API (Claude Haiku for turns/commands, Sonnet for project/objective)
 - **Real-time:** Server-Sent Events (SSE)
 - **Terminal:** iTerm2 (AppleScript-based focus) + tmux (send-keys bridge for agent responses)
 - **Notifications:** terminal-notifier (macOS)
@@ -134,7 +134,7 @@ claude_headspace/
 |   +-- app.py                       # Flask app factory
 |   +-- config.py                    # Config loading (YAML + env overrides)
 |   +-- database.py                  # SQLAlchemy init
-|   +-- models/                      # 10 domain models (project, agent, task, turn, event, etc.)
+|   +-- models/                      # 10 domain models (project, agent, command, turn, event, etc.)
 |   +-- routes/                      # 22 Flask blueprints (dashboard, hooks, sse, projects, etc.)
 |   +-- services/                    # 40 service modules (see Key Services below)
 +-- tests/
@@ -182,24 +182,24 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 
 ### Hook & State Management
 
-- **HookReceiver** (`hook_receiver.py`) -- processes 8 Claude Code lifecycle hooks, manages state transitions via TaskLifecycleManager, broadcasts SSE events, triggers notifications and summarisation post-commit
-- **TaskLifecycleManager** (`task_lifecycle.py`) -- manages task creation, 5-state transitions, turn processing with intent detection, queues pending summarisation requests for async execution
+- **HookReceiver** (`hook_receiver.py`) -- processes 8 Claude Code lifecycle hooks, manages state transitions via CommandLifecycleManager, broadcasts SSE events, triggers notifications and summarisation post-commit
+- **CommandLifecycleManager** (`command_lifecycle.py`) -- manages command creation, 5-state transitions, turn processing with intent detection, queues pending summarisation requests for async execution
 - **StateMachine** (`state_machine.py`) -- pure stateless validation of `(from_state, actor, intent) -> to_state` transitions
-- **IntentDetector** (`intent_detector.py`) -- multi-stage pipeline: regex pattern matching (70+ question patterns, completion patterns, end-of-task patterns) with optional LLM fallback for ambiguous cases
+- **IntentDetector** (`intent_detector.py`) -- multi-stage pipeline: regex pattern matching (70+ question patterns, completion patterns, end-of-command patterns) with optional LLM fallback for ambiguous cases
 - **SessionCorrelator** (`session_correlator.py`) -- maps Claude Code sessions to Agent records via 5-strategy cascade: memory cache, DB lookup, headspace UUID, working directory, or new agent creation
 - **SessionRegistry** (`session_registry.py`) -- in-memory registry of active sessions for fast lookup
-- **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) -- translates hook events into task lifecycle actions
+- **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) -- translates hook events into command lifecycle actions
 - **TranscriptReader** (`transcript_reader.py`) -- reads and parses Claude Code transcript files
 - **TranscriptReconciler** (`transcript_reconciler.py`) -- reconciles JSONL transcript entries against database Turn records; corrects Turn timestamps from approximate (server time) to accurate (JSONL conversation time); creates Turns for events missed by hooks; broadcasts SSE corrections
 - **PermissionSummarizer** (`permission_summarizer.py`) -- summarises permission request details for display
 
 ### Intelligence Layer
 
-- **InferenceService** (`inference_service.py`) -- orchestrates LLM calls via OpenRouter with content-based caching (5-min TTL), rate limiting (30 calls/min, 10k tokens/min), cost tracking, and model selection by level (turn/task/project/objective)
+- **InferenceService** (`inference_service.py`) -- orchestrates LLM calls via OpenRouter with content-based caching (5-min TTL), rate limiting (30 calls/min, 10k tokens/min), cost tracking, and model selection by level (turn/command/project/objective)
 - **InferenceCache** (`inference_cache.py`) -- content-based caching for inference results with configurable TTL
 - **InferenceRateLimiter** (`inference_rate_limiter.py`) -- sliding window rate limiter for calls/min and tokens/min
 - **OpenRouterClient** (`openrouter_client.py`) -- HTTP client for OpenRouter API with retry and error handling
-- **SummarisationService** (`summarisation_service.py`) -- generates AI summaries for turns (1-2 sentences) and tasks (2-3 sentences); includes frustration detection for USER turns (0-10 score persisted to turn.frustration_score)
+- **SummarisationService** (`summarisation_service.py`) -- generates AI summaries for turns (1-2 sentences) and commands (2-3 sentences); includes frustration detection for USER turns (0-10 score persisted to turn.frustration_score)
 - **PriorityScoringService** (`priority_scoring.py`) -- batch scores all active agents 0-100 based on objective/waypoint alignment, agent state, and recency; debounced (5 seconds)
 - **ProgressSummaryService** (`progress_summary.py`) -- generates LLM-powered project-level progress analysis from git commit history via GitAnalyzer; supports scope-based filtering (since_last, last_n, time_based)
 - **BrainRebootService** (`brain_reboot.py`) -- orchestrates brain reboot generation: combines waypoint content with progress summary, exports to project filesystem
@@ -241,24 +241,24 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 |-------|---------|------------|
 | **Project** | Monitored codebase | name, slug, path, github_repo, current_branch, description, inference_paused |
 | **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason, iterm_pane_id, tmux_pane_id, transcript_path, started_at, last_seen_at, ended_at, priority_updated_at |
-| **Task** | Unit of work (5-state) | state, instruction, completion_summary, started_at, completed_at |
+| **Command** | Unit of work (5-state) | state, instruction, completion_summary, started_at, completed_at |
 | **Turn** | Individual exchange | actor (USER/AGENT), intent, text, summary, frustration_score |
-| **Event** | Audit trail | event_type, payload (JSONB), project/agent/task/turn refs |
-| **InferenceCall** | LLM call log | model, input/output tokens, cost, latency, level, cached, input_hash, purpose, input_text, error_message, project_id, agent_id, task_id, turn_id |
+| **Event** | Audit trail | event_type, payload (JSONB), project/agent/command/turn refs |
+| **InferenceCall** | LLM call log | model, input/output tokens, cost, latency, level, cached, input_hash, purpose, input_text, error_message, project_id, agent_id, command_id, turn_id |
 | **Objective** | Global priority context | current_text, constraints, priority_enabled |
 | **ObjectiveHistory** | Objective change log | text, constraints, started_at, ended_at |
 | **ActivityMetric** | Hourly activity data | bucket_start, turn_count, avg_turn_time, active_agents, scope (agent/project/overall), avg_frustration, max_frustration |
 | **HeadspaceSnapshot** | Monitoring state | frustration_rolling_10/30min/3hr, state (green/yellow/red), is_flow_state, turn_rate_per_hour, flow_duration_minutes, last_alert_at |
 
-**Task States:** `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
+**Command States:** `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
 
 **Turn Actors:** `USER`, `AGENT`
 
-**Turn Intents:** `COMMAND`, `ANSWER`, `QUESTION`, `COMPLETION`, `PROGRESS`, `END_OF_TASK`
+**Turn Intents:** `COMMAND`, `ANSWER`, `QUESTION`, `COMPLETION`, `PROGRESS`, `END_OF_COMMAND`
 
 **Event Types:** `SESSION_REGISTERED`, `SESSION_ENDED`, `TURN_DETECTED`, `STATE_TRANSITION`, `OBJECTIVE_CHANGED`, `NOTIFICATION_SENT`, `HOOK_RECEIVED` (legacy), `HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_USER_PROMPT`, `HOOK_STOP`, `HOOK_NOTIFICATION`, `HOOK_POST_TOOL_USE`, `QUESTION_DETECTED`
 
-**Inference Levels:** `TURN`, `TASK`, `PROJECT`, `OBJECTIVE`
+**Inference Levels:** `TURN`, `COMMAND`, `PROJECT`, `OBJECTIVE`
 
 ## API Endpoints
 
@@ -286,7 +286,7 @@ This applies when you finish implementing all tasks from a plan/spec or complete
 
 - **Run targeted tests:** Run only tests relevant to your change. Do NOT run the full suite unless explicitly asked. See `.claude/rules/ai-guardrails.md` for testing rules.
 - **Service injection:** Access services via `app.extensions["service_name"]`
-- **State transitions:** Use the state machine via `TaskLifecycleManager`
+- **State transitions:** Use the state machine via `CommandLifecycleManager`
 - **Migrations:** Run `flask db upgrade` after model changes
 - **LLM features:** Set `OPENROUTER_API_KEY` in `.env`
 - **Tailwind CSS:** Source is `static/css/src/input.css`, output is `static/css/main.css`. Use `npx tailwindcss` (v3), NOT `npx @tailwindcss/cli` (v4).

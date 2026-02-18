@@ -24,7 +24,7 @@ Claude Headspace's Voice Bridge Server (e6-s1) provides voice-friendly API endpo
 - Toggleable TTS and audio cues
 
 ### Agent Interaction UI
-- Agent list view with project name, state (colour-coded), input-needed indicator, task summary
+- Agent list view with project name, state (colour-coded), input-needed indicator, command summary
 - Question presentation: structured options as tappable buttons OR free-text input
 - Auto-targeting: single awaiting agent receives commands automatically
 - Tap or voice to target specific agent

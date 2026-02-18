@@ -1,4 +1,4 @@
-# Tasks: e2-s1-config-ui
+# Commands: e2-s1-config-ui
 
 ## Phase 1: Setup
 

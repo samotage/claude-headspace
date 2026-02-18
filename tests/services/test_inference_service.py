@@ -22,7 +22,7 @@ def config():
             "timeout": 10,
             "models": {
                 "turn": "anthropic/claude-3-haiku",
-                "task": "anthropic/claude-3-haiku",
+                "command": "anthropic/claude-3-haiku",
                 "project": "anthropic/claude-3.5-sonnet",
                 "objective": "anthropic/claude-3.5-sonnet",
             },
@@ -73,8 +73,8 @@ class TestModelSelection:
     def test_turn_uses_haiku(self, service):
         assert service.get_model_for_level("turn") == "anthropic/claude-3-haiku"
 
-    def test_task_uses_haiku(self, service):
-        assert service.get_model_for_level("task") == "anthropic/claude-3-haiku"
+    def test_command_uses_haiku(self, service):
+        assert service.get_model_for_level("command") == "anthropic/claude-3-haiku"
 
     def test_project_uses_sonnet(self, service):
         assert service.get_model_for_level("project") == "anthropic/claude-3.5-sonnet"

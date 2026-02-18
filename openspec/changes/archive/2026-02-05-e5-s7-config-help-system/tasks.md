@@ -1,4 +1,4 @@
-# Tasks: e5-s7-config-help-system
+# Commands: e5-s7-config-help-system
 
 ## 1. Planning (Phase 1)
 

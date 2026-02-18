@@ -81,7 +81,7 @@ openrouter:
   timeout: 30
   models:
     turn: anthropic/claude-haiku-4.5
-    task: anthropic/claude-haiku-4.5
+    command: anthropic/claude-haiku-4.5
     project: anthropic/claude-3.5-sonnet
     objective: anthropic/claude-3.5-sonnet
   rate_limits:

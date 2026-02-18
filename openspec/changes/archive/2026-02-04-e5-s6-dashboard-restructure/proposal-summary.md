@@ -9,7 +9,7 @@
 
 ## Implementation Approach
 - **Hero style:** Add `hero_chars` (first 2) and `hero_trail` (remaining 6) fields to card state dict. Create CSS classes for large/small rendering. Update all templates and JS that reference agent identity.
-- **Kanban:** Add `kanban` sort mode to dashboard route. Group tasks by lifecycle state. Create new partials for Kanban columns and task cards. Reuse existing agent cards in IDLE column. SSE updates move cards between columns by re-rendering or DOM manipulation.
+- **Kanban:** Add `kanban` sort mode to dashboard route. Group tasks by lifecycle state. Create new partials for Kanban columns and command cards. Reuse existing agent cards in IDLE column. SSE updates move cards between columns by re-rendering or DOM manipulation.
 - **Activity bar:** Create compact metrics partial. Include in dashboard.html between header and state summary. SSE turn events trigger fetch of `/api/metrics/overall` to refresh values.
 - **Frustration:** Change displayed frustration to use immediate (last 10 turns) rolling average. This is already computed by HeadspaceMonitor as `frustration_rolling_10`.
 
@@ -29,7 +29,7 @@
 ### New Templates
 - `templates/partials/_activity_bar.html` — compact metrics bar partial
 - `templates/partials/_kanban_view.html` — Kanban column layout per project
-- `templates/partials/_kanban_task_card.html` — task card for Kanban columns
+- `templates/partials/_kanban_task_card.html` — command card for Kanban columns
 
 ### Routes (Python)
 - `src/claude_headspace/routes/dashboard.py` — add `kanban` sort mode, prepare Kanban data (group tasks by state), fetch overall activity metrics
@@ -43,13 +43,13 @@
 - `static/js/activity.js` — hero style for agent identity, frustration label change
 
 ### CSS
-- `static/css/src/input.css` — hero style classes (`.agent-hero`, `.agent-hero-trail`), Kanban column layout, Kanban task card, activity bar compact styling, COMPLETE column scroll + accordion
+- `static/css/src/input.css` — hero style classes (`.agent-hero`, `.agent-hero-trail`), Kanban column layout, Kanban command card, activity bar compact styling, COMPLETE column scroll + accordion
 
 ## Acceptance Criteria
 1. Agents displayed with 2-char hero identity (large) + trailing chars (small) in all views
 2. No `#` prefix on any agent ID display
 3. Kanban view is first/default sort option
-4. Tasks appear in correct lifecycle state columns
+4. Commands appear in correct lifecycle state columns
 5. Idle agents in IDLE column, completed tasks as accordions in scrollable COMPLETE column
 6. Completed tasks persist until agent reaped
 7. Priority ordering within Kanban columns when enabled
@@ -60,7 +60,7 @@
 ## Constraints and Gotchas
 - **Sort mode persistence:** Existing localStorage key `claude_headspace_sort_mode` needs to handle the new `kanban` value. When Kanban becomes default, first-time users with no localStorage value should see Kanban.
 - **Full page reload on sort change:** Current sort switching does a full page reload via URL param. This pattern should be maintained for Kanban.
-- **card_refresh SSE event:** The `handleCardRefresh` function in `dashboard-sse.js` is the authoritative card update mechanism. It needs to handle both the traditional card view AND the Kanban view. When in Kanban mode, a card_refresh may need to move a task card between columns if the state changed.
+- **card_refresh SSE event:** The `handleCardRefresh` function in `dashboard-sse.js` is the authoritative card update mechanism. It needs to handle both the traditional card view AND the Kanban view. When in Kanban mode, a card_refresh may need to move a command card between columns if the state changed.
 - **session_created/session_ended:** These events currently trigger full page reloads. This should continue working for Kanban view.
 - **Agent UUID sources:** The dashboard route truncates to 8 chars at line 285, and card_state service does the same at line 372. Both need `hero_chars`/`hero_trail` fields added.
 - **Logging filter API:** The `/api/events/filters` endpoint returns full UUIDs (logging.py line 234). The JS truncates client-side to 8 chars (logging.js lines 226-229). The filter format change is purely client-side.

@@ -24,7 +24,7 @@ The Input Bridge implementation fully satisfies all PRD requirements, acceptance
 
 - **PRD Requirements:** 17/17 covered (FR1-FR17)
 - **NFR Coverage:** 4/4 covered (NFR1-NFR4)
-- **Tasks Completed:** 20/20 complete
+- **Commands Completed:** 20/20 complete
 - **Design Compliance:** Yes — follows iterm_focus.py + routes/focus.py + focus-api.js pattern
 
 ## Spec Scenario Verification

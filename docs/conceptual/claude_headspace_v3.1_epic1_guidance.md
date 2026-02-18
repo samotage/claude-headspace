@@ -1,9 +1,9 @@
 # Claude Headspace v3.1 - Epic 1: Core Foundation
 
 **Date:** 28.1.26  
-**Epic Goal:** Establish the foundational event-driven architecture and prove the Task/Turn state machine works with a functional dashboard.
+**Epic Goal:** Establish the foundational event-driven architecture and prove the Command/Turn state machine works with a functional dashboard.
 
-**Acceptance Test:** Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each, and watch the dashboard reflect correct Task/Turn states in real-time. Click agent cards to focus the correct iTerm window. Receive system notifications when tasks complete or input is needed.
+**Acceptance Test:** Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each, and watch the dashboard reflect correct Command/Turn states in real-time. Click agent cards to focus the correct iTerm window. Receive system notifications when commands complete or input is needed.
 
 ---
 
@@ -42,7 +42,7 @@ Claude Code jsonl files
     [Event]
         │
         ├──▶ Writes to Postgres (event log)
-        ├──▶ Updates Task state
+        ├──▶ Updates Command state
         ├──▶ Updates Turn records
         ├──▶ Triggers SSE push to UI
         └──▶ Triggers system notification (if applicable)
@@ -54,7 +54,7 @@ Claude Code jsonl files
 Application Domain (Postgres)          LLM Domain (text files)
 ──────────────────────────────        ─────────────────────────
 Event log                              config.yaml
-Task records                           waypoint.md (in target project)
+Command records                           waypoint.md (in target project)
 Turn records                           progress_summary.md (in target project)
 Objective + history                    brain_reboot outputs
 Agent/Session state
@@ -170,9 +170,9 @@ SORT:  [By Project]  [By Priority]
 │ 01  ● ACTIVE  #2e3fe060  ● POLL  up 32h 38m              [Headspace]    │
 │ 02                                                                      │
 │ 03  ┌─────────────────────────────────────────────────────────────────┐ │
-│ 04  │ ✓ Task complete                                                 │ │
+│ 04  │ ✓ Command complete                                                 │ │
 │ 05  └─────────────────────────────────────────────────────────────────┘ │
-│     ✓ Task completed                                                    │
+│     ✓ Command completed                                                    │
 │     [60] // Default priority (no LLM result)                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -184,7 +184,7 @@ SORT:  [By Project]  [By Priority]
 - Uptime
 - "Headspace" button → focus iTerm window
 - Current state bar (colour-coded)
-- Task summary
+- Command summary
 - Priority score
 
 **Agent States & Colours:**
@@ -195,7 +195,7 @@ SORT:  [By Project]  [By Priority]
 | commanded | Yellow | "Command received" |
 | processing | Blue | "Processing..." |
 | awaiting_input | Orange | "Input needed" |
-| complete | Green | "Task complete" |
+| complete | Green | "Command complete" |
 
 ### Objective Tab
 
@@ -232,7 +232,7 @@ SORT:  [By Project]  [By Priority]
 ### Logging Tab
 
 - Filterable event log
-- Filter by: Project, Agent, Task, Event type
+- Filter by: Project, Agent, Command, Event type
 - Columns: Timestamp, Project, Agent, Event, Details
 - Real-time updates via SSE
 
@@ -263,10 +263,10 @@ Agent (auto-discovered from jsonl files)
 ├── project_id
 ├── iterm_pane_id (for AppleScript focus)
 ├── started_at
-├── state (derived from current task)
-└── tasks[]
+├── state (derived from current command)
+└── commands[]
 
-Task
+Command
 ├── agent_id
 ├── state: idle | commanded | processing | awaiting_input | complete
 ├── started_at
@@ -274,7 +274,7 @@ Task
 └── turns[]
 
 Turn
-├── task_id
+├── command_id
 ├── actor: user | agent
 ├── text
 ├── intent: command | answer | question | completion | progress
@@ -285,7 +285,7 @@ Event (log)
 ├── timestamp
 ├── project_id
 ├── agent_id
-├── task_id (nullable)
+├── command_id (nullable)
 ├── turn_id (nullable)
 ├── event_type
 └── payload (JSON)
@@ -327,7 +327,7 @@ When user clicks agent card or "Headspace" button:
 ### System Notifications
 
 Triggered on events:
-- Task complete → "Agent #abc123 completed task"
+- Command complete → "Agent #abc123 completed command"
 - Input needed → "Agent #abc123 needs input"
 
 Notifications appear in system tray, work across all workspaces.
@@ -397,7 +397,7 @@ server:
 - Objective model (with history)
 - Project model
 - Agent model
-- Task model (with state machine)
+- Command model (with state machine)
 - Turn model
 - Event log model
 - Database migrations
@@ -422,17 +422,17 @@ server:
 
 ---
 
-### Sprint 4: Task/Turn State Machine
+### Sprint 4: Command/Turn State Machine
 
-**Goal:** Events correctly update Task and Turn state.
+**Goal:** Events correctly update Command and Turn state.
 
-- Implement Task state transitions
-- Map Turn intents to Task state changes
-- Task lifecycle (command → ... → completion)
-- Agent state derived from current task
+- Implement Command state transitions
+- Map Turn intents to Command state changes
+- Command lifecycle (command → ... → completion)
+- Agent state derived from current command
 - Unit tests for state machine
 
-**Deliverable:** Events flow through, Task/Turn records reflect correct state.
+**Deliverable:** Events flow through, Command/Turn records reflect correct state.
 
 ---
 
@@ -484,7 +484,7 @@ server:
 **Goal:** Viewable event log with filtering.
 
 - Event log display
-- Filters: Project, Agent, Task, Event type
+- Filters: Project, Agent, Command, Event type
 - Real-time updates via SSE
 - Pagination or virtual scroll for large logs
 
@@ -516,9 +516,9 @@ server:
 - AppleScript to focus iTerm2 pane by ID
 - Wire up agent card click → focus iTerm
 - AppleScript for system notifications
-- Trigger notifications on task complete / input needed
+- Trigger notifications on command complete / input needed
 
-**Deliverable:** Click agent card → iTerm focuses. Task events → system notification.
+**Deliverable:** Click agent card → iTerm focuses. Command events → system notification.
 
 ---
 
@@ -541,11 +541,11 @@ server:
 4. ✅ Auto-discovers projects from `~/.claude/projects/`
 5. ✅ Watches jsonl files for changes
 6. ✅ Events logged to Postgres
-7. ✅ Task/Turn state machine works correctly
+7. ✅ Command/Turn state machine works correctly
 8. ✅ Dashboard shows projects, agents, tasks in Kanban layout
 9. ✅ Dashboard updates in real-time via SSE
 10. ✅ Can set objective and view history
 11. ✅ Can view and filter event logs
 12. ✅ Launcher script starts monitored sessions
 13. ✅ Click agent card focuses correct iTerm window
-14. ✅ System notifications on task complete / input needed
+14. ✅ System notifications on command complete / input needed

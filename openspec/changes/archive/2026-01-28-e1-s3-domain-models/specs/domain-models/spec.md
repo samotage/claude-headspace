@@ -47,41 +47,41 @@ The system SHALL persist Agents with id, session_uuid (UUID), project_id FK, ite
 
 #### Scenario: Agent State Derivation
 - **WHEN** Agent.state is accessed
-- **THEN** it returns the current task's state, or IDLE if no active task
+- **THEN** it returns the current command's state, or IDLE if no active command
 
 ---
 
-### Requirement: Task Model
+### Requirement: Command Model
 
-The system SHALL persist Tasks with id, agent_id FK, state (5-value enum), started_at, and completed_at (nullable).
+The system SHALL persist Commands with id, agent_id FK, state (5-value enum), started_at, and completed_at (nullable).
 
-#### Scenario: Valid Task State
-- **WHEN** a Task is created with state = "processing"
-- **THEN** the task is persisted with the valid enum value
+#### Scenario: Valid Command State
+- **WHEN** a Command is created with state = "processing"
+- **THEN** the command is persisted with the valid enum value
 
-#### Scenario: Invalid Task State
-- **WHEN** a Task is created with state = "invalid_state"
+#### Scenario: Invalid Command State
+- **WHEN** a Command is created with state = "invalid_state"
 - **THEN** a validation error is raised
 
 ---
 
-### Requirement: TaskState Enum
+### Requirement: CommandState Enum
 
-The TaskState enum SHALL contain exactly 5 values: idle, commanded, processing, awaiting_input, complete.
+The CommandState enum SHALL contain exactly 5 values: idle, commanded, processing, awaiting_input, complete.
 
 #### Scenario: Enum Values
-- **WHEN** TaskState enum is queried for values
+- **WHEN** CommandState enum is queried for values
 - **THEN** exactly 5 values are returned matching the specification
 
 ---
 
 ### Requirement: Turn Model
 
-The system SHALL persist Turns with id, task_id FK, actor (2-value enum), intent (5-value enum), text, and timestamp.
+The system SHALL persist Turns with id, command_id FK, actor (2-value enum), intent (5-value enum), text, and timestamp.
 
 #### Scenario: Create Turn
-- **WHEN** a Turn is created with task_id, actor="user", intent="command", text
-- **THEN** the turn is persisted with FK relationship to Task
+- **WHEN** a Turn is created with command_id, actor="user", intent="command", text
+- **THEN** the turn is persisted with FK relationship to Command
 
 ---
 
@@ -107,7 +107,7 @@ The TurnIntent enum SHALL contain exactly 5 values: command, answer, question, c
 
 ### Requirement: Event Model
 
-The system SHALL persist Events with id, timestamp, project_id (nullable FK), agent_id (nullable FK), task_id (nullable FK), turn_id (nullable FK), event_type (string), and payload (JSON).
+The system SHALL persist Events with id, timestamp, project_id (nullable FK), agent_id (nullable FK), command_id (nullable FK), turn_id (nullable FK), event_type (string), and payload (JSON).
 
 #### Scenario: Event with Partial FKs
 - **WHEN** an Event is created with only project_id set
@@ -123,8 +123,8 @@ The system SHALL persist Events with id, timestamp, project_id (nullable FK), ag
 
 The system SHALL enforce:
 - Project has many Agents (one-to-many)
-- Agent has many Tasks (one-to-many)
-- Task has many Turns (one-to-many)
+- Agent has many Commands (one-to-many)
+- Command has many Turns (one-to-many)
 - Objective has many ObjectiveHistory records (one-to-many)
 
 #### Scenario: FK Constraint Violation
@@ -135,11 +135,11 @@ The system SHALL enforce:
 
 ### Requirement: Cascade Delete Behavior
 
-The system SHALL cascade deletes: Project→Agents→Tasks→Turns.
+The system SHALL cascade deletes: Project→Agents→Commands→Turns.
 
 #### Scenario: Project Delete Cascade
 - **WHEN** a Project is deleted
-- **THEN** all associated Agents, Tasks, and Turns are deleted
+- **THEN** all associated Agents, Commands, and Turns are deleted
 
 ---
 
@@ -148,7 +148,7 @@ The system SHALL cascade deletes: Project→Agents→Tasks→Turns.
 The system SHALL create indexes for:
 - agents.project_id, agents.session_uuid
 - tasks.agent_id, tasks.state
-- turns.task_id
+- turns.command_id
 - events.timestamp, events.event_type, events.project_id, events.agent_id
 
 #### Scenario: Query Performance
@@ -160,14 +160,14 @@ The system SHALL create indexes for:
 ### Requirement: Query Patterns
 
 The system SHALL support these query patterns:
-1. Get current (most recent incomplete) task for an agent
-2. Get recent turns for a task ordered by timestamp
+1. Get current (most recent incomplete) command for an agent
+2. Get recent turns for a command ordered by timestamp
 3. Get events filtered by project/agent/event_type
 
-#### Scenario: Get Current Task
-- **WHEN** Agent.get_current_task() is called
-- **THEN** the most recent task with state != 'complete' is returned
+#### Scenario: Get Current Command
+- **WHEN** Agent.get_current_command() is called
+- **THEN** the most recent command with state != 'complete' is returned
 
-#### Scenario: No Current Task
-- **WHEN** Agent.get_current_task() is called on agent with no tasks
+#### Scenario: No Current Command
+- **WHEN** Agent.get_current_command() is called on agent with no commands
 - **THEN** None is returned

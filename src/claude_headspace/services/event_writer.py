@@ -98,7 +98,7 @@ class EventWriter:
         timestamp: Optional[datetime] = None,
         project_id: Optional[int] = None,
         agent_id: Optional[int] = None,
-        task_id: Optional[int] = None,
+        command_id: Optional[int] = None,
         turn_id: Optional[int] = None,
         session: Optional[Session] = None,
     ) -> WriteResult:
@@ -108,7 +108,7 @@ class EventWriter:
 
         validated, error = create_validated_event(
             event_type=event_type, payload=payload, timestamp=timestamp,
-            project_id=project_id, agent_id=agent_id, task_id=task_id, turn_id=turn_id,
+            project_id=project_id, agent_id=agent_id, command_id=command_id, turn_id=turn_id,
         )
         if not validated:
             self._metrics.record_failure(error or "Validation failed")
@@ -127,7 +127,7 @@ class EventWriter:
             payload=event.payload,
             project_id=event.project_id,
             agent_id=event.agent_id,
-            task_id=event.task_id,
+            command_id=event.command_id,
             turn_id=event.turn_id,
         )
 

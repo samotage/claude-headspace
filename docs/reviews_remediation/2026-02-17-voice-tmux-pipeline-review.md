@@ -45,8 +45,8 @@ var turn = {
   id: data.turn_id, actor: data.actor, intent: data.intent,
   text: data.text, timestamp: data.timestamp,
   tool_input: data.tool_input, question_text: data.text,
-  question_options: null, task_id: data.task_id,
-  task_instruction: data.task_instruction
+  question_options: null, command_id: data.command_id,
+  command_instruction: data.command_instruction
   // question_source_type: MISSING
 };
 ```

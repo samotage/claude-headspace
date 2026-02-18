@@ -1,4 +1,4 @@
-# Tasks: e1-s5-event-system
+# Commands: e1-s5-event-system
 
 ## Phase 1: Setup
 

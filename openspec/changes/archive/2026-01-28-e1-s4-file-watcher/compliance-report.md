@@ -29,7 +29,7 @@ The implementation fully satisfies all 12 requirements from the PRD and delta sp
 ## Requirements Coverage
 
 - **PRD Requirements:** 12/12 covered (FR1-FR12)
-- **Tasks Completed:** 53/53 complete (all [x])
+- **Commands Completed:** 53/53 complete (all [x])
 - **Design Compliance:** Yes (Watchdog, threading, incremental parsing)
 
 ## Issues Found

@@ -58,7 +58,7 @@ class PayloadSchema:
 
 
 # Payload schemas per event type
-# Note: agent_id, task_id, etc. are passed as function parameters to write_event(),
+# Note: agent_id, command_id, etc. are passed as function parameters to write_event(),
 # not in the payload. The payload contains semantic event data only.
 PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
     EventType.SESSION_REGISTERED: PayloadSchema(
@@ -73,8 +73,8 @@ PAYLOAD_SCHEMAS: dict[str, PayloadSchema] = {
         required_fields=["session_uuid", "actor", "text", "source", "turn_timestamp"],
         optional_fields=[],
     ),
-    # STATE_TRANSITION: agent_id and task_id are passed as function params, not payload
-    # (Issue 9 remediation - fixed schema to match actual usage in task_lifecycle.py)
+    # STATE_TRANSITION: agent_id and command_id are passed as function params, not payload
+    # (Issue 9 remediation - fixed schema to match actual usage in command_lifecycle.py)
     EventType.STATE_TRANSITION: PayloadSchema(
         required_fields=["from_state", "to_state", "trigger"],
         optional_fields=["confidence"],
@@ -171,7 +171,7 @@ class ValidatedEvent:
     timestamp: datetime
     project_id: Optional[int] = None
     agent_id: Optional[int] = None
-    task_id: Optional[int] = None
+    command_id: Optional[int] = None
     turn_id: Optional[int] = None
 
 
@@ -181,7 +181,7 @@ def create_validated_event(
     timestamp: Optional[datetime] = None,
     project_id: Optional[int] = None,
     agent_id: Optional[int] = None,
-    task_id: Optional[int] = None,
+    command_id: Optional[int] = None,
     turn_id: Optional[int] = None,
 ) -> tuple[Optional[ValidatedEvent], Optional[str]]:
     """
@@ -193,7 +193,7 @@ def create_validated_event(
         timestamp: Optional timestamp (defaults to now)
         project_id: Optional project foreign key
         agent_id: Optional agent foreign key
-        task_id: Optional task foreign key
+        command_id: Optional command foreign key
         turn_id: Optional turn foreign key
 
     Returns:
@@ -215,6 +215,6 @@ def create_validated_event(
         timestamp=timestamp,
         project_id=project_id,
         agent_id=agent_id,
-        task_id=task_id,
+        command_id=command_id,
         turn_id=turn_id,
     ), None

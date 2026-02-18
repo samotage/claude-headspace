@@ -19,7 +19,7 @@ Claude Headspace tracks multiple Claude Code agents working across multiple proj
 
 The scoring service evaluates all agents in a single batch inference call for cross-agent comparison and efficiency. Scores are persisted on the Agent model alongside a human-readable reason explaining the ranking. The dashboard's recommended next panel and agent card priority badges are driven by these scores, replacing the current placeholder values.
 
-When no objective is set, scoring falls back to project waypoint priorities. When neither objective nor waypoint is available, agents receive a default score. Scoring is triggered by task state changes and objective updates, with rate-limiting to prevent redundant evaluations during rapid state transitions.
+When no objective is set, scoring falls back to project waypoint priorities. When neither objective nor waypoint is available, agents receive a default score. Scoring is triggered by command state changes and objective updates, with rate-limiting to prevent redundant evaluations during rapid state transitions.
 
 ---
 
@@ -27,11 +27,11 @@ When no objective is set, scoring falls back to project waypoint priorities. Whe
 
 ### 1.1 Context
 
-Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions. Epic 1 established the event-driven architecture, state machine, and dashboard. Epic 3 adds an intelligence layer. Sprint 1 (E3-S1) provides the inference service infrastructure via OpenRouter. Sprint 2 (E3-S2) adds turn and task summarisation, providing task summaries that enrich the scoring context.
+Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions. Epic 1 established the event-driven architecture, state machine, and dashboard. Epic 3 adds an intelligence layer. Sprint 1 (E3-S1) provides the inference service infrastructure via OpenRouter. Sprint 2 (E3-S2) adds turn and command summarisation, providing command summaries that enrich the scoring context.
 
 The system already has:
 - An Objective model (singleton with `current_text`, `constraints`, and history tracking)
-- An Agent model with project association, task lifecycle, and state derivation
+- An Agent model with project association, command lifecycle, and state derivation
 - A dashboard with agent cards displaying a hardcoded priority value of 50
 - A `sort_agents_by_priority()` function that sorts by state + timestamp (placeholder logic)
 - A `get_recommended_next()` function ready to consume real priority scores
@@ -45,7 +45,7 @@ The primary user is the Claude Headspace operator — a developer managing multi
 
 ### 1.3 Success Moment
 
-The user sets an objective ("Ship the authentication feature by Friday"). Multiple agents are active across three projects. The dashboard's recommended next panel highlights the agent whose current task most directly contributes to that objective, with a clear reason: "Working on auth middleware — directly aligned with shipping authentication." The user clicks through to that agent's iTerm2 terminal and provides input, confident they're spending attention on the highest-value work.
+The user sets an objective ("Ship the authentication feature by Friday"). Multiple agents are active across three projects. The dashboard's recommended next panel highlights the agent whose current command most directly contributes to that objective, with a clear reason: "Working on auth middleware — directly aligned with shipping authentication." The user clicks through to that agent's iTerm2 terminal and provides input, confident they're spending attention on the highest-value work.
 
 ---
 
@@ -59,7 +59,7 @@ The user sets an objective ("Ship the authentication feature by Friday"). Multip
 - Scoring context fallback chain: objective (primary) → project waypoint (fallback) → default score of 50
 - Human-readable priority reason stored per agent explaining the score
 - Database migration adding priority fields to the Agent model
-- Scoring triggers on task state change and objective change
+- Scoring triggers on command state change and objective change
 - Rate-limited scoring to prevent redundant evaluations during rapid state changes
 - Re-score all agents when the objective changes
 - Dashboard integration: priority badges on agent cards displaying the score
@@ -72,7 +72,7 @@ The user sets an objective ("Ship the authentication feature by Friday"). Multip
 ### 2.2 Out of Scope
 
 - Inference service infrastructure or OpenRouter client (E3-S1 prerequisite)
-- Turn or task summarisation services (E3-S2)
+- Turn or command summarisation services (E3-S2)
 - Git analysis or progress summaries (E3-S4)
 - Brain reboot generation (E3-S5)
 - User feedback on scores (thumbs up/down)
@@ -93,7 +93,7 @@ The user sets an objective ("Ship the authentication feature by Friday"). Multip
 3. The recommended next panel displays the highest-priority agent
 4. Priority badges on agent cards show the LLM-generated score, replacing the hardcoded placeholder
 5. Changing the objective triggers re-scoring of all agents with updated alignment context
-6. Task state changes trigger a rate-limited re-score of all agents
+6. Command state changes trigger a rate-limited re-score of all agents
 7. When no objective is set, scoring falls back to project waypoint priorities
 8. When neither objective nor waypoint is available, agents receive a default score of 50 with a reason indicating no scoring context
 9. Scores persist to the database and are preserved across page reloads
@@ -131,7 +131,7 @@ The user sets an objective ("Ship the authentication feature by Friday"). Multip
 
 **FR7:** The scoring evaluation shall consider the following factors: objective or waypoint alignment, agent state, task duration, project context, and recent activity. Objective/waypoint alignment shall be the most heavily weighted factor.
 
-**FR8:** The scoring prompt shall provide the LLM with each agent's project name, current state, current task summary (if available from E3-S2), task duration, and project waypoint next-up items.
+**FR8:** The scoring prompt shall provide the LLM with each agent's project name, current state, current command summary (if available from E3-S2), task duration, and project waypoint next-up items.
 
 ### Score Storage
 
@@ -143,7 +143,7 @@ The user sets an objective ("Ship the authentication feature by Friday"). Multip
 
 ### Scoring Triggers
 
-**FR12:** A task state change on any agent shall trigger a rate-limited re-score of all active agents.
+**FR12:** A command state change on any agent shall trigger a rate-limited re-score of all active agents.
 
 **FR13:** An objective change shall trigger an immediate re-score of all active agents.
 
@@ -251,7 +251,7 @@ Agents to score:
 - Agent: {agent.session_uuid}
   Project: {agent.project.name}
   State: {agent.state}
-  Current Task: {agent.current_task.summary or "None"}
+  Current Command: {agent.current_command.summary or "None"}
   Task Duration: {task_duration}
   Waypoint Next Up: {agent.project.waypoint.next_up}
 {endfor}
@@ -265,7 +265,7 @@ When falling back to waypoint-only scoring (no objective), adapt the prompt to u
 ### Integration Points
 
 - Uses E3-S1 inference service for LLM calls (objective-level tier)
-- Uses E3-S2 task summaries for context in scoring prompt (if available; degrade gracefully if summaries not yet generated)
+- Uses E3-S2 command summaries for context in scoring prompt (if available; degrade gracefully if summaries not yet generated)
 - Integrates with Epic 1 Objective model (`current_text`, `constraints`) and Agent model
 - Updates dashboard recommended next panel via existing SSE mechanism
 - Updates agent card priority badges via existing template variable

@@ -12,7 +12,7 @@ All acceptance criteria are satisfied. The implementation fully matches the PRD 
 | Criterion | Status | Notes |
 |-----------|--------|-------|
 | OpenRouter client authenticates and returns structured responses | ✓ | `openrouter_client.py` with InferenceResult dataclass |
-| Model selection maps turn/task→Haiku, project/objective→Sonnet | ✓ | Configurable via `config.yaml` models mapping |
+| Model selection maps turn/command→Haiku, project/objective→Sonnet | ✓ | Configurable via `config.yaml` models mapping |
 | Every inference call is logged to inference_calls table | ✓ | `_log_call()` creates InferenceCall record with full metadata |
 | Rate limits reject requests when exceeded with retry-after | ✓ | Thread-safe sliding window limiter with retry_after_seconds |
 | Cache returns cached results for matching content hash within TTL | ✓ | SHA-256 content hash keys, configurable TTL, hit/miss tracking |
@@ -26,7 +26,7 @@ All acceptance criteria are satisfied. The implementation fully matches the PRD 
 ## Requirements Coverage
 
 - **PRD Requirements:** 24/24 functional requirements covered
-- **Tasks Completed:** 17/17 implementation tasks complete
+- **Commands Completed:** 17/17 implementation tasks complete
 - **Design Compliance:** Yes — follows all architectural decisions from proposal
 - **Delta Spec Requirements:** 9/9 ADDED requirements implemented
 

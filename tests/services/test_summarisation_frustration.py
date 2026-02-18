@@ -37,11 +37,11 @@ def user_turn():
     turn.summary = None
     turn.summary_generated_at = None
     turn.frustration_score = None
-    turn.task_id = 10
-    turn.task.agent_id = 5
-    turn.task.agent.project_id = 3
-    turn.task.instruction = None
-    turn.task.agent.project.inference_paused = None
+    turn.command_id = 10
+    turn.command.agent_id = 5
+    turn.command.agent.project_id = 3
+    turn.command.instruction = None
+    turn.command.agent.project.inference_paused = None
     return turn
 
 
@@ -55,11 +55,11 @@ def agent_turn():
     turn.summary = None
     turn.summary_generated_at = None
     turn.frustration_score = None
-    turn.task_id = 10
-    turn.task.agent_id = 5
-    turn.task.agent.project_id = 3
-    turn.task.instruction = None
-    turn.task.agent.project.inference_paused = None
+    turn.command_id = 10
+    turn.command.agent_id = 5
+    turn.command.agent.project_id = 3
+    turn.command.instruction = None
+    turn.command.agent.project.inference_paused = None
     return turn
 
 

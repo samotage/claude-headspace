@@ -25,12 +25,12 @@ class TurnIntent(enum.Enum):
     QUESTION = "question"
     COMPLETION = "completion"
     PROGRESS = "progress"
-    END_OF_TASK = "end_of_task"
+    END_OF_COMMAND = "end_of_command"
 
 
 class Turn(db.Model):
     """
-    Represents an individual exchange in a Task.
+    Represents an individual exchange in a Command.
 
     Each turn captures who said what (actor), why (intent), and when.
     """
@@ -38,8 +38,8 @@ class Turn(db.Model):
     __tablename__ = "turns"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(
-        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True
+    command_id: Mapped[int] = mapped_column(
+        ForeignKey("commands.id", ondelete="CASCADE"), nullable=False, index=True
     )
     actor: Mapped[TurnActor] = mapped_column(
         Enum(TurnActor, name="turnactor", create_constraint=True), nullable=False
@@ -48,7 +48,7 @@ class Turn(db.Model):
         Enum(TurnIntent, name="turnintent", create_constraint=True), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    # Temporal validation (turn.timestamp >= task.started_at) is enforced at
+    # Temporal validation (turn.timestamp >= command.started_at) is enforced at
     # application level — cross-table CHECK constraints are not supported in PostgreSQL.
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
@@ -84,7 +84,7 @@ class Turn(db.Model):
     )
 
     # Relationships
-    task: Mapped["Task"] = relationship("Task", back_populates="turns")
+    command: Mapped["Command"] = relationship("Command", back_populates="turns")
     answered_by: Mapped["Turn | None"] = relationship(
         "Turn", remote_side="Turn.id", foreign_keys=[answered_by_turn_id],
     )
@@ -94,5 +94,5 @@ class Turn(db.Model):
 
 
 # Additional indexes
-Index("ix_turns_task_id_timestamp", Turn.task_id, Turn.timestamp)
-Index("ix_turns_task_id_actor", Turn.task_id, Turn.actor)
+Index("ix_turns_command_id_timestamp", Turn.command_id, Turn.timestamp)
+Index("ix_turns_command_id_actor", Turn.command_id, Turn.actor)

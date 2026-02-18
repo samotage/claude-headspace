@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from flask import Flask
 
-from src.claude_headspace.models import TaskState
+from src.claude_headspace.models import CommandState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.dashboard import (
     calculate_status_counts,
@@ -17,13 +17,13 @@ from src.claude_headspace.routes.dashboard import (
 )
 from src.claude_headspace.services.card_state import (
     TIMED_OUT,
-    _get_completed_task_summary,
+    _get_completed_command_summary,
     format_uptime,
     get_effective_state,
     get_state_info,
-    get_task_completion_summary,
-    get_task_instruction,
-    get_task_summary,
+    get_command_completion_summary,
+    get_command_instruction,
+    get_command_summary,
     is_agent_active,
 )
 
@@ -32,10 +32,10 @@ from src.claude_headspace.services.card_state import (
 
 
 def create_mock_agent(
-    state: TaskState = TaskState.IDLE,
+    state: CommandState = CommandState.IDLE,
     last_seen_minutes_ago: int = 0,
     started_hours_ago: int = 1,
-    task_text: str | None = None,
+    command_text: str | None = None,
 ):
     """Create a mock agent with specified properties."""
     agent = MagicMock()
@@ -48,25 +48,26 @@ def create_mock_agent(
     agent.priority_score = None
     agent.priority_reason = None
     agent.tmux_pane_id = None
-    agent.tasks = []
+    agent.commands = []
 
-    # Mock get_current_task
-    if task_text:
+    # Mock get_current_command
+    if command_text:
         mock_turn = MagicMock()
-        mock_turn.text = task_text
+        mock_turn.text = command_text
         mock_turn.summary = None
-        mock_task = MagicMock()
-        mock_task.turns = [mock_turn]
-        mock_task.id = 1
-        mock_task.state = TaskState.PROCESSING
-        mock_task.instruction = task_text
-        mock_task.started_at = datetime.now(timezone.utc)
-        mock_task.completed_at = None
-        mock_task.completion_summary = None
-        agent.get_current_task.return_value = mock_task
-        agent.tasks = [mock_task]
+        mock_turn.is_internal = False
+        mock_cmd = MagicMock()
+        mock_cmd.turns = [mock_turn]
+        mock_cmd.id = 1
+        mock_cmd.state = CommandState.PROCESSING
+        mock_cmd.instruction = command_text
+        mock_cmd.started_at = datetime.now(timezone.utc)
+        mock_cmd.completed_at = None
+        mock_cmd.completion_summary = None
+        agent.get_current_command.return_value = mock_cmd
+        agent.commands = [mock_cmd]
     else:
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
     return agent
 
@@ -85,8 +86,8 @@ class TestCalculateStatusCounts:
     def test_all_idle(self):
         """Test with all idle agents."""
         agents = [
-            create_mock_agent(state=TaskState.IDLE),
-            create_mock_agent(state=TaskState.IDLE),
+            create_mock_agent(state=CommandState.IDLE),
+            create_mock_agent(state=CommandState.IDLE),
         ]
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 2}
@@ -94,8 +95,8 @@ class TestCalculateStatusCounts:
     def test_awaiting_input(self):
         """Test agents awaiting input."""
         agents = [
-            create_mock_agent(state=TaskState.AWAITING_INPUT),
-            create_mock_agent(state=TaskState.IDLE),
+            create_mock_agent(state=CommandState.AWAITING_INPUT),
+            create_mock_agent(state=CommandState.IDLE),
         ]
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 1, "working": 0, "idle": 1}
@@ -105,9 +106,9 @@ class TestCalculateStatusCounts:
         """Test agents in working states (COMMANDED and PROCESSING)."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
         agents = [
-            create_mock_agent(state=TaskState.COMMANDED),
-            create_mock_agent(state=TaskState.PROCESSING),
-            create_mock_agent(state=TaskState.IDLE),
+            create_mock_agent(state=CommandState.COMMANDED),
+            create_mock_agent(state=CommandState.PROCESSING),
+            create_mock_agent(state=CommandState.IDLE),
         ]
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 0, "working": 2, "idle": 1}
@@ -115,7 +116,7 @@ class TestCalculateStatusCounts:
     def test_complete_counts_as_idle(self):
         """Test that COMPLETE state counts as idle."""
         agents = [
-            create_mock_agent(state=TaskState.COMPLETE),
+            create_mock_agent(state=CommandState.COMPLETE),
         ]
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 0, "working": 0, "idle": 1}
@@ -125,11 +126,11 @@ class TestCalculateStatusCounts:
         """Test with all different states."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
         agents = [
-            create_mock_agent(state=TaskState.IDLE),
-            create_mock_agent(state=TaskState.COMMANDED),
-            create_mock_agent(state=TaskState.PROCESSING),
-            create_mock_agent(state=TaskState.AWAITING_INPUT),
-            create_mock_agent(state=TaskState.COMPLETE),
+            create_mock_agent(state=CommandState.IDLE),
+            create_mock_agent(state=CommandState.COMMANDED),
+            create_mock_agent(state=CommandState.PROCESSING),
+            create_mock_agent(state=CommandState.AWAITING_INPUT),
+            create_mock_agent(state=CommandState.COMPLETE),
         ]
         result = calculate_status_counts(agents)
         assert result == {"timed_out": 0, "input_needed": 1, "working": 2, "idle": 2}
@@ -151,7 +152,7 @@ class TestGetProjectStateFlags:
     def test_awaiting_input_flag(self):
         """Test that agent awaiting input sets has_input_needed."""
         agents = [
-            create_mock_agent(state=TaskState.AWAITING_INPUT),
+            create_mock_agent(state=CommandState.AWAITING_INPUT),
         ]
         result = get_project_state_flags(agents)
         assert result["has_timed_out"] is False
@@ -164,8 +165,8 @@ class TestGetProjectStateFlags:
         """Test that working agents set has_working."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
         agents = [
-            create_mock_agent(state=TaskState.PROCESSING),
-            create_mock_agent(state=TaskState.COMMANDED),
+            create_mock_agent(state=CommandState.PROCESSING),
+            create_mock_agent(state=CommandState.COMMANDED),
         ]
         result = get_project_state_flags(agents)
         assert result["has_timed_out"] is False
@@ -176,7 +177,7 @@ class TestGetProjectStateFlags:
     def test_idle_flag(self):
         """Test that idle agents set has_idle."""
         agents = [
-            create_mock_agent(state=TaskState.IDLE),
+            create_mock_agent(state=CommandState.IDLE),
         ]
         result = get_project_state_flags(agents)
         assert result["has_timed_out"] is False
@@ -187,7 +188,7 @@ class TestGetProjectStateFlags:
     def test_complete_counts_as_idle(self):
         """Test that COMPLETE state sets has_idle."""
         agents = [
-            create_mock_agent(state=TaskState.COMPLETE),
+            create_mock_agent(state=CommandState.COMPLETE),
         ]
         result = get_project_state_flags(agents)
         assert result["has_idle"] is True
@@ -197,9 +198,9 @@ class TestGetProjectStateFlags:
         """Test that mixed states set multiple flags."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
         agents = [
-            create_mock_agent(state=TaskState.AWAITING_INPUT),
-            create_mock_agent(state=TaskState.PROCESSING),
-            create_mock_agent(state=TaskState.IDLE),
+            create_mock_agent(state=CommandState.AWAITING_INPUT),
+            create_mock_agent(state=CommandState.PROCESSING),
+            create_mock_agent(state=CommandState.IDLE),
         ]
         result = get_project_state_flags(agents)
         assert result["has_timed_out"] is False
@@ -260,34 +261,34 @@ class TestFormatUptime:
         assert result == "up <1m"
 
 
-class TestGetTaskSummary:
-    """Tests for get_task_summary function."""
+class TestGetCommandSummary:
+    """Tests for get_command_summary function."""
 
-    def test_no_current_task(self):
-        """Test when agent has no current task."""
-        agent = create_mock_agent(task_text=None)
-        result = get_task_summary(agent)
-        assert result == "No active task"
+    def test_no_current_command(self):
+        """Test when agent has no current command."""
+        agent = create_mock_agent(command_text=None)
+        result = get_command_summary(agent)
+        assert result == "No active command"
 
-    def test_short_task_text(self):
-        """Test with short task text."""
-        agent = create_mock_agent(task_text="Fix the bug")
-        result = get_task_summary(agent)
+    def test_short_command_text(self):
+        """Test with short command text."""
+        agent = create_mock_agent(command_text="Fix the bug")
+        result = get_command_summary(agent)
         assert result == "Fix the bug"
 
-    def test_long_task_text_truncated(self):
+    def test_long_command_text_truncated(self):
         """Test that long text is truncated to 100 chars."""
         long_text = "A" * 150
-        agent = create_mock_agent(task_text=long_text)
-        result = get_task_summary(agent)
+        agent = create_mock_agent(command_text=long_text)
+        result = get_command_summary(agent)
         assert len(result) == 103  # 100 chars + "..."
         assert result.endswith("...")
 
     def test_exactly_100_chars(self):
         """Test with exactly 100 characters."""
         text = "A" * 100
-        agent = create_mock_agent(task_text=text)
-        result = get_task_summary(agent)
+        agent = create_mock_agent(command_text=text)
+        result = get_command_summary(agent)
         assert result == text
         assert len(result) == 100
 
@@ -304,6 +305,7 @@ class TestGetTaskSummary:
         user_turn.intent = TurnIntent.COMMAND
         user_turn.text = "Fix the login bug"
         user_turn.summary = None
+        user_turn.is_internal = False
 
         # Agent question turn
         agent_turn = MagicMock()
@@ -311,13 +313,14 @@ class TestGetTaskSummary:
         agent_turn.intent = TurnIntent.QUESTION
         agent_turn.text = "Which database should we use?"
         agent_turn.summary = None
+        agent_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [user_turn, agent_turn]
-        agent.get_current_task.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.state = CommandState.AWAITING_INPUT
+        mock_cmd.turns = [user_turn, agent_turn]
+        agent.get_current_command.return_value = mock_cmd
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Which database should we use?"
 
     def test_awaiting_input_prefers_agent_question_summary(self):
@@ -332,13 +335,14 @@ class TestGetTaskSummary:
         agent_turn.intent = TurnIntent.QUESTION
         agent_turn.text = "Which database should we use for the new feature?"
         agent_turn.summary = "Asking about database choice"
+        agent_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [agent_turn]
-        agent.get_current_task.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.state = CommandState.AWAITING_INPUT
+        mock_cmd.turns = [agent_turn]
+        agent.get_current_command.return_value = mock_cmd
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Asking about database choice"
 
     def test_awaiting_input_falls_back_without_question_turn(self):
@@ -353,13 +357,14 @@ class TestGetTaskSummary:
         user_turn.intent = TurnIntent.COMMAND
         user_turn.text = "Fix the login bug"
         user_turn.summary = None
+        user_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [user_turn]
-        agent.get_current_task.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.state = CommandState.AWAITING_INPUT
+        mock_cmd.turns = [user_turn]
+        agent.get_current_command.return_value = mock_cmd
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Fix the login bug"
 
     def test_awaiting_input_truncates_long_question(self):
@@ -374,50 +379,53 @@ class TestGetTaskSummary:
         agent_turn.intent = TurnIntent.QUESTION
         agent_turn.text = "Q" * 150
         agent_turn.summary = None
+        agent_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [agent_turn]
-        agent.get_current_task.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.state = CommandState.AWAITING_INPUT
+        mock_cmd.turns = [agent_turn]
+        agent.get_current_command.return_value = mock_cmd
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert len(result) == 103  # 100 chars + "..."
         assert result.endswith("...")
 
 
-class TestGetCompletedTaskSummary:
-    """Tests for _get_completed_task_summary helper."""
+class TestGetCompletedCommandSummary:
+    """Tests for _get_completed_command_summary helper."""
 
-    def test_returns_task_summary_when_set(self):
-        """Completed task with task.completion_summary returns that summary."""
-        mock_task = MagicMock()
-        mock_task.completion_summary = "Refactored authentication module"
-        mock_task.turns = []
-        result = _get_completed_task_summary(mock_task)
+    def test_returns_command_summary_when_set(self):
+        """Completed command with command.completion_summary returns that summary."""
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = "Refactored authentication module"
+        mock_cmd.turns = []
+        result = _get_completed_command_summary(mock_cmd)
         assert result == "Refactored authentication module"
 
     def test_falls_back_to_last_turn_summary(self):
-        """Completed task without task.completion_summary uses last turn's summary."""
+        """Completed command without command.completion_summary uses last turn's summary."""
         mock_turn = MagicMock()
         mock_turn.summary = "Fixed login bug"
         mock_turn.text = "Raw turn text here"
+        mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.turns = [mock_turn]
-        result = _get_completed_task_summary(mock_task)
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.turns = [mock_turn]
+        result = _get_completed_command_summary(mock_cmd)
         assert result == "Fixed login bug"
 
     def test_falls_back_to_last_turn_text(self):
-        """Completed task without summaries uses last turn's raw text."""
+        """Completed command without summaries uses last turn's raw text."""
         mock_turn = MagicMock()
         mock_turn.summary = None
         mock_turn.text = "Implemented the feature"
+        mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.turns = [mock_turn]
-        result = _get_completed_task_summary(mock_task)
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.turns = [mock_turn]
+        result = _get_completed_command_summary(mock_cmd)
         assert result == "Implemented the feature"
 
     def test_truncates_long_turn_text(self):
@@ -425,123 +433,127 @@ class TestGetCompletedTaskSummary:
         mock_turn = MagicMock()
         mock_turn.summary = None
         mock_turn.text = "A" * 150
+        mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.turns = [mock_turn]
-        result = _get_completed_task_summary(mock_task)
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.turns = [mock_turn]
+        result = _get_completed_command_summary(mock_cmd)
         assert len(result) == 103  # 100 + "..."
         assert result.endswith("...")
 
     def test_no_turns_returns_summarising(self):
-        """Completed task with no turns returns 'Summarising...'."""
-        mock_task = MagicMock()
-        mock_task.completion_summary = None
-        mock_task.turns = []
-        result = _get_completed_task_summary(mock_task)
+        """Completed command with no turns returns 'Summarising...'."""
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = None
+        mock_cmd.turns = []
+        result = _get_completed_command_summary(mock_cmd)
         assert result == "Summarising..."
 
-    def test_prefers_task_summary_over_turn_summary(self):
-        """task.completion_summary takes priority over turn summary."""
+    def test_prefers_command_summary_over_turn_summary(self):
+        """command.completion_summary takes priority over turn summary."""
         mock_turn = MagicMock()
         mock_turn.summary = "Turn-level summary"
         mock_turn.text = "Raw text"
+        mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.completion_summary = "Task-level summary"
-        mock_task.turns = [mock_turn]
-        result = _get_completed_task_summary(mock_task)
-        assert result == "Task-level summary"
+        mock_cmd = MagicMock()
+        mock_cmd.completion_summary = "Command-level summary"
+        mock_cmd.turns = [mock_turn]
+        result = _get_completed_command_summary(mock_cmd)
+        assert result == "Command-level summary"
 
 
-class TestGetTaskSummaryCompletedFallback:
-    """Tests for get_task_summary() completed task fallback path."""
+class TestGetCommandSummaryCompletedFallback:
+    """Tests for get_command_summary() completed command fallback path."""
 
-    def test_completed_task_with_summary(self):
-        """When no active task but most recent is COMPLETE with summary, shows it."""
+    def test_completed_command_with_summary(self):
+        """When no active command but most recent is COMPLETE with summary, shows it."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.completion_summary = "Deployed new API endpoint"
-        completed_task.turns = []
-        agent.tasks = [completed_task]
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.completion_summary = "Deployed new API endpoint"
+        completed_cmd.turns = []
+        agent.commands = [completed_cmd]
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Deployed new API endpoint"
 
-    def test_completed_task_falls_back_to_turn_text(self):
-        """Completed task without summary falls back to turn text."""
+    def test_completed_command_falls_back_to_turn_text(self):
+        """Completed command without summary falls back to turn text."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         mock_turn = MagicMock()
         mock_turn.summary = None
         mock_turn.text = "Done with the refactor"
+        mock_turn.is_internal = False
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.completion_summary = None
-        completed_task.turns = [mock_turn]
-        agent.tasks = [completed_task]
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.completion_summary = None
+        completed_cmd.turns = [mock_turn]
+        agent.commands = [completed_cmd]
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Done with the refactor"
 
-    def test_completed_task_prefers_turn_summary_over_text(self):
-        """Completed task prefers turn summary over raw text."""
+    def test_completed_command_prefers_turn_summary_over_text(self):
+        """Completed command prefers turn summary over raw text."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         mock_turn = MagicMock()
         mock_turn.summary = "Completed authentication refactor"
         mock_turn.text = "Raw text that should not be used"
+        mock_turn.is_internal = False
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.completion_summary = None
-        completed_task.turns = [mock_turn]
-        agent.tasks = [completed_task]
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.completion_summary = None
+        completed_cmd.turns = [mock_turn]
+        agent.commands = [completed_cmd]
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Completed authentication refactor"
 
-    def test_completed_task_no_summary_no_turns(self):
-        """Completed task with no summary and no turns shows 'Summarising...'."""
+    def test_completed_command_no_summary_no_turns(self):
+        """Completed command with no summary and no turns shows 'Summarising...'."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.completion_summary = None
-        completed_task.turns = []
-        agent.tasks = [completed_task]
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.completion_summary = None
+        completed_cmd.turns = []
+        agent.commands = [completed_cmd]
 
-        result = get_task_summary(agent)
+        result = get_command_summary(agent)
         assert result == "Summarising..."
 
-    def test_no_tasks_shows_no_active_task(self):
-        """Agent with no tasks at all shows 'No active task'."""
+    def test_no_commands_shows_no_active_command(self):
+        """Agent with no commands at all shows 'No active command'."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
-        agent.tasks = []
+        agent.get_current_command.return_value = None
+        agent.commands = []
 
-        result = get_task_summary(agent)
-        assert result == "No active task"
+        result = get_command_summary(agent)
+        assert result == "No active command"
 
-    def test_most_recent_task_not_complete_shows_no_active_task(self):
-        """When most recent task is not COMPLETE, shows 'No active task'."""
+    def test_most_recent_command_not_complete_shows_no_active_command(self):
+        """When most recent command is not COMPLETE, shows 'No active command'."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        idle_task = MagicMock()
-        idle_task.state = TaskState.IDLE
-        idle_task.completion_summary = "Some old task"
-        agent.tasks = [idle_task]
+        idle_cmd = MagicMock()
+        idle_cmd.state = CommandState.IDLE
+        idle_cmd.completion_summary = "Some old command"
+        agent.commands = [idle_cmd]
 
-        result = get_task_summary(agent)
-        assert result == "No active task"
+        result = get_command_summary(agent)
+        assert result == "No active command"
 
 
 class TestGetStateInfo:
@@ -549,35 +561,35 @@ class TestGetStateInfo:
 
     def test_idle_state(self):
         """Test IDLE state info."""
-        result = get_state_info(TaskState.IDLE)
+        result = get_state_info(CommandState.IDLE)
         assert result["color"] == "green"
         assert result["bg_class"] == "bg-green"
         assert "Idle" in result["label"]
 
     def test_commanded_state(self):
         """Test COMMANDED state info."""
-        result = get_state_info(TaskState.COMMANDED)
+        result = get_state_info(CommandState.COMMANDED)
         assert result["color"] == "yellow"
         assert result["bg_class"] == "bg-amber"
         assert "Command" in result["label"]
 
     def test_processing_state(self):
         """Test PROCESSING state info."""
-        result = get_state_info(TaskState.PROCESSING)
+        result = get_state_info(CommandState.PROCESSING)
         assert result["color"] == "blue"
         assert result["bg_class"] == "bg-blue"
         assert "Processing" in result["label"]
 
     def test_awaiting_input_state(self):
         """Test AWAITING_INPUT state info."""
-        result = get_state_info(TaskState.AWAITING_INPUT)
+        result = get_state_info(CommandState.AWAITING_INPUT)
         assert result["color"] == "orange"
         assert result["bg_class"] == "bg-amber"
         assert "Input" in result["label"]
 
     def test_complete_state(self):
         """Test COMPLETE state info."""
-        result = get_state_info(TaskState.COMPLETE)
+        result = get_state_info(CommandState.COMPLETE)
         assert result["color"] == "green"
         assert result["bg_class"] == "bg-green"
         assert "complete" in result["label"].lower()
@@ -770,7 +782,7 @@ class TestDashboardWithData:
     def test_projects_displayed(self, standalone_client, mock_db_session):
         """Test that projects are displayed when data exists."""
         mock_agent = create_mock_agent(
-            state=TaskState.PROCESSING,
+            state=CommandState.PROCESSING,
             last_seen_minutes_ago=1,
         )
         mock_project = self._make_mock_project("Test Project", [mock_agent])
@@ -781,7 +793,7 @@ class TestDashboardWithData:
 
     def test_state_dots_displayed(self, standalone_client, mock_db_session):
         """Test that state indicator dots are shown."""
-        mock_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
+        mock_agent = create_mock_agent(state=CommandState.AWAITING_INPUT)
         mock_project = self._make_mock_project("Needs Input Project", [mock_agent])
         self._setup_mock_queries(mock_db_session, [mock_project])
 
@@ -836,7 +848,7 @@ class TestTimedOutState:
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # Agent has been PROCESSING for 700 seconds (> 600s config value)
-        agent = create_mock_agent(state=TaskState.PROCESSING)
+        agent = create_mock_agent(state=CommandState.PROCESSING)
         agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
 
         result = get_effective_state(agent)
@@ -848,11 +860,11 @@ class TestTimedOutState:
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # Agent has been PROCESSING for 30 seconds (< 600s config value)
-        agent = create_mock_agent(state=TaskState.PROCESSING)
+        agent = create_mock_agent(state=CommandState.PROCESSING)
         agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=30)
 
         result = get_effective_state(agent)
-        assert result == TaskState.PROCESSING
+        assert result == CommandState.PROCESSING
 
     @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_timed_out_counted_separately(self, mock_config):
@@ -860,11 +872,11 @@ class TestTimedOutState:
         mock_config.return_value = {"stale_processing_seconds": 600}
 
         # One TIMED_OUT, one AWAITING_INPUT, one IDLE
-        stale_agent = create_mock_agent(state=TaskState.PROCESSING)
+        stale_agent = create_mock_agent(state=CommandState.PROCESSING)
         stale_agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
 
-        waiting_agent = create_mock_agent(state=TaskState.AWAITING_INPUT)
-        idle_agent = create_mock_agent(state=TaskState.IDLE)
+        waiting_agent = create_mock_agent(state=CommandState.AWAITING_INPUT)
+        idle_agent = create_mock_agent(state=CommandState.IDLE)
 
         result = calculate_status_counts([stale_agent, waiting_agent, idle_agent])
         assert result["timed_out"] == 1
@@ -876,7 +888,7 @@ class TestTimedOutState:
         """Test that TIMED_OUT agents set has_timed_out flag."""
         mock_config.return_value = {"stale_processing_seconds": 600}
 
-        stale_agent = create_mock_agent(state=TaskState.PROCESSING)
+        stale_agent = create_mock_agent(state=CommandState.PROCESSING)
         stale_agent.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=700)
 
         result = get_project_state_flags([stale_agent])
@@ -884,143 +896,143 @@ class TestTimedOutState:
         assert result["has_input_needed"] is False
 
 
-class TestGetTaskInstruction:
-    """Tests for get_task_instruction() helper."""
+class TestGetCommandInstruction:
+    """Tests for get_command_instruction() helper."""
 
-    def test_returns_instruction_from_current_task(self):
-        """Test that instruction is returned from current active task."""
+    def test_returns_instruction_from_current_command(self):
+        """Test that instruction is returned from current active command."""
         agent = MagicMock()
-        mock_task = MagicMock()
-        mock_task.instruction = "Fix the login page"
-        agent.get_current_task.return_value = mock_task
+        mock_cmd = MagicMock()
+        mock_cmd.instruction = "Fix the login page"
+        agent.get_current_command.return_value = mock_cmd
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result == "Fix the login page"
 
-    def test_returns_none_when_no_current_task(self):
-        """Test returns None when agent has no current task."""
+    def test_returns_none_when_no_current_command(self):
+        """Test returns None when agent has no current command."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
-        agent.tasks = []
+        agent.get_current_command.return_value = None
+        agent.commands = []
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result is None
 
-    def test_returns_none_when_current_task_has_no_instruction(self):
-        """Test returns None when current task has no instruction yet."""
+    def test_returns_none_when_current_command_has_no_instruction(self):
+        """Test returns None when current command has no instruction yet."""
         agent = MagicMock()
-        mock_task = MagicMock()
-        mock_task.instruction = None
-        mock_task.full_command = None
-        agent.get_current_task.return_value = mock_task
-        agent.tasks = []
+        mock_cmd = MagicMock()
+        mock_cmd.instruction = None
+        mock_cmd.full_command = None
+        agent.get_current_command.return_value = mock_cmd
+        agent.commands = []
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result is None
 
-    def test_falls_back_to_completed_task_instruction(self):
-        """Test falls back to most recent completed task instruction."""
+    def test_falls_back_to_completed_command_instruction(self):
+        """Test falls back to most recent completed command instruction."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.instruction = "Refactor auth module"
-        agent.tasks = [completed_task]
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.instruction = "Refactor auth module"
+        agent.commands = [completed_cmd]
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result == "Refactor auth module"
 
-    def test_falls_back_to_most_recent_task_instruction_any_state(self):
-        """Test falls back to most recent task instruction regardless of state."""
+    def test_falls_back_to_most_recent_command_instruction_any_state(self):
+        """Test falls back to most recent command instruction regardless of state."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        processing_task = MagicMock()
-        processing_task.state = TaskState.PROCESSING
-        processing_task.instruction = "Some instruction"
-        agent.tasks = [processing_task]
+        processing_cmd = MagicMock()
+        processing_cmd.state = CommandState.PROCESSING
+        processing_cmd.instruction = "Some instruction"
+        agent.commands = [processing_cmd]
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result == "Some instruction"
 
     def test_falls_back_to_raw_command_text(self):
         """Test falls back to first USER COMMAND turn's raw text when no instruction."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         turn = MagicMock()
         turn.actor = TurnActor.USER
         turn.intent = TurnIntent.COMMAND
         turn.text = "Fix the login page bug"
 
-        task = MagicMock()
-        task.instruction = None
-        task.full_command = None
-        task.state = TaskState.COMPLETE
-        task.turns = [turn]
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.full_command = None
+        cmd.state = CommandState.COMPLETE
+        cmd.turns = [turn]
+        agent.commands = [cmd]
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result == "Fix the login page bug"
 
     def test_raw_command_text_truncated_at_80_chars(self):
         """Test raw command text is truncated to 80 chars."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         turn = MagicMock()
         turn.actor = TurnActor.USER
         turn.intent = TurnIntent.COMMAND
         turn.text = "x" * 100
 
-        task = MagicMock()
-        task.instruction = None
-        task.full_command = None
-        task.state = TaskState.COMPLETE
-        task.turns = [turn]
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.full_command = None
+        cmd.state = CommandState.COMPLETE
+        cmd.turns = [turn]
+        agent.commands = [cmd]
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result == "x" * 77 + "..."
         assert len(result) == 80
 
-    def test_task_without_instruction_or_turns_returns_none(self):
-        """Test task with no instruction and no turns returns None."""
+    def test_command_without_instruction_or_turns_returns_none(self):
+        """Test command with no instruction and no turns returns None."""
         agent = MagicMock()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
-        task = MagicMock()
-        task.instruction = None
-        task.full_command = None
-        task.state = TaskState.COMPLETE
-        task.turns = []
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.full_command = None
+        cmd.state = CommandState.COMPLETE
+        cmd.turns = []
+        agent.commands = [cmd]
 
-        result = get_task_instruction(agent)
+        result = get_command_instruction(agent)
 
         assert result is None
 
 
-class TestGetTaskCompletionSummary:
-    """Tests for get_task_completion_summary() helper."""
+class TestGetCommandCompletionSummary:
+    """Tests for get_command_completion_summary() helper."""
 
     def test_returns_completion_summary(self):
-        """Test returns completion_summary from completed task."""
+        """Test returns completion_summary from completed command."""
         agent = MagicMock()
-        task = MagicMock()
-        task.state = TaskState.COMPLETE
-        task.completion_summary = "Auth module refactored successfully"
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.state = CommandState.COMPLETE
+        cmd.completion_summary = "Auth module refactored successfully"
+        agent.commands = [cmd]
 
-        result = get_task_completion_summary(agent)
+        result = get_command_completion_summary(agent)
 
         assert result == "Auth module refactored successfully"
 
@@ -1031,13 +1043,13 @@ class TestGetTaskCompletionSummary:
         turn = MagicMock()
         turn.summary = "Finished refactoring the auth module"
 
-        task = MagicMock()
-        task.state = TaskState.COMPLETE
-        task.completion_summary = None
-        task.turns = [turn]
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.state = CommandState.COMPLETE
+        cmd.completion_summary = None
+        cmd.turns = [turn]
+        agent.commands = [cmd]
 
-        result = get_task_completion_summary(agent)
+        result = get_command_completion_summary(agent)
 
         assert result == "Finished refactoring the auth module"
 
@@ -1048,50 +1060,50 @@ class TestGetTaskCompletionSummary:
         turn = MagicMock()
         turn.summary = None
 
-        task = MagicMock()
-        task.state = TaskState.COMPLETE
-        task.completion_summary = None
-        task.turns = [turn]
-        agent.tasks = [task]
+        cmd = MagicMock()
+        cmd.state = CommandState.COMPLETE
+        cmd.completion_summary = None
+        cmd.turns = [turn]
+        agent.commands = [cmd]
 
-        result = get_task_completion_summary(agent)
-
-        assert result is None
-
-    def test_returns_none_when_no_completed_task(self):
-        """Test returns None when only active tasks exist."""
-        agent = MagicMock()
-
-        task = MagicMock()
-        task.state = TaskState.PROCESSING
-        agent.tasks = [task]
-
-        result = get_task_completion_summary(agent)
+        result = get_command_completion_summary(agent)
 
         assert result is None
 
-    def test_returns_none_when_no_tasks(self):
-        """Test returns None when agent has no tasks."""
+    def test_returns_none_when_no_completed_command(self):
+        """Test returns None when only active commands exist."""
         agent = MagicMock()
-        agent.tasks = []
 
-        result = get_task_completion_summary(agent)
+        cmd = MagicMock()
+        cmd.state = CommandState.PROCESSING
+        agent.commands = [cmd]
+
+        result = get_command_completion_summary(agent)
+
+        assert result is None
+
+    def test_returns_none_when_no_commands(self):
+        """Test returns None when agent has no commands."""
+        agent = MagicMock()
+        agent.commands = []
+
+        result = get_command_completion_summary(agent)
 
         assert result is None
 
     def test_skips_non_complete_finds_complete(self):
-        """Test skips non-complete tasks to find the first complete one."""
+        """Test skips non-complete commands to find the first complete one."""
         agent = MagicMock()
 
-        active_task = MagicMock()
-        active_task.state = TaskState.PROCESSING
+        active_cmd = MagicMock()
+        active_cmd.state = CommandState.PROCESSING
 
-        completed_task = MagicMock()
-        completed_task.state = TaskState.COMPLETE
-        completed_task.completion_summary = "Done"
+        completed_cmd = MagicMock()
+        completed_cmd.state = CommandState.COMPLETE
+        completed_cmd.completion_summary = "Done"
 
-        agent.tasks = [active_task, completed_task]
+        agent.commands = [active_cmd, completed_cmd]
 
-        result = get_task_completion_summary(agent)
+        result = get_command_completion_summary(agent)
 
         assert result == "Done"

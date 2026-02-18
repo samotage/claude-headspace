@@ -24,7 +24,7 @@ class TestTranscriptOrdering:
     ):
         """Create turns via hooks, verify transcript API returns them
         sorted by timestamp (not by insertion/ID order)."""
-        # Setup: create an agent with a task and multiple turns
+        # Setup: create an agent with a command and multiple turns
         result = hook_client.session_start()
         agent_id = result["agent_id"]
 
@@ -230,14 +230,14 @@ class TestSSETurnCreatedDelivery:
 
 class TestProgressCollapsePreservesDOM:
     """Verify that PROGRESS bubbles get .collapsed class instead of
-    being removed from DOM when a terminal turn (COMPLETION/END_OF_TASK)
+    being removed from DOM when a terminal turn (COMPLETION/END_OF_COMMAND)
     arrives."""
 
     def test_progress_bubbles_get_collapsed_class(
         self, page, e2e_server, hook_client, dashboard
     ):
         """After a COMPLETION turn arrives, prior PROGRESS bubbles for the
-        same task should have the .collapsed CSS class, but remain in DOM."""
+        same command should have the .collapsed CSS class, but remain in DOM."""
         result = hook_client.session_start()
         agent_id = result["agent_id"]
 
@@ -246,7 +246,7 @@ class TestProgressCollapsePreservesDOM:
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(1000)
 
-        # Create turns to establish a task: session_start + user_prompt
+        # Create turns to establish a command: session_start + user_prompt
         hook_client.user_prompt_submit(prompt="Work on something")
 
         # Wait for agent to be processing

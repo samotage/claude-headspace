@@ -1,4 +1,4 @@
-"""Task lifecycle manager for creating and managing tasks."""
+"""Command lifecycle manager for creating and managing commands."""
 
 import logging
 from dataclasses import dataclass, field
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..models.agent import Agent
 from ..models.event import Event, EventType
-from ..models.task import Task, TaskState
+from ..models.command import Command, CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .event_writer import EventWriter, WriteResult
 from .intent_detector import IntentResult, detect_intent
@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 class SummarisationRequest:
     """A pending summarisation request to be executed after db commit."""
 
-    type: str  # "turn", "instruction", "task_completion"
+    type: str  # "turn", "instruction", "command_completion"
     turn: Optional[Turn] = None
-    task: Optional[Task] = None
+    command: Optional[Command] = None
     command_text: Optional[str] = None
 
 
@@ -34,25 +34,25 @@ class TurnProcessingResult:
     """Result of processing a turn event."""
 
     success: bool
-    task: Optional[Task] = None
+    command: Optional[Command] = None
     transition: Optional[TransitionResult] = None
     intent: Optional[IntentResult] = None
     event_written: bool = False
     error: Optional[str] = None
-    new_task_created: bool = False
+    new_command_created: bool = False
     pending_summarisations: list = field(default_factory=list)
 
 
-def get_instruction_for_notification(task, max_length: int = 120) -> str | None:
-    """Get task instruction for notification display.
+def get_instruction_for_notification(command, max_length: int = 120) -> str | None:
+    """Get command instruction for notification display.
 
     Falls back to the first USER COMMAND turn's raw text (truncated)
     when the AI-generated instruction summary isn't available yet.
     """
-    if task.instruction:
-        return task.instruction
+    if command.instruction:
+        return command.instruction
     try:
-        for t in task.turns:
+        for t in command.turns:
             if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
                 text = (t.text or "").strip()
                 if text:
@@ -62,11 +62,11 @@ def get_instruction_for_notification(task, max_length: int = 120) -> str | None:
     return None
 
 
-class TaskLifecycleManager:
+class CommandLifecycleManager:
     """
-    Manager for task lifecycle operations.
+    Manager for command lifecycle operations.
 
-    Handles task creation, state transitions, and event logging.
+    Handles command creation, state transitions, and event logging.
     Uses dependency injection for the event writer and state machine.
     """
 
@@ -85,90 +85,90 @@ class TaskLifecycleManager:
         self._pending_summarisations = []
         return pending
 
-    def create_task(self, agent: Agent, initial_state: TaskState = TaskState.COMMANDED) -> Task:
+    def create_command(self, agent: Agent, initial_state: CommandState = CommandState.COMMANDED) -> Command:
         """
-        Create a new task for an agent.
+        Create a new command for an agent.
 
         Args:
-            agent: The agent to create the task for
-            initial_state: Initial state for the task (default: COMMANDED)
+            agent: The agent to create the command for
+            initial_state: Initial state for the command (default: COMMANDED)
 
         Returns:
-            The created Task instance
+            The created Command instance
         """
-        task = Task(
+        command = Command(
             agent_id=agent.id,
             state=initial_state,
             started_at=datetime.now(timezone.utc),
         )
-        self._session.add(task)
-        self._session.flush()  # Get the task ID
+        self._session.add(command)
+        self._session.flush()  # Get the command ID
 
-        logger.info(f"Created task id={task.id} for agent id={agent.id} with state={initial_state.value}")
+        logger.info(f"Created command id={command.id} for agent id={agent.id} with state={initial_state.value}")
 
-        # Write state transition event for task creation
+        # Write state transition event for command creation
         if self._event_writer:
             self._write_transition_event(
                 agent=agent,
-                task=task,
-                from_state=TaskState.IDLE,
+                command=command,
+                from_state=CommandState.IDLE,
                 to_state=initial_state,
                 trigger="user:command",
                 confidence=1.0,
             )
 
-        return task
+        return command
 
-    def get_current_task(self, agent: Agent) -> Optional[Task]:
+    def get_current_command(self, agent: Agent) -> Optional[Command]:
         """
-        Get the current (incomplete) task for an agent.
+        Get the current (incomplete) command for an agent.
 
         Args:
-            agent: The agent to get the task for
+            agent: The agent to get the command for
 
         Returns:
-            The current Task, or None if no incomplete task exists
+            The current Command, or None if no incomplete command exists
         """
         return (
-            self._session.query(Task)
+            self._session.query(Command)
             .filter(
-                Task.agent_id == agent.id,
-                Task.state != TaskState.COMPLETE,
+                Command.agent_id == agent.id,
+                Command.state != CommandState.COMPLETE,
             )
-            .order_by(Task.started_at.desc())
+            .order_by(Command.started_at.desc())
             .first()
         )
 
-    def derive_agent_state(self, agent: Agent) -> TaskState:
+    def derive_agent_state(self, agent: Agent) -> CommandState:
         """
-        Derive the agent's current state from its current task.
+        Derive the agent's current state from its current command.
 
         This is a computed property - the agent's state is determined by
-        its most recent incomplete task.
+        its most recent incomplete command.
 
         Args:
             agent: The agent to get the state for
 
         Returns:
-            The derived TaskState (IDLE if no active task)
+            The derived CommandState (IDLE if no active command)
         """
-        current_task = self.get_current_task(agent)
-        if current_task:
-            return current_task.state
-        return TaskState.IDLE
+        current_command = self.get_current_command(agent)
+        if current_command:
+            return current_command.state
+        return CommandState.IDLE
 
-    def update_task_state(
+    def update_command_state(
         self,
-        task: Task,
-        to_state: TaskState,
+        command: Command,
+        to_state: CommandState,
         trigger: str,
         confidence: float = 1.0,
     ) -> bool:
         """
-        Update a task's state.
+        Update a command's state.
 
         Args:
-            task: The task to update
+            command: The command to update
             to_state: The new state
             trigger: The trigger that caused the transition (e.g., "agent:question")
             confidence: Confidence in the transition (0.0-1.0)
@@ -176,7 +176,7 @@ class TaskLifecycleManager:
         Returns:
             True if the update was successful
         """
-        from_state = task.state
+        from_state = command.state
 
         # Validate through state machine — reject invalid transitions.
         from .state_machine import validate_transition as _validate
@@ -197,34 +197,34 @@ class TaskLifecycleManager:
             "agent:question": (TurnActor.AGENT, TurnIntent.QUESTION),
             "agent:progress": (TurnActor.AGENT, TurnIntent.PROGRESS),
             "agent:completion": (TurnActor.AGENT, TurnIntent.COMPLETION),
-            "agent:end_of_task": (TurnActor.AGENT, TurnIntent.END_OF_TASK),
+            "agent:end_of_command": (TurnActor.AGENT, TurnIntent.END_OF_COMMAND),
         }
         _actor, _intent = _actor_map.get(trigger, (TurnActor.AGENT, TurnIntent.PROGRESS))
-        if to_state == TaskState.AWAITING_INPUT:
+        if to_state == CommandState.AWAITING_INPUT:
             _intent = TurnIntent.QUESTION
-        elif to_state == TaskState.COMPLETE:
+        elif to_state == CommandState.COMPLETE:
             _intent = TurnIntent.COMPLETION
         _vr = _validate(from_state, _actor, _intent)
         if not _vr.valid:
             raise InvalidTransitionError(_vr)
 
-        task.state = to_state
+        command.state = to_state
 
-        logger.debug(f"Task id={task.id} state updated: {from_state.value} -> {to_state.value}")
+        logger.debug(f"Command id={command.id} state updated: {from_state.value} -> {to_state.value}")
 
         # Send notification for awaiting_input state
-        if to_state == TaskState.AWAITING_INPUT:
+        if to_state == CommandState.AWAITING_INPUT:
             try:
                 # Lazy import to avoid circular imports and test context issues
                 from .notification_service import get_notification_service
                 notification_service = get_notification_service()
 
-                instruction = self._get_instruction_for_notification(task)
+                instruction = self._get_instruction_for_notification(command)
 
                 # Find the most recent AGENT QUESTION turn for context
                 question_text = None
                 try:
-                    for t in reversed(task.turns):
+                    for t in reversed(command.turns):
                         if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                             question_text = t.summary or t.text
                             break
@@ -232,10 +232,10 @@ class TaskLifecycleManager:
                     logger.warning(f"Failed to extract question text: {e}")
 
                 notification_service.notify_awaiting_input(
-                    agent_id=str(task.agent_id),
-                    agent_name=task.agent.name or f"Agent {task.agent_id}",
-                    project=task.agent.project.name if task.agent.project else None,
-                    task_instruction=instruction,
+                    agent_id=str(command.agent_id),
+                    agent_name=command.agent.name or f"Agent {command.agent_id}",
+                    project=command.agent.project.name if command.agent.project else None,
+                    command_instruction=instruction,
                     turn_text=question_text,
                 )
             except Exception as notif_err:
@@ -244,8 +244,8 @@ class TaskLifecycleManager:
         # Write state transition event
         if self._event_writer:
             self._write_transition_event(
-                agent=task.agent,
-                task=task,
+                agent=command.agent,
+                command=command,
                 from_state=from_state,
                 to_state=to_state,
                 trigger=trigger,
@@ -254,57 +254,57 @@ class TaskLifecycleManager:
 
         return True
 
-    def complete_task(
+    def complete_command(
         self,
-        task: Task,
+        command: Command,
         trigger: str = "agent:completion",
         agent_text: str = "",
         intent: TurnIntent = TurnIntent.COMPLETION,
     ) -> bool:
-        """Mark a task as complete.
+        """Mark a command as complete.
 
         Sets the state to COMPLETE and records the completed_at timestamp.
 
-        NOTE: Validation is advisory (log-only) here, unlike update_task_state()
+        NOTE: Validation is advisory (log-only) here, unlike update_command_state()
         which enforces transitions strictly. This is intentional — session_end
-        and reaper cleanup MUST be able to force-complete tasks regardless of
+        and reaper cleanup MUST be able to force-complete commands regardless of
         current state, since they represent external lifecycle events that
         override the state machine.
 
         Args:
-            task: The task to complete
+            command: The command to complete
             trigger: The trigger that caused completion
             agent_text: Optional agent response text extracted from transcript
-            intent: The turn intent for the completion record (COMPLETION or END_OF_TASK)
+            intent: The turn intent for the completion record (COMPLETION or END_OF_COMMAND)
 
         Returns:
-            True if the task was completed successfully
+            True if the command was completed successfully
         """
-        from_state = task.state
+        from_state = command.state
 
         # Validate through state machine (advisory only — forced completions
         # like session_end must still proceed even if the transition is unusual)
         _vr = validate_transition(from_state, TurnActor.AGENT, intent)
         if not _vr.valid:
             logger.warning(
-                f"complete_task: transition not in VALID_TRANSITIONS (allowing anyway): "
+                f"complete_command: transition not in VALID_TRANSITIONS (allowing anyway): "
                 f"{from_state.value} -> COMPLETE trigger={trigger} "
-                f"agent_id={task.agent_id} task_id={task.id} reason={_vr.reason}"
+                f"agent_id={command.agent_id} command_id={command.id} reason={_vr.reason}"
             )
 
-        task.state = TaskState.COMPLETE
-        task.completed_at = datetime.now(timezone.utc)
+        command.state = CommandState.COMPLETE
+        command.completed_at = datetime.now(timezone.utc)
 
-        # Persist full agent output on the task
+        # Persist full agent output on the command
         if agent_text:
-            task.full_output = agent_text
+            command.full_output = agent_text
 
         # Create completion turn record only when there is actual content.
         # Empty/whitespace-only text produces noisy Turn records that add no value.
         turn = None
         if agent_text and agent_text.strip():
             turn = Turn(
-                task_id=task.id,
+                command_id=command.id,
                 actor=TurnActor.AGENT,
                 intent=intent,
                 text=agent_text,
@@ -313,7 +313,7 @@ class TaskLifecycleManager:
             self._session.add(turn)
             self._session.flush()
 
-        logger.info(f"Task id={task.id} completed at {task.completed_at.isoformat()}")
+        logger.info(f"Command id={command.id} completed at {command.completed_at.isoformat()}")
 
         # NOTE: Completion notification is sent by the caller (hook_receiver)
         # AFTER summarisation completes, so the notification contains the
@@ -322,10 +322,10 @@ class TaskLifecycleManager:
         # Write state transition event
         if self._event_writer:
             self._write_transition_event(
-                agent=task.agent,
-                task=task,
+                agent=command.agent,
+                command=command,
                 from_state=from_state,
-                to_state=TaskState.COMPLETE,
+                to_state=CommandState.COMPLETE,
                 trigger=trigger,
                 confidence=1.0,
             )
@@ -336,7 +336,7 @@ class TaskLifecycleManager:
                 SummarisationRequest(type="turn", turn=turn)
             )
         self._pending_summarisations.append(
-            SummarisationRequest(type="task_completion", task=task)
+            SummarisationRequest(type="command_completion", command=command)
         )
 
         return True
@@ -350,10 +350,10 @@ class TaskLifecycleManager:
         is_internal: bool = False,
     ) -> TurnProcessingResult:
         """
-        Process a turn and update task state accordingly.
+        Process a turn and update command state accordingly.
 
         This is the main entry point for handling turn events. It:
-        1. Gets the current task (or determines if a new one is needed)
+        1. Gets the current command (or determines if a new one is needed)
         2. Detects the intent of the turn
         3. Validates and applies the state transition
         4. Logs the transition event
@@ -366,8 +366,8 @@ class TaskLifecycleManager:
         Returns:
             TurnProcessingResult with the outcome
         """
-        current_task = self.get_current_task(agent)
-        current_state = current_task.state if current_task else TaskState.IDLE
+        current_command = self.get_current_command(agent)
+        current_state = current_command.state if current_command else CommandState.IDLE
 
         # Detect intent
         intent_result = detect_intent(text, actor, current_state)
@@ -376,19 +376,19 @@ class TaskLifecycleManager:
             f"(confidence={intent_result.confidence})"
         )
 
-        # Special case: User command starts a new task.
-        # This handles IDLE (no active task), AWAITING_INPUT (agent asked a question),
+        # Special case: User command starts a new command.
+        # This handles IDLE (no active command), AWAITING_INPUT (agent asked a question),
         # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
-            if current_state in (TaskState.IDLE, TaskState.AWAITING_INPUT, TaskState.PROCESSING, TaskState.COMMANDED):
-                # User sends follow-up before agent starts — append to existing task
-                if current_state == TaskState.COMMANDED and current_task:
+            if current_state in (CommandState.IDLE, CommandState.AWAITING_INPUT, CommandState.PROCESSING, CommandState.COMMANDED):
+                # User sends follow-up before agent starts — append to existing command
+                if current_state == CommandState.COMMANDED and current_command:
                     if text:
-                        existing = current_task.full_command or ""
-                        current_task.full_command = (existing + "\n" + text).strip() if existing else text
+                        existing = current_command.full_command or ""
+                        current_command.full_command = (existing + "\n" + text).strip() if existing else text
 
                     turn = Turn(
-                        task_id=current_task.id,
+                        command_id=current_command.id,
                         actor=actor,
                         intent=TurnIntent.COMMAND,
                         text=text or "",
@@ -403,39 +403,39 @@ class TaskLifecycleManager:
                     )
                     if text:
                         self._pending_summarisations.append(
-                            SummarisationRequest(type="instruction", task=current_task, command_text=current_task.full_command)
+                            SummarisationRequest(type="instruction", command=current_command, command_text=current_command.full_command)
                         )
 
                     logger.info(
-                        f"Attached follow-up USER COMMAND to commanded task id={current_task.id} "
+                        f"Attached follow-up USER COMMAND to commanded command id={current_command.id} "
                         f"(agent id={agent.id})"
                     )
                     return TurnProcessingResult(
                         success=True,
-                        task=current_task,
+                        command=current_command,
                         intent=intent_result,
                         event_written=self._event_writer is not None,
-                        new_task_created=False,
+                        new_command_created=False,
                         pending_summarisations=list(self._pending_summarisations),
                     )
 
-                # Race condition fix: if the task is PROCESSING but has no USER
+                # Race condition fix: if the command is PROCESSING but has no USER
                 # turns, it was created by post_tool_use:inferred before this
                 # user_prompt_submit arrived. Attach the user turn to the
-                # existing task rather than completing it and losing any PROGRESS
+                # existing command rather than completing it and losing any PROGRESS
                 # data already recorded on it.
                 if (
-                    current_task
-                    and current_state == TaskState.PROCESSING
-                    and Turn.query.filter_by(task_id=current_task.id)
+                    current_command
+                    and current_state == CommandState.PROCESSING
+                    and Turn.query.filter_by(command_id=current_command.id)
                     .filter(Turn.actor == TurnActor.USER)
                     .count() == 0
                 ):
                     if text:
-                        current_task.full_command = text
+                        current_command.full_command = text
 
                     turn = Turn(
-                        task_id=current_task.id,
+                        command_id=current_command.id,
                         actor=actor,
                         intent=intent_result.intent,
                         text=text or "",
@@ -450,36 +450,36 @@ class TaskLifecycleManager:
                     )
                     if text:
                         self._pending_summarisations.append(
-                            SummarisationRequest(type="instruction", task=current_task, command_text=text)
+                            SummarisationRequest(type="instruction", command=current_command, command_text=text)
                         )
 
                     logger.info(
-                        f"Attached USER COMMAND to inferred task id={current_task.id} "
+                        f"Attached USER COMMAND to inferred command id={current_command.id} "
                         f"(agent id={agent.id})"
                     )
                     return TurnProcessingResult(
                         success=True,
-                        task=current_task,
+                        command=current_command,
                         intent=intent_result,
                         event_written=self._event_writer is not None,
-                        new_task_created=False,
+                        new_command_created=False,
                         pending_summarisations=list(self._pending_summarisations),
                     )
 
-                # Complete any existing task before creating a new one
-                if current_task and current_task.state != TaskState.COMPLETE:
-                    self.complete_task(current_task, trigger="user:new_command")
+                # Complete any existing command before creating a new one
+                if current_command and current_command.state != CommandState.COMPLETE:
+                    self.complete_command(current_command, trigger="user:new_command")
 
-                # Create new task
-                new_task = self.create_task(agent, TaskState.COMMANDED)
+                # Create new command
+                new_command = self.create_command(agent, CommandState.COMMANDED)
 
-                # Persist full command text on the task
+                # Persist full command text on the command
                 if text:
-                    new_task.full_command = text
+                    new_command.full_command = text
 
                 # Create turn record for the user command
                 turn = Turn(
-                    task_id=new_task.id,
+                    command_id=new_command.id,
                     actor=actor,
                     intent=intent_result.intent,
                     text=text or "",
@@ -495,24 +495,24 @@ class TaskLifecycleManager:
                 )
                 if text:
                     self._pending_summarisations.append(
-                        SummarisationRequest(type="instruction", task=new_task, command_text=text)
+                        SummarisationRequest(type="instruction", command=new_command, command_text=text)
                     )
 
                 return TurnProcessingResult(
                     success=True,
-                    task=new_task,
+                    command=new_command,
                     intent=intent_result,
                     event_written=self._event_writer is not None,
-                    new_task_created=True,
+                    new_command_created=True,
                     pending_summarisations=list(self._pending_summarisations),
                 )
 
-        # No active task and not a user command - nothing to do
-        if not current_task:
-            logger.warning(f"No active task for agent id={agent.id} and turn is not a command")
+        # No active command and not a user command - nothing to do
+        if not current_command:
+            logger.warning(f"No active command for agent id={agent.id} and turn is not a command")
             return TurnProcessingResult(
                 success=False,
-                error="No active task and turn is not a user command",
+                error="No active command and turn is not a user command",
                 intent=intent_result,
             )
 
@@ -527,18 +527,18 @@ class TaskLifecycleManager:
             logger.warning(f"Invalid transition rejected: {transition_result.reason}")
             return TurnProcessingResult(
                 success=False,
-                task=current_task,
+                command=current_command,
                 transition=transition_result,
                 intent=intent_result,
                 error=transition_result.reason,
             )
 
         # Apply the transition
-        if transition_result.to_state == TaskState.COMPLETE:
-            self.complete_task(current_task, trigger=transition_result.trigger or "unknown")
+        if transition_result.to_state == CommandState.COMPLETE:
+            self.complete_command(current_command, trigger=transition_result.trigger or "unknown")
         else:
-            self.update_task_state(
-                task=current_task,
+            self.update_command_state(
+                command=current_command,
                 to_state=transition_result.to_state,
                 trigger=transition_result.trigger or "unknown",
                 confidence=intent_result.confidence,
@@ -546,7 +546,7 @@ class TaskLifecycleManager:
 
             # Create turn record for non-completion transitions
             turn = Turn(
-                task_id=current_task.id,
+                command_id=current_command.id,
                 actor=actor,
                 intent=intent_result.intent,
                 text=text or "",
@@ -563,7 +563,7 @@ class TaskLifecycleManager:
 
         return TurnProcessingResult(
             success=True,
-            task=current_task,
+            command=current_command,
             transition=transition_result,
             intent=intent_result,
             event_written=self._event_writer is not None,
@@ -573,9 +573,9 @@ class TaskLifecycleManager:
     def _write_transition_event(
         self,
         agent: Agent,
-        task: Task,
-        from_state: TaskState,
-        to_state: TaskState,
+        command: Command,
+        from_state: CommandState,
+        to_state: CommandState,
         trigger: str,
         confidence: float,
     ) -> Optional[WriteResult]:
@@ -584,7 +584,7 @@ class TaskLifecycleManager:
 
         Args:
             agent: The agent involved
-            task: The task involved
+            command: The command involved
             from_state: The previous state
             to_state: The new state
             trigger: What triggered the transition
@@ -607,7 +607,7 @@ class TaskLifecycleManager:
             event_type=EventType.STATE_TRANSITION,
             payload=payload,
             agent_id=agent.id,
-            task_id=task.id,
+            command_id=command.id,
             session=self._session,
         )
 
@@ -616,6 +616,5 @@ class TaskLifecycleManager:
 
         return result
 
-    def _get_instruction_for_notification(self, task: Task, max_length: int = 120) -> str | None:
-        return get_instruction_for_notification(task, max_length)
-
+    def _get_instruction_for_notification(self, command: Command, max_length: int = 120) -> str | None:
+        return get_instruction_for_notification(command, max_length)

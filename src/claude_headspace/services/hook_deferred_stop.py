@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 
 logger = logging.getLogger(__name__)
@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 def _get_lifecycle_manager():
-    """Create a TaskLifecycleManager with the current app's event writer."""
-    from .task_lifecycle import TaskLifecycleManager
+    """Create a CommandLifecycleManager with the current app's event writer."""
+    from .command_lifecycle import CommandLifecycleManager
 
     event_writer = None
     try:
@@ -35,7 +35,7 @@ def _get_lifecycle_manager():
         event_writer = current_app.extensions.get("event_writer")
     except RuntimeError:
         logger.debug("No app context for event_writer")
-    return TaskLifecycleManager(
+    return CommandLifecycleManager(
         session=db.session,
         event_writer=event_writer,
     )
@@ -65,7 +65,7 @@ def _execute_pending_summarisations(pending: list) -> None:
         logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
+def _broadcast_turn_created(agent: Agent, text: str, command, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
     """Broadcast a turn_created SSE event."""
     try:
         from .broadcaster import get_broadcaster
@@ -75,8 +75,8 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
             "text": text,
             "actor": "agent",
             "intent": intent,
-            "task_id": task.id if task else None,
-            "task_instruction": task.instruction if task else None,
+            "command_id": command.id if command else None,
+            "command_instruction": command.instruction if command else None,
             "turn_id": turn_id,
             "question_source_type": question_source_type,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -88,18 +88,18 @@ def _broadcast_turn_created(agent: Agent, text: str, task, tool_input: dict | No
         logger.warning(f"Turn created broadcast failed: {e}")
 
 
-def _send_completion_notification(agent: Agent, task) -> None:
-    """Send task-complete notification using AI-generated summaries."""
+def _send_completion_notification(agent: Agent, command) -> None:
+    """Send command-complete notification using AI-generated summaries."""
     try:
         from .notification_service import get_notification_service
-        from .task_lifecycle import get_instruction_for_notification
+        from .command_lifecycle import get_instruction_for_notification
         svc = get_notification_service()
-        svc.notify_task_complete(
+        svc.notify_command_complete(
             agent_id=str(agent.id),
             agent_name=agent.name or f"Agent {agent.id}",
             project=agent.project.name if agent.project else None,
-            task_instruction=get_instruction_for_notification(task),
-            turn_text=task.completion_summary or None,
+            command_instruction=get_instruction_for_notification(command),
+            turn_text=command.completion_summary or None,
         )
     except Exception as e:
         logger.warning(f"Completion notification failed (non-fatal): {e}")
@@ -128,7 +128,7 @@ def _extract_transcript_content(agent: Agent) -> str:
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def schedule_deferred_stop(agent: Agent, current_task) -> None:
+def schedule_deferred_stop(agent: Agent, current_command) -> None:
     """Schedule a background thread to retry transcript extraction after a delay.
 
     Instead of blocking the Flask request handler with time.sleep(), this
@@ -142,7 +142,7 @@ def schedule_deferred_stop(agent: Agent, current_task) -> None:
 
     state = get_agent_hook_state()
     agent_id = agent.id
-    task_id = current_task.id
+    command_id = current_command.id
     project_id = agent.project_id
 
     # Atomic claim: skip if a deferred stop is already in flight
@@ -167,7 +167,7 @@ def schedule_deferred_stop(agent: Agent, current_task) -> None:
                     _run_deferred_stop(
                         app=app,
                         agent_id=agent_id,
-                        task_id=task_id,
+                        command_id=command_id,
                         project_id=project_id,
                     )
                 except Exception as e:
@@ -186,7 +186,7 @@ def schedule_deferred_stop(agent: Agent, current_task) -> None:
 def _run_deferred_stop(
     app,
     agent_id: int,
-    task_id: int,
+    command_id: int,
     project_id: int,
 ) -> None:
     """Core logic for the deferred stop background thread.
@@ -195,7 +195,7 @@ def _run_deferred_stop(
     previously captured PROGRESS turns, detects intent, and applies
     the appropriate state transition.
     """
-    from ..models.task import Task
+    from ..models.command import Command
     from .card_state import broadcast_card_refresh
     from .hook_agent_state import get_agent_hook_state
     from .intent_detector import detect_agent_intent
@@ -208,8 +208,8 @@ def _run_deferred_stop(
     for delay in delays:
         time.sleep(delay)
 
-        task = db.session.get(Task, task_id)
-        if not task or task.state == TaskState.COMPLETE:
+        cmd = db.session.get(Command, command_id)
+        if not cmd or cmd.state == CommandState.COMPLETE:
             return  # Already completed by another hook
 
         agent_obj = db.session.get(Agent, agent_id)
@@ -217,8 +217,8 @@ def _run_deferred_stop(
             return
 
         # Refresh to avoid stale reads
-        db.session.refresh(task)
-        if task.state == TaskState.COMPLETE:
+        db.session.refresh(cmd)
+        if cmd.state == CommandState.COMPLETE:
             return
 
         agent_text = _extract_transcript_content(agent_obj)
@@ -233,13 +233,13 @@ def _run_deferred_stop(
     if not agent_text:
         # Still empty — complete with no transcript
         lifecycle = _get_lifecycle_manager()
-        lifecycle.complete_task(task=task, trigger="hook:stop:deferred_empty")
+        lifecycle.complete_command(command=cmd, trigger="hook:stop:deferred_empty")
         _trigger_priority_scoring()
         pending = lifecycle.get_pending_summarisations()
         db.session.commit()
         broadcast_card_refresh(agent_obj, "stop_deferred")
         _execute_pending_summarisations(pending)
-        _send_completion_notification(agent_obj, task)
+        _send_completion_notification(agent_obj, cmd)
         logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
         return
 
@@ -273,8 +273,8 @@ def _run_deferred_stop(
 
     # Check for stale notification turn to replace
     stale_notification_turn = None
-    if task.turns:
-        for t in reversed(task.turns):
+    if cmd.turns:
+        for t in reversed(cmd.turns):
             if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
                     and t.text == "Claude is waiting for your input"):
                 stale_notification_turn = t
@@ -289,33 +289,33 @@ def _run_deferred_stop(
         else:
             from ..models.turn import Turn as _Turn
             turn = _Turn(
-                task_id=task.id, actor=TurnActor.AGENT,
+                command_id=cmd.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=full_agent_text,
                 question_text=full_agent_text,
                 question_source_type="free_text",
             )
             db.session.add(turn)
-    elif intent_result.intent == TurnIntent.END_OF_TASK:
+    elif intent_result.intent == TurnIntent.END_OF_COMMAND:
         if stale_notification_turn:
             stale_notification_turn.text = completion_text or ""
-            stale_notification_turn.intent = TurnIntent.END_OF_TASK
+            stale_notification_turn.intent = TurnIntent.END_OF_COMMAND
             stale_notification_turn.question_text = None
             stale_notification_turn.question_source_type = None
-        lifecycle.complete_task(
-            task=task, trigger="hook:stop:deferred_end_of_task",
-            agent_text=completion_text, intent=TurnIntent.END_OF_TASK,
+        lifecycle.complete_command(
+            command=cmd, trigger="hook:stop:deferred_end_of_command",
+            agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
         )
         if completion_text != full_agent_text:
-            task.full_output = full_agent_text
+            cmd.full_output = full_agent_text
     else:
         if stale_notification_turn:
             stale_notification_turn.text = completion_text or ""
             stale_notification_turn.intent = TurnIntent.COMPLETION
             stale_notification_turn.question_text = None
             stale_notification_turn.question_source_type = None
-        lifecycle.complete_task(task=task, trigger="hook:stop:deferred", agent_text=completion_text)
+        lifecycle.complete_command(command=cmd, trigger="hook:stop:deferred", agent_text=completion_text)
         if completion_text != full_agent_text:
-            task.full_output = full_agent_text
+            cmd.full_output = full_agent_text
 
     # Commit turn FIRST — turn must survive even if state transition fails.
     _trigger_priority_scoring()
@@ -323,11 +323,11 @@ def _run_deferred_stop(
     db.session.commit()
 
     # Now attempt state transition for QUESTION intent in a separate commit scope.
-    # complete_task handles its own transitions advisorily (doesn't raise).
+    # complete_command handles its own transitions advisorily (doesn't raise).
     if intent_result.intent == TurnIntent.QUESTION:
         try:
-            lifecycle.update_task_state(
-                task=task, to_state=TaskState.AWAITING_INPUT,
+            lifecycle.update_command_state(
+                command=cmd, to_state=CommandState.AWAITING_INPUT,
                 trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
             )
             db.session.commit()
@@ -340,25 +340,25 @@ def _run_deferred_stop(
     broadcast_card_refresh(agent_obj, "stop_deferred")
     _execute_pending_summarisations(pending)
 
-    if task.state == TaskState.COMPLETE:
-        _send_completion_notification(agent_obj, task)
+    if cmd.state == CommandState.COMPLETE:
+        _send_completion_notification(agent_obj, cmd)
     # Broadcast agent turn for all intent types (voice chat needs this)
-    if task.turns:
+    if cmd.turns:
         broadcast_turn = None
-        for t in reversed(task.turns):
+        for t in reversed(cmd.turns):
             if t.actor == TurnActor.AGENT and t.intent in (
-                TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK,
+                TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
             ):
                 broadcast_turn = t
                 break
         if not broadcast_turn:
-            for t in reversed(task.turns):
+            for t in reversed(cmd.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
                     broadcast_turn = t
                     break
         if broadcast_turn:
             _broadcast_turn_created(
-                agent_obj, broadcast_turn.text, task,
+                agent_obj, broadcast_turn.text, cmd,
                 tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
                 intent=broadcast_turn.intent.value,
                 question_source_type=broadcast_turn.question_source_type,
@@ -366,5 +366,5 @@ def _run_deferred_stop(
 
     logger.info(
         f"deferred_stop: agent_id={agent_id}, "
-        f"new_state={task.state.value}, intent={intent_result.intent.value}"
+        f"new_state={cmd.state.value}, intent={intent_result.intent.value}"
     )

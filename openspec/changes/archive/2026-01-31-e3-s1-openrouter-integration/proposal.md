@@ -5,7 +5,7 @@ Claude Headspace needs an LLM inference layer to power all Epic 3 intelligence f
 ## What Changes
 
 - Add OpenRouter API client with authentication and structured responses
-- Add inference service with model selection by level (turn/task → Haiku, project/objective → Sonnet)
+- Add inference service with model selection by level (turn/command → Haiku, project/objective → Sonnet)
 - Add InferenceCall database model and Alembic migration for call logging
 - Add rate limiting (calls/min and tokens/min) with thread-safe enforcement
 - Add caching by input content hash with configurable TTL

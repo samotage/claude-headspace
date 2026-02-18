@@ -64,7 +64,7 @@ DEFAULTS = {
         "enabled": True,
         "sound": True,
         "events": {
-            "task_complete": True,
+            "command_complete": True,
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
@@ -95,7 +95,7 @@ DEFAULTS = {
         "timeout": 30,
         "models": {
             "turn": "anthropic/claude-haiku-4.5",
-            "task": "anthropic/claude-haiku-4.5",
+            "command": "anthropic/claude-haiku-4.5",
             "project": "anthropic/claude-3.5-sonnet",
             "objective": "anthropic/claude-3.5-sonnet",
         },
@@ -403,7 +403,7 @@ def get_notifications_config(config: dict) -> dict:
             config, "notifications", "sound", default=True
         ),
         "events": {
-            "task_complete": events.get("task_complete", True),
+            "command_complete": events.get("command_complete", True),
             "awaiting_input": events.get("awaiting_input", True),
         },
         "rate_limit_seconds": get_value(

@@ -35,7 +35,7 @@ Implementation fully satisfies all 28 functional requirements from the PRD, all 
 ## Requirements Coverage
 
 - **PRD Requirements:** 28/28 covered (FR1-FR28)
-- **Tasks Completed:** 16/16 complete (13 implementation + 3 testing)
+- **Commands Completed:** 16/16 complete (13 implementation + 3 testing)
 - **Design Compliance:** Yes (follows existing patterns: IIFE, vanilla JS, Tailwind, Flask blueprints)
 - **NFR Compliance:** Yes (vanilla JS, base template, route tests, slug edge cases handled)
 

@@ -28,7 +28,7 @@ def prefs():
     return NotificationPreferences(
         enabled=True,
         sound=True,
-        events={"task_complete": True, "awaiting_input": True},
+        events={"command_complete": True, "awaiting_input": True},
         rate_limit_seconds=5,
         dashboard_url="http://localhost:5055",
     )
@@ -58,7 +58,7 @@ class TestNotificationPreferences:
         assert p.enabled is True
         assert p.sound is True
         assert p.rate_limit_seconds == 5
-        assert p.events["task_complete"] is True
+        assert p.events["command_complete"] is True
         assert p.events["awaiting_input"] is True
 
     def test_custom_values(self):
@@ -195,8 +195,8 @@ class TestBuildNotificationCommand:
 
 class TestBuildContextualMessage:
 
-    def test_task_complete_with_turn_text(self, service):
-        msg = service._build_contextual_message("task_complete", turn_text="All done")
+    def test_command_complete_with_turn_text(self, service):
+        msg = service._build_contextual_message("command_complete", turn_text="All done")
         assert "\u2713" in msg
         assert "All done" in msg
 
@@ -207,16 +207,16 @@ class TestBuildContextualMessage:
 
     def test_with_instruction_and_turn_text(self, service):
         msg = service._build_contextual_message(
-            "task_complete",
-            task_instruction="Implement feature X",
+            "command_complete",
+            command_instruction="Implement feature X",
             turn_text="Feature done",
         )
         assert "Implement feature X" in msg
         assert "Feature done" in msg
 
-    def test_default_task_complete_message(self, service):
-        msg = service._build_contextual_message("task_complete")
-        assert "Task completed" in msg
+    def test_default_command_complete_message(self, service):
+        msg = service._build_contextual_message("command_complete")
+        assert "Command completed" in msg
 
     def test_default_awaiting_input_message(self, service):
         msg = service._build_contextual_message("awaiting_input")
@@ -238,7 +238,7 @@ class TestSendNotification:
         mock_run.return_value = MagicMock(returncode=0)
         result = available_service.send_notification(
             agent_id="a1", agent_name="Agent 1",
-            event_type="task_complete", project="My Project",
+            event_type="command_complete", project="My Project",
         )
         assert result is True
         mock_run.assert_called_once()
@@ -246,21 +246,21 @@ class TestSendNotification:
     def test_disabled_returns_true_without_sending(self, available_service):
         available_service.preferences.enabled = False
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is True
 
     def test_event_type_disabled_returns_true(self, available_service):
-        available_service.preferences.events["task_complete"] = False
+        available_service.preferences.events["command_complete"] = False
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is True
 
     @patch("claude_headspace.services.notification_service.shutil.which", return_value=None)
     def test_not_available_returns_false(self, mock_which, service):
         result = service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is False
 
@@ -268,11 +268,11 @@ class TestSendNotification:
     def test_rate_limited_returns_true(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         # Second call immediately should be rate-limited (returns True, no send)
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is True
         assert mock_run.call_count == 1  # Only first call actually sent
@@ -281,7 +281,7 @@ class TestSendNotification:
     def test_nonzero_returncode_returns_false(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=1, stderr="error")
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is False
 
@@ -290,7 +290,7 @@ class TestSendNotification:
         import subprocess
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="terminal-notifier", timeout=5)
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is False
 
@@ -298,7 +298,7 @@ class TestSendNotification:
     def test_exception_returns_false(self, mock_run, available_service):
         mock_run.side_effect = OSError("File not found")
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="task_complete",
+            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
         )
         assert result is False
 
@@ -307,7 +307,7 @@ class TestSendNotification:
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
             agent_id="a1", agent_name="Agent 1",
-            event_type="task_complete", project="MyProj",
+            event_type="command_complete", project="MyProj",
         )
         cmd = mock_run.call_args[0][0]
         sub_idx = cmd.index("-subtitle")
@@ -319,7 +319,7 @@ class TestSendNotification:
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
             agent_id="a1", agent_name="Agent 1",
-            event_type="task_complete", project=None,
+            event_type="command_complete", project=None,
         )
         cmd = mock_run.call_args[0][0]
         sub_idx = cmd.index("-subtitle")
@@ -330,7 +330,7 @@ class TestSendNotification:
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
             agent_id="a1", agent_name="Agent 1",
-            event_type="task_complete",
+            event_type="command_complete",
             dashboard_url="http://custom:9999",
         )
         cmd = mock_run.call_args[0][0]
@@ -345,9 +345,9 @@ class TestSendNotification:
 class TestDispatchMethods:
 
     @patch("claude_headspace.services.notification_service.subprocess.run")
-    def test_notify_task_complete(self, mock_run, available_service):
+    def test_notify_command_complete(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
-        result = available_service.notify_task_complete(
+        result = available_service.notify_command_complete(
             agent_id="a1", agent_name="Agent 1",
         )
         assert result is True
@@ -372,7 +372,7 @@ class TestPreferences:
         assert prefs["enabled"] is True
         assert prefs["sound"] is True
         assert prefs["rate_limit_seconds"] == 5
-        assert "task_complete" in prefs["events"]
+        assert "command_complete" in prefs["events"]
 
     def test_update_preferences_partial(self, service):
         service.update_preferences(enabled=False)
@@ -382,7 +382,7 @@ class TestPreferences:
     def test_update_preferences_events(self, service):
         service.update_preferences(events={"new_event": True})
         assert service.preferences.events["new_event"] is True
-        assert service.preferences.events["task_complete"] is True  # Merged, not replaced
+        assert service.preferences.events["command_complete"] is True  # Merged, not replaced
 
     def test_update_preferences_all(self, service):
         service.update_preferences(

@@ -129,7 +129,7 @@ The system SHALL support SSE event types for turn lifecycle.
 
 - **WHEN** a new Turn record is created (via hook, voice command, file upload, or reconciliation)
 - **THEN** the broadcaster SHALL emit a `turn_created` SSE event
-- **AND** the payload SHALL include: `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, `timestamp`
+- **AND** the payload SHALL include: `agent_id`, `project_id`, `text`, `actor`, `intent`, `command_id`, `turn_id`, `timestamp`
 
 #### Scenario: turn_updated event
 

@@ -46,11 +46,11 @@ The user is working in VS Code when a macOS notification banner appears: "Agent 
 ### 2.1 In Scope
 
 - macOS system notifications triggered by agent state changes
-- Notification on `task_complete` event (agent finished processing)
+- Notification on `command_complete` event (agent finished processing)
 - Notification on `awaiting_input` event (agent needs user response)
 - Notification preferences stored in `config.yaml`
 - Global enable/disable toggle for notifications
-- Per-event-type toggles (task_complete, awaiting_input)
+- Per-event-type toggles (command_complete, awaiting_input)
 - Sound enable/disable preference
 - Rate limiting to prevent notification spam (configurable cooldown per agent)
 - Click-to-action: focus browser dashboard and highlight relevant agent
@@ -78,11 +78,11 @@ The user is working in VS Code when a macOS notification banner appears: "Agent 
 
 ### 3.1 Functional Success Criteria
 
-1. When an agent's task completes, a macOS notification banner appears
+1. When an agent's command completes, a macOS notification banner appears
 2. When an agent enters `awaiting_input` state, a macOS notification appears
 3. Clicking a notification opens the dashboard in the default browser with the agent highlighted
 4. Users can toggle notifications on/off globally via the preferences UI
-5. Users can toggle notifications per event type (task_complete, awaiting_input)
+5. Users can toggle notifications per event type (command_complete, awaiting_input)
 6. Users can toggle notification sounds on/off
 7. Rate limiting prevents more than one notification per agent within the cooldown period
 8. If terminal-notifier is not installed, the preferences UI shows installation instructions
@@ -100,7 +100,7 @@ The user is working in VS Code when a macOS notification banner appears: "Agent 
 
 ## 4. Functional Requirements (FRs)
 
-**FR1: Task Complete Notification**
+**FR1: Command Complete Notification**
 The system sends a macOS notification when an agent's task transitions to the `complete` state. The notification includes the agent name and project context.
 
 **FR2: Awaiting Input Notification**
@@ -111,7 +111,7 @@ Users can enable or disable all notifications globally via a single toggle in pr
 
 **FR4: Per-Event-Type Toggle**
 Users can enable or disable notifications for specific event types independently:
-- `task_complete`: enabled/disabled
+- `command_complete`: enabled/disabled
 - `awaiting_input`: enabled/disabled
 
 **FR5: Sound Toggle**
@@ -179,7 +179,7 @@ Notifications
 [Toggle] Enable notifications           [ON/OFF]
 
 When enabled:
-  [Toggle] Task complete                 [ON/OFF]
+  [Toggle] Command complete                 [ON/OFF]
   [Toggle] Awaiting input                [ON/OFF]
   [Toggle] Play sound                    [ON/OFF]
 
@@ -238,7 +238,7 @@ notifications:
   enabled: true
   sound: true
   events:
-    task_complete: true
+    command_complete: true
     awaiting_input: true
   rate_limit_seconds: 5
 ```
@@ -277,11 +277,11 @@ terminal-notifier \
 
 ## 10. Acceptance Tests
 
-### Test 1: Task Complete Notification
+### Test 1: Command Complete Notification
 1. Enable notifications in preferences
 2. Start a Claude Code agent with hooks configured
 3. Submit a prompt and wait for completion
-4. **Expected:** macOS notification appears with task complete message
+4. **Expected:** macOS notification appears with command complete message
 
 ### Test 2: Awaiting Input Notification
 1. Enable notifications in preferences
@@ -300,9 +300,9 @@ terminal-notifier \
 3. **Expected:** Only first notification appears; subsequent ones suppressed
 
 ### Test 5: Preferences Persistence
-1. Disable `task_complete` notifications in UI
+1. Disable `command_complete` notifications in UI
 2. Restart the application
-3. **Expected:** `task_complete` remains disabled after restart
+3. **Expected:** `command_complete` remains disabled after restart
 
 ### Test 6: Missing terminal-notifier
 1. Ensure terminal-notifier is not installed

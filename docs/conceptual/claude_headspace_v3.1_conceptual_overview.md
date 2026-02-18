@@ -54,7 +54,7 @@ Logs include **Turn.text** for each turn.
 Logs are organised by:
 - **Project**
 - **Agent**
-- **Task**
+- **Command**
 - **Turn**
 
 ...and used to calculate summaries at each level.
@@ -64,7 +64,7 @@ The system uses **inference calls** at four levels:
 | Level | Purpose | Model (typical) |
 |-------|---------|-----------------|
 | **turn** | Summarise individual turn for dashboard display and prioritisation | Haiku |
-| **task** | Summarise completed task outcome | Haiku |
+| **command** | Summarise completed command outcome | Haiku |
 | **project** | Generate progress_summary, brain_reboot, recent activity summary | Sonnet |
 | **objective** | Cross-project prioritisation, alignment to objective | Sonnet |
 
@@ -80,7 +80,7 @@ The system has **documentation** and **help**, which is searchable.
 
 ## 4. State Model
 
-This section defines the core mechanics of how Agents, Tasks, and Turns interact.
+This section defines the core mechanics of how Agents, Commands, and Turns interact.
 
 ### 4.1 Hierarchy
 
@@ -91,14 +91,14 @@ Objective (global singleton)
             │
             └── Agent (1:N per project, concurrent allowed)
                     │
-                    └── Task (1:N per agent, sequential)
+                    └── Command (1:N per agent, sequential)
                             │
-                            └── Turn (1:N per task)
+                            └── Turn (1:N per command)
 ```
 
-### 4.2 Task State Machine
+### 4.2 Command State Machine
 
-A Task progresses through the following states:
+A Command progresses through the following states:
 
 ```
                                 ┌─────────────────────────────────┐
@@ -127,7 +127,7 @@ A Task progresses through the following states:
               │                └────┬─────┘           │       │   │
               │                     │                 ▼       │   │
               │                     │          ┌────────────┐ │   │
-              │  task complete      │          │  awaiting  │ │   │
+              │  command complete      │          │  awaiting  │ │   │
               └─────────────────────┘          │   input    │─┘   │
                                                │            │     │
                                                └──────┬─────┘     │
@@ -145,7 +145,7 @@ Each Turn represents one exchange in the conversation.
 Turn
 ├── actor: user | agent
 ├── text: (the content of the turn)
-├── intent: command | answer | question | completion | progress | end_of_task
+├── intent: command | answer | question | completion | progress | end_of_command
 └── timestamp
 ```
 
@@ -154,36 +154,36 @@ Turn
 - `agent` - Claude Code
 
 **Intent values:**
-- `command` - user initiates a task (starts a new Task)
+- `command` - user initiates a task (starts a new Command)
 - `answer` - user responds to agent's question
 - `question` - agent asks user for clarification
 - `progress` - agent reports intermediate progress
-- `completion` - agent signals task is done (ends the Task)
-- `end_of_task` - agent explicitly signals end of task (also ends the Task)
+- `completion` - agent signals task is done (ends the Command)
+- `end_of_command` - agent explicitly signals end of command (also ends the Command)
 
-### 4.4 Turn Intent to Task State Mapping
+### 4.4 Turn Intent to Command State Mapping
 
-| Current Task State | Turn Actor | Turn Intent | New Task State |
+| Current Command State | Turn Actor | Turn Intent | New Command State |
 |--------------------|------------|-------------|----------------|
 | idle | user | command | commanded |
 | commanded | agent | progress | processing |
 | commanded | agent | question | awaiting_input |
 | commanded | agent | completion | complete |
-| commanded | agent | end_of_task | complete |
+| commanded | agent | end_of_command | complete |
 | processing | agent | progress | processing |
 | processing | agent | question | awaiting_input |
 | processing | agent | completion | complete |
-| processing | agent | end_of_task | complete |
+| processing | agent | end_of_command | complete |
 | processing | user | answer | processing |
 | awaiting_input | user | answer | processing |
 | awaiting_input | agent | completion | complete |
-| awaiting_input | agent | end_of_task | complete |
-| complete | - | - | idle (task ends) |
+| awaiting_input | agent | end_of_command | complete |
+| complete | - | - | idle (command ends) |
 
-### 4.5 Task Lifecycle Summary
+### 4.5 Command Lifecycle Summary
 
 ```
-TASK START
+COMMAND START
     │
     │  Turn: { actor: user, intent: command }
     │
@@ -193,22 +193,22 @@ TASK START
     │  Turn: { actor: agent, intent: completion }
     │
     ▼
-TASK END
+COMMAND END
 ```
 
-A Task:
+A Command:
 - **Starts** with: `actor: user, intent: command`
 - **Ends** with: `actor: agent, intent: completion`
 
 ### 4.6 Agent State
 
-An Agent's state is derived from its current Task:
+An Agent's state is derived from its current Command:
 
 ```
-Agent.state = current_task.state
+Agent.state = current_command.state
 ```
 
-If no active task, Agent.state = `idle`.
+If no active command, Agent.state = `idle`.
 
 ---
 
@@ -230,23 +230,23 @@ Objective (global singleton)
     └── has many → Agent (1:N per project, concurrent allowed)
                    │
                    ├── 1:1 with TerminalSession (iTerm2 pane)
-                   ├── state (derived from current task)
+                   ├── state (derived from current command)
                    │
-                   └── has many → Task (1:N per agent, sequential)
+                   └── has many → Command (1:N per agent, sequential)
                                   │
                                   ├── state: idle | commanded | processing 
                                   │          | awaiting_input | complete
                                   │
-                                  └── has many → Turn (1:N per task)
+                                  └── has many → Turn (1:N per command)
                                                  │
                                                  ├── actor: user | agent
                                                  ├── text
                                                  ├── intent: command | answer | question 
-                                                 │           | completion | progress | end_of_task
+                                                 │           | completion | progress | end_of_command
                                                  ├── timestamp
                                                  │
                                                  └── triggers → InferenceCall (0:N)
-                                                                ├── level: turn | task 
+                                                                ├── level: turn | command 
                                                                 │          | project | objective
                                                                 ├── purpose
                                                                 ├── model
@@ -260,7 +260,7 @@ Objective (global singleton)
 ```
 GitRepository (per project)
 ├── recent_commits → feeds → progress_summary (via LLM)
-├── files_changed → enriches → Task context
+├── files_changed → enriches → Command context
 └── commit_messages → informs → progress narrative
 ```
 
@@ -311,10 +311,10 @@ When artifacts are updated, the previous version is moved to the `archive/` dire
 | **objective** | Global singleton. The overarching goal that guides prioritisation across all projects. |
 | **project** | A codebase/repo being worked on. Has agents, tasks, and repo artifacts. |
 | **agent** | A Claude Code instance working on a project, linked to an iTerm2 terminal session. |
-| **task** | A unit of work initiated by a user command and completed by an agent completion. |
-| **turn** | A single exchange in a task conversation - either user or agent speaking. |
+| **command** | A unit of work initiated by a user command and completed by an agent completion. |
+| **turn** | A single exchange in a command conversation - either user or agent speaking. |
 | **actor** | Who is speaking in a turn: `user` or `agent`. |
-| **intent** | The purpose of a turn: `command`, `answer`, `question`, `progress`, `completion`, `end_of_task`. |
+| **intent** | The purpose of a turn: `command`, `answer`, `question`, `progress`, `completion`, `end_of_command`. |
 | **text** | The content of a turn. |
 | **brain_reboot** | A view combining waypoint and progress_summary to rapidly restore mental context. |
 | **waypoint** | The path ahead - next_up, upcoming, later, not_now. |

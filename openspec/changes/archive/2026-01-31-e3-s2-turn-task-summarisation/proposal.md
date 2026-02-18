@@ -1,15 +1,15 @@
 ## Why
 
-Claude Headspace's dashboard displays raw turn text and task state, forcing users to read full conversation content to understand agent activity. Turn and task summarisation will generate concise AI summaries in real-time, enabling users to grasp agent activity at a glance across all active sessions.
+Claude Headspace's dashboard displays raw turn text and command state, forcing users to read full conversation content to understand agent activity. Turn and command summarisation will generate concise AI summaries in real-time, enabling users to grasp agent activity at a glance across all active sessions.
 
 ## What Changes
 
 - Add TurnSummarisationService that generates 1-2 sentence summaries for new turns
-- Add TaskSummarisationService that generates 2-3 sentence outcome summaries on task completion
-- Add `summary` and `summary_generated_at` fields to Turn and Task models
+- Add TaskSummarisationService that generates 2-3 sentence outcome summaries on command completion
+- Add `summary` and `summary_generated_at` fields to Turn and Command models
 - Add Alembic migration for new summary fields
-- Add summarisation routes blueprint with POST `/api/summarise/turn/<id>` and POST `/api/summarise/task/<id>`
-- Integrate with TaskLifecycleManager to trigger summarisation on turn creation and task completion
+- Add summarisation routes blueprint with POST `/api/summarise/turn/<id>` and POST `/api/summarise/command/<id>`
+- Integrate with CommandLifecycleManager to trigger summarisation on turn creation and command completion
 - Add SSE events for pushing summary updates to the dashboard
 - Add "Summarising..." placeholder UX on agent cards while inference is in-flight
 - Update dashboard route to include summary data in agent cards
@@ -19,11 +19,11 @@ Claude Headspace's dashboard displays raw turn text and task state, forcing user
 
 - Affected specs: summarisation (new capability)
 - Affected code:
-  - `src/claude_headspace/services/summarisation_service.py` — new: turn and task summarisation service
+  - `src/claude_headspace/services/summarisation_service.py` — new: turn and command summarisation service
   - `src/claude_headspace/routes/summarisation.py` — new: API endpoints blueprint
   - `src/claude_headspace/models/turn.py` — modified: add summary + summary_generated_at fields
-  - `src/claude_headspace/models/task.py` — modified: add summary + summary_generated_at fields
-  - `src/claude_headspace/services/task_lifecycle.py` — modified: trigger summarisation after turn processing and task completion
+  - `src/claude_headspace/models/command.py` — modified: add summary + summary_generated_at fields
+  - `src/claude_headspace/services/command_lifecycle.py` — modified: trigger summarisation after turn processing and command completion
   - `src/claude_headspace/routes/dashboard.py` — modified: include summary data in agent card rendering
   - `src/claude_headspace/app.py` — modified: register summarisation blueprint, init summarisation service
   - `templates/partials/_agent_card.html` — modified: display summaries and placeholders

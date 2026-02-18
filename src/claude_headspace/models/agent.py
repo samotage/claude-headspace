@@ -9,19 +9,19 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
-from .task import TaskState
+from .command import CommandState
 
 if TYPE_CHECKING:
     from .project import Project
-    from .task import Task
+    from .command import Command
 
 
 class Agent(db.Model):
     """
     Represents a Claude Code session.
 
-    Agents belong to a Project and have multiple Tasks. The agent's state
-    is derived from its current (most recent incomplete) task.
+    Agents belong to a Project and have multiple Commands. The agent's state
+    is derived from its current (most recent incomplete) command.
     """
 
     __tablename__ = "agents"
@@ -87,25 +87,25 @@ class Agent(db.Model):
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="agents")
-    tasks: Mapped[list["Task"]] = relationship(
-        "Task",
+    commands: Mapped[list["Command"]] = relationship(
+        "Command",
         back_populates="agent",
         cascade="all, delete-orphan",
-        order_by="Task.started_at.desc()",
+        order_by="Command.started_at.desc()",
     )
 
     @property
-    def state(self) -> TaskState:
+    def state(self) -> CommandState:
         """
-        Derive agent state from current task.
+        Derive agent state from current command.
 
         Returns:
-            The current task's state, or IDLE if no active task
+            The current command's state, or IDLE if no active command
         """
-        current_task = self.get_current_task()
-        if current_task is None:
-            return TaskState.IDLE
-        return current_task.state
+        current_command = self.get_current_command()
+        if current_command is None:
+            return CommandState.IDLE
+        return current_command.state
 
     @property
     def name(self) -> str:
@@ -120,19 +120,19 @@ class Agent(db.Model):
             return f"{self.project.name}/{session_prefix}"
         return f"Agent-{session_prefix}"
 
-    def get_current_task(self) -> "Task | None":
+    def get_current_command(self) -> "Command | None":
         """
-        Get the most recent incomplete task for this agent.
+        Get the most recent incomplete command for this agent.
 
         Returns:
-            The most recent Task with state != COMPLETE, or None
+            The most recent Command with state != COMPLETE, or None
         """
-        from .task import Task
+        from .command import Command
 
         return (
-            db.session.query(Task)
-            .filter(Task.agent_id == self.id, Task.state != TaskState.COMPLETE)
-            .order_by(Task.started_at.desc())
+            db.session.query(Command)
+            .filter(Command.agent_id == self.id, Command.state != CommandState.COMPLETE)
+            .order_by(Command.started_at.desc())
             .first()
         )
 

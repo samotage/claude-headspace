@@ -28,7 +28,7 @@
 ### Services
 - `src/claude_headspace/services/hook_receiver.py` — add `POST_TOOL_USE` event type, `process_post_tool_use()`, enhance `process_notification()` for message/title, enhance `process_session_start()` for transcript_path
 - `src/claude_headspace/services/hook_lifecycle_bridge.py` — add `process_post_tool_use()` for AWAITING_INPUT → PROCESSING resumption
-- `src/claude_headspace/services/task_lifecycle.py` — support turn text population from transcript content
+- `src/claude_headspace/services/command_lifecycle.py` — support turn text population from transcript content
 - `src/claude_headspace/services/file_watcher.py` — major upgrade: transcript file registration, incremental reading, new entry detection, regex question detection, awaiting_input_timeout timers, inference integration
 - `src/claude_headspace/services/intent_detector.py` — potentially enhanced patterns (existing patterns may suffice)
 - `src/claude_headspace/services/event_writer.py` — new event types for content pipeline events
@@ -48,11 +48,11 @@
 3. AGENT/COMPLETION turns have non-empty text extracted from transcript
 4. Free-form questions detected within file watcher polling interval via regex
 5. Ambiguous output classified by inference within `awaiting_input_timeout` seconds
-6. Task summaries reflect actual agent work content
-7. Priority scoring rankings incorporate real task context
+6. Command summaries reflect actual agent work content
+7. Priority scoring rankings incorporate real command context
 
 ## Constraints and Gotchas
-- **Dirty working tree:** Current development branch has uncommitted changes in several files that this PRD targets (hook_receiver.py, hook_lifecycle_bridge.py, task_lifecycle.py, event_writer.py, dashboard.py). These should be from the previous sprint (e3-s5) and will be carried forward.
+- **Dirty working tree:** Current development branch has uncommitted changes in several files that this PRD targets (hook_receiver.py, hook_lifecycle_bridge.py, command_lifecycle.py, event_writer.py, dashboard.py). These should be from the previous sprint (e3-s5) and will be carried forward.
 - **Notification hook already exists:** The `/hook/notification` endpoint already exists but processes notifications simply — needs enhancement to extract message/title and handle notification_type matchers
 - **State machine already has AWAITING_INPUT:** No new states needed — the transitions already exist (PROCESSING → AWAITING_INPUT via QUESTION intent, AWAITING_INPUT → PROCESSING via ANSWER intent)
 - **File watcher is dormant:** Currently only used as fallback when hooks are silent; needs significant upgrade for active content monitoring
@@ -65,7 +65,7 @@
 
 ### Related Files
 - Models: (no existing model changes in recent history for this subsystem)
-- Services: hook_receiver.py, hook_lifecycle_bridge.py, task_lifecycle.py, event_writer.py, file_watcher.py, intent_detector.py
+- Services: hook_receiver.py, hook_lifecycle_bridge.py, command_lifecycle.py, event_writer.py, file_watcher.py, intent_detector.py
 - Routes: hooks.py, dashboard.py
 - Config: config.yaml
 
@@ -75,7 +75,7 @@
 
 ### Implementation Patterns
 - Typical structure: model → service → route → tests (three-tier)
-- Hook processing: route validates → hook_receiver processes → lifecycle_bridge transitions → task_lifecycle manages state
+- Hook processing: route validates → hook_receiver processes → lifecycle_bridge transitions → command_lifecycle manages state
 - Event logging: all state transitions logged via EventWriter with caller's DB session
 - Broadcasting: SSE events emitted after state changes for dashboard updates
 - Async inference: thread pool with Flask app context for LLM calls

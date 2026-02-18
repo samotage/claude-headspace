@@ -16,9 +16,9 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 **Differentiation:**
 
 - **Event-driven architecture** from day one (not polling-first)
-- **5-state task model** (idle → commanded → processing → awaiting_input/complete)
+- **5-state command model** (idle → commanded → processing → awaiting_input/complete)
 - **Dual event sources with hybrid mode:** Claude Code hooks (instant, confidence=1.0) + terminal polling (fallback, adaptive interval)
-- **Turn-level granularity:** Track every user/agent exchange, not just task-level
+- **Turn-level granularity:** Track every user/agent exchange, not just command-level
 - **Brain reboot system:** Git-based project summaries for context restoration
 - **Cross-project prioritisation:** AI-driven priority scoring aligned to global objective
 
@@ -28,7 +28,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 - Launch 2-3 iTerm2 sessions, issue commands, watch dashboard reflect states in real-time
 - Click agent cards to focus iTerm windows
-- Receive macOS notifications when tasks complete or need input
+- Receive macOS notifications when commands complete or need input
 - Set objectives, see AI-prioritised agent recommendations
 - Generate brain_reboot artifacts from git history
 
@@ -40,7 +40,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 | ---------- | ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
 | **Epic 1** | Core Foundation + Event-Driven Hooks | 11      | 11-13 weeks | Event-driven architecture, state machine, dashboard, hooks integration                    |
 | **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | Config UI, waypoint editing, help system, macOS notifications                             |
-| **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/task summarisation, priority scoring, git-based summaries, brain reboot              |
+| **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/command summarisation, priority scoring, git-based summaries, brain reboot              |
 | **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | Artifact archiving, project controls, activity monitoring, headspace/frustration tracking |
 
 **Total:** 24 sprints, ~22-28 weeks
@@ -49,7 +49,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 ## Epic 1: Core Foundation + Event-Driven Hooks
 
-**Goal:** Establish the foundational event-driven architecture and prove the Task/Turn state machine works with a functional dashboard. Integrate Claude Code hooks for instant, high-confidence state updates.
+**Goal:** Establish the foundational event-driven architecture and prove the Command/Turn state machine works with a functional dashboard. Integrate Claude Code hooks for instant, high-confidence state updates.
 
 **Duration:** 11-13 weeks  
 **Sprints:** 11  
@@ -59,7 +59,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 - Python/Flask application with Postgres database
 - Event-driven architecture (Claude Code jsonl + hooks)
-- 5-state task model with turn-level tracking
+- 5-state command model with turn-level tracking
 - Dashboard with Kanban layout, real-time SSE updates
 - Objective setting and history tracking
 - Event log viewing with filtering
@@ -71,7 +71,7 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 
 Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 
-- ✅ Dashboard reflects correct Task/Turn states in real-time
+- ✅ Dashboard reflects correct Command/Turn states in real-time
 - ✅ Agent cards clickable, focus correct iTerm window
 - ✅ Hook events update agent state instantly (<100ms)
 - ✅ Terminal polling provides fallback when hooks unavailable
@@ -79,10 +79,10 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 ### Deliverables
 
 - Flask application with Postgres
-- Domain models: Objective, Project, Agent, Task, Turn, Event
+- Domain models: Objective, Project, Agent, Command, Turn, Event
 - File watcher for `~/.claude/projects/` jsonl files
 - Hook receiver endpoints for Claude Code lifecycle events
-- Task state machine with turn intent mapping
+- Command state machine with turn intent mapping
 - SSE endpoint with HTMX frontend
 - Dashboard UI with Tailwind CSS
 - Objective tab for setting current headspace
@@ -117,14 +117,14 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 - Config UI tab for editing settings
 - Waypoint editing UI (per project)
 - Help/documentation system (searchable)
-- macOS system notifications (task complete, input needed)
+- macOS system notifications (command complete, input needed)
 
 ### Acceptance Test
 
 - ✅ Edit config.yaml via web UI, changes persist
 - ✅ Edit waypoint.md via web UI for each project
 - ✅ Search help documentation, find relevant topics
-- ✅ Receive macOS notification banner when task completes
+- ✅ Receive macOS notification banner when command completes
 
 ### Deliverables
 
@@ -151,7 +151,7 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 ### Key Features
 
 - Turn-level summarisation (Haiku) for dashboard display
-- Task-level summarisation (Haiku) on completion
+- Command-level summarisation (Haiku) on completion
 - AI-driven cross-project priority scoring (Sonnet)
 - Project-level progress_summary generation from git (Sonnet)
 - Brain reboot generation (progress_summary + waypoint)
@@ -169,7 +169,7 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 - OpenRouter API integration
 - Inference service with model selection (Haiku, Sonnet)
 - Turn summarisation service
-- Task summarisation service
+- Command summarisation service
 - Priority scoring service (cross-project ranking)
 - Git analyzer service (commit history → progress narrative)
 - Progress summary generator
@@ -178,7 +178,7 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 
 ### Dependencies
 
-- **Epic 1 complete** (Task/Turn models, git integration)
+- **Epic 1 complete** (Command/Turn models, git integration)
 
 ---
 
@@ -308,7 +308,7 @@ Claude Code jsonl + hooks
     [Event]
         │
         ├──▶ Writes to Postgres (event log)
-        ├──▶ Updates Task state
+        ├──▶ Updates Command state
         ├──▶ Updates Turn records
         ├──▶ Triggers SSE push to UI
         └──▶ Triggers notifications (Epic 2)
@@ -320,7 +320,7 @@ Claude Code jsonl + hooks
 Application Domain (Postgres)          LLM Domain (text files)
 ──────────────────────────────        ─────────────────────────
 Event log                              config.yaml
-Task records                           waypoint.md (in target project)
+Command records                           waypoint.md (in target project)
 Turn records                           progress_summary.md (in target project)
 Objective + history                    brain_reboot outputs
 Agent/Session state
@@ -369,7 +369,7 @@ Minimal configuration. Discover everything from filesystem:
 
 **5. State Machine First**
 
-5-state task model drives all behavior:
+5-state command model drives all behavior:
 
 ```
 idle → commanded → processing → awaiting_input/complete → idle
@@ -566,7 +566,7 @@ def correlate_session(claude_session_id, cwd):
 
 **Mitigation:**
 
-- Use fast/cheap models (Haiku) for turn/task summaries
+- Use fast/cheap models (Haiku) for turn/command summaries
 - Use Sonnet only for project/objective-level inference
 - Add inference call throttling (max calls per hour)
 - Make summarisation optional (enable/disable per project)
@@ -595,7 +595,7 @@ def correlate_session(claude_session_id, cwd):
 - ✅ Application starts and connects to Postgres
 - ✅ Auto-discovers projects from `~/.claude/projects/`
 - ✅ Watches jsonl files, logs events to database
-- ✅ Task/Turn state machine works correctly
+- ✅ Command/Turn state machine works correctly
 - ✅ Dashboard shows real-time updates via SSE
 - ✅ Click agent card → iTerm window focuses
 - ✅ Hook events trigger instant state updates
@@ -611,7 +611,7 @@ def correlate_session(claude_session_id, cwd):
 ### Epic 3 Success Metrics
 
 - ✅ Turns show AI summaries in dashboard
-- ✅ Tasks have completion summaries
+- ✅ Commands have completion summaries
 - ✅ Cross-project priority scores displayed
 - ✅ Progress summaries generated from git
 - ✅ Brain reboot available for stale projects
@@ -637,7 +637,7 @@ Generate OpenSpec PRDs in this order to maintain logical dependencies:
 1. Sprint 1: Project Bootstrap
 2. Sprint 2: Domain Models & Database Schema
 3. Sprint 3: File Watcher & Event System
-4. Sprint 4: Task/Turn State Machine
+4. Sprint 4: Command/Turn State Machine
 5. Sprint 5: SSE & Real-time Updates
 6. Sprint 6: Dashboard UI
 
@@ -671,7 +671,7 @@ Generate OpenSpec PRDs in this order to maintain logical dependencies:
 ### Phase 4: Epic 3 Intelligence (Weeks 16-22)
 
 16. Sprint 16: OpenRouter Integration & Inference Service
-17. Sprint 17: Turn/Task Summarisation
+17. Sprint 17: Turn/Command Summarisation
 18. Sprint 18: Priority Scoring Service
 19. Sprint 19: Git Analyzer & Progress Summary Generation
 20. Sprint 20: Brain Reboot Generation

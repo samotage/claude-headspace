@@ -17,7 +17,7 @@ validation:
 
 This PRD defines the database infrastructure for Claude Headspace v3.1. Sprint 2 establishes Postgres connectivity, ORM abstraction, and a version-controlled migration system that all subsequent sprints depend on for persistent storage.
 
-The deliverable is a fully configured database layer that connects to Postgres, provides an ORM for model definitions, and supports repeatable schema migrations via CLI commands. This foundation enables Sprint 3 (Domain Models) to define the Objective, Project, Agent, Task, Turn, and Event models with confidence that the database infrastructure is solid.
+The deliverable is a fully configured database layer that connects to Postgres, provides an ORM for model definitions, and supports repeatable schema migrations via CLI commands. This foundation enables Sprint 3 (Domain Models) to define the Objective, Project, Agent, Command, Turn, and Event models with confidence that the database infrastructure is solid.
 
 **Key Outcomes:**
 - Postgres database connection using configuration from `config.yaml`
@@ -65,7 +65,7 @@ A developer configures Postgres credentials in `config.yaml`, runs `flask db upg
 
 ### 2.2 Out of Scope
 
-- Domain models (Objective, Project, Agent, Task, Turn, Event) — Sprint 3
+- Domain models (Objective, Project, Agent, Command, Turn, Event) — Sprint 3
 - Seed data or fixtures
 - Database backup/restore utilities
 - Multi-database support

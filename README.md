@@ -137,13 +137,13 @@ Events arrive in <100ms (vs 2-second polling). State transitions are 100% accura
 
 ### Multi-Agent Session Monitoring
 - Track unlimited concurrent Claude Code sessions across projects
-- 5-state task lifecycle: `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
+- 5-state command lifecycle: `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
 - Real-time state updates via Server-Sent Events (SSE)
 - Session correlation maps Claude Code sessions to agent records automatically
 
 ### AI-Powered Intelligence Layer
 - **Turn summarisation** -- 1-2 sentence summaries of each user/agent exchange (Claude Haiku)
-- **Task summarisation** -- 2-3 sentence completion summaries (Claude Haiku)
+- **Command summarisation** -- 2-3 sentence completion summaries (Claude Haiku)
 - **Frustration scoring** -- 0-10 score on every user turn, persisted and tracked over time
 - **Priority scoring** -- batch score all active agents 0-100 based on objective/waypoint alignment
 - **Progress summaries** -- project-level analysis from git commit history (Claude Sonnet)
@@ -192,11 +192,11 @@ Events arrive in <100ms (vs 2-second polling). State transitions are 100% accura
 +------------------------------------------------------------+
 |           Claude Headspace (Flask)                           |
 |                                                             |
-|  Hook Receiver -> Session Correlator -> Task Lifecycle      |
+|  Hook Receiver -> Session Correlator -> Command Lifecycle   |
 |  Intent Detector -> State Machine (5-state)                 |
 |                                                             |
 |  Inference Service (OpenRouter / Claude Haiku + Sonnet)     |
-|    +-- Turn & Task Summarisation                            |
+|    +-- Turn & Command Summarisation                         |
 |    +-- Frustration Detection (0-10 scoring)                 |
 |    +-- Priority Scoring (0-100 agent ranking)               |
 |    +-- Progress Summary (project-level analysis)            |
@@ -280,7 +280,7 @@ Claude Headspace exposes a full REST API:
 | `GET /api/events/stream` | SSE event stream |
 | `POST /hook/*` | Claude Code hook endpoints (8 hooks) |
 | `POST /api/summarise/turn/<id>` | Generate turn summary |
-| `POST /api/summarise/task/<id>` | Generate task summary |
+| `POST /api/summarise/command/<id>` | Generate task summary |
 | `POST /api/priority/score` | Trigger priority scoring |
 | `GET /api/priority/rankings` | Current agent rankings |
 | `POST /api/respond/<agent_id>` | Send response to agent via tmux |

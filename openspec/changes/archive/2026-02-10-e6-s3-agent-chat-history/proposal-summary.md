@@ -2,7 +2,7 @@
 
 ## Architecture Decisions
 - **Intermediate capture via post-tool-use hook:** Leverage the existing post-tool-use hook to read agent transcript incrementally and create PROGRESS turns. This is non-blocking and adds minimal latency (<50ms).
-- **Agent-scoped query through Task join:** Query turns via `Turn → Task → Agent` relationship rather than adding a denormalized `agent_id` to Turn. The existing composite index on `(task_id, timestamp)` provides adequate performance.
+- **Agent-scoped query through Task join:** Query turns via `Turn → Command → Agent` relationship rather than adding a denormalized `agent_id` to Turn. The existing composite index on `(command_id, timestamp)` provides adequate performance.
 - **Cursor-based pagination (turn ID):** Use turn ID as cursor for pagination rather than offset-based, ensuring consistent results when new turns are added concurrently during active agent sessions.
 - **Client-side smart grouping:** Perform message grouping on the client to avoid server-side complexity and allow grouping to adapt to rendering context.
 - **No schema changes:** PROGRESS intent already exists in TurnIntent enum. No new columns or migrations needed.
@@ -22,9 +22,9 @@
 - `src/claude_headspace/routes/voice_bridge.py` — Modify transcript endpoint for agent-scoped query, cursor-based pagination, ended agent support
 
 ### Frontend (JavaScript/CSS)
-- `static/voice/voice-app.js` — Pagination, smart grouping, iMessage timestamps, task separators, ended agent UI
+- `static/voice/voice-app.js` — Pagination, smart grouping, iMessage timestamps, command separators, ended agent UI
 - `static/voice/voice-api.js` — Add pagination params to `getTranscript()` method
-- `static/voice/voice.css` — Task separator styles, loading indicator, ended agent banner, grouped bubble styles
+- `static/voice/voice.css` — Command separator styles, loading indicator, ended agent banner, grouped bubble styles
 - `static/js/project_show.js` — Render chat links in agent rows
 - `static/js/activity.js` — Render chat links in agent references
 
@@ -35,7 +35,7 @@
 - Opening chat for an agent shows complete conversation across all tasks
 - Intermediate agent text messages appear in chat within 5 seconds of production
 - Scrolling up loads older messages seamlessly
-- Task transitions visible as subtle separators with task instruction
+- Task transitions visible as subtle separators with command instruction
 - Rapid consecutive agent messages (within 2s) grouped into single bubbles
 - Chat history accessible for ended agents as read-only
 - Timestamps follow iMessage conventions
@@ -55,7 +55,7 @@
 ### Related Files
 - Routes: `src/claude_headspace/routes/voice_bridge.py`
 - Services: `src/claude_headspace/services/hook_lifecycle_bridge.py`, `hook_receiver.py`, `transcript_reader.py`
-- Models: `src/claude_headspace/models/turn.py` (no changes, reference only), `task.py` (reference only)
+- Models: `src/claude_headspace/models/turn.py` (no changes, reference only), `command.py` (reference only)
 - Tests: `tests/routes/test_voice_bridge.py`, `tests/routes/test_voice_bridge_client.py`, `tests/services/test_hook_lifecycle_bridge.py`
 - Frontend: `static/voice/voice-app.js`, `static/voice/voice-api.js`, `static/voice/voice.css`
 - Dashboard: `static/js/project_show.js`, `static/js/activity.js`

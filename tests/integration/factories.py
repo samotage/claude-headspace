@@ -12,13 +12,13 @@ from factory.alchemy import SQLAlchemyModelFactory
 
 from claude_headspace.models import (
     Agent,
+    Command,
+    CommandState,
     Event,
     EventType,
     Objective,
     ObjectiveHistory,
     Project,
-    Task,
-    TaskState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -54,14 +54,14 @@ class AgentFactory(SQLAlchemyModelFactory):
     ended_at = None
 
 
-class TaskFactory(SQLAlchemyModelFactory):
+class CommandFactory(SQLAlchemyModelFactory):
     class Meta:
-        model = Task
+        model = Command
         sqlalchemy_session = None
         sqlalchemy_session_persistence = "commit"
 
     agent = factory.SubFactory(AgentFactory)
-    state = TaskState.IDLE
+    state = CommandState.IDLE
     started_at = factory.LazyFunction(lambda: datetime.now(timezone.utc))
     completed_at = None
 
@@ -72,7 +72,7 @@ class TurnFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = None
         sqlalchemy_session_persistence = "commit"
 
-    task = factory.SubFactory(TaskFactory)
+    command = factory.SubFactory(CommandFactory)
     actor = TurnActor.USER
     intent = TurnIntent.COMMAND
     text = factory.Sequence(lambda n: f"Turn content {n}")
@@ -86,11 +86,11 @@ class EventFactory(SQLAlchemyModelFactory):
         sqlalchemy_session_persistence = "commit"
 
     timestamp = factory.LazyFunction(lambda: datetime.now(timezone.utc))
-    event_type = EventType.SESSION_DISCOVERED
+    event_type = EventType.SESSION_REGISTERED
     payload = factory.LazyFunction(lambda: {"source": "test"})
     project_id = None
     agent_id = None
-    task_id = None
+    command_id = None
     turn_id = None
 
 
@@ -123,7 +123,7 @@ class ObjectiveHistoryFactory(SQLAlchemyModelFactory):
 ALL_FACTORIES = [
     ProjectFactory,
     AgentFactory,
-    TaskFactory,
+    CommandFactory,
     TurnFactory,
     EventFactory,
     ObjectiveFactory,

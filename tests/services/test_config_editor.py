@@ -325,7 +325,7 @@ class TestFlattenUnflatten:
                 "timeout": 30,
                 "models": {
                     "turn": "haiku",
-                    "task": "haiku",
+                    "command": "haiku",
                 },
                 "cache": {
                     "enabled": True,
@@ -338,7 +338,7 @@ class TestFlattenUnflatten:
         assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
         assert result["openrouter"]["timeout"] == 30
         assert result["openrouter"]["models.turn"] == "haiku"
-        assert result["openrouter"]["models.task"] == "haiku"
+        assert result["openrouter"]["models.command"] == "haiku"
         assert result["openrouter"]["cache.enabled"] is True
         assert result["openrouter"]["cache.ttl_seconds"] == 300
         # Nested dicts should be gone
@@ -352,7 +352,7 @@ class TestFlattenUnflatten:
                 "base_url": "https://openrouter.ai/api/v1",
                 "timeout": 30,
                 "models.turn": "haiku",
-                "models.task": "haiku",
+                "models.command": "haiku",
                 "cache.enabled": True,
                 "cache.ttl_seconds": 300,
             }
@@ -362,7 +362,7 @@ class TestFlattenUnflatten:
         assert result["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
         assert result["openrouter"]["timeout"] == 30
         assert result["openrouter"]["models"]["turn"] == "haiku"
-        assert result["openrouter"]["models"]["task"] == "haiku"
+        assert result["openrouter"]["models"]["command"] == "haiku"
         assert result["openrouter"]["cache"]["enabled"] is True
         assert result["openrouter"]["cache"]["ttl_seconds"] == 300
 
@@ -374,7 +374,7 @@ class TestFlattenUnflatten:
                 "timeout": 30,
                 "models": {
                     "turn": "haiku",
-                    "task": "haiku",
+                    "command": "haiku",
                     "project": "sonnet",
                     "objective": "sonnet",
                 },
@@ -529,7 +529,7 @@ class TestOpenrouterValidation:
                 "base_url": "https://openrouter.ai/api/v1",
                 "timeout": 30,
                 "models.turn": "anthropic/claude-3-haiku",
-                "models.task": "anthropic/claude-3-haiku",
+                "models.command": "anthropic/claude-3-haiku",
                 "models.project": "anthropic/claude-3.5-sonnet",
                 "models.objective": "anthropic/claude-3.5-sonnet",
                 "rate_limits.calls_per_minute": 30,

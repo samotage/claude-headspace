@@ -107,7 +107,7 @@ The user asks "what needs my attention?" from their phone, hears a concise spoke
 
 **FR4:** A voice command endpoint accepts a text command and an optional target agent identifier. If a target is specified, the command is routed to that agent via the existing respond infrastructure. If no target is specified and exactly one agent is awaiting input, the command is routed to that agent automatically.
 
-**FR5:** A session listing endpoint returns all active agents with: project name, agent state, whether the agent is awaiting input, current task summary, and time since last activity. The response is structured for voice consumption (short text strings, no HTML).
+**FR5:** A session listing endpoint returns all active agents with: project name, agent state, whether the agent is awaiting input, current command summary, and time since last activity. The response is structured for voice consumption (short text strings, no HTML).
 
 **FR6:** An output retrieval endpoint returns recent agent activity for a specified agent: the last N commands executed and their outputs, formatted as concise text. Leverages the full command & output capture from e5-s9.
 

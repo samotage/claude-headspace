@@ -10,7 +10,7 @@
 ## Implementation Approach
 - Create dashboard blueprint with single route at `/`
 - Use template partials for header, project groups, agent cards
-- Query database with eager loading for projects → agents → tasks
+- Query database with eager loading for projects → agents → commands
 - Calculate status counts in route before template rendering
 - Apply responsive grid classes for mobile/tablet/desktop
 
@@ -41,7 +41,7 @@
 - Semantic HTML with ARIA labels
 
 ## Constraints and Gotchas
-- Agent state is derived from current task, not stored directly
+- Agent state is derived from current command, not stored directly
 - Traffic light logic requires checking all agents in project
 - last_seen_at timeout is 5 minutes for ACTIVE/IDLE status badge
 - Priority score is hardcoded to 50 in Epic 1 (LLM scoring in Epic 3)
@@ -52,7 +52,7 @@
 
 ### Related Files
 **Models (already exist):**
-- src/claude_headspace/models.py - Project, Agent, Task, Turn, TaskState
+- src/claude_headspace/models.py - Project, Agent, Command, Turn, CommandState
 
 **Routes:**
 - src/claude_headspace/routes/__init__.py - Blueprint registration
@@ -67,7 +67,7 @@
 - e1-s6-state-machine: State transitions
 - e1-s5-event-system: Event persistence
 - e1-s4-file-watcher: File monitoring
-- e1-s3-domain-models: Project, Agent, Task, Turn models
+- e1-s3-domain-models: Project, Agent, Command, Turn models
 - e1-s2-database-setup: PostgreSQL configuration
 - e1-s1-flask-bootstrap: Flask app factory
 
@@ -83,7 +83,7 @@
 
 ## Dependencies
 - **No new pip packages required**
-- **Models:** Project, Agent, Task, Turn from Sprint 3
+- **Models:** Project, Agent, Command, Turn from Sprint 3
 - **Templates:** base.html from Sprint 1
 - **SSE:** Sprint 7 complete, but not integrated until Part 2
 

@@ -25,7 +25,7 @@ Agent turns are silently lost when hook processing fails. The `process_stop` met
 
 **The inversion:** Hooks are the preview. JSONL is the authority. Tmux is the early warning. If a hook fails, the tmux watchdog detects the gap within seconds and triggers reconciliation. The reconciler MUST create the missing turn from the JSONL entry.
 
-## Implementation Tasks (in dependency order)
+## Implementation Commands (in dependency order)
 
 ### Task 1: Decouple Turn Persistence from State Transitions
 
@@ -68,7 +68,7 @@ except InvalidTransitionError as e:
 **Affected code paths in `process_stop`:**
 - QUESTION intent turn creation (lines 1006–1017)
 - COMPLETION via `complete_task()` (line 1037)
-- END_OF_TASK via `complete_task()` (lines 1024–1027)
+- END_OF_COMMAND via `complete_task()` (lines 1024–1027)
 
 **Also check:** `_handle_awaiting_input()` and `process_user_prompt_submit()` for the same pattern — any place a Turn is created and a state transition follows in the same transaction scope.
 
@@ -93,19 +93,19 @@ except InvalidTransitionError as e:
 
 **Required outcome:** Every JSONL entry with non-empty content that has no matching Turn in the database MUST result in a new Turn being created. No silent skipping. Add logging at INFO level when a new turn is created via reconciliation.
 
-### Task 3: Recovered Turns Feed Into Task Lifecycle
+### Task 3: Recovered Turns Feed Into Command Lifecycle
 
 **File:** `src/claude_headspace/services/transcript_reconciler.py`
 
-**Current behavior:** When the reconciler creates a new Turn (lines 78-92), it sets `intent=_infer_intent(actor, entry)` which maps User→COMMAND, Agent→PROGRESS. It does NOT call into the TaskLifecycleManager.
+**Current behavior:** When the reconciler creates a new Turn (lines 78-92), it sets `intent=_infer_intent(actor, entry)` which maps User→COMMAND, Agent→PROGRESS. It does NOT call into the CommandLifecycleManager.
 
 **Required change:** After creating a recovered Turn, the reconciler must:
 1. Detect the turn's intent using `IntentDetector` (not just the simple `_infer_intent`)
-2. Call `TaskLifecycleManager.update_task_state()` with the appropriate transition
+2. Call `CommandLifecycleManager.update_task_state()` with the appropriate transition
 3. Handle `InvalidTransitionError` gracefully (log warning, don't destroy the turn)
 4. Broadcast SSE events for both the turn and any state transition
 
-**Key consideration:** The reconciler runs in the file watcher's thread context. It needs access to `app.extensions["intent_detector"]` and `app.extensions["task_lifecycle"]`. Ensure the Flask app context is available.
+**Key consideration:** The reconciler runs in the file watcher's thread context. It needs access to `app.extensions["intent_detector"]` and `app.extensions["command_lifecycle"]`. Ensure the Flask app context is available.
 
 ### Task 4: State Machine Audit
 
@@ -117,7 +117,7 @@ except InvalidTransitionError as e:
 - `(AWAITING_INPUT, AGENT, QUESTION) → AWAITING_INPUT`
 - `(AWAITING_INPUT, AGENT, PROGRESS) → AWAITING_INPUT`
 - `(AWAITING_INPUT, AGENT, COMPLETION) → COMPLETE`
-- `(AWAITING_INPUT, AGENT, END_OF_TASK) → COMPLETE`
+- `(AWAITING_INPUT, AGENT, END_OF_COMMAND) → COMPLETE`
 
 **Audit required:** Check ALL state combinations for missing transitions that could cause data loss. Specifically:
 - Can an agent produce a COMMAND intent? (Shouldn't happen, but defensive)
@@ -128,7 +128,7 @@ except InvalidTransitionError as e:
 
 ### Task 5: Recovery Logging
 
-**All modified files from Tasks 1-4.**
+**All modified files from Commands 1-4.**
 
 **Required log levels:**
 - **WARNING:** Every hook processing failure with context: `[HOOK_RECEIVER] process_stop state transition failed: from={state} actor={actor} intent={intent} error={exception} — turn {turn_id} preserved`
@@ -203,8 +203,8 @@ if (reconcileAction) {
 | File | Role | What Changes |
 |------|------|-------------|
 | `src/claude_headspace/services/hook_receiver.py` | Hook processing, turn creation | Decouple turn commit from state transition (Task 1) |
-| `src/claude_headspace/services/transcript_reconciler.py` | JSONL → DB reconciliation | Fix missing turn creation, add lifecycle integration (Tasks 2, 3) |
-| `src/claude_headspace/services/task_lifecycle.py` | State transitions, turn records | No changes expected — but verify transaction scope |
+| `src/claude_headspace/services/transcript_reconciler.py` | JSONL → DB reconciliation | Fix missing turn creation, add lifecycle integration (Commands 2, 3) |
+| `src/claude_headspace/services/command_lifecycle.py` | State transitions, turn records | No changes expected — but verify transaction scope |
 | `src/claude_headspace/services/state_machine.py` | Valid transition definitions | Audit for gaps (Task 4) |
 | `src/claude_headspace/services/file_watcher.py` | Watches JSONL, feeds reconciler | Investigate if entries are being dropped (Task 2) |
 | `src/claude_headspace/services/intent_detector.py` | Classifies agent intent | Used by Task 3 for recovered turn intent detection |
@@ -219,7 +219,7 @@ if (reconcileAction) {
 **Existing test files to run after changes:**
 - `pytest tests/services/test_hook_receiver.py` — Verify happy path not broken
 - `pytest tests/services/test_transcript_reconciler.py` — Verify reconciler creates missing turns
-- `pytest tests/services/test_task_lifecycle.py` — Verify state transitions
+- `pytest tests/services/test_command_lifecycle.py` — Verify state transitions
 - `pytest tests/services/test_state_machine.py` — Verify transition table
 - `pytest tests/routes/test_hooks.py` — Verify hook endpoint behavior
 
@@ -252,4 +252,4 @@ if (reconcileAction) {
 - SSE event type definitions (`turn_created`, `turn_updated`)
 - Database schema (no new tables; possible new columns on Turn if needed)
 - Service registration patterns (`app.extensions`)
-- Any file outside the scope of Tasks 1-7
+- Any file outside the scope of Commands 1-7

@@ -185,7 +185,7 @@
 
         // Update source column: add empty placeholder if now empty
         if (sourceBody) {
-            var remainingCards = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+            var remainingCards = sourceBody.querySelectorAll('article, details.kanban-completed-command');
             if (remainingCards.length === 0 && currentColName !== 'COMPLETE') {
                 var emptyLabels = {
                     'IDLE': 'idle',
@@ -216,7 +216,7 @@
 
     /**
      * Update the (N) count in a Kanban column header.
-     * Counts article elements and details.kanban-completed-task elements.
+     * Counts article elements and details.kanban-completed-command elements.
      */
     function updateColumnCount(columnEl) {
         if (!columnEl) return;
@@ -224,7 +224,7 @@
         var body = columnEl.querySelector('.kanban-column-body');
         if (!body) return;
 
-        var count = body.querySelectorAll('article, details.kanban-completed-task').length;
+        var count = body.querySelectorAll('article, details.kanban-completed-command').length;
         var countSpan = columnEl.querySelector('.kanban-column-count');
         if (countSpan) {
             countSpan.textContent = '(' + count + ')';
@@ -297,7 +297,7 @@
         client.on('session_created', handleSessionCreated);
 
         // Handle summary updates
-        client.on('task_summary', handleTaskSummary);
+        client.on('command_summary', handleCommandSummary);
         client.on('turn_summary', handleTurnSummary);
         client.on('instruction_summary', handleInstructionSummary);
 
@@ -386,9 +386,9 @@
         if (oldState === 'AWAITING_INPUT' && newState !== 'AWAITING_INPUT') {
             const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
             if (card) {
-                const taskSummary = card.querySelector('.task-summary');
-                if (taskSummary) {
-                    taskSummary.textContent = '';
+                const commandSummary = card.querySelector('.command-summary');
+                if (commandSummary) {
+                    commandSummary.textContent = '';
                 }
             }
         }
@@ -456,14 +456,14 @@
         const card = document.querySelector(`article[data-agent-id="${agentId}"]`);
         if (!card) return;
 
-        const taskSummary = card.querySelector('.task-summary');
-        if (taskSummary) {
+        const commandSummary = card.querySelector('.command-summary');
+        if (commandSummary) {
             // Truncate to 100 chars
             let text = turnText;
             if (text.length > 100) {
                 text = text.substring(0, 100) + '...';
             }
-            taskSummary.textContent = text || 'No active task';
+            commandSummary.textContent = text || 'No active command';
         }
     }
 
@@ -543,7 +543,7 @@
 
                 // Update source column: add empty placeholder if now empty
                 if (body) {
-                    var remaining = body.querySelectorAll('article, details.kanban-completed-task');
+                    var remaining = body.querySelectorAll('article, details.kanban-completed-command');
                     if (remaining.length === 0) {
                         var colName = column.getAttribute('data-kanban-state');
                         if (colName !== 'COMPLETE') {
@@ -587,7 +587,7 @@
         var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
         if (!card) return;
 
-        var instructionEl = card.querySelector('.task-instruction');
+        var instructionEl = card.querySelector('.command-instruction');
         if (instructionEl) {
             instructionEl.textContent = instruction;
             instructionEl.classList.remove('text-muted', 'italic');
@@ -597,37 +597,37 @@
     }
 
     /**
-     * Handle task summary events (AI-generated task-level completion summary).
-     * Updates the secondary line (.task-summary).
+     * Handle command summary events (AI-generated command-level completion summary).
+     * Updates the secondary line (.command-summary).
      * When is_completion is true, applies completion styling (green text).
      */
-    function handleTaskSummary(data, eventType) {
+    function handleCommandSummary(data, eventType) {
         const agentId = data.agent_id;
         const summary = data.summary || data.text;
 
         if (!agentId || !summary) return;
 
-        console.log('Task summary:', agentId, 'is_completion:', data.is_completion);
+        console.log('Command summary:', agentId, 'is_completion:', data.is_completion);
 
         var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
         if (!card) return;
 
-        var taskSummary = card.querySelector('.task-summary');
-        if (taskSummary) {
-            taskSummary.textContent = summary;
+        var commandSummary = card.querySelector('.command-summary');
+        if (commandSummary) {
+            commandSummary.textContent = summary;
             if (data.is_completion) {
-                taskSummary.classList.remove('text-secondary');
-                taskSummary.classList.add('text-green');
+                commandSummary.classList.remove('text-secondary');
+                commandSummary.classList.add('text-green');
             }
-            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+            if (window.CardTooltip) window.CardTooltip.refresh(commandSummary);
         }
     }
 
     /**
      * Handle turn summary events (AI-generated turn-level summary).
-     * Updates the secondary line (.task-summary).
+     * Updates the secondary line (.command-summary).
      * Always updates to show latest turn context.
-     * Resets to secondary styling (active task, not completion).
+     * Resets to secondary styling (active command, not completion).
      */
     function handleTurnSummary(data, eventType) {
         const agentId = data.agent_id;
@@ -640,15 +640,15 @@
         var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
         if (!card) return;
 
-        // Don't overwrite completion summary when task is COMPLETE
+        // Don't overwrite completion summary when command is COMPLETE
         if (card.getAttribute('data-state') === 'COMPLETE') return;
 
-        var taskSummary = card.querySelector('.task-summary');
-        if (taskSummary) {
-            taskSummary.textContent = summary;
-            taskSummary.classList.remove('text-green');
-            taskSummary.classList.add('text-secondary');
-            if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+        var commandSummary = card.querySelector('.command-summary');
+        if (commandSummary) {
+            commandSummary.textContent = summary;
+            commandSummary.classList.remove('text-green');
+            commandSummary.classList.add('text-secondary');
+            if (window.CardTooltip) window.CardTooltip.refresh(commandSummary);
         }
     }
 
@@ -695,12 +695,12 @@
      */
     function buildCompletedTaskCard(data) {
         var details = document.createElement('details');
-        details.className = 'kanban-completed-task bg-elevated rounded-lg border border-green/20 overflow-hidden';
+        details.className = 'kanban-completed-command bg-elevated rounded-lg border border-green/20 overflow-hidden';
         details.setAttribute('data-agent-id', data.id);
 
         var esc = window.CHUtils.escapeHtml;
-        var instruction = esc(data.task_instruction || 'Task');
-        var completionSummary = esc(data.task_completion_summary || data.task_summary || 'Completed');
+        var instruction = esc(data.command_instruction || 'Command');
+        var completionSummary = esc(data.command_completion_summary || data.command_summary || 'Completed');
         var heroChars = esc(data.hero_chars || '');
         var heroTrail = esc(data.hero_trail || '');
         var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
@@ -715,19 +715,19 @@
                     '<span class="agent-hero text-sm">' + heroChars + '</span>' +
                     '<span class="agent-hero-trail">' + heroTrail + '</span>' +
                 '</span>' +
-                '<span class="task-instruction text-primary text-sm font-medium truncate flex-1" title="' + instruction + '">' + instruction + '</span>' +
+                '<span class="command-instruction text-primary text-sm font-medium truncate flex-1" title="' + instruction + '">' + instruction + '</span>' +
             '</summary>' +
             '<div class="card-editor border-t border-green/10">' +
                 '<div class="card-line">' +
                     '<span class="line-num">01</span>' +
                     '<div class="line-content">' +
-                        '<p class="task-instruction text-primary text-sm font-medium">' + instruction + '</p>' +
+                        '<p class="command-instruction text-primary text-sm font-medium">' + instruction + '</p>' +
                     '</div>' +
                 '</div>' +
                 '<div class="card-line">' +
                     '<span class="line-num">02</span>' +
                     '<div class="line-content">' +
-                        '<p class="task-summary text-green text-sm italic">' + completionSummary + '</p>' +
+                        '<p class="command-summary text-green text-sm italic">' + completionSummary + '</p>' +
                     '</div>' +
                 '</div>' +
                 '<div class="card-line">' +
@@ -828,15 +828,15 @@
 
         var isCondensed = card.tagName === 'DETAILS';
 
-        // Condensed completed-task card transitioning to a non-COMPLETE state
-        // means a new task started — reload to get the full agent card template
+        // Condensed completed-command card transitioning to a non-COMPLETE state
+        // means a new command started — reload to get the full agent card template
         if (isCondensed && state !== 'COMPLETE') {
             safeDashboardReload();
             return;
         }
 
         // Full agent card transitioning to COMPLETE in Kanban view —
-        // create a condensed completed-task accordion in the COMPLETE column
+        // create a condensed completed-command accordion in the COMPLETE column
         // AND reset the agent card to IDLE in the IDLE column
         if (!isCondensed && state === 'COMPLETE' && isKanbanView()) {
             agentStates.set(agentId, 'IDLE');
@@ -871,25 +871,25 @@
                 var stateLabel = card.querySelector('.state-label');
                 if (stateLabel) stateLabel.textContent = idleInfo.label;
 
-                var instructionEl = card.querySelector('.task-instruction');
+                var instructionEl = card.querySelector('.command-instruction');
                 if (instructionEl) {
-                    instructionEl.textContent = 'No active task';
+                    instructionEl.textContent = 'No active command';
                     instructionEl.classList.remove('text-primary', 'font-medium');
                     instructionEl.classList.add('text-muted', 'italic');
                 }
-                var taskSummary = card.querySelector('.task-summary');
-                if (taskSummary) {
-                    taskSummary.textContent = '';
-                    taskSummary.classList.remove('text-green');
-                    taskSummary.classList.add('text-secondary');
+                var commandSummary = card.querySelector('.command-summary');
+                if (commandSummary) {
+                    commandSummary.textContent = '';
+                    commandSummary.classList.remove('text-green');
+                    commandSummary.classList.add('text-secondary');
                 }
                 // Remove respond widget if present (agent was AWAITING_INPUT -> COMPLETE)
                 var resetWidget = card.querySelector('.respond-widget');
                 if (resetWidget) resetWidget.remove();
-                // Hide line 04 and task stats for IDLE reset
+                // Hide line 04 and command stats for IDLE reset
                 var line04Row = card.querySelector('.card-line-04');
                 if (line04Row) line04Row.style.display = 'none';
-                var statsEl = card.querySelector('.task-stats');
+                var statsEl = card.querySelector('.command-stats');
                 if (statsEl) statsEl.style.display = 'none';
 
                 // 3. Move the agent card to the IDLE column
@@ -906,7 +906,7 @@
                 if (sourceColumn && sourceColumn !== idleColumn) {
                     var sourceBody = sourceColumn.querySelector('.kanban-column-body');
                     if (sourceBody) {
-                        var remaining = sourceBody.querySelectorAll('article, details.kanban-completed-task');
+                        var remaining = sourceBody.querySelectorAll('article, details.kanban-completed-command');
                         if (remaining.length === 0) {
                             var colName = sourceColumn.getAttribute('data-kanban-state');
                             if (colName !== 'COMPLETE') {
@@ -1001,15 +1001,15 @@
         }
         card.setAttribute('data-state', state);
 
-        // Line 03: task instruction
-        var instructionEl = card.querySelector('.task-instruction');
+        // Line 03: command instruction
+        var instructionEl = card.querySelector('.command-instruction');
         if (instructionEl) {
-            if (data.task_instruction) {
-                instructionEl.textContent = data.task_instruction;
+            if (data.command_instruction) {
+                instructionEl.textContent = data.command_instruction;
                 instructionEl.classList.remove('text-muted', 'italic');
                 instructionEl.classList.add('text-primary', 'font-medium');
             } else {
-                instructionEl.textContent = 'No active task';
+                instructionEl.textContent = 'No active command';
                 instructionEl.classList.remove('text-primary', 'font-medium');
                 instructionEl.classList.add('text-muted', 'italic');
             }
@@ -1018,7 +1018,7 @@
 
         // Plan indicator on line 03
         var planIndicator = card.querySelector('.plan-indicator');
-        if (data.has_plan && data.current_task_id) {
+        if (data.has_plan && data.current_command_id) {
             if (!planIndicator && instructionEl) {
                 planIndicator = document.createElement('button');
                 planIndicator.className = 'plan-indicator plan-indicator-btn';
@@ -1032,7 +1032,7 @@
                 planIndicator.style.display = '';
                 planIndicator.onclick = function() {
                     if (window.FullTextModal) {
-                        window.FullTextModal.show(data.current_task_id, 'plan');
+                        window.FullTextModal.show(data.current_command_id, 'plan');
                     }
                 };
             }
@@ -1040,19 +1040,19 @@
             planIndicator.style.display = 'none';
         }
 
-        // Line 04: task summary / completion summary (hidden when redundant with line 03)
+        // Line 04: command summary / completion summary (hidden when redundant with line 03)
         var line04Row = card.querySelector('.card-line-04');
-        var taskSummary = card.querySelector('.task-summary');
+        var commandSummary = card.querySelector('.command-summary');
         var line04Text = '';
         var isGreen = false;
-        if ((state === 'COMPLETE' || state === 'IDLE') && data.task_completion_summary) {
-            line04Text = data.task_completion_summary;
+        if ((state === 'COMPLETE' || state === 'IDLE') && data.command_completion_summary) {
+            line04Text = data.command_completion_summary;
             isGreen = true;
         } else {
-            line04Text = data.task_summary || '';
+            line04Text = data.command_summary || '';
         }
 
-        var line03Text = data.task_instruction || 'No active task';
+        var line03Text = data.command_instruction || 'No active command';
         var shouldShow04 = line04Text && line04Text !== line03Text;
 
         if (shouldShow04) {
@@ -1064,22 +1064,22 @@
                     newRow.className = 'card-line card-line-04';
                     newRow.innerHTML = '<span class="line-num">04</span>' +
                         '<div class="line-content flex items-baseline justify-between gap-2">' +
-                        '<p class="task-summary text-sm italic flex-1 min-w-0 truncate ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
+                        '<p class="command-summary text-sm italic flex-1 min-w-0 truncate ' + (isGreen ? 'text-green' : 'text-secondary') + '">' +
                         window.CHUtils.escapeHtml(line04Text) + '</p></div>';
                     cardEditor.appendChild(newRow);
                 }
             } else {
                 line04Row.style.display = '';
-                if (taskSummary) {
-                    taskSummary.textContent = line04Text;
+                if (commandSummary) {
+                    commandSummary.textContent = line04Text;
                     if (isGreen) {
-                        taskSummary.classList.remove('text-secondary');
-                        taskSummary.classList.add('text-green');
+                        commandSummary.classList.remove('text-secondary');
+                        commandSummary.classList.add('text-green');
                     } else {
-                        taskSummary.classList.remove('text-green');
-                        taskSummary.classList.add('text-secondary');
+                        commandSummary.classList.remove('text-green');
+                        commandSummary.classList.add('text-secondary');
                     }
-                    if (window.CardTooltip) window.CardTooltip.refresh(taskSummary);
+                    if (window.CardTooltip) window.CardTooltip.refresh(commandSummary);
                 }
             }
         } else if (line04Row) {
@@ -1091,7 +1091,7 @@
         if (state === 'AWAITING_INPUT') {
             if (existingWidget) {
                 // Update question text and options on existing widget
-                existingWidget.setAttribute('data-question-text', data.task_summary || '');
+                existingWidget.setAttribute('data-question-text', data.command_summary || '');
                 if (data.question_options) {
                     existingWidget.setAttribute('data-question-options', JSON.stringify(data.question_options));
                 }
@@ -1100,7 +1100,7 @@
                 var footer = card.querySelector('.border-t.border-border');
                 if (footer) {
                     card.insertBefore(
-                        buildRespondWidget(agentId, data.task_summary || '', data.question_options || null),
+                        buildRespondWidget(agentId, data.command_summary || '', data.question_options || null),
                         footer
                     );
                 }
@@ -1109,13 +1109,13 @@
             existingWidget.remove();
         }
 
-        // Footer: priority score and task stats (turns + elapsed)
+        // Footer: priority score and command stats (turns + elapsed)
         var scoreBadge = card.querySelector('.priority-score');
         if (scoreBadge && data.priority != null) {
             scoreBadge.textContent = data.priority;
             applyPriorityTier(scoreBadge, data.priority);
         }
-        var statsEl = card.querySelector('.task-stats');
+        var statsEl = card.querySelector('.command-stats');
         var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
         if (turnCount > 0) {
             var turnLabel = turnCount === 1 ? 'turn' : 'turns';
@@ -1127,7 +1127,7 @@
                 var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
                 if (leftGroup) {
                     var newStats = document.createElement('span');
-                    newStats.className = 'task-stats text-muted text-xs';
+                    newStats.className = 'command-stats text-muted text-xs';
                     newStats.textContent = turnCount + ' ' + turnLabel + (data.elapsed ? ' \u00b7 ' + data.elapsed : '');
                     leftGroup.appendChild(newStats);
                 }

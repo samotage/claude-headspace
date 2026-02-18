@@ -7,19 +7,19 @@ from flask import Blueprint, current_app, render_template, request
 from sqlalchemy.orm import selectinload
 
 from ..database import db
-from ..models import Agent, Project, Task, TaskState
+from ..models import Agent, Project, Command, CommandState
 from ..models.objective import Objective
 from ..services.card_state import (
     TIMED_OUT,
-    _get_current_task_elapsed,
-    _get_current_task_turn_count,
+    _get_current_command_elapsed,
+    _get_current_command_turn_count,
     format_last_seen,
     format_uptime,
     get_effective_state,
     get_state_info,
-    get_task_completion_summary,
-    get_task_instruction,
-    get_task_summary,
+    get_command_completion_summary,
+    get_command_instruction,
+    get_command_summary,
     get_question_options,
     is_agent_active,
 )
@@ -50,7 +50,7 @@ def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
     # Filter to agents needing attention (AWAITING_INPUT or TIMED_OUT)
     needs_attention = [
         a for a in all_agents
-        if get_effective_state(a) in (TaskState.AWAITING_INPUT, TIMED_OUT)
+        if get_effective_state(a) in (CommandState.AWAITING_INPUT, TIMED_OUT)
     ]
 
     if needs_attention:
@@ -138,9 +138,9 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
 
         state = agent_data.get("state")
         # Secondary: state group (lower = higher priority)
-        if state in (TaskState.AWAITING_INPUT, TIMED_OUT):
+        if state in (CommandState.AWAITING_INPUT, TIMED_OUT):
             priority_group = 0
-        elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
+        elif state in (CommandState.COMMANDED, CommandState.PROCESSING):
             priority_group = 1
         else:
             priority_group = 2
@@ -171,9 +171,9 @@ def calculate_status_counts(agents: list[Agent]) -> dict[str, int]:
         state = get_effective_state(agent)
         if state == TIMED_OUT:
             timed_out += 1
-        elif state == TaskState.AWAITING_INPUT:
+        elif state == CommandState.AWAITING_INPUT:
             input_needed += 1
-        elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
+        elif state in (CommandState.COMMANDED, CommandState.PROCESSING):
             working += 1
         else:  # IDLE or COMPLETE
             idle += 1
@@ -207,9 +207,9 @@ def get_project_state_flags(agents: list[Agent]) -> dict[str, bool]:
         state = get_effective_state(agent)
         if state == TIMED_OUT:
             flags["has_timed_out"] = True
-        elif state == TaskState.AWAITING_INPUT:
+        elif state == CommandState.AWAITING_INPUT:
             flags["has_input_needed"] = True
-        elif state in (TaskState.COMMANDED, TaskState.PROCESSING):
+        elif state in (CommandState.COMMANDED, CommandState.PROCESSING):
             flags["has_working"] = True
         else:
             flags["has_idle"] = True
@@ -234,12 +234,12 @@ def _prepare_kanban_data(
     projects: list, project_data: list, priority_enabled: bool,
     projects_by_id: dict | None = None,
 ) -> list:
-    """Prepare Kanban board data grouped by project and task state.
+    """Prepare Kanban board data grouped by project and command state.
 
-    Each project gets columns for each task lifecycle state.
-    Idle agents (no active task) go in the IDLE column.
-    Agents with active tasks go in the column matching the task state.
-    Completed tasks appear in the COMPLETE column.
+    Each project gets columns for each command lifecycle state.
+    Idle agents (no active command) go in the IDLE column.
+    Agents with active commands go in the column matching the command state.
+    Completed commands appear in the COMPLETE column.
 
     Args:
         projects: List of Project model instances
@@ -278,57 +278,57 @@ def _prepare_kanban_data(
                 if not agent_data:
                     continue
 
-                current_task = agent.get_current_task()
+                current_command = agent.get_current_command()
                 effective_state = get_effective_state(agent)
                 state_name = effective_state if isinstance(effective_state, str) else effective_state.name
 
-                if current_task is None or state_name in ("IDLE", "COMPLETE"):
-                    # Agent is idle (or just completed a task — completed tasks
+                if current_command is None or state_name in ("IDLE", "COMPLETE"):
+                    # Agent is idle (or just completed a command — completed commands
                     # are added as condensed accordion cards by the loop below).
                     # Override display state to IDLE so the card renders correctly.
                     idle_data = agent_data
                     if state_name == "COMPLETE":
                         idle_data = {
                             **agent_data,
-                            "state": TaskState.IDLE,
+                            "state": CommandState.IDLE,
                             "state_name": "IDLE",
-                            "state_info": get_state_info(TaskState.IDLE),
-                            "task_summary": "No active task",
-                            "task_instruction": None,
-                            "task_completion_summary": None,
+                            "state_info": get_state_info(CommandState.IDLE),
+                            "command_summary": "No active command",
+                            "command_instruction": None,
+                            "command_completion_summary": None,
                         }
                     state_columns["IDLE"].append({
                         "type": "agent",
                         "agent": idle_data,
                     })
                 else:
-                    # Agent has active task - goes in the state's column
+                    # Agent has active command - goes in the state's column
                     # COMMANDED is a transitory state; display in PROCESSING column
                     col_name = "PROCESSING" if state_name in ("COMMANDED", "TIMED_OUT") else state_name
                     state_columns[col_name].append({
-                        "type": "task",
+                        "type": "command",
                         "agent": agent_data,
-                        "task_instruction": agent_data.get("task_instruction"),
-                        "task_summary": agent_data.get("task_summary"),
+                        "command_instruction": agent_data.get("command_instruction"),
+                        "command_summary": agent_data.get("command_summary"),
                         "state": state_name,
                     })
 
-                # Add all completed tasks to COMPLETE column as condensed accordion cards
-                if agent.tasks:
-                    for task in agent.tasks:
-                        if task.state != TaskState.COMPLETE:
+                # Add all completed commands to COMPLETE column as condensed accordion cards
+                if agent.commands:
+                    for command in agent.commands:
+                        if command.state != CommandState.COMPLETE:
                             continue
 
-                        completion_summary = task.completion_summary
-                        if not completion_summary and task.turns:
-                            last_turn = task.turns[-1]
+                        completion_summary = command.completion_summary
+                        if not completion_summary and command.turns:
+                            last_turn = command.turns[-1]
                             completion_summary = last_turn.summary or (
                                 last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
                             )
                         # Compute elapsed time
                         elapsed = None
-                        if task.started_at and task.completed_at:
-                            delta = task.completed_at - task.started_at
+                        if command.started_at and command.completed_at:
+                            delta = command.completed_at - command.started_at
                             total_seconds = int(delta.total_seconds())
                             hours = total_seconds // 3600
                             minutes = (total_seconds % 3600) // 60
@@ -340,13 +340,13 @@ def _prepare_kanban_data(
                                 elapsed = "<1m"
 
                         state_columns["COMPLETE"].append({
-                            "type": "completed_task",
+                            "type": "completed_command",
                             "agent": agent_data,
-                            "task_id": task.id,
+                            "command_id": command.id,
                             "completion_summary": completion_summary or "Completed",
-                            "instruction": task.instruction or "Task",
-                            "completed_at": task.completed_at,
-                            "turn_count": len(task.turns),
+                            "instruction": command.instruction or "Command",
+                            "completed_at": command.completed_at,
+                            "turn_count": len(command.turns),
                             "elapsed": elapsed,
                         })
 
@@ -476,7 +476,7 @@ def dashboard():
     projects = (
         db.session.query(Project)
         .options(
-            selectinload(Project.agents).selectinload(Agent.tasks)
+            selectinload(Project.agents).selectinload(Agent.commands)
         )
         .order_by(Project.name)
         .all()
@@ -509,7 +509,7 @@ def dashboard():
         agents_data = []
         for agent in live_agents:
             effective_state = get_effective_state(agent)
-            # state_name: string for templates (handles both TaskState enum and TIMED_OUT string)
+            # state_name: string for templates (handles both CommandState enum and TIMED_OUT string)
             state_name = effective_state if isinstance(effective_state, str) else effective_state.name
             truncated_uuid = str(agent.session_uuid)[:8]
             agent_dict = {
@@ -523,13 +523,13 @@ def dashboard():
                 "state": effective_state,
                 "state_name": state_name,
                 "state_info": get_state_info(effective_state),
-                "task_summary": get_task_summary(agent),
-                "task_instruction": get_task_instruction(agent),
-                "task_completion_summary": get_task_completion_summary(agent),
+                "command_summary": get_command_summary(agent),
+                "command_instruction": get_command_instruction(agent),
+                "command_completion_summary": get_command_completion_summary(agent),
                 "priority": agent.priority_score if agent.priority_score is not None else 50,
                 "priority_reason": agent.priority_reason,
-                "turn_count": _get_current_task_turn_count(agent),
-                "elapsed": _get_current_task_elapsed(agent),
+                "turn_count": _get_current_command_turn_count(agent),
+                "elapsed": _get_current_command_elapsed(agent),
                 "question_options": get_question_options(agent),
                 "project_name": project.name,
                 "project_slug": project.slug,
@@ -539,9 +539,9 @@ def dashboard():
                 "context_remaining_tokens": agent.context_remaining_tokens,
                 "tmux_session": agent.tmux_session,
             }
-            # Add current task ID and plan state for on-demand drill-down
-            _ct = agent.get_current_task()
-            agent_dict["current_task_id"] = _ct.id if _ct else (agent.tasks[0].id if agent.tasks else None)
+            # Add current command ID and plan state for on-demand drill-down
+            _ct = agent.get_current_command()
+            agent_dict["current_command_id"] = _ct.id if _ct else (agent.commands[0].id if agent.commands else None)
             agent_dict["has_plan"] = bool(_ct and _ct.plan_content)
             # Plan mode label overrides
             if _ct:
@@ -607,7 +607,7 @@ def dashboard():
         for project in projects_with_agents:
             project["agents"] = sort_agents_by_priority(project["agents"])
 
-    # Prepare Kanban data (group by task lifecycle state per project)
+    # Prepare Kanban data (group by command lifecycle state per project)
     projects_by_id = {p.id: p for p in projects}
     kanban_data = []
     if sort_mode == "kanban":

@@ -27,7 +27,7 @@ Brain reboot does not require LLM inference calls — it composes existing artif
 
 ### 1.1 Context
 
-Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. Epic 3 adds an intelligence layer: E3-S1 provides inference infrastructure, E3-S2 adds turn/task summarisation, E3-S3 adds priority scoring, and E3-S4 provides git-based progress summary generation.
+Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. Epic 3 adds an intelligence layer: E3-S1 provides inference infrastructure, E3-S2 adds turn/command summarisation, E3-S3 adds priority scoring, and E3-S4 provides git-based progress summary generation.
 
 The system already has:
 - A waypoint editor (Epic 2) that reads/writes `waypoint.md` from each project's `docs/brain_reboot/` directory, with archiving, conflict detection, and a full modal UI
@@ -73,7 +73,7 @@ A developer opens the Claude Headspace dashboard and sees a red "Needs Reboot" b
 - Waypoint editing (Epic 2, already complete)
 - LLM-based synthesis or enhancement of brain reboot content
 - Inference service infrastructure (E3-S1)
-- Turn or task summarisation (E3-S2)
+- Turn or command summarisation (E3-S2)
 - Priority scoring (E3-S3)
 - Version history or archiving of brain reboot documents
 - Scheduled or automatic brain reboot generation

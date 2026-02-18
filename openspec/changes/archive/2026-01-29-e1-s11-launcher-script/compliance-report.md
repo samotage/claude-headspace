@@ -28,7 +28,7 @@ The implementation fully satisfies all acceptance criteria from the proposal.md 
 ## Requirements Coverage
 
 - **PRD Requirements:** 31/31 covered (FR1-FR31)
-- **Tasks Completed:** 42/42 complete
+- **Commands Completed:** 42/42 complete
 - **Design Compliance:** Yes (no design.md, but follows proposal patterns)
 
 ## Delta Spec Coverage

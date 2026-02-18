@@ -18,14 +18,14 @@
     // Accordion state
     var agentsExpanded = false;
     var expandedAgents = {};   // agentId -> true
-    var expandedTasks = {};    // taskId -> true
+    var expandedCommands = {};    // commandId -> true
 
     // Client-side cache
     var cache = {
         agents: null,          // agents list from projectData
         agentsPagination: null, // pagination metadata
-        agentTasks: {},        // agentId -> tasks array
-        taskTurns: {}          // taskId -> turns array
+        agentCommands: {},     // agentId -> commands array
+        commandTurns: {}       // commandId -> turns array
     };
 
     // SSE debounce
@@ -317,7 +317,7 @@
                     : 'Agent ' + agent.id;
 
                 html += '<div class="accordion-agent-row ' + rowClass + '">';
-                html += '<div class="agent-metric-row cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentTasks(' + agentId + ')">';
+                html += '<div class="agent-metric-row cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentCommands(' + agentId + ')">';
 
                 // Arrow + state badge
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '" style="flex-shrink:0">&#9654;</span>';
@@ -352,7 +352,7 @@
                 }
 
                 html += '</div>';
-                html += '<div id="agent-tasks-' + agentId + '" class="accordion-body ml-6 mt-1" style="display: none;"></div>';
+                html += '<div id="agent-commands-' + agentId + '" class="accordion-body ml-6 mt-1" style="display: none;"></div>';
                 html += '</div>';
             });
 
@@ -375,8 +375,8 @@
             container.innerHTML = html;
         },
 
-        toggleAgentTasks: async function(agentId) {
-            var body = document.getElementById('agent-tasks-' + agentId);
+        toggleAgentCommands: async function(agentId) {
+            var body = document.getElementById('agent-commands-' + agentId);
             var arrow = document.getElementById('agent-arrow-' + agentId);
             if (!body) return;
 
@@ -386,10 +386,10 @@
                 if (arrow) arrow.style.transform = 'rotate(0deg)';
                 delete expandedAgents[agentId];
                 // Collapse children
-                var taskKeys = Object.keys(expandedTasks);
-                taskKeys.forEach(function(key) {
-                    if (expandedTasks[key] === agentId) {
-                        delete expandedTasks[key];
+                var commandKeys = Object.keys(expandedCommands);
+                commandKeys.forEach(function(key) {
+                    if (expandedCommands[key] === agentId) {
+                        delete expandedCommands[key];
                     }
                 });
             } else {
@@ -398,51 +398,51 @@
                 if (arrow) arrow.style.transform = 'rotate(90deg)';
                 expandedAgents[agentId] = true;
 
-                if (cache.agentTasks[agentId]) {
-                    this._renderTasksList(agentId, cache.agentTasks[agentId]);
+                if (cache.agentCommands[agentId]) {
+                    this._renderCommandsList(agentId, cache.agentCommands[agentId]);
                 } else {
-                    this._fetchAndRenderTasks(agentId);
+                    this._fetchAndRenderCommands(agentId);
                 }
             }
         },
 
-        _fetchAndRenderTasks: async function(agentId) {
-            var container = document.getElementById('agent-tasks-' + agentId);
-            container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading tasks...</span></p>';
+        _fetchAndRenderCommands: async function(agentId) {
+            var container = document.getElementById('agent-commands-' + agentId);
+            container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading commands...</span></p>';
 
             try {
-                var response = await fetch('/api/agents/' + agentId + '/tasks');
+                var response = await fetch('/api/agents/' + agentId + '/commands');
                 if (!response.ok) throw new Error('Failed to fetch');
-                var tasks = await response.json();
-                cache.agentTasks[agentId] = tasks;
-                this._renderTasksList(agentId, tasks);
+                var commands = await response.json();
+                cache.agentCommands[agentId] = commands;
+                this._renderCommandsList(agentId, commands);
             } catch (e) {
-                container.innerHTML = '<div class="text-red text-sm">Failed to load tasks. <button type="button" onclick="ProjectShow._fetchAndRenderTasks(' + agentId + ')" class="text-cyan hover:underline ml-1">Retry</button></div>';
+                container.innerHTML = '<div class="text-red text-sm">Failed to load commands. <button type="button" onclick="ProjectShow._fetchAndRenderCommands(' + agentId + ')" class="text-cyan hover:underline ml-1">Retry</button></div>';
             }
         },
 
-        _renderTasksList: function(agentId, tasks) {
-            var container = document.getElementById('agent-tasks-' + agentId);
-            if (!tasks || tasks.length === 0) {
-                container.innerHTML = '<p class="text-muted italic text-sm">No tasks.</p>';
+        _renderCommandsList: function(agentId, commands) {
+            var container = document.getElementById('agent-commands-' + agentId);
+            if (!commands || commands.length === 0) {
+                container.innerHTML = '<p class="text-muted italic text-sm">No commands.</p>';
                 return;
             }
 
             var html = '<div class="space-y-2">';
-            tasks.forEach(function(task) {
-                var stateValue = task.state || 'idle';
+            commands.forEach(function(command) {
+                var stateValue = command.state || 'idle';
                 var stateClass = ProjectShow._stateColorClass(stateValue);
-                var instruction = task.instruction || '';
-                var summary = task.completion_summary || '';
+                var instruction = command.instruction || '';
+                var summary = command.completion_summary || '';
                 var displayText = instruction.length > 60 ? instruction.substring(0, 60) + '...' : instruction;
-                var taskId = task.id;
+                var commandId = command.id;
                 var isComplete = stateValue.toLowerCase() === 'complete';
                 var borderColor = isComplete ? 'border-green/20' : 'border-border';
 
                 html += '<div class="accordion-task-row">';
                 // Header row (clickable, expands turns)
-                html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleTaskTurns(' + taskId + ', ' + agentId + ')">';
-                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="task-arrow-' + taskId + '">&#9654;</span>';
+                html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleCommandTurns(' + commandId + ', ' + agentId + ')">';
+                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="command-arrow-' + commandId + '">&#9654;</span>';
                 html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
                 if (displayText) {
                     html += '<span class="text-sm text-primary font-medium truncate flex-1">' + CHUtils.escapeHtml(displayText) + '</span>';
@@ -453,12 +453,12 @@
                 html += '<div class="card-editor border-t-0 rounded-t-none border ' + borderColor + ' border-t-0 rounded-b-lg">';
                 // Line 01: Full instruction
                 html += '<div class="card-line"><span class="line-num">01</span><div class="line-content">';
-                html += '<p class="task-instruction text-primary text-sm font-medium">' + CHUtils.escapeHtml(instruction || 'No instruction') + '</p>';
+                html += '<p class="command-instruction text-primary text-sm font-medium">' + CHUtils.escapeHtml(instruction || 'No instruction') + '</p>';
                 html += '</div></div>';
                 // Line 02: Completion summary or in-progress indicator
                 html += '<div class="card-line"><span class="line-num">02</span><div class="line-content">';
                 if (isComplete && summary) {
-                    html += '<p class="task-summary text-green text-sm italic">' + CHUtils.escapeHtml(summary) + '</p>';
+                    html += '<p class="command-summary text-green text-sm italic">' + CHUtils.escapeHtml(summary) + '</p>';
                 } else if (isComplete) {
                     html += '<p class="text-green text-sm italic">Completed</p>';
                 } else {
@@ -467,15 +467,15 @@
                 html += '</div></div>';
                 // Line 03: Turn count + duration + "View full" to expand conversation
                 html += '<div class="card-line"><span class="line-num">03</span><div class="line-content flex items-baseline justify-between gap-2">';
-                var turnLabel = (task.turn_count || 0) + ' turn' + ((task.turn_count || 0) !== 1 ? 's' : '');
-                if (isComplete && task.started_at && task.completed_at) {
-                    turnLabel += ' \u00B7 ' + ProjectShow._formatDuration(task.started_at, task.completed_at);
+                var turnLabel = (command.turn_count || 0) + ' turn' + ((command.turn_count || 0) !== 1 ? 's' : '');
+                if (isComplete && command.started_at && command.completed_at) {
+                    turnLabel += ' \u00B7 ' + ProjectShow._formatDuration(command.started_at, command.completed_at);
                 }
                 html += '<span class="text-muted text-xs">' + turnLabel + '</span>';
-                html += '<button type="button" class="full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors" onclick="ProjectShow.toggleTaskTurns(' + taskId + ', ' + agentId + ')" id="task-view-full-btn-' + taskId + '" title="View conversation">View full</button>';
+                html += '<button type="button" class="full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors" onclick="ProjectShow.toggleCommandTurns(' + commandId + ', ' + agentId + ')" id="command-view-full-btn-' + commandId + '" title="View conversation">View full</button>';
                 html += '</div></div>';
                 // Turns container (inline in card, hidden by default)
-                html += '<div id="task-turns-' + taskId + '" class="card-line" style="display: none;"><span class="line-num">&nbsp;</span><div class="line-content"></div></div>';
+                html += '<div id="command-turns-' + commandId + '" class="card-line" style="display: none;"><span class="line-num">&nbsp;</span><div class="line-content"></div></div>';
                 html += '</div>';
                 html += '</div>';
             });
@@ -484,57 +484,57 @@
             container.innerHTML = html;
         },
 
-        toggleTaskTurns: async function(taskId, agentId) {
-            var wrapper = document.getElementById('task-turns-' + taskId);
-            var arrow = document.getElementById('task-arrow-' + taskId);
-            var viewBtn = document.getElementById('task-view-full-btn-' + taskId);
+        toggleCommandTurns: async function(commandId, agentId) {
+            var wrapper = document.getElementById('command-turns-' + commandId);
+            var arrow = document.getElementById('command-arrow-' + commandId);
+            var viewBtn = document.getElementById('command-view-full-btn-' + commandId);
             if (!wrapper) return;
 
-            if (expandedTasks[taskId]) {
+            if (expandedCommands[commandId]) {
                 // Collapse
                 wrapper.style.display = 'none';
                 if (arrow) arrow.style.transform = 'rotate(0deg)';
                 if (viewBtn) viewBtn.textContent = 'View full';
-                delete expandedTasks[taskId];
+                delete expandedCommands[commandId];
             } else {
                 // Expand
                 wrapper.style.display = '';
                 if (arrow) arrow.style.transform = 'rotate(90deg)';
                 if (viewBtn) viewBtn.textContent = 'Collapse';
-                expandedTasks[taskId] = agentId;
+                expandedCommands[commandId] = agentId;
 
-                if (cache.taskTurns[taskId]) {
-                    this._renderTurnsList(taskId, cache.taskTurns[taskId]);
+                if (cache.commandTurns[commandId]) {
+                    this._renderTurnsList(commandId, cache.commandTurns[commandId]);
                 } else {
-                    this._fetchAndRenderTurns(taskId);
+                    this._fetchAndRenderTurns(commandId);
                 }
             }
         },
 
-        _fetchAndRenderTurns: async function(taskId) {
-            var container = this._getTurnsContainer(taskId);
+        _fetchAndRenderTurns: async function(commandId) {
+            var container = this._getTurnsContainer(commandId);
             if (!container) return;
             container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading turns...</span></p>';
 
             try {
-                var response = await fetch('/api/tasks/' + taskId + '/turns');
+                var response = await fetch('/api/commands/' + commandId + '/turns');
                 if (!response.ok) throw new Error('Failed to fetch');
                 var turns = await response.json();
-                cache.taskTurns[taskId] = turns;
-                this._renderTurnsList(taskId, turns);
+                cache.commandTurns[commandId] = turns;
+                this._renderTurnsList(commandId, turns);
             } catch (e) {
-                container.innerHTML = '<div class="text-red text-sm">Failed to load turns. <button type="button" onclick="ProjectShow._fetchAndRenderTurns(' + taskId + ')" class="text-cyan hover:underline ml-1">Retry</button></div>';
+                container.innerHTML = '<div class="text-red text-sm">Failed to load turns. <button type="button" onclick="ProjectShow._fetchAndRenderTurns(' + commandId + ')" class="text-cyan hover:underline ml-1">Retry</button></div>';
             }
         },
 
-        _getTurnsContainer: function(taskId) {
-            var wrapper = document.getElementById('task-turns-' + taskId);
+        _getTurnsContainer: function(commandId) {
+            var wrapper = document.getElementById('command-turns-' + commandId);
             if (!wrapper) return null;
             return wrapper.querySelector('.line-content') || wrapper;
         },
 
-        _renderTurnsList: function(taskId, turns) {
-            var container = this._getTurnsContainer(taskId);
+        _renderTurnsList: function(commandId, turns) {
+            var container = this._getTurnsContainer(commandId);
             if (!turns || turns.length === 0) {
                 container.innerHTML = '<p class="text-muted italic text-sm">No turns.</p>';
                 return;
@@ -1543,27 +1543,27 @@
                         self._renderAgentsList(cache.agents);
                         // Re-expand agents that were expanded
                         Object.keys(expandedAgents).forEach(function(agentId) {
-                            var body = document.getElementById('agent-tasks-' + agentId);
+                            var body = document.getElementById('agent-commands-' + agentId);
                             var arrow = document.getElementById('agent-arrow-' + agentId);
                             if (body) {
                                 body.style.display = 'block';
                                 if (arrow) arrow.style.transform = 'rotate(90deg)';
-                                // Invalidate task cache and re-fetch
-                                delete cache.agentTasks[agentId];
-                                self._fetchAndRenderTasks(parseInt(agentId));
+                                // Invalidate command cache and re-fetch
+                                delete cache.agentCommands[agentId];
+                                self._fetchAndRenderCommands(parseInt(agentId));
                             }
                         });
                     })
                     .catch(function(err) { console.warn('ProjectShow: accordion refresh failed', err); });
             }
 
-            // Refresh task accordions if expanded
+            // Refresh command accordions if expanded
             if (pending.tasks) {
-                Object.keys(expandedTasks).forEach(function(taskId) {
-                    delete cache.taskTurns[taskId];
-                    var container = document.getElementById('task-turns-' + taskId);
+                Object.keys(expandedCommands).forEach(function(commandId) {
+                    delete cache.commandTurns[commandId];
+                    var container = document.getElementById('command-turns-' + commandId);
                     if (container && container.style.display !== 'none') {
-                        ProjectShow._fetchAndRenderTurns(parseInt(taskId));
+                        ProjectShow._fetchAndRenderTurns(parseInt(commandId));
                     }
                 });
             }

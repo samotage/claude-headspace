@@ -1,10 +1,10 @@
-"""State machine service for task state transitions."""
+"""State machine service for command state transitions."""
 
 import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 
 logger = logging.getLogger(__name__)
@@ -23,8 +23,8 @@ class TransitionResult:
     """Result of a state transition attempt."""
 
     valid: bool
-    from_state: TaskState
-    to_state: TaskState
+    from_state: CommandState
+    to_state: CommandState
     reason: str
     trigger: Optional[str] = None
 
@@ -42,46 +42,46 @@ class TransitionResult:
 #   - IDLE + AGENT:* — agent output before user command is processed (race/resumption)
 #   - COMMANDED + USER:COMMAND — user follow-up before agent responds
 #   - PROCESSING + USER:COMMAND — user sends new command while agent works
-VALID_TRANSITIONS: dict[tuple[TaskState, TurnActor, TurnIntent], TaskState] = {
-    # From IDLE: User commands start a task
-    (TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND): TaskState.COMMANDED,
+VALID_TRANSITIONS: dict[tuple[CommandState, TurnActor, TurnIntent], CommandState] = {
+    # From IDLE: User commands start a command
+    (CommandState.IDLE, TurnActor.USER, TurnIntent.COMMAND): CommandState.COMMANDED,
     # From IDLE: Agent output before user command processed (race condition, session resumption)
-    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
-    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
-    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
-    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
+    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
+    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
+    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
+    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
     # From COMMANDED: Agent responds
-    (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
-    (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
-    (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
-    (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
+    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
+    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
+    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
+    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
     # From COMMANDED: User sends follow-up command before agent responds
-    (TaskState.COMMANDED, TurnActor.USER, TurnIntent.COMMAND): TaskState.COMMANDED,
+    (CommandState.COMMANDED, TurnActor.USER, TurnIntent.COMMAND): CommandState.COMMANDED,
     # From PROCESSING: Agent continues or asks/completes
-    (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
-    (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
-    (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
-    (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
-    # From PROCESSING: User confirms/approves (continues same task)
-    (TaskState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
+    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
+    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
+    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
+    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    # From PROCESSING: User confirms/approves (continues same command)
+    (CommandState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): CommandState.PROCESSING,
     # From PROCESSING: User sends new command while processing
-    (TaskState.PROCESSING, TurnActor.USER, TurnIntent.COMMAND): TaskState.PROCESSING,
+    (CommandState.PROCESSING, TurnActor.USER, TurnIntent.COMMAND): CommandState.PROCESSING,
     # From AWAITING_INPUT: User answers and agent resumes
-    (TaskState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
+    (CommandState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): CommandState.PROCESSING,
     # From AWAITING_INPUT: Agent asks follow-up question or provides progress
-    # (e.g., background Task agent completes, main agent outputs additional text)
-    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
-    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.AWAITING_INPUT,
+    # (e.g., background agent completes, main agent outputs additional text)
+    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
+    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.AWAITING_INPUT,
     # From AWAITING_INPUT: Agent completes while awaiting (session_end forced completion)
-    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
-    (TaskState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
-    # Special case: User command while awaiting input starts NEW task
+    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
+    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    # Special case: User command while awaiting input starts NEW command
     # This is handled specially in validate_transition()
 }
 
 
 def validate_transition(
-    from_state: TaskState,
+    from_state: CommandState,
     actor: TurnActor,
     intent: TurnIntent,
 ) -> TransitionResult:
@@ -92,7 +92,7 @@ def validate_transition(
     is valid according to the state machine rules.
 
     Args:
-        from_state: Current task state
+        from_state: Current command state
         actor: Who is producing the turn
         intent: The detected intent of the turn
 
@@ -102,9 +102,9 @@ def validate_transition(
     trigger = f"{actor.value}:{intent.value}"
 
     # Special case: User command while awaiting_input
-    # This should create a NEW task, not transition the current one
+    # This should create a NEW command, not transition the current one
     if (
-        from_state == TaskState.AWAITING_INPUT
+        from_state == CommandState.AWAITING_INPUT
         and actor == TurnActor.USER
         and intent == TurnIntent.COMMAND
     ):
@@ -112,7 +112,7 @@ def validate_transition(
             valid=False,
             from_state=from_state,
             to_state=from_state,  # No transition
-            reason="User command while awaiting_input - should create new task",
+            reason="User command while awaiting_input - should create new command",
             trigger=trigger,
         )
 
@@ -138,7 +138,7 @@ def validate_transition(
     )
 
 
-def get_valid_transitions_from(state: TaskState) -> list[tuple[TurnActor, TurnIntent, TaskState]]:
+def get_valid_transitions_from(state: CommandState) -> list[tuple[TurnActor, TurnIntent, CommandState]]:
     """
     Get all valid transitions from a given state.
 
@@ -157,7 +157,7 @@ def get_valid_transitions_from(state: TaskState) -> list[tuple[TurnActor, TurnIn
     return result
 
 
-def is_terminal_state(state: TaskState) -> bool:
+def is_terminal_state(state: CommandState) -> bool:
     """
     Check if a state is terminal (no valid outgoing transitions).
 
@@ -167,6 +167,4 @@ def is_terminal_state(state: TaskState) -> bool:
     Returns:
         True if the state is terminal
     """
-    return state == TaskState.COMPLETE
-
-
+    return state == CommandState.COMPLETE

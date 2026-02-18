@@ -21,7 +21,7 @@ The tmux bridge implementation fully replaces the non-functional commander socke
 ## Requirements Coverage
 
 - **PRD Requirements:** 25/25 functional + 5/5 non-functional covered
-- **Tasks Completed:** 19/19 complete (phases 1-3)
+- **Commands Completed:** 19/19 complete (phases 1-3)
 - **Design Compliance:** Yes — follows established service patterns
 
 ## Delta Spec Compliance

@@ -100,7 +100,7 @@ Hook event processing SHALL create Turn records with server timestamps and broad
 
 - **WHEN** a hook event (stop, user-prompt-submit, post-tool-use) creates a Turn record
 - **THEN** the Turn SHALL have `timestamp=now()` and `timestamp_source="server"`
-- **AND** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `task_id`, `turn_id`, and `timestamp` (ISO format)
+- **AND** a `turn_created` SSE event SHALL be broadcast with `agent_id`, `project_id`, `text`, `actor`, `intent`, `command_id`, `turn_id`, and `timestamp` (ISO format)
 
 #### Scenario: JSONL timestamps used for progress capture
 

@@ -17,7 +17,7 @@ import pytest
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
 from claude_headspace.models.project import Project
-from claude_headspace.models.task import Task, TaskState
+from claude_headspace.models.command import Command, CommandState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.transcript_reader import TranscriptEntry
 from claude_headspace.services.transcript_reconciler import (
@@ -71,15 +71,15 @@ def agent(project):
 
 
 @pytest.fixture
-def task(agent):
-    t = Task(
+def command(agent):
+    c = Command(
         agent_id=agent.id,
-        state=TaskState.PROCESSING,
+        state=CommandState.PROCESSING,
         started_at=datetime.now(timezone.utc),
     )
-    db.session.add(t)
+    db.session.add(c)
     db.session.flush()
-    return t
+    return c
 
 
 def _make_entry(role="user", content="Hello world", timestamp=None):
@@ -99,9 +99,9 @@ def _make_entry(role="user", content="Hello world", timestamp=None):
 class TestTurnSurvivesLifecycleFailure:
     """Verify that turns committed before lifecycle call survive rollback."""
 
-    def test_turn_survives_invalid_transition_error(self, app_ctx, agent, task):
+    def test_turn_survives_invalid_transition_error(self, app_ctx, agent, command):
         """Turn must persist even when state transition raises InvalidTransitionError."""
-        task.state = TaskState.COMPLETE  # Terminal state — transitions will fail
+        command.state = CommandState.COMPLETE  # Terminal state — transitions will fail
 
         entries = [
             _make_entry(
@@ -120,7 +120,7 @@ class TestTurnSurvivesLifecycleFailure:
             mock_result.confidence = 0.9
             mock_detect.return_value = mock_result
 
-            result = reconcile_transcript_entries(agent, task, entries)
+            result = reconcile_transcript_entries(agent, command, entries)
 
         # Turn was created
         assert len(result["created"]) == 1
@@ -132,7 +132,7 @@ class TestTurnSurvivesLifecycleFailure:
         assert turn.intent == TurnIntent.QUESTION
         assert "Would you like me to continue?" in turn.text
 
-    def test_turn_survives_generic_exception_in_lifecycle(self, app_ctx, agent, task):
+    def test_turn_survives_generic_exception_in_lifecycle(self, app_ctx, agent, command):
         """Turn must persist even when lifecycle raises a generic exception."""
         entries = [
             _make_entry(
@@ -158,29 +158,29 @@ class TestTurnSurvivesLifecycleFailure:
                 side_effect=Exception("DB connection lost"),
             ):
                 try:
-                    result = reconcile_transcript_entries(agent, task, entries)
+                    result = reconcile_transcript_entries(agent, command, entries)
                 except Exception:
                     # Exception propagates — that's expected.
                     # The critical thing is the turn survived.
                     pass
 
         # Turn was committed BEFORE lifecycle was called — verify it's in the DB.
-        turns = Turn.query.filter_by(task_id=task.id).all()
+        turns = Turn.query.filter_by(command_id=command.id).all()
         agent_turns = [t for t in turns if t.actor == TurnActor.AGENT]
         assert len(agent_turns) == 1
         assert "critical bug" in agent_turns[0].text
 
 
 # ---------------------------------------------------------------------------
-# R2-C1: No duplicate turns for COMPLETION/END_OF_TASK via reconciler
+# R2-C1: No duplicate turns for COMPLETION/END_OF_COMMAND via reconciler
 # ---------------------------------------------------------------------------
 
 
 class TestNoDuplicateTurnOnCompletion:
     """Verify reconciler COMPLETION path doesn't create a duplicate turn."""
 
-    def test_completion_passes_empty_agent_text(self, app_ctx, agent, task):
-        """complete_task must be called with empty agent_text — recovered turn already exists."""
+    def test_completion_passes_empty_agent_text(self, app_ctx, agent, command):
+        """complete_command must be called with empty agent_text — recovered turn already exists."""
         entries = [
             _make_entry(
                 role="assistant",
@@ -199,7 +199,7 @@ class TestNoDuplicateTurnOnCompletion:
             mock_result.confidence = 0.95
             mock_detect.return_value = mock_result
 
-            result = reconcile_transcript_entries(agent, task, entries)
+            result = reconcile_transcript_entries(agent, command, entries)
 
         # One turn was created by the reconciler
         assert len(result["created"]) == 1
@@ -210,18 +210,18 @@ class TestNoDuplicateTurnOnCompletion:
         assert call_args[0][2].intent == TurnIntent.COMPLETION
 
         # Verify EXACTLY one agent turn exists (the reconciler-created one)
-        all_turns = Turn.query.filter_by(task_id=task.id).all()
+        all_turns = Turn.query.filter_by(command_id=command.id).all()
         agent_turns = [t for t in all_turns if t.actor == TurnActor.AGENT]
         assert len(agent_turns) == 1, (
             f"Expected exactly 1 agent turn, got {len(agent_turns)}."
         )
 
-    def test_apply_lifecycle_sets_full_output_without_duplicate(self, app_ctx, agent, task):
-        """_apply_recovered_turn_lifecycle must set full_output but pass agent_text='' to complete_task."""
+    def test_apply_lifecycle_sets_full_output_without_duplicate(self, app_ctx, agent, command):
+        """_apply_recovered_turn_lifecycle must set full_output but pass agent_text='' to complete_command."""
         from flask import current_app
 
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.AGENT,
             intent=TurnIntent.COMPLETION,
             text="Implementation complete. All tests pass.",
@@ -236,22 +236,22 @@ class TestNoDuplicateTurnOnCompletion:
 
         # Replace the lifecycle manager with a mock in the real app extensions
         mock_lifecycle = MagicMock()
-        original = current_app.extensions.get("task_lifecycle")
-        current_app.extensions["task_lifecycle"] = mock_lifecycle
+        original = current_app.extensions.get("command_lifecycle")
+        current_app.extensions["command_lifecycle"] = mock_lifecycle
         try:
-            _apply_recovered_turn_lifecycle(agent, task, turn, intent_result)
+            _apply_recovered_turn_lifecycle(agent, command, turn, intent_result)
         finally:
             if original is not None:
-                current_app.extensions["task_lifecycle"] = original
+                current_app.extensions["command_lifecycle"] = original
 
-        # complete_task should have been called with agent_text=""
-        mock_lifecycle.complete_task.assert_called_once()
-        call_kwargs = mock_lifecycle.complete_task.call_args
+        # complete_command should have been called with agent_text=""
+        mock_lifecycle.complete_command.assert_called_once()
+        call_kwargs = mock_lifecycle.complete_command.call_args
         assert call_kwargs[1].get("agent_text") == "", \
-            f"complete_task should receive agent_text='' to prevent duplicate turn, got: {call_kwargs}"
+            f"complete_command should receive agent_text='' to prevent duplicate turn, got: {call_kwargs}"
 
-        # full_output should be set directly on the task (not by complete_task)
-        assert task.full_output == "Implementation complete. All tests pass."
+        # full_output should be set directly on the command (not by complete_command)
+        assert command.full_output == "Implementation complete. All tests pass."
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ class TestNoDuplicateTurnOnCompletion:
 class TestReconcileAgentSessionLifecycle:
     """Verify reconcile_agent_session integrates with lifecycle."""
 
-    def test_session_reconcile_calls_lifecycle_for_question(self, app_ctx, agent, task):
+    def test_session_reconcile_calls_lifecycle_for_question(self, app_ctx, agent, command):
         """reconcile_agent_session should call _apply_recovered_turn_lifecycle."""
         agent.transcript_path = "/tmp/fake_transcript.jsonl"
 
@@ -294,8 +294,8 @@ class TestReconcileAgentSessionLifecycle:
         # Verify lifecycle was called
         mock_lifecycle.assert_called_once()
         call_args = mock_lifecycle.call_args
-        assert call_args[0][0] == agent  # agent
-        assert call_args[0][1] == task   # latest_task
+        assert call_args[0][0] == agent    # agent
+        assert call_args[0][1] == command  # latest_command
 
 
 # ---------------------------------------------------------------------------
@@ -306,14 +306,14 @@ class TestReconcileAgentSessionLifecycle:
 class TestDualHashNoDoubleMatch:
     """Verify a turn can only be matched once despite having two hash keys."""
 
-    def test_same_turn_not_matched_twice(self, app_ctx, agent, task):
+    def test_same_turn_not_matched_twice(self, app_ctx, agent, command):
         """When a turn matches via new hash, the legacy hash should be removed."""
         now = datetime.now(timezone.utc)
 
         # Create a turn with text that has different new vs legacy hashes
         long_text = "a" * 250  # > 200 chars, so new_hash != legacy_hash
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.AGENT,
             intent=TurnIntent.PROGRESS,
             text=long_text,
@@ -337,7 +337,7 @@ class TestDualHashNoDoubleMatch:
             timestamp=now + timedelta(seconds=2),
         )
 
-        result = reconcile_transcript_entries(agent, task, [entry1, entry2])
+        result = reconcile_transcript_entries(agent, command, [entry1, entry2])
 
         # Entry 1 matched the existing turn (updated timestamp)
         assert len(result["updated"]) == 1
@@ -353,7 +353,7 @@ class TestDualHashNoDoubleMatch:
 class TestReconcilerIdempotency:
     """Verify running reconciliation twice doesn't create duplicate turns."""
 
-    def test_reconcile_twice_no_duplicates(self, app_ctx, agent, task):
+    def test_reconcile_twice_no_duplicates(self, app_ctx, agent, command):
         """Running reconcile_transcript_entries twice with same data creates turns only once."""
         entries = [
             _make_entry(
@@ -369,11 +369,11 @@ class TestReconcilerIdempotency:
         ]
 
         # First run — should create turns
-        result1 = reconcile_transcript_entries(agent, task, entries)
+        result1 = reconcile_transcript_entries(agent, command, entries)
         assert len(result1["created"]) == 2
 
         # Second run — same entries, should match existing turns (update timestamps)
-        result2 = reconcile_transcript_entries(agent, task, entries)
+        result2 = reconcile_transcript_entries(agent, command, entries)
         assert len(result2["created"]) == 0
 
 

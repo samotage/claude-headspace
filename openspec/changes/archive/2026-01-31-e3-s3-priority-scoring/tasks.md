@@ -1,4 +1,4 @@
-# Tasks: e3-s3-priority-scoring
+# Commands: e3-s3-priority-scoring
 
 ## Phase 1: Schema & Model
 

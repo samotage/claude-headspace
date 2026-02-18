@@ -174,7 +174,7 @@
         var life = data.lifecycle;
         var pri = data.priority;
         var hs = data.headspace;
-        var tasks = data.tasks || [];
+        var commands = data.commands || [];
 
         // --- Identity Section ---
         var identityText = [
@@ -312,58 +312,58 @@
         }
         html += '</div>';
 
-        // --- Task History Section ---
-        var taskTextLines = [];
-        taskTextLines.push('## Task History (' + tasks.length + ')');
-        for (var tti = 0; tti < tasks.length; tti++) {
-            var tt = tasks[tti];
-            taskTextLines.push('');
-            taskTextLines.push('### #' + tt.id + ' [' + tt.state + '] ' + (tt.instruction || 'No instruction'));
-            taskTextLines.push('- **Turns:** ' + tt.turn_count);
-            if (tt.completion_summary) taskTextLines.push('- **Summary:** ' + tt.completion_summary);
-            taskTextLines.push('- **Started:** ' + formatTimestampPlain(tt.started_at) + (tt.completed_at ? ' \u2014 **Completed:** ' + formatTimestampPlain(tt.completed_at) : ''));
+        // --- Command History Section ---
+        var commandTextLines = [];
+        commandTextLines.push('## Command History (' + commands.length + ')');
+        for (var tti = 0; tti < commands.length; tti++) {
+            var tt = commands[tti];
+            commandTextLines.push('');
+            commandTextLines.push('### #' + tt.id + ' [' + tt.state + '] ' + (tt.instruction || 'No instruction'));
+            commandTextLines.push('- **Turns:** ' + tt.turn_count);
+            if (tt.completion_summary) commandTextLines.push('- **Summary:** ' + tt.completion_summary);
+            commandTextLines.push('- **Started:** ' + formatTimestampPlain(tt.started_at) + (tt.completed_at ? ' \u2014 **Completed:** ' + formatTimestampPlain(tt.completed_at) : ''));
             var ttTurns = tt.turns || [];
             if (ttTurns.length > 0) {
-                taskTextLines.push('');
+                commandTextLines.push('');
                 for (var tui = 0; tui < ttTurns.length; tui++) {
                     var tu = ttTurns[tui];
                     var frustVal = (tu.frustration_score !== null && tu.frustration_score !== undefined) ? tu.frustration_score : '\u2014';
-                    taskTextLines.push('**' + tu.actor.toUpperCase() + '** [' + tu.intent + '] ' + formatTimestampPlain(tu.timestamp) + (frustVal !== '\u2014' ? ' F:' + frustVal : ''));
-                    if (tu.text) taskTextLines.push(tu.text);
-                    else if (tu.summary) taskTextLines.push('*' + tu.summary + '*');
-                    taskTextLines.push('');
+                    commandTextLines.push('**' + tu.actor.toUpperCase() + '** [' + tu.intent + '] ' + formatTimestampPlain(tu.timestamp) + (frustVal !== '\u2014' ? ' F:' + frustVal : ''));
+                    if (tu.text) commandTextLines.push(tu.text);
+                    else if (tu.summary) commandTextLines.push('*' + tu.summary + '*');
+                    commandTextLines.push('');
                 }
             }
         }
-        var taskText = taskTextLines.length > 1 ? taskTextLines.join('\n') : 'No tasks recorded';
+        var commandText = commandTextLines.length > 1 ? commandTextLines.join('\n') : 'No commands recorded';
 
         html += '<div class="agent-info-section">';
-        html += '<div class="agent-info-section-title"><span>Task History (' + tasks.length + ')</span>' + sectionCopyBtn(taskText) + '</div>';
-        if (tasks.length === 0) {
-            html += '<p class="text-muted text-sm italic">No tasks recorded</p>';
+        html += '<div class="agent-info-section-title"><span>Command History (' + commands.length + ')</span>' + sectionCopyBtn(commandText) + '</div>';
+        if (commands.length === 0) {
+            html += '<p class="text-muted text-sm italic">No commands recorded</p>';
         } else {
-            for (var ti = 0; ti < tasks.length; ti++) {
-                var task = tasks[ti];
-                html += '<details class="agent-info-task-details">';
-                html += '<summary class="agent-info-task-header">';
-                html += '<span class="text-muted text-[10px] font-mono">#' + task.id + '</span> ';
-                html += stateBadge(task.state) + ' ';
-                html += '<span class="text-secondary text-xs">' + esc(task.instruction || 'No instruction') + '</span>';
-                html += '<span class="text-muted text-[10px] ml-auto">' + task.turn_count + ' turn' + (task.turn_count !== 1 ? 's' : '') + '</span>';
+            for (var ti = 0; ti < commands.length; ti++) {
+                var command = commands[ti];
+                html += '<details class="agent-info-command-details">';
+                html += '<summary class="agent-info-command-header">';
+                html += '<span class="text-muted text-[10px] font-mono">#' + command.id + '</span> ';
+                html += stateBadge(command.state) + ' ';
+                html += '<span class="text-secondary text-xs">' + esc(command.instruction || 'No instruction') + '</span>';
+                html += '<span class="text-muted text-[10px] ml-auto">' + command.turn_count + ' turn' + (command.turn_count !== 1 ? 's' : '') + '</span>';
                 html += '</summary>';
 
-                // Task detail
-                html += '<div class="agent-info-task-body">';
-                if (task.completion_summary) {
-                    html += '<div class="text-green text-xs italic mb-2">' + esc(task.completion_summary) + '</div>';
+                // Command detail
+                html += '<div class="agent-info-command-body">';
+                if (command.completion_summary) {
+                    html += '<div class="text-green text-xs italic mb-2">' + esc(command.completion_summary) + '</div>';
                 }
                 html += '<div class="text-muted text-[10px] mb-1">';
-                html += 'Started: ' + formatTimestamp(task.started_at);
-                if (task.completed_at) html += ' &mdash; Completed: ' + formatTimestamp(task.completed_at);
+                html += 'Started: ' + formatTimestamp(command.started_at);
+                if (command.completed_at) html += ' &mdash; Completed: ' + formatTimestamp(command.completed_at);
                 html += '</div>';
 
                 // Turns — conversation blocks
-                var turns = task.turns || [];
+                var turns = command.turns || [];
                 if (turns.length > 0) {
                     html += '<div class="text-muted text-[10px] font-mono uppercase mt-2 mb-1">Turns (' + turns.length + ')</div>';
                     html += '<div class="agent-info-turn-blocks">';
@@ -392,7 +392,7 @@
                             var textElId = 'ai-turn-text-' + turn.id;
                             html += '<div class="agent-info-turn-text whitespace-pre-line" id="' + textElId + '">' + esc(displayText) + '</div>';
                             if (turnText.length > 300) {
-                                html += '<button type="button" class="ai-turn-view-full text-[10px] text-cyan hover:underline" data-turn-idx="' + ui + '" data-task-idx="' + ti + '" data-text-id="' + textElId + '">View full</button>';
+                                html += '<button type="button" class="ai-turn-view-full text-[10px] text-cyan hover:underline" data-turn-idx="' + ui + '" data-command-idx="' + ti + '" data-text-id="' + textElId + '">View full</button>';
                             }
                             // Annotation: summary below text if different
                             if (turnSummary && turnSummary !== turnText && turnSummary !== turnText.substring(0, turnSummary.length)) {
@@ -409,7 +409,7 @@
                     html += '<p class="text-muted text-[10px] italic">No turns</p>';
                 }
 
-                html += '</div>'; // task-body
+                html += '</div>'; // command-body
                 html += '</details>';
             }
         }
@@ -436,13 +436,13 @@
             viewFullBtns[vfi].addEventListener('click', function(e) {
                 e.stopPropagation();
                 var btn = e.currentTarget;
-                var taskIdx = parseInt(btn.getAttribute('data-task-idx'), 10);
+                var commandIdx = parseInt(btn.getAttribute('data-command-idx'), 10);
                 var turnIdx = parseInt(btn.getAttribute('data-turn-idx'), 10);
                 var textElId = btn.getAttribute('data-text-id');
                 var textEl = document.getElementById(textElId);
                 if (!textEl) return;
-                var fullText = (tasks[taskIdx] && tasks[taskIdx].turns && tasks[taskIdx].turns[turnIdx])
-                    ? tasks[taskIdx].turns[turnIdx].text || '' : '';
+                var fullText = (commands[commandIdx] && commands[commandIdx].turns && commands[commandIdx].turns[turnIdx])
+                    ? commands[commandIdx].turns[turnIdx].text || '' : '';
                 var expanded = btn.getAttribute('data-expanded') === '1';
                 if (expanded) {
                     textEl.textContent = fullText.substring(0, 300) + '...';

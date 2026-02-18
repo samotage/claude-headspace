@@ -25,7 +25,7 @@ The inference service SHALL select the appropriate model based on inference leve
 
 #### Scenario: Turn-level inference
 
-- **WHEN** an inference call is made at level "turn" or "task"
+- **WHEN** an inference call is made at level "turn" or "command"
 - **THEN** the service SHALL use the lightweight model (e.g., Haiku)
 
 #### Scenario: Project-level inference

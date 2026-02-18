@@ -25,8 +25,8 @@ This change adds a three-tier content pipeline: (1) Notification hooks for insta
 - Implement timeout-gated inference: if no tool activity within `awaiting_input_timeout`, classify via LLM
 
 ### Intelligence Integration
-- Feed captured agent text through existing summarisation service for real turn/task summaries
-- Task summaries from real content feed into priority scoring for meaningful rankings
+- Feed captured agent text through existing summarisation service for real turn/command summaries
+- Command summaries from real content feed into priority scoring for meaningful rankings
 - Add question classification prompt for inference service
 
 ### Configuration
@@ -40,7 +40,7 @@ This change adds a three-tier content pipeline: (1) Notification hooks for insta
   - **Services:**
     - `services/hook_receiver.py` (new event types: POST_TOOL_USE, enhanced NOTIFICATION processing)
     - `services/hook_lifecycle_bridge.py` (AWAITING_INPUT transitions from notifications, PostToolUse resumption)
-    - `services/task_lifecycle.py` (turn text population, content-aware transitions)
+    - `services/command_lifecycle.py` (turn text population, content-aware transitions)
     - `services/file_watcher.py` (content pipeline upgrade, transcript monitoring, timeout timers)
     - `services/intent_detector.py` (enhanced for transcript content classification)
     - `services/event_writer.py` (new event types for content pipeline)

@@ -4,13 +4,13 @@
 
 ### Requirement: State Transition Logic
 
-The system SHALL enforce valid state transitions between the 5 task states (idle, commanded, processing, awaiting_input, complete).
+The system SHALL enforce valid state transitions between the 5 command states (idle, commanded, processing, awaiting_input, complete).
 
 #### Scenario: Valid user command from idle
 
-Given an agent with no active task (idle state)
+Given an agent with no active command (idle state)
 When a user issues a command
-Then a new Task is created in commanded state
+Then a new Command is created in commanded state
 And a state_transition event is written
 
 #### Scenario: Valid agent progress from commanded
@@ -77,17 +77,17 @@ Given an agent turn that matches no question or completion patterns
 When intent detection runs
 Then the intent is classified as progress
 
-### Requirement: Task Lifecycle Management
+### Requirement: Command Lifecycle Management
 
 The system SHALL manage task creation and completion.
 
-#### Scenario: Task created on command
+#### Scenario: Command created on command
 
-Given an agent with no incomplete task
+Given an agent with no incomplete command
 When a user command is detected
-Then a new Task is created with state=commanded
+Then a new Command is created with state=commanded
 
-#### Scenario: Task completed
+#### Scenario: Command completed
 
 Given a task transitioning to complete state
 When the transition is applied
@@ -95,9 +95,9 @@ Then completed_at is set to current timestamp
 
 #### Scenario: Agent state derived from task
 
-Given an agent with an incomplete task
+Given an agent with an incomplete command
 When agent.state is queried
-Then it returns the current task's state
+Then it returns the current command's state
 
 ### Requirement: State Transition Event Logging
 
@@ -107,7 +107,7 @@ The system SHALL write state_transition events for every valid transition.
 
 Given a valid state transition occurs
 When the transition is applied
-Then a state_transition event is written with agent_id, task_id, from_state, to_state, trigger, confidence
+Then a state_transition event is written with agent_id, command_id, from_state, to_state, trigger, confidence
 
 #### Scenario: Confidence tracking
 

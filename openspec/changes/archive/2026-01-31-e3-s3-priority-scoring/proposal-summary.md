@@ -46,10 +46,10 @@
 
 ## Constraints and Gotchas
 - **Lazy imports for db**: Route files use `from ..database import db` inside functions (same as E3-S1/E3-S2). Test patches target `src.claude_headspace.database.db`, not the route module.
-- **Agent.get_current_task()**: Queries DB directly, requires active session. Use in scoring to get task summary.
+- **Agent.get_current_command()**: Queries DB directly, requires active session. Use in scoring to get command summary.
 - **Waypoint is file-based**: Use `load_waypoint(project.path)` from `services.waypoint_editor`. Returns `WaypointResult` with `.content`, `.exists`. Parse markdown sections for "Next Up" and "Upcoming".
 - **Objective is not singleton model**: Query via `db.session.query(Objective).order_by(Objective.set_at.desc()).first()`.
-- **Task summaries (E3-S2)**: Available via `turn.summary` on most recent turn. May be None if summarisation hasn't run yet — degrade gracefully.
+- **Command summaries (E3-S2)**: Available via `turn.summary` on most recent turn. May be None if summarisation hasn't run yet — degrade gracefully.
 - **InferenceService.infer()**: Returns InferenceResult with .text field. Level="objective" for priority scoring. Purpose="priority_scoring".
 - **Test fixtures need `path` on Project**: All Project() instantiations in tests must include `path="/test/path"` (non-null constraint).
 - **MagicMock auto-attributes**: When mocking Agent, explicitly set `mock_agent.priority_score = None`, `mock_agent.priority_reason = None` etc. to prevent truthy MagicMock attributes.
@@ -66,7 +66,7 @@
 
 ### OpenSpec History
 - E3-S1 (openrouter-integration): Added InferenceService, InferenceCall model, inference routes, OpenRouter client
-- E3-S2 (turn-task-summarisation): Added SummarisationService, summary fields on Turn/Task models, summarisation routes, SSE broadcast pattern
+- E3-S2 (turn-command-summarisation): Added SummarisationService, summary fields on Turn/Command models, summarisation routes, SSE broadcast pattern
 
 ### Implementation Patterns
 - Service: constructor(inference_service, app=None), sync method, async method (thread + app_context), _broadcast method
@@ -79,7 +79,7 @@
 
 ## Dependencies
 - No new packages — uses existing InferenceService (E3-S1), threading (stdlib), json (stdlib)
-- Depends on E3-S1 (inference service) and E3-S2 (task summaries) being complete (both are merged)
+- Depends on E3-S1 (inference service) and E3-S2 (command summaries) being complete (both are merged)
 
 ## Testing Strategy
 - **Unit tests for PriorityScoringService**: prompt building, response parsing, fallback chain, debounce, error handling

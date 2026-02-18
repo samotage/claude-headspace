@@ -4,8 +4,8 @@
 
 User commands typed into the tmux terminal are received by Claude Code agents (agents respond to them), but the corresponding USER COMMAND turns are NOT being written to the `turns` table in the database. This causes:
 - Voice chat showing no user messages for some conversations
-- Tasks with NULL instructions (summarisation has no user text to summarise)
-- Tasks with 0 turns despite having full conversations in the terminal
+- Commands with NULL instructions (summarisation has no user text to summarise)
+- Commands with 0 turns despite having full conversations in the terminal
 - Complete data loss of user input for affected tasks
 
 This is a **data integrity bug** — the state machine transitions fire correctly but the turn records are lost.
@@ -16,7 +16,7 @@ This is a **data integrity bug** — the state machine transitions fire correctl
 
 The tmux terminal shows a full conversation: user typed a long command about voice chat scroll behaviour, agent responded with detailed analysis. But the database tells a different story:
 
-**Task 1880:**
+**Command 1880:**
 - State: AWAITING_INPUT
 - instruction: NULL
 - 0 USER turns, 2 AGENT turns only (PROGRESS + QUESTION)
@@ -28,13 +28,13 @@ Event 6854: trigger="hook:post_tool_use:inferred",     commanded -> processing (
 Event 6855: trigger="hook:stop:question_detected",     processing -> awaiting_input
 ```
 
-**Critical clue:** Event 6854's trigger is `hook:post_tool_use:inferred` — this is the code path at `hook_receiver.py:1468` that fires when `post_tool_use` finds NO current task. It creates a new task but **never creates a USER turn**.
+**Critical clue:** Event 6854's trigger is `hook:post_tool_use:inferred` — this is the code path at `hook_receiver.py:1468` that fires when `post_tool_use` finds NO current command. It creates a new task but **never creates a USER turn**.
 
 Events 6853 and 6854 are 0.7ms apart — near-simultaneous.
 
 ### Agent 413 (0a6060bb) — Same Pattern
 
-Task 1874 has 0 turns and no instruction. Same failure mode — task created but user turn lost.
+Command 1874 has 0 turns and no instruction. Same failure mode — command created but user turn lost.
 
 ## Relevant Code Paths
 
@@ -52,32 +52,32 @@ This is where USER COMMAND turns SHOULD be created. Key flow:
 - System XML filter could be too aggressive
 - `lifecycle.process_turn()` could fail silently
 
-### 2. `process_post_tool_use` — Inferred Task Path (hook_receiver.py:1414-1544)
+### 2. `process_post_tool_use` — Inferred Command Path (hook_receiver.py:1414-1544)
 
-When `post_tool_use` finds no current task (line 1433: `if not current_task`), it creates one:
+When `post_tool_use` finds no current command (line 1433: `if not current_task`), it creates one:
 ```python
-new_task = lifecycle.create_task(agent, TaskState.COMMANDED)
-lifecycle.update_task_state(task=new_task, to_state=TaskState.PROCESSING, ...)
+new_command = lifecycle.create_command(agent, CommandState.COMMANDED)
+lifecycle.update_command_state(command=new_command, to_state=CommandState.PROCESSING, ...)
 ```
-This path **never creates a USER turn**. The task exists, agent turns get added later, but the user's original command is lost forever.
+This path **never creates a USER turn**. The command exists, agent turns get added later, but the user's original command is lost forever.
 
 ### 3. Race Condition Hypothesis
 
 Events 6853 and 6854 are 0.7ms apart. Possible scenarios:
 - `post_tool_use` fires BEFORE `user_prompt_submit` completes its DB commit
-- `user_prompt_submit` fires but `prompt_text` is None, so `process_turn` creates a task with state transition but maybe doesn't create a turn?
+- `user_prompt_submit` fires but `prompt_text` is None, so `process_turn` creates a command with state transition but maybe doesn't create a turn?
 - The respond-pending flag is incorrectly set, causing `user_prompt_submit` to skip
 
-### 4. `TaskLifecycleManager.process_turn()` (task_lifecycle.py)
+### 4. `CommandLifecycleManager.process_turn()` (command_lifecycle.py)
 
 This is where the actual Turn record should be created. Need to verify:
 - Does it create a Turn when `text` is None?
 - Does it handle the case where a task was already created by `post_tool_use:inferred`?
-- Are there error paths that skip Turn creation but still transition the task state?
+- Are there error paths that skip Turn creation but still transition the command state?
 
 ## Investigation Steps
 
-1. **Check task_lifecycle.py `process_turn()`** — trace exactly what happens when `text=None` or when a task already exists in PROCESSING state
+1. **Check command_lifecycle.py `process_turn()`** — trace exactly what happens when `text=None` or when a task already exists in PROCESSING state
 
 2. **Check the hook route** (`routes/hooks.py`) — verify `prompt_text` is being extracted correctly from the hook payload. The `user-prompt-submit` hook payload should contain the user's text.
 
@@ -102,7 +102,7 @@ This is where the actual Turn record should be created. Need to verify:
 ## Key Files
 
 - `src/claude_headspace/services/hook_receiver.py` — Main hook processing (all paths above)
-- `src/claude_headspace/services/task_lifecycle.py` — TaskLifecycleManager.process_turn()
+- `src/claude_headspace/services/command_lifecycle.py` — CommandLifecycleManager.process_turn()
 - `src/claude_headspace/routes/hooks.py` — Hook HTTP endpoints (extracts payload fields)
 - `bin/install-hooks.sh` — Hook installation script
 - `src/claude_headspace/services/tmux_bridge.py` — Voice bridge respond (sets _respond_pending)
@@ -112,8 +112,8 @@ This is where the actual Turn record should be created. Need to verify:
 ```sql
 -- Find tasks with 0 user turns (affected tasks)
 SELECT t.id, t.agent_id, t.state, t.instruction, t.started_at,
-       (SELECT count(*) FROM turns tr WHERE tr.task_id = t.id AND tr.actor = 'user') as user_turns,
-       (SELECT count(*) FROM turns tr WHERE tr.task_id = t.id AND tr.actor = 'agent') as agent_turns
+       (SELECT count(*) FROM turns tr WHERE tr.command_id = t.id AND tr.actor = 'user') as user_turns,
+       (SELECT count(*) FROM turns tr WHERE tr.command_id = t.id AND tr.actor = 'agent') as agent_turns
 FROM tasks t
 WHERE t.agent_id IN (
     SELECT id FROM agents WHERE ended_at IS NULL OR ended_at > now() - interval '24 hours'
@@ -122,7 +122,7 @@ ORDER BY t.id DESC
 LIMIT 50;
 
 -- Find inferred tasks (post_tool_use created without user turn)
-SELECT e.agent_id, e.task_id, e.payload, e.timestamp
+SELECT e.agent_id, e.command_id, e.payload, e.timestamp
 FROM events e
 WHERE e.event_type = 'state_transition'
 AND e.payload::text LIKE '%post_tool_use:inferred%'
@@ -133,7 +133,7 @@ LIMIT 20;
 ## Expected Fix Direction
 
 The fix likely needs to ensure that:
-1. When `post_tool_use:inferred` creates a task, it should attempt to recover the user's command text (from the transcript file or a pending hook payload)
+1. When `post_tool_use:inferred` creates a command, it should attempt to recover the user's command text (from the transcript file or a pending hook payload)
 2. OR: the `user_prompt_submit` hook needs to reliably fire and persist the turn BEFORE `post_tool_use` can infer a task
 3. OR: `post_tool_use` should detect that `user_prompt_submit` is about to fire and defer task creation
 

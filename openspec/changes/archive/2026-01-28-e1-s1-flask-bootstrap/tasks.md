@@ -1,4 +1,4 @@
-# Tasks: e1-s1-flask-bootstrap
+# Commands: e1-s1-flask-bootstrap
 
 ## 1. Planning (Phase 1)
 

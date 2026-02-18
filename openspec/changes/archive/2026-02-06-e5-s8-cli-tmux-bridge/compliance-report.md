@@ -21,7 +21,7 @@ All acceptance criteria, PRD functional requirements, and delta spec requirement
 ## Requirements Coverage
 
 - **PRD Requirements:** 9/9 covered (FR1-FR9)
-- **Tasks Completed:** 27/27 complete (all [x])
+- **Commands Completed:** 27/27 complete (all [x])
 - **Design Compliance:** N/A (no design.md)
 
 ## Issues Found

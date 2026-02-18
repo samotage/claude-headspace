@@ -31,8 +31,8 @@ Each agent has a card showing:
 - **Status Badge** - ACTIVE or IDLE
 - **Session ID** - Unique identifier
 - **State Bar** - Visual indicator of current state (click to focus iTerm window)
-- **Task Instruction** - The current prompt or task being worked on
-- **Task Summary** - AI-generated summary of progress
+- **Command Instruction** - The current prompt or command being worked on
+- **Command Summary** - AI-generated summary of progress
 - **Respond Widget** - Quick-action buttons and text input (only when awaiting input with tmux pane available)
 - **Priority Score** - Used for sorting
 

@@ -1,6 +1,6 @@
 # Full Cycle Sequence Diagram
 
-## Session Lifecycle: CLI Start → Task Complete → Session End
+## Session Lifecycle: CLI Start → Command Complete → Session End
 
 ```mermaid
 sequenceDiagram
@@ -58,9 +58,9 @@ sequenceDiagram
 
     Flask->>Flask: SessionCorrelator → resolve Agent
 
-    Flask->>DB: Create Task<br/>(agent_id, state=IDLE)
-    Flask->>DB: Create Turn<br/>(task_id, actor=USER,<br/>intent=COMMAND)
-    Flask->>DB: Transition Task:<br/>IDLE → COMMANDED → PROCESSING
+    Flask->>DB: Create Command<br/>(agent_id, state=IDLE)
+    Flask->>DB: Create Turn<br/>(command_id, actor=USER,<br/>intent=COMMAND)
+    Flask->>DB: Transition Command:<br/>IDLE → COMMANDED → PROCESSING
     Flask->>DB: Create Event<br/>(type=HOOK_USER_PROMPT)
     Flask->>DB: Update Agent.last_seen_at
 
@@ -107,9 +107,9 @@ sequenceDiagram
 
     Flask->>Flask: SessionCorrelator → resolve Agent
 
-    Flask->>DB: Create Turn<br/>(task_id, actor=AGENT,<br/>intent=COMPLETION)
-    Flask->>DB: Transition Task:<br/>PROCESSING → COMPLETE
-    Flask->>DB: Set Task.completed_at = now
+    Flask->>DB: Create Turn<br/>(command_id, actor=AGENT,<br/>intent=COMPLETION)
+    Flask->>DB: Transition Command:<br/>PROCESSING → COMPLETE
+    Flask->>DB: Set Command.completed_at = now
     Flask->>DB: Create Event<br/>(type=HOOK_STOP)
     Flask->>DB: Update Agent.last_seen_at
     Flask->>Flask: Send macOS notification<br/>(terminal-notifier)
@@ -130,7 +130,7 @@ sequenceDiagram
     Hook->>Flask: POST /hook/session-end<br/>{session_id, headspace_session_id}
 
     Flask->>Flask: SessionCorrelator → resolve Agent
-    Flask->>DB: Complete any active Task
+    Flask->>DB: Complete any active Command
     Flask->>DB: Set Agent.ended_at = now
     Flask->>DB: Create Event<br/>(type=HOOK_SESSION_END)
 
@@ -154,10 +154,10 @@ sequenceDiagram
 ```mermaid
 erDiagram
     Project ||--o{ Agent : "has many"
-    Agent ||--o{ Task : "has many"
-    Task ||--o{ Turn : "has many"
+    Agent ||--o{ Command : "has many"
+    Command ||--o{ Turn : "has many"
     Agent ||--o{ Event : "logged by"
-    Task ||--o{ Event : "logged by"
+    Command ||--o{ Event : "logged by"
     Turn ||--o{ Event : "logged by"
 
     Project {
@@ -180,7 +180,7 @@ erDiagram
         datetime ended_at "NULL while active"
     }
 
-    Task {
+    Command {
         int id PK
         int agent_id FK
         enum state "IDLE COMMANDED PROCESSING AWAITING_INPUT COMPLETE"
@@ -190,9 +190,9 @@ erDiagram
 
     Turn {
         int id PK
-        int task_id FK
+        int command_id FK
         enum actor "USER or AGENT"
-        enum intent "COMMAND ANSWER QUESTION COMPLETION PROGRESS END_OF_TASK"
+        enum intent "COMMAND ANSWER QUESTION COMPLETION PROGRESS END_OF_COMMAND"
         text text
         datetime timestamp
     }
@@ -203,17 +203,17 @@ erDiagram
         enum event_type "HOOK_SESSION_START HOOK_USER_PROMPT HOOK_STOP etc"
         int project_id FK
         int agent_id FK
-        int task_id FK
+        int command_id FK
         int turn_id FK
         jsonb payload
     }
 ```
 
-## Task State Machine
+## Command State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IDLE : Task created
+    [*] --> IDLE : Command created
     IDLE --> COMMANDED : user-prompt-submit hook
     COMMANDED --> PROCESSING : immediate transition
     PROCESSING --> COMPLETE : stop hook (completion)
@@ -226,11 +226,11 @@ stateDiagram-v2
 
 ## Agent State Derivation
 
-Agent does not store its own state. It is derived from the current task:
+Agent does not store its own state. It is derived from the current command:
 
 ```mermaid
 flowchart LR
-    A[Agent.state] --> B{Has incomplete task?}
+    A[Agent.state] --> B{Has incomplete command?}
     B -->|No| C[IDLE]
-    B -->|Yes| D[Current Task.state]
+    B -->|Yes| D[Current Command.state]
 ```

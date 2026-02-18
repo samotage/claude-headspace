@@ -19,10 +19,10 @@ class TestBuildPrompt:
             "turn_completion",
             "turn_progress",
             "turn_answer",
-            "turn_end_of_task",
+            "turn_end_of_command",
             "turn_default",
-            "task_completion",
-            "task_completion_from_activity",
+            "command_completion",
+            "command_completion_from_activity",
             "instruction",
             "priority_scoring",
             "progress_summary",
@@ -83,9 +83,9 @@ class TestTurnPrompts:
         assert "what was confirmed or provided" in result
         assert "Use PostgreSQL" in result
 
-    def test_turn_end_of_task(self):
+    def test_turn_end_of_command(self):
         result = build_prompt(
-            "turn_end_of_task",
+            "turn_end_of_command",
             instruction_context="",
             text="Task complete",
         )
@@ -105,23 +105,23 @@ class TestTurnPrompts:
         assert "agent" in result
 
 
-class TestTaskPrompts:
-    """Tests for task-level prompt templates."""
+class TestCommandPrompts:
+    """Tests for command-level prompt templates."""
 
-    def test_task_completion(self):
+    def test_command_completion(self):
         result = build_prompt(
-            "task_completion",
+            "command_completion",
             instruction="Refactor auth middleware",
             final_turn_text="All 12 tests passing",
         )
         assert "18 tokens" in result
         assert "Refactor auth middleware" in result
         assert "All 12 tests passing" in result
-        assert "Task:" in result
+        assert "Command:" in result
 
-    def test_task_completion_from_activity(self):
+    def test_command_completion_from_activity(self):
         result = build_prompt(
-            "task_completion_from_activity",
+            "command_completion_from_activity",
             instruction="Refactor auth middleware",
             turn_activity="- [AGENT/progress] Working on middleware\n- [AGENT/question] Which pattern?",
         )
@@ -217,9 +217,9 @@ class TestMissingPlaceholders:
         with pytest.raises(KeyError):
             build_prompt("turn_command", instruction_context="")
 
-    def test_task_completion_missing_instruction_raises(self):
+    def test_command_completion_missing_instruction_raises(self):
         with pytest.raises(KeyError):
-            build_prompt("task_completion", final_turn_text="done")
+            build_prompt("command_completion", final_turn_text="done")
 
     def test_priority_scoring_missing_agents_raises(self):
         with pytest.raises(KeyError):

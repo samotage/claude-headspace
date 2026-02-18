@@ -3,7 +3,7 @@
 **Date:** 17 February 2026
 **Status:** Data model design — new entities for multi-org persona management
 **Revised:** Workshop review session — resolved integer PKs, shared Role lookup, dropped PositionAssignment/can_use_tools/availability constraint
-**Note:** Agent, Task, and Turn are existing Headspace 3.1 entities shown here as references only. Do not recreate them. SkillFile and ExperienceLog are version-managed files in the `data/` directory, not database tables — they appear here as file references only.
+**Note:** Agent, Command, and Turn are existing Headspace 3.1 entities shown here as references only. Do not recreate them. SkillFile and ExperienceLog are version-managed files in the `data/` directory, not database tables — they appear here as file references only.
 
 ---
 
@@ -137,7 +137,7 @@ erDiagram
 ## Key Design Notes
 
 - **Role is a shared lookup.** Both Persona ("I am a developer") and Position ("this seat needs a developer") reference the same Role table. To find personas that can fill a position, match on role_id.
-- **Integer PKs throughout.** Matches the existing codebase convention (Agent, Task, Turn all use int PKs).
+- **Integer PKs throughout.** Matches the existing codebase convention (Agent, Command, Turn all use int PKs).
 - **Slug belongs to Persona.** Generated as `{role_name}-{persona_name}-{id}` from the persona's role and name. No multi-joins needed — Persona has role_id FK so deriving the slug is a single join.
 - **No PositionAssignment table.** The persona-to-position relationship is established through Agent (which has both persona_id and position_id). Assignment status is derived from agent status.
 - **No availability constraint.** Multiple agents can share the same persona simultaneously. Duplicating a persona (spinning up multiple Cons) is advantageous, not a constraint to enforce.

@@ -1,8 +1,8 @@
-# Tasks: e1-s6-state-machine
+# Commands: e1-s6-state-machine
 
 ## Phase 1: Setup
 
-- [x] Verify existing TaskState and TurnIntent enums in models
+- [x] Verify existing CommandState and TurnIntent enums in models
 - [x] Review Event model for state_transition payload schema
 
 ## Phase 2: Implementation
@@ -24,8 +24,8 @@
 - [x] Log invalid transitions at WARNING level
 - [x] Ensure stateless/reentrant design
 
-### Task Lifecycle Manager (FR6, FR7)
-- [x] Create task_lifecycle module
+### Command Lifecycle Manager (FR6, FR7)
+- [x] Create command_lifecycle module
 - [x] Implement create_task() for new user commands
 - [x] Implement update_task_state() for transitions
 - [x] Implement complete_task() with completed_at timestamp
@@ -35,7 +35,7 @@
 ### State Transition Event Logging (FR8)
 - [x] Integrate with EventWriter from Sprint 5
 - [x] Write state_transition events on valid transitions
-- [x] Include agent_id, task_id, from_state, to_state, trigger, confidence
+- [x] Include agent_id, command_id, from_state, to_state, trigger, confidence
 
 ### Turn Event Processing (FR9)
 - [x] Create process_turn_event() function
@@ -60,7 +60,7 @@
 - [x] Test intent detection fallback to progress
 - [x] Test user intent (command vs answer based on state)
 - [x] Test task creation on user command
-- [x] Test task completion with timestamp
+- [x] Test command completion with timestamp
 - [x] Test agent state derivation
 - [x] Test state_transition event payload
 - [x] Test unknown session handling

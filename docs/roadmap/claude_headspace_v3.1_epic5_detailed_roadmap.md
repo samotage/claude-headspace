@@ -22,7 +22,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - **Object Tree** — Drill into the complete hierarchy of agents, tasks, and turns with frustration score highlighting
 - **Embedded Metrics** — Activity data scoped to a specific project with day/week/month navigation
 - **Frustration Display** — Average-based frustration metrics and multi-window frustration state widget
-- **Dashboard Restructure** — Agent hero identity system, task-based Kanban layout, and real-time activity metrics on the dashboard
+- **Dashboard Restructure** — Agent hero identity system, command-based Kanban layout, and real-time activity metrics on the dashboard
 - **Config Help System** — Full config.yaml/UI parity with contextual help icons, popovers, and expanded documentation
 - **CLI tmux Alignment** — CLI launcher detects tmux pane and includes pane ID in session registration (removes failed claudec)
 - **Full Command/Output Capture** — Store complete user commands and agent responses for drill-down review from any device
@@ -36,7 +36,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - Navigate to `/projects/claude-headspace` → see full project detail on one page
 - Click project name in list → navigates to show page (no inline edit/delete buttons)
 - Expand Agents accordion → see all agents with state, priority, timing
-- Expand Tasks accordion → see all tasks with state, instruction, completion summary
+- Expand Commands accordion → see all tasks with state, instruction, completion summary
 - Expand Turns accordion → see turns with frustration scores highlighted
 - Activity metrics display with day/week/month toggle and period navigation
 - Archive history shows previous waypoint/brain reboot versions
@@ -44,15 +44,15 @@ This document serves as the **high-level roadmap and baseline** for Epic 5 imple
 - Activity page frustration shows average (0-10) instead of raw sum
 - Frustration state widget shows immediate/short-term/session rolling averages
 - Agents displayed with two-character hero identity (first two hex chars large)
-- Kanban view as default with task lifecycle state columns
+- Kanban view as default with command lifecycle state columns
 - Overall activity metrics visible on dashboard below menu bar
 - Every config.yaml field editable via config UI (except openrouter.pricing)
 - Help icons on all config sections and fields with popovers
 - Deep-link anchors on help page for direct field documentation access
 - CLI `--bridge` flag detects tmux pane and reports availability
 - Session registration includes tmux_pane_id from CLI (no hook backfill wait)
-- Full user command text stored on Task model
-- Full agent final message stored on Task model
+- Full user command text stored on Command model
+- Full agent final message stored on Command model
 - Drill-down buttons on dashboard card tooltips to view full text
 - Full output visible in project view agent transcript
 - Mobile-friendly rendering of full text (iPad, iPhone)
@@ -331,8 +331,8 @@ class Project(Base):
 - Agents accordion: collapsed by default, count badge (e.g., "Agents (3)")
 - Agent rows: state indicator (color-coded), session UUID (truncated), priority score, started/ended timestamps, active duration
 - Ended agents visually distinguished (muted styling, "Ended" badge)
-- Tasks accordion (nested per agent): state badge, instruction (truncated), completion summary, started/completed timestamps, turn count
-- Turns accordion (nested per task): actor badge (USER/AGENT), intent label, summary text, frustration score
+- Commands accordion (nested per agent): state badge, instruction (truncated), completion summary, started/completed timestamps, turn count
+- Turns accordion (nested per command): actor badge (USER/AGENT), intent label, summary text, frustration score
 - Frustration highlighting: yellow for scores >= 4, red for scores >= 7
 - Collapse/expand toggling, collapsing parent collapses children
 
@@ -366,7 +366,7 @@ class Project(Base):
 
 - SSE connection filtered for current project
 - Agent state changes update Agents accordion (if expanded)
-- Task state changes update Tasks accordion (if expanded)
+- Command state changes update Commands accordion (if expanded)
 - Project changes update page metadata
 - Updates don't disrupt accordion expand/collapse state
 
@@ -391,8 +391,8 @@ class Project(Base):
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/agents/<id>/tasks` | List tasks for an agent |
-| `GET /api/tasks/<id>/turns` | List turns for a task |
+| `GET /api/agents/<id>/commands` | List tasks for an agent |
+| `GET /api/commands/<id>/turns` | List turns for a command |
 | `GET /api/projects/<id>/inference-summary` | Aggregate inference metrics |
 
 **Accordion Object Tree:**
@@ -408,7 +408,7 @@ class Project(Base):
 |  ------------------------------------------------------------------   |
 |  | [green] abc-1234...  | Score: 85 | Active | Started 2h ago     |   |
 |  |                                                                 |   |
-|  |   v Tasks (5)                                                   |   |
+|  |   v Commands (5)                                                   |   |
 |  |   +-----------------------------------------------------------+|   |
 |  |   | [COMPLETE] Fix auth bug          | 3 turns | 25 min       ||   |
 |  |   |                                                            ||   |
@@ -420,14 +420,14 @@ class Project(Base):
 |  |   |   +------------------------------------------------------+||   |
 |  |   |                                                            ||   |
 |  |   | [PROCESSING] Add caching layer   | 1 turn  | 5 min        ||   |
-|  |   | > Tasks (collapsed)                                        ||   |
+|  |   | > Commands (collapsed)                                        ||   |
 |  |   +-----------------------------------------------------------+|   |
 |  |                                                                 |   |
 |  | [grey] def-5678...   | Score: -- | Ended  | 3h ago — 1h 20m    |   |
-|  | > Tasks (collapsed)                                             |   |
+|  | > Commands (collapsed)                                             |   |
 |  |                                                                 |   |
 |  | [blue] ghi-9012...   | Score: 42 | Active | Started 30m ago    |   |
-|  | > Tasks (collapsed)                                             |   |
+|  | > Commands (collapsed)                                             |   |
 |  ------------------------------------------------------------------   |
 |                                                                        |
 +-----------------------------------------------------------------------+
@@ -472,7 +472,7 @@ class Project(Base):
 - [ ] Expanding Agents fetches and shows all project agents (active and ended)
 - [ ] Agent rows show: state indicator, ID, priority score, timing, duration
 - [ ] Ended agents visually distinguished from active agents
-- [ ] Clicking agent expands Tasks section (lazy loaded)
+- [ ] Clicking agent expands Commands section (lazy loaded)
 - [ ] Task rows show: state badge, instruction, summary, timing, turn count
 - [ ] Clicking task expands Turns section (lazy loaded)
 - [ ] Turn rows show: actor badge, intent, summary, frustration score
@@ -744,7 +744,7 @@ headspace:
 
 ### Sprint 6: Dashboard Restructure (E5-S6) — DONE
 
-**Goal:** Introduce agent hero identity system, task-based Kanban layout, and real-time activity metrics on the dashboard.
+**Goal:** Introduce agent hero identity system, command-based Kanban layout, and real-time activity metrics on the dashboard.
 
 **Duration:** 1-2 weeks  
 **Dependencies:** E5-S5 complete (activity frustration display), existing dashboard infrastructure
@@ -762,9 +762,9 @@ headspace:
 **Kanban Layout:**
 
 - New "Kanban" sort option as first/default sort mode
-- Tasks organised into columns by lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE
-- Idle agents (no active tasks) displayed in IDLE column as full agent cards
-- Same agent can appear in multiple columns simultaneously (one per task)
+- Commands organised into columns by lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE
+- Idle agents (no active commands) displayed in IDLE column as full agent cards
+- Same agent can appear in multiple columns simultaneously (one per command)
 - Priority-based ordering within columns when prioritisation enabled
 - Multiple projects display as horizontal sections with own state columns
 - Completed tasks render as collapsed accordions in scrollable COMPLETE column
@@ -800,7 +800,7 @@ headspace:
 ┌─────────────────────────────────────────────────────────────────────┐
 │  0A5510d4   claude-headspace                    3h 24m  ● Active    │
 ├─────────────────────────────────────────────────────────────────────┤
-│  [Task instruction or summary content...]                           │
+│  [Command instruction or summary content...]                           │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -838,7 +838,7 @@ headspace:
 - [x] Hero style applied consistently across dashboard, projects, activity, logging
 - [x] Logging agent filter dropdowns use format: `0a - 0a5510d4`
 - [x] Kanban view available and is first/default sort option
-- [x] Tasks appear in correct lifecycle state columns
+- [x] Commands appear in correct lifecycle state columns
 - [x] Idle agents in dedicated IDLE column
 - [x] Completed tasks collapse to accordions in scrollable COMPLETE column
 - [x] Priority ordering within columns when enabled
@@ -1058,14 +1058,14 @@ SessionManager context → launch_claude()
 
 ### Sprint 9: Full Command & Output Capture (E5-S9) — DONE
 
-**Goal:** Extend Task model to persist full user command and full agent output, with drill-down UI on dashboard and project view.
+**Goal:** Extend Command model to persist full user command and full agent output, with drill-down UI on dashboard and project view.
 
 **Duration:** 1-2 weeks  
 **Dependencies:** E5-S8 complete, E5-S6 complete (dashboard restructure)
 
 **Deliverables:**
 
-**Task Model Extensions:**
+**Command Model Extensions:**
 
 - New field for full user command text (no character limit)
 - New field for full agent final message text (no character limit)
@@ -1089,7 +1089,7 @@ SessionManager context → launch_claude()
 
 - Full agent output visible in agent chat transcript details
 - Accordion or expandable section pattern for full text
-- Consistent with Kanban completed task cards
+- Consistent with Kanban completed command cards
 
 **Performance Considerations:**
 
@@ -1099,7 +1099,7 @@ SessionManager context → launch_claude()
 
 **Subsystem Requiring PRD:**
 
-9. `full-output-capture` — Task model fields, capture pipeline, drill-down UI
+9. `full-output-capture` — Command model fields, capture pipeline, drill-down UI
 
 **PRD Location:** `docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`
 
@@ -1160,10 +1160,10 @@ class Task(Base):
 
 **Acceptance Criteria:**
 
-- [x] Task model has field for full user command text
-- [x] Task model has field for full agent final message text
-- [x] Full command persisted when task created
-- [x] Full output persisted when task completes
+- [x] Command model has field for full user command text
+- [x] Command model has field for full agent final message text
+- [x] Full command persisted when command created
+- [x] Full output persisted when command completes
 - [x] Drill-down button on dashboard card tooltip for instruction
 - [x] Drill-down button on dashboard card tooltip for completion summary
 - [x] Pressing drill-down displays full text in overlay
@@ -1336,7 +1336,7 @@ class Project(Base):
 
 **Scope:**
 
-- Accordion object tree (agents → tasks → turns)
+- Accordion object tree (agents → commands → turns)
 - Lazy data loading per accordion section
 - Frustration score highlighting (yellow/red thresholds)
 - Activity metrics section with time navigation
@@ -1373,7 +1373,7 @@ class Project(Base):
 **Acceptance Tests:**
 
 - Agents accordion shows count badge, expands on click
-- Tasks accordion lazy-loads on expand
+- Commands accordion lazy-loads on expand
 - Turns accordion lazy-loads on expand
 - Frustration scores highlighted correctly
 - Activity metrics display with toggles and navigation
@@ -1540,7 +1540,7 @@ headspace:
 
 - Agent hero style identity (two-character emphasis + trailing smaller chars)
 - Hero style across all views: dashboard, projects, activity, logging
-- Kanban layout as default view with task lifecycle state columns
+- Kanban layout as default view with command lifecycle state columns
 - Idle agents column, completed tasks as accordions
 - Overall activity metrics bar on dashboard
 - Real-time SSE updates for dashboard metrics
@@ -1579,7 +1579,7 @@ headspace:
 
 - Agents displayed with two-character hero identity
 - Kanban view is default with task columns
-- Tasks appear in correct lifecycle state column
+- Commands appear in correct lifecycle state column
 - Completed tasks collapse to accordions
 - Activity metrics visible below menu
 - Metrics update in real-time via SSE
@@ -1698,9 +1698,9 @@ headspace:
 
 **Scope:**
 
-- Two new text fields on Task model for full command and full output
-- Capture full user command when task created
-- Capture full agent final message when task completes
+- Two new text fields on Command model for full command and full output
+- Capture full user command when command created
+- Capture full agent final message when command completes
 - Drill-down buttons on dashboard card tooltips
 - Full output in project view transcript
 - Mobile-friendly full text rendering
@@ -1708,9 +1708,9 @@ headspace:
 
 **Key Requirements:**
 
-- Must add `full_command` and `full_output` fields to Task model
+- Must add `full_command` and `full_output` fields to Command model
 - Must persist complete command text at task creation
-- Must persist complete agent message at task completion
+- Must persist complete agent message at command completion
 - Must provide drill-down UI on dashboard tooltips
 - Must display full output in project view transcript
 - Must render full text readably on mobile (320px min)
@@ -1721,8 +1721,8 @@ headspace:
 
 **Related Files:**
 
-- `src/claude_headspace/models/task.py` (add full_command, full_output)
-- `src/claude_headspace/services/task_lifecycle.py` (capture full text)
+- `src/claude_headspace/models/command.py` (add full_command, full_output)
+- `src/claude_headspace/services/command_lifecycle.py` (capture full text)
 - `src/claude_headspace/services/summarisation_service.py` (pass full text)
 - `src/claude_headspace/routes/tasks.py` (endpoint for full text retrieval)
 - `templates/partials/_agent_card.html` (drill-down buttons)
@@ -1744,7 +1744,7 @@ class Task(Base):
 **Acceptance Tests:**
 
 - Full command stored on task creation
-- Full output stored on task completion
+- Full output stored on command completion
 - Drill-down buttons appear on dashboard card tooltips
 - Drill-down displays full text in overlay
 - Full output visible in project view
@@ -1839,7 +1839,7 @@ class Task(Base):
 
 **Rationale:**
 
-- Fast initial page load (no agent/task/turn data fetched)
+- Fast initial page load (no agent/command/turn data fetched)
 - Only load what user actually wants to see
 - Supports projects with many agents/tasks without performance hit
 - Client-side caching prevents redundant fetches
@@ -2011,9 +2011,9 @@ class Task(Base):
 **Rationale:**
 
 - Kanban is a universally understood task-flow metaphor
-- Maps directly to task lifecycle states (IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE)
+- Maps directly to command lifecycle states (IDLE → COMMANDED → PROCESSING → AWAITING_INPUT → COMPLETE)
 - Shows where work is flowing, not just which agents exist
-- Same agent can appear in multiple columns (one per task)
+- Same agent can appear in multiple columns (one per command)
 
 **Impact:**
 
@@ -2375,7 +2375,7 @@ class Task(Base):
 
 ### Risk 11: High Task Volume Dense Layouts
 
-**Risk:** Projects with many concurrent tasks could create dense, hard-to-read Kanban columns.
+**Risk:** Projects with many concurrent commands could create dense, hard-to-read Kanban columns.
 
 **Impact:** Low (expected typical load is <20 tasks)
 
@@ -2386,7 +2386,7 @@ class Task(Base):
 - Priority ordering surfaces important tasks at top
 - Pagination pattern available if needed (like accordion lazy loading)
 
-**Monitoring:** Track max concurrent tasks per project
+**Monitoring:** Track max concurrent commands per project
 
 ---
 
@@ -2563,9 +2563,9 @@ From Epic 5 Acceptance Criteria:
 - ✅ Expand Agents → fetches and shows all agents
 - ✅ Agent rows show state, ID, score, timing
 - ✅ Ended agents visually distinguished
-- ✅ Click agent → Tasks expand (lazy loaded)
+- ✅ Click agent → Commands expand (lazy loaded)
 - ✅ Task rows show state, instruction, summary, timing, turns
-- ✅ Click task → Turns expand (lazy loaded)
+- ✅ Click command → Turns expand (lazy loaded)
 - ✅ Turn rows show actor, intent, summary, frustration
 - ✅ Frustration >= 4 highlighted yellow
 - ✅ Frustration >= 7 highlighted red
@@ -2647,7 +2647,7 @@ From Epic 5 Acceptance Criteria:
 
 ### Test Case 7: Dashboard Restructure
 
-**Setup:** Dashboard with multiple active agents across projects, some with active tasks, some idle.
+**Setup:** Dashboard with multiple active agents across projects, some with active commands, some idle.
 
 **Success:**
 
@@ -2657,8 +2657,8 @@ From Epic 5 Acceptance Criteria:
 - ✅ Logging agent filter dropdown shows format: `0a - 0a5510d4`
 - ✅ Card header shows: Hero Identity, Project, Uptime, Active indicator (right-aligned)
 - ✅ Kanban view is first/default sort option
-- ✅ Tasks appear in correct lifecycle state columns (IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE)
-- ✅ Idle agents (no tasks) appear in IDLE column
+- ✅ Commands appear in correct lifecycle state columns (IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE)
+- ✅ Idle agents (no commands) appear in IDLE column
 - ✅ Same agent can appear in multiple columns simultaneously
 - ✅ Completed tasks collapse to accordions in scrollable COMPLETE column
 - ✅ Priority ordering within columns when prioritisation enabled
@@ -2721,8 +2721,8 @@ From Epic 5 Acceptance Criteria:
 
 **Success:**
 
-- ✅ Task model has `full_command` field populated with complete user command
-- ✅ Task model has `full_output` field populated with complete agent response
+- ✅ Command model has `full_command` field populated with complete user command
+- ✅ Command model has `full_output` field populated with complete agent response
 - ✅ Existing `instruction` and `completion_summary` fields unchanged
 - ✅ Dashboard card tooltip shows drill-down button for instruction
 - ✅ Dashboard card tooltip shows drill-down button for completion summary
@@ -2808,7 +2808,7 @@ All 9 PRDs have been generated. Implementation order:
 
 ### Phase 9: Full Command & Output Capture — DONE
 
-9. **full-output-capture** (`docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`) — Full text fields on Task, drill-down UI, mobile-friendly display
+9. **full-output-capture** (`docs/prds/core/done/e5-s9-full-command-output-capture-prd.md`) — Full text fields on Command, drill-down UI, mobile-friendly display
 
 **Rationale:** Decouples detailed review from the terminal, enabling mobile access to complete agent work.
 

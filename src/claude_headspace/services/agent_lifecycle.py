@@ -349,7 +349,7 @@ def get_agent_info(agent_id: int) -> dict | None:
     """Gather comprehensive debug info for an agent.
 
     Returns a dict with identity, project, lifecycle, priority, headspace,
-    and task history data. Returns None if agent not found.
+    and command history data. Returns None if agent not found.
 
     Args:
         agent_id: ID of the agent
@@ -455,25 +455,25 @@ def get_agent_info(agent_id: int) -> dict | None:
             "timestamp": latest_snapshot.timestamp.isoformat(),
         }
 
-    # Collect recent frustration scores from USER turns across last 5 tasks
+    # Collect recent frustration scores from USER turns across last 5 commands
     frustration_scores = []
     from ..models.turn import TurnActor
 
-    tasks_for_frustration = agent.tasks[:5] if agent.tasks else []
-    for task in tasks_for_frustration:
-        if hasattr(task, "turns"):
-            for turn in task.turns:
+    commands_for_frustration = agent.commands[:5] if agent.commands else []
+    for command in commands_for_frustration:
+        if hasattr(command, "turns"):
+            for turn in command.turns:
                 if turn.actor == TurnActor.USER and turn.frustration_score is not None:
                     frustration_scores.append({
                         "score": turn.frustration_score,
                         "timestamp": turn.timestamp.isoformat(),
                     })
 
-    # --- Tasks (last 10) with turns ---
-    tasks_info = []
-    recent_tasks = agent.tasks[:10] if agent.tasks else []
-    for task in recent_tasks:
-        recent_turns = task.get_recent_turns(50)
+    # --- Commands (last 10) with turns ---
+    commands_info = []
+    recent_commands = agent.commands[:10] if agent.commands else []
+    for command in recent_commands:
+        recent_turns = command.get_recent_turns(50)
         turns_info = []
         for turn in reversed(recent_turns):  # chronological order
             text = turn.text or ""
@@ -489,14 +489,14 @@ def get_agent_info(agent_id: int) -> dict | None:
                 "frustration_score": turn.frustration_score,
             })
 
-        tasks_info.append({
-            "id": task.id,
-            "state": task.state.value,
-            "instruction": task.instruction,
-            "completion_summary": task.completion_summary,
-            "started_at": task.started_at.isoformat() if task.started_at else None,
-            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-            "turn_count": len(task.turns) if hasattr(task, "turns") else 0,
+        commands_info.append({
+            "id": command.id,
+            "state": command.state.value,
+            "instruction": command.instruction,
+            "completion_summary": command.completion_summary,
+            "started_at": command.started_at.isoformat() if command.started_at else None,
+            "completed_at": command.completed_at.isoformat() if command.completed_at else None,
+            "turn_count": len(command.turns) if hasattr(command, "turns") else 0,
             "turns": turns_info,
         })
 
@@ -507,5 +507,5 @@ def get_agent_info(agent_id: int) -> dict | None:
         "priority": priority,
         "headspace": headspace,
         "frustration_scores": frustration_scores,
-        "tasks": tasks_info,
+        "commands": commands_info,
     }

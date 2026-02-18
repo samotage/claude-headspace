@@ -25,7 +25,7 @@ Implementation fully satisfies all 18 functional requirements, 5 non-functional 
 ## Requirements Coverage
 
 - **PRD Requirements:** 18/18 covered (FR1-FR18)
-- **Tasks Completed:** 30/30 complete (Phase 1: 3, Phase 2: 20, Phase 3: 10)
+- **Commands Completed:** 30/30 complete (Phase 1: 3, Phase 2: 20, Phase 3: 10)
 - **Design Compliance:** Yes — follows existing patterns (blueprint, app.extensions, config defaults)
 - **NFR Coverage:** 5/5 covered (NFR1-NFR5)
 

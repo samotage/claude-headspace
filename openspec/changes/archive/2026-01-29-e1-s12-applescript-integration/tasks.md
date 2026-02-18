@@ -1,4 +1,4 @@
-# Tasks: e1-s12-applescript-integration
+# Commands: e1-s12-applescript-integration
 
 ## Phase 1: Setup
 

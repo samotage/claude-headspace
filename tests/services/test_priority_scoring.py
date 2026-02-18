@@ -34,11 +34,11 @@ def mock_agent():
     agent.priority_score = None
     agent.priority_reason = None
     agent.priority_updated_at = None
-    # Mock get_current_task
-    mock_task = MagicMock()
-    mock_task.started_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
-    mock_task.turns = []
-    agent.get_current_task.return_value = mock_task
+    # Mock get_current_command
+    mock_command = MagicMock()
+    mock_command.started_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+    mock_command.turns = []
+    agent.get_current_command.return_value = mock_command
     return agent
 
 
@@ -53,10 +53,10 @@ def mock_agent_2():
     agent.priority_score = None
     agent.priority_reason = None
     agent.priority_updated_at = None
-    mock_task = MagicMock()
-    mock_task.started_at = datetime(2026, 1, 31, 9, 30, 0, tzinfo=timezone.utc)
-    mock_task.turns = []
-    agent.get_current_task.return_value = mock_task
+    mock_command = MagicMock()
+    mock_command.started_at = datetime(2026, 1, 31, 9, 30, 0, tzinfo=timezone.utc)
+    mock_command.turns = []
+    agent.get_current_command.return_value = mock_command
     return agent
 
 
@@ -137,14 +137,14 @@ class TestBuildScoringPrompt:
 
         assert "Objective/waypoint alignment (40%)" in prompt
         assert "Agent state (25%)" in prompt
-        assert "Task duration (15%)" in prompt
+        assert "Command duration (15%)" in prompt
         assert "JSON array" in prompt
 
-    def test_prompt_includes_task_summary(self, service, mock_agent):
+    def test_prompt_includes_command_summary(self, service, mock_agent):
         mock_turn = MagicMock()
         mock_turn.summary = "Refactoring auth middleware"
         mock_turn.text = "Working on auth"
-        mock_agent.get_current_task.return_value.turns = [mock_turn]
+        mock_agent.get_current_command.return_value.turns = [mock_turn]
 
         context = {"context_type": "objective", "text": "Test", "constraints": ""}
         prompt = service._build_scoring_prompt(context, [mock_agent])

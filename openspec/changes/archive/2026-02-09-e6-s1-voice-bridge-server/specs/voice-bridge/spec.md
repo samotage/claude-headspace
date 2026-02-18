@@ -37,13 +37,13 @@ The voice bridge SHALL provide an endpoint listing all active agents in voice-fr
 #### Scenario: Multiple active agents
 
 - **WHEN** a GET to `/api/voice/sessions` is made
-- **THEN** the response SHALL include each active agent with: project name, state, awaiting input flag, current task summary, time since last activity
+- **THEN** the response SHALL include each active agent with: project name, state, awaiting input flag, current command summary, time since last activity
 - **AND** the format SHALL be status line + key results + next action
 
 #### Scenario: Verbosity parameter
 
 - **WHEN** a GET to `/api/voice/sessions?verbosity=detailed` is made
-- **THEN** the response SHALL include additional detail per agent (full task instruction, recent turns)
+- **THEN** the response SHALL include additional detail per agent (full command instruction, recent turns)
 
 ---
 

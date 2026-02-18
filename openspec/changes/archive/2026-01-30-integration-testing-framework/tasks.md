@@ -26,7 +26,7 @@
 - [x] 2.3.1 Create `tests/integration/factories.py` with SQLAlchemyModelFactory definitions:
   - `ProjectFactory` — generates valid Project with unique path, name
   - `AgentFactory` — generates valid Agent with UUID, links to Project (SubFactory)
-  - `TaskFactory` — generates valid Task with state=IDLE default, links to Agent (SubFactory)
+  - `CommandFactory` — generates valid Task with state=IDLE default, links to Agent (SubFactory)
   - `TurnFactory` — generates valid Turn with actor, intent, text, links to Task (SubFactory)
   - `EventFactory` — generates valid Event with event_type, optional foreign keys
   - `ObjectiveFactory` — generates valid Objective with text and timestamp
@@ -36,16 +36,16 @@
 
 - [x] 2.4.1 Create `tests/integration/test_factories.py` — verify each factory produces a persistable instance
 - [x] 2.4.2 Create `tests/integration/test_persistence_flow.py` — end-to-end test:
-  - Create Project → Agent → Task → Turn → Event chain
+  - Create Project → Agent → Command → Turn → Event chain
   - Persist all entities
   - Retrieve all entities from fresh query
   - Assert data integrity (field values, relationships, foreign keys)
 - [x] 2.4.3 Create `tests/integration/test_model_constraints.py` — verify database constraints:
   - Unique constraint on Project.path
   - Unique index on Agent.session_uuid
-  - Cascade delete behavior (Agent deletion cascades to Tasks, Turns)
+  - Cascade delete behavior (Agent deletion cascades to Commands, Turns)
   - NOT NULL enforcement
-  - Enum constraint enforcement (TaskState, TurnActor, TurnIntent)
+  - Enum constraint enforcement (CommandState, TurnActor, TurnIntent)
 
 ### 2.5 Documentation
 

@@ -18,7 +18,7 @@ class NotificationPreferences:
     enabled: bool = True
     sound: bool = True
     events: dict = field(default_factory=lambda: {
-        "task_complete": True,
+        "command_complete": True,
         "awaiting_input": True,
     })
     rate_limit_seconds: int = 5
@@ -86,18 +86,18 @@ class NotificationService:
         return cmd
 
     def _build_contextual_message(
-        self, event_type: str, task_instruction: str | None = None, turn_text: str | None = None,
+        self, event_type: str, command_instruction: str | None = None, turn_text: str | None = None,
     ) -> str:
         parts = []
-        if task_instruction:
-            parts.append(task_instruction)
+        if command_instruction:
+            parts.append(command_instruction)
         if turn_text:
-            prefix = {"task_complete": "\u2713 ", "awaiting_input": "? "}.get(event_type, "")
+            prefix = {"command_complete": "\u2713 ", "awaiting_input": "? "}.get(event_type, "")
             parts.append(f"{prefix}{turn_text}")
         if parts:
             return "\n".join(parts)
         defaults = {
-            "task_complete": "Task completed - agent is now idle",
+            "command_complete": "Command completed - agent is now idle",
             "awaiting_input": "Input needed - agent is waiting for your response",
         }
         return defaults.get(event_type, f"Event: {event_type}")
@@ -109,7 +109,7 @@ class NotificationService:
         event_type: str,
         project: str | None = None,
         dashboard_url: str | None = None,
-        task_instruction: str | None = None,
+        command_instruction: str | None = None,
         turn_text: str | None = None,
     ) -> bool:
         """Send a macOS notification for an agent event. Returns True if sent/skipped."""
@@ -125,10 +125,10 @@ class NotificationService:
         if self._is_rate_limited(agent_id):
             return True
 
-        titles = {"task_complete": "Task Complete", "awaiting_input": "Input Needed"}
+        titles = {"command_complete": "Command Complete", "awaiting_input": "Input Needed"}
         title = titles.get(event_type, "Claude Headspace")
         subtitle = f"{project} ({agent_name})" if project else agent_name
-        message = self._build_contextual_message(event_type, task_instruction, turn_text)
+        message = self._build_contextual_message(event_type, command_instruction, turn_text)
         base_url = dashboard_url or self.preferences.dashboard_url
         url = f"{base_url}?highlight={agent_id}"
         cmd = self._build_notification_command(title, subtitle, message, url)
@@ -148,9 +148,9 @@ class NotificationService:
             logger.warning(f"Failed to send notification: {e}")
             return False
 
-    def notify_task_complete(self, **kwargs) -> bool:
-        """Send notification for task completion."""
-        return self.send_notification(event_type="task_complete", **kwargs)
+    def notify_command_complete(self, **kwargs) -> bool:
+        """Send notification for command completion."""
+        return self.send_notification(event_type="command_complete", **kwargs)
 
     def notify_awaiting_input(self, **kwargs) -> bool:
         """Send notification when agent is awaiting input."""

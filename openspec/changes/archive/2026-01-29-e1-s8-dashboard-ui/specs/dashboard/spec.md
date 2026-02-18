@@ -68,8 +68,8 @@ When its card is rendered
 Then session ID is displayed as truncated UUID (#xxxxxxxx)
 And status badge shows ACTIVE or IDLE based on last_seen_at
 And uptime is displayed as human-readable duration
-And state bar is colour-coded to match TaskState
-And task summary shows first 100 characters or "No active task"
+And state bar is colour-coded to match CommandState
+And command summary shows first 100 characters or "No active command"
 And priority badge shows numeric value (default 50)
 And Headspace button is present (placeholder)
 
@@ -85,7 +85,7 @@ Then IDLE state shows grey bar with "Idle - ready for task"
 And COMMANDED state shows yellow bar with "Command received"
 And PROCESSING state shows blue bar with "Processing..."
 And AWAITING_INPUT state shows orange bar with "Input needed"
-And COMPLETE state shows green bar with "Task complete"
+And COMPLETE state shows green bar with "Command complete"
 
 ### Requirement: Responsive Layout
 

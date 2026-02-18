@@ -1,4 +1,4 @@
-"""Task model and TaskState enum."""
+"""Command model and CommandState enum."""
 
 import enum
 from datetime import datetime, timezone
@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import db
 
 
-class TaskState(enum.Enum):
-    """5-state lifecycle for tasks."""
+class CommandState(enum.Enum):
+    """5-state lifecycle for commands."""
 
     IDLE = "idle"
     COMMANDED = "commanded"
@@ -19,24 +19,24 @@ class TaskState(enum.Enum):
     COMPLETE = "complete"
 
 
-class Task(db.Model):
+class Command(db.Model):
     """
-    Represents a unit of work performed by an Agent.
+    Represents a unit of work commanded to an agent.
 
-    Tasks have a 5-state lifecycle: idle → commanded → processing →
+    Commands have a 5-state lifecycle: idle → commanded → processing →
     awaiting_input → complete.
     """
 
-    __tablename__ = "tasks"
+    __tablename__ = "commands"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    state: Mapped[TaskState] = mapped_column(
-        Enum(TaskState, name="taskstate", create_constraint=True),
+    state: Mapped[CommandState] = mapped_column(
+        Enum(CommandState, name="commandstate", create_constraint=True),
         nullable=False,
-        default=TaskState.IDLE,
+        default=CommandState.IDLE,
         index=True,
     )
     started_at: Mapped[datetime] = mapped_column(
@@ -58,17 +58,17 @@ class Task(db.Model):
     plan_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    agent: Mapped["Agent"] = relationship("Agent", back_populates="tasks")
+    agent: Mapped["Agent"] = relationship("Agent", back_populates="commands")
     turns: Mapped[list["Turn"]] = relationship(
         "Turn",
-        back_populates="task",
+        back_populates="command",
         cascade="all, delete-orphan",
         order_by="Turn.timestamp",
     )
 
     def get_recent_turns(self, limit: int = 10) -> list["Turn"]:
         """
-        Get recent turns for this task, ordered by timestamp descending.
+        Get recent turns for this command, ordered by timestamp descending.
 
         Args:
             limit: Maximum number of turns to return
@@ -80,15 +80,15 @@ class Task(db.Model):
 
         return (
             db.session.query(Turn)
-            .filter(Turn.task_id == self.id)
+            .filter(Turn.command_id == self.id)
             .order_by(Turn.timestamp.desc())
             .limit(limit)
             .all()
         )
 
     def __repr__(self) -> str:
-        return f"<Task id={self.id} state={self.state.value} agent_id={self.agent_id}>"
+        return f"<Command id={self.id} state={self.state.value} agent_id={self.agent_id}>"
 
 
 # Additional indexes
-Index("ix_tasks_agent_id_state", Task.agent_id, Task.state)
+Index("ix_commands_agent_id_state", Command.agent_id, Command.state)

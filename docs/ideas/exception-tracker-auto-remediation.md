@@ -146,7 +146,7 @@ exceptions:
 
   analysis:
     model_level: "turn"            # inference level for triage (haiku)
-    deep_analysis_level: "task"    # inference level for root cause (sonnet)
+    deep_analysis_level: "command"    # inference level for root cause (sonnet)
 ```
 
 ---

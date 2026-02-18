@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from src.claude_headspace.models.task import TaskState
+from src.claude_headspace.models.command import CommandState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 from src.claude_headspace.services.tmux_bridge import SendResult
@@ -93,7 +93,7 @@ def mock_project():
 
 @pytest.fixture
 def mock_agent(mock_project):
-    """Agent with AWAITING_INPUT task."""
+    """Agent with AWAITING_INPUT command."""
     agent = MagicMock()
     agent.id = 1
     agent.name = "agent-1"
@@ -103,14 +103,14 @@ def mock_agent(mock_project):
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
-    task = MagicMock()
-    task.id = 10
-    task.state = TaskState.AWAITING_INPUT
-    task.instruction = "Fix the bug"
-    task.completion_summary = None
-    task.full_command = None
-    task.full_output = None
-    task.started_at = datetime.now(timezone.utc)
+    cmd = MagicMock()
+    cmd.id = 10
+    cmd.state = CommandState.AWAITING_INPUT
+    cmd.instruction = "Fix the bug"
+    cmd.completion_summary = None
+    cmd.full_command = None
+    cmd.full_output = None
+    cmd.started_at = datetime.now(timezone.utc)
 
     # Question turn
     q_turn = MagicMock()
@@ -127,14 +127,14 @@ def mock_agent(mock_project):
     q_turn.tool_input = None
     q_turn.summary = None
 
-    task.turns = [q_turn]
-    agent.get_current_task.return_value = task
+    cmd.turns = [q_turn]
+    agent.get_current_command.return_value = cmd
     return agent
 
 
 @pytest.fixture
 def mock_agent_processing(mock_project):
-    """Agent with PROCESSING task."""
+    """Agent with PROCESSING command."""
     agent = MagicMock()
     agent.id = 2
     agent.name = "agent-2"
@@ -144,11 +144,11 @@ def mock_agent_processing(mock_project):
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
-    task = MagicMock()
-    task.id = 20
-    task.state = TaskState.PROCESSING
-    task.turns = []
-    agent.get_current_task.return_value = task
+    cmd = MagicMock()
+    cmd.id = 20
+    cmd.state = CommandState.PROCESSING
+    cmd.turns = []
+    agent.get_current_command.return_value = cmd
     return agent
 
 
@@ -164,17 +164,17 @@ def mock_agent_no_pane(mock_project):
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
-    task = MagicMock()
-    task.id = 30
-    task.state = TaskState.AWAITING_INPUT
-    task.turns = []
-    agent.get_current_task.return_value = task
+    cmd = MagicMock()
+    cmd.id = 30
+    cmd.state = CommandState.AWAITING_INPUT
+    cmd.turns = []
+    agent.get_current_command.return_value = cmd
     return agent
 
 
 @pytest.fixture
 def mock_agent_complete(mock_project):
-    """Agent with COMPLETE task (idle, ready for new command)."""
+    """Agent with COMPLETE command (idle, ready for new command)."""
     agent = MagicMock()
     agent.id = 4
     agent.name = "agent-4"
@@ -184,11 +184,11 @@ def mock_agent_complete(mock_project):
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
-    task = MagicMock()
-    task.id = 40
-    task.state = TaskState.COMPLETE
-    task.turns = []
-    agent.get_current_task.return_value = task
+    cmd = MagicMock()
+    cmd.id = 40
+    cmd.state = CommandState.COMPLETE
+    cmd.turns = []
+    agent.get_current_command.return_value = cmd
     return agent
 
 
@@ -320,7 +320,7 @@ class TestListSessions:
         stale_agent.project = mock_project
         stale_agent.ended_at = None
         stale_agent.last_seen_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
-        stale_agent.get_current_task.return_value = None
+        stale_agent.get_current_command.return_value = None
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [stale_agent]
         response = client.get("/api/voice/sessions")
@@ -353,9 +353,9 @@ class TestListSessions:
             "state": "complete",
             "state_label": "Complete",
             "awaiting_input": False,
-            "task_instruction": None,
-            "task_summary": None,
-            "task_completion_summary": None,
+            "command_instruction": None,
+            "command_summary": None,
+            "command_completion_summary": None,
             "turn_count": 0,
             "summary": None,
             "last_activity_ago": "1h ago",
@@ -408,14 +408,14 @@ class TestVoiceCommand:
         mock_db.session.get.return_value = mock_agent_processing
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_result.task = mock_agent_processing.get_current_task()
-            mock_result.task.state = TaskState.PROCESSING
-            mock_result.task.turns = []
+            mock_result.command = mock_agent_processing.get_current_command()
+            mock_result.command.state = CommandState.PROCESSING
+            mock_result.command.turns = []
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -533,10 +533,10 @@ class TestVoiceCommand:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None
 
-        task = MagicMock()
-        task.id = 110
-        task.state = TaskState.AWAITING_INPUT
-        task.instruction = "Do something"
+        cmd = MagicMock()
+        cmd.id = 110
+        cmd.state = CommandState.AWAITING_INPUT
+        cmd.instruction = "Do something"
 
         q_turn = MagicMock()
         q_turn.id = 1100
@@ -548,8 +548,8 @@ class TestVoiceCommand:
         q_turn.question_source_type = "free_text"
         q_turn.tool_input = None
 
-        task.turns = [q_turn]
-        agent.get_current_task.return_value = task
+        cmd.turns = [q_turn]
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
@@ -571,10 +571,10 @@ class TestVoiceCommand:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None
 
-        task = MagicMock()
-        task.id = 120
-        task.state = TaskState.AWAITING_INPUT
-        task.instruction = "Choose DB"
+        cmd = MagicMock()
+        cmd.id = 120
+        cmd.state = CommandState.AWAITING_INPUT
+        cmd.instruction = "Choose DB"
 
         q_turn = MagicMock()
         q_turn.id = 1200
@@ -594,8 +594,8 @@ class TestVoiceCommand:
             }]
         }
 
-        task.turns = [q_turn]
-        agent.get_current_task.return_value = task
+        cmd.turns = [q_turn]
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
@@ -608,7 +608,7 @@ class TestVoiceCommand:
 class TestVoiceCommandToIdle:
     """Tests for sending commands to idle/complete agents.
 
-    Idle/complete agents get turns created directly via TaskLifecycleManager
+    Idle/complete agents get turns created directly via CommandLifecycleManager
     and respond_pending is set to prevent duplicate turn creation by hooks.
     """
 
@@ -619,15 +619,15 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_task = MagicMock()
-            mock_task.state = TaskState.COMMANDED
-            mock_task.turns = []
-            mock_result.task = mock_task
+            mock_cmd = MagicMock()
+            mock_cmd.state = CommandState.COMMANDED
+            mock_cmd.turns = []
+            mock_result.command = mock_cmd
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -641,8 +641,8 @@ class TestVoiceCommandToIdle:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_idle_agent_no_task(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
-        """Sending a command to an agent with no current task creates a turn."""
+    def test_command_to_idle_agent_no_command(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+        """Sending a command to an agent with no current command creates a turn."""
         agent = MagicMock()
         agent.id = 10
         agent.name = "agent-10"
@@ -650,20 +650,20 @@ class TestVoiceCommandToIdle:
         agent.project_id = 1
         agent.tmux_pane_id = "%10"
         agent.last_seen_at = datetime.now(timezone.utc)
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_task = MagicMock()
-            mock_task.state = TaskState.COMMANDED
-            mock_task.turns = []
-            mock_result.task = mock_task
+            mock_cmd = MagicMock()
+            mock_cmd.state = CommandState.COMMANDED
+            mock_cmd.turns = []
+            mock_result.command = mock_cmd
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -676,19 +676,19 @@ class TestVoiceCommandToIdle:
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_idle_command_creates_turn_via_lifecycle(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
-        """Idle path creates turn via TaskLifecycleManager."""
+        """Idle path creates turn via CommandLifecycleManager."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_task = MagicMock()
-            mock_task.state = TaskState.COMMANDED
-            mock_task.turns = []
-            mock_result.task = mock_task
+            mock_cmd = MagicMock()
+            mock_cmd.state = CommandState.COMMANDED
+            mock_cmd.turns = []
+            mock_result.command = mock_cmd
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -704,15 +704,15 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_task = MagicMock()
-            mock_task.state = TaskState.COMMANDED
-            mock_task.turns = []
-            mock_result.task = mock_task
+            mock_cmd = MagicMock()
+            mock_cmd.state = CommandState.COMMANDED
+            mock_cmd.turns = []
+            mock_result.command = mock_cmd
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -729,7 +729,7 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc_cls.side_effect = Exception("lifecycle error")
 
             response = client.post("/api/voice/command", json={"text": "do something", "agent_id": 4})
@@ -742,14 +742,14 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = mock_agent_processing
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.task_lifecycle.TaskLifecycleManager") as mock_lc_cls:
+        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
             mock_result.success = True
-            mock_result.task = mock_agent_processing.get_current_task()
-            mock_result.task.state = TaskState.PROCESSING
-            mock_result.task.turns = []
+            mock_result.command = mock_agent_processing.get_current_command()
+            mock_result.command.state = CommandState.PROCESSING
+            mock_result.command.turns = []
             mock_result.intent = MagicMock()
             mock_result.intent.intent.value = "command"
             mock_lc.process_turn.return_value = mock_result
@@ -822,24 +822,24 @@ class TestAgentOutput:
         response = client.get("/api/voice/agents/999/output")
         assert response.status_code == 404
 
-    def test_output_returns_tasks(self, client, mock_db, mock_agent):
+    def test_output_returns_commands(self, client, mock_db, mock_agent):
         mock_db.session.get.return_value = mock_agent
 
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_task.state = TaskState.PROCESSING
-        mock_task.instruction = "Fix the bug"
-        mock_task.completion_summary = "Fixed it"
-        mock_task.full_command = "pytest tests/"
-        mock_task.full_output = "5 passed"
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_task]
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_cmd.state = CommandState.PROCESSING
+        mock_cmd.instruction = "Fix the bug"
+        mock_cmd.completion_summary = "Fixed it"
+        mock_cmd.full_command = "pytest tests/"
+        mock_cmd.full_output = "5 passed"
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_cmd]
 
         response = client.get("/api/voice/agents/1/output")
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data["tasks"]) == 1
-        assert data["tasks"][0]["instruction"] == "Fix the bug"
-        assert data["tasks"][0]["completion_summary"] == "Fixed it"
+        assert len(data["commands"]) == 1
+        assert data["commands"][0]["instruction"] == "Fix the bug"
+        assert data["commands"][0]["completion_summary"] == "Fixed it"
         assert "latency_ms" in data
 
     def test_output_empty(self, client, mock_db, mock_agent):
@@ -848,7 +848,7 @@ class TestAgentOutput:
         response = client.get("/api/voice/agents/1/output")
         assert response.status_code == 200
         data = response.get_json()
-        assert data["tasks"] == []
+        assert data["commands"] == []
 
     def test_output_respects_limit(self, client, mock_db, mock_agent):
         mock_db.session.get.return_value = mock_agent
@@ -895,9 +895,9 @@ class TestAgentQuestion:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None
 
-        task = MagicMock()
-        task.id = 50
-        task.state = TaskState.AWAITING_INPUT
+        cmd = MagicMock()
+        cmd.id = 50
+        cmd.state = CommandState.AWAITING_INPUT
 
         q_turn = MagicMock()
         q_turn.id = 500
@@ -909,8 +909,8 @@ class TestAgentQuestion:
         q_turn.question_source_type = "free_text"
         q_turn.tool_input = None
 
-        task.turns = [q_turn]
-        agent.get_current_task.return_value = task
+        cmd.turns = [q_turn]
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
 
         response = client.get("/api/voice/agents/5/question")
@@ -928,9 +928,9 @@ class TestAgentQuestion:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None
 
-        task = MagicMock()
-        task.id = 60
-        task.state = TaskState.AWAITING_INPUT
+        cmd = MagicMock()
+        cmd.id = 60
+        cmd.state = CommandState.AWAITING_INPUT
 
         q_turn = MagicMock()
         q_turn.id = 600
@@ -950,8 +950,8 @@ class TestAgentQuestion:
             }]
         }
 
-        task.turns = [q_turn]
-        agent.get_current_task.return_value = task
+        cmd.turns = [q_turn]
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
 
         response = client.get("/api/voice/agents/6/question")
@@ -968,11 +968,11 @@ class TestAgentQuestion:
         agent.name = "agent-7"
         agent.project = mock_project
 
-        task = MagicMock()
-        task.id = 70
-        task.state = TaskState.AWAITING_INPUT
-        task.turns = []  # No turns at all
-        agent.get_current_task.return_value = task
+        cmd = MagicMock()
+        cmd.id = 70
+        cmd.state = CommandState.AWAITING_INPUT
+        cmd.turns = []  # No turns at all
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
 
         response = client.get("/api/voice/agents/7/question")
@@ -983,9 +983,9 @@ class TestAgentQuestion:
         agent = MagicMock()
         agent.id = 8
         agent.project = mock_project
-        task = MagicMock()
-        task.state = TaskState.IDLE
-        agent.get_current_task.return_value = task
+        cmd = MagicMock()
+        cmd.state = CommandState.IDLE
+        agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
 
         response = client.get("/api/voice/agents/8/question")
@@ -1032,20 +1032,20 @@ class TestAgentTranscript:
         response = client.get("/api/voice/agents/999/transcript")
         assert response.status_code == 404
 
-    def test_returns_turns_across_tasks(self, client, mock_db, mock_agent):
-        """Transcript returns turns from ALL tasks for agent (task 3.4)."""
+    def test_returns_turns_across_commands(self, client, mock_db, mock_agent):
+        """Transcript returns turns from ALL commands for agent."""
         mock_db.session.get.return_value = mock_agent
 
-        # Mock turns from different tasks
-        mock_task1 = MagicMock()
-        mock_task1.id = 10
-        mock_task1.instruction = "Fix the bug"
-        mock_task1.state = TaskState.COMPLETE
+        # Mock turns from different commands
+        mock_cmd1 = MagicMock()
+        mock_cmd1.id = 10
+        mock_cmd1.instruction = "Fix the bug"
+        mock_cmd1.state = CommandState.COMPLETE
 
-        mock_task2 = MagicMock()
-        mock_task2.id = 20
-        mock_task2.instruction = "Add tests"
-        mock_task2.state = TaskState.PROCESSING
+        mock_cmd2 = MagicMock()
+        mock_cmd2.id = 20
+        mock_cmd2.instruction = "Add tests"
+        mock_cmd2.state = CommandState.PROCESSING
 
         turn1 = MagicMock()
         turn1.id = 1
@@ -1075,32 +1075,32 @@ class TestAgentTranscript:
         turn2.answered_by_turn_id = None
         turn2.file_metadata = None
 
-        # Mock the query chain: query(Turn, Task).join().filter().order_by().limit()
+        # Mock the query chain: query(Turn, Command).join().filter().order_by().limit()
         turn_query = MagicMock()
         turn_query.join.return_value = turn_query
         turn_query.filter.return_value = turn_query
         turn_query.order_by.return_value = turn_query
         turn_query.limit.return_value = turn_query
-        turn_query.all.return_value = [(turn2, mock_task2), (turn1, mock_task1)]
+        turn_query.all.return_value = [(turn2, mock_cmd2), (turn1, mock_cmd1)]
 
-        # Empty-task query returns nothing
-        empty_task_query = MagicMock()
-        empty_task_query.filter.return_value = empty_task_query
-        empty_task_query.all.return_value = []
+        # Empty-command query returns nothing
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
 
-        mock_db.session.query.side_effect = [turn_query, empty_task_query]
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
 
         response = client.get("/api/voice/agents/1/transcript")
         assert response.status_code == 200
         data = response.get_json()
         assert len(data["turns"]) == 2
-        # Each turn should have task metadata
-        assert data["turns"][0]["task_id"] is not None
-        assert data["turns"][0]["task_instruction"] is not None
-        assert data["turns"][0]["task_state"] is not None
+        # Each turn should have command metadata
+        assert data["turns"][0]["command_id"] is not None
+        assert data["turns"][0]["command_instruction"] is not None
+        assert data["turns"][0]["command_state"] is not None
 
     def test_cursor_pagination(self, client, mock_db, mock_agent):
-        """Transcript supports cursor-based pagination (task 3.3)."""
+        """Transcript supports cursor-based pagination."""
         mock_db.session.get.return_value = mock_agent
 
         mock_query = MagicMock()
@@ -1118,7 +1118,7 @@ class TestAgentTranscript:
         assert "turns" in data
 
     def test_has_more_flag(self, client, mock_db, mock_agent):
-        """has_more is true when more turns exist (task 3.3)."""
+        """has_more is true when more turns exist."""
         mock_db.session.get.return_value = mock_agent
 
         # Return limit+1 results to indicate more exist
@@ -1136,10 +1136,10 @@ class TestAgentTranscript:
         mock_turn.answered_by_turn_id = None
         mock_turn.file_metadata = None
 
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_task.instruction = "Test"
-        mock_task.state = TaskState.PROCESSING
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_cmd.instruction = "Test"
+        mock_cmd.state = CommandState.PROCESSING
 
         # Simulate limit=2 returning 3 results (2+1 extra = has_more)
         turn_query = MagicMock()
@@ -1147,14 +1147,14 @@ class TestAgentTranscript:
         turn_query.filter.return_value = turn_query
         turn_query.order_by.return_value = turn_query
         turn_query.limit.return_value = turn_query
-        turn_query.all.return_value = [(mock_turn, mock_task)] * 3
+        turn_query.all.return_value = [(mock_turn, mock_cmd)] * 3
 
-        # Empty-task query returns nothing
-        empty_task_query = MagicMock()
-        empty_task_query.filter.return_value = empty_task_query
-        empty_task_query.all.return_value = []
+        # Empty-command query returns nothing
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
 
-        mock_db.session.query.side_effect = [turn_query, empty_task_query]
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
 
         response = client.get("/api/voice/agents/1/transcript?limit=2")
         assert response.status_code == 200
@@ -1163,14 +1163,14 @@ class TestAgentTranscript:
         assert len(data["turns"]) == 2
 
     def test_ended_agent_transcript(self, client, mock_db, mock_project):
-        """Ended agent returns full history with agent_ended flag (task 3.5)."""
+        """Ended agent returns full history with agent_ended flag."""
         agent = MagicMock()
         agent.id = 5
         agent.name = "ended-agent"
         agent.project = mock_project
         agent.tmux_session = None
         agent.ended_at = datetime(2026, 2, 10, tzinfo=timezone.utc)
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         mock_db.session.get.return_value = agent
 
@@ -1223,10 +1223,10 @@ class TestAgentTranscript:
         turn.question_source_type = None
         turn.answered_by_turn_id = None
 
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_task.instruction = "Test"
-        mock_task.state = TaskState.PROCESSING
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_cmd.instruction = "Test"
+        mock_cmd.state = CommandState.PROCESSING
 
         mock_query = MagicMock()
         mock_db.session.query.return_value = mock_query
@@ -1234,7 +1234,7 @@ class TestAgentTranscript:
         mock_query.filter.return_value = mock_query
         mock_query.order_by.return_value = mock_query
         mock_query.limit.return_value = mock_query
-        mock_query.all.return_value = [(turn, mock_task)]
+        mock_query.all.return_value = [(turn, mock_cmd)]
 
         response = client.get("/api/voice/agents/1/transcript")
         assert response.status_code == 200
@@ -1257,35 +1257,35 @@ class TestAgentTranscript:
         # Should have been capped to 201 (200+1 for has_more check)
         mock_query.limit.assert_called_with(201)
 
-    def test_includes_task_boundaries_for_empty_tasks(self, client, mock_db, mock_agent):
-        """Synthetic task_boundary entries appear for tasks with no turns."""
+    def test_includes_command_boundaries_for_empty_commands(self, client, mock_db, mock_agent):
+        """Synthetic command_boundary entries appear for commands with no turns."""
         mock_db.session.get.return_value = mock_agent
 
-        # Task 1 - has turns
-        mock_task1 = MagicMock()
-        mock_task1.id = 10
-        mock_task1.instruction = "First task"
-        mock_task1.state = TaskState.COMPLETE
+        # Command 1 - has turns
+        mock_cmd1 = MagicMock()
+        mock_cmd1.id = 10
+        mock_cmd1.instruction = "First command"
+        mock_cmd1.state = CommandState.COMPLETE
 
-        # Task 2 - NO turns (lost during server downtime)
-        mock_task2 = MagicMock()
-        mock_task2.id = 20
-        mock_task2.instruction = "Empty task"
-        mock_task2.state = TaskState.COMPLETE
-        mock_task2.started_at = datetime(2026, 2, 10, 1, 3, 0, tzinfo=timezone.utc)
+        # Command 2 - NO turns (lost during server downtime)
+        mock_cmd2 = MagicMock()
+        mock_cmd2.id = 20
+        mock_cmd2.instruction = "Empty command"
+        mock_cmd2.state = CommandState.COMPLETE
+        mock_cmd2.started_at = datetime(2026, 2, 10, 1, 3, 0, tzinfo=timezone.utc)
 
-        # Task 3 - has turns
-        mock_task3 = MagicMock()
-        mock_task3.id = 30
-        mock_task3.instruction = "Third task"
-        mock_task3.state = TaskState.PROCESSING
+        # Command 3 - has turns
+        mock_cmd3 = MagicMock()
+        mock_cmd3.id = 30
+        mock_cmd3.instruction = "Third command"
+        mock_cmd3.state = CommandState.PROCESSING
 
-        # Turn for task 1 (01:00)
+        # Turn for command 1 (01:00)
         turn1 = MagicMock()
         turn1.id = 1
         turn1.actor = TurnActor.USER
         turn1.intent = TurnIntent.COMMAND
-        turn1.text = "do task 1"
+        turn1.text = "do command 1"
         turn1.summary = None
         turn1.timestamp = datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc)
         turn1.tool_input = None
@@ -1295,12 +1295,12 @@ class TestAgentTranscript:
         turn1.answered_by_turn_id = None
         turn1.file_metadata = None
 
-        # Turn for task 3 (01:10)
+        # Turn for command 3 (01:10)
         turn2 = MagicMock()
         turn2.id = 2
         turn2.actor = TurnActor.USER
         turn2.intent = TurnIntent.COMMAND
-        turn2.text = "do task 3"
+        turn2.text = "do command 3"
         turn2.summary = None
         turn2.timestamp = datetime(2026, 2, 10, 1, 10, 0, tzinfo=timezone.utc)
         turn2.tool_input = None
@@ -1310,33 +1310,33 @@ class TestAgentTranscript:
         turn2.answered_by_turn_id = None
         turn2.file_metadata = None
 
-        # First db.session.query(Turn, Task) — returns turns
+        # First db.session.query(Turn, Command) -- returns turns
         turn_query = MagicMock()
         turn_query.join.return_value = turn_query
         turn_query.filter.return_value = turn_query
         turn_query.order_by.return_value = turn_query
         turn_query.limit.return_value = turn_query
-        turn_query.all.return_value = [(turn2, mock_task3), (turn1, mock_task1)]
+        turn_query.all.return_value = [(turn2, mock_cmd3), (turn1, mock_cmd1)]
 
-        # Second db.session.query(Task) — returns the empty task
-        task_query = MagicMock()
-        task_query.filter.return_value = task_query
-        task_query.all.return_value = [mock_task2]
+        # Second db.session.query(Command) -- returns the empty command
+        cmd_query = MagicMock()
+        cmd_query.filter.return_value = cmd_query
+        cmd_query.all.return_value = [mock_cmd2]
 
-        mock_db.session.query.side_effect = [turn_query, task_query]
+        mock_db.session.query.side_effect = [turn_query, cmd_query]
 
         response = client.get("/api/voice/agents/1/transcript")
         assert response.status_code == 200
         data = response.get_json()
 
-        # 2 real turns + 1 synthetic task_boundary
+        # 2 real turns + 1 synthetic command_boundary
         assert len(data["turns"]) == 3
 
         # Find the synthetic boundary
-        boundaries = [t for t in data["turns"] if t.get("type") == "task_boundary"]
+        boundaries = [t for t in data["turns"] if t.get("type") == "command_boundary"]
         assert len(boundaries) == 1
-        assert boundaries[0]["task_id"] == 20
-        assert boundaries[0]["task_instruction"] == "Empty task"
+        assert boundaries[0]["command_id"] == 20
+        assert boundaries[0]["command_instruction"] == "Empty command"
         assert boundaries[0]["has_turns"] is False
 
         # Verify chronological order: turn1 (01:00), boundary (01:03), turn2 (01:10)

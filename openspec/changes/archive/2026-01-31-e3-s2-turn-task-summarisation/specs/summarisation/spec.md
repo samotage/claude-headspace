@@ -2,7 +2,7 @@
 
 ### Requirement: Turn Summarisation
 
-The system SHALL automatically generate a 1-2 sentence summary for each turn when it is recorded by the TaskLifecycleManager.
+The system SHALL automatically generate a 1-2 sentence summary for each turn when it is recorded by the CommandLifecycleManager.
 
 #### Scenario: Successful turn summarisation
 
@@ -24,23 +24,23 @@ The system SHALL automatically generate a 1-2 sentence summary for each turn whe
 
 ---
 
-### Requirement: Task Summarisation
+### Requirement: Command Summarisation
 
 The system SHALL automatically generate a 2-3 sentence summary when a task transitions to the complete state.
 
-#### Scenario: Successful task summarisation
+#### Scenario: Successful command summarisation
 
 - **WHEN** a task transitions to complete state
-- **THEN** the system SHALL generate a 2-3 sentence outcome summary via the inference service at "task" level
+- **THEN** the system SHALL generate a 2-3 sentence outcome summary via the inference service at "command" level
 - **AND** the summary SHALL include context from task timestamps, turn count, and final turn content
-- **AND** the summary SHALL be stored in the Task model's summary field with a generation timestamp
+- **AND** the summary SHALL be stored in the Command model's summary field with a generation timestamp
 - **AND** an SSE event SHALL be broadcast to update the agent card
 
 #### Scenario: Inference service unavailable for task
 
-- **WHEN** the inference service is unavailable during task summarisation
+- **WHEN** the inference service is unavailable during command summarisation
 - **THEN** the summary field SHALL remain null
-- **AND** the dashboard SHALL display the task state without a summary
+- **AND** the dashboard SHALL display the command state without a summary
 
 ---
 
@@ -54,9 +54,9 @@ The system SHALL expose manual summarisation endpoints for turns and tasks.
 - **THEN** the response SHALL include the generated summary
 - **AND** if the turn already has a summary, the existing summary SHALL be returned without re-generating
 
-#### Scenario: Manual task summarisation
+#### Scenario: Manual command summarisation
 
-- **WHEN** POST `/api/summarise/task/<id>` is requested for a task that exists
+- **WHEN** POST `/api/summarise/command/<id>` is requested for a command that exists
 - **THEN** the response SHALL include the generated summary
 - **AND** if the task already has a summary, the existing summary SHALL be returned without re-generating
 
@@ -78,7 +78,7 @@ Summarisation SHALL execute without blocking the turn processing pipeline or SSE
 
 #### Scenario: Non-blocking summarisation
 
-- **WHEN** summarisation is triggered by turn creation or task completion
+- **WHEN** summarisation is triggered by turn creation or command completion
 - **THEN** the summarisation SHALL execute asynchronously
 - **AND** SSE updates SHALL continue uninterrupted during inference
 
@@ -92,14 +92,14 @@ Summarisation SHALL execute without blocking the turn processing pipeline or SSE
 
 ### Requirement: Summary Data Model
 
-The Turn and Task models SHALL be extended with summary fields.
+The Turn and Command models SHALL be extended with summary fields.
 
 #### Scenario: Turn model extended
 
 - **WHEN** the migration is applied
 - **THEN** the turns table SHALL have a nullable `summary` text field and a nullable `summary_generated_at` timestamp field
 
-#### Scenario: Task model extended
+#### Scenario: Command model extended
 
 - **WHEN** the migration is applied
 - **THEN** the tasks table SHALL have a nullable `summary` text field and a nullable `summary_generated_at` timestamp field
@@ -113,12 +113,12 @@ All summarisation inference calls SHALL use the E3-S1 inference service with cor
 #### Scenario: Turn inference call logging
 
 - **WHEN** a turn summarisation inference call is made
-- **THEN** the InferenceCall record SHALL include level="turn", purpose="summarise_turn", and the correct turn_id, task_id, agent_id, and project_id associations
+- **THEN** the InferenceCall record SHALL include level="turn", purpose="summarise_turn", and the correct turn_id, command_id, agent_id, and project_id associations
 
-#### Scenario: Task inference call logging
+#### Scenario: Command inference call logging
 
-- **WHEN** a task summarisation inference call is made
-- **THEN** the InferenceCall record SHALL include level="task", purpose="summarise_task", and the correct task_id, agent_id, and project_id associations
+- **WHEN** a command summarisation inference call is made
+- **THEN** the InferenceCall record SHALL include level="command", purpose="summarise_task", and the correct command_id, agent_id, and project_id associations
 
 ---
 

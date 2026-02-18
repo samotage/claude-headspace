@@ -83,7 +83,7 @@ Both timestamps are wrong — should be JSONL timestamps
 
 **Current state (lines 51-55):**
 ```python
-# Temporal validation (turn.timestamp >= task.started_at) is enforced at
+# Temporal validation (turn.timestamp >= command.started_at) is enforced at
 # application level — cross-table CHECK constraints are not supported in PostgreSQL.
 timestamp: Mapped[datetime] = mapped_column(
     DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
@@ -110,7 +110,7 @@ query = query.order_by(Turn.id.desc()).limit(limit + 1)
 query = query.order_by(Turn.timestamp.desc()).limit(limit + 1)
 ```
 
-This ensures the transcript API returns turns in conversation-time order, not insertion order. The existing index `ix_turns_task_id_timestamp` (turn.py:83) already covers this.
+This ensures the transcript API returns turns in conversation-time order, not insertion order. The existing index `ix_turns_command_id_timestamp` (turn.py:83) already covers this.
 
 **Also update** the `before` pagination parameter. Currently (line 800-801):
 ```python
@@ -152,7 +152,7 @@ timestamp_source: Mapped[str | None] = mapped_column(
 
 #### Task DB-4: Verify Turn Relationship Ordering
 
-**File:** `src/claude_headspace/models/task.py`
+**File:** `src/claude_headspace/models/command.py`
 
 **Current state (line 66):**
 ```python
@@ -270,7 +270,7 @@ This function reads transcript entries and creates PROGRESS turns. Currently it 
 for text in new_texts:
     state.append_progress_text(agent.id, text)
     turn = Turn(
-        task_id=current_task.id,
+        command_id=current_command.id,
         actor=TurnActor.AGENT,
         intent=TurnIntent.PROGRESS,
         text=text,
@@ -293,7 +293,7 @@ for entry in progress_entries:
     text = entry.content.strip()
     state.append_progress_text(agent.id, text)
     turn = Turn(
-        task_id=current_task.id,
+        command_id=current_command.id,
         actor=TurnActor.AGENT,
         intent=TurnIntent.PROGRESS,
         text=text,
@@ -354,7 +354,7 @@ def reconcile_transcript_entries(agent, task, entries):
 
     Args:
         agent: Agent record
-        task: Current Task record
+        command: Current Command record
         entries: List of TranscriptEntry objects with timestamps
 
     Returns:
@@ -364,11 +364,11 @@ def reconcile_transcript_entries(agent, task, entries):
     """
     result = {"updated": [], "created": []}
 
-    # Get recent turns for this task within the match window
+    # Get recent turns for this command within the match window
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=MATCH_WINDOW_SECONDS)
     recent_turns = (
         Turn.query
-        .filter(Turn.task_id == task.id, Turn.timestamp >= cutoff)
+        .filter(Turn.command_id == command.id, Turn.timestamp >= cutoff)
         .order_by(Turn.timestamp.asc())
         .all()
     )
@@ -399,7 +399,7 @@ def reconcile_transcript_entries(agent, task, entries):
         elif not matched_turn:
             # New entry not seen via hooks — create Turn
             turn = Turn(
-                task_id=task.id,
+                command_id=command.id,
                 actor=TurnActor.USER if actor == "user" else TurnActor.AGENT,
                 intent=_infer_intent(actor, entry),
                 text=entry.content.strip(),
@@ -464,7 +464,7 @@ def broadcast_reconciliation(agent, reconciliation_result):
                 "text": turn.text,
                 "actor": turn.actor.value,
                 "intent": turn.intent.value,
-                "task_id": turn.task_id,
+                "command_id": turn.command_id,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })
@@ -491,7 +491,7 @@ get_broadcaster().broadcast("turn_created", {
     "text": text,
     "actor": "user",
     "intent": "answer",
-    "task_id": current_task.id if current_task else None,
+    "command_id": current_command.id if current_task else None,
     "turn_id": turn.id,
     "timestamp": turn.timestamp.isoformat(),
 })
@@ -510,7 +510,7 @@ Audit all `_broadcast_turn_created()` calls to ensure `turn_id` is always includ
 - `src/claude_headspace/services/hook_deferred_stop.py` — `_broadcast_turn_created()` (lines 68-86)
 - `src/claude_headspace/routes/respond.py` — `_broadcast_state_change()` (lines 406-431)
 
-Ensure every `turn_created` broadcast includes: `turn_id`, `timestamp`, `actor`, `intent`, `text`, `agent_id`, `project_id`, `task_id`.
+Ensure every `turn_created` broadcast includes: `turn_id`, `timestamp`, `actor`, `intent`, `text`, `agent_id`, `project_id`, `command_id`.
 
 ---
 
@@ -601,7 +601,7 @@ function _insertBubbleOrdered(messagesEl, el) {
         if (existingTime <= newTime) {
             // Insert after this bubble (and after any following timestamp separator)
             var insertAfter = bubbles[i];
-            // Skip past any non-bubble elements (timestamp separators, task separators)
+            // Skip past any non-bubble elements (timestamp separators, command separators)
             while (insertAfter.nextElementSibling &&
                    !insertAfter.nextElementSibling.classList.contains('chat-bubble')) {
                 insertAfter = insertAfter.nextElementSibling;
@@ -624,9 +624,9 @@ function _insertBubbleOrdered(messagesEl, el) {
 function _renderChatBubble(turn, prevTurn, forceRender) {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
-    var isTerminal = (turn.intent === 'completion' || turn.intent === 'end_of_task');
-    if (isTerminal && turn.task_id) {
-        _collapseProgressBubbles(messagesEl, turn.task_id);
+    var isTerminal = (turn.intent === 'completion' || turn.intent === 'end_of_command');
+    if (isTerminal && turn.command_id) {
+        _collapseProgressBubbles(messagesEl, turn.command_id);
     }
     var el = _createBubbleEl(turn, prevTurn, forceRender);
     if (el) _insertBubbleOrdered(messagesEl, el);
@@ -881,7 +881,7 @@ function _renderOptimisticUserBubble(text) {
         intent: 'answer',
         text: text,
         timestamp: new Date().toISOString(),
-        task_id: null,
+        command_id: null,
     };
     _renderChatBubble(turn, null, true);
     _scrollChatToBottomIfNear();
@@ -1152,7 +1152,7 @@ for display ordering.
 
 | Event | Purpose | Key Fields |
 |-------|---------|------------|
-| `turn_created` | New turn available | turn_id, text, actor, intent, timestamp, task_id, tool_input |
+| `turn_created` | New turn available | turn_id, text, actor, intent, timestamp, command_id, tool_input |
 | `turn_updated` | Timestamp correction | turn_id, timestamp, update_type |
 | `state_changed` | Agent state transition | agent_id, new_state |
 | `gap` | Server detected dropped events | message |

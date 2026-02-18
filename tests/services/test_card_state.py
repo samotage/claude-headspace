@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from claude_headspace.models.task import TaskState
+from claude_headspace.models.command import CommandState
 from claude_headspace.services.card_state import (
     TIMED_OUT,
     broadcast_card_refresh,
@@ -16,15 +16,15 @@ from claude_headspace.services.card_state import (
     get_effective_state,
     get_question_options,
     get_state_info,
-    get_task_completion_summary,
-    get_task_instruction,
-    get_task_summary,
+    get_command_completion_summary,
+    get_command_instruction,
+    get_command_summary,
     is_agent_active,
 )
 
 
 def _make_agent(
-    state=TaskState.IDLE,
+    state=CommandState.IDLE,
     last_seen_minutes_ago=0,
     started_hours_ago=1,
     ended=False,
@@ -44,8 +44,8 @@ def _make_agent(
     agent.project_id = 10
     agent.project = MagicMock()
     agent.project.name = "test-project"
-    agent.get_current_task.return_value = None
-    agent.tasks = []
+    agent.get_current_command.return_value = None
+    agent.commands = []
     return agent
 
 
@@ -62,25 +62,25 @@ class TestBuildCardState:
         expected_keys = {
             "id", "session_uuid", "hero_chars", "hero_trail",
             "is_active", "uptime", "last_seen",
-            "state", "state_info", "task_summary", "task_instruction",
-            "task_completion_summary", "priority", "priority_reason",
-            "turn_count", "elapsed", "current_task_id", "is_bridge_connected",
+            "state", "state_info", "command_summary", "command_instruction",
+            "command_completion_summary", "priority", "priority_reason",
+            "turn_count", "elapsed", "current_command_id", "is_bridge_connected",
             "project_name", "project_slug", "project_id",
             "has_plan", "tmux_session", "context",
         }
         assert set(result.keys()) == expected_keys
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
-    def test_idle_agent_no_task(self, mock_config):
+    def test_idle_agent_no_command(self, mock_config):
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        agent = _make_agent(state=TaskState.IDLE)
+        agent = _make_agent(state=CommandState.IDLE)
 
         result = build_card_state(agent)
 
         assert result["id"] == 42
         assert result["state"] == "IDLE"
         assert result["is_active"] is True
-        assert result["task_summary"] == "No active task"
+        assert result["command_summary"] == "No active command"
         assert result["priority"] == 50  # default
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
@@ -106,7 +106,7 @@ class TestBuildCardState:
         assert result["tmux_session"] is None
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
-    def test_with_task_and_turns(self, mock_config):
+    def test_with_command_and_turns(self, mock_config):
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
         mock_turn = MagicMock()
@@ -118,27 +118,27 @@ class TestBuildCardState:
         mock_turn.intent.value = "progress"
         mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.PROCESSING
-        mock_task.instruction = "Add OAuth2 support"
-        mock_task.turns = [mock_turn]
-        mock_task.completion_summary = None
+        mock_command = MagicMock()
+        mock_command.state = CommandState.PROCESSING
+        mock_command.instruction = "Add OAuth2 support"
+        mock_command.turns = [mock_turn]
+        mock_command.completion_summary = None
 
-        agent = _make_agent(state=TaskState.PROCESSING)
-        agent.get_current_task.return_value = mock_task
-        agent.tasks = [mock_task]
+        agent = _make_agent(state=CommandState.PROCESSING)
+        agent.get_current_command.return_value = mock_command
+        agent.commands = [mock_command]
 
         result = build_card_state(agent)
 
         assert result["state"] == "PROCESSING"
-        assert result["task_instruction"] == "Add OAuth2 support"
-        assert result["task_summary"] == "Implementing OAuth2"
+        assert result["command_instruction"] == "Add OAuth2 support"
+        assert result["command_summary"] == "Implementing OAuth2"
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_timed_out_detection(self, mock_config):
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
-        agent = _make_agent(state=TaskState.PROCESSING, last_seen_minutes_ago=15)
+        agent = _make_agent(state=CommandState.PROCESSING, last_seen_minutes_ago=15)
 
         result = build_card_state(agent)
 
@@ -161,16 +161,16 @@ class TestBuildCardState:
         """COMPLETE state includes turn_count and elapsed for condensed card."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.COMPLETE
-        mock_task.instruction = "Fix the bug"
-        mock_task.completion_summary = "Bug fixed"
-        mock_task.started_at = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
-        mock_task.completed_at = datetime.now(timezone.utc) - timedelta(minutes=5)
-        mock_task.turns = [MagicMock(), MagicMock(), MagicMock()]
+        mock_command = MagicMock()
+        mock_command.state = CommandState.COMPLETE
+        mock_command.instruction = "Fix the bug"
+        mock_command.completion_summary = "Bug fixed"
+        mock_command.started_at = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
+        mock_command.completed_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        mock_command.turns = [MagicMock(), MagicMock(), MagicMock()]
 
-        agent = _make_agent(state=TaskState.IDLE)
-        agent.tasks = [mock_task]
+        agent = _make_agent(state=CommandState.IDLE)
+        agent.commands = [mock_command]
 
         result = build_card_state(agent)
 
@@ -182,10 +182,10 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_idle_state_includes_turn_count_and_elapsed(self, mock_config):
-        """All states include turn_count and elapsed (0/None for IDLE with no task)."""
+        """All states include turn_count and elapsed (0/None for IDLE with no command)."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
-        agent = _make_agent(state=TaskState.IDLE)
+        agent = _make_agent(state=CommandState.IDLE)
 
         result = build_card_state(agent)
 
@@ -196,10 +196,10 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_state_serialised_as_string(self, mock_config):
-        """State is always a string (not a TaskState enum) for JSON serialisation."""
+        """State is always a string (not a CommandState enum) for JSON serialisation."""
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
-        agent = _make_agent(state=TaskState.AWAITING_INPUT)
+        agent = _make_agent(state=CommandState.AWAITING_INPUT)
 
         result = build_card_state(agent)
 
@@ -281,28 +281,28 @@ class TestGetQuestionOptions:
         mock_turn.intent = TurnIntent.QUESTION
         mock_turn.tool_input = tool_input
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [mock_turn]
+        mock_command = MagicMock()
+        mock_command.state = CommandState.AWAITING_INPUT
+        mock_command.turns = [mock_turn]
 
-        agent = _make_agent(state=TaskState.AWAITING_INPUT)
-        agent.get_current_task.return_value = mock_task
+        agent = _make_agent(state=CommandState.AWAITING_INPUT)
+        agent.get_current_command.return_value = mock_command
 
         result = get_question_options(agent)
         assert result == tool_input
 
     def test_returns_none_when_not_awaiting_input(self):
-        agent = _make_agent(state=TaskState.PROCESSING)
-        mock_task = MagicMock()
-        mock_task.state = TaskState.PROCESSING
-        agent.get_current_task.return_value = mock_task
+        agent = _make_agent(state=CommandState.PROCESSING)
+        mock_command = MagicMock()
+        mock_command.state = CommandState.PROCESSING
+        agent.get_current_command.return_value = mock_command
 
         result = get_question_options(agent)
         assert result is None
 
-    def test_returns_none_when_no_task(self):
+    def test_returns_none_when_no_command(self):
         agent = _make_agent()
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
         result = get_question_options(agent)
         assert result is None
@@ -315,12 +315,12 @@ class TestGetQuestionOptions:
         mock_turn.intent = TurnIntent.QUESTION
         mock_turn.tool_input = None
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [mock_turn]
+        mock_command = MagicMock()
+        mock_command.state = CommandState.AWAITING_INPUT
+        mock_command.turns = [mock_turn]
 
-        agent = _make_agent(state=TaskState.AWAITING_INPUT)
-        agent.get_current_task.return_value = mock_task
+        agent = _make_agent(state=CommandState.AWAITING_INPUT)
+        agent.get_current_command.return_value = mock_command
 
         result = get_question_options(agent)
         assert result is None
@@ -346,15 +346,15 @@ class TestGetQuestionOptions:
         mock_turn.text = "Which?"
         mock_turn.is_internal = False
 
-        mock_task = MagicMock()
-        mock_task.state = TaskState.AWAITING_INPUT
-        mock_task.turns = [mock_turn]
-        mock_task.instruction = "Test task"
-        mock_task.completion_summary = None
-        mock_task.started_at = None
+        mock_command = MagicMock()
+        mock_command.state = CommandState.AWAITING_INPUT
+        mock_command.turns = [mock_turn]
+        mock_command.instruction = "Test task"
+        mock_command.completion_summary = None
+        mock_command.started_at = None
 
-        agent = _make_agent(state=TaskState.AWAITING_INPUT)
-        agent.get_current_task.return_value = mock_task
+        agent = _make_agent(state=CommandState.AWAITING_INPUT)
+        agent.get_current_command.return_value = mock_command
 
         result = build_card_state(agent)
         assert result["question_options"] == tool_input
@@ -363,6 +363,6 @@ class TestGetQuestionOptions:
     def test_build_card_state_omits_question_options_when_none(self, mock_config):
         mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
 
-        agent = _make_agent(state=TaskState.IDLE)
+        agent = _make_agent(state=CommandState.IDLE)
         result = build_card_state(agent)
         assert "question_options" not in result

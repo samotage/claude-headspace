@@ -115,7 +115,7 @@ No page refresh. No scanning. No context lost.
 | SC7 | State changes update dashboard within 1 second | Measure: event timestamp to DOM update < 1000ms |
 | SC8 | Header status counts update on state change | `agent_state_changed` event → INPUT NEEDED/WORKING/IDLE counts refresh |
 | SC9 | Traffic lights update on state change | Agent state change → parent project traffic light colour recalculated |
-| SC10 | Agent cards update on state/turn events | State bar, task summary, status badge update without reload |
+| SC10 | Agent cards update on state/turn events | State bar, command summary, status badge update without reload |
 | SC11 | SSE reconnects automatically on disconnect | Simulate disconnect → connection re-established within 30 seconds |
 | SC12 | "Headspace" button triggers focus API with feedback | Click → API call → success highlight or error toast |
 | SC13 | Connection indicator reflects SSE state | Connected: "● SSE live", Disconnected: "○ Reconnecting..." |
@@ -182,7 +182,7 @@ No page refresh. No scanning. No context lost.
 
 **FR14:** The dashboard processes the following event types:
 - `agent_state_changed`: Update agent card state bar, recalculate status counts and traffic lights
-- `turn_created`: Update agent card task summary with new turn text
+- `turn_created`: Update agent card command summary with new turn text
 - `agent_activity`: Update agent card status badge (ACTIVE/IDLE) and uptime
 - `session_ended`: Mark agent card as inactive or remove from display
 
@@ -324,7 +324,7 @@ This section documents specific connections to Part 1 (`e1-s8-dashboard-ui-prd.m
 | **FR10** - Traffic light indicators | Update via SSE on `agent_state_changed` (FR15) |
 | **FR15** - Agent status badge | Update via SSE on `agent_activity` (FR14) |
 | **FR17** - Agent state bars | Update via SSE on `agent_state_changed` (FR14) |
-| **FR18** - Agent task summary | Update via SSE on `turn_created` (FR14) |
+| **FR18** - Agent command summary | Update via SSE on `turn_created` (FR14) |
 | **Project group structure** | Used by "By Project" sort (FR9) |
 | **Agent card structure** | Used in both sort views, receives SSE updates |
 
@@ -355,7 +355,7 @@ This section provides technical context for implementers. These are not requirem
 **Part 1 Template Elements:**
 - Header status counts: Update inner text of badge elements
 - Traffic lights: Update class/colour of indicator dots
-- Agent cards: Update state bar class, task summary text, status badge
+- Agent cards: Update state bar class, command summary text, status badge
 
 ---
 
@@ -366,7 +366,7 @@ This section provides technical context for implementers. These are not requirem
 | **Part 1: Dashboard UI Core** | Hard | Requires `e1-s8-dashboard-ui-prd.md` complete (layout, cards, structure) |
 | **Sprint 7: SSE System** | Hard | Requires `/api/events` endpoint operational |
 | **Sprint 12: AppleScript Integration** | Hard | Requires `/api/focus/<agent_id>` endpoint operational |
-| Sprint 3: Domain Models | Hard | Requires Agent, Task models (inherited from Part 1) |
+| Sprint 3: Domain Models | Hard | Requires Agent, Command models (inherited from Part 1) |
 
 ---
 

@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from ..database import db
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
@@ -44,12 +44,12 @@ def remove_reconcile_lock(agent_id: int) -> None:
         _reconcile_locks.pop(agent_id, None)
 
 
-def reconcile_transcript_entries(agent, task, entries):
+def reconcile_transcript_entries(agent, command, entries):
     """Reconcile JSONL transcript entries against existing Turns.
 
     Args:
         agent: Agent record
-        task: Current Task record
+        command: Current Command record
         entries: List of TranscriptEntry objects with timestamps
 
     Returns:
@@ -62,11 +62,11 @@ def reconcile_transcript_entries(agent, task, entries):
     if not entries:
         return result
 
-    # Get recent turns for this task within the match window
+    # Get recent turns for this command within the match window
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=MATCH_WINDOW_SECONDS)
     recent_turns = (
         Turn.query
-        .filter(Turn.task_id == task.id, Turn.timestamp >= cutoff)
+        .filter(Turn.command_id == command.id, Turn.timestamp >= cutoff)
         .order_by(Turn.timestamp.asc())
         .all()
     )
@@ -123,13 +123,13 @@ def reconcile_transcript_entries(agent, task, entries):
             # New entry not seen via hooks — create Turn with proper intent detection
             turn_text = entry.content.strip()
             if actor == "user":
-                intent_result = detect_user_intent(turn_text, task.state)
+                intent_result = detect_user_intent(turn_text, command.state)
                 detected_intent = intent_result.intent
             else:
                 intent_result = detect_agent_intent(turn_text, inference_service=None)
                 detected_intent = intent_result.intent
             turn = Turn(
-                task_id=task.id,
+                command_id=command.id,
                 actor=TurnActor.USER if actor == "user" else TurnActor.AGENT,
                 intent=detected_intent,
                 text=turn_text,
@@ -151,7 +151,7 @@ def reconcile_transcript_entries(agent, task, entries):
             db.session.commit()
             # Feed recovered turns with state-changing intents into lifecycle.
             # The turn is now safe in DB — a failed transition cannot destroy it.
-            _apply_recovered_turn_lifecycle(agent, task, turn, intent_result)
+            _apply_recovered_turn_lifecycle(agent, command, turn, intent_result)
 
     # Commit any remaining timestamp updates not yet committed
     if result["updated"]:
@@ -196,17 +196,17 @@ def broadcast_reconciliation(agent, reconciliation_result):
         try:
             turn = db.session.get(Turn, turn_id)
             if turn:
-                task_instr = None
-                if turn.task:
-                    task_instr = turn.task.instruction
+                command_instr = None
+                if turn.command:
+                    command_instr = turn.command.instruction
                 broadcaster.broadcast("turn_created", {
                     "agent_id": agent.id,
                     "project_id": agent.project_id,
                     "text": turn.text,
                     "actor": turn.actor.value,
                     "intent": turn.intent.value,
-                    "task_id": turn.task_id,
-                    "task_instruction": task_instr,
+                    "command_id": turn.command_id,
+                    "command_instruction": command_instr,
                     "turn_id": turn.id,
                     "question_source_type": turn.question_source_type,
                     "timestamp": turn.timestamp.isoformat(),
@@ -250,7 +250,7 @@ def reconcile_agent_session(agent):
             created: list of turn_id for newly created turns
     """
     from .transcript_reader import read_new_entries_from_position
-    from ..models.task import Task
+    from ..models.command import Command
 
     if not agent.transcript_path:
         return {"updated": [], "created": []}
@@ -261,8 +261,8 @@ def reconcile_agent_session(agent):
         return {"updated": [], "created": []}
 
     # Get ALL turns for this agent's tasks (no time window)
-    task_ids = [t.id for t in Task.query.filter_by(agent_id=agent.id).all()]
-    existing_turns = Turn.query.filter(Turn.task_id.in_(task_ids)).all() if task_ids else []
+    command_ids = [t.id for t in Command.query.filter_by(agent_id=agent.id).all()]
+    existing_turns = Turn.query.filter(Turn.command_id.in_(command_ids)).all() if command_ids else []
 
     # Build hash index from existing turns using both new and legacy hashes
     existing_hashes = set()
@@ -274,9 +274,9 @@ def reconcile_agent_session(agent):
         if turn.jsonl_entry_hash:
             existing_hashes.add(turn.jsonl_entry_hash)
 
-    # Find the most recent task for creating new turns
-    latest_task = Task.query.filter_by(agent_id=agent.id).order_by(Task.id.desc()).first()
-    if not latest_task:
+    # Find the most recent command for creating new turns
+    latest_command = Command.query.filter_by(agent_id=agent.id).order_by(Command.id.desc()).first()
+    if not latest_command:
         return {"updated": [], "created": []}
 
     result = {"updated": [], "created": []}
@@ -292,13 +292,13 @@ def reconcile_agent_session(agent):
         existing_hashes.add(legacy_key)
         turn_text = entry.content.strip()
         if actor == "user":
-            intent_result = detect_user_intent(turn_text, latest_task.state)
+            intent_result = detect_user_intent(turn_text, latest_command.state)
             detected_intent = intent_result.intent
         else:
             intent_result = detect_agent_intent(turn_text, inference_service=None)
             detected_intent = intent_result.intent
         turn = Turn(
-            task_id=latest_task.id,
+            command_id=latest_command.id,
             actor=TurnActor.USER if actor == "user" else TurnActor.AGENT,
             intent=detected_intent,
             text=turn_text,
@@ -318,44 +318,44 @@ def reconcile_agent_session(agent):
         # Commit turn BEFORE lifecycle call — the two-commit pattern.
         db.session.commit()
         # Feed recovered turns into lifecycle (same as reconcile_transcript_entries).
-        _apply_recovered_turn_lifecycle(agent, latest_task, turn, intent_result)
+        _apply_recovered_turn_lifecycle(agent, latest_command, turn, intent_result)
 
     return result
 
 
-def _apply_recovered_turn_lifecycle(agent, task, turn, intent_result):
-    """Feed a recovered turn into the TaskLifecycleManager for state transitions.
+def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
+    """Feed a recovered turn into the CommandLifecycleManager for state transitions.
 
     Only triggers state changes for state-relevant intents (QUESTION, COMPLETION,
-    END_OF_TASK). PROGRESS turns are informational and don't change state.
+    END_OF_COMMAND). PROGRESS turns are informational and don't change state.
 
     IMPORTANT: The caller MUST commit the turn to the database BEFORE calling
     this function. This ensures a failed state transition rollback cannot
     destroy the turn (the "two-commit" pattern).
     """
-    if turn.intent not in (TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
+    if turn.intent not in (TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
         return
 
     try:
         from flask import current_app
-        lifecycle = current_app.extensions.get("task_lifecycle")
+        lifecycle = current_app.extensions.get("command_lifecycle")
         if not lifecycle:
             return
 
-        from_state = task.state
+        from_state = command.state
         if turn.intent == TurnIntent.QUESTION:
-            lifecycle.update_task_state(
-                task=task, to_state=TaskState.AWAITING_INPUT,
+            lifecycle.update_command_state(
+                command=command, to_state=CommandState.AWAITING_INPUT,
                 trigger="reconciler:recovered_turn",
                 confidence=intent_result.confidence,
             )
-        elif turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
-            # Set full_output directly — do NOT pass agent_text to complete_task
+        elif turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+            # Set full_output directly — do NOT pass agent_text to complete_command
             # because the recovered turn already exists (committed above via
             # two-commit pattern). Passing agent_text would create a duplicate.
-            task.full_output = turn.text
-            lifecycle.complete_task(
-                task=task, trigger="reconciler:recovered_turn",
+            command.full_output = turn.text
+            lifecycle.complete_command(
+                command=command, trigger="reconciler:recovered_turn",
                 agent_text="", intent=turn.intent,
             )
         # Drain pending summarisation requests to prevent leaking into next
@@ -364,7 +364,7 @@ def _apply_recovered_turn_lifecycle(agent, task, turn, intent_result):
         db.session.commit()
         logger.info(
             f"[RECONCILER] Recovered turn {turn.id} triggered state transition: "
-            f"{from_state.value} -> {task.state.value}"
+            f"{from_state.value} -> {command.state.value}"
         )
         # Broadcast card refresh for state change
         try:

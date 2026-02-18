@@ -30,7 +30,7 @@ def get_notifications_config() -> dict:
         "enabled": True,
         "sound": True,
         "events": {
-            "task_complete": True,
+            "command_complete": True,
             "awaiting_input": True,
         },
         "rate_limit_seconds": 5,
@@ -121,7 +121,7 @@ def update_preferences():
         "enabled": true/false,
         "sound": true/false,
         "events": {
-            "task_complete": true/false,
+            "command_complete": true/false,
             "awaiting_input": true/false
         },
         "rate_limit_seconds": 5
@@ -173,7 +173,7 @@ def update_preferences():
                     "message": "events must be an object",
                 }), 400
             for event_type, value in data["events"].items():
-                if event_type not in ["task_complete", "awaiting_input"]:
+                if event_type not in ["command_complete", "awaiting_input"]:
                     return jsonify({
                         "status": "error",
                         "message": f"Unknown event type: {event_type}",
@@ -291,7 +291,7 @@ def test_notification():
         success = service.send_notification(
             agent_id=f"test-{time.time()}",
             agent_name="Test Agent",
-            event_type="task_complete",
+            event_type="command_complete",
             project="Test Project",
         )
 

@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.claude_headspace.models import TaskState
+from src.claude_headspace.models import CommandState
 from src.claude_headspace.routes.dashboard import (
     get_recommended_next,
     sort_agents_by_priority,
@@ -18,10 +18,10 @@ from src.claude_headspace.routes.dashboard import (
 
 def create_mock_agent(
     agent_id: int = 1,
-    state: TaskState = TaskState.IDLE,
+    state: CommandState = CommandState.IDLE,
     last_seen_minutes_ago: int = 0,
     started_hours_ago: int = 1,
-    task_text: str | None = None,
+    command_text: str | None = None,
     priority_score: int | None = None,
     priority_reason: str | None = None,
 ):
@@ -36,22 +36,22 @@ def create_mock_agent(
     agent.priority_score = priority_score
     agent.priority_reason = priority_reason
 
-    # Mock get_current_task
-    if task_text:
+    # Mock get_current_command
+    if command_text:
         mock_turn = MagicMock()
-        mock_turn.text = task_text
-        mock_task = MagicMock()
-        mock_task.turns = [mock_turn]
-        agent.get_current_task.return_value = mock_task
+        mock_turn.text = command_text
+        mock_cmd = MagicMock()
+        mock_cmd.turns = [mock_turn]
+        agent.get_current_command.return_value = mock_cmd
     else:
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
 
     return agent
 
 
 def create_agent_data(
     agent_id: int = 1,
-    state: TaskState = TaskState.IDLE,
+    state: CommandState = CommandState.IDLE,
     last_seen_minutes_ago: int = 0,
     project_name: str = "Test Project",
     project_id: int = 1,
@@ -65,7 +65,7 @@ def create_agent_data(
         "uptime": "up 1h",
         "state": state,
         "state_info": {"color": "gray", "bg_class": "bg-muted", "label": "Idle"},
-        "task_summary": "No active task",
+        "command_summary": "No active command",
         "priority": 50,
         "project_name": project_name,
         "project_id": project_id,
@@ -87,21 +87,21 @@ class TestGetRecommendedNext:
     def test_awaiting_input_has_priority(self):
         """Test that AWAITING_INPUT agent is recommended over others."""
         # Create agents
-        agent_idle = create_mock_agent(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=1)
+        agent_idle = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1)
         agent_awaiting = create_mock_agent(
-            agent_id=2, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=5
+            agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=5
         )
         agent_processing = create_mock_agent(
-            agent_id=3, state=TaskState.PROCESSING, last_seen_minutes_ago=0
+            agent_id=3, state=CommandState.PROCESSING, last_seen_minutes_ago=0
         )
 
         all_agents = [agent_idle, agent_awaiting, agent_processing]
 
         # Create agent data map
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.IDLE),
-            2: create_agent_data(agent_id=2, state=TaskState.AWAITING_INPUT),
-            3: create_agent_data(agent_id=3, state=TaskState.PROCESSING),
+            1: create_agent_data(agent_id=1, state=CommandState.IDLE),
+            2: create_agent_data(agent_id=2, state=CommandState.AWAITING_INPUT),
+            3: create_agent_data(agent_id=3, state=CommandState.PROCESSING),
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -114,17 +114,17 @@ class TestGetRecommendedNext:
         """Test that the oldest AWAITING_INPUT agent is recommended first."""
         # Create two agents awaiting input
         agent_newer = create_mock_agent(
-            agent_id=1, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=2
+            agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=2
         )
         agent_older = create_mock_agent(
-            agent_id=2, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=10
+            agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=10
         )
 
         all_agents = [agent_newer, agent_older]
 
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.AWAITING_INPUT),
-            2: create_agent_data(agent_id=2, state=TaskState.AWAITING_INPUT),
+            1: create_agent_data(agent_id=1, state=CommandState.AWAITING_INPUT),
+            2: create_agent_data(agent_id=2, state=CommandState.AWAITING_INPUT),
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -134,14 +134,14 @@ class TestGetRecommendedNext:
 
     def test_most_recently_active_when_no_awaiting_input(self):
         """Test that most recently active agent is recommended when none awaiting input."""
-        agent_old = create_mock_agent(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=4)
-        agent_recent = create_mock_agent(agent_id=2, state=TaskState.IDLE, last_seen_minutes_ago=1)
+        agent_old = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4)
+        agent_recent = create_mock_agent(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1)
 
         all_agents = [agent_old, agent_recent]
 
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=4),
-            2: create_agent_data(agent_id=2, state=TaskState.IDLE, last_seen_minutes_ago=1),
+            1: create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4),
+            2: create_agent_data(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1),
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -152,11 +152,11 @@ class TestGetRecommendedNext:
 
     def test_no_recommendation_when_all_inactive(self):
         """Test that None returned when no active agents."""
-        agent = create_mock_agent(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=10)
+        agent = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10)
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=10)
+            1: create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10)
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -166,12 +166,12 @@ class TestGetRecommendedNext:
     def test_rationale_format_minutes(self):
         """Test that rationale correctly formats minutes."""
         agent = create_mock_agent(
-            agent_id=1, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=15
+            agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=15
         )
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=15)
+            1: create_agent_data(agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=15)
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -182,12 +182,12 @@ class TestGetRecommendedNext:
     def test_rationale_format_hours_and_minutes(self):
         """Test that rationale correctly formats hours and minutes."""
         agent = create_mock_agent(
-            agent_id=1, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=75  # 1h 15m
+            agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=75  # 1h 15m
         )
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=75)
+            1: create_agent_data(agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=75)
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -211,23 +211,23 @@ class TestSortAgentsByPriority:
     def test_awaiting_input_first(self):
         """Test that AWAITING_INPUT comes before other states."""
         agents = [
-            create_agent_data(agent_id=1, state=TaskState.IDLE),
-            create_agent_data(agent_id=2, state=TaskState.AWAITING_INPUT),
-            create_agent_data(agent_id=3, state=TaskState.PROCESSING),
+            create_agent_data(agent_id=1, state=CommandState.IDLE),
+            create_agent_data(agent_id=2, state=CommandState.AWAITING_INPUT),
+            create_agent_data(agent_id=3, state=CommandState.PROCESSING),
         ]
 
         result = sort_agents_by_priority(agents)
 
         assert result[0]["id"] == 2  # AWAITING_INPUT first
-        assert result[0]["state"] == TaskState.AWAITING_INPUT
+        assert result[0]["state"] == CommandState.AWAITING_INPUT
 
     def test_working_before_idle(self):
         """Test that COMMANDED/PROCESSING comes before IDLE/COMPLETE."""
         agents = [
-            create_agent_data(agent_id=1, state=TaskState.IDLE),
-            create_agent_data(agent_id=2, state=TaskState.PROCESSING),
-            create_agent_data(agent_id=3, state=TaskState.COMPLETE),
-            create_agent_data(agent_id=4, state=TaskState.COMMANDED),
+            create_agent_data(agent_id=1, state=CommandState.IDLE),
+            create_agent_data(agent_id=2, state=CommandState.PROCESSING),
+            create_agent_data(agent_id=3, state=CommandState.COMPLETE),
+            create_agent_data(agent_id=4, state=CommandState.COMMANDED),
         ]
 
         result = sort_agents_by_priority(agents)
@@ -243,9 +243,9 @@ class TestSortAgentsByPriority:
     def test_within_group_sorted_by_recency(self):
         """Test that within same priority group, most recent comes first."""
         agents = [
-            create_agent_data(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=10),
-            create_agent_data(agent_id=2, state=TaskState.IDLE, last_seen_minutes_ago=2),
-            create_agent_data(agent_id=3, state=TaskState.IDLE, last_seen_minutes_ago=5),
+            create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10),
+            create_agent_data(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=2),
+            create_agent_data(agent_id=3, state=CommandState.IDLE, last_seen_minutes_ago=5),
         ]
 
         result = sort_agents_by_priority(agents)
@@ -256,12 +256,12 @@ class TestSortAgentsByPriority:
     def test_full_priority_ordering(self):
         """Test complete ordering: AWAITING_INPUT → WORKING → IDLE."""
         agents = [
-            create_agent_data(agent_id=1, state=TaskState.IDLE, last_seen_minutes_ago=1),
-            create_agent_data(agent_id=2, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=5),
-            create_agent_data(agent_id=3, state=TaskState.PROCESSING, last_seen_minutes_ago=2),
-            create_agent_data(agent_id=4, state=TaskState.COMPLETE, last_seen_minutes_ago=0),
-            create_agent_data(agent_id=5, state=TaskState.COMMANDED, last_seen_minutes_ago=3),
-            create_agent_data(agent_id=6, state=TaskState.AWAITING_INPUT, last_seen_minutes_ago=1),
+            create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1),
+            create_agent_data(agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=5),
+            create_agent_data(agent_id=3, state=CommandState.PROCESSING, last_seen_minutes_ago=2),
+            create_agent_data(agent_id=4, state=CommandState.COMPLETE, last_seen_minutes_ago=0),
+            create_agent_data(agent_id=5, state=CommandState.COMMANDED, last_seen_minutes_ago=3),
+            create_agent_data(agent_id=6, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=1),
         ]
 
         result = sort_agents_by_priority(agents)
@@ -270,22 +270,22 @@ class TestSortAgentsByPriority:
         result_states = [a["state"] for a in result]
 
         # AWAITING_INPUT should come first
-        assert result_states[0] == TaskState.AWAITING_INPUT
-        assert result_states[1] == TaskState.AWAITING_INPUT
+        assert result_states[0] == CommandState.AWAITING_INPUT
+        assert result_states[1] == CommandState.AWAITING_INPUT
 
         # Then COMMANDED/PROCESSING
-        assert result_states[2] in (TaskState.COMMANDED, TaskState.PROCESSING)
-        assert result_states[3] in (TaskState.COMMANDED, TaskState.PROCESSING)
+        assert result_states[2] in (CommandState.COMMANDED, CommandState.PROCESSING)
+        assert result_states[3] in (CommandState.COMMANDED, CommandState.PROCESSING)
 
         # Then IDLE/COMPLETE
-        assert result_states[4] in (TaskState.IDLE, TaskState.COMPLETE)
-        assert result_states[5] in (TaskState.IDLE, TaskState.COMPLETE)
+        assert result_states[4] in (CommandState.IDLE, CommandState.COMPLETE)
+        assert result_states[5] in (CommandState.IDLE, CommandState.COMPLETE)
 
     def test_preserves_agent_data(self):
         """Test that sorting preserves all agent data."""
         agents = [
             create_agent_data(
-                agent_id=1, state=TaskState.IDLE, project_name="Project A", project_id=10
+                agent_id=1, state=CommandState.IDLE, project_name="Project A", project_id=10
             ),
         ]
 

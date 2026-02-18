@@ -29,7 +29,7 @@ Together with E5-S2, this completes the Project Show page as the canonical, comp
 
 E5-S2 delivers the project show page with metadata, controls, waypoint, brain reboot, and progress summary. However, the most data-rich aspects of a project — its agents, their tasks and turns, associated metrics, and historical activity — are not yet visible on the show page.
 
-Currently, agent data is only visible on the dashboard (as cards in Kanban columns), task/turn data is not directly browsable in the UI at all (only via API), and activity metrics live on a separate `/activity` page. Users cannot explore a project's full operational tree from a single location.
+Currently, agent data is only visible on the dashboard (as cards in Kanban columns), command/turn data is not directly browsable in the UI at all (only via API), and activity metrics live on a separate `/activity` page. Users cannot explore a project's full operational tree from a single location.
 
 ### 1.2 Target User
 
@@ -47,12 +47,12 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 
 - **Accordion object tree:** Expandable/collapsible sections for the project's data hierarchy
   - Agents accordion: list of all agents (active and ended) with state, priority score, session timing
-  - Tasks accordion (per agent): list of tasks with state, instruction preview, completion summary, timing
-  - Turns accordion (per task): list of turns with actor, intent, summary, frustration score
+  - Commands accordion (per agent): list of tasks with state, instruction preview, completion summary, timing
+  - Turns accordion (per command): list of turns with actor, intent, summary, frustration score
 - **Lazy data loading:** Each accordion section fetches its data from the API when expanded (not on page load)
 - **Metrics at each level:**
   - Agent level: priority score, turn count, active duration
-  - Task level: state, duration, turn count
+  - Command level: state, duration, turn count
   - Turn level: frustration score (visually highlighted when elevated), actor, intent
 - **Activity metrics section:** Embedded project-scoped activity metrics on the show page
   - Default to week view
@@ -64,7 +64,7 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 - **Inference metrics summary:** Aggregate inference call count, total tokens, total cost for the project
 - **SSE real-time updates:** Show page listens for relevant SSE events and updates displayed data
   - Agent state changes update the agents accordion
-  - Task state changes update the tasks accordion
+  - Command state changes update the tasks accordion
   - New turns update the turns accordion
   - Project changes update metadata and controls
 - **Tests:** Route tests for any new endpoints, JavaScript unit tests where applicable
@@ -88,9 +88,9 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 1. Project show page displays an "Agents" accordion section — collapsed by default
 2. Expanding the Agents section fetches and displays all agents for the project (active and ended)
 3. Each agent row shows: state indicator, session UUID (truncated), priority score, started/ended timestamps, active duration
-4. Clicking an agent row expands a nested "Tasks" section showing that agent's tasks
-5. Each task row shows: state badge, instruction (truncated), completion summary (if complete), started/completed timestamps, turn count
-6. Clicking a task row expands a nested "Turns" section showing that task's turns
+4. Clicking an agent row expands a nested "Commands" section showing that agent's tasks
+5. Each command row shows: state badge, instruction (truncated), completion summary (if complete), started/completed timestamps, turn count
+6. Clicking a command row expands a nested "Turns" section showing that command's turns
 7. Each turn row shows: actor badge (USER/AGENT), intent, summary text, frustration score (highlighted if >= 4)
 8. Activity metrics section displays below the accordion tree with week view as default
 9. Day/week/month toggle switches the metrics view
@@ -123,11 +123,11 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 
 **FR4:** Ended agents shall be visually distinguished from active agents (e.g., muted styling, "Ended" badge).
 
-**FR5:** Clicking an agent row shall expand a nested Tasks section within that agent, fetching the agent's tasks from the API.
+**FR5:** Clicking an agent row shall expand a nested Commands section within that agent, fetching the agent's tasks from the API.
 
-**FR6:** Each task row shall display: state badge (IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE), instruction text (truncated to one line with expand option), completion summary (if state is COMPLETE), started/completed timestamps, and turn count.
+**FR6:** Each command row shall display: state badge (IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE), instruction text (truncated to one line with expand option), completion summary (if state is COMPLETE), started/completed timestamps, and turn count.
 
-**FR7:** Clicking a task row shall expand a nested Turns section within that task, fetching the task's turns from the API.
+**FR7:** Clicking a command row shall expand a nested Turns section within that command, fetching the command's turns from the API.
 
 **FR8:** Each turn row shall display: actor badge (USER or AGENT, colour-coded), intent label, summary text, and frustration score.
 
@@ -183,7 +183,7 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 
 **FR29:** When a `card_refresh` or agent state change event is received for an agent in the current project, the Agents accordion shall update if it is currently expanded.
 
-**FR30:** When a task state change event is received, the corresponding agent's Tasks section shall update if it is currently expanded.
+**FR30:** When a command state change event is received, the corresponding agent's Commands section shall update if it is currently expanded.
 
 **FR31:** When a `project_changed` or `project_settings_changed` event is received, the page header metadata shall update.
 
@@ -220,7 +220,7 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 |  ------------------------------------------------------------------   |
 |  | [green] abc-1234...  | Score: 85 | Active | Started 2h ago     |   |
 |  |                                                                 |   |
-|  |   v Tasks (5)                                                   |   |
+|  |   v Commands (5)                                                   |   |
 |  |   +-----------------------------------------------------------+|   |
 |  |   | [COMPLETE] Fix auth bug          | 3 turns | 25 min       ||   |
 |  |   |                                                            ||   |
@@ -232,14 +232,14 @@ The user opens a project's show page and expands the "Agents" accordion. They se
 |  |   |   +------------------------------------------------------+||   |
 |  |   |                                                            ||   |
 |  |   | [PROCESSING] Add caching layer   | 1 turn  | 5 min        ||   |
-|  |   | > Tasks (collapsed)                                        ||   |
+|  |   | > Commands (collapsed)                                        ||   |
 |  |   +-----------------------------------------------------------+|   |
 |  |                                                                 |   |
 |  | [grey] def-5678...   | Score: -- | Ended  | 3h ago — 1h 20m    |   |
-|  | > Tasks (collapsed)                                             |   |
+|  | > Commands (collapsed)                                             |   |
 |  |                                                                 |   |
 |  | [blue] ghi-9012...   | Score: 42 | Active | Started 30m ago    |   |
-|  | > Tasks (collapsed)                                             |   |
+|  | > Commands (collapsed)                                             |   |
 |  ------------------------------------------------------------------   |
 |                                                                        |
 +-----------------------------------------------------------------------+
@@ -325,8 +325,8 @@ The existing `GET /api/projects/<id>` returns agents but not their tasks/turns. 
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/agents/<id>/tasks` | List tasks for an agent (if not already available) |
-| `GET /api/tasks/<id>/turns` | List turns for a task (if not already available) |
+| `GET /api/agents/<id>/commands` | List tasks for an agent (if not already available) |
+| `GET /api/commands/<id>/turns` | List turns for a command (if not already available) |
 | `GET /api/projects/<id>/inference-summary` | Aggregate inference metrics for project |
 
 Check existing routes before creating new ones — the data may already be accessible through existing endpoints.
@@ -400,7 +400,7 @@ Reuse the same JavaScript patterns from the `/activity` page (`static/js/activit
 - [ ] Expanding Agents fetches and shows all project agents (active and ended)
 - [ ] Agent rows show: state indicator, ID, priority score, timing, duration
 - [ ] Ended agents are visually distinguished from active agents
-- [ ] Clicking an agent expands its Tasks section (lazy loaded)
+- [ ] Clicking an agent expands its Commands section (lazy loaded)
 - [ ] Task rows show: state badge, instruction, summary, timing, turn count
 - [ ] Clicking a task expands its Turns section (lazy loaded)
 - [ ] Turn rows show: actor badge, intent, summary, frustration score
@@ -434,6 +434,6 @@ Reuse the same JavaScript patterns from the `/activity` page (`static/js/activit
 
 - [ ] SSE connection established with project filter
 - [ ] Agent state changes update expanded Agents accordion
-- [ ] Task state changes update expanded Tasks accordion
+- [ ] Command state changes update expanded Commands accordion
 - [ ] Project changes update page metadata
 - [ ] SSE updates don't disrupt accordion expand/collapse state

@@ -13,7 +13,7 @@ from ..models.agent import Agent
 from .hooks import rate_limited
 from ..models.inference_call import InferenceCall
 from ..models.project import Project, generate_slug
-from ..models.task import Task
+from ..models.command import Command
 from ..models.turn import Turn
 
 logger = logging.getLogger(__name__)
@@ -212,13 +212,13 @@ def get_project(project_id: int):
             # Turn counts and frustration averages per agent
             turn_stats = (
                 db.session.query(
-                    Task.agent_id,
+                    Command.agent_id,
                     func.count(Turn.id).label("turn_count"),
                     func.avg(Turn.frustration_score).label("frustration_avg"),
                 )
-                .join(Turn, Turn.task_id == Task.id)
-                .filter(Task.agent_id.in_(agent_ids))
-                .group_by(Task.agent_id)
+                .join(Turn, Turn.command_id == Command.id)
+                .filter(Command.agent_id.in_(agent_ids))
+                .group_by(Command.agent_id)
                 .all()
             )
             for row in turn_stats:
@@ -228,12 +228,12 @@ def get_project(project_id: int):
                 }
 
             # Approximate avg turn time per agent:
-            # For each task, compute (max_timestamp - min_timestamp) / (count - 1)
-            # then average across tasks
+            # For each command, compute (max_timestamp - min_timestamp) / (count - 1)
+            # then average across commands
             from sqlalchemy import case
             avg_turn_time_stats = (
                 db.session.query(
-                    Task.agent_id,
+                    Command.agent_id,
                     case(
                         (func.count(Turn.id) > 1,
                          func.extract("epoch", func.max(Turn.timestamp) - func.min(Turn.timestamp))
@@ -241,9 +241,9 @@ def get_project(project_id: int):
                         else_=None,
                     ).label("avg_turn_time"),
                 )
-                .join(Turn, Turn.task_id == Task.id)
-                .filter(Task.agent_id.in_(agent_ids))
-                .group_by(Task.agent_id, Task.id)
+                .join(Turn, Turn.command_id == Command.id)
+                .filter(Command.agent_id.in_(agent_ids))
+                .group_by(Command.agent_id, Command.id)
             ).subquery()
 
             avg_per_agent = (
@@ -594,63 +594,63 @@ def detect_metadata(project_id: int):
 # --- Drill-down endpoints ---
 
 
-@projects_bp.route("/api/agents/<int:agent_id>/tasks", methods=["GET"])
-def get_agent_tasks(agent_id: int):
-    """Get all tasks for a specific agent."""
+@projects_bp.route("/api/agents/<int:agent_id>/commands", methods=["GET"])
+def get_agent_commands(agent_id: int):
+    """Get all commands for a specific agent."""
     try:
         agent = db.session.get(Agent, agent_id)
         if not agent:
             return jsonify({"error": "Agent not found"}), 404
 
-        tasks = (
-            db.session.query(Task)
-            .filter(Task.agent_id == agent_id)
-            .order_by(Task.started_at.asc())
+        commands = (
+            db.session.query(Command)
+            .filter(Command.agent_id == agent_id)
+            .order_by(Command.started_at.asc())
             .all()
         )
 
         # Batch turn counts in a single query
-        task_ids = [t.id for t in tasks]
+        command_ids = [c.id for c in commands]
         turn_counts = {}
-        if task_ids:
+        if command_ids:
             rows = (
-                db.session.query(Turn.task_id, func.count(Turn.id))
-                .filter(Turn.task_id.in_(task_ids))
-                .group_by(Turn.task_id)
+                db.session.query(Turn.command_id, func.count(Turn.id))
+                .filter(Turn.command_id.in_(command_ids))
+                .group_by(Turn.command_id)
                 .all()
             )
             turn_counts = {row[0]: row[1] for row in rows}
 
         result = []
-        for t in tasks:
+        for c in commands:
             result.append({
-                "id": t.id,
-                "state": t.state.value if hasattr(t.state, "value") else str(t.state),
-                "instruction": t.instruction,
-                "completion_summary": t.completion_summary,
-                "started_at": t.started_at.isoformat() if t.started_at else None,
-                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-                "turn_count": turn_counts.get(t.id, 0),
+                "id": c.id,
+                "state": c.state.value if hasattr(c.state, "value") else str(c.state),
+                "instruction": c.instruction,
+                "completion_summary": c.completion_summary,
+                "started_at": c.started_at.isoformat() if c.started_at else None,
+                "completed_at": c.completed_at.isoformat() if c.completed_at else None,
+                "turn_count": turn_counts.get(c.id, 0),
             })
 
         return jsonify(result), 200
 
     except Exception:
-        logger.exception("Failed to get tasks for agent %s", agent_id)
-        return jsonify({"error": "Failed to get agent tasks"}), 500
+        logger.exception("Failed to get commands for agent %s", agent_id)
+        return jsonify({"error": "Failed to get agent commands"}), 500
 
 
-@projects_bp.route("/api/tasks/<int:task_id>/turns", methods=["GET"])
-def get_task_turns(task_id: int):
-    """Get all turns for a specific task."""
+@projects_bp.route("/api/commands/<int:command_id>/turns", methods=["GET"])
+def get_command_turns(command_id: int):
+    """Get all turns for a specific command."""
     try:
-        task = db.session.get(Task, task_id)
-        if not task:
-            return jsonify({"error": "Task not found"}), 404
+        command = db.session.get(Command, command_id)
+        if not command:
+            return jsonify({"error": "Command not found"}), 404
 
         turns = (
             db.session.query(Turn)
-            .filter(Turn.task_id == task_id)
+            .filter(Turn.command_id == command_id)
             .filter(Turn.is_internal == False)  # noqa: E712
             .order_by(Turn.timestamp.asc())
             .all()
@@ -674,28 +674,28 @@ def get_task_turns(task_id: int):
         return jsonify(result), 200
 
     except Exception:
-        logger.exception("Failed to get turns for task %s", task_id)
-        return jsonify({"error": "Failed to get task turns"}), 500
+        logger.exception("Failed to get turns for command %s", command_id)
+        return jsonify({"error": "Failed to get command turns"}), 500
 
 
-@projects_bp.route("/api/tasks/<int:task_id>/full-text", methods=["GET"])
-def get_task_full_text(task_id: int):
-    """Get full command and full output text for a task (on-demand)."""
+@projects_bp.route("/api/commands/<int:command_id>/full-text", methods=["GET"])
+def get_command_full_text(command_id: int):
+    """Get full command and full output text for a command (on-demand)."""
     try:
-        task = db.session.get(Task, task_id)
-        if not task:
-            return jsonify({"error": "Task not found"}), 404
+        command = db.session.get(Command, command_id)
+        if not command:
+            return jsonify({"error": "Command not found"}), 404
 
         return jsonify({
-            "full_command": task.full_command,
-            "full_output": task.full_output,
-            "plan_content": task.plan_content,
-            "plan_file_path": task.plan_file_path,
+            "full_command": command.full_command,
+            "full_output": command.full_output,
+            "plan_content": command.plan_content,
+            "plan_file_path": command.plan_file_path,
         }), 200
 
     except Exception:
-        logger.exception("Failed to get full text for task %s", task_id)
-        return jsonify({"error": "Failed to get task full text"}), 500
+        logger.exception("Failed to get full text for command %s", command_id)
+        return jsonify({"error": "Failed to get command full text"}), 500
 
 
 @projects_bp.route("/api/projects/<int:project_id>/inference-summary", methods=["GET"])

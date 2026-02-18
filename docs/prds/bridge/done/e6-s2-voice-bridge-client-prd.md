@@ -122,7 +122,7 @@ The user's phone chimes to indicate an agent needs input. They say "what's the q
 
 ### Agent Interaction
 
-**FR9:** An agent list view displays all active agents with: project name, current state (colour-coded), whether input is needed, and current task summary. The list updates in real-time via SSE.
+**FR9:** An agent list view displays all active agents with: project name, current state (colour-coded), whether input is needed, and current command summary. The list updates in real-time via SSE.
 
 **FR10:** The user can target a specific agent by tapping it in the list or by speaking its project name. When exactly one agent is awaiting input and no target is specified, commands route to it automatically.
 
@@ -175,7 +175,7 @@ The mobile client has three primary screens:
 A clean, mobile-optimised list of active agents. Each agent shows:
 - Project name (prominent)
 - State indicator (colour dot or badge: green=processing, amber=awaiting input, grey=idle)
-- Current task summary (1 line)
+- Current command summary (1 line)
 - Tap to select as target
 
 A prominent microphone button at the bottom activates listening mode. When one agent needs input, a banner highlights it.

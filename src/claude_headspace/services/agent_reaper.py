@@ -302,8 +302,8 @@ class AgentReaper:
         except Exception:
             pass
 
-        # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
-        self._complete_orphaned_tasks(agent)
+        # Complete any orphaned commands (PROCESSING, COMMANDED, AWAITING_INPUT)
+        self._complete_orphaned_commands(agent)
 
         # Broadcast session_ended so the dashboard removes the card
         try:
@@ -336,32 +336,32 @@ class AgentReaper:
         except Exception as e:
             logger.debug(f"Reaper event write failed (non-fatal): {e}")
 
-    def _complete_orphaned_tasks(self, agent) -> None:
-        """Complete non-COMPLETE tasks for a reaped agent.
+    def _complete_orphaned_commands(self, agent) -> None:
+        """Complete non-COMPLETE commands for a reaped agent.
 
         Reads the agent's transcript, detects intent, and transitions
-        each orphaned task to COMPLETE via TaskLifecycleManager.
+        each orphaned command to COMPLETE via CommandLifecycleManager.
         """
         from ..database import db
-        from ..models.task import Task, TaskState
+        from ..models.command import Command, CommandState
         from ..models.turn import TurnIntent
 
         try:
-            active_tasks = (
-                db.session.query(Task)
+            active_commands = (
+                db.session.query(Command)
                 .filter(
-                    Task.agent_id == agent.id,
-                    Task.state.notin_([TaskState.COMPLETE, TaskState.IDLE]),
+                    Command.agent_id == agent.id,
+                    Command.state.notin_([CommandState.COMPLETE, CommandState.IDLE]),
                 )
-                .order_by(Task.id.desc())
+                .order_by(Command.id.desc())
                 .all()
             )
 
-            if not active_tasks:
+            if not active_commands:
                 return
 
             logger.info(
-                f"Reaper completing {len(active_tasks)} orphaned task(s) "
+                f"Reaper completing {len(active_commands)} orphaned command(s) "
                 f"for agent {agent.id}"
             )
 
@@ -382,16 +382,16 @@ class AgentReaper:
                 try:
                     from .intent_detector import detect_agent_intent
                     result = detect_agent_intent(transcript_text)
-                    if result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK):
+                    if result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
                         intent = result.intent
                 except Exception as e:
                     logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
 
-            # Complete tasks via lifecycle manager
-            from .task_lifecycle import TaskLifecycleManager
+            # Complete commands via lifecycle manager
+            from .command_lifecycle import CommandLifecycleManager
             try:
                 event_writer = self._app.extensions.get("event_writer")
-                lifecycle = TaskLifecycleManager(
+                lifecycle = CommandLifecycleManager(
                     session=db.session,
                     event_writer=event_writer,
                 )
@@ -399,22 +399,22 @@ class AgentReaper:
                 logger.warning(f"Could not create lifecycle manager: {e}")
                 return
 
-            for i, task in enumerate(active_tasks):
+            for i, cmd in enumerate(active_commands):
                 try:
-                    # Most recent task (i==0) gets transcript text; older ones get empty
+                    # Most recent command (i==0) gets transcript text; older ones get empty
                     text = transcript_text if i == 0 else ""
-                    lifecycle.complete_task(
-                        task=task,
-                        trigger="reaper:orphaned_task",
+                    lifecycle.complete_command(
+                        command=cmd,
+                        trigger="reaper:orphaned_command",
                         agent_text=text,
                         intent=intent,
                     )
                     logger.info(
-                        f"Reaper completed task {task.id} (state was {task.state.value})"
+                        f"Reaper completed command {cmd.id} (state was {cmd.state.value})"
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Failed to complete orphaned task {task.id}: {e}"
+                        f"Failed to complete orphaned command {cmd.id}: {e}"
                     )
 
             # Collect pending summarisations for post-commit execution
@@ -423,4 +423,4 @@ class AgentReaper:
                 self._pending_summarisations.extend(pending)
 
         except Exception as e:
-            logger.warning(f"Orphaned task completion failed for agent {agent.id}: {e}")
+            logger.warning(f"Orphaned command completion failed for agent {agent.id}: {e}")

@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 from .prompt_registry import build_prompt
 
@@ -112,8 +112,8 @@ COMPLETION_OPENER_PATTERNS = [
     r"(?im)^(?:done|complete|finished|all (?:done|set|finished))[\.!]\s+\S",
 ]
 
-# End-of-task: summary openers
-END_OF_TASK_SUMMARY_PATTERNS = [
+# End-of-command: summary openers
+END_OF_COMMAND_SUMMARY_PATTERNS = [
     r"(?i)(?:here'?s a summary of (?:what|the changes|everything))",
     r"(?i)(?:here are the (?:changes|updates|modifications) I (?:made|implemented))",
     r"(?i)(?:to (?:summarise|summarize|recap)|in summary)",
@@ -132,8 +132,8 @@ END_OF_TASK_SUMMARY_PATTERNS = [
     r"(?im)^changes made:\s*$",
 ]
 
-# End-of-task: soft-close offers (open-ended, work is done)
-END_OF_TASK_SOFT_CLOSE_PATTERNS = [
+# End-of-command: soft-close offers (open-ended, work is done)
+END_OF_COMMAND_SOFT_CLOSE_PATTERNS = [
     r"(?i)(?:let me know if you'?d like any (?:adjustments|changes|modifications))",
     r"(?i)(?:let me know if there'?s anything else)",
     r"(?i)(?:let me know if you (?:need|want) (?:anything|any) (?:else|other|further))",
@@ -141,8 +141,8 @@ END_OF_TASK_SOFT_CLOSE_PATTERNS = [
     r"(?i)(?:is there anything else you'?d like me to)",
 ]
 
-# End-of-task: capability handoff
-END_OF_TASK_HANDOFF_PATTERNS = [
+# End-of-command: capability handoff
+END_OF_COMMAND_HANDOFF_PATTERNS = [
     r"(?i)(?:you (?:can|should) now (?:be able to )?)",
     r"(?i)(?:everything (?:should be|is|looks|appears|seems) (?:working|in place|ready|set up|good|healthy|fine|correct))",
     # "The change is live", "Server is running", "The fix is deployed"
@@ -151,7 +151,7 @@ END_OF_TASK_HANDOFF_PATTERNS = [
     r"(?i)(?:refresh (?:the )?(?:dashboard|page|browser|view|app) to (?:verify|see|check|confirm))",
 ]
 
-# Continuation patterns (NEGATIVE guard -- vetoes end-of-task)
+# Continuation patterns (NEGATIVE guard -- vetoes end-of-command)
 CONTINUATION_PATTERNS = [
     r"(?i)(?:next I'?ll|now I (?:need to|will|'ll)|moving on to|let me also)",
     r"(?i)(?:I still need to|remaining (?:work|tasks|steps)|TODO)",
@@ -210,11 +210,11 @@ def _match_patterns(text: str, patterns: list[str]) -> Optional[str]:
     return None
 
 
-def _detect_end_of_task(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+def _detect_end_of_command(tail: str, has_continuation: bool) -> Optional[IntentResult]:
     """
-    Detect end-of-task in the tail using multi-signal scoring.
+    Detect end-of-command in the tail using multi-signal scoring.
 
-    Returns IntentResult with END_OF_TASK intent, or None if not detected.
+    Returns IntentResult with END_OF_COMMAND intent, or None if not detected.
     Confidence levels:
       - Summary + soft-close: 0.95
       - Summary + handoff: 0.95
@@ -227,18 +227,18 @@ def _detect_end_of_task(tail: str, has_continuation: bool) -> Optional[IntentRes
     if has_continuation:
         return None
 
-    has_summary = _match_patterns(tail, END_OF_TASK_SUMMARY_PATTERNS)
-    has_soft_close = _match_patterns(tail, END_OF_TASK_SOFT_CLOSE_PATTERNS)
-    has_handoff = _match_patterns(tail, END_OF_TASK_HANDOFF_PATTERNS)
+    has_summary = _match_patterns(tail, END_OF_COMMAND_SUMMARY_PATTERNS)
+    has_soft_close = _match_patterns(tail, END_OF_COMMAND_SOFT_CLOSE_PATTERNS)
+    has_handoff = _match_patterns(tail, END_OF_COMMAND_HANDOFF_PATTERNS)
 
     if has_summary and (has_soft_close or has_handoff):
-        return IntentResult(TurnIntent.END_OF_TASK, 0.95, matched_pattern=has_summary)
+        return IntentResult(TurnIntent.END_OF_COMMAND, 0.95, matched_pattern=has_summary)
     elif has_soft_close:
-        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_soft_close)
+        return IntentResult(TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_soft_close)
     elif has_summary:
-        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_summary)
+        return IntentResult(TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_summary)
     elif has_handoff:
-        return IntentResult(TurnIntent.END_OF_TASK, 0.7, matched_pattern=has_handoff)
+        return IntentResult(TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_handoff)
 
     return None
 
@@ -254,7 +254,7 @@ def _detect_trailing_question(tail: str, has_continuation: bool) -> Optional[Int
     The guard SKIPS (returns None) when:
       - The trailing window itself contains a COMPLETION pattern (preserves
         existing "completion + follow-up question" → COMPLETION behavior)
-      - The trailing window contains a soft-close pattern (END_OF_TASK
+      - The trailing window contains a soft-close pattern (END_OF_COMMAND
         should handle these)
 
     Returns IntentResult with QUESTION intent at 0.95 confidence, or None.
@@ -272,8 +272,8 @@ def _detect_trailing_question(tail: str, has_continuation: bool) -> Optional[Int
     if _match_patterns(trailing_window, COMPLETION_PATTERNS):
         return None
 
-    # Skip if trailing window contains soft-close (let END_OF_TASK handle)
-    if _match_patterns(trailing_window, END_OF_TASK_SOFT_CLOSE_PATTERNS):
+    # Skip if trailing window contains soft-close (let END_OF_COMMAND handle)
+    if _match_patterns(trailing_window, END_OF_COMMAND_SOFT_CLOSE_PATTERNS):
         return None
 
     # Check for QUESTION or BLOCKED patterns in the trailing window
@@ -315,9 +315,9 @@ def _detect_completion_opener(tail: str, has_continuation: bool) -> Optional[Int
         return None
 
     # Check for additional completion signals to boost confidence
-    has_soft_close = _match_patterns(tail, END_OF_TASK_SOFT_CLOSE_PATTERNS)
-    has_summary = _match_patterns(tail, END_OF_TASK_SUMMARY_PATTERNS)
-    has_handoff = _match_patterns(tail, END_OF_TASK_HANDOFF_PATTERNS)
+    has_soft_close = _match_patterns(tail, END_OF_COMMAND_SOFT_CLOSE_PATTERNS)
+    has_summary = _match_patterns(tail, END_OF_COMMAND_SUMMARY_PATTERNS)
+    has_handoff = _match_patterns(tail, END_OF_COMMAND_HANDOFF_PATTERNS)
 
     if has_soft_close or has_summary or has_handoff:
         confidence = 0.9
@@ -350,7 +350,7 @@ def _infer_completion_classification(
         )
         letter = result.text.strip().upper()[:1]
         mapping = {
-            "A": IntentResult(TurnIntent.END_OF_TASK, 0.85),
+            "A": IntentResult(TurnIntent.END_OF_COMMAND, 0.85),
             "B": IntentResult(TurnIntent.PROGRESS, 0.85),
             "C": IntentResult(TurnIntent.QUESTION, 0.85),
             "D": IntentResult(TurnIntent.QUESTION, 0.85),
@@ -375,10 +375,10 @@ def detect_agent_intent(
     2. Strip code blocks from text
     3. Extract tail (last 15 non-empty lines)
     4. Check continuation guard
-    5. Tail: END_OF_TASK detection (before QUESTION to catch soft-close offers)
+    5. Tail: END_OF_COMMAND detection (before QUESTION to catch soft-close offers)
     6. Tail: QUESTION -> BLOCKED -> COMPLETION (confidence=1.0)
     6.5. Tail: COMPLETION OPENER detection (e.g. "Done. All files...")
-    7. Full text: END_OF_TASK detection (lower confidence)
+    7. Full text: END_OF_COMMAND detection (lower confidence)
     8. Full text: QUESTION -> BLOCKED -> COMPLETION (confidence=0.8)
     9. Optional inference fallback for ambiguous cases
     10. Default: PROGRESS (confidence=0.5)
@@ -409,16 +409,16 @@ def detect_agent_intent(
     # Check continuation guard on the LAST 5 lines only.
     # The full tail (15 lines) can include intermediate text from earlier in
     # the same assistant message (e.g. "Let me also check..." before tool
-    # calls) which would incorrectly veto END_OF_TASK detection when the
+    # calls) which would incorrectly veto END_OF_COMMAND detection when the
     # final lines clearly show completion.
     continuation_window = _extract_tail(cleaned, max_lines=5)
     has_continuation = bool(_match_patterns(continuation_window, CONTINUATION_PATTERNS))
 
-    # Phase 0: End-of-task detection on tail (before QUESTION — catches soft-close offers)
-    eot_result = _detect_end_of_task(tail, has_continuation)
+    # Phase 0: End-of-command detection on tail (before QUESTION — catches soft-close offers)
+    eot_result = _detect_end_of_command(tail, has_continuation)
     if eot_result:
         logger.debug(
-            f"Detected END_OF_TASK intent in tail: pattern={eot_result.matched_pattern}"
+            f"Detected END_OF_COMMAND intent in tail: pattern={eot_result.matched_pattern}"
         )
         return eot_result
 
@@ -434,7 +434,7 @@ def detect_agent_intent(
 
     # Phase 1: Match against tail (high confidence)
     # When not continuing, check COMPLETION before QUESTION so that
-    # a completed task with a follow-up question (e.g. "All tests passed.
+    # a completed command with a follow-up question (e.g. "All tests passed.
     # Would you like me to also update the docs?") is correctly classified
     # as COMPLETION rather than QUESTION.  When has_continuation is True,
     # the agent is explicitly mid-work, so QUESTION takes priority.
@@ -469,13 +469,13 @@ def detect_agent_intent(
         )
         return opener_result
 
-    # Phase 2: End-of-task on full text (lower confidence, wider window)
+    # Phase 2: End-of-command on full text (lower confidence, wider window)
     full_tail = _extract_tail(cleaned, max_lines=50)
-    eot_full = _detect_end_of_task(full_tail, has_continuation)
+    eot_full = _detect_end_of_command(full_tail, has_continuation)
     if eot_full:
         eot_full.confidence = max(0.6, eot_full.confidence - 0.2)
         logger.debug(
-            f"Detected END_OF_TASK intent in full text: pattern={eot_full.matched_pattern}"
+            f"Detected END_OF_COMMAND intent in full text: pattern={eot_full.matched_pattern}"
         )
         return eot_full
 
@@ -526,9 +526,9 @@ def detect_agent_intent(
     )
 
 
-def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentResult:
+def detect_user_intent(text: Optional[str], current_state: CommandState) -> IntentResult:
     """
-    Detect the intent of a user turn based on the current task state.
+    Detect the intent of a user turn based on the current command state.
 
     The logic is:
     - If current state is AWAITING_INPUT → TurnIntent.ANSWER (user is answering)
@@ -536,12 +536,12 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
 
     Args:
         text: The text content of the user's turn. May be None or empty.
-        current_state: The current state of the task
+        current_state: The current state of the command
 
     Returns:
         IntentResult with detected intent and confidence
     """
-    if current_state == TaskState.AWAITING_INPUT:
+    if current_state == CommandState.AWAITING_INPUT:
         # User is answering a question
         logger.debug("User responding while AWAITING_INPUT -> ANSWER intent")
         return IntentResult(
@@ -551,7 +551,7 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
         )
 
     # Detect confirmations/approvals while PROCESSING (e.g. plan approval responses)
-    if current_state == TaskState.PROCESSING and text and _is_confirmation(text):
+    if current_state == CommandState.PROCESSING and text and _is_confirmation(text):
         logger.debug("User confirmation while PROCESSING -> ANSWER intent")
         return IntentResult(
             intent=TurnIntent.ANSWER,
@@ -559,7 +559,7 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
             matched_pattern="confirmation",
         )
 
-    # User is giving a command (new task or continuation)
+    # User is giving a command (new command or continuation)
     logger.debug(f"User turn with state={current_state.value} -> COMMAND intent")
     return IntentResult(
         intent=TurnIntent.COMMAND,
@@ -571,7 +571,7 @@ def detect_user_intent(text: Optional[str], current_state: TaskState) -> IntentR
 def detect_intent(
     text: Optional[str],
     actor: TurnActor,
-    current_state: TaskState,
+    current_state: CommandState,
 ) -> IntentResult:
     """
     Detect turn intent based on actor and current state.
@@ -581,7 +581,7 @@ def detect_intent(
     Args:
         text: The text content of the turn
         actor: Who produced the turn (USER or AGENT)
-        current_state: The current task state
+        current_state: The current command state
 
     Returns:
         IntentResult with detected intent and confidence

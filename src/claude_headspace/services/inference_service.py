@@ -102,7 +102,7 @@ class InferenceService:
         input_text: str | None = None,
         project_id: int | None = None,
         agent_id: int | None = None,
-        task_id: int | None = None,
+        command_id: int | None = None,
         turn_id: int | None = None,
     ) -> None:
         """Log an inference call to the database.
@@ -138,7 +138,7 @@ class InferenceService:
                 cached=cached,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn_id,
             )
             session.add(record)
@@ -205,18 +205,18 @@ class InferenceService:
         input_text: str,
         project_id: int | None = None,
         agent_id: int | None = None,
-        task_id: int | None = None,
+        command_id: int | None = None,
         turn_id: int | None = None,
     ) -> InferenceResult:
         """Make an inference call.
 
         Args:
-            level: Inference level (turn, task, project, objective)
+            level: Inference level (turn, command, project, objective)
             purpose: Free-text description of the inference purpose
             input_text: The input text to send to the LLM
             project_id: Optional project FK
             agent_id: Optional agent FK
-            task_id: Optional task FK
+            command_id: Optional command FK
             turn_id: Optional turn FK
 
         Returns:
@@ -258,7 +258,7 @@ class InferenceService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn_id,
             )
             logger.debug(f"Cache hit for inference call (level={level}, purpose={purpose})")
@@ -277,7 +277,7 @@ class InferenceService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn_id,
             )
             raise InferenceServiceError(
@@ -321,7 +321,7 @@ class InferenceService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn_id,
             )
 
@@ -343,7 +343,7 @@ class InferenceService:
                 input_text=input_text,
                 project_id=project_id,
                 agent_id=agent_id,
-                task_id=task_id,
+                command_id=command_id,
                 turn_id=turn_id,
             )
             raise

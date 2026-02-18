@@ -12,7 +12,7 @@ The system SHALL persist Agents with id, session_uuid (UUID), project_id FK, ite
 #### Scenario: Agent State Derivation
 
 - **WHEN** Agent.state is accessed
-- **THEN** it returns the current task's state, or IDLE if no active task
+- **THEN** it returns the current command's state, or IDLE if no active command
 
 #### Scenario: Agent with tmux session name
 

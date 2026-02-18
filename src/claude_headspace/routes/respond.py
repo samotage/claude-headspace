@@ -8,7 +8,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.task import TaskState
+from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from ..services import tmux_bridge
 from ..services.card_state import broadcast_card_refresh
@@ -29,11 +29,11 @@ def _get_tmux_bridge():
     return current_app.extensions.get("tmux_bridge")
 
 
-def _count_options(task) -> int:
+def _count_options(command) -> int:
     """Count the number of options in the most recent QUESTION turn's tool_input."""
-    if not task or not task.turns:
+    if not command or not command.turns:
         return 0
-    for turn in reversed(task.turns):
+    for turn in reversed(command.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if turn.tool_input and isinstance(turn.tool_input, dict):
                 questions = turn.tool_input.get("questions")
@@ -207,9 +207,9 @@ def respond_to_agent(agent_id: int):
         }), 400
 
     # Check agent is in AWAITING_INPUT state
-    current_task = agent.get_current_task()
-    if current_task is None or current_task.state != TaskState.AWAITING_INPUT:
-        actual_state = current_task.state.value if current_task else "no_task"
+    current_command = agent.get_current_command()
+    if current_command is None or current_command.state != CommandState.AWAITING_INPUT:
+        actual_state = current_command.state.value if current_command else "no_command"
         return jsonify({
             "status": "error",
             "error_type": "wrong_state",
@@ -249,7 +249,7 @@ def respond_to_agent(agent_id: int):
 
     elif mode == "other":
         # Navigate to "Other" (last item) then type custom text
-        num_options = _count_options(current_task)
+        num_options = _count_options(current_command)
         # "Other" is always appended after all options by AskUserQuestion
         keys = ["Down"] * num_options + ["Enter"]
         result = tmux_bridge.send_keys(
@@ -296,17 +296,17 @@ def respond_to_agent(agent_id: int):
     try:
         # Find the most recent QUESTION turn for answer linking
         answered_turn_id = None
-        if current_task.turns:
-            for t in reversed(current_task.turns):
+        if current_command.turns:
+            for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     answered_turn_id = t.id
                     break
 
         from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_task)
+        mark_question_answered(current_command)
 
         turn = Turn(
-            task_id=current_task.id,
+            command_id=current_command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=record_text,
@@ -316,13 +316,13 @@ def respond_to_agent(agent_id: int):
 
         from ..services.state_machine import validate_transition
         from ..models.turn import TurnIntent as _TurnIntent
-        _vr = validate_transition(current_task.state, TurnActor.USER, _TurnIntent.ANSWER)
+        _vr = validate_transition(current_command.state, TurnActor.USER, _TurnIntent.ANSWER)
         if _vr.valid:
-            current_task.state = _vr.to_state
+            current_command.state = _vr.to_state
         else:
             # Fallback: force PROCESSING (respond always means user answered)
-            logger.warning(f"respond: invalid transition {current_task.state.value} -> PROCESSING, forcing")
-            current_task.state = TaskState.PROCESSING
+            logger.warning(f"respond: invalid transition {current_command.state.value} -> PROCESSING, forcing")
+            current_command.state = CommandState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
         # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
@@ -351,7 +351,7 @@ def respond_to_agent(agent_id: int):
             "status": "ok",
             "agent_id": agent_id,
             "mode": mode,
-            "new_state": TaskState.PROCESSING.value,
+            "new_state": CommandState.PROCESSING.value,
             "latency_ms": latency_ms,
         }), 200
 
@@ -411,15 +411,15 @@ def _broadcast_state_change(agent: Agent, response_text: str, turn_id: int | Non
             "message": "User responded via dashboard",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        _task = agent.get_current_task()
+        _command = agent.get_current_command()
         broadcaster.broadcast("turn_created", {
             "agent_id": agent.id,
             "project_id": agent.project_id,
             "text": response_text,
             "actor": "user",
             "intent": "answer",
-            "task_id": _task.id if _task else None,
-            "task_instruction": _task.instruction if _task else None,
+            "command_id": _command.id if _command else None,
+            "command_instruction": _command.instruction if _command else None,
             "turn_id": turn_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })

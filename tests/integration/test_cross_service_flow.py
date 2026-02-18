@@ -1,6 +1,6 @@
 """Cross-service integration tests.
 
-TST-M11: Tests the hook → session_correlator → task_lifecycle → state
+TST-M11: Tests the hook → session_correlator → command_lifecycle → state
 pipeline end-to-end with real service instances and a real database.
 Only external APIs (OpenRouter) are mocked.
 """
@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_headspace.models import Agent, Project, Task
+from claude_headspace.models import Agent, Project, Command
 
 from .factories import ProjectFactory
 
@@ -121,13 +121,13 @@ class TestHookToStateFlow:
             assert prompt_resp.status_code == 200
             assert prompt_resp.get_json()["status"] == "ok"
 
-            # Verify a task exists
+            # Verify a command exists
             agent = flask_db.session.query(Agent).filter_by(
                 claude_session_id=session_id
             ).first()
             assert agent is not None
-            tasks = flask_db.session.query(Task).filter_by(agent_id=agent.id).all()
-            assert len(tasks) >= 1
+            commands = flask_db.session.query(Command).filter_by(agent_id=agent.id).all()
+            assert len(commands) >= 1
 
     def test_stop_hook_transitions_agent_state(self, cross_client, cross_app):
         """stop hook transitions agent state (end-of-turn)."""

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Implement the Task/Turn State Machine - the core behavioral logic that interprets events and manages task state transitions. Consumes `turn_detected` events from Sprint 5 and produces `state_transition` events for Sprint 7.
+Implement the Command/Turn State Machine - the core behavioral logic that interprets events and manages command state transitions. Consumes `turn_detected` events from Sprint 5 and produces `state_transition` events for Sprint 7.
 
 ## Motivation
 
@@ -13,24 +13,24 @@ Without a reliable state machine, the dashboard cannot accurately reflect agent 
 ### Files to Create
 - `src/claude_headspace/services/state_machine.py` - StateMachine class with transition logic
 - `src/claude_headspace/services/intent_detector.py` - IntentDetector with regex patterns
-- `src/claude_headspace/services/task_lifecycle.py` - TaskLifecycleManager for create/complete
+- `src/claude_headspace/services/command_lifecycle.py` - CommandLifecycleManager for create/complete
 - `tests/services/test_state_machine.py` - Transition tests
 - `tests/services/test_intent_detector.py` - Intent detection tests
-- `tests/services/test_task_lifecycle.py` - Lifecycle tests
+- `tests/services/test_command_lifecycle.py` - Lifecycle tests
 
 ### Files to Modify
 - `src/claude_headspace/services/__init__.py` - Export new services
 - `src/claude_headspace/models/enums.py` - TurnIntent enum already exists
 
 ### Database Changes
-None - Using existing Task and Turn models from Sprint 3.
+None - Using existing Command and Turn models from Sprint 3.
 
 ## Definition of Done
 
 - [ ] StateMachine class with transition() method
 - [ ] State transition validator (valid/invalid + reason)
 - [ ] IntentDetector with regex patterns for question/completion/progress
-- [ ] TaskLifecycleManager for task creation and completion
+- [ ] CommandLifecycleManager for task creation and completion
 - [ ] Agent state derivation (computed property)
 - [ ] State transition event logging via EventWriter
 - [ ] All valid state transitions covered by tests

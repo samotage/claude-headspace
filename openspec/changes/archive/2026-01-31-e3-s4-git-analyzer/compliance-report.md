@@ -29,7 +29,7 @@ The implementation fully satisfies all 14 acceptance criteria from the proposal 
 ## Requirements Coverage
 
 - **PRD Requirements:** 31/31 covered (FR1-FR31)
-- **Tasks Completed:** 33/33 complete
+- **Commands Completed:** 33/33 complete
 - **Design Compliance:** Yes (follows SummarisationService/PriorityScoringService patterns)
 
 ## Issues Found

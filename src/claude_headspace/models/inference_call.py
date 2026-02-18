@@ -13,7 +13,7 @@ class InferenceLevel(str, enum.Enum):
     """Inference level determines model selection."""
 
     TURN = "turn"
-    TASK = "task"
+    COMMAND = "command"
     PROJECT = "project"
     OBJECTIVE = "objective"
 
@@ -29,7 +29,7 @@ class InferenceCall(db.Model):
     __tablename__ = "inference_calls"
     __table_args__ = (
         CheckConstraint(
-            'COALESCE(project_id, agent_id, task_id, turn_id) IS NOT NULL',
+            'COALESCE(project_id, agent_id, command_id, turn_id) IS NOT NULL',
             name='ck_inference_calls_has_parent',
         ),
     )
@@ -53,15 +53,15 @@ class InferenceCall(db.Model):
 
     # FK design: SET NULL on delete — inference cost tracking has independent
     # value for billing and usage analytics. Records are retained even when
-    # the parent entity (project, agent, task, turn) is deleted.
+    # the parent entity (project, agent, command, turn) is deleted.
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    task_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    command_id: Mapped[int | None] = mapped_column(
+        ForeignKey("commands.id", ondelete="SET NULL"), nullable=True
     )
     turn_id: Mapped[int | None] = mapped_column(
         ForeignKey("turns.id", ondelete="SET NULL"), nullable=True

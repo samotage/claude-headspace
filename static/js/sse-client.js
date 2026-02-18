@@ -240,7 +240,7 @@
         "agent_created",
         "agent_updated",
         "inference_call",
-        "task_summary",
+        "command_summary",
         "turn_summary",
         "card_refresh",
         "error",

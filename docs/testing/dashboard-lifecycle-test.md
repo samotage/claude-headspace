@@ -14,7 +14,7 @@ Two bugs were fixed in this session:
 
 1. **FK race condition** (`event_writer.py`): EventWriter used its own DB session, causing ForeignKeyViolation when writing events referencing not-yet-committed tasks. Fix: pass caller's session so events join the same transaction.
 
-2. **Notification override** (`hook_receiver.py`): `process_notification()` unconditionally broadcast AWAITING_INPUT even when no task was PROCESSING (e.g., after stop hook already completed the task). Fix: only broadcast when DB state actually changes.
+2. **Notification override** (`hook_receiver.py`): `process_notification()` unconditionally broadcast AWAITING_INPUT even when no command was PROCESSING (e.g., after stop hook already completed the task). Fix: only broadcast when DB state actually changes.
 
 ## What Still Fails
 
@@ -103,7 +103,7 @@ Expected log sequence:
 ```
 user_prompt_submit → new_state=processing
 notification → immediate AWAITING_INPUT (or "ignored" if not processing)
-stop → task completed
+stop → command completed
 notification → ignored (no active processing task)  ← THIS is the fix
 ```
 
@@ -112,10 +112,10 @@ notification → ignored (no active processing task)  ← THIS is the fix
 | File | Change |
 |------|--------|
 | `src/claude_headspace/services/event_writer.py` | Added `session` param to `write_event()` + `_write_to_session()` method |
-| `src/claude_headspace/services/task_lifecycle.py` | `_write_transition_event()` passes `self._session` to EventWriter |
+| `src/claude_headspace/services/command_lifecycle.py` | `_write_transition_event()` passes `self._session` to EventWriter |
 | `src/claude_headspace/services/hook_receiver.py` | `process_notification()` only broadcasts when DB state actually changes |
 | `tests/services/test_event_writer.py` | 4 new tests for session pass-through |
-| `tests/services/test_task_lifecycle.py` | 3 new tests for session forwarding |
+| `tests/services/test_command_lifecycle.py` | 3 new tests for session forwarding |
 | `tests/services/test_hook_receiver.py` | 5 updated/new tests for notification guard |
 
 ## Known Limitations

@@ -100,7 +100,7 @@ matching, preventing the same JSONL entry from being processed twice.
 
 | Event | Purpose | Key Fields |
 |-------|---------|------------|
-| `turn_created` | New turn available | `turn_id`, `text`, `actor`, `intent`, `timestamp`, `task_id`, `tool_input` |
+| `turn_created` | New turn available | `turn_id`, `text`, `actor`, `intent`, `timestamp`, `command_id`, `tool_input` |
 | `turn_updated` | Timestamp correction | `turn_id`, `timestamp`, `update_type` |
 | `state_changed` | Agent state transition | `agent_id`, `new_state` |
 | `gap` | Server detected dropped events | `message` |
@@ -122,7 +122,7 @@ There is NO periodic polling. SSE is the primary delivery mechanism. Gap
 recovery handles missed events.
 
 Progress bubbles are collapsed (hidden via CSS `display:none`) when a terminal
-intent (COMPLETION or END_OF_TASK) arrives for the same task, rather than being
+intent (COMPLETION or END_OF_COMMAND) arrives for the same command, rather than being
 removed from the DOM. This preserves DOM stability and prevents re-rendering artefacts.
 
 ## Diagram

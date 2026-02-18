@@ -58,7 +58,7 @@ The system SHALL skip inference calls for projects with inference paused.
 
 #### Scenario: Summarisation skipped for paused project
 
-- **WHEN** summarise_turn, summarise_task, or summarise_instruction is called for a turn/task belonging to a paused project
+- **WHEN** summarise_turn, summarise_task, or summarise_instruction is called for a turn/command belonging to a paused project
 - **THEN** the method SHALL return None without calling the inference service
 - **AND** a debug log message SHALL be emitted
 

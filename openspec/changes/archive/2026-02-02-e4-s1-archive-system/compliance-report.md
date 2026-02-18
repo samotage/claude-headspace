@@ -24,7 +24,7 @@ Implementation fully satisfies all PRD requirements, delta specs, and acceptance
 ## Requirements Coverage
 
 - **PRD Requirements:** 16/16 covered (FR1-FR16)
-- **Tasks Completed:** 28/28 complete (all marked [x])
+- **Commands Completed:** 28/28 complete (all marked [x])
 - **Design Compliance:** Yes — follows atomic write pattern, best-effort error handling, service injection
 
 ## Issues Found

@@ -154,10 +154,10 @@ class TestAgentInfoEndpoint:
                 "current_state": "PROCESSING",
                 "is_active": True,
             },
-            "priority": {"score": 75, "reason": "Active task", "updated_at": None},
+            "priority": {"score": 75, "reason": "Active command", "updated_at": None},
             "headspace": None,
             "frustration_scores": [],
-            "tasks": [],
+            "commands": [],
         }
         response = client.get("/api/agents/1/info")
         assert response.status_code == 200
@@ -166,7 +166,7 @@ class TestAgentInfoEndpoint:
         assert data["identity"]["tmux_pane_alive"] is True
         assert data["lifecycle"]["current_state"] == "PROCESSING"
         assert data["project"]["name"] == "test-project"
-        assert data["tasks"] == []
+        assert data["commands"] == []
 
     @patch("claude_headspace.routes.agents.get_agent_info")
     def test_not_found(self, mock_info, client):

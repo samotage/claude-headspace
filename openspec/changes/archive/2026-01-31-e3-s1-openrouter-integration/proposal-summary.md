@@ -2,7 +2,7 @@
 
 ## Architecture Decisions
 - Use OpenRouter as the LLM gateway (provides access to multiple model providers via single API)
-- Two-tier model selection: lightweight (Haiku) for turn/task-level, capable (Sonnet) for project/objective-level
+- Two-tier model selection: lightweight (Haiku) for turn/command-level, capable (Sonnet) for project/objective-level
 - In-memory caching by content hash with configurable TTL (not Redis — keep it simple for single-process Flask)
 - Thread-safe rate limiting using threading.Lock (calls/min and tokens/min)
 - Exponential backoff retries for transient errors (429, 5xx, timeouts)
@@ -43,7 +43,7 @@
 
 ## Acceptance Criteria
 - OpenRouter client authenticates and returns structured responses (text, tokens, model, latency)
-- Model selection maps turn/task→Haiku, project/objective→Sonnet via configurable mapping
+- Model selection maps turn/command→Haiku, project/objective→Sonnet via configurable mapping
 - Every inference call is logged to inference_calls table with full metadata
 - Rate limits reject requests when exceeded, with retry-after feedback
 - Cache returns cached results for matching content hash within TTL
@@ -65,7 +65,7 @@
 ## Git Change History
 
 ### Related Files
-- Models: `project.py`, `agent.py`, `task.py`, `turn.py`, `event.py`, `objective.py`
+- Models: `project.py`, `agent.py`, `command.py`, `turn.py`, `event.py`, `objective.py`
 - Config: `config.py`, `config.yaml`
 - App: `app.py`
 - Database: `database.py`

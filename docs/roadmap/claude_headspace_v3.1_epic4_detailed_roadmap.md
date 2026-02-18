@@ -186,7 +186,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 4 imple
 - Delete behavior: cascade delete agents — **decided** (orphaned agents serve no purpose)
 - Storage: database field on Project model — **decided**
 - Default state: inference enabled by default — **decided**
-- What pauses: turn summarisation, task summarisation, priority scoring — **all inference calls**
+- What pauses: turn summarisation, command summarisation, priority scoring — **all inference calls**
 - What continues: file watching, session tracking, dashboard display, hooks — **everything else**
 - UI pattern: modal forms for add/edit (consistent with waypoint editor) — **decided**
 - Navigation: "Projects" tab in header between Dashboard and Objective — **decided**
@@ -244,7 +244,7 @@ def should_run_inference(project_id: UUID) -> bool:
 
 # In turn summariser
 def summarise_turn(turn: Turn) -> str | None:
-    if not should_run_inference(turn.task.agent.project_id):
+    if not should_run_inference(turn.command.agent.project_id):
         return None  # Skip summarisation
     # ... proceed with inference
 ```
@@ -302,7 +302,7 @@ def summarise_turn(turn: Turn) -> str | None:
 **Inference Controls:**
 
 - Click pause button → project marked as paused
-- Paused project → no inference calls made (turn/task summary, priority)
+- Paused project → no inference calls made (turn/command summary, priority)
 - Paused project → file watching, hooks, dashboard continue working
 - Paused indicator visible in projects list and on dashboard project card
 - Click resume → inference calls resume

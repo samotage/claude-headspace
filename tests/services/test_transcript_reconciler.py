@@ -9,7 +9,7 @@ import pytest
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
 from claude_headspace.models.project import Project
-from claude_headspace.models.task import Task, TaskState
+from claude_headspace.models.command import Command, CommandState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.transcript_reader import TranscriptEntry
 from claude_headspace.services.transcript_reconciler import (
@@ -64,16 +64,16 @@ def agent(project):
 
 
 @pytest.fixture
-def task(agent):
-    """Create a test Task record."""
-    t = Task(
+def command(agent):
+    """Create a test Command record."""
+    c = Command(
         agent_id=agent.id,
-        state=TaskState.PROCESSING,
+        state=CommandState.PROCESSING,
         started_at=datetime.now(timezone.utc),
     )
-    db.session.add(t)
+    db.session.add(c)
     db.session.flush()
-    return t
+    return c
 
 
 def _make_entry(role="user", content="Hello world", timestamp=None):
@@ -154,34 +154,34 @@ class TestContentHash:
 class TestReconcileEmptyEntries:
     """Test reconciliation with empty/no entries."""
 
-    def test_empty_entries_returns_empty_result(self, app_ctx, agent, task):
+    def test_empty_entries_returns_empty_result(self, app_ctx, agent, command):
         """Empty entries list returns empty result with no DB changes."""
-        result = reconcile_transcript_entries(agent, task, [])
+        result = reconcile_transcript_entries(agent, command, [])
         assert result == {"updated": [], "created": []}
 
-    def test_none_content_entries_skipped(self, app_ctx, agent, task):
+    def test_none_content_entries_skipped(self, app_ctx, agent, command):
         """Entries with None content are skipped."""
         entry = TranscriptEntry(type="user", role="user", content=None)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
         assert result == {"updated": [], "created": []}
 
-    def test_whitespace_only_content_entries_skipped(self, app_ctx, agent, task):
+    def test_whitespace_only_content_entries_skipped(self, app_ctx, agent, command):
         """Entries with whitespace-only content are skipped."""
         entry = _make_entry(role="user", content="   \n\t  ")
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
         assert result == {"updated": [], "created": []}
 
-    def test_empty_string_content_entries_skipped(self, app_ctx, agent, task):
+    def test_empty_string_content_entries_skipped(self, app_ctx, agent, command):
         """Entries with empty string content are skipped."""
         entry = _make_entry(role="user", content="")
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
         assert result == {"updated": [], "created": []}
 
 
 class TestReconcileExactMatch:
     """Test reconciliation when entries match existing turns."""
 
-    def test_exact_match_updates_timestamp(self, app_ctx, agent, task):
+    def test_exact_match_updates_timestamp(self, app_ctx, agent, command):
         """Matching entry updates the turn's timestamp to the JSONL timestamp."""
         now = datetime.now(timezone.utc)
         server_ts = now - timedelta(seconds=5)
@@ -189,7 +189,7 @@ class TestReconcileExactMatch:
 
         # Create existing turn (simulating hook-created turn)
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Fix the login bug",
@@ -202,7 +202,7 @@ class TestReconcileExactMatch:
 
         # Reconcile with matching JSONL entry
         entry = _make_entry(role="user", content="Fix the login bug", timestamp=jsonl_ts)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 1
         assert len(result["created"]) == 0
@@ -218,13 +218,13 @@ class TestReconcileExactMatch:
         assert refreshed.timestamp_source == "jsonl"
         assert refreshed.jsonl_entry_hash is not None
 
-    def test_match_with_same_timestamp_no_update(self, app_ctx, agent, task):
+    def test_match_with_same_timestamp_no_update(self, app_ctx, agent, command):
         """When timestamps match exactly, no update is recorded."""
         now = datetime.now(timezone.utc)
         exact_ts = now - timedelta(seconds=5)
 
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Deploy to staging",
@@ -235,17 +235,17 @@ class TestReconcileExactMatch:
         db.session.flush()
 
         entry = _make_entry(role="user", content="Deploy to staging", timestamp=exact_ts)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 0
         assert len(result["created"]) == 0
 
-    def test_match_without_jsonl_timestamp_records_hash(self, app_ctx, agent, task):
+    def test_match_without_jsonl_timestamp_records_hash(self, app_ctx, agent, command):
         """Matching entry without timestamp records the hash for dedup."""
         now = datetime.now(timezone.utc)
 
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Run the tests",
@@ -258,7 +258,7 @@ class TestReconcileExactMatch:
         turn_id = turn.id
 
         entry = _make_entry(role="user", content="Run the tests", timestamp=None)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 0
         assert len(result["created"]) == 0
@@ -266,13 +266,13 @@ class TestReconcileExactMatch:
         refreshed = db.session.get(Turn, turn_id)
         assert refreshed.jsonl_entry_hash is not None
 
-    def test_match_without_timestamp_preserves_existing_hash(self, app_ctx, agent, task):
+    def test_match_without_timestamp_preserves_existing_hash(self, app_ctx, agent, command):
         """If turn already has a hash, matching without timestamp doesn't overwrite it."""
         now = datetime.now(timezone.utc)
         existing_hash = "abcdef1234567890"
 
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Check status",
@@ -285,7 +285,7 @@ class TestReconcileExactMatch:
         turn_id = turn.id
 
         entry = _make_entry(role="user", content="Check status", timestamp=None)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         refreshed = db.session.get(Turn, turn_id)
         assert refreshed.jsonl_entry_hash == existing_hash
@@ -294,12 +294,12 @@ class TestReconcileExactMatch:
 class TestReconcileNoMatch:
     """Test reconciliation when entries don't match existing turns."""
 
-    def test_no_match_creates_new_turn(self, app_ctx, agent, task):
+    def test_no_match_creates_new_turn(self, app_ctx, agent, command):
         """Unmatched entry creates a new Turn record."""
         jsonl_ts = datetime.now(timezone.utc) - timedelta(seconds=2)
 
         entry = _make_entry(role="user", content="Write unit tests", timestamp=jsonl_ts)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 0
         assert len(result["created"]) == 1
@@ -312,27 +312,27 @@ class TestReconcileNoMatch:
         assert new_turn.intent == TurnIntent.COMMAND
         assert new_turn.timestamp == jsonl_ts
         assert new_turn.timestamp_source == "jsonl"
-        assert new_turn.task_id == task.id
+        assert new_turn.command_id == command.id
         assert new_turn.jsonl_entry_hash is not None
 
-    def test_no_match_agent_entry_creates_agent_turn(self, app_ctx, agent, task):
+    def test_no_match_agent_entry_creates_agent_turn(self, app_ctx, agent, command):
         """Unmatched agent entry creates a Turn with AGENT actor and PROGRESS intent."""
         jsonl_ts = datetime.now(timezone.utc)
 
         entry = _make_entry(role="assistant", content="I will fix this now", timestamp=jsonl_ts)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["created"]) == 1
         new_turn = db.session.get(Turn, result["created"][0])
         assert new_turn.actor == TurnActor.AGENT
         assert new_turn.intent == TurnIntent.PROGRESS
 
-    def test_no_match_without_timestamp_uses_server_time(self, app_ctx, agent, task):
+    def test_no_match_without_timestamp_uses_server_time(self, app_ctx, agent, command):
         """Unmatched entry without timestamp uses server time."""
         before = datetime.now(timezone.utc)
 
         entry = _make_entry(role="user", content="Something new", timestamp=None)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         after = datetime.now(timezone.utc)
 
@@ -341,14 +341,14 @@ class TestReconcileNoMatch:
         assert new_turn.timestamp_source == "server"
         assert before <= new_turn.timestamp <= after
 
-    def test_no_match_strips_content_whitespace(self, app_ctx, agent, task):
+    def test_no_match_strips_content_whitespace(self, app_ctx, agent, command):
         """New turns store stripped content."""
         entry = _make_entry(
             role="user",
             content="  padded content  ",
             timestamp=datetime.now(timezone.utc),
         )
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         new_turn = db.session.get(Turn, result["created"][0])
         assert new_turn.text == "padded content"
@@ -357,7 +357,7 @@ class TestReconcileNoMatch:
 class TestReconcileMultipleEntries:
     """Test reconciliation with multiple entries (mix of matches and new)."""
 
-    def test_mixed_matches_and_new_entries(self, app_ctx, agent, task):
+    def test_mixed_matches_and_new_entries(self, app_ctx, agent, command):
         """Multiple entries: some match existing turns, some create new ones."""
         now = datetime.now(timezone.utc)
         server_ts = now - timedelta(seconds=10)
@@ -365,7 +365,7 @@ class TestReconcileMultipleEntries:
 
         # Create existing turn that will match
         existing_turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Existing command",
@@ -381,13 +381,13 @@ class TestReconcileMultipleEntries:
             _make_entry(role="assistant", content="New agent response", timestamp=now),
             _make_entry(role="user", content="Another new command", timestamp=now),
         ]
-        result = reconcile_transcript_entries(agent, task, entries)
+        result = reconcile_transcript_entries(agent, command, entries)
 
         assert len(result["updated"]) == 1
         assert result["updated"][0][0] == existing_id
         assert len(result["created"]) == 2
 
-    def test_multiple_new_entries(self, app_ctx, agent, task):
+    def test_multiple_new_entries(self, app_ctx, agent, command):
         """All entries are new (no existing turns to match)."""
         now = datetime.now(timezone.utc)
 
@@ -396,12 +396,12 @@ class TestReconcileMultipleEntries:
             _make_entry(role="assistant", content="First response", timestamp=now),
             _make_entry(role="user", content="Second command", timestamp=now),
         ]
-        result = reconcile_transcript_entries(agent, task, entries)
+        result = reconcile_transcript_entries(agent, command, entries)
 
         assert len(result["updated"]) == 0
         assert len(result["created"]) == 3
 
-    def test_skips_empty_among_valid(self, app_ctx, agent, task):
+    def test_skips_empty_among_valid(self, app_ctx, agent, command):
         """Empty/whitespace entries are skipped while valid entries are processed."""
         now = datetime.now(timezone.utc)
 
@@ -412,19 +412,19 @@ class TestReconcileMultipleEntries:
             TranscriptEntry(type="user", role="user", content=None, timestamp=now),
             _make_entry(role="assistant", content="Valid response", timestamp=now),
         ]
-        result = reconcile_transcript_entries(agent, task, entries)
+        result = reconcile_transcript_entries(agent, command, entries)
 
         assert len(result["created"]) == 2
         assert len(result["updated"]) == 0
 
-    def test_commits_only_when_changes_exist(self, app_ctx, agent, task):
+    def test_commits_only_when_changes_exist(self, app_ctx, agent, command):
         """DB commit is issued only when there are updates or creates."""
         now = datetime.now(timezone.utc)
         exact_ts = now - timedelta(seconds=5)
 
         # Create a turn that will match exactly (same timestamp)
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Same timestamp",
@@ -438,7 +438,7 @@ class TestReconcileMultipleEntries:
         entry = _make_entry(role="user", content="Same timestamp", timestamp=exact_ts)
 
         with patch.object(db.session, "commit") as mock_commit:
-            result = reconcile_transcript_entries(agent, task, [entry])
+            result = reconcile_transcript_entries(agent, command, [entry])
             mock_commit.assert_not_called()
 
         assert len(result["updated"]) == 0
@@ -448,12 +448,12 @@ class TestReconcileMultipleEntries:
 class TestReconcileOldTurnsNotMatched:
     """Test that turns outside the match window are not considered."""
 
-    def test_old_turns_outside_window_not_matched(self, app_ctx, agent, task):
+    def test_old_turns_outside_window_not_matched(self, app_ctx, agent, command):
         """Turns older than MATCH_WINDOW_SECONDS (120s) are not matched, creating new turns."""
         old_ts = datetime.now(timezone.utc) - timedelta(seconds=150)
 
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Old command",
@@ -466,7 +466,7 @@ class TestReconcileOldTurnsNotMatched:
         # Entry has same content but the existing turn is outside the match window
         now = datetime.now(timezone.utc)
         entry = _make_entry(role="user", content="Old command", timestamp=now)
-        result = reconcile_transcript_entries(agent, task, [entry])
+        result = reconcile_transcript_entries(agent, command, [entry])
 
         # Should create new turn since the old one is outside the window
         assert len(result["created"]) == 1
@@ -582,15 +582,15 @@ class TestBroadcastReconciliationCreated:
 
         ts = datetime(2026, 2, 15, 10, 0, 0, tzinfo=timezone.utc)
 
-        mock_task = MagicMock()
-        mock_task.instruction = "Do something"
+        mock_command = MagicMock()
+        mock_command.instruction = "Do something"
 
         mock_turn = MagicMock()
         mock_turn.text = "Hello world"
         mock_turn.actor.value = "user"
         mock_turn.intent.value = "command"
-        mock_turn.task_id = 5
-        mock_turn.task = mock_task
+        mock_turn.command_id = 5
+        mock_turn.command = mock_command
         mock_turn.id = 99
         mock_turn.question_source_type = None
         mock_turn.timestamp.isoformat.return_value = ts.isoformat()
@@ -612,8 +612,8 @@ class TestBroadcastReconciliationCreated:
                 "text": "Hello world",
                 "actor": "user",
                 "intent": "command",
-                "task_id": 5,
-                "task_instruction": "Do something",
+                "command_id": 5,
+                "command_instruction": "Do something",
                 "turn_id": 99,
                 "question_source_type": None,
                 "timestamp": ts.isoformat(),
@@ -690,7 +690,7 @@ class TestBroadcastReconciliationMixed:
         mock_turn.text = "New turn"
         mock_turn.actor.value = "agent"
         mock_turn.intent.value = "progress"
-        mock_turn.task_id = 5
+        mock_turn.command_id = 5
         mock_turn.id = 99
         mock_turn.timestamp.isoformat.return_value = ts_new.isoformat()
 
@@ -725,14 +725,14 @@ class TestBroadcastReconciliationMixed:
 class TestReconcileAgentSession:
     """Tests for full-session reconciliation at session end."""
 
-    def test_reconcile_agent_session_no_transcript(self, app_ctx, agent, task):
+    def test_reconcile_agent_session_no_transcript(self, app_ctx, agent, command):
         """Agent with no transcript_path returns empty result."""
         agent.transcript_path = None
         result = reconcile_agent_session(agent)
         assert result == {"updated": [], "created": []}
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_creates_missing_turns(self, mock_read, app_ctx, agent, task):
+    def test_reconcile_agent_session_creates_missing_turns(self, mock_read, app_ctx, agent, command):
         """Missing JSONL entries should be created as new turns."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         jsonl_ts = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -754,18 +754,18 @@ class TestReconcileAgentSession:
         for turn_id in result["created"]:
             turn = db.session.get(Turn, turn_id)
             assert turn is not None
-            assert turn.task_id == task.id
+            assert turn.command_id == command.id
             assert turn.timestamp_source == "jsonl"
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_skips_existing_turns(self, mock_read, app_ctx, agent, task):
+    def test_reconcile_agent_session_skips_existing_turns(self, mock_read, app_ctx, agent, command):
         """Turns that already exist in the DB should be skipped."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         now = datetime.now(timezone.utc)
 
         # Create existing turn
         existing = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Already recorded",
@@ -789,7 +789,7 @@ class TestReconcileAgentSession:
         assert new_turn.text == "New command"
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_empty_entries(self, mock_read, app_ctx, agent, task):
+    def test_reconcile_agent_session_empty_entries(self, mock_read, app_ctx, agent, command):
         """Empty entries list returns empty result."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         mock_read.return_value = ([], 0)

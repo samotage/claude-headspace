@@ -1,4 +1,4 @@
-# Tasks: e2-s3-help-system
+# Commands: e2-s3-help-system
 
 ## Phase 1: Setup
 

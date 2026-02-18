@@ -48,7 +48,7 @@ class DashboardAssertions:
         expect(locator).to_contain_text(text, timeout=timeout)
 
     def assert_task_completed(self, agent_id: int, timeout: int = 10000):
-        """Wait for task completion in kanban view.
+        """Wait for command completion in kanban view.
 
         In kanban view, COMPLETE creates a condensed <details> card and
         resets the <article> card to IDLE. Check for the condensed card.

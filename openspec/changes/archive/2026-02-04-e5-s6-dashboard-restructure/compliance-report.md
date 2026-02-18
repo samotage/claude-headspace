@@ -14,7 +14,7 @@ All 20 functional requirements from the PRD are implemented. The implementation 
 | 1. Agents displayed with 2-char hero identity in all views | ✓ | card_state, templates, JS all updated |
 | 2. No `#` prefix on any agent ID display | ✓ | Removed from all templates and JS files |
 | 3. Kanban view is first/default sort option | ✓ | _sort_controls.html, localStorage default |
-| 4. Tasks appear in correct lifecycle state columns | ✓ | _prepare_kanban_data groups by state |
+| 4. Commands appear in correct lifecycle state columns | ✓ | _prepare_kanban_data groups by state |
 | 5. Idle agents in IDLE column, completed as accordions | ✓ | _kanban_view.html with `<details>` |
 | 6. Completed tasks persist until agent reaped | ✓ | Structural — queries active agents only |
 | 7. Priority ordering within Kanban columns | ✓ | _prepare_kanban_data sorts by priority |
@@ -25,7 +25,7 @@ All 20 functional requirements from the PRD are implemented. The implementation 
 ## Requirements Coverage
 
 - **PRD Requirements:** 20/20 covered (FR1-FR20)
-- **Tasks Completed:** 30/30 implementation tasks complete (Phase 2a-2d)
+- **Commands Completed:** 30/30 implementation tasks complete (Phase 2a-2d)
 - **Design Compliance:** Yes (no design.md — follows proposal patterns)
 
 ## Issues Found

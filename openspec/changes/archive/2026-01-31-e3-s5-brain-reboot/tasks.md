@@ -1,4 +1,4 @@
-# Tasks: e3-s5-brain-reboot
+# Commands: e3-s5-brain-reboot
 
 ## Phase 1: Configuration
 

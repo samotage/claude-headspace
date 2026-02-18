@@ -101,7 +101,7 @@ Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 
 | 1      | Project Bootstrap               | 1 week    | flask-bootstrap, database-setup |
 | 2      | Domain Models & Database Schema | 1-2 weeks | domain-models                   |
 | 3      | File Watcher & Event System     | 1-2 weeks | file-watcher, event-system      |
-| 4      | Task/Turn State Machine         | 1 week    | state-machine                   |
+| 4      | Command/Turn State Machine         | 1 week    | state-machine                   |
 | 5      | SSE & Real-time Updates         | 1 week    | sse-system                      |
 | 6      | Dashboard UI                    | 2 weeks   | dashboard-ui                    |
 | 7      | Objective Tab                   | 1 week    | objective-tab                   |
@@ -156,7 +156,7 @@ Logs are events. Events drive the application.
 - Event log provides audit trail
 - Enables dual event sources (hooks + polling)
 
-### 2. 5-State Task Model
+### 2. 5-State Command Model
 
 ```
 idle → commanded → processing → awaiting_input/complete → idle
@@ -191,7 +191,7 @@ Claude `$CLAUDE_SESSION_ID` ≠ terminal pane ID
 
 ### 5. Turn-Level Granularity
 
-Track every user/agent exchange (not just task-level):
+Track every user/agent exchange (not just command-level):
 
 - Foundation for Epic 3 turn summarisation
 - Enables fine-grained audit trail
@@ -284,7 +284,7 @@ Follow this order for OpenSpec PRD generation:
 
 Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 
-- ✅ Dashboard reflects correct Task/Turn states in real-time
+- ✅ Dashboard reflects correct Command/Turn states in real-time
 - ✅ Agent cards clickable, focus correct iTerm window
 - ✅ Hook events update agent state instantly (<100ms)
 - ✅ Terminal polling provides fallback when hooks unavailable

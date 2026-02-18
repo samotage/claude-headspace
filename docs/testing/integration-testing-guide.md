@@ -91,14 +91,14 @@ The `db_session` fixture provides a SQLAlchemy session connected to the test dat
 Factories auto-create parent entities via `SubFactory`:
 
 ```python
-# Creates a Turn + its Task + its Agent + its Project
+# Creates a Turn + its Command + its Agent + its Project
 turn = TurnFactory(text="Hello")
 db_session.flush()
 
 # Or create a specific chain
 project = ProjectFactory(name="specific-project")
 agent = AgentFactory(project=project)
-task = TaskFactory(agent=agent)
+command = CommandFactory(agent=agent)
 db_session.flush()
 ```
 
@@ -120,8 +120,8 @@ result = db_session.execute(
 |---------|-------|-------------|
 | `ProjectFactory` | Project | — |
 | `AgentFactory` | Agent | Project |
-| `TaskFactory` | Task | Agent, Project |
-| `TurnFactory` | Turn | Task, Agent, Project |
+| `CommandFactory` | Command | Agent, Project |
+| `TurnFactory` | Turn | Command, Agent, Project |
 | `EventFactory` | Event | — (references are optional) |
 | `ObjectiveFactory` | Objective | — |
 | `ObjectiveHistoryFactory` | ObjectiveHistory | Objective |
@@ -137,7 +137,7 @@ my_project = ProjectFactory()
 agent = AgentFactory(project=my_project)
 
 # Override enum values
-task = TaskFactory(state=TaskState.PROCESSING)
+command = CommandFactory(state=CommandState.PROCESSING)
 turn = TurnFactory(actor=TurnActor.AGENT, intent=TurnIntent.COMPLETION)
 ```
 

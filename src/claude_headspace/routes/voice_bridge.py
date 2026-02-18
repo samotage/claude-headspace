@@ -9,7 +9,7 @@ from flask import Blueprint, current_app, jsonify, make_response, request, send_
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.task import Task, TaskState
+from ..models.command import Command, CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from ..services import tmux_bridge
 from ..services.agent_lifecycle import (
@@ -69,26 +69,26 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     from ..services.card_state import (
         get_effective_state,
         get_state_info,
-        get_task_instruction,
-        get_task_summary,
-        get_task_completion_summary,
+        get_command_instruction,
+        get_command_summary,
+        get_command_completion_summary,
     )
 
-    current_task = agent.get_current_task()
+    current_command = agent.get_current_command()
     effective_state = get_effective_state(agent)
     state_name = effective_state if isinstance(effective_state, str) else effective_state.name
     state_info = get_state_info(effective_state)
-    awaiting = current_task is not None and current_task.state == TaskState.AWAITING_INPUT
+    awaiting = current_command is not None and current_command.state == CommandState.AWAITING_INPUT
 
-    # Task details from card_state helpers (consistent with dashboard)
-    task_instruction = get_task_instruction(agent, _current_task=current_task)
-    task_summary = get_task_summary(agent, _current_task=current_task)
-    task_completion_summary = get_task_completion_summary(agent)
+    # Command details from card_state helpers (consistent with dashboard)
+    command_instruction = get_command_instruction(agent, _current_command=current_command)
+    command_summary = get_command_summary(agent, _current_command=current_command)
+    command_completion_summary = get_command_completion_summary(agent)
 
-    # Turn count for current task
+    # Turn count for current command
     turn_count = 0
-    if current_task and current_task.turns:
-        turn_count = len(current_task.turns)
+    if current_command and current_command.turns:
+        turn_count = len(current_command.turns)
 
     # Agent identity: hero chars from session UUID (matches dashboard)
     truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
@@ -125,11 +125,11 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "state": state_name,
         "state_label": state_info.get("label", state_name),
         "awaiting_input": awaiting,
-        "task_instruction": task_instruction,
-        "task_summary": task_summary,
-        "task_completion_summary": task_completion_summary,
+        "command_instruction": command_instruction,
+        "command_summary": command_summary,
+        "command_completion_summary": command_completion_summary,
         "turn_count": turn_count,
-        "summary": task_summary or task_instruction,
+        "summary": command_summary or command_instruction,
         "last_activity_ago": ago,
         "context": context,
         "tmux_session": agent.tmux_session,
@@ -273,7 +273,7 @@ def voice_command():
                 400,
             )
         active = _get_active_agents()
-        awaiting = [a for a in active if a.get_current_task() and a.get_current_task().state == TaskState.AWAITING_INPUT]
+        awaiting = [a for a in active if a.get_current_command() and a.get_current_command().state == CommandState.AWAITING_INPUT]
         if len(awaiting) == 0:
             # No agents awaiting input — return status summary
             agent_dicts = [_agent_to_voice_dict(a) for a in active]
@@ -296,11 +296,11 @@ def voice_command():
         agent = awaiting[0]
 
     # Determine agent state
-    current_task = agent.get_current_task()
-    current_state = current_task.state if current_task else None
-    is_answering = current_state == TaskState.AWAITING_INPUT
-    is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
-    is_processing = current_state in (TaskState.PROCESSING, TaskState.COMMANDED)
+    current_command = agent.get_current_command()
+    current_state = current_command.state if current_command else None
+    is_answering = current_state == CommandState.AWAITING_INPUT
+    is_idle = current_state in (None, CommandState.IDLE, CommandState.COMPLETE)
+    is_processing = current_state in (CommandState.PROCESSING, CommandState.COMMANDED)
 
     # Detect if the agent's current question has structured options (picker).
     # Voice chat always sends free text, which works fine for free-text prompts
@@ -308,8 +308,8 @@ def voice_command():
     # route through the "Other" option instead of typing literal text.
     has_picker = False
     picker_option_count = 0
-    if is_answering and current_task and current_task.turns:
-        for t in reversed(current_task.turns):
+    if is_answering and current_command and current_command.turns:
+        for t in reversed(current_command.turns):
             if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                 # Count options from tool_input (canonical source for TUI navigation)
                 if t.tool_input and isinstance(t.tool_input, dict):
@@ -413,9 +413,9 @@ def voice_command():
         # bubble would expire after 10s with no SSE confirmation.
         turn_result = None
         try:
-            from ..services.task_lifecycle import TaskLifecycleManager
+            from ..services.command_lifecycle import CommandLifecycleManager
             event_writer = current_app.extensions.get("event_writer")
-            lifecycle = TaskLifecycleManager(
+            lifecycle = CommandLifecycleManager(
                 session=db.session,
                 event_writer=event_writer,
             )
@@ -423,9 +423,9 @@ def voice_command():
                 agent=agent, actor=TurnActor.USER, text=send_text,
             )
             # Auto-transition COMMANDED → PROCESSING
-            if turn_result.success and turn_result.task and turn_result.task.state == TaskState.COMMANDED:
-                lifecycle.update_task_state(
-                    task=turn_result.task, to_state=TaskState.PROCESSING,
+            if turn_result.success and turn_result.command and turn_result.command.state == CommandState.COMMANDED:
+                lifecycle.update_command_state(
+                    command=turn_result.command, to_state=CommandState.PROCESSING,
                     trigger="voice_command", confidence=1.0,
                 )
 
@@ -434,12 +434,12 @@ def voice_command():
             db.session.commit()
 
             # Broadcast turn_created immediately after commit
-            if turn_result.success and turn_result.task:
+            if turn_result.success and turn_result.command:
                 try:
                     from ..services.broadcaster import get_broadcaster
                     user_turn_id = None
-                    if turn_result.task.turns:
-                        for t in reversed(turn_result.task.turns):
+                    if turn_result.command.turns:
+                        for t in reversed(turn_result.command.turns):
                             if t.actor == TurnActor.USER:
                                 user_turn_id = t.id
                                 break
@@ -449,8 +449,8 @@ def voice_command():
                         "text": send_text,
                         "actor": "user",
                         "intent": turn_result.intent.intent.value if turn_result.intent else "command",
-                        "task_id": turn_result.task.id,
-                        "task_instruction": turn_result.task.instruction,
+                        "command_id": turn_result.command.id,
+                        "command_instruction": turn_result.command.instruction,
                         "turn_id": user_turn_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
@@ -490,8 +490,8 @@ def voice_command():
             voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
 
         new_state = "processing"
-        if turn_result and turn_result.task:
-            new_state = turn_result.task.state.value
+        if turn_result and turn_result.command:
+            new_state = turn_result.command.state.value
 
         return jsonify({
             "voice": voice,
@@ -503,17 +503,17 @@ def voice_command():
     # AWAITING_INPUT path: create ANSWER turn and transition state
     try:
         answered_turn_id = None
-        if current_task.turns:
-            for t in reversed(current_task.turns):
+        if current_command.turns:
+            for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     answered_turn_id = t.id
                     break
 
         from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_task)
+        mark_question_answered(current_command)
 
         turn = Turn(
-            task_id=current_task.id,
+            command_id=current_command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=text,
@@ -523,18 +523,18 @@ def voice_command():
         db.session.add(turn)
 
         from ..services.state_machine import validate_transition
-        vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
+        vr = validate_transition(current_command.state, TurnActor.USER, TurnIntent.ANSWER)
         if vr.valid:
-            current_task.state = vr.to_state
+            current_command.state = vr.to_state
         else:
             # Intentional fallback: respond always means user answered, so force
             # PROCESSING even if the state machine rejects the transition (e.g.
-            # if the task was concurrently modified by another hook).
+            # if the command was concurrently modified by another hook).
             logger.warning(
-                f"voice_bridge: invalid transition {current_task.state.value} -> PROCESSING, "
-                f"forcing (agent_id={agent.id}, task_id={current_task.id})"
+                f"voice_bridge: invalid transition {current_command.state.value} -> PROCESSING, "
+                f"forcing (agent_id={agent.id}, command_id={current_command.id})"
             )
-            current_task.state = TaskState.PROCESSING
+            current_command.state = CommandState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
         from ..services.hook_agent_state import get_agent_hook_state
@@ -558,8 +558,8 @@ def voice_command():
                 "text": text,
                 "actor": "user",
                 "intent": "answer",
-                "task_id": current_task.id,
-                "task_instruction": current_task.instruction,
+                "command_id": current_command.id,
+                "command_instruction": current_command.instruction,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })
@@ -575,7 +575,7 @@ def voice_command():
         response_data = {
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": current_task.state.value,
+            "new_state": current_command.state.value,
             "latency_ms": latency_ms,
         }
         if has_picker:
@@ -642,10 +642,10 @@ def upload_file(agent_id: int):
         return _voice_error(validation["error"], "Check the file and try again.", 400)
 
     # Determine agent state BEFORE saving file to avoid orphaned files on rejection
-    current_task = agent.get_current_task()
-    current_state = current_task.state if current_task else None
-    is_answering = current_state == TaskState.AWAITING_INPUT
-    is_idle = current_state in (None, TaskState.IDLE, TaskState.COMPLETE)
+    current_command = agent.get_current_command()
+    current_state = current_command.state if current_command else None
+    is_answering = current_state == CommandState.AWAITING_INPUT
+    is_idle = current_state in (None, CommandState.IDLE, CommandState.COMPLETE)
 
     if not is_answering and not is_idle:
         state_str = current_state.value if current_state else "idle"
@@ -696,7 +696,7 @@ def upload_file(agent_id: int):
     # Handle state transitions (same logic as voice_command)
     if is_idle:
         # Store file metadata so the next user_prompt_submit hook can attach it
-        # to the COMMAND turn it creates (IDLE agents have no active task yet).
+        # to the COMMAND turn it creates (IDLE agents have no active command yet).
         # Include the clean display text so the hook uses it instead of the raw
         # tmux text (which has the file path prepended), avoiding a duplicate
         # bubble in the chat UI where the frontend dedup compares by text.
@@ -720,18 +720,18 @@ def upload_file(agent_id: int):
     # AWAITING_INPUT path
     try:
         answered_turn_id = None
-        if current_task.turns:
-            for t in reversed(current_task.turns):
+        if current_command.turns:
+            for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     answered_turn_id = t.id
                     break
 
         from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_task)
+        mark_question_answered(current_command)
 
         display_text = text if text else f"[File: {file_metadata['original_filename']}]"
         turn = Turn(
-            task_id=current_task.id,
+            command_id=current_command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text=display_text,
@@ -742,11 +742,11 @@ def upload_file(agent_id: int):
         db.session.add(turn)
 
         from ..services.state_machine import validate_transition
-        vr = validate_transition(current_task.state, TurnActor.USER, TurnIntent.ANSWER)
+        vr = validate_transition(current_command.state, TurnActor.USER, TurnIntent.ANSWER)
         if vr.valid:
-            current_task.state = vr.to_state
+            current_command.state = vr.to_state
         else:
-            current_task.state = TaskState.PROCESSING
+            current_command.state = CommandState.PROCESSING
         agent.last_seen_at = datetime.now(timezone.utc)
 
         from ..services.hook_agent_state import get_agent_hook_state
@@ -768,8 +768,8 @@ def upload_file(agent_id: int):
                 "text": display_text,
                 "actor": "user",
                 "intent": "answer",
-                "task_id": current_task.id,
-                "task_instruction": current_task.instruction,
+                "command_id": current_command.id,
+                "command_instruction": current_command.instruction,
                 "turn_id": turn.id,
                 "timestamp": turn.timestamp.isoformat(),
             })
@@ -781,7 +781,7 @@ def upload_file(agent_id: int):
             "file_metadata": file_metadata,
             "agent_id": agent.id,
             "turn_id": turn.id,
-            "new_state": current_task.state.value,
+            "new_state": current_command.state.value,
             "latency_ms": latency_ms,
         }), 200
 
@@ -824,32 +824,32 @@ def agent_output(agent_id: int):
     if not agent:
         return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
 
-    tasks = (
-        db.session.query(Task)
-        .filter(Task.agent_id == agent_id)
-        .order_by(Task.started_at.desc())
+    commands = (
+        db.session.query(Command)
+        .filter(Command.agent_id == agent_id)
+        .order_by(Command.started_at.desc())
         .limit(limit)
         .all()
     )
 
-    task_dicts = []
-    for task in tasks:
-        task_dicts.append({
-            "task_id": task.id,
-            "state": task.state.value,
-            "instruction": task.instruction,
-            "completion_summary": task.completion_summary,
-            "full_command": task.full_command,
-            "full_output": task.full_output,
+    command_dicts = []
+    for command in commands:
+        command_dicts.append({
+            "command_id": command.id,
+            "state": command.state.value,
+            "instruction": command.instruction,
+            "completion_summary": command.completion_summary,
+            "full_command": command.full_command,
+            "full_output": command.full_output,
         })
 
     if formatter:
-        voice = formatter.format_output(agent.name, task_dicts, verbosity=verbosity)
+        voice = formatter.format_output(agent.name, command_dicts, verbosity=verbosity)
     else:
-        voice = {"status_line": f"{len(tasks)} recent tasks.", "results": [], "next_action": "none"}
+        voice = {"status_line": f"{len(commands)} recent commands.", "results": [], "next_action": "none"}
 
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({"voice": voice, "tasks": task_dicts, "latency_ms": latency_ms}), 200
+    return jsonify({"voice": voice, "commands": command_dicts, "latency_ms": latency_ms}), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/question", methods=["GET"])
@@ -862,9 +862,9 @@ def agent_question(agent_id: int):
     if not agent:
         return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
 
-    current_task = agent.get_current_task()
-    if not current_task or current_task.state != TaskState.AWAITING_INPUT:
-        state_str = current_task.state.value if current_task else "idle"
+    current_command = agent.get_current_command()
+    if not current_command or current_command.state != CommandState.AWAITING_INPUT:
+        state_str = current_command.state.value if current_command else "idle"
         return _voice_error(
             f"Agent is {state_str}, not waiting for input.",
             "No question to show right now.",
@@ -873,8 +873,8 @@ def agent_question(agent_id: int):
 
     # Find most recent QUESTION turn
     question_turn = None
-    if current_task.turns:
-        for t in reversed(current_task.turns):
+    if current_command.turns:
+        for t in reversed(current_command.turns):
             if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                 question_turn = t
                 break
@@ -952,11 +952,11 @@ def agent_transcript(agent_id: int):
     before = request.args.get("before", type=int)
     limit = min(request.args.get("limit", 50, type=int), 200)
 
-    # Query turns across ALL tasks for this agent (excluding team-internal turns)
+    # Query turns across ALL commands for this agent (excluding team-internal turns)
     query = (
-        db.session.query(Turn, Task)
-        .join(Task, Turn.task_id == Task.id)
-        .filter(Task.agent_id == agent_id)
+        db.session.query(Turn, Command)
+        .join(Command, Turn.command_id == Command.id)
+        .filter(Command.agent_id == agent_id)
         .filter(Turn.is_internal == False)  # noqa: E712
     )
 
@@ -988,7 +988,7 @@ def agent_transcript(agent_id: int):
     results.reverse()
 
     turn_list = []
-    for t, task in results:
+    for t, command in results:
         # Filter out PROGRESS turns with no meaningful text
         if t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip()):
             continue
@@ -1005,16 +1005,16 @@ def agent_transcript(agent_id: int):
             "question_source_type": t.question_source_type,
             "answered_by_turn_id": t.answered_by_turn_id,
             "file_metadata": t.file_metadata,
-            "task_id": task.id,
-            "task_instruction": task.instruction,
-            "task_state": task.state.value,
+            "command_id": command.id,
+            "command_instruction": command.instruction,
+            "command_state": command.state.value,
         })
 
-    # Inject synthetic task_boundary entries for tasks with no turns in this page.
-    # This ensures task dividers appear at their chronological position even when
-    # a task lost its turns (e.g. during server downtime).
+    # Inject synthetic command_boundary entries for commands with no turns in this page.
+    # This ensures command dividers appear at their chronological position even when
+    # a command lost its turns (e.g. during server downtime).
     if turn_list:
-        seen_task_ids = {t["task_id"] for t in turn_list}
+        seen_command_ids = {t["command_id"] for t in turn_list}
         min_ts = min(
             (t["timestamp"] for t in turn_list if t["timestamp"]),
             default=None,
@@ -1026,23 +1026,23 @@ def agent_transcript(agent_id: int):
         if min_ts and max_ts:
             min_dt = datetime.fromisoformat(min_ts)
             max_dt = datetime.fromisoformat(max_ts)
-            empty_tasks = (
-                db.session.query(Task)
+            empty_commands = (
+                db.session.query(Command)
                 .filter(
-                    Task.agent_id == agent_id,
-                    Task.started_at >= min_dt,
-                    Task.started_at <= max_dt,
-                    Task.id.notin_(seen_task_ids),
+                    Command.agent_id == agent_id,
+                    Command.started_at >= min_dt,
+                    Command.started_at <= max_dt,
+                    Command.id.notin_(seen_command_ids),
                 )
                 .all()
             )
-            for task in empty_tasks:
-                ts_iso = task.started_at.isoformat() if task.started_at else None
+            for cmd in empty_commands:
+                ts_iso = cmd.started_at.isoformat() if cmd.started_at else None
                 turn_list.append({
-                    "type": "task_boundary",
-                    "task_id": task.id,
-                    "task_instruction": task.instruction,
-                    "task_state": task.state.value,
+                    "type": "command_boundary",
+                    "command_id": cmd.id,
+                    "command_instruction": cmd.instruction,
+                    "command_state": cmd.state.value,
                     "timestamp": ts_iso,
                     "has_turns": False,
                 })
@@ -1050,8 +1050,8 @@ def agent_transcript(agent_id: int):
             turn_list.sort(key=lambda x: x.get("timestamp") or "")
 
     # Determine current agent state
-    current_task = agent.get_current_task()
-    agent_state = current_task.state.value if current_task else "idle"
+    current_command = agent.get_current_command()
+    agent_state = current_command.state.value if current_command else "idle"
     agent_ended = agent.ended_at is not None
 
     truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
@@ -1217,17 +1217,17 @@ def recapture_permission_options(agent_id: int):
         return jsonify({"error": "Agent has no tmux pane"}), 400
 
     # Find the latest QUESTION turn with missing options
-    current_task = (
-        db.session.query(Task)
-        .filter(Task.agent_id == agent_id)
-        .order_by(Task.id.desc())
+    current_command = (
+        db.session.query(Command)
+        .filter(Command.agent_id == agent_id)
+        .order_by(Command.id.desc())
         .first()
     )
-    if not current_task:
-        return jsonify({"error": "No active task"}), 404
+    if not current_command:
+        return jsonify({"error": "No active command"}), 404
 
     question_turn = None
-    for t in reversed(current_task.turns):
+    for t in reversed(current_command.turns):
         if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
             question_turn = t
             break

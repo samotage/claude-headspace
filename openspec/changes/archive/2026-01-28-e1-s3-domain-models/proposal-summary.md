@@ -3,8 +3,8 @@
 ## Architecture Decisions
 - Use SQLAlchemy ORM with Flask integration (follows existing project pattern from Sprint 2)
 - Models organized in `src/claude_headspace/models/` directory with separate files per domain concept
-- PostgreSQL native ENUM types for TaskState, TurnActor, TurnIntent (database-level validation)
-- Derived Agent.state property computed from current task (no denormalization)
+- PostgreSQL native ENUM types for CommandState, TurnActor, TurnIntent (database-level validation)
+- Derived Agent.state property computed from current command (no denormalization)
 - Event foreign keys are nullable with SET NULL on delete (preserves audit trail)
 
 ## Implementation Approach
@@ -20,7 +20,7 @@
 - `src/claude_headspace/models/objective.py` - Objective, ObjectiveHistory
 - `src/claude_headspace/models/project.py` - Project
 - `src/claude_headspace/models/agent.py` - Agent with state property
-- `src/claude_headspace/models/task.py` - Task, TaskState enum
+- `src/claude_headspace/models/command.py` - Command, CommandState enum
 - `src/claude_headspace/models/turn.py` - Turn, TurnActor, TurnIntent enums
 - `src/claude_headspace/models/event.py` - Event
 
@@ -32,9 +32,9 @@
 2. Database migrations run cleanly (`flask db upgrade`) with no errors
 3. Foreign key relationships enforced at database level
 4. Enum fields reject invalid values
-5. Complete object graph creation works: Objective → Project → Agent → Task → Turn
+5. Complete object graph creation works: Objective → Project → Agent → Command → Turn
 6. Query patterns work:
-   - Agent.get_current_task() returns most recent incomplete task
+   - Agent.get_current_command() returns most recent incomplete command
    - Task.get_recent_turns() returns turns ordered by timestamp
    - Events filterable by project/agent/event_type
 7. ObjectiveHistory tracks changes with started_at/ended_at
@@ -78,7 +78,7 @@ Based on git context analysis:
 
 ### Database migrations needed
 - Single migration creating all 7 tables with:
-  - ENUM types for TaskState, TurnActor, TurnIntent
+  - ENUM types for CommandState, TurnActor, TurnIntent
   - Foreign key constraints
   - Indexes on query columns
 
@@ -94,7 +94,7 @@ Based on git context analysis:
 - Test SET NULL on Event FK deletes
 
 ### Query Pattern Tests
-- Test Agent.get_current_task()
+- Test Agent.get_current_command()
 - Test Agent.state derived property
 - Test Turn ordering by timestamp
 - Test Event filtering

@@ -24,7 +24,7 @@ Without a dashboard, users must manually track agent states across terminal wind
 - `static/css/src/input.css` - Add dashboard-specific Tailwind styles
 
 ### Database Changes
-None - uses existing Project, Agent, Task, Turn models from Sprint 3.
+None - uses existing Project, Agent, Command, Turn models from Sprint 3.
 
 ## Definition of Done
 
@@ -33,7 +33,7 @@ None - uses existing Project, Agent, Task, Turn models from Sprint 3.
 - [ ] All agents displayed within project groups
 - [ ] Header with status counts (INPUT NEEDED, WORKING, IDLE)
 - [ ] Traffic light indicators per project
-- [ ] Agent cards with session ID, status, uptime, state bar, task summary
+- [ ] Agent cards with session ID, status, uptime, state bar, command summary
 - [ ] State bars colour-coded (5 states)
 - [ ] Responsive layout (mobile/tablet/desktop)
 - [ ] Semantic HTML with ARIA labels

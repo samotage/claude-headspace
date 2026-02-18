@@ -28,7 +28,7 @@ None - uses config.yaml for persistence.
 
 ## Definition of Done
 
-- [ ] Notifications appear for task_complete events
+- [ ] Notifications appear for command_complete events
 - [ ] Notifications appear for awaiting_input events
 - [ ] Click-to-navigate opens dashboard with agent highlighted
 - [ ] Global enable/disable toggle works

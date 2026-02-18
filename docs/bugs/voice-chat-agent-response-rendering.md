@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-In the Claude Headspace voice chat UI (`/voice`), agent (Claude Code) text responses are not appearing as chat bubbles. User messages display correctly as blue COMMAND bubbles, and task separators (gray dividers with task instruction text) appear between turns, but the **agent's actual response text is invisible** — no agent bubble is rendered.
+In the Claude Headspace voice chat UI (`/voice`), agent (Claude Code) text responses are not appearing as chat bubbles. User messages display correctly as blue COMMAND bubbles, and command separators (gray dividers with command instruction text) appear between turns, but the **agent's actual response text is invisible** — no agent bubble is rendered.
 
 This means the voice chat is unusable for reading agent responses — users can see what they sent but not what the agent replied.
 
@@ -21,11 +21,11 @@ This means the voice chat is unusable for reading agent responses — users can 
 ### Server Side (Turn Creation & Broadcasting)
 
 1. Claude Code finishes responding → `stop` hook fires → `hook_receiver.py:handle_stop()`
-2. Stop handler reads transcript, creates a Turn record (COMPLETION/END_OF_TASK/QUESTION intent)
+2. Stop handler reads transcript, creates a Turn record (COMPLETION/END_OF_COMMAND/QUESTION intent)
 3. After `db.session.commit()`, three SSE events broadcast in this order:
    - `card_refresh` (line ~724)
    - `state_changed` (line ~728)
-   - `turn_created` (line ~756) — contains `{agent_id, text, actor:"agent", intent, task_id, turn_id}`
+   - `turn_created` (line ~756) — contains `{agent_id, text, actor:"agent", intent, command_id, turn_id}`
 4. **Deferred stop path** (lines 597-612): If transcript is empty when stop fires, processing defers. The deferred handler (`hook_deferred_stop.py`) eventually creates the turn and broadcasts `card_refresh` + `turn_created` (but NOT `state_changed`).
 
 ### Client Side (SSE → Rendering)
@@ -48,7 +48,7 @@ SSE state_changed/card_refresh → _handleAgentUpdate() → _handleChatSSE() →
 - Also triggered by: 8-second safety-net polling timer, response catch-up timers (1.5s, 3s, 5s, 8s, 12s, 18s, 25s after send)
 - Filters turns through `_chatRenderedTurnIds` — skips any already rendered
 - Groups consecutive agent turns within 2s into single bubbles
-- Inserts task separators at task boundaries (these ARE rendering — confirmed in screenshot)
+- Inserts command separators at task boundaries (these ARE rendering — confirmed in screenshot)
 
 ### Rendering Pipeline (`_renderChatBubble` → `_createBubbleEl`)
 
@@ -56,7 +56,7 @@ SSE state_changed/card_refresh → _handleAgentUpdate() → _handleChatSSE() →
 2. Creates a `div.chat-bubble.agent` element
 3. Text display: `displayText = turn.text || turn.summary || ''` — if both empty, no text div is added
 4. Intent label rendered (Question/Completed/Command/Working)
-5. **Terminal intent collapse**: When COMPLETION/END_OF_TASK arrives, `_collapseProgressBubbles()` removes all PROGRESS bubbles for that task from the DOM
+5. **Terminal intent collapse**: When COMPLETION/END_OF_COMMAND arrives, `_collapseProgressBubbles()` removes all PROGRESS bubbles for that command from the DOM
 
 ## Suspected Root Causes (Investigate All Three)
 
@@ -130,7 +130,7 @@ Query recent agent turns to verify text is populated:
 SELECT t.id, t.actor, t.intent, length(t.text) as text_len,
        substring(t.text, 1, 80) as text_preview, t.summary
 FROM turns t
-JOIN tasks tk ON t.task_id = tk.id
+JOIN tasks tk ON t.command_id = tk.id
 JOIN agents a ON tk.agent_id = a.id
 WHERE a.id = <target_agent_id>
 ORDER BY t.id DESC
@@ -145,7 +145,7 @@ Open browser DevTools → Network tab → filter by EventStream. Watch for `turn
 
 Once the root cause is identified:
 
-- **If text is empty**: Fix the turn creation in `hook_receiver.py` or `hook_deferred_stop.py` to ensure `text` is always populated for COMPLETION/END_OF_TASK turns. Consider falling back to `full_agent_text` if `completion_text` is empty after progress dedup.
+- **If text is empty**: Fix the turn creation in `hook_receiver.py` or `hook_deferred_stop.py` to ensure `text` is always populated for COMPLETION/END_OF_COMMAND turns. Consider falling back to `full_agent_text` if `completion_text` is empty after progress dedup.
 
 - **If dedup race**: Modify `_handleTurnCreated` to NOT add the turn ID to `_chatRenderedTurnIds` when the SSE fires, letting the transcript fetch handle it. Or: when `_fetchTranscriptForChat` finds a turn already in the dedup set, verify the DOM element still exists and re-render if missing.
 

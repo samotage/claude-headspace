@@ -193,7 +193,7 @@ And also the roadmap artifacts:
 > | Pauses (Inference)   | Continues              |
 > | -------------------- | ---------------------- |
 > | Turn summarisation   | File watching          |
-> | Task summarisation   | Session/agent tracking |
+> | Command summarisation   | Session/agent tracking |
 > | Priority scoring     | Dashboard display      |
 > | Progress summary gen | Hooks receiving        |
 > |                      | SSE updates            |

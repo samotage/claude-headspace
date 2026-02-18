@@ -28,7 +28,7 @@ Implementation fully satisfies all PRD requirements, acceptance criteria, and de
 ## Requirements Coverage
 
 - **PRD Requirements:** 10/10 (FR1-FR10) covered
-- **Tasks Completed:** 54/59 complete (5 manual verification items pending)
+- **Commands Completed:** 54/59 complete (5 manual verification items pending)
 - **Design Compliance:** Yes (follows waypoint editor modal pattern)
 
 ## Issues Found

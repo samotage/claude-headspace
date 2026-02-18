@@ -8,8 +8,8 @@
 
 ### New API Endpoints
 
-- [x] 2.1 Add `GET /api/agents/<id>/tasks` endpoint returning tasks for an agent (state, instruction, completion_summary, started_at, completed_at, turn count)
-- [x] 2.2 Add `GET /api/tasks/<id>/turns` endpoint returning turns for a task (actor, intent, summary, frustration_score, created_at)
+- [x] 2.1 Add `GET /api/agents/<id>/commands` endpoint returning tasks for an agent (state, instruction, completion_summary, started_at, completed_at, turn count)
+- [x] 2.2 Add `GET /api/commands/<id>/turns` endpoint returning turns for a command (actor, intent, summary, frustration_score, created_at)
 - [x] 2.3 Add `GET /api/projects/<id>/inference-summary` endpoint returning aggregate inference metrics (total calls, input/output tokens, total cost)
 
 ### Accordion Object Tree
@@ -18,8 +18,8 @@
 - [x] 2.5 Implement accordion expand/collapse JavaScript logic with CSS transitions in `project_show.js`
 - [x] 2.6 Implement lazy-loaded agent list: fetch on expand, render agent rows (state, ID, priority, timing, duration)
 - [x] 2.7 Distinguish active vs ended agents visually (muted styling, "Ended" badge)
-- [x] 2.8 Implement nested Tasks accordion per agent: lazy-load tasks on expand, render rows (state badge, instruction, summary, timing, turn count)
-- [x] 2.9 Implement nested Turns accordion per task: lazy-load turns on expand, render rows (actor badge, intent, summary, frustration score)
+- [x] 2.8 Implement nested Commands accordion per agent: lazy-load tasks on expand, render rows (state badge, instruction, summary, timing, turn count)
+- [x] 2.9 Implement nested Turns accordion per command: lazy-load turns on expand, render rows (actor badge, intent, summary, frustration score)
 - [x] 2.10 Highlight frustration scores: amber for >= 4 (yellow threshold), red for >= 7 (red threshold)
 - [x] 2.11 Add loading indicator while fetching accordion data
 - [x] 2.12 Add error state with retry option on fetch failure
@@ -49,7 +49,7 @@
 ### SSE Real-Time Updates
 
 - [x] 2.26 Enhance SSE handling: update Agents accordion on `card_refresh` events (only if expanded)
-- [x] 2.27 SSE: update Tasks accordion on task state changes (only if expanded)
+- [x] 2.27 SSE: update Commands accordion on command state changes (only if expanded)
 - [x] 2.28 SSE: preserve accordion expand/collapse state during updates
 - [x] 2.29 SSE: debounce accordion updates (batch every 2 seconds)
 
@@ -60,7 +60,7 @@
 
 ## 3. Testing (Phase 3)
 
-- [x] 3.1 Create `tests/routes/test_project_show_tree.py` with tests for new API endpoints (agent tasks, task turns, inference summary)
+- [x] 3.1 Create `tests/routes/test_project_show_tree.py` with tests for new API endpoints (agent tasks, command turns, inference summary)
 - [x] 3.2 Run targeted tests: `pytest tests/routes/test_project_show_tree.py tests/routes/test_project_show.py tests/routes/test_projects.py`
 
 ## 4. Final Verification

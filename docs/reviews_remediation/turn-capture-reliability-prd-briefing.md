@@ -12,9 +12,9 @@ Claude Headspace's voice chat dashboard silently loses agent turns. This has bee
 
 Agent 583 was running `/bmad-bmm-quick-spec`. A background Task agent (Explore) was scanning the codebase. The sequence:
 
-1. Main agent output its first response (5 questions) — `stop` hook fired, turn created correctly as QUESTION, task → AWAITING_INPUT
-2. An automatic empty `user:answer` fired (voice chat), task → PROCESSING
-3. 60s later, `notification` hook arrived, task → AWAITING_INPUT
+1. Main agent output its first response (5 questions) — `stop` hook fired, turn created correctly as QUESTION, command → AWAITING_INPUT
+2. An automatic empty `user:answer` fired (voice chat), command → PROCESSING
+3. 60s later, `notification` hook arrived, command → AWAITING_INPUT
 4. Background Explore agent completed — Claude Code injected a `<task-notification>` user message (correctly filtered by `process_user_prompt_submit` at line 734)
 5. Main agent output a SECOND response ("background scan complete, waiting on your 5 answers") — `stop` hook fired, HTTP 200
 6. **But the turn was silently destroyed**: `process_stop` detected QUESTION intent, created the turn, then called `lifecycle.update_task_state(AWAITING_INPUT → AWAITING_INPUT)`. The state machine had NO entry for `(AWAITING_INPUT, AGENT, QUESTION)`, raised `InvalidTransitionError`, the `except` block called `db.session.rollback()`, and the turn vanished.
@@ -25,7 +25,7 @@ Agent 583 was running `/bmad-bmm-quick-spec`. A background Task agent (Explore) 
 
 The system has THREE sources of turn data with different reliability characteristics:
 
-1. **Hooks** — Real-time (<100ms) but unreliable. May not fire (background task completions have edge cases), may arrive late (notification 60s after stop), may arrive out of order. Currently the PRIMARY source of truth for turn creation. When they fail, turns are silently lost.
+1. **Hooks** — Real-time (<100ms) but unreliable. May not fire (background command completions have edge cases), may arrive late (notification 60s after stop), may arrive out of order. Currently the PRIMARY source of truth for turn creation. When they fail, turns are silently lost.
 
 2. **JSONL Transcripts** — Delayed (file writes are async, file watcher polls every 2s) but AUTHORITATIVE. Every conversation turn is recorded. The `TranscriptReconciler` exists and is documented as the Phase 2 safety net, but it clearly isn't catching missed turns (today's bug proves it).
 
@@ -58,7 +58,7 @@ Specific requirements:
 | `src/claude_headspace/services/hook_receiver.py` | Hook processing, turn creation | Primary turn creation path; `process_stop()` lines 880-1091 |
 | `src/claude_headspace/services/transcript_reconciler.py` | JSONL → DB reconciliation | Phase 2 safety net (currently broken for this case) |
 | `src/claude_headspace/services/file_watcher.py` | Watches JSONL files, feeds reconciler | Triggers Phase 2 |
-| `src/claude_headspace/services/task_lifecycle.py` | State transitions, turn records | `update_task_state()` raises on invalid transitions |
+| `src/claude_headspace/services/command_lifecycle.py` | State transitions, turn records | `update_task_state()` raises on invalid transitions |
 | `src/claude_headspace/services/state_machine.py` | Valid transition definitions | Was missing AWAITING_INPUT agent transitions (fixed) |
 | `src/claude_headspace/services/commander_availability.py` | Tmux pane monitoring | Already reads tmux panes; could be extended for turn verification |
 | `src/claude_headspace/services/intent_detector.py` | Classifies agent intent | Completion patterns can swallow trailing questions |

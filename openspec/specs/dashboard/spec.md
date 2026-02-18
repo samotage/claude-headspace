@@ -60,31 +60,31 @@ Then agent cards are visible
 
 ### Requirement: Agent Cards
 
-The agent card SHALL display task context as a two-line layout with instruction and turn summary.
+The agent card SHALL display command context as a two-line layout with instruction and turn summary.
 
 #### Scenario: Active task with instruction and turn summary
 
-- **WHEN** an agent has an active task with a populated instruction
+- **WHEN** an agent has an active command with a populated instruction
 - **AND** the task has turns with summaries
-- **THEN** the agent card SHALL display the task instruction as the primary line
+- **THEN** the agent card SHALL display the command instruction as the primary line
 - **AND** the latest turn summary as the secondary line
 
 #### Scenario: Active task with instruction but no turn summary yet
 
-- **WHEN** an agent has an active task with a populated instruction
+- **WHEN** an agent has an active command with a populated instruction
 - **AND** no turn summaries are available yet
-- **THEN** the agent card SHALL display the task instruction as the primary line
+- **THEN** the agent card SHALL display the command instruction as the primary line
 - **AND** an appropriate placeholder as the secondary line
 
 #### Scenario: Active task before instruction is generated
 
-- **WHEN** an agent has an active task but instruction is still being generated
+- **WHEN** an agent has an active command but instruction is still being generated
 - **THEN** the agent card SHALL display appropriate placeholder text until the instruction_summary SSE event arrives
 
 #### Scenario: Idle state preserved
 
-- **WHEN** an agent has no active task (IDLE state)
-- **THEN** the agent card SHALL display the existing idle message or completed task summary
+- **WHEN** an agent has no active command (IDLE state)
+- **THEN** the agent card SHALL display the existing idle message or completed command summary
 
 #### Scenario: SSE updates instruction line independently
 
@@ -94,7 +94,7 @@ The agent card SHALL display task context as a two-line layout with instruction 
 
 #### Scenario: SSE updates turn summary line independently
 
-- **WHEN** a `turn_summary` or `task_summary` SSE event is received for an agent
+- **WHEN** a `turn_summary` or `command_summary` SSE event is received for an agent
 - **THEN** the turn summary line in the agent card SHALL be updated
 - **AND** the instruction line SHALL NOT be affected
 
@@ -110,7 +110,7 @@ Then IDLE state shows grey bar with "Idle - ready for task"
 And COMMANDED state shows yellow bar with "Command received"
 And PROCESSING state shows blue bar with "Processing..."
 And AWAITING_INPUT state shows orange bar with "Input needed"
-And COMPLETE state shows green bar with "Task complete"
+And COMPLETE state shows green bar with "Command complete"
 
 ### Requirement: Responsive Layout
 
@@ -200,22 +200,22 @@ The dashboard MUST support a "Kanban" sort mode as the first/default option in t
 
 ### Requirement: Kanban Column Layout
 
-The Kanban view MUST display columns for each task lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
+The Kanban view MUST display columns for each command lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
 
 #### Scenario: Idle agents
 
-- **WHEN** an agent has no active tasks
+- **WHEN** an agent has no active commands
 - **THEN** the agent appears in the IDLE column as its current agent card representation
 
 #### Scenario: Active task placement
 
-- **WHEN** an agent has an active task in PROCESSING state
-- **THEN** a task card appears in the PROCESSING column with agent hero identity, task instruction/summary, and metadata
+- **WHEN** an agent has an active command in PROCESSING state
+- **THEN** a command card appears in the PROCESSING column with agent hero identity, command instruction/summary, and metadata
 
 #### Scenario: Multiple tasks per agent
 
 - **WHEN** an agent has tasks in different lifecycle states
-- **THEN** the agent appears in multiple columns simultaneously (one card per task)
+- **THEN** the agent appears in multiple columns simultaneously (one card per command)
 
 #### Scenario: Priority ordering
 
@@ -250,12 +250,12 @@ Completed tasks in the COMPLETE column MUST render as collapsed accordions and t
 - **WHEN** the COMPLETE column accumulates many completed tasks
 - **THEN** the column scrolls independently with a fixed height
 
-#### Scenario: Task retention
+#### Scenario: Command retention
 
 - **WHEN** a completed task's parent agent has not been reaped
 - **THEN** the completed task remains visible in the COMPLETE column
 
-#### Scenario: Task removal on reap
+#### Scenario: Command removal on reap
 
 - **WHEN** the agent reaper removes an agent
 - **THEN** all completed tasks for that agent are removed from the COMPLETE column

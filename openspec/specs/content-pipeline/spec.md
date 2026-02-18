@@ -10,19 +10,19 @@ The system SHALL receive Notification hook events with `notification_type` of `e
 #### Scenario: AskUserQuestion triggers input-needed state
 
 - **WHEN** a Notification hook fires with `notification_type: elicitation_dialog`
-- **THEN** the associated agent's active task transitions to AWAITING_INPUT
+- **THEN** the associated agent's active command transitions to AWAITING_INPUT
 - **AND** the `message` and `title` from the Notification payload are stored as turn context
 
 #### Scenario: Permission dialog triggers input-needed state
 
 - **WHEN** a Notification hook fires with `notification_type: permission_prompt`
-- **THEN** the associated agent's active task transitions to AWAITING_INPUT
+- **THEN** the associated agent's active command transitions to AWAITING_INPUT
 - **AND** the `message` and `title` from the Notification payload are stored as turn context
 
 #### Scenario: Idle prompt triggers input-needed state
 
 - **WHEN** a Notification hook fires with `notification_type: idle_prompt`
-- **THEN** the associated agent's active task transitions to AWAITING_INPUT
+- **THEN** the associated agent's active command transitions to AWAITING_INPUT
 
 ---
 
@@ -33,13 +33,13 @@ The system SHALL receive PostToolUse hook events and, when the associated agent'
 #### Scenario: User answers question and agent resumes
 
 - **WHEN** a PostToolUse hook event is received
-- **AND** the agent's current task is in AWAITING_INPUT state
+- **AND** the agent's current command is in AWAITING_INPUT state
 - **THEN** the task transitions to PROCESSING state
 
 #### Scenario: PostToolUse when not awaiting input
 
 - **WHEN** a PostToolUse hook event is received
-- **AND** the agent's current task is NOT in AWAITING_INPUT state
+- **AND** the agent's current command is NOT in AWAITING_INPUT state
 - **THEN** no state transition occurs
 - **AND** the event is logged for audit purposes
 
@@ -153,8 +153,8 @@ Captured agent turn text SHALL be passed through the existing summarisation and 
 
 #### Scenario: Priority scoring with real context
 
-- **WHEN** task summaries are generated from real content
-- **THEN** priority scoring rankings incorporate actual task context
+- **WHEN** command summaries are generated from real content
+- **THEN** priority scoring rankings incorporate actual command context
 - **AND** "recommended next" rankings are meaningful
 
 ---

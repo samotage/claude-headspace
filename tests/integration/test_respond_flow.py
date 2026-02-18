@@ -3,7 +3,7 @@
 Verifies the full respond cycle:
 - Agent in AWAITING_INPUT state receives a response
 - Turn record created with correct actor/intent
-- Task state transitions to PROCESSING
+- Command state transitions to PROCESSING
 """
 
 import pytest
@@ -12,8 +12,8 @@ from unittest.mock import patch, MagicMock
 
 from claude_headspace.models import (
     Agent,
-    Task,
-    TaskState,
+    Command,
+    CommandState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -22,7 +22,7 @@ from claude_headspace.models import (
 from .factories import (
     AgentFactory,
     ProjectFactory,
-    TaskFactory,
+    CommandFactory,
     TurnFactory,
 )
 
@@ -32,7 +32,7 @@ def _set_factory_session(db_session):
     """Inject the test db_session into all factories."""
     ProjectFactory._meta.sqlalchemy_session = db_session
     AgentFactory._meta.sqlalchemy_session = db_session
-    TaskFactory._meta.sqlalchemy_session = db_session
+    CommandFactory._meta.sqlalchemy_session = db_session
     TurnFactory._meta.sqlalchemy_session = db_session
 
 
@@ -50,9 +50,9 @@ class TestRespondFlow:
         )
         db_session.flush()
 
-        task = TaskFactory(
+        command = CommandFactory(
             agent=agent,
-            state=TaskState.AWAITING_INPUT,
+            state=CommandState.AWAITING_INPUT,
         )
         db_session.flush()
 
@@ -62,10 +62,10 @@ class TestRespondFlow:
         ).scalar_one()
         assert retrieved.claude_session_id == "test-session-abc"
 
-        retrieved_task = db_session.execute(
-            select(Task).where(Task.id == task.id)
+        retrieved_command = db_session.execute(
+            select(Command).where(Command.id == command.id)
         ).scalar_one()
-        assert retrieved_task.state == TaskState.AWAITING_INPUT
+        assert retrieved_command.state == CommandState.AWAITING_INPUT
 
     def test_turn_created_for_respond(self, db_session):
         """Verify Turn record with USER/ANSWER can be created for a response."""
@@ -75,12 +75,12 @@ class TestRespondFlow:
         agent = AgentFactory(project=project, claude_session_id="sess-turn-test")
         db_session.flush()
 
-        task = TaskFactory(agent=agent, state=TaskState.AWAITING_INPUT)
+        command = CommandFactory(agent=agent, state=CommandState.AWAITING_INPUT)
         db_session.flush()
 
         # Create the Turn that the respond route would create
         turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text="1",
@@ -95,32 +95,32 @@ class TestRespondFlow:
         assert retrieved_turn.actor == TurnActor.USER
         assert retrieved_turn.intent == TurnIntent.ANSWER
         assert retrieved_turn.text == "1"
-        assert retrieved_turn.task_id == task.id
+        assert retrieved_turn.command_id == command.id
 
     def test_state_transition_awaiting_to_processing(self, db_session):
-        """Verify task state can transition from AWAITING_INPUT to PROCESSING."""
+        """Verify command state can transition from AWAITING_INPUT to PROCESSING."""
         project = ProjectFactory(name="respond-transition-test")
         db_session.flush()
 
         agent = AgentFactory(project=project, claude_session_id="sess-trans-test")
         db_session.flush()
 
-        task = TaskFactory(agent=agent, state=TaskState.AWAITING_INPUT)
+        command = CommandFactory(agent=agent, state=CommandState.AWAITING_INPUT)
         db_session.flush()
 
         # Perform the transition that the respond route performs
-        task.state = TaskState.PROCESSING
+        command.state = CommandState.PROCESSING
         db_session.flush()
 
         # Verify the transition persisted
         retrieved = db_session.execute(
-            select(Task).where(Task.id == task.id)
+            select(Command).where(Command.id == command.id)
         ).scalar_one()
-        assert retrieved.state == TaskState.PROCESSING
+        assert retrieved.state == CommandState.PROCESSING
 
     def test_full_respond_cycle(self, db_session):
         """End-to-end: setup agent, create Turn, transition state, verify all records."""
-        # Setup: Project -> Agent -> Task in AWAITING_INPUT
+        # Setup: Project -> Agent -> Command in AWAITING_INPUT
         project = ProjectFactory(name="full-respond-test")
         db_session.flush()
 
@@ -131,11 +131,11 @@ class TestRespondFlow:
         db_session.flush()
 
         # Create AGENT QUESTION turn (what hook_receiver creates)
-        task = TaskFactory(agent=agent, state=TaskState.AWAITING_INPUT)
+        command = CommandFactory(agent=agent, state=CommandState.AWAITING_INPUT)
         db_session.flush()
 
         question_turn = TurnFactory(
-            task=task,
+            command=command,
             actor=TurnActor.AGENT,
             intent=TurnIntent.QUESTION,
             text="Do you want to proceed?\n1. Yes\n2. No",
@@ -144,18 +144,18 @@ class TestRespondFlow:
 
         # Act: Simulate what the respond route does
         answer_turn = Turn(
-            task_id=task.id,
+            command_id=command.id,
             actor=TurnActor.USER,
             intent=TurnIntent.ANSWER,
             text="1",
         )
         db_session.add(answer_turn)
-        task.state = TaskState.PROCESSING
+        command.state = CommandState.PROCESSING
         db_session.flush()
 
         # Verify: Turn chain exists
         turns = db_session.execute(
-            select(Turn).where(Turn.task_id == task.id).order_by(Turn.id)
+            select(Turn).where(Turn.command_id == command.id).order_by(Turn.id)
         ).scalars().all()
 
         assert len(turns) == 2
@@ -165,11 +165,11 @@ class TestRespondFlow:
         assert turns[1].intent == TurnIntent.ANSWER
         assert turns[1].text == "1"
 
-        # Verify: Task state transitioned
-        refreshed_task = db_session.execute(
-            select(Task).where(Task.id == task.id)
+        # Verify: Command state transitioned
+        refreshed_command = db_session.execute(
+            select(Command).where(Command.id == command.id)
         ).scalar_one()
-        assert refreshed_task.state == TaskState.PROCESSING
+        assert refreshed_command.state == CommandState.PROCESSING
 
     def test_agent_tmux_pane_id_stored(self, db_session):
         """Verify tmux_pane_id can be stored on an agent."""

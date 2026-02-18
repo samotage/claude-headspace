@@ -255,25 +255,25 @@ class PriorityScoringService:
             project_name = agent.project.name if agent.project else "Unknown"
             state = agent.state.value if hasattr(agent.state, "value") else str(agent.state)
 
-            # Get task summary
-            task_summary = "None"
-            current_task = agent.get_current_task()
-            if current_task and current_task.turns:
-                recent_turn = current_task.turns[-1]
+            # Get command summary
+            command_summary = "None"
+            current_command = agent.get_current_command()
+            if current_command and current_command.turns:
+                recent_turn = current_command.turns[-1]
                 if hasattr(recent_turn, "summary") and recent_turn.summary:
-                    task_summary = recent_turn.summary
+                    command_summary = recent_turn.summary
                 elif recent_turn.text:
-                    task_summary = recent_turn.text[:200]
+                    command_summary = recent_turn.text[:200]
 
-            # Task duration
-            task_duration = "N/A"
-            if current_task and current_task.started_at:
-                delta = datetime.now(timezone.utc) - current_task.started_at
+            # Command duration
+            command_duration = "N/A"
+            if current_command and current_command.started_at:
+                delta = datetime.now(timezone.utc) - current_command.started_at
                 minutes = int(delta.total_seconds() // 60)
                 if minutes >= 60:
-                    task_duration = f"{minutes // 60}h {minutes % 60}m"
+                    command_duration = f"{minutes // 60}h {minutes % 60}m"
                 else:
-                    task_duration = f"{minutes}m"
+                    command_duration = f"{minutes}m"
 
             # Waypoint next up
             waypoint_next = "None"
@@ -290,8 +290,8 @@ class PriorityScoringService:
                 f"- Agent ID: {agent.id}\n"
                 f"  Project: {project_name}\n"
                 f"  State: {state}\n"
-                f"  Current Task: {task_summary}\n"
-                f"  Task Duration: {task_duration}\n"
+                f"  Current Command: {command_summary}\n"
+                f"  Command Duration: {command_duration}\n"
                 f"  Waypoint Next Up: {waypoint_next}"
             )
 

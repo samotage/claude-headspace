@@ -46,7 +46,7 @@
 
 - [x] 2.22 Create question classification prompt for inference service
 - [x] 2.23 Ensure captured turn text flows through existing summarisation service
-- [x] 2.24 Verify priority scoring receives real content from task summaries
+- [x] 2.24 Verify priority scoring receives real content from command summaries
 
 ## 3. Testing (Phase 3)
 

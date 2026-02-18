@@ -670,41 +670,41 @@ class TestSSEBroadcasting:
             assert call_args[0][1]["project_id"] == 1
 
 
-class TestGetAgentTasks:
-    """Tests for GET /api/agents/<id>/tasks."""
+class TestGetAgentCommands:
+    """Tests for GET /api/agents/<id>/commands."""
 
     def test_not_found(self, client, mock_db):
         """Test 404 when agent doesn't exist."""
         mock_db.session.get.return_value = None
 
-        response = client.get("/api/agents/999/tasks")
+        response = client.get("/api/agents/999/commands")
         assert response.status_code == 404
 
-    def test_tasks_returned_ascending(self, client, mock_db):
-        """Test tasks are returned in ascending order (oldest first)."""
+    def test_commands_returned_ascending(self, client, mock_db):
+        """Test commands are returned in ascending order (oldest first)."""
         mock_agent = MagicMock()
         mock_agent.id = 1
         mock_db.session.get.return_value = mock_agent
 
-        task1 = MagicMock()
-        task1.id = 10
-        task1.state.value = "complete"
-        task1.instruction = "First task"
-        task1.completion_summary = "Done"
-        task1.started_at = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
-        task1.completed_at = datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc)
+        cmd1 = MagicMock()
+        cmd1.id = 10
+        cmd1.state.value = "complete"
+        cmd1.instruction = "First command"
+        cmd1.completion_summary = "Done"
+        cmd1.started_at = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+        cmd1.completed_at = datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc)
 
-        task2 = MagicMock()
-        task2.id = 11
-        task2.state.value = "processing"
-        task2.instruction = "Second task"
-        task2.completion_summary = None
-        task2.started_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        task2.completed_at = None
+        cmd2 = MagicMock()
+        cmd2.id = 11
+        cmd2.state.value = "processing"
+        cmd2.instruction = "Second command"
+        cmd2.completion_summary = None
+        cmd2.started_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        cmd2.completed_at = None
 
-        # Mock the task query chain
-        task_query_mock = MagicMock()
-        task_query_mock.filter.return_value.order_by.return_value.all.return_value = [task1, task2]
+        # Mock the command query chain
+        cmd_query_mock = MagicMock()
+        cmd_query_mock.filter.return_value.order_by.return_value.all.return_value = [cmd1, cmd2]
 
         # Mock the batch turn count query (GROUP BY)
         turn_count_row_1 = MagicMock()
@@ -712,14 +712,14 @@ class TestGetAgentTasks:
         turn_count_query = MagicMock()
         turn_count_query.filter.return_value.group_by.return_value.all.return_value = [turn_count_row_1]
 
-        mock_db.session.query.side_effect = [task_query_mock, turn_count_query]
+        mock_db.session.query.side_effect = [cmd_query_mock, turn_count_query]
 
-        response = client.get("/api/agents/1/tasks")
+        response = client.get("/api/agents/1/commands")
         assert response.status_code == 200
         data = response.get_json()
         assert len(data) == 2
-        assert data[0]["id"] == 10  # First (oldest) task
-        assert data[1]["id"] == 11  # Second (newest) task
+        assert data[0]["id"] == 10  # First (oldest) command
+        assert data[1]["id"] == 11  # Second (newest) command
         assert data[0]["turn_count"] == 3
 
     def test_agent_metrics_in_get_project(self, client, mock_db, mock_project_with_agents):

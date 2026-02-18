@@ -2,7 +2,7 @@
 
 ## Why
 
-Claude Headspace needs a foundational data layer to persist Agents, Tasks, Turns, and Events with a 5-state lifecycle model. Without these core domain models, the system cannot track Claude Code sessions or support the real-time dashboard.
+Claude Headspace needs a foundational data layer to persist Agents, Commands, Turns, and Events with a 5-state lifecycle model. Without these core domain models, the system cannot track Claude Code sessions or support the real-time dashboard.
 
 ## What Changes
 
@@ -14,8 +14,8 @@ Claude Headspace needs a foundational data layer to persist Agents, Tasks, Turns
 - Add `Turn` model with task FK, actor enum (user/agent), intent enum, text, timestamp
 - Add `Event` model with nullable FKs, event_type string, JSON payload
 - Create database migrations via Flask-Migrate
-- Define enums: TaskState, TurnActor, TurnIntent
-- Implement Agent.state derived property (from current task)
+- Define enums: CommandState, TurnActor, TurnIntent
+- Implement Agent.state derived property (from current command)
 - Add database indexes for common query patterns
 
 ## Impact
@@ -29,7 +29,7 @@ Claude Headspace needs a foundational data layer to persist Agents, Tasks, Turns
 - `src/claude_headspace/models/objective.py` (new - Objective, ObjectiveHistory)
 - `src/claude_headspace/models/project.py` (new - Project)
 - `src/claude_headspace/models/agent.py` (new - Agent)
-- `src/claude_headspace/models/task.py` (new - Task, TaskState enum)
+- `src/claude_headspace/models/command.py` (new - Command, CommandState enum)
 - `src/claude_headspace/models/turn.py` (new - Turn, TurnActor, TurnIntent enums)
 - `src/claude_headspace/models/event.py` (new - Event)
 - `migrations/versions/` (new migration file)
@@ -41,5 +41,5 @@ Claude Headspace needs a foundational data layer to persist Agents, Tasks, Turns
 This change blocks:
 - Sprint 4 (File Watcher) - needs Event model
 - Sprint 5 (Event System) - needs all models
-- Sprint 6 (State Machine) - needs Task, Turn models
+- Sprint 6 (State Machine) - needs Command, Turn models
 - Sprint 9 (Objective Tab) - needs Objective model

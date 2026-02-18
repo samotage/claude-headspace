@@ -15,7 +15,7 @@ All acceptance criteria, PRD functional requirements, and delta spec scenarios a
 | Expanding Agents fetches and shows all agents | ✓ | Lazy fetch via `/api/projects/<id>` |
 | Agent rows show state, ID, priority, timing, duration | ✓ | `_renderAgentsList()` |
 | Ended agents visually distinguished | ✓ | Muted styling + "Ended" badge |
-| Clicking agent expands Tasks (lazy loaded) | ✓ | `toggleAgentTasks()` + `_fetchAndRenderTasks()` |
+| Clicking agent expands Commands (lazy loaded) | ✓ | `toggleAgentTasks()` + `_fetchAndRenderTasks()` |
 | Task rows show state, instruction, summary, timing, turn count | ✓ | `_renderTasksList()` |
 | Clicking task expands Turns (lazy loaded) | ✓ | `toggleTaskTurns()` + `_fetchAndRenderTurns()` |
 | Turn rows show actor, intent, summary, frustration score | ✓ | `_renderTurnsList()` |
@@ -41,7 +41,7 @@ All acceptance criteria, PRD functional requirements, and delta spec scenarios a
 ## Requirements Coverage
 
 - **PRD Requirements:** 32/32 covered (FR1-FR32)
-- **Tasks Completed:** 31/31 complete (100%)
+- **Commands Completed:** 31/31 complete (100%)
 - **Design Compliance:** N/A (no design.md)
 - **Delta Specs:** All ADDED requirements implemented
 

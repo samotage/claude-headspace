@@ -27,7 +27,7 @@ This is Part 1 of 2 PRDs for Sprint 8. Part 2 (e1-s8b-dashboard-interactivity-pr
 
 ### 1.1 Context
 
-Claude Headspace monitors Claude Code sessions across multiple projects. Sprints 1-7 established the foundational architecture: Flask application, Postgres database, domain models (Agent, Task, Turn), file watcher, event system, state machine, and SSE real-time transport.
+Claude Headspace monitors Claude Code sessions across multiple projects. Sprints 1-7 established the foundational architecture: Flask application, Postgres database, domain models (Agent, Command, Turn), file watcher, event system, state machine, and SSE real-time transport.
 
 Sprint 8 delivers the user-facing dashboard that makes this infrastructure visible and actionable. Without a dashboard, users must manually track agent states across terminal windows—defeating the purpose of the monitoring system.
 
@@ -74,12 +74,12 @@ They click the card and focus shifts to the correct iTerm window.
 - Status badge (ACTIVE/IDLE based on `last_seen_at` recency)
 - Uptime display (time since `started_at`)
 - State bar with colour coding (5 states)
-- Task summary (current task description or "No active task")
+- Command summary (current command description or "No active command")
 - Priority score badge (displays value; default 50 in Epic 1)
 - "Headspace" button placeholder (wired up in Part 2)
 
 **State Visualization:**
-- Colour-coded state bars per TaskState enum:
+- Colour-coded state bars per CommandState enum:
   - IDLE: Grey
   - COMMANDED: Yellow
   - PROCESSING: Blue
@@ -117,8 +117,8 @@ They click the card and focus shifts to the correct iTerm window.
 | SC3 | All agents displayed within their project groups | Count of agent cards matches `SELECT COUNT(*) FROM agents WHERE project_id = ?` per project |
 | SC4 | Header status counts accurate | INPUT NEEDED = agents with `AWAITING_INPUT`, WORKING = `COMMANDED` + `PROCESSING`, IDLE = `IDLE` + `COMPLETE` |
 | SC5 | Traffic lights reflect project state | Red if any agent `AWAITING_INPUT`, yellow if any `COMMANDED`/`PROCESSING`, green otherwise |
-| SC6 | Agent cards display all required fields | Session ID, status, uptime, state bar, task summary, priority visible |
-| SC7 | State bars colour-coded correctly | 5 distinct colours matching TaskState enum values |
+| SC6 | Agent cards display all required fields | Session ID, status, uptime, state bar, command summary, priority visible |
+| SC7 | State bars colour-coded correctly | 5 distinct colours matching CommandState enum values |
 | SC8 | Project sections collapsible | Click collapse → agents hidden, click expand → agents visible |
 | SC9 | Responsive on mobile | Layout readable and usable at 320px viewport width |
 | SC10 | Responsive on tablet | Two-column layout at 768px viewport width |
@@ -141,7 +141,7 @@ They click the card and focus shifts to the correct iTerm window.
 
 **FR1:** The application provides a dashboard route at `/` (root) that serves the dashboard page.
 
-**FR2:** The dashboard route queries the database for all projects and their associated agents, including current task state for each agent.
+**FR2:** The dashboard route queries the database for all projects and their associated agents, including current command state for each agent.
 
 **FR3:** The dashboard route calculates status counts (INPUT NEEDED, WORKING, IDLE) from agent states before rendering.
 
@@ -188,16 +188,16 @@ They click the card and focus shifts to the correct iTerm window.
 
 **FR16:** Agent cards display uptime as human-readable duration since `started_at` (e.g., "up 32h 38m").
 
-**FR17:** Agent cards display a state bar with colour and label matching the current TaskState:
+**FR17:** Agent cards display a state bar with colour and label matching the current CommandState:
 - IDLE: Grey bar, "Idle - ready for task"
 - COMMANDED: Yellow bar, "Command received"
 - PROCESSING: Blue bar, "Processing..."
 - AWAITING_INPUT: Orange bar, "Input needed"
-- COMPLETE: Green bar, "Task complete"
+- COMPLETE: Green bar, "Command complete"
 
-**FR18:** Agent cards display a task summary:
-- If current task exists: First 100 characters of most recent turn text
-- If no current task: "No active task"
+**FR18:** Agent cards display a command summary:
+- If current command exists: First 100 characters of most recent turn text
+- If no current command: "No active command"
 
 **FR19:** Agent cards display a priority score badge showing numeric value (default 50 for all agents in Epic 1).
 
@@ -310,9 +310,9 @@ This section provides technical context for implementers. These are not requirem
 **Database Models Available:**
 - `Project`: `id`, `name`, `path`, `agents` relationship
 - `Agent`: `id`, `session_uuid`, `project_id`, `iterm_pane_id`, `started_at`, `last_seen_at`, `state` property, `tasks` relationship
-- `Task`: `id`, `agent_id`, `state` (TaskState enum), `turns` relationship
-- `Turn`: `id`, `task_id`, `actor`, `intent`, `text`, `timestamp`
-- `TaskState`: `IDLE`, `COMMANDED`, `PROCESSING`, `AWAITING_INPUT`, `COMPLETE`
+- `Task`: `id`, `agent_id`, `state` (CommandState enum), `turns` relationship
+- `Turn`: `id`, `command_id`, `actor`, `intent`, `text`, `timestamp`
+- `CommandState`: `IDLE`, `COMMANDED`, `PROCESSING`, `AWAITING_INPUT`, `COMPLETE`
 
 **Query Optimization:**
 - Use `joinedload()` or `selectinload()` for eager loading relationships
@@ -325,7 +325,7 @@ This section provides technical context for implementers. These are not requirem
 | Dependency | Type | Notes |
 |------------|------|-------|
 | Sprint 7: SSE System | Soft | Dashboard renders without SSE; Part 2 adds live updates |
-| Sprint 3: Domain Models | Hard | Requires Project, Agent, Task, Turn models |
+| Sprint 3: Domain Models | Hard | Requires Project, Agent, Command, Turn models |
 | Sprint 1: Flask Bootstrap | Hard | Requires base template and app factory |
 
 ---

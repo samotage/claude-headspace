@@ -54,22 +54,22 @@ The dashboard MUST support a "Kanban" sort mode as the first/default option in t
 
 ### Requirement: Kanban Column Layout
 
-The Kanban view MUST display columns for each task lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
+The Kanban view MUST display columns for each command lifecycle state: IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE.
 
 #### Scenario: Idle agents
 
-- **WHEN** an agent has no active tasks
+- **WHEN** an agent has no active commands
 - **THEN** the agent appears in the IDLE column as its current agent card representation
 
 #### Scenario: Active task placement
 
-- **WHEN** an agent has an active task in PROCESSING state
-- **THEN** a task card appears in the PROCESSING column with agent hero identity, task instruction/summary, and metadata
+- **WHEN** an agent has an active command in PROCESSING state
+- **THEN** a command card appears in the PROCESSING column with agent hero identity, command instruction/summary, and metadata
 
 #### Scenario: Multiple tasks per agent
 
 - **WHEN** an agent has tasks in different lifecycle states
-- **THEN** the agent appears in multiple columns simultaneously (one card per task)
+- **THEN** the agent appears in multiple columns simultaneously (one card per command)
 
 #### Scenario: Priority ordering
 
@@ -104,12 +104,12 @@ Completed tasks in the COMPLETE column MUST render as collapsed accordions and t
 - **WHEN** the COMPLETE column accumulates many completed tasks
 - **THEN** the column scrolls independently with a fixed height
 
-#### Scenario: Task retention
+#### Scenario: Command retention
 
 - **WHEN** a completed task's parent agent has not been reaped
 - **THEN** the completed task remains visible in the COMPLETE column
 
-#### Scenario: Task removal on reap
+#### Scenario: Command removal on reap
 
 - **WHEN** the agent reaper removes an agent
 - **THEN** all completed tasks for that agent are removed from the COMPLETE column

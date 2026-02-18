@@ -30,10 +30,10 @@ class TestEdgeCases:
         dashboard.assert_agent_state(agent_id, "PROCESSING")
         dashboard.capture("rapid_start_prompt")
 
-    def test_double_prompt_creates_new_task(
+    def test_double_prompt_creates_new_command(
         self, page, e2e_server, hook_client, dashboard
     ):
-        """Second prompt while processing creates a new task."""
+        """Second prompt while processing creates a new command."""
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         page.goto(e2e_server)

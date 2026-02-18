@@ -14,10 +14,10 @@ from claude_headspace.models import (
     ObjectiveHistory,
     Project,
     Agent,
-    Task,
+    Command,
     Turn,
     Event,
-    TaskState,
+    CommandState,
     TurnActor,
     TurnIntent,
     EventType,
@@ -53,23 +53,23 @@ def db_session(app_with_db):
 class TestEnumDefinitions:
     """Test enum definitions."""
 
-    def test_taskstate_has_five_values(self):
-        """Test TaskState enum has exactly 5 values."""
-        values = list(TaskState)
+    def test_commandstate_has_five_values(self):
+        """Test CommandState enum has exactly 5 values."""
+        values = list(CommandState)
         assert len(values) == 5
-        assert TaskState.IDLE in values
-        assert TaskState.COMMANDED in values
-        assert TaskState.PROCESSING in values
-        assert TaskState.AWAITING_INPUT in values
-        assert TaskState.COMPLETE in values
+        assert CommandState.IDLE in values
+        assert CommandState.COMMANDED in values
+        assert CommandState.PROCESSING in values
+        assert CommandState.AWAITING_INPUT in values
+        assert CommandState.COMPLETE in values
 
-    def test_taskstate_values(self):
-        """Test TaskState enum values."""
-        assert TaskState.IDLE.value == "idle"
-        assert TaskState.COMMANDED.value == "commanded"
-        assert TaskState.PROCESSING.value == "processing"
-        assert TaskState.AWAITING_INPUT.value == "awaiting_input"
-        assert TaskState.COMPLETE.value == "complete"
+    def test_commandstate_values(self):
+        """Test CommandState enum values."""
+        assert CommandState.IDLE.value == "idle"
+        assert CommandState.COMMANDED.value == "commanded"
+        assert CommandState.PROCESSING.value == "processing"
+        assert CommandState.AWAITING_INPUT.value == "awaiting_input"
+        assert CommandState.COMPLETE.value == "complete"
 
     def test_turnactor_has_two_values(self):
         """Test TurnActor enum has exactly 2 values."""
@@ -92,7 +92,7 @@ class TestEnumDefinitions:
         assert TurnIntent.QUESTION in values
         assert TurnIntent.COMPLETION in values
         assert TurnIntent.PROGRESS in values
-        assert TurnIntent.END_OF_TASK in values
+        assert TurnIntent.END_OF_COMMAND in values
 
     def test_turnintent_values(self):
         """Test TurnIntent enum values."""
@@ -179,27 +179,27 @@ class TestModelInstantiation:
         assert agent.iterm_pane_id is None
         # Note: defaults are applied at INSERT time, not instantiation
 
-    def test_task_instantiation(self, db_session):
-        """Test Task model can be instantiated."""
-        task = Task(agent_id=1)
-        assert task.agent_id == 1
+    def test_command_instantiation(self, db_session):
+        """Test Command model can be instantiated."""
+        command = Command(agent_id=1)
+        assert command.agent_id == 1
         # Note: defaults are applied at INSERT time, not instantiation
-        assert task.completed_at is None
+        assert command.completed_at is None
 
-    def test_task_with_state(self, db_session):
-        """Test Task with specific state."""
-        task = Task(agent_id=1, state=TaskState.PROCESSING)
-        assert task.state == TaskState.PROCESSING
+    def test_command_with_state(self, db_session):
+        """Test Command with specific state."""
+        command = Command(agent_id=1, state=CommandState.PROCESSING)
+        assert command.state == CommandState.PROCESSING
 
     def test_turn_instantiation(self, db_session):
         """Test Turn model can be instantiated."""
         turn = Turn(
-            task_id=1,
+            command_id=1,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
             text="Do something"
         )
-        assert turn.task_id == 1
+        assert turn.command_id == 1
         assert turn.actor == TurnActor.USER
         assert turn.intent == TurnIntent.COMMAND
         assert turn.text == "Do something"
@@ -215,7 +215,7 @@ class TestModelInstantiation:
         assert event.payload == {"session_id": "abc123"}
         assert event.project_id is None
         assert event.agent_id is None
-        assert event.task_id is None
+        assert event.command_id is None
         assert event.turn_id is None
 
     def test_event_with_partial_fks(self, db_session):
@@ -227,7 +227,7 @@ class TestModelInstantiation:
         )
         assert event.project_id == 1
         assert event.agent_id == 2
-        assert event.task_id is None
+        assert event.command_id is None
         assert event.turn_id is None
 
 
@@ -244,25 +244,25 @@ class TestModelRelationships:
         agent = Agent(session_uuid=uuid4(), project_id=1)
         assert hasattr(agent, 'project')
 
-    def test_agent_has_tasks_relationship(self):
-        """Test Agent has tasks relationship."""
+    def test_agent_has_commands_relationship(self):
+        """Test Agent has commands relationship."""
         agent = Agent(session_uuid=uuid4(), project_id=1)
-        assert hasattr(agent, 'tasks')
+        assert hasattr(agent, 'commands')
 
-    def test_task_has_agent_relationship(self):
-        """Test Task has agent relationship."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'agent')
+    def test_command_has_agent_relationship(self):
+        """Test Command has agent relationship."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'agent')
 
-    def test_task_has_turns_relationship(self):
-        """Test Task has turns relationship."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'turns')
+    def test_command_has_turns_relationship(self):
+        """Test Command has turns relationship."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'turns')
 
-    def test_turn_has_task_relationship(self):
-        """Test Turn has task relationship."""
-        turn = Turn(task_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
-        assert hasattr(turn, 'task')
+    def test_turn_has_command_relationship(self):
+        """Test Turn has command relationship."""
+        turn = Turn(command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
+        assert hasattr(turn, 'command')
 
     def test_objective_has_history_relationship(self):
         """Test Objective has history relationship."""
@@ -283,60 +283,60 @@ class TestAgentStateDerivedProperty:
         # Check that state is a property on the Agent class
         assert isinstance(Agent.__dict__.get('state'), property)
 
-    def test_agent_has_get_current_task_method(self):
-        """Test Agent has get_current_task method."""
+    def test_agent_has_get_current_command_method(self):
+        """Test Agent has get_current_command method."""
         agent = Agent(session_uuid=uuid4(), project_id=1)
-        assert hasattr(agent, 'get_current_task')
-        assert callable(agent.get_current_task)
+        assert hasattr(agent, 'get_current_command')
+        assert callable(agent.get_current_command)
 
 
-class TestTaskInstructionAndCompletionFields:
-    """Test Task model new fields: instruction, instruction_generated_at,
+class TestCommandInstructionAndCompletionFields:
+    """Test Command model new fields: instruction, instruction_generated_at,
     completion_summary, completion_summary_generated_at."""
 
-    def test_task_has_instruction_field(self):
-        """Test Task has instruction field defaulting to None."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'instruction')
-        assert task.instruction is None
+    def test_command_has_instruction_field(self):
+        """Test Command has instruction field defaulting to None."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'instruction')
+        assert command.instruction is None
 
-    def test_task_has_instruction_generated_at_field(self):
-        """Test Task has instruction_generated_at field defaulting to None."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'instruction_generated_at')
-        assert task.instruction_generated_at is None
+    def test_command_has_instruction_generated_at_field(self):
+        """Test Command has instruction_generated_at field defaulting to None."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'instruction_generated_at')
+        assert command.instruction_generated_at is None
 
-    def test_task_has_completion_summary_field(self):
-        """Test Task has completion_summary field defaulting to None."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'completion_summary')
-        assert task.completion_summary is None
+    def test_command_has_completion_summary_field(self):
+        """Test Command has completion_summary field defaulting to None."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'completion_summary')
+        assert command.completion_summary is None
 
-    def test_task_has_completion_summary_generated_at_field(self):
-        """Test Task has completion_summary_generated_at field defaulting to None."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'completion_summary_generated_at')
-        assert task.completion_summary_generated_at is None
+    def test_command_has_completion_summary_generated_at_field(self):
+        """Test Command has completion_summary_generated_at field defaulting to None."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'completion_summary_generated_at')
+        assert command.completion_summary_generated_at is None
 
-    def test_task_instruction_accepts_text(self):
-        """Test Task instruction field can store text."""
-        task = Task(agent_id=1, instruction="Refactor the auth module")
-        assert task.instruction == "Refactor the auth module"
+    def test_command_instruction_accepts_text(self):
+        """Test Command instruction field can store text."""
+        command = Command(agent_id=1, instruction="Refactor the auth module")
+        assert command.instruction == "Refactor the auth module"
 
-    def test_task_completion_summary_accepts_text(self):
-        """Test Task completion_summary field can store text."""
-        task = Task(agent_id=1, completion_summary="Auth module refactored successfully")
-        assert task.completion_summary == "Auth module refactored successfully"
+    def test_command_completion_summary_accepts_text(self):
+        """Test Command completion_summary field can store text."""
+        command = Command(agent_id=1, completion_summary="Auth module refactored successfully")
+        assert command.completion_summary == "Auth module refactored successfully"
 
 
-class TestTaskQueryMethods:
-    """Test Task query methods."""
+class TestCommandQueryMethods:
+    """Test Command query methods."""
 
-    def test_task_has_get_recent_turns_method(self):
-        """Test Task has get_recent_turns method."""
-        task = Task(agent_id=1)
-        assert hasattr(task, 'get_recent_turns')
-        assert callable(task.get_recent_turns)
+    def test_command_has_get_recent_turns_method(self):
+        """Test Command has get_recent_turns method."""
+        command = Command(agent_id=1)
+        assert hasattr(command, 'get_recent_turns')
+        assert callable(command.get_recent_turns)
 
 
 class TestModelRepr:
@@ -362,16 +362,16 @@ class TestModelRepr:
         repr_str = repr(agent)
         assert "Agent" in repr_str
 
-    def test_task_repr(self):
-        """Test Task __repr__."""
-        task = Task(agent_id=1, state=TaskState.PROCESSING)
-        repr_str = repr(task)
-        assert "Task" in repr_str
+    def test_command_repr(self):
+        """Test Command __repr__."""
+        command = Command(agent_id=1, state=CommandState.PROCESSING)
+        repr_str = repr(command)
+        assert "Command" in repr_str
         assert "processing" in repr_str
 
     def test_turn_repr(self):
         """Test Turn __repr__."""
-        turn = Turn(task_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
+        turn = Turn(command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
         repr_str = repr(turn)
         assert "Turn" in repr_str
         assert "user" in repr_str

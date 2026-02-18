@@ -2,49 +2,49 @@
 
 ### Requirement: Full Command Capture
 
-The Task model SHALL have a `full_command` field (Text, nullable) to store the complete user command text.
+The Command model SHALL have a `full_command` field (Text, nullable) to store the complete user command text.
 
 #### Scenario: User submits a command that creates a new task
 
-- **WHEN** `TaskLifecycleManager.process_turn()` creates a new task from a USER COMMAND turn
-- **THEN** the complete `text` parameter SHALL be persisted to `task.full_command`
+- **WHEN** `CommandLifecycleManager.process_turn()` creates a new command from a USER COMMAND turn
+- **THEN** the complete `text` parameter SHALL be persisted to `command.full_command`
 
 #### Scenario: User submits an empty or null command
 
 - **WHEN** the command text is None or empty
-- **THEN** `task.full_command` SHALL remain NULL
+- **THEN** `command.full_command` SHALL remain NULL
 
 ### Requirement: Full Output Capture
 
-The Task model SHALL have a `full_output` field (Text, nullable) to store the complete agent final message text.
+The Command model SHALL have a `full_output` field (Text, nullable) to store the complete agent final message text.
 
-#### Scenario: Task completes with agent text
+#### Scenario: Command completes with agent text
 
-- **WHEN** `TaskLifecycleManager.complete_task()` is called with a non-empty `agent_text` parameter
-- **THEN** the complete `agent_text` SHALL be persisted to `task.full_output`
+- **WHEN** `CommandLifecycleManager.complete_task()` is called with a non-empty `agent_text` parameter
+- **THEN** the complete `agent_text` SHALL be persisted to `command.full_output`
 
-#### Scenario: Task completes without agent text
+#### Scenario: Command completes without agent text
 
 - **WHEN** `complete_task()` is called with empty or no `agent_text`
-- **THEN** `task.full_output` SHALL remain NULL
+- **THEN** `command.full_output` SHALL remain NULL
 
 ### Requirement: On-demand Full Text API
 
-The system SHALL provide a `GET /api/tasks/<task_id>/full-text` endpoint that returns `full_command` and `full_output` fields.
+The system SHALL provide a `GET /api/commands/<command_id>/full-text` endpoint that returns `full_command` and `full_output` fields.
 
-#### Scenario: Task exists with full text data
+#### Scenario: Command exists with full text data
 
-- **WHEN** a GET request is made to `/api/tasks/<task_id>/full-text` for a task with stored full text
+- **WHEN** a GET request is made to `/api/commands/<command_id>/full-text` for a command with stored full text
 - **THEN** the response SHALL be `200 OK` with `{ "full_command": "...", "full_output": "..." }`
 
-#### Scenario: Task not found
+#### Scenario: Command not found
 
-- **WHEN** a GET request is made to `/api/tasks/<task_id>/full-text` for a non-existent task ID
+- **WHEN** a GET request is made to `/api/commands/<command_id>/full-text` for a non-existent command ID
 - **THEN** the response SHALL be `404 Not Found`
 
 ### Requirement: Full Text Exclusion from SSE
 
-Full text fields SHALL NOT be included in SSE `card_refresh` event payloads or in the `/api/agents/<id>/tasks` endpoint response.
+Full text fields SHALL NOT be included in SSE `card_refresh` event payloads or in the `/api/agents/<id>/commands` endpoint response.
 
 #### Scenario: Card refresh broadcast
 
@@ -53,7 +53,7 @@ Full text fields SHALL NOT be included in SSE `card_refresh` event payloads or i
 
 #### Scenario: Agent tasks API response
 
-- **WHEN** `GET /api/agents/<id>/tasks` is called
+- **WHEN** `GET /api/agents/<id>/commands` is called
 - **THEN** the response SHALL NOT include `full_command` or `full_output` fields
 
 ### Requirement: Dashboard Drill-down UI
@@ -63,12 +63,12 @@ The dashboard agent card SHALL display drill-down buttons for the instruction li
 #### Scenario: User clicks drill-down on instruction
 
 - **WHEN** the user clicks the "View full" button on the instruction line of an agent card
-- **THEN** the system SHALL fetch `/api/tasks/<id>/full-text` and display `full_command` in a scrollable modal
+- **THEN** the system SHALL fetch `/api/commands/<id>/full-text` and display `full_command` in a scrollable modal
 
 #### Scenario: User clicks drill-down on completion summary
 
 - **WHEN** the user clicks the "View full" button on the completion summary line of an agent card
-- **THEN** the system SHALL fetch `/api/tasks/<id>/full-text` and display `full_output` in a scrollable modal
+- **THEN** the system SHALL fetch `/api/commands/<id>/full-text` and display `full_output` in a scrollable modal
 
 #### Scenario: Full text not available
 
@@ -86,8 +86,8 @@ The project view agent chat transcript SHALL display the full agent output for c
 
 #### Scenario: Expand full output in transcript
 
-- **WHEN** the user expands the full output section for a task
-- **THEN** the system SHALL fetch `/api/tasks/<id>/full-text` on demand and display `full_output`
+- **WHEN** the user expands the full output section for a command
+- **THEN** the system SHALL fetch `/api/commands/<id>/full-text` on demand and display `full_output`
 
 ### Requirement: Mobile-Friendly Display
 

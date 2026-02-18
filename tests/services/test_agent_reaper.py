@@ -23,7 +23,7 @@ PATCH_CHECK_PANE = "claude_headspace.services.iterm_focus.check_pane_exists"
 PATCH_DB = "claude_headspace.database.db"
 PATCH_BROADCASTER = "claude_headspace.services.broadcaster.get_broadcaster"
 PATCH_CLAUDE_RUNNING = "claude_headspace.services.agent_reaper._is_claude_running_in_pane"
-PATCH_GET_LIFECYCLE = "claude_headspace.services.task_lifecycle.TaskLifecycleManager"
+PATCH_GET_LIFECYCLE = "claude_headspace.services.command_lifecycle.CommandLifecycleManager"
 
 
 def _make_agent(
@@ -539,37 +539,37 @@ class TestReapResult:
         assert result.details == []
 
 
-class TestOrphanedTaskCompletion:
-    """Tests for _complete_orphaned_tasks behaviour during reaping."""
+class TestOrphanedCommandCompletion:
+    """Tests for _complete_orphaned_commands behaviour during reaping."""
 
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_completes_processing_task(self, mock_db, mock_check, mock_claude, mock_app):
-        """Reaping an agent should complete its PROCESSING task."""
+    def test_reap_completes_processing_command(self, mock_db, mock_check, mock_claude, mock_app):
+        """Reaping an agent should complete its PROCESSING command."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
         mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
         mock_claude.return_value = False
 
-        mock_task = MagicMock()
-        mock_task.id = 100
-        mock_task.agent_id = agent.id
-        mock_task.state = MagicMock()
-        mock_task.state.value = "processing"
+        mock_command = MagicMock()
+        mock_command.id = 100
+        mock_command.agent_id = agent.id
+        mock_command.state = MagicMock()
+        mock_command.state.value = "processing"
 
         query_mock = MagicMock()
         filter_mock = MagicMock()
         filter_mock.all.return_value = [agent]
         query_mock.filter.return_value = filter_mock
 
-        task_query_mock = MagicMock()
-        task_filter_mock = MagicMock()
-        task_order_mock = MagicMock()
-        task_order_mock.all.return_value = [mock_task]
-        task_filter_mock.order_by.return_value = task_order_mock
-        task_query_mock.filter.return_value = task_filter_mock
+        cmd_query_mock = MagicMock()
+        cmd_filter_mock = MagicMock()
+        cmd_order_mock = MagicMock()
+        cmd_order_mock.all.return_value = [mock_command]
+        cmd_filter_mock.order_by.return_value = cmd_order_mock
+        cmd_query_mock.filter.return_value = cmd_filter_mock
 
-        mock_db.session.query.side_effect = [query_mock, task_query_mock]
+        mock_db.session.query.side_effect = [query_mock, cmd_query_mock]
 
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
@@ -580,40 +580,40 @@ class TestOrphanedTaskCompletion:
             result = reaper.reap_once()
 
         assert result.reaped == 1
-        mock_lifecycle.complete_task.assert_called_once()
-        call_kwargs = mock_lifecycle.complete_task.call_args[1]
-        assert call_kwargs["task"] == mock_task
-        assert call_kwargs["trigger"] == "reaper:orphaned_task"
+        mock_lifecycle.complete_command.assert_called_once()
+        call_kwargs = mock_lifecycle.complete_command.call_args[1]
+        assert call_kwargs["command"] == mock_command
+        assert call_kwargs["trigger"] == "reaper:orphaned_command"
         assert call_kwargs["agent_text"] == "TASK COMPLETE — did stuff"
 
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_completes_task_without_transcript(self, mock_db, mock_check, mock_claude, mock_app):
-        """Reaping should complete tasks even with empty transcript."""
+    def test_reap_completes_command_without_transcript(self, mock_db, mock_check, mock_claude, mock_app):
+        """Reaping should complete commands even with empty transcript."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
         mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
         mock_claude.return_value = False
 
-        mock_task = MagicMock()
-        mock_task.id = 101
-        mock_task.agent_id = agent.id
-        mock_task.state = MagicMock()
-        mock_task.state.value = "processing"
+        mock_command = MagicMock()
+        mock_command.id = 101
+        mock_command.agent_id = agent.id
+        mock_command.state = MagicMock()
+        mock_command.state.value = "processing"
 
         query_mock = MagicMock()
         filter_mock = MagicMock()
         filter_mock.all.return_value = [agent]
         query_mock.filter.return_value = filter_mock
 
-        task_query_mock = MagicMock()
-        task_filter_mock = MagicMock()
-        task_order_mock = MagicMock()
-        task_order_mock.all.return_value = [mock_task]
-        task_filter_mock.order_by.return_value = task_order_mock
-        task_query_mock.filter.return_value = task_filter_mock
+        cmd_query_mock = MagicMock()
+        cmd_filter_mock = MagicMock()
+        cmd_order_mock = MagicMock()
+        cmd_order_mock.all.return_value = [mock_command]
+        cmd_filter_mock.order_by.return_value = cmd_order_mock
+        cmd_query_mock.filter.return_value = cmd_filter_mock
 
-        mock_db.session.query.side_effect = [query_mock, task_query_mock]
+        mock_db.session.query.side_effect = [query_mock, cmd_query_mock]
 
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
@@ -624,15 +624,15 @@ class TestOrphanedTaskCompletion:
             result = reaper.reap_once()
 
         assert result.reaped == 1
-        mock_lifecycle.complete_task.assert_called_once()
-        call_kwargs = mock_lifecycle.complete_task.call_args[1]
+        mock_lifecycle.complete_command.assert_called_once()
+        call_kwargs = mock_lifecycle.complete_command.call_args[1]
         assert call_kwargs["agent_text"] == ""
 
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_no_tasks_no_error(self, mock_db, mock_check, mock_claude, mock_app):
-        """Reaping agent with no active tasks should not error."""
+    def test_reap_no_commands_no_error(self, mock_db, mock_check, mock_claude, mock_app):
+        """Reaping agent with no active commands should not error."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
         mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
         mock_claude.return_value = False
@@ -642,14 +642,14 @@ class TestOrphanedTaskCompletion:
         filter_mock.all.return_value = [agent]
         query_mock.filter.return_value = filter_mock
 
-        task_query_mock = MagicMock()
-        task_filter_mock = MagicMock()
-        task_order_mock = MagicMock()
-        task_order_mock.all.return_value = []
-        task_filter_mock.order_by.return_value = task_order_mock
-        task_query_mock.filter.return_value = task_filter_mock
+        cmd_query_mock = MagicMock()
+        cmd_filter_mock = MagicMock()
+        cmd_order_mock = MagicMock()
+        cmd_order_mock.all.return_value = []
+        cmd_filter_mock.order_by.return_value = cmd_order_mock
+        cmd_query_mock.filter.return_value = cmd_filter_mock
 
-        mock_db.session.query.side_effect = [query_mock, task_query_mock]
+        mock_db.session.query.side_effect = [query_mock, cmd_query_mock]
 
         reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
         result = reaper.reap_once()
@@ -660,38 +660,38 @@ class TestOrphanedTaskCompletion:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_detects_end_of_task_intent(self, mock_db, mock_check, mock_claude, mock_app):
-        """Reaper should detect END_OF_TASK intent from transcript."""
+    def test_reap_detects_end_of_command_intent(self, mock_db, mock_check, mock_claude, mock_app):
+        """Reaper should detect END_OF_COMMAND intent from transcript."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
         mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
         mock_claude.return_value = False
 
-        mock_task = MagicMock()
-        mock_task.id = 102
-        mock_task.agent_id = agent.id
-        mock_task.state = MagicMock()
-        mock_task.state.value = "processing"
+        mock_command = MagicMock()
+        mock_command.id = 102
+        mock_command.agent_id = agent.id
+        mock_command.state = MagicMock()
+        mock_command.state.value = "processing"
 
         query_mock = MagicMock()
         filter_mock = MagicMock()
         filter_mock.all.return_value = [agent]
         query_mock.filter.return_value = filter_mock
 
-        task_query_mock = MagicMock()
-        task_filter_mock = MagicMock()
-        task_order_mock = MagicMock()
-        task_order_mock.all.return_value = [mock_task]
-        task_filter_mock.order_by.return_value = task_order_mock
-        task_query_mock.filter.return_value = task_filter_mock
+        cmd_query_mock = MagicMock()
+        cmd_filter_mock = MagicMock()
+        cmd_order_mock = MagicMock()
+        cmd_order_mock.all.return_value = [mock_command]
+        cmd_filter_mock.order_by.return_value = cmd_order_mock
+        cmd_query_mock.filter.return_value = cmd_filter_mock
 
-        mock_db.session.query.side_effect = [query_mock, task_query_mock]
+        mock_db.session.query.side_effect = [query_mock, cmd_query_mock]
 
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         mock_intent_result = MagicMock()
         from claude_headspace.models.turn import TurnIntent
-        mock_intent_result.intent = TurnIntent.END_OF_TASK
+        mock_intent_result.intent = TurnIntent.END_OF_COMMAND
 
         with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="---\nTASK COMPLETE — finished work\n---")), \
              patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result), \
@@ -700,8 +700,8 @@ class TestOrphanedTaskCompletion:
             result = reaper.reap_once()
 
         assert result.reaped == 1
-        call_kwargs = mock_lifecycle.complete_task.call_args[1]
-        assert call_kwargs["intent"] == TurnIntent.END_OF_TASK
+        call_kwargs = mock_lifecycle.complete_command.call_args[1]
+        assert call_kwargs["intent"] == TurnIntent.END_OF_COMMAND
 
 
 PATCH_TMUX_CHECK_HEALTH = "claude_headspace.services.tmux_bridge.check_health"

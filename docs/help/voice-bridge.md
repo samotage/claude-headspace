@@ -102,7 +102,7 @@ After connecting, you'll see your active agents with:
 
 - **Project name** and **state badge** (colour-coded by state)
 - **"Needs Input" indicator** for agents in AWAITING_INPUT state
-- **Task summary** showing what the agent is working on
+- **Command summary** showing what the agent is working on
 - **Last activity** timestamp
 
 The list updates in real-time via SSE. When an agent transitions to AWAITING_INPUT, you'll hear an audio cue.

@@ -22,7 +22,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 6 imple
 - **Agent Lifecycle Management** — Remote agent creation, graceful shutdown via `/exit` through tmux, and on-demand context window usage monitoring from dashboard or mobile chat
 - **File & Image Sharing** — Drag-and-drop and clipboard paste of images/files into the chat panel, thumbnail rendering in conversation history, and file path delivery to Claude Code agents via tmux bridge
 
-**The Differentiator:** Epic 6 breaks Claude Headspace free from the desk. Until now, interacting with agents required being at the Mac — seeing a question on the dashboard and typing a response. The Voice Bridge enables the user to monitor and command agents from anywhere in the house (or yard, or bike ride) via their iPhone, hearing concise spoken summaries and answering questions by voice. The Agent Chat History transforms fragmented task-scoped views into a continuous iMessage-like conversation, making agent interactions feel natural and persistent. Agent Lifecycle Management closes the orchestration loop — users can create, monitor, and kill agents entirely from their phone. File & Image Sharing makes agent communication visual, enabling screenshots, mockups, and design references to flow through the chat interface. Together, these features make Claude Headspace a truly ambient development companion and a full remote orchestration system.
+**The Differentiator:** Epic 6 breaks Claude Headspace free from the desk. Until now, interacting with agents required being at the Mac — seeing a question on the dashboard and typing a response. The Voice Bridge enables the user to monitor and command agents from anywhere in the house (or yard, or bike ride) via their iPhone, hearing concise spoken summaries and answering questions by voice. The Agent Chat History transforms fragmented command-scoped views into a continuous iMessage-like conversation, making agent interactions feel natural and persistent. Agent Lifecycle Management closes the orchestration loop — users can create, monitor, and kill agents entirely from their phone. File & Image Sharing makes agent communication visual, enabling screenshots, mockups, and design references to flow through the chat interface. Together, these features make Claude Headspace a truly ambient development companion and a full remote orchestration system.
 
 **Success Criteria:**
 
@@ -30,7 +30,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 6 imple
 - Speak an answer to an agent's question → agent resumes without touching the Mac
 - Audio cue plays when an agent needs input → user aware without looking at screen
 - PWA installable on iPhone via "Add to Home Screen" → standalone mode
-- Open agent chat → see full conversation across all tasks, not just current task
+- Open agent chat → see full conversation across all tasks, not just current command
 - Agent intermediate messages appear in real-time as the agent works (within 5 seconds)
 - Scroll up in chat → older messages load seamlessly
 - Chat accessible from dashboard cards, project pages, and activity views
@@ -81,7 +81,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 6 imple
 
 - Voice command endpoint: accepts text command + optional target agent identifier
 - Auto-targeting: if no target specified and exactly one agent awaiting input, route to that agent automatically
-- Session listing endpoint: all active agents with project name, state, input-needed flag, task summary, time since last activity (structured for voice, no HTML)
+- Session listing endpoint: all active agents with project name, state, input-needed flag, command summary, time since last activity (structured for voice, no HTML)
 - Output retrieval endpoint: recent agent activity (last N commands + outputs, concise text)
 - Question detail endpoint: full question context for AWAITING_INPUT agents (question text, options, source type, agent/project context)
 - Non-structured question passthrough: full question text returned when no AskUserQuestion options exist
@@ -201,7 +201,7 @@ Action needed: Respond to claude-headspace.
 
 **Agent Interaction:**
 
-- Agent list view: project name, state (colour-coded), input-needed indicator, current task summary
+- Agent list view: project name, state (colour-coded), input-needed indicator, current command summary
 - Real-time updates via SSE connection
 - Target agent by tapping list or speaking project name
 - Auto-targeting when exactly one agent awaiting input
@@ -351,7 +351,7 @@ QUESTION / RESPONSE MODE
 
 **Real-Time Intermediate Message Capture:**
 
-- Agent text output between tool calls captured as PROGRESS turns linked to current task
+- Agent text output between tool calls captured as PROGRESS turns linked to current command
 - Incremental transcript reading from last known position (no re-reading)
 - Deduplication between intermediate PROGRESS turns and final COMPLETION turn from stop hook
 - Empty/whitespace-only text blocks filtered out
@@ -359,9 +359,9 @@ QUESTION / RESPONSE MODE
 **Agent-Lifetime Conversation View:**
 
 - Chat transcript endpoint returns turns across all tasks for a given agent, ordered chronologically
-- Each turn includes task identifier for client-side task boundary detection
-- Task boundary separators with task instruction text and state
-- Full history from agent's first task through current task, with real-time updates
+- Each turn includes task identifier for client-side command boundary detection
+- Task boundary separators with command instruction text and state
+- Full history from agent's first task through current command, with real-time updates
 
 **Pagination:**
 
@@ -387,7 +387,7 @@ QUESTION / RESPONSE MODE
 **Task Separators:**
 
 - Subtle visual separator at task boundaries (centered text with horizontal rules)
-- Shows task instruction for the new task
+- Shows command instruction for the new task
 - Unobtrusive — does not dominate conversation flow
 
 **Chat Links Everywhere:**
@@ -473,10 +473,10 @@ QUESTION / RESPONSE MODE
 
 **Acceptance Criteria:**
 
-- [ ] Chat shows complete conversation across all tasks, not just current task
+- [ ] Chat shows complete conversation across all tasks, not just current command
 - [ ] Intermediate agent text messages appear within 5 seconds of agent producing them
 - [ ] Scrolling up loads older messages without page reload
-- [ ] Task transitions visible as subtle separators with task instruction
+- [ ] Task transitions visible as subtle separators with command instruction
 - [ ] Rapid consecutive agent messages (within 2 seconds) grouped into single bubble
 - [ ] Chat accessible for ended agents from project show page and activity page
 - [ ] Timestamps follow iMessage conventions
@@ -563,7 +563,7 @@ QUESTION / RESPONSE MODE
 ┌─────────────────────────────────────────────────────────────────────┐
 │  [GREEN] claude-headspace                            Processing     │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Task: Fix the login bug in the auth module                        │
+│  Command: Fix the login bug in the auth module                        │
 │                                                                     │
 │  Context: ██████████░░░░░░ 62% used · 38k remaining               │
 │                                                                     │
@@ -837,9 +837,9 @@ Epic 3's InferenceService and PromptRegistry are also leveraged by E6-S1 for voi
 
 **Success:**
 
-- ✅ Open chat → sees most recent 50 turns (current task + some from previous)
+- ✅ Open chat → sees most recent 50 turns (current command + some from previous)
 - ✅ Scroll up → older messages load, scroll position preserved
-- ✅ Task separators visible between task boundaries
+- ✅ Command separators visible between task boundaries
 - ✅ Intermediate agent messages appear in real-time as agent works
 - ✅ Rapid agent messages grouped into single bubble
 - ✅ Timestamps follow iMessage conventions
@@ -889,7 +889,7 @@ Epic 3's InferenceService and PromptRegistry are also leveraged by E6-S1 for voi
 - ✅ Agent asks question → "needs input" audio cue on iPhone
 - ✅ Speak answer → agent resumes → confirmation tone
 - ✅ Open chat on iPhone → see full agent conversation with intermediate messages
-- ✅ Open chat on dashboard → same history, task separators, pagination
+- ✅ Open chat on dashboard → same history, command separators, pagination
 - ✅ Agent ends → chat remains accessible (read-only) from project page
 - ✅ TTS reads status summaries and question details aloud
 - ✅ Everything works hands-free without looking at the screen
@@ -969,7 +969,7 @@ Unified timeline view showing interleaved conversations across multiple agents o
 
 ### Voice Notifications (Candidate)
 
-Proactive voice announcements via TTS when significant events occur — task completions, high-frustration alerts, flow state milestones — without requiring the user to check the app.
+Proactive voice announcements via TTS when significant events occur — command completions, high-frustration alerts, flow state milestones — without requiring the user to check the app.
 
 **Status:** Idea — requires scoping and PRD workshop
 

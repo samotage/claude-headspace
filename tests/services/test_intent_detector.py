@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_headspace.models.task import TaskState
+from claude_headspace.models.command import CommandState
 from claude_headspace.models.turn import TurnActor, TurnIntent
 from unittest.mock import MagicMock
 
@@ -12,14 +12,14 @@ from claude_headspace.services.intent_detector import (
     COMPLETION_OPENER_PATTERNS,
     COMPLETION_PATTERNS,
     CONTINUATION_PATTERNS,
-    END_OF_TASK_HANDOFF_PATTERNS,
-    END_OF_TASK_SOFT_CLOSE_PATTERNS,
-    END_OF_TASK_SUMMARY_PATTERNS,
+    END_OF_COMMAND_HANDOFF_PATTERNS,
+    END_OF_COMMAND_SOFT_CLOSE_PATTERNS,
+    END_OF_COMMAND_SUMMARY_PATTERNS,
     PLAN_APPROVAL_PATTERN,
     QUESTION_PATTERNS,
     IntentResult,
     _detect_completion_opener,
-    _detect_end_of_task,
+    _detect_end_of_command,
     _detect_trailing_question,
     _extract_tail,
     _infer_completion_classification,
@@ -104,7 +104,7 @@ class TestDetectAgentIntent:
         result = detect_agent_intent("I've finished implementing the feature.")
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete(self):
+    def test_command_complete(self):
         """'Task complete' should detect as completion."""
         result = detect_agent_intent("Task complete. The tests are now passing.")
         assert result.intent == TurnIntent.COMPLETION
@@ -174,35 +174,35 @@ class TestDetectUserIntent:
 
     def test_user_command_from_idle(self):
         """User turn from IDLE state should be COMMAND."""
-        result = detect_user_intent("Please fix the bug in the login page.", TaskState.IDLE)
+        result = detect_user_intent("Please fix the bug in the login page.", CommandState.IDLE)
         assert result.intent == TurnIntent.COMMAND
         assert result.confidence == 1.0
 
     def test_user_answer_from_awaiting_input(self):
         """User turn from AWAITING_INPUT state should be ANSWER."""
-        result = detect_user_intent("Yes, please proceed with that approach.", TaskState.AWAITING_INPUT)
+        result = detect_user_intent("Yes, please proceed with that approach.", CommandState.AWAITING_INPUT)
         assert result.intent == TurnIntent.ANSWER
         assert result.confidence == 1.0
 
     def test_user_command_from_processing(self):
         """Substantive user turn from PROCESSING state should be COMMAND (interruption)."""
-        result = detect_user_intent("Stop that, do this instead.", TaskState.PROCESSING)
+        result = detect_user_intent("Stop that, do this instead.", CommandState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
 
     def test_user_confirmation_from_processing(self):
         """Confirmation during PROCESSING should be ANSWER (not a new command)."""
-        result = detect_user_intent("Yes", TaskState.PROCESSING)
+        result = detect_user_intent("Yes", CommandState.PROCESSING)
         assert result.intent == TurnIntent.ANSWER
         assert result.confidence == 0.9
 
     def test_user_command_from_commanded(self):
         """User turn from COMMANDED state should be COMMAND."""
-        result = detect_user_intent("Also add logging.", TaskState.COMMANDED)
+        result = detect_user_intent("Also add logging.", CommandState.COMMANDED)
         assert result.intent == TurnIntent.COMMAND
 
     def test_user_with_none_text(self):
         """User turn with None text should still detect intent based on state."""
-        result = detect_user_intent(None, TaskState.AWAITING_INPUT)
+        result = detect_user_intent(None, CommandState.AWAITING_INPUT)
         assert result.intent == TurnIntent.ANSWER
 
 
@@ -211,17 +211,17 @@ class TestDetectIntent:
 
     def test_user_actor_routes_to_user_detector(self):
         """USER actor should use user intent detection."""
-        result = detect_intent("Do something", TurnActor.USER, TaskState.IDLE)
+        result = detect_intent("Do something", TurnActor.USER, CommandState.IDLE)
         assert result.intent == TurnIntent.COMMAND
 
     def test_agent_actor_routes_to_agent_detector(self):
         """AGENT actor should use agent intent detection."""
-        result = detect_intent("Should I continue?", TurnActor.AGENT, TaskState.PROCESSING)
+        result = detect_intent("Should I continue?", TurnActor.AGENT, CommandState.PROCESSING)
         assert result.intent == TurnIntent.QUESTION
 
     def test_agent_completion_detection(self):
         """Agent completion should be detected regardless of state."""
-        result = detect_intent("Done.", TurnActor.AGENT, TaskState.PROCESSING)
+        result = detect_intent("Done.", TurnActor.AGENT, CommandState.PROCESSING)
         assert result.intent == TurnIntent.COMPLETION
 
 
@@ -552,7 +552,7 @@ class TestExpandedCompletionPatterns:
 
     def test_made_following_changes(self):
         result = detect_agent_intent("I've made the following changes:\n- Updated config\n- Fixed bug")
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_all_tests_passing(self):
         result = detect_agent_intent("All tests are passing.")
@@ -572,8 +572,8 @@ class TestExpandedCompletionPatterns:
 
     def test_summary_of_what_was_done(self):
         result = detect_agent_intent("Here's a summary of what was done:\n- Item 1\n- Item 2")
-        # Now detected as END_OF_TASK (structured summary) rather than COMPLETION
-        assert result.intent == TurnIntent.END_OF_TASK
+        # Now detected as END_OF_COMMAND (structured summary) rather than COMPLETION
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_all_68_tests_pass(self):
         """'All 68 tests pass' with a number should be COMPLETION."""
@@ -591,7 +591,7 @@ class TestExpandedCompletionPatterns:
         assert result.intent == TurnIntent.COMPLETION
 
     def test_real_world_test_summary_with_changes(self):
-        """Real-world output: test results + summary of changes → END_OF_TASK."""
+        """Real-world output: test results + summary of changes → END_OF_COMMAND."""
         text = (
             "All 68 tests pass. Here's a summary of what was changed:\n\n"
             "prompt_registry.py — 9 prompts updated:\n"
@@ -600,28 +600,28 @@ class TestExpandedCompletionPatterns:
             "Tests updated in test_prompt_registry.py (3 assertions) to match."
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+        assert result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION)
 
     def test_summary_of_what_was_changed(self):
-        """'Here's a summary of what was changed' should be END_OF_TASK."""
+        """'Here's a summary of what was changed' should be END_OF_COMMAND."""
         result = detect_agent_intent(
             "Here's a summary of what was changed:\n- Item 1\n- Item 2"
         )
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_heres_what_i_did(self):
-        """'Here's what I did' should be END_OF_TASK."""
+        """'Here's what I did' should be END_OF_COMMAND."""
         result = detect_agent_intent(
             "Here's what I did:\n- Updated the config\n- Fixed tests"
         )
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_numbered_change_summary(self):
-        """'9 prompts updated' change count should be END_OF_TASK."""
+        """'9 prompts updated' change count should be END_OF_COMMAND."""
         result = detect_agent_intent(
             "9 prompts updated:\n- turn_question\n- turn_completion"
         )
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
 
 class TestCompletionFalsePositiveFix:
@@ -653,11 +653,11 @@ class TestCompletionFalsePositiveFix:
         assert result.intent == TurnIntent.COMPLETION
 
 
-class TestEndOfTaskDetection:
-    """Tests for end-of-task detection."""
+class TestEndOfCommandDetection:
+    """Tests for end-of-command detection."""
 
     def test_summary_with_soft_close(self):
-        """Multi-paragraph summary + soft close -> END_OF_TASK with high confidence."""
+        """Multi-paragraph summary + soft close -> END_OF_COMMAND with high confidence."""
         text = (
             "Here's a summary of the changes I made:\n"
             "- Updated the config module\n"
@@ -666,11 +666,11 @@ class TestEndOfTaskDetection:
             "Let me know if you'd like any adjustments."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.95
 
     def test_summary_with_handoff(self):
-        """Summary + handoff -> END_OF_TASK with high confidence."""
+        """Summary + handoff -> END_OF_COMMAND with high confidence."""
         text = (
             "Here's a summary of everything:\n"
             "- Refactored the service layer\n"
@@ -678,11 +678,11 @@ class TestEndOfTaskDetection:
             "Everything should be working now."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.95
 
     def test_summary_with_continuation_downgrades(self):
-        """Summary + 'Next I'll update tests' -> not END_OF_TASK (continuation guard)."""
+        """Summary + 'Next I'll update tests' -> not END_OF_COMMAND (continuation guard)."""
         text = (
             "Here's a summary of the changes I made:\n"
             "- Updated the config module\n"
@@ -690,31 +690,31 @@ class TestEndOfTaskDetection:
             "Next I'll update the tests to match."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_soft_close_alone(self):
-        """'Let me know if you'd like any changes' alone -> END_OF_TASK."""
+        """'Let me know if you'd like any changes' alone -> END_OF_COMMAND."""
         text = (
             "I've updated the configuration as requested.\n"
             "Let me know if you'd like any changes."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.7
 
-    def test_specific_question_not_end_of_task(self):
-        """'Should I proceed with the database migration?' -> QUESTION, not END_OF_TASK."""
+    def test_specific_question_not_end_of_command(self):
+        """'Should I proceed with the database migration?' -> QUESTION, not END_OF_COMMAND."""
         result = detect_agent_intent("Should I proceed with the database migration?")
         assert result.intent == TurnIntent.QUESTION
 
     def test_open_ended_offer(self):
-        """'Let me know if there's anything else' -> END_OF_TASK."""
+        """'Let me know if there's anything else' -> END_OF_COMMAND."""
         text = (
             "The feature is implemented.\n"
             "Let me know if there's anything else."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_summary_in_code_block_ignored(self):
         """Code block with 'here's a summary' should not trigger end-of-task."""
@@ -724,70 +724,70 @@ class TestEndOfTaskDetection:
             "I'm still working on the remaining pieces."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_short_done_is_completion_not_eot(self):
-        """Short 'Done.' -> COMPLETION, not END_OF_TASK."""
+        """Short 'Done.' -> COMPLETION, not END_OF_COMMAND."""
         result = detect_agent_intent("Done.")
         assert result.intent == TurnIntent.COMPLETION
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_feel_free_to_test(self):
-        """'Feel free to test' -> END_OF_TASK."""
+        """'Feel free to test' -> END_OF_COMMAND."""
         text = (
             "I've implemented the changes.\n"
             "Feel free to test it out."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_handoff_alone(self):
-        """'You can now use the new API' -> END_OF_TASK."""
+        """'You can now use the new API' -> END_OF_COMMAND."""
         text = (
             "The migration is complete.\n"
             "You can now use the new endpoint."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.7
 
     def test_real_world_structured_summary(self):
-        """Real-world Claude Code output with structured summary -> END_OF_TASK."""
+        """Real-world Claude Code output with structured summary -> END_OF_COMMAND."""
         text = (
             "I've implemented the end-of-task detection feature. Here's a summary of the changes:\n\n"
             "**Files modified:**\n"
-            "- `src/services/intent_detector.py` - Added END_OF_TASK patterns and detection\n"
-            "- `src/models/turn.py` - Added END_OF_TASK enum value\n"
+            "- `src/services/intent_detector.py` - Added END_OF_COMMAND patterns and detection\n"
+            "- `src/models/turn.py` - Added END_OF_COMMAND enum value\n"
             "- `src/services/state_machine.py` - Added transitions\n\n"
             "**Test results:**\n"
             "All 47 targeted tests pass.\n\n"
             "Let me know if you'd like any adjustments."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence >= 0.7
 
     def test_everything_is_in_place(self):
-        """'Everything is in place' -> END_OF_TASK via handoff pattern."""
+        """'Everything is in place' -> END_OF_COMMAND via handoff pattern."""
         text = (
             "I've applied all the changes.\n"
             "Everything is in place and ready to go."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_to_recap(self):
-        """'To recap' summary -> END_OF_TASK."""
+        """'To recap' summary -> END_OF_COMMAND."""
         text = (
             "To recap, I made the following changes:\n"
             "- Fixed the login flow\n"
             "- Updated the tests"
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_files_were_modified(self):
-        """'The following files were modified:' -> END_OF_TASK."""
+        """'The following files were modified:' -> END_OF_COMMAND."""
         text = (
             "The following files were modified:\n"
             "- src/app.py\n"
@@ -795,7 +795,7 @@ class TestEndOfTaskDetection:
             "- tests/test_app.py"
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
 
 class TestContinuationPatterns:
@@ -809,7 +809,7 @@ class TestContinuationPatterns:
             "Next I'll add tests."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_now_i_need_to(self):
         """'Now I need to' should trigger continuation guard."""
@@ -819,7 +819,7 @@ class TestContinuationPatterns:
             "Now I need to update the tests."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_i_still_need_to(self):
         """'I still need to' should trigger continuation guard."""
@@ -829,13 +829,13 @@ class TestContinuationPatterns:
             "I still need to update the documentation."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_should_i_proceed(self):
         """'Should I proceed' should trigger continuation guard and be QUESTION."""
         text = "I've made the initial changes. Should I proceed with the rest?"
         result = detect_agent_intent(text)
-        # This should be QUESTION (from QUESTION_PATTERNS), not END_OF_TASK
+        # This should be QUESTION (from QUESTION_PATTERNS), not END_OF_COMMAND
         assert result.intent == TurnIntent.QUESTION
 
     def test_moving_on_to(self):
@@ -846,7 +846,7 @@ class TestContinuationPatterns:
             "Moving on to the frontend next."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_working_on(self):
         """'Working on' should trigger continuation guard."""
@@ -856,15 +856,15 @@ class TestContinuationPatterns:
             "Working on the service layer now."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
 
-class TestDetectEndOfTaskUnit:
-    """Unit tests for _detect_end_of_task function."""
+class TestDetectEndOfCommandUnit:
+    """Unit tests for _detect_end_of_command function."""
 
     def test_returns_none_with_continuation(self):
         """Should return None when has_continuation is True."""
-        result = _detect_end_of_task(
+        result = _detect_end_of_command(
             "Here's a summary of the changes:\nLet me know if you'd like any adjustments.",
             has_continuation=True,
         )
@@ -877,22 +877,22 @@ class TestDetectEndOfTaskUnit:
             "- Fixed bugs\n"
             "Let me know if you'd like any adjustments."
         )
-        result = _detect_end_of_task(tail, has_continuation=False)
+        result = _detect_end_of_command(tail, has_continuation=False)
         assert result is not None
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.95
 
     def test_soft_close_alone_lower_confidence(self):
         """Soft close alone -> 0.7 confidence."""
         tail = "Let me know if there's anything else."
-        result = _detect_end_of_task(tail, has_continuation=False)
+        result = _detect_end_of_command(tail, has_continuation=False)
         assert result is not None
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.7
 
     def test_no_patterns_returns_none(self):
         """Should return None when no patterns match."""
-        result = _detect_end_of_task(
+        result = _detect_end_of_command(
             "I'm still working on the implementation.",
             has_continuation=False,
         )
@@ -903,7 +903,7 @@ class TestInferenceClassificationFallback:
     """Tests for _infer_completion_classification."""
 
     def test_finished_classification(self):
-        """LLM returning 'A' should map to END_OF_TASK."""
+        """LLM returning 'A' should map to END_OF_COMMAND."""
         mock_service = MagicMock()
         mock_result = MagicMock()
         mock_result.text = "A"
@@ -911,7 +911,7 @@ class TestInferenceClassificationFallback:
 
         result = _infer_completion_classification("Some tail text", mock_service)
         assert result is not None
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.85
 
     def test_continuing_classification(self):
@@ -978,7 +978,7 @@ class TestInferenceClassificationFallback:
             "The error occurs because the database connection times out after 30 seconds.",
             inference_service=mock_service,
         )
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
         assert result.confidence == 0.85
 
     def test_inference_not_called_when_pattern_matches(self):
@@ -1035,7 +1035,7 @@ class TestCompletionOpenerDetection:
             "Done. Let me know if you'd like any changes."
         )
         # Soft-close boosts opener to 0.9
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
         assert result.confidence >= 0.7
 
     def test_done_standalone_still_works(self):
@@ -1143,7 +1143,7 @@ class TestArtifactCreationCompletion:
         assert result.intent == TurnIntent.COMPLETION
 
     def test_artifact_summary_message(self):
-        """Real-world PRD creation summary should detect as END_OF_TASK."""
+        """Real-world PRD creation summary should detect as END_OF_COMMAND."""
         text = (
             "PRD created at docs/prds/core/e4-s2-project-controls-prd.md. "
             "Here's a summary of what it covers:\n\n"
@@ -1158,7 +1158,7 @@ class TestArtifactCreationCompletion:
             "Files: 6 new files, 8 modified files"
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+        assert result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION)
 
     def test_artifact_summary_with_intermediate_text(self):
         """Artifact creation with intermediate text blocks should still detect completion.
@@ -1176,31 +1176,31 @@ class TestArtifactCreationCompletion:
             "Files: 6 new files, 8 modified files"
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+        assert result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION)
 
 
 class TestNumberedFileSummaryPatterns:
     """Tests for adjective-first numbered file summary patterns."""
 
     def test_new_files_count(self):
-        """'6 new files' should be detected as END_OF_TASK summary."""
+        """'6 new files' should be detected as END_OF_COMMAND summary."""
         result = detect_agent_intent("6 new files created for the feature.")
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_modified_files_count(self):
-        """'8 modified files' should be detected as END_OF_TASK summary."""
+        """'8 modified files' should be detected as END_OF_COMMAND summary."""
         result = detect_agent_intent("8 modified files across the codebase.")
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_created_tests_count(self):
-        """'3 new tests' should be detected as END_OF_TASK summary."""
+        """'3 new tests' should be detected as END_OF_COMMAND summary."""
         result = detect_agent_intent("3 new tests added for coverage.")
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_deleted_files_count(self):
-        """'2 deleted files' should be detected as END_OF_TASK summary."""
+        """'2 deleted files' should be detected as END_OF_COMMAND summary."""
         result = detect_agent_intent("2 deleted files that were no longer needed.")
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
 
 class TestContinuationGuardWindow:
@@ -1226,7 +1226,7 @@ class TestContinuationGuardWindow:
             "Let me know if you'd like any adjustments."
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.END_OF_TASK, TurnIntent.COMPLETION)
+        assert result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION)
 
     def test_intermediate_let_me_also_does_not_block(self):
         """'Let me also' in intermediate text should NOT block completion."""
@@ -1242,7 +1242,7 @@ class TestContinuationGuardWindow:
             "Let me know if there's anything else."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_working_on_at_end_still_blocks(self):
         """'Working on' at the END of the message should still block completion."""
@@ -1252,7 +1252,7 @@ class TestContinuationGuardWindow:
             "Working on the service layer now."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
     def test_next_ill_at_end_still_blocks(self):
         """'Next I'll' at the end should still trigger continuation guard."""
@@ -1262,7 +1262,7 @@ class TestContinuationGuardWindow:
             "Next I'll add tests."
         )
         result = detect_agent_intent(text)
-        assert result.intent != TurnIntent.END_OF_TASK
+        assert result.intent != TurnIntent.END_OF_COMMAND
 
 
 class TestCompletionOpenerUnit:
@@ -1326,22 +1326,22 @@ class TestStatusReportCompletion:
     def test_everything_looks_healthy(self):
         """'Everything looks healthy after the server restart.' should detect completion."""
         result = detect_agent_intent("Everything looks healthy after the server restart.")
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_everything_looks_good(self):
         """'Everything looks good.' should detect completion."""
         result = detect_agent_intent("Everything looks good.")
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_everything_appears_correct(self):
         """'Everything appears correct.' should detect completion."""
         result = detect_agent_intent("Everything appears correct.")
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_everything_seems_fine(self):
         """'Everything seems fine.' should detect completion."""
         result = detect_agent_intent("Everything seems fine.")
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_status_report_with_bullet_points(self):
         """Full multi-line status report ending with 'everything looks healthy' -> completion."""
@@ -1352,21 +1352,21 @@ class TestStatusReportCompletion:
             "Everything looks healthy after the server restart."
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_everything_looks_healthy_as_handoff(self):
-        """'Everything looks healthy' should match the handoff pattern for END_OF_TASK."""
+        """'Everything looks healthy' should match the handoff pattern for END_OF_COMMAND."""
         text = (
             "I've restarted the server and checked the dashboard.\n"
             "Everything looks healthy."
         )
         result = detect_agent_intent(text)
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_everything_is_good(self):
         """'Everything is good.' should detect completion (broadened 'is' adjectives)."""
         result = detect_agent_intent("Everything is good.")
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
 
 class TestCookedCompletionMarker:
@@ -1398,31 +1398,31 @@ class TestCookedCompletionMarker:
         assert result.intent == TurnIntent.COMPLETION
 
 
-class TestTaskCompleteMarker:
+class TestCommandCompleteMarker:
     """Tests for TASK COMPLETE structured completion marker."""
 
-    def test_task_complete_marker_basic(self):
+    def test_command_complete_marker_basic(self):
         """'TASK COMPLETE — <summary>' should detect as completion."""
         result = detect_agent_intent(
             "---\nTASK COMPLETE — Returned current Unix timestamp.\n---"
         )
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete_marker_with_tests(self):
+    def test_command_complete_marker_with_tests(self):
         """'TASK COMPLETE — <summary>. Tests: N passed.' should detect as completion."""
         result = detect_agent_intent(
             "---\nTASK COMPLETE — Fixed login bug. Tests: 12 passed.\n---"
         )
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete_marker_inline(self):
+    def test_command_complete_marker_inline(self):
         """TASK COMPLETE marker without surrounding --- lines should still detect."""
         result = detect_agent_intent(
             "TASK COMPLETE — Added the new endpoint and updated tests."
         )
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete_marker_at_end_of_long_response(self):
+    def test_command_complete_marker_at_end_of_long_response(self):
         """TASK COMPLETE marker at end of a long agent response should detect as completion."""
         lines = ["Working on the implementation..."] * 20
         lines.append("---")
@@ -1432,14 +1432,14 @@ class TestTaskCompleteMarker:
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete_marker_with_regular_dash(self):
+    def test_command_complete_marker_with_regular_dash(self):
         """TASK COMPLETE with regular dash should also detect."""
         result = detect_agent_intent(
             "TASK COMPLETE - Updated the configuration."
         )
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_task_complete_case_insensitive(self):
+    def test_command_complete_case_insensitive(self):
         """TASK COMPLETE should match case-insensitively."""
         result = detect_agent_intent(
             "Task Complete — Refactored the service layer."
@@ -1603,7 +1603,7 @@ class TestConfirmationDetection:
 
     def test_yes_during_processing_is_answer(self):
         """'yes' during PROCESSING should be ANSWER."""
-        result = detect_user_intent("yes", TaskState.PROCESSING)
+        result = detect_user_intent("yes", CommandState.PROCESSING)
         assert result.intent == TurnIntent.ANSWER
         assert result.confidence == 0.9
         assert result.matched_pattern == "confirmation"
@@ -1611,46 +1611,46 @@ class TestConfirmationDetection:
     def test_plan_approval_during_processing_is_answer(self):
         """Plan approval text during PROCESSING should be ANSWER."""
         result = detect_user_intent(
-            "Yes, clear context and auto-accept edits", TaskState.PROCESSING
+            "Yes, clear context and auto-accept edits", CommandState.PROCESSING
         )
         assert result.intent == TurnIntent.ANSWER
 
     def test_substantive_command_during_processing_is_command(self):
         """'Fix the bug' during PROCESSING should still be COMMAND."""
-        result = detect_user_intent("Fix the bug in login", TaskState.PROCESSING)
+        result = detect_user_intent("Fix the bug in login", CommandState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
 
     def test_confirmation_during_idle_is_command(self):
         """'yes' during IDLE should be COMMAND (confirmation only applies during PROCESSING)."""
-        result = detect_user_intent("yes", TaskState.IDLE)
+        result = detect_user_intent("yes", CommandState.IDLE)
         assert result.intent == TurnIntent.COMMAND
 
     def test_confirmation_during_complete_is_command(self):
         """'yes' during COMPLETE should be COMMAND."""
-        result = detect_user_intent("yes", TaskState.COMPLETE)
+        result = detect_user_intent("yes", CommandState.COMPLETE)
         assert result.intent == TurnIntent.COMMAND
 
     def test_none_text_during_processing_is_command(self):
         """None text during PROCESSING should be COMMAND (not matched as confirmation)."""
-        result = detect_user_intent(None, TaskState.PROCESSING)
+        result = detect_user_intent(None, CommandState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
 
     def test_empty_text_during_processing_is_command(self):
         """Empty text during PROCESSING should be COMMAND."""
-        result = detect_user_intent("", TaskState.PROCESSING)
+        result = detect_user_intent("", CommandState.PROCESSING)
         assert result.intent == TurnIntent.COMMAND
 
 
 class TestCompletionOverridesFollowUpQuestion:
-    """Tests that completed tasks with follow-up questions are COMPLETION, not QUESTION.
+    """Tests that completed commands with follow-up questions are COMPLETION, not QUESTION.
 
     When an agent finishes its work and asks a follow-up question about
-    optional additional work, the task IS complete. The follow-up question
-    is about starting a NEW potential task, not continuing the current one.
+    optional additional work, the command IS complete. The follow-up question
+    is about starting a NEW potential command, not continuing the current one.
     """
 
     def test_completion_with_followup_question(self):
-        """Completed task + follow-up question → COMPLETION, not QUESTION."""
+        """Completed command + follow-up question → COMPLETION, not QUESTION."""
         text = (
             "All tests passed. Would you like me to also update the docs?"
         )
@@ -1710,8 +1710,8 @@ class TestCompletionOverridesFollowUpQuestion:
             "All 12 tests passed. Committed and pushed to development."
         )
         result = detect_agent_intent(text)
-        # END_OF_TASK or COMPLETION both indicate task is done
-        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_TASK)
+        # END_OF_COMMAND or COMPLETION both indicate task is done
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
     def test_real_world_commit_push_completion(self):
         """Real-world commit+push output should be COMPLETION."""
@@ -1757,11 +1757,11 @@ class TestNewCompletionPatterns:
         assert result.intent == TurnIntent.COMPLETION
 
     def test_ive_made_following_changes_is_eot(self):
-        """'I've made the following changes:' should be END_OF_TASK."""
+        """'I've made the following changes:' should be END_OF_COMMAND."""
         result = detect_agent_intent(
             "I've made the following changes:\n- Fixed bug\n- Updated tests"
         )
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
 
 class TestTrailingQuestionGuard:
@@ -1793,7 +1793,7 @@ class TestTrailingQuestionGuard:
         This is the core scenario: the agent's output contains completion-like
         text (e.g. test results) earlier in a long message, but the final
         lines are a question. The completion evidence must be pushed outside
-        the 15-line tail window so Phase 0 (END_OF_TASK) doesn't fire first.
+        the 15-line tail window so Phase 0 (END_OF_COMMAND) doesn't fire first.
         """
         # Build enough lines to push "All 12 tests passed" out of the tail
         lines = [
@@ -1823,14 +1823,14 @@ class TestTrailingQuestionGuard:
         result = detect_agent_intent(text)
         assert result.intent == TurnIntent.COMPLETION
 
-    def test_soft_close_still_end_of_task(self):
-        """Soft-close offers → still END_OF_TASK (guard skips)."""
+    def test_soft_close_still_end_of_command(self):
+        """Soft-close offers → still END_OF_COMMAND (guard skips)."""
         text = (
             "I've applied all the changes.\n"
             "Let me know if you'd like any adjustments."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.END_OF_TASK
+        assert result.intent == TurnIntent.END_OF_COMMAND
 
     def test_trailing_blocked_pattern(self):
         """Blocked/error pattern at tail → QUESTION."""
@@ -1914,16 +1914,16 @@ class TestTrailingQuestionGuard:
         assert result.intent == TurnIntent.QUESTION
 
 
-class TestTaskCompleteMarkerInFullResponse:
+class TestCommandCompleteMarkerInFullResponse:
     """Tests that TASK COMPLETE marker is detected as COMPLETION in realistic full responses.
 
     Regression tests for task 1057: a joke response with embedded question marks
     (inside the joke text) was not being detected as COMPLETION despite ending
-    with the TASK COMPLETE marker. The task stayed in AWAITING_INPUT instead of
+    with the TASK COMPLETE marker. The command stayed in AWAITING_INPUT instead of
     transitioning to COMPLETE.
     """
 
-    def test_joke_response_with_task_complete_marker(self):
+    def test_joke_response_with_command_complete_marker(self):
         """Full joke response ending with TASK COMPLETE marker should be COMPLETION.
 
         This is the exact scenario that caused task 1057 to stay in AWAITING_INPUT:
@@ -1947,7 +1947,7 @@ class TestTaskCompleteMarkerInFullResponse:
             f"(pattern={result.matched_pattern})"
         )
 
-    def test_one_liner_joke_with_task_complete_marker(self):
+    def test_one_liner_joke_with_command_complete_marker(self):
         """One-liner joke with TASK COMPLETE marker should be COMPLETION."""
         text = (
             "Here's a one-liner for you:\n"
@@ -1965,7 +1965,7 @@ class TestTaskCompleteMarkerInFullResponse:
             f"(pattern={result.matched_pattern})"
         )
 
-    def test_response_with_embedded_questions_and_task_complete(self):
+    def test_response_with_embedded_questions_and_command_complete(self):
         """Response containing question marks in quoted text + TASK COMPLETE should be COMPLETION.
 
         The embedded question marks (inside quotes) must not override the TASK COMPLETE

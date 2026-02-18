@@ -140,15 +140,15 @@ def synthesize_permission_options(
     return result
 
 
-def mark_question_answered(task) -> None:
+def mark_question_answered(command) -> None:
     """Mark the most recent QUESTION turn's tool_input status as complete.
 
     Called when a question is answered to prevent stale options from
     being rendered on subsequent AWAITING_INPUT transitions.
     """
-    if not task or not hasattr(task, 'turns') or not task.turns:
+    if not command or not hasattr(command, 'turns') or not command.turns:
         return
-    for turn in reversed(task.turns):
+    for turn in reversed(command.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:
             if turn.tool_input and isinstance(turn.tool_input, dict):
                 # Reassign dict (not mutate) so SQLAlchemy detects the change
@@ -171,16 +171,16 @@ def capture_plan_write(agent, tool_input: dict | None) -> bool:
     if not file_path or ".claude/plans/" not in file_path or not content:
         return False
 
-    current_task = agent.get_current_task()
-    if not current_task:
+    current_command = agent.get_current_command()
+    if not current_command:
         return False
 
-    current_task.plan_file_path = file_path
-    current_task.plan_content = content
+    current_command.plan_file_path = file_path
+    current_command.plan_content = content
     db.session.commit()
     broadcast_card_refresh(agent, "plan_file_captured")
     logger.info(
-        f"plan_capture: agent_id={agent.id}, task_id={current_task.id}, "
+        f"plan_capture: agent_id={agent.id}, command_id={current_command.id}, "
         f"file={file_path}, content_len={len(content)}"
     )
     return True

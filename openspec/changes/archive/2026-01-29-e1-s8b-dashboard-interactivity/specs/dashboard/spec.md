@@ -80,7 +80,7 @@ And recommended next panel re-evaluates
 
 Given SSE connection is active
 When turn_created event received
-Then agent card task summary updates with new turn text
+Then agent card command summary updates with new turn text
 
 #### Scenario: Activity event
 

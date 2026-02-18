@@ -16,7 +16,7 @@ What's working well: database layer design (dual-engine isolation, good indexes,
 ## Cross-Cutting Concerns
 
 ### 1. State Machine Integrity Gap
-The state machine (`state_machine.py`) is well-designed as a pure validation function, but it's routinely bypassed. The hook receiver and task lifecycle manager set states directly in several code paths (AWAITING_INPUT transitions, stop hook processing) without calling `validate_transition()`. Combined with the absence of database-level pessimistic locking on state transitions, this creates a window for race conditions where concurrent requests (e.g., browser "Respond" click + CLI stop hook) can corrupt task state. This was flagged independently by both the server reviewer (C1, C2) and database reviewer (M3).
+The state machine (`state_machine.py`) is well-designed as a pure validation function, but it's routinely bypassed. The hook receiver and command lifecycle manager set states directly in several code paths (AWAITING_INPUT transitions, stop hook processing) without calling `validate_transition()`. Combined with the absence of database-level pessimistic locking on state transitions, this creates a window for race conditions where concurrent requests (e.g., browser "Respond" click + CLI stop hook) can corrupt command state. This was flagged independently by both the server reviewer (C1, C2) and database reviewer (M3).
 
 ### 2. Process-Local Mutable State
 Multiple services store critical state in module-level Python dicts: `_awaiting_tool_for_agent` in hook_receiver.py, `_session_cache` in session_correlator.py, `_receiver_state` in hook_receiver.py. While this works for the current single-worker Flask dev server, it creates invisible coupling to that deployment model. Flagged by server reviewer (C3), database reviewer (M2), and integration reviewer (finding 3).
@@ -40,8 +40,8 @@ Several in-memory structures grow without bounds: InferenceCache has no max size
   - **Remediation:** Use `db.session.get(Agent, id, with_for_update=True)` for pessimistic locking, or add optimistic locking via version columns.
 
 - **[SRV-C2] State Machine Bypass — Direct State Mutations Skip Validation** (Reviewer: Server)
-  - **Files:** `services/hook_receiver.py:586-589,713-716`, `services/task_lifecycle.py:390-395`
-  - **Issue:** AWAITING_INPUT transitions and stop hook processing directly set task state without calling `validate_transition()`, allowing invalid state sequences.
+  - **Files:** `services/hook_receiver.py:586-589,713-716`, `services/command_lifecycle.py:390-395`
+  - **Issue:** AWAITING_INPUT transitions and stop hook processing directly set command state without calling `validate_transition()`, allowing invalid state sequences.
   - **Remediation:** Route ALL state transitions through `validate_transition()`. Encode awaiting_input rules into VALID_TRANSITIONS.
 
 - **[FE-C1] XSS via innerHTML in Markdown Renderers** (Reviewer: Frontend)
@@ -102,7 +102,7 @@ Several in-memory structures grow without bounds: InferenceCache has no max size
   - **Remediation:** Replace with single GROUP BY query.
 
 - **[DB-H3] Pending Summarisation Queue Not Persisted** (Reviewer: Database)
-  - **Files:** `services/task_lifecycle.py`, `services/summarisation_service.py`
+  - **Files:** `services/command_lifecycle.py`, `services/summarisation_service.py`
   - **Issue:** Summarisation requests queued in-memory are lost on server crash/restart.
   - **Remediation:** Persist pending requests to DB table or document as known limitation.
 
@@ -243,10 +243,10 @@ Several in-memory structures grow without bounds: InferenceCache has no max size
   - **Issue:** Only shows IDLE→COMMANDED→PROCESSING→COMPLETE. Missing pre/post-tool-use and AWAITING_INPUT cycles.
   - **Remediation:** Add AWAITING_INPUT transitions to diagram.
 
-- **[DOC-M2] Conceptual Overview Missing END_OF_TASK Intent** (Reviewer: Tech Writer)
+- **[DOC-M2] Conceptual Overview Missing END_OF_COMMAND Intent** (Reviewer: Tech Writer)
   - **Files:** `docs/conceptual/claude_headspace_v3.1_conceptual_overview.md`
-  - **Issue:** Lists 5 intents, actual enum has 6 (missing END_OF_TASK).
-  - **Remediation:** Add END_OF_TASK to intent list and mapping table.
+  - **Issue:** Lists 5 intents, actual enum has 6 (missing END_OF_COMMAND).
+  - **Remediation:** Add END_OF_COMMAND to intent list and mapping table.
 
 ### Low
 
@@ -326,7 +326,7 @@ Several in-memory structures grow without bounds: InferenceCache has no max size
 
 **Areas of divergence:**
 
-1. **State transition paths:** The state machine exists as a clean validation layer, but at least 3 code paths bypass it entirely (AWAITING_INPUT via hook_receiver, stop hook, and task_lifecycle direct sets). This is the most significant alignment issue — the state machine should be the single authority.
+1. **State transition paths:** The state machine exists as a clean validation layer, but at least 3 code paths bypass it entirely (AWAITING_INPUT via hook_receiver, stop hook, and command_lifecycle direct sets). This is the most significant alignment issue — the state machine should be the single authority.
 
 2. **Error response format:** Routes return errors in 3+ different JSON shapes (`{"error": ...}`, `{"status": "error", ...}`, `{"ok": false, ...}`). This makes client-side error handling inconsistent.
 

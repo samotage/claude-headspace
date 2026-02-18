@@ -52,8 +52,8 @@ The user glances at the Headspace dashboard and sees one agent card showing "Inp
 - **File watcher content pipeline:** Upgrade file watcher from dormant fallback to active content enrichment; detect free-form questions via regex on new transcript entries
 - **Timeout-gated inference:** When transcript shows new agent content and no tool activity follows within a configurable timeout, send content to inference for question classification
 - **Inference-driven intent classification:** Use LLM to determine if stalled agent output contains a question requiring user input
-- **Summarisation from real content:** Feed captured agent text through existing summarisation service for accurate turn/task summaries
-- **Priority scoring enrichment:** Task summaries generated from actual content feed into priority scoring for meaningful "recommended next" rankings
+- **Summarisation from real content:** Feed captured agent text through existing summarisation service for accurate turn/command summaries
+- **Priority scoring enrichment:** Command summaries generated from actual content feed into priority scoring for meaningful "recommended next" rankings
 - **Hook installer update:** Update `bin/install-hooks.sh` to configure new Notification matchers, PostToolUse hooks
 - **Configuration:** Add `awaiting_input_timeout` to `file_watcher` section in `config.yaml`
 
@@ -78,8 +78,8 @@ The user glances at the Headspace dashboard and sees one agent card showing "Inp
 4. AGENT/COMPLETION turns have non-empty text extracted from the transcript file
 5. Free-form agent questions (ending with "?", "would you like", "should I", etc.) detected within the file watcher polling interval via regex
 6. Ambiguous agent output classified as question/not-question by inference within `awaiting_input_timeout` seconds when no tool activity follows
-7. Task summaries reflect actual agent work content, not empty strings
-8. Priority scoring rankings incorporate real task context
+7. Command summaries reflect actual agent work content, not empty strings
+8. Priority scoring rankings incorporate real command context
 
 ### 3.2 Non-Functional Success Criteria
 
@@ -134,9 +134,9 @@ The user glances at the Headspace dashboard and sees one agent card showing "Inp
 
 **FR17:** The system shall use the existing inference service to classify stalled agent output as question vs. non-question, using a prompt optimised for this classification task.
 
-**FR18:** Captured agent turn text shall be passed to the existing summarisation service for turn-level and task-level summary generation.
+**FR18:** Captured agent turn text shall be passed to the existing summarisation service for turn-level and command-level summary generation.
 
-**FR19:** Task summaries generated from real content shall feed into the existing priority scoring service for cross-project ranking.
+**FR19:** Command summaries generated from real content shall feed into the existing priority scoring service for cross-project ranking.
 
 ### Hook Configuration
 
@@ -213,7 +213,7 @@ TRANSCRIPT-DRIVEN (file watcher pipeline):
 - **Hook endpoints:** `routes/hooks.py` — new endpoints for notification and PostToolUse events
 - **Hook receiver:** `services/hook_receiver.py` — process new event types
 - **Lifecycle bridge:** `services/hook_lifecycle_bridge.py` — AWAITING_INPUT transitions
-- **Task lifecycle:** `services/task_lifecycle.py` — state transitions with text content
+- **Command lifecycle:** `services/command_lifecycle.py` — state transitions with text content
 - **File watcher:** `services/file_watcher.py` — content pipeline upgrade
 - **Intent detector:** `services/intent_detector.py` — regex question detection (existing patterns)
 - **Inference service:** `services/inference_service.py` — question classification

@@ -78,7 +78,7 @@
 - e1-s8-dashboard-ui: Dashboard UI Core (just completed)
 - e1-s7-sse-system: SSE real-time transport
 - e1-s6-state-machine: State transitions
-- e1-s3-domain-models: Agent, Task models
+- e1-s3-domain-models: Agent, Command models
 
 ### Implementation Patterns
 1. Add JavaScript files for client-side logic

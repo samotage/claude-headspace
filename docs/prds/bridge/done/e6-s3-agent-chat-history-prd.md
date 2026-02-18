@@ -16,7 +16,7 @@ validation:
 
 ## Executive Summary
 
-The Voice Bridge chat screen (introduced in e6-s2 and extended through subsequent iterations) currently displays conversation turns scoped to a single task. When a task completes and a new one begins, the previous conversation disappears. This makes the chat feel like a series of disconnected fragments rather than a continuous conversation with the agent.
+The Voice Bridge chat screen (introduced in e6-s2 and extended through subsequent iterations) currently displays conversation turns scoped to a single task. When a command completes and a new one begins, the previous conversation disappears. This makes the chat feel like a series of disconnected fragments rather than a continuous conversation with the agent.
 
 This PRD transforms the chat into an agent-lifetime conversation view — showing every meaningful exchange across all tasks for the agent's entire session. It adds real-time intermediate message capture so the user sees what the agent is communicating as it works (e.g., "Let me explore the current implementation..." or "I'll check the test coverage next"), not just the final completion summary. Messages appear with iMessage-style timestamps and smart grouping to keep the view clean and natural.
 
@@ -32,7 +32,7 @@ The Voice Bridge (e6-s1 server, e6-s2 client) was originally designed for hands-
 
 The current chat has two limitations:
 
-1. **Task-scoped view:** Turns are loaded for a single task only. When the agent moves to a new task, the previous conversation is no longer visible. Users lose context about what happened earlier in the session.
+1. **Command-scoped view:** Turns are loaded for a single task only. When the agent moves to a new task, the previous conversation is no longer visible. Users lose context about what happened earlier in the session.
 
 2. **Batch-only agent text:** The agent's conversational output (intermediate text between tool calls) is only captured as a single blob when the agent's turn completes (via the stop hook). The user doesn't see individual messages like "Let me explore..." or "I'll check that..." appearing in real-time as the agent works. They only see the final summary after everything is done.
 
@@ -44,7 +44,7 @@ The project owner monitoring and interacting with Claude Code agents — whether
 
 ### 1.3 Success Moment
 
-The user opens the chat for an agent and sees the full conversation from session start — their commands, the agent's intermediate messages appearing in real-time as it works, questions asked, answers given, task completions — all in a natural, scrollable iMessage-like flow. They scroll up to review what the agent said 30 minutes ago on a different task. They tap "Chat" on an ended agent from the project page and review what it accomplished across its entire lifetime.
+The user opens the chat for an agent and sees the full conversation from session start — their commands, the agent's intermediate messages appearing in real-time as it works, questions asked, answers given, command completions — all in a natural, scrollable iMessage-like flow. They scroll up to review what the agent said 30 minutes ago on a different task. They tap "Chat" on an ended agent from the project page and review what it accomplished across its entire lifetime.
 
 ---
 
@@ -55,7 +55,7 @@ The user opens the chat for an agent and sees the full conversation from session
 - Agent-lifetime conversation history spanning all tasks for an agent, displayed chronologically
 - Real-time capture and display of intermediate agent text messages as the agent works between tool calls
 - Paginated scroll-up loading — most recent messages load first, older messages load on scroll
-- Subtle visual task separator markers between task boundaries in the conversation flow
+- Subtle visual command separator markers between task boundaries in the conversation flow
 - iMessage-style timestamp display (time-only for today, "Yesterday", day-of-week for this week, date for older)
 - Smart grouping of rapid consecutive short agent messages into single bubbles
 - Chat links on all pages where agents appear (dashboard cards, project show page, activity page)
@@ -66,7 +66,7 @@ The user opens the chat for an agent and sees the full conversation from session
 
 - Changes to voice input/output functionality (speech-to-text, TTS remain unchanged)
 - Changes to the respond/answer mechanism (tmux bridge, send-keys remain unchanged)
-- Changes to the dashboard agent card respond widget (stays task-scoped, quick-action)
+- Changes to the dashboard agent card respond widget (stays command-scoped, quick-action)
 - Full-text search within chat history
 - Chat history export or sharing
 - Multi-agent conversation view (each chat is single-agent)
@@ -78,10 +78,10 @@ The user opens the chat for an agent and sees the full conversation from session
 
 ### 3.1 Functional Success Criteria
 
-1. Opening the chat for an agent shows the complete conversation across all tasks, not just the current task
+1. Opening the chat for an agent shows the complete conversation across all commands, not just the current command
 2. While an agent is actively processing, intermediate text messages appear in the chat within 5 seconds of the agent producing them
 3. Scrolling up loads older messages seamlessly without page reload
-4. Task transitions are visible as subtle separators showing the task instruction
+4. Command transitions are visible as subtle separators showing the command instruction
 5. Rapid consecutive short agent messages (within 2 seconds) are grouped into a single bubble
 6. Chat history is accessible for ended agents from the project show page and activity page
 7. Timestamps follow iMessage conventions (time-only for today, day-of-week for this week, date for older)
@@ -99,7 +99,7 @@ The user opens the chat for an agent and sees the full conversation from session
 
 ### Real-Time Intermediate Message Capture
 
-**FR1:** When the agent produces text output between tool calls during active processing, that text is captured as a PROGRESS turn linked to the current task. This makes the agent's intermediate commentary (e.g., "Let me explore...", "I'll check the test coverage...") available as individual chat messages.
+**FR1:** When the agent produces text output between tool calls during active processing, that text is captured as a PROGRESS turn linked to the current command. This makes the agent's intermediate commentary (e.g., "Let me explore...", "I'll check the test coverage...") available as individual chat messages.
 
 **FR2:** Intermediate text capture reads the transcript incrementally from the last known position, avoiding re-reading content that has already been captured. Each new text block from the agent becomes a separate PROGRESS turn.
 
@@ -113,9 +113,9 @@ The user opens the chat for an agent and sees the full conversation from session
 
 **FR6:** Each turn in the response includes the task identifier it belongs to, enabling the client to detect task boundaries and render separators.
 
-**FR7:** Task boundary separators include the task instruction text (what the user asked the agent to do) and the task state (completed, in progress, etc.).
+**FR7:** Task boundary separators include the command instruction text (what the user asked the agent to do) and the command state (completed, in progress, etc.).
 
-**FR8:** The chat view for an active agent shows the full history from the agent's first task through the current task, with real-time updates for new turns.
+**FR8:** The chat view for an active agent shows the full history from the agent's first task through the current command, with real-time updates for new turns.
 
 ### Pagination
 
@@ -139,11 +139,11 @@ The user opens the chat for an agent and sees the full conversation from session
 
 **FR16:** User messages (COMMAND, ANSWER) are never grouped — each appears as its own bubble.
 
-### Task Separators
+### Command Separators
 
-**FR17:** When the conversation transitions from one task to another, a subtle visual separator appears in the chat flow showing the task instruction for the new task.
+**FR17:** When the conversation transitions from one command to another, a subtle visual separator appears in the chat flow showing the command instruction for the new command.
 
-**FR18:** Task separators are visually distinct from messages (e.g., centered text with horizontal rules) but unobtrusive — they should not dominate the conversation flow.
+**FR18:** Command separators are visually distinct from messages (e.g., centered text with horizontal rules) but unobtrusive — they should not dominate the conversation flow.
 
 ### Chat Links Everywhere
 
@@ -165,7 +165,7 @@ The user opens the chat for an agent and sees the full conversation from session
 
 **NFR1:** The intermediate PROGRESS turn capture adds no more than 50ms to the post-tool-use hook response time. Transcript reading and turn creation must not block the hook response.
 
-**NFR2:** The agent-scoped transcript query (all turns across all tasks for an agent) performs efficiently with an index on task_id and timestamp. The query should not require joining through intermediate tables beyond Task.
+**NFR2:** The agent-scoped transcript query (all turns across all commands for an agent) performs efficiently with an index on command_id and timestamp. The query should not require joining through intermediate tables beyond Command.
 
 **NFR3:** Pagination uses cursor-based approach (turn ID) rather than offset-based, ensuring consistent results when new turns are being added concurrently.
 
@@ -186,7 +186,7 @@ Messages flow chronologically from oldest (top) to newest (bottom). The user see
 - **User messages** (right-aligned, distinct colour): Their commands and answers
 - **Agent messages** (left-aligned): The agent's text responses, questions, and completions
 - **Smart-grouped bubbles**: Rapid short agent messages combined with line breaks
-- **Task separators**: Subtle centered dividers showing "── Fix the login bug ──" between task boundaries
+- **Command separators**: Subtle centered dividers showing "── Fix the login bug ──" between task boundaries
 - **Timestamps**: iMessage-style, appearing on first message and after 5+ minute gaps
 - **Typing indicator**: Animated dots when the agent is actively processing
 

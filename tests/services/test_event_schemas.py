@@ -89,7 +89,7 @@ class TestPayloadSchemas:
     def test_state_transition_schema(self):
         """Test state_transition schema.
 
-        Note: agent_id and task_id are passed as function parameters to write_event(),
+        Note: agent_id and command_id are passed as function parameters to write_event(),
         not in the payload (Issue 9 remediation fix).
         """
         schema = PAYLOAD_SCHEMAS[EventType.STATE_TRANSITION]
@@ -97,9 +97,9 @@ class TestPayloadSchemas:
         assert "to_state" in schema.required_fields
         assert "trigger" in schema.required_fields
         assert "confidence" in schema.optional_fields
-        # agent_id and task_id are NOT in payload - passed as function params
+        # agent_id and command_id are NOT in payload - passed as function params
         assert "agent_id" not in schema.required_fields
-        assert "task_id" not in schema.required_fields
+        assert "command_id" not in schema.required_fields
 
     def test_hook_received_schema(self):
         """Test hook_received schema."""
@@ -219,7 +219,7 @@ class TestValidatePayload:
     def test_valid_state_transition_payload(self):
         """Test valid state_transition payload.
 
-        Note: agent_id and task_id are passed as function params, not in payload.
+        Note: agent_id and command_id are passed as function params, not in payload.
         """
         payload = {
             "from_state": "idle",
@@ -271,8 +271,8 @@ class TestValidatePayload:
         """Test valid hook_notification payload with optional fields."""
         payload = {
             "claude_session_id": "session-123",
-            "title": "Task Complete",
-            "message": "Your task has finished",
+            "title": "Command Complete",
+            "message": "Your command has finished",
         }
         is_valid, error = validate_payload(EventType.HOOK_NOTIFICATION, payload)
         assert is_valid is True
@@ -330,7 +330,7 @@ class TestCreateValidatedEvent:
     def test_create_event_with_foreign_keys(self):
         """Test creating event with foreign keys.
 
-        Note: agent_id and task_id are passed as function params, not in payload.
+        Note: agent_id and command_id are passed as function params, not in payload.
         """
         payload = {
             "from_state": "idle",
@@ -343,12 +343,12 @@ class TestCreateValidatedEvent:
             payload=payload,
             project_id=1,
             agent_id=2,
-            task_id=3,
+            command_id=3,
         )
         assert event is not None
         assert event.project_id == 1
         assert event.agent_id == 2
-        assert event.task_id == 3
+        assert event.command_id == 3
 
     def test_create_invalid_event(self):
         """Test creating invalid event returns error."""

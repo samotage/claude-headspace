@@ -23,7 +23,7 @@ Implementation fully satisfies all PRD requirements, acceptance criteria, and de
 ## Requirements Coverage
 
 - **PRD Requirements:** 21/21 covered (FR1-FR21)
-- **Tasks Completed:** 25/28 complete (remaining 3 are manual verification)
+- **Commands Completed:** 25/28 complete (remaining 3 are manual verification)
 - **Design Compliance:** Yes — follows service/blueprint/voice bridge patterns
 
 ## Issues Found

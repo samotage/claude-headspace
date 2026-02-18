@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from src.claude_headspace.models.task import TaskState
+from src.claude_headspace.models.command import CommandState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 from src.claude_headspace.services.file_upload import FileUploadService
@@ -95,11 +95,11 @@ def mock_agent_awaiting(mock_project):
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
 
-    task = MagicMock()
-    task.id = 10
-    task.state = TaskState.AWAITING_INPUT
-    task.turns = []
-    agent.get_current_task.return_value = task
+    cmd = MagicMock()
+    cmd.id = 10
+    cmd.state = CommandState.AWAITING_INPUT
+    cmd.turns = []
+    agent.get_current_command.return_value = cmd
     return agent
 
 
@@ -112,7 +112,7 @@ def mock_agent_idle(mock_project):
     agent.tmux_pane_id = "%6"
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
-    agent.get_current_task.return_value = None
+    agent.get_current_command.return_value = None
     return agent
 
 
@@ -141,7 +141,7 @@ class TestUploadEndpoint:
 
         with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
+                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
                 data = {"file": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "test.png")}
                 resp = client.post("/api/voice/agents/1/upload", data=data, content_type="multipart/form-data")
 
@@ -275,10 +275,10 @@ class TestTranscriptFileMetadata:
             "file_size": 12345,
         }
 
-        mock_task = MagicMock()
-        mock_task.id = 10
-        mock_task.instruction = "Fix bug"
-        mock_task.state = TaskState.AWAITING_INPUT
+        mock_cmd = MagicMock()
+        mock_cmd.id = 10
+        mock_cmd.instruction = "Fix bug"
+        mock_cmd.state = CommandState.AWAITING_INPUT
 
         # Mock query chain
         mock_query = MagicMock()
@@ -287,7 +287,7 @@ class TestTranscriptFileMetadata:
         mock_query.filter.return_value = mock_query
         mock_query.order_by.return_value = mock_query
         mock_query.limit.return_value = mock_query
-        mock_query.all.return_value = [(mock_turn, mock_task)]
+        mock_query.all.return_value = [(mock_turn, mock_cmd)]
 
         mock_agent_awaiting.session_uuid = "abcd1234-5678"
 
@@ -313,7 +313,7 @@ class TestExistingCommandUnchanged:
 
         with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
+                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
                 resp = client.post(
                     "/api/voice/command",
                     json={"text": "Use option A", "agent_id": 1},
@@ -334,7 +334,7 @@ class TestExistingCommandUnchanged:
 
         with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
             with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=TaskState.PROCESSING)
+                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
                 resp = client.post(
                     "/api/voice/command",
                     json={"text": "Look at this", "agent_id": 1, "file_path": "/tmp/test.png"},

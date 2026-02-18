@@ -5,7 +5,7 @@ TBD - created by archiving change e5-s3-project-show-tree-and-metrics. Update Pu
 ## Requirements
 ### Requirement: Accordion Object Tree
 
-The project show page SHALL include a three-level accordion object tree: Agents → Tasks → Turns, with lazy data loading on expand.
+The project show page SHALL include a three-level accordion object tree: Agents → Commands → Turns, with lazy data loading on expand.
 
 #### Scenario: Agents accordion collapsed by default
 
@@ -25,12 +25,12 @@ The project show page SHALL include a three-level accordion object tree: Agents 
 #### Scenario: Expand agent to show tasks
 
 - **WHEN** the user clicks an agent row
-- **THEN** a nested Tasks section expands, fetching and displaying that agent's tasks with state badge, instruction, completion summary, timing, and turn count
+- **THEN** a nested Commands section expands, fetching and displaying that agent's tasks with state badge, instruction, completion summary, timing, and turn count
 
 #### Scenario: Expand task to show turns
 
-- **WHEN** the user clicks a task row
-- **THEN** a nested Turns section expands, fetching and displaying that task's turns with actor badge, intent, summary, and frustration score
+- **WHEN** the user clicks a command row
+- **THEN** a nested Turns section expands, fetching and displaying that command's turns with actor badge, intent, summary, and frustration score
 
 #### Scenario: Frustration score highlighting
 
@@ -63,9 +63,9 @@ Accordion sections SHALL NOT fetch data until the user expands them. Data SHALL 
 - **WHEN** the user collapses and re-expands a section
 - **THEN** cached data is displayed without re-fetching unless invalidated by SSE
 
-### Requirement: Agent Tasks API Endpoint
+### Requirement: Agent Commands API Endpoint
 
-The system SHALL provide `GET /api/agents/<id>/tasks` returning all tasks for a specific agent.
+The system SHALL provide `GET /api/agents/<id>/commands` returning all tasks for a specific agent.
 
 #### Scenario: Valid agent with tasks
 
@@ -79,14 +79,14 @@ The system SHALL provide `GET /api/agents/<id>/tasks` returning all tasks for a 
 
 ### Requirement: Task Turns API Endpoint
 
-The system SHALL provide `GET /api/tasks/<id>/turns` returning all turns for a specific task.
+The system SHALL provide `GET /api/commands/<id>/turns` returning all turns for a specific task.
 
 #### Scenario: Valid task with turns
 
-- **WHEN** the client requests turns for an existing task
+- **WHEN** the client requests turns for an existing command
 - **THEN** the system returns a list of turns with actor, intent, summary, frustration_score, and created_at
 
-#### Scenario: Task not found
+#### Scenario: Command not found
 
 - **WHEN** the client requests turns for a non-existent task
 - **THEN** the system returns 404

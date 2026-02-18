@@ -5,7 +5,7 @@
 
 ## Summary
 
-All acceptance criteria, PRD functional requirements, and delta spec scenarios are fully implemented and tested. 931 tests pass with 0 new failures (30 pre-existing failures in unrelated test_task_lifecycle.py confirmed on development branch).
+All acceptance criteria, PRD functional requirements, and delta spec scenarios are fully implemented and tested. 931 tests pass with 0 new failures (30 pre-existing failures in unrelated test_command_lifecycle.py confirmed on development branch).
 
 ## Acceptance Criteria
 
@@ -30,7 +30,7 @@ All acceptance criteria, PRD functional requirements, and delta spec scenarios a
 ## Requirements Coverage
 
 - **PRD Requirements:** 26/26 covered (FR1-FR26)
-- **Tasks Completed:** 26/26 complete
+- **Commands Completed:** 26/26 complete
 - **Design Compliance:** Yes (follows SummarisationService patterns from E3-S2)
 
 ## Issues Found

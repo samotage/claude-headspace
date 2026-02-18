@@ -30,7 +30,7 @@ All acceptance criteria and functional requirements from the PRD are implemented
 ## Requirements Coverage
 
 - **PRD Requirements:** 12/12 covered (FR1-FR12)
-- **Tasks Completed:** 10/10 complete
+- **Commands Completed:** 10/10 complete
 - **Design Compliance:** N/A (no design.md)
 
 ## Issues Found

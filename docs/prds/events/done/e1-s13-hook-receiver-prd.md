@@ -57,7 +57,7 @@ The user submits a prompt to Claude Code and sees the dashboard update to "PROCE
 
 - **Hook event reception** — Receive and process lifecycle events from Claude Code (session-start, session-end, stop, notification, user-prompt-submit)
 - **Session correlation** — Match Claude Code sessions to tracked agents
-- **State updates from hooks** — Update agent/task state based on hook events with high confidence
+- **State updates from hooks** — Update agent/command state based on hook events with high confidence
 - **Hook configuration** — Enable/disable hooks, configure fallback behavior
 - **Hybrid mode** — Use hooks as primary event source with polling fallback
 - **Graceful degradation** — Continue functioning when hooks are unavailable
@@ -289,7 +289,7 @@ hooks:
 ### 8.1 Sprint Dependencies
 
 - **Sprint 5 (Event System):** Event writer, event schemas, background process — **Complete**
-- **Sprint 6 (State Machine):** Task state transitions — **Required** (not yet implemented)
+- **Sprint 6 (State Machine):** Command state transitions — **Required** (not yet implemented)
 - **Sprint 8 (Dashboard UI):** Agent cards, Logging tab — **Required** (not yet implemented)
 
 ### 8.2 External Dependencies

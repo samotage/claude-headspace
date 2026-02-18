@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from src.claude_headspace.models.task import TaskState
+from src.claude_headspace.models.command import CommandState
 from src.claude_headspace.routes.respond import respond_bp
 from src.claude_headspace.services.tmux_bridge import (
     SendResult,
@@ -55,54 +55,54 @@ def mock_project():
 
 
 @pytest.fixture
-def mock_task_awaiting():
-    """Create a mock task in AWAITING_INPUT state."""
-    task = MagicMock()
-    task.id = 10
-    task.state = TaskState.AWAITING_INPUT
-    return task
+def mock_cmd_awaiting():
+    """Create a mock command in AWAITING_INPUT state."""
+    cmd = MagicMock()
+    cmd.id = 10
+    cmd.state = CommandState.AWAITING_INPUT
+    return cmd
 
 
 @pytest.fixture
-def mock_task_processing():
-    """Create a mock task in PROCESSING state."""
-    task = MagicMock()
-    task.id = 10
-    task.state = TaskState.PROCESSING
-    return task
+def mock_cmd_processing():
+    """Create a mock command in PROCESSING state."""
+    cmd = MagicMock()
+    cmd.id = 10
+    cmd.state = CommandState.PROCESSING
+    return cmd
 
 
 @pytest.fixture
-def mock_agent(mock_project, mock_task_awaiting):
-    """Create a mock agent with tmux pane ID and AWAITING_INPUT task."""
+def mock_agent(mock_project, mock_cmd_awaiting):
+    """Create a mock agent with tmux pane ID and AWAITING_INPUT command."""
     agent = MagicMock()
     agent.id = 1
     agent.tmux_pane_id = "%5"
     agent.project = mock_project
     agent.project_id = 1
-    agent.get_current_task.return_value = mock_task_awaiting
+    agent.get_current_command.return_value = mock_cmd_awaiting
     return agent
 
 
 @pytest.fixture
-def mock_agent_no_pane(mock_project, mock_task_awaiting):
+def mock_agent_no_pane(mock_project, mock_cmd_awaiting):
     """Create a mock agent without tmux pane ID."""
     agent = MagicMock()
     agent.id = 2
     agent.tmux_pane_id = None
     agent.project = mock_project
-    agent.get_current_task.return_value = mock_task_awaiting
+    agent.get_current_command.return_value = mock_cmd_awaiting
     return agent
 
 
 @pytest.fixture
-def mock_agent_processing(mock_project, mock_task_processing):
-    """Create a mock agent with PROCESSING task."""
+def mock_agent_processing(mock_project, mock_cmd_processing):
+    """Create a mock agent with PROCESSING command."""
     agent = MagicMock()
     agent.id = 3
     agent.tmux_pane_id = "%5"
     agent.project = mock_project
-    agent.get_current_task.return_value = mock_task_processing
+    agent.get_current_command.return_value = mock_cmd_processing
     return agent
 
 
@@ -180,12 +180,12 @@ class TestRespondToAgent:
         assert data["error_type"] == "wrong_state"
         assert "processing" in data["message"].lower()
 
-    def test_no_current_task(self, client, mock_db, mock_project):
-        """Test 409 when agent has no current task."""
+    def test_no_current_command(self, client, mock_db, mock_project):
+        """Test 409 when agent has no current command."""
         agent = MagicMock()
         agent.id = 4
         agent.tmux_pane_id = "%5"
-        agent.get_current_task.return_value = None
+        agent.get_current_command.return_value = None
         mock_db.session.get.return_value = agent
 
         response = client.post(
@@ -196,7 +196,7 @@ class TestRespondToAgent:
         assert response.status_code == 409
         data = response.get_json()
         assert data["error_type"] == "wrong_state"
-        assert "no_task" in data["message"]
+        assert "no_command" in data["message"]
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
@@ -250,15 +250,15 @@ class TestRespondToAgent:
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_transitions_state(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent, mock_task_awaiting
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent, mock_cmd_awaiting
     ):
-        """Test that successful send transitions task to PROCESSING."""
+        """Test that successful send transitions command to PROCESSING."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         client.post("/api/respond/1", json={"text": "1"})
 
-        assert mock_task_awaiting.state == TaskState.PROCESSING
+        assert mock_cmd_awaiting.state == CommandState.PROCESSING
         mock_db.session.commit.assert_called_once()
 
     @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
@@ -533,14 +533,14 @@ class TestOtherMode:
     @patch("src.claude_headspace.routes.respond._broadcast_state_change")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_other_navigates_then_types(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, mock_time, client, mock_db, mock_agent, mock_task_awaiting
+        self, mock_bridge, mock_bcast_state, mock_bcast_card, mock_time, client, mock_db, mock_agent, mock_cmd_awaiting
     ):
         """Other mode navigates to Other option then types text."""
         mock_db.session.get.return_value = mock_agent
         mock_time.time.side_effect = [0, 0.05, 0.1]  # start_time, respond_pending, final latency
         mock_time.sleep = MagicMock()  # don't actually sleep
 
-        # Set up task with 2 structured options
+        # Set up command with 2 structured options
         from src.claude_headspace.models.turn import TurnActor, TurnIntent
         mock_turn = MagicMock()
         mock_turn.actor = TurnActor.AGENT
@@ -554,7 +554,7 @@ class TestOtherMode:
                 ],
             }]
         }
-        mock_task_awaiting.turns = [mock_turn]
+        mock_cmd_awaiting.turns = [mock_turn]
 
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=50)
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=30)

@@ -223,7 +223,7 @@ class ActivityMetric(Base):
 
 ### 7.5 Integration Points
 
-- Uses Epic 1 Turn model (`timestamp`, `actor`, `task_id`) for raw turn data
+- Uses Epic 1 Turn model (`timestamp`, `actor`, `command_id`) for raw turn data
 - Uses Epic 1 Agent and Project models for scope relationships
 - Follows background job pattern from AgentReaper service
 - E4-S2 split into E4-S2a (backend) and E4-S2b (frontend); no direct conflict but shares Project model

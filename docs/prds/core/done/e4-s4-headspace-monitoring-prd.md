@@ -409,7 +409,7 @@ headspace:
 
 | Dependency | Type | Notes |
 |-----------|------|-------|
-| E3-S2 Turn/Task Summarisation | Hard | Frustration extraction extends the existing turn summarisation prompt and service |
+| E3-S2 Turn/Command Summarisation | Hard | Frustration extraction extends the existing turn summarisation prompt and service |
 | E4-S2 Project Controls | Soft | Should respect inference_paused when extracting frustration scores |
 | E4-S3 Activity Monitoring | Soft | Flow detection calculates turn rate independently; does not require E4-S3 infrastructure |
 | Epic 1 SSE/Broadcaster | Hard | Required for real-time traffic light and alert delivery |

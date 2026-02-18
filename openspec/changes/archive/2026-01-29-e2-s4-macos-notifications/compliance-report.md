@@ -11,11 +11,11 @@ The macOS Notifications implementation satisfies all functional requirements fro
 
 | Criterion | Status | Notes |
 |-----------|--------|-------|
-| Notifications for task_complete events | ✓ | Implemented in hooks.py:263 via notify_task_complete() |
-| Notifications for awaiting_input events | ✓ | Implemented in task_lifecycle.py:162 via notify_awaiting_input() |
+| Notifications for command_complete events | ✓ | Implemented in hooks.py:263 via notify_command_complete() |
+| Notifications for awaiting_input events | ✓ | Implemented in command_lifecycle.py:162 via notify_awaiting_input() |
 | Click-to-navigate with agent highlight | ✓ | URL includes highlight param, dashboard-sse.js handles scroll+highlight |
 | Global enable/disable toggle | ✓ | preferences.enabled controls all notifications |
-| Per-event-type toggles | ✓ | events.task_complete and events.awaiting_input toggles |
+| Per-event-type toggles | ✓ | events.command_complete and events.awaiting_input toggles |
 | Sound toggle | ✓ | preferences.sound controls -sound default flag |
 | Rate limiting (5 second default) | ✓ | _is_rate_limited() checks per-agent cooldown |
 | terminal-notifier detection | ✓ | shutil.which("terminal-notifier") in is_available() |
@@ -29,7 +29,7 @@ The macOS Notifications implementation satisfies all functional requirements fro
 ## Requirements Coverage
 
 - **PRD Requirements:** 11/11 FRs covered
-- **Tasks Completed:** 44/46 complete (2 deferred UI items - availability indicator requires API call)
+- **Commands Completed:** 44/46 complete (2 deferred UI items - availability indicator requires API call)
 - **Design Compliance:** Yes - follows service/blueprint pattern
 
 ## Issues Found

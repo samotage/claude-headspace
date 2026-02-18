@@ -1,4 +1,4 @@
-# Tasks: e1-s11-launcher-script
+# Commands: e1-s11-launcher-script
 
 ## Phase 1: Setup
 

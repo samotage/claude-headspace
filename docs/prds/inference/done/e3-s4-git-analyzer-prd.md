@@ -27,7 +27,7 @@ This sprint provides the "what's been done" half of the brain reboot system (E3-
 
 ### 1.1 Context
 
-Claude Headspace monitors Claude Code sessions across multiple projects. Epic 1 established the core architecture with Project models containing filesystem paths to target repositories. Epic 2 added waypoint editing for the "path ahead" view. Epic 3 adds the intelligence layer, with E3-S1 providing inference infrastructure and E3-S2 providing turn/task summarisation.
+Claude Headspace monitors Claude Code sessions across multiple projects. Epic 1 established the core architecture with Project models containing filesystem paths to target repositories. Epic 2 added waypoint editing for the "path ahead" view. Epic 3 adds the intelligence layer, with E3-S1 providing inference infrastructure and E3-S2 providing turn/command summarisation.
 
 This sprint adds the complementary historical view: what has been accomplished in each project, derived from git commit history and rendered as a human-readable narrative by the LLM inference service.
 
@@ -89,7 +89,7 @@ A developer clicks "Generate Progress Summary" on a project they haven't touched
 ### 2.2 Out of Scope
 
 - OpenRouter API client and inference service infrastructure (E3-S1, prerequisite)
-- Turn/task summarisation (E3-S2)
+- Turn/command summarisation (E3-S2)
 - Priority scoring (E3-S3)
 - Brain reboot generation combining waypoint + progress_summary (E3-S5)
 - Waypoint management (E2-S2, already complete)

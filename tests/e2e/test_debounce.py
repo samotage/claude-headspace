@@ -1,6 +1,6 @@
 """E2E tests: stop hook and notification hook behaviour.
 
-Verifies that the stop hook immediately completes the task (no debounce),
+Verifies that the stop hook immediately completes the command (no debounce),
 and that the notification hook is the signal for AWAITING_INPUT.
 
 Note: The stop-hook debounce mechanism was deprecated. Stop now
@@ -18,10 +18,10 @@ pytestmark = pytest.mark.e2e
 class TestStopAndNotificationBehaviour:
     """Tests for stop (immediate COMPLETE) and notification (AWAITING_INPUT)."""
 
-    def test_stop_immediately_completes_task(
+    def test_stop_immediately_completes_command(
         self, page, e2e_server, hook_client, dashboard
     ):
-        """Stop hook immediately transitions task to COMPLETE (no debounce)."""
+        """Stop hook immediately transitions command to COMPLETE (no debounce)."""
         # Setup: session-start -> user-prompt-submit -> PROCESSING
         result = hook_client.session_start()
         agent_id = result["agent_id"]
@@ -33,7 +33,7 @@ class TestStopAndNotificationBehaviour:
         hook_client.user_prompt_submit(prompt="Do something")
         dashboard.assert_agent_state(agent_id, "PROCESSING")
 
-        # Fire stop — should immediately complete the task
+        # Fire stop — should immediately complete the command
         hook_client.stop()
         dashboard.assert_task_completed(agent_id, timeout=3000)
         dashboard.assert_status_counts(input_needed=0, working=0, idle=1)
@@ -42,7 +42,7 @@ class TestStopAndNotificationBehaviour:
     def test_notification_triggers_awaiting_input(
         self, page, e2e_server, hook_client, dashboard
     ):
-        """Notification hook transitions PROCESSING task to AWAITING_INPUT."""
+        """Notification hook transitions PROCESSING command to AWAITING_INPUT."""
         # Setup: session-start -> user-prompt-submit -> PROCESSING
         result = hook_client.session_start()
         agent_id = result["agent_id"]

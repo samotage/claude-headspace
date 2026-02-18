@@ -23,7 +23,7 @@
 - [x] 3.1 Update `_sort_controls.html`: add "Kanban" as first sort option, shift existing options
 - [x] 3.2 Update dashboard route: add `kanban` sort mode handling, query tasks grouped by lifecycle state
 - [x] 3.3 Create `_kanban_view.html` partial: column layout with IDLE, COMMANDED, PROCESSING, AWAITING_INPUT, COMPLETE columns
-- [x] 3.4 Create `_kanban_task_card.html` partial: task card with agent hero identity, instruction/summary, metadata
+- [x] 3.4 Create `_kanban_task_card.html` partial: command card with agent hero identity, instruction/summary, metadata
 - [x] 3.5 Update `dashboard.html`: conditionally render Kanban view when sort mode is `kanban`
 - [x] 3.6 Implement Kanban data preparation in dashboard route: group agents/tasks by state, handle idle agents, handle completed tasks
 - [x] 3.7 Implement multi-project horizontal sections in Kanban view

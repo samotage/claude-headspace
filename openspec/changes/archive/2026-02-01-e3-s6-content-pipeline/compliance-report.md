@@ -13,7 +13,7 @@ The implementation satisfies all acceptance criteria from the proposal's Definit
 |-----------|--------|-------|
 | Notification hooks transition to AWAITING_INPUT | ✓ | `process_notification()` transitions PROCESSING/COMMANDED → AWAITING_INPUT with message/title stored as AGENT/QUESTION turn |
 | PostToolUse endpoint resumes from AWAITING_INPUT | ✓ | `POST /hook/post-tool-use` → `process_post_tool_use()` → bridge AWAITING_INPUT → PROCESSING via USER+ANSWER |
-| PostToolUse is no-op when not AWAITING_INPUT | ✓ | Bridge checks `current_task.state != TaskState.AWAITING_INPUT` and returns early |
+| PostToolUse is no-op when not AWAITING_INPUT | ✓ | Bridge checks `current_command.state != CommandState.AWAITING_INPUT` and returns early |
 | Transcript path captured from SessionStart | ✓ | `hook_session_start` extracts `transcript_path` from payload, `process_session_start()` persists on Agent |
 | Transcript path backfilled on PostToolUse | ✓ | `hook_post_tool_use` route backfills `transcript_path` if agent's is null |
 | Agent response text extracted on Stop | ✓ | `bridge.process_stop()` calls `_extract_transcript_content()` → `read_transcript_file()` → populates `agent_text` in `complete_task()` |
@@ -30,7 +30,7 @@ The implementation satisfies all acceptance criteria from the proposal's Definit
 ## Requirements Coverage
 
 - **PRD Requirements:** 23/23 functional requirements covered
-- **Tasks Completed:** 24/24 implementation tasks complete (Phase 2)
+- **Commands Completed:** 24/24 implementation tasks complete (Phase 2)
 - **Design Compliance:** Yes — follows three-tier content pipeline architecture
 
 ## PRD Functional Requirements Mapping

@@ -39,7 +39,7 @@
 ### Agent Interaction UI
 
 - [x] 2.19 Create `voice-app.js` — main app controller managing screens, state, and event flow
-- [x] 2.20 Implement agent list view — project name, state badge (colour-coded), input-needed indicator, task summary
+- [x] 2.20 Implement agent list view — project name, state badge (colour-coded), input-needed indicator, command summary
 - [x] 2.21 Implement listening/command mode — mic indicator, live transcription, target agent display
 - [x] 2.22 Implement question/response mode — question text, structured option buttons OR free-text input
 - [x] 2.23 Implement auto-targeting — single awaiting agent receives commands without selection

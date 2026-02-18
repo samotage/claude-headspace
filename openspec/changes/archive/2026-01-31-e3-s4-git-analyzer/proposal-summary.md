@@ -67,7 +67,7 @@
 
 ### OpenSpec History
 - E3-S1 (openrouter-integration): Added InferenceService, InferenceCall model, inference routes
-- E3-S2 (turn-task-summarisation): Added SummarisationService, SSE broadcast pattern
+- E3-S2 (turn-command-summarisation): Added SummarisationService, SSE broadcast pattern
 - E3-S3 (priority-scoring): Added PriorityScoringService, priority routes, debounce pattern
 
 ### Implementation Patterns
