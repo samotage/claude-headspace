@@ -31,14 +31,32 @@ class TransitionResult:
 
 # Valid transitions mapping
 # Format: {(from_state, actor, intent): to_state}
+#
+# Audit methodology: All 60 possible (state, actor, intent) combinations
+# (5 states x 2 actors x 6 intents) were evaluated. Each is classified as:
+#   (a) defined below — valid transition
+#   (b) handled specially in validate_transition() — e.g., AWAITING_INPUT + USER:COMMAND
+#   (c) invalid — kept as InvalidTransitionError (callers handle gracefully)
+#
+# Defensive transitions added for edge cases that can occur in production:
+#   - IDLE + AGENT:* — agent output before user command is processed (race/resumption)
+#   - COMMANDED + USER:COMMAND — user follow-up before agent responds
+#   - PROCESSING + USER:COMMAND — user sends new command while agent works
 VALID_TRANSITIONS: dict[tuple[TaskState, TurnActor, TurnIntent], TaskState] = {
-    # From IDLE: Only user commands can start a task
+    # From IDLE: User commands start a task
     (TaskState.IDLE, TurnActor.USER, TurnIntent.COMMAND): TaskState.COMMANDED,
+    # From IDLE: Agent output before user command processed (race condition, session resumption)
+    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
+    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
+    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
+    (TaskState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
     # From COMMANDED: Agent responds
     (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
     (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
     (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.COMPLETION): TaskState.COMPLETE,
     (TaskState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
+    # From COMMANDED: User sends follow-up command before agent responds
+    (TaskState.COMMANDED, TurnActor.USER, TurnIntent.COMMAND): TaskState.COMMANDED,
     # From PROCESSING: Agent continues or asks/completes
     (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.PROGRESS): TaskState.PROCESSING,
     (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.QUESTION): TaskState.AWAITING_INPUT,
@@ -46,6 +64,8 @@ VALID_TRANSITIONS: dict[tuple[TaskState, TurnActor, TurnIntent], TaskState] = {
     (TaskState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_TASK): TaskState.COMPLETE,
     # From PROCESSING: User confirms/approves (continues same task)
     (TaskState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
+    # From PROCESSING: User sends new command while processing
+    (TaskState.PROCESSING, TurnActor.USER, TurnIntent.COMMAND): TaskState.PROCESSING,
     # From AWAITING_INPUT: User answers and agent resumes
     (TaskState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): TaskState.PROCESSING,
     # From AWAITING_INPUT: Agent asks follow-up question or provides progress

@@ -14,7 +14,7 @@ from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.transcript_reader import TranscriptEntry
 from claude_headspace.services.transcript_reconciler import (
     _content_hash,
-    _infer_intent,
+    _legacy_content_hash,
     broadcast_reconciliation,
     reconcile_agent_session,
     reconcile_transcript_entries,
@@ -123,12 +123,20 @@ class TestContentHash:
         h2 = _content_hash("user", "hello world")
         assert h1 == h2
 
-    def test_truncates_to_200_chars(self):
-        """Hash uses only first 200 characters."""
+    def test_uses_full_content(self):
+        """Hash uses full content (not truncated to 200 chars)."""
         long_text = "a" * 300
         different_suffix = "a" * 200 + "b" * 100
         h1 = _content_hash("user", long_text)
         h2 = _content_hash("user", different_suffix)
+        assert h1 != h2  # Full content hash differentiates these
+
+    def test_legacy_hash_truncates_to_200_chars(self):
+        """Legacy hash uses only first 200 characters for migration compatibility."""
+        long_text = "a" * 300
+        different_suffix = "a" * 200 + "b" * 100
+        h1 = _legacy_content_hash("user", long_text)
+        h2 = _legacy_content_hash("user", different_suffix)
         assert h1 == h2
 
     def test_strips_whitespace(self):
@@ -136,25 +144,6 @@ class TestContentHash:
         h1 = _content_hash("user", "  hello  ")
         h2 = _content_hash("user", "hello")
         assert h1 == h2
-
-
-# ---------------------------------------------------------------------------
-# Tests for _infer_intent
-# ---------------------------------------------------------------------------
-
-
-class TestInferIntent:
-    """Tests for _infer_intent helper."""
-
-    def test_user_returns_command(self):
-        """User entries are inferred as COMMAND intent."""
-        entry = _make_entry(role="user", content="do something")
-        assert _infer_intent("user", entry) == TurnIntent.COMMAND
-
-    def test_agent_returns_progress(self):
-        """Agent entries default to PROGRESS intent."""
-        entry = _make_entry(role="assistant", content="working on it")
-        assert _infer_intent("agent", entry) == TurnIntent.PROGRESS
 
 
 # ---------------------------------------------------------------------------
@@ -460,8 +449,8 @@ class TestReconcileOldTurnsNotMatched:
     """Test that turns outside the match window are not considered."""
 
     def test_old_turns_outside_window_not_matched(self, app_ctx, agent, task):
-        """Turns older than MATCH_WINDOW_SECONDS are not matched, creating new turns."""
-        old_ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        """Turns older than MATCH_WINDOW_SECONDS (120s) are not matched, creating new turns."""
+        old_ts = datetime.now(timezone.utc) - timedelta(seconds=150)
 
         turn = Turn(
             task_id=task.id,
@@ -603,6 +592,7 @@ class TestBroadcastReconciliationCreated:
         mock_turn.task_id = 5
         mock_turn.task = mock_task
         mock_turn.id = 99
+        mock_turn.question_source_type = None
         mock_turn.timestamp.isoformat.return_value = ts.isoformat()
 
         mock_db.session.get.return_value = mock_turn
@@ -625,6 +615,7 @@ class TestBroadcastReconciliationCreated:
                 "task_id": 5,
                 "task_instruction": "Do something",
                 "turn_id": 99,
+                "question_source_type": None,
                 "timestamp": ts.isoformat(),
             },
         )

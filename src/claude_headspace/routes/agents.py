@@ -122,3 +122,49 @@ def agent_context_endpoint(agent_id: int):
         "remaining_tokens": result.remaining_tokens,
         "raw": result.raw,
     }), 200
+
+
+@agents_bp.route("/api/agents/<int:agent_id>/reconcile", methods=["POST"])
+def reconcile_agent_endpoint(agent_id: int):
+    """Manually trigger transcript reconciliation for an agent.
+
+    Forces the reconciler to re-scan the agent's JSONL transcript and create
+    Turn records for any entries not already captured by hooks.
+
+    Returns:
+        200: Reconciliation result with created count
+        404: Agent not found
+    """
+    from ..services.transcript_reconciler import (
+        broadcast_reconciliation,
+        get_reconcile_lock,
+        reconcile_agent_session,
+    )
+
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found"}), 404
+
+    # Per-agent lock prevents concurrent reconciliation (endpoint + watchdog)
+    lock = get_reconcile_lock(agent_id)
+    if not lock.acquire(blocking=False):
+        return jsonify({
+            "status": "busy",
+            "created": 0,
+            "message": "Reconciliation already in progress",
+        }), 409
+
+    try:
+        result = reconcile_agent_session(agent)
+        try:
+            broadcast_reconciliation(agent, result)
+        except Exception as e:
+            logger.warning(f"Reconcile broadcast failed for agent {agent_id}: {e}")
+        db.session.commit()
+    finally:
+        lock.release()
+
+    return jsonify({
+        "status": "ok",
+        "created": len(result["created"]),
+    })

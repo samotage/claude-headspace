@@ -593,6 +593,7 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
     1. Session correlator cache (by session_id)
     2. Hook agent state (per-agent mutable state)
     3. Commander availability tracking
+    4. Per-agent reconciliation lock
     """
     # 1. Session correlator cache
     if session_id:
@@ -613,5 +614,12 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
             availability.unregister_agent(agent_id)
     except RuntimeError:
         logger.debug("No app context for commander_availability cleanup")
+
+    # 4. Per-agent reconciliation lock
+    try:
+        from .transcript_reconciler import remove_reconcile_lock
+        remove_reconcile_lock(agent_id)
+    except Exception as e:
+        logger.debug(f"Reconcile lock cleanup failed for agent {agent_id}: {e}")
     except Exception as e:
         logger.debug(f"Commander availability cleanup failed for agent {agent_id}: {e}")

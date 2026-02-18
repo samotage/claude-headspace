@@ -286,7 +286,7 @@ class AgentReaper:
             f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
         )
 
-        # Centralized cache cleanup (correlator, hook_agent_state, commander)
+        # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)
         try:
             from .session_correlator import invalidate_agent_caches
             invalidate_agent_caches(
@@ -295,6 +295,12 @@ class AgentReaper:
             )
         except Exception as e:
             logger.debug(f"Reaper cache cleanup failed (non-fatal): {e}")
+        try:
+            watchdog = self._app.extensions.get("tmux_watchdog")
+            if watchdog:
+                watchdog.unregister_agent(agent.id)
+        except Exception:
+            pass
 
         # Complete any orphaned tasks (PROCESSING, COMMANDED, AWAITING_INPUT)
         self._complete_orphaned_tasks(agent)

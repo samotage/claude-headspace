@@ -247,6 +247,34 @@
                 return;
             }
 
+            // Reconcile (kebab menu item)
+            var reconcileAction = e.target.closest('.card-reconcile-action');
+            if (reconcileAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(reconcileAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId) {
+                    fetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
+                        .then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status }; }); })
+                        .then(function(res) {
+                            if (global.Toast) {
+                                if (res.status === 409) {
+                                    global.Toast.info('Reconcile', 'Already in progress');
+                                } else if (res.data.created > 0) {
+                                    global.Toast.success('Reconciled', res.data.created + ' turn(s) recovered');
+                                } else {
+                                    global.Toast.info('Reconcile', 'No missing turns found');
+                                }
+                            }
+                        })
+                        .catch(function() {
+                            if (global.Toast) global.Toast.error('Reconcile failed', 'Could not reach server');
+                        });
+                }
+                return;
+            }
+
             // Kill (kebab menu item)
             var killAction = e.target.closest('.card-kill-action');
             if (killAction) {

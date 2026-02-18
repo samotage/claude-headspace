@@ -608,7 +608,7 @@ class TestTaskLifecycleManagerUnit:
         """Invalid transition should fail gracefully."""
         manager = TaskLifecycleManager(session=mock_session)
 
-        mock_task.state = TaskState.IDLE  # Invalid state for agent action
+        mock_task.state = TaskState.COMPLETE  # COMPLETE is terminal — no valid outgoing transitions
 
         # Mock current task
         mock_query = MagicMock()
