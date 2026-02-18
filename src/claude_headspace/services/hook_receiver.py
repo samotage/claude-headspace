@@ -253,8 +253,20 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
     if not progress_entries:
         return
 
+    from .transcript_reconciler import _content_hash
+
     for entry in progress_entries:
         text = entry.content.strip()
+        content_key = _content_hash("agent", text)
+
+        # Skip if reconciler already created this turn (race condition guard)
+        existing = Turn.query.filter_by(
+            task_id=current_task.id, jsonl_entry_hash=content_key
+        ).first()
+        if existing:
+            state.append_progress_text(agent.id, text)
+            continue
+
         state.append_progress_text(agent.id, text)
 
         internal = is_team_internal_content(text)
@@ -266,6 +278,7 @@ def _capture_progress_text_impl(agent: Agent, current_task, state) -> None:
             timestamp=entry.timestamp or datetime.now(timezone.utc),
             timestamp_source="jsonl" if entry.timestamp else "server",
             is_internal=internal,
+            jsonl_entry_hash=content_key,
         )
         db.session.add(turn)
         db.session.flush()
@@ -1040,11 +1053,15 @@ def process_stop(
                     stale_notification_turn = t
                     break
 
+        from .transcript_reconciler import _content_hash
+        agent_content_key = _content_hash("agent", full_agent_text or "")
+
         if intent_result.intent == TurnIntent.QUESTION:
             if stale_notification_turn:
                 stale_notification_turn.text = full_agent_text or ""
                 stale_notification_turn.question_text = full_agent_text or ""
                 stale_notification_turn.question_source_type = "free_text"
+                stale_notification_turn.jsonl_entry_hash = agent_content_key
             else:
                 turn = Turn(
                     task_id=current_task.id, actor=TurnActor.AGENT,
@@ -1052,6 +1069,7 @@ def process_stop(
                     question_text=full_agent_text or "",
                     question_source_type="free_text",
                     is_internal=is_team_internal_content(full_agent_text),
+                    jsonl_entry_hash=agent_content_key,
                 )
                 db.session.add(turn)
         elif intent_result.intent == TurnIntent.END_OF_TASK:
@@ -1060,6 +1078,7 @@ def process_stop(
                 stale_notification_turn.intent = TurnIntent.END_OF_TASK
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
+                stale_notification_turn.jsonl_entry_hash = agent_content_key
             # NOTE: complete_task() is advisory (never raises InvalidTransitionError).
             # It runs before the commit because it force-sets state to COMPLETE.
             # If complete_task() is ever changed to enforce strict transitions,
@@ -1077,6 +1096,7 @@ def process_stop(
                 stale_notification_turn.intent = TurnIntent.COMPLETION
                 stale_notification_turn.question_text = None
                 stale_notification_turn.question_source_type = None
+                stale_notification_turn.jsonl_entry_hash = agent_content_key
             # NOTE: complete_task() is advisory — see comment above.
             lifecycle.complete_task(task=current_task, trigger="hook:stop", agent_text=completion_text)
             if completion_text != full_agent_text:
