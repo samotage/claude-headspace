@@ -1,8 +1,8 @@
-<!-- Kanban task card: represents an active task in a state column -->
+<!-- Kanban command card: represents an active command in a state column -->
 <article class="bg-elevated rounded-lg border border-border overflow-hidden focus-target transition-shadow duration-300"
          data-agent-id="{{ item.agent.id }}"
          data-state="{{ item.state }}"
-         aria-label="Task for agent {{ item.agent.hero_chars }}">
+         aria-label="Command for agent {{ item.agent.hero_chars }}">
     <div class="p-3">
         <!-- Agent identity + state -->
         <div class="flex items-baseline justify-between mb-2">
@@ -28,12 +28,12 @@
             <span class="state-label">{{ item.agent.state_info.label }}</span>
         </div>
         <!-- Task instruction -->
-        {% if item.task_instruction %}
-            <p class="task-instruction text-primary text-sm font-medium mb-1">{{ item.task_instruction }}</p>
+        {% if item.command_instruction %}
+            <p class="task-instruction text-primary text-sm font-medium mb-1">{{ item.command_instruction }}</p>
         {% endif %}
-        <!-- Task summary -->
-        {% if item.task_summary %}
-            <p class="task-summary text-secondary text-xs italic">{{ item.task_summary }}</p>
+        <!-- Command summary -->
+        {% if item.command_summary %}
+            <p class="task-summary text-secondary text-xs italic">{{ item.command_summary }}</p>
         {% endif %}
     </div>
     <!-- Priority footer -->

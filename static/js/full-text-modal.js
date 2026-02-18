@@ -1,12 +1,12 @@
 /**
  * Full-text modal for displaying complete command input and agent output.
- * Fetches on-demand from /api/tasks/<id>/full-text and displays in a scrollable overlay.
+ * Fetches on-demand from /api/commands/<id>/full-text and displays in a scrollable overlay.
  */
 (function() {
     'use strict';
 
     var modal = null;
-    var cache = {};  // taskId -> { full_command, full_output }
+    var cache = {};  // commandId -> { full_command, full_output }
 
     function createModal() {
         if (modal) return modal;
@@ -41,7 +41,7 @@
         return modal;
     }
 
-    function show(taskId, type) {
+    function show(commandId, type) {
         var m = createModal();
         var titleEl = m.querySelector('.full-text-modal-title');
         var textEl = m.querySelector('.full-text-modal-text');
@@ -52,21 +52,21 @@
         m.style.display = 'flex';
 
         // Use cache if available
-        if (cache[taskId]) {
-            var text = type === 'command' ? cache[taskId].full_command
-                     : type === 'plan' ? cache[taskId].plan_content
-                     : cache[taskId].full_output;
+        if (cache[commandId]) {
+            var text = type === 'command' ? cache[commandId].full_command
+                     : type === 'plan' ? cache[commandId].plan_content
+                     : cache[commandId].full_output;
             textEl.textContent = text || 'No content available';
             return;
         }
 
-        fetch('/api/tasks/' + taskId + '/full-text')
+        fetch('/api/commands/' + commandId + '/full-text')
             .then(function(response) {
                 if (!response.ok) throw new Error('Failed to fetch');
                 return response.json();
             })
             .then(function(data) {
-                cache[taskId] = data;
+                cache[commandId] = data;
                 var text = type === 'command' ? data.full_command
                          : type === 'plan' ? data.plan_content
                          : data.full_output;

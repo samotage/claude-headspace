@@ -53,14 +53,14 @@
     <div class="card-line">
       <span class="line-num">03</span>
       <div class="line-content flex items-baseline justify-between gap-2">
-        {% if agent.task_instruction %}
-          <p class="task-instruction text-primary text-sm font-medium flex-1 min-w-0">{{ agent.task_instruction }}</p>
+        {% if agent.command_instruction %}
+          <p class="task-instruction text-primary text-sm font-medium flex-1 min-w-0">{{ agent.command_instruction }}</p>
         {% else %}
-          <p class="task-instruction text-muted text-sm italic">No active task</p>
+          <p class="task-instruction text-muted text-sm italic">No active command</p>
         {% endif %}
-        {% if agent.has_plan and agent.current_task_id %}
+        {% if agent.has_plan and agent.current_command_id %}
           <button type="button" class="plan-indicator plan-indicator-btn" title="View plan" aria-label="View agent plan"
-                  onclick="window.FullTextModal && window.FullTextModal.show({{ agent.current_task_id }}, 'plan')">plan</button>
+                  onclick="window.FullTextModal && window.FullTextModal.show({{ agent.current_command_id }}, 'plan')">plan</button>
         {% endif %}
       </div>
     </div>
@@ -68,20 +68,20 @@
     <!-- Hidden when it would just repeat line 03 -->
     {% set line04_text = '' %}
     {% if agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE' %}
-      {% if agent.task_completion_summary %}
-        {% set line04_text = agent.task_completion_summary %}
+      {% if agent.command_completion_summary %}
+        {% set line04_text = agent.command_completion_summary %}
       {% else %}
-        {% set line04_text = agent.task_summary or '' %}
+        {% set line04_text = agent.command_summary or '' %}
       {% endif %}
     {% else %}
-      {% set line04_text = agent.task_summary or '' %}
+      {% set line04_text = agent.command_summary or '' %}
     {% endif %}
-    {% set line03_text = agent.task_instruction or 'No active task' %}
+    {% set line03_text = agent.command_instruction or 'No active command' %}
     {% if line04_text and line04_text != line03_text %}
     <div class="card-line card-line-04">
       <span class="line-num">04</span>
       <div class="line-content flex items-baseline justify-between gap-2">
-        {% if (agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE') and agent.task_completion_summary %}
+        {% if (agent.state_name == 'COMPLETE' or agent.state_name == 'IDLE') and agent.command_completion_summary %}
           <p class="task-summary text-green text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
         {% else %}
           <p class="task-summary text-secondary text-sm italic flex-1 min-w-0">{{ line04_text }}</p>
@@ -96,7 +96,7 @@
   <div class="respond-widget px-3 py-2 border-t border-amber/20 bg-amber/5"
        data-agent-id="{{ agent.id }}"
        data-safety="{{ safety }}"
-       data-question-text="{{ agent.task_summary|e }}"
+       data-question-text="{{ agent.command_summary|e }}"
        {% if agent.question_options %}data-question-options='{{ agent.question_options|tojson }}'{% endif %}
        style="display:none;">
     <div class="respond-options flex flex-wrap gap-1.5 mb-2"></div>

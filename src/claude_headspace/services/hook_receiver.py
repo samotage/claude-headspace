@@ -261,7 +261,9 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
 
         # Skip if reconciler already created this turn (race condition guard)
         existing = Turn.query.filter_by(
-            command_id=current_command.id, jsonl_entry_hash=content_key
+            command_id=current_command.id,
+            actor=TurnActor.AGENT,
+            jsonl_entry_hash=content_key,
         ).first()
         if existing:
             state.append_progress_text(agent.id, text)
