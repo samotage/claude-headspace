@@ -712,6 +712,18 @@ def process_user_prompt_submit(
         # The voice bridge sets this before tmux send to close the race
         # window between send and respond_pending (set after commit).
         if get_agent_hook_state().is_respond_inflight(agent.id):
+            # Skip turn/state work (respond handler already did that), but still
+            # initialize transcript position for the new response cycle.  Without
+            # this, _capture_progress_text sees position=None on the first
+            # post_tool_use, initializes to current file size (past any agent text
+            # already written), and that text is permanently orphaned.
+            _progress_texts_for_agent.pop(agent.id, None)
+            if agent.transcript_path:
+                import os
+                try:
+                    _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+                except OSError:
+                    _transcript_positions.pop(agent.id, None)
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
             broadcast_card_refresh(agent, "user_prompt_submit_respond_inflight")
@@ -727,6 +739,15 @@ def process_user_prompt_submit(
         import time as _time
         respond_ts = _respond_pending_for_agent.pop(agent.id, None)
         if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:
+            # Same as respond_inflight: skip turn/state work but initialize
+            # transcript position so progress capture works for this cycle.
+            _progress_texts_for_agent.pop(agent.id, None)
+            if agent.transcript_path:
+                import os
+                try:
+                    _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+                except OSError:
+                    _transcript_positions.pop(agent.id, None)
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
             broadcast_card_refresh(agent, "user_prompt_submit_respond_pending")
