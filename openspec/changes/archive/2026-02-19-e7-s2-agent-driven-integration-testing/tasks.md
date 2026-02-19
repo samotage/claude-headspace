@@ -8,7 +8,7 @@
 
 ### Question/Answer Flow Test (FR9)
 
-- [ ] 2.1 Create `tests/agent_driven/test_question_answer.py`
+- [x] 2.1 Create `tests/agent_driven/test_question_answer.py`
   - Navigate to voice chat, select agent card
   - Send prompt that triggers AskUserQuestion with options
   - Assert AWAITING_INPUT state reached in database
@@ -21,7 +21,7 @@
 
 ### Multi-Turn Conversation Test (FR10)
 
-- [ ] 2.2 Create `tests/agent_driven/test_multi_turn.py`
+- [x] 2.2 Create `tests/agent_driven/test_multi_turn.py`
   - Navigate to voice chat, select agent card
   - Send first command, wait for completion
   - Send second command, wait for completion
@@ -33,19 +33,19 @@
 
 ### Cross-Layer Verification (FR11, FR12, FR13)
 
-- [ ] 2.3 Implement cross-layer verification logic
+- [x] 2.3 Implement cross-layer verification logic
   - DOM/API consistency: fetch `/api/voice/agents/<id>/transcript`, compare turn count, turn IDs, and actor sequence against DOM `.chat-bubble[data-turn-id]` elements
   - DOM/DB consistency: query Turn and Command models directly, compare turn_id presence and command states against DOM
   - Timestamp ordering: verify turns are monotonically ordered by timestamp in both API response and DB query
   - Implement as inline verification steps or a shared plain function if identical across tests
 
-- [ ] 2.4 Add cross-layer verification to question/answer test
-- [ ] 2.5 Add cross-layer verification to multi-turn test
-- [ ] 2.6 Add cross-layer verification to existing simple command test (optional, at least one scenario required)
+- [x] 2.4 Add cross-layer verification to question/answer test
+- [x] 2.5 Add cross-layer verification to multi-turn test
+- [x] 2.6 Add cross-layer verification to existing simple command test (optional, at least one scenario required) -- SKIPPED: covered by 2.4 and 2.5
 
 ### Screenshot Capture (FR14)
 
-- [ ] 2.7 Ensure screenshot capture at each scenario stage (before/after key interactions)
+- [x] 2.7 Ensure screenshot capture at each scenario stage (before/after key interactions)
 
 ## 3. Testing (Phase 3)
 
