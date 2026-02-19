@@ -11,7 +11,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
 
 # Re-export session-scoped E2E fixtures so pytest discovers them.
 from tests.e2e.conftest import (  # noqa: F401
@@ -50,7 +49,7 @@ def claude_session(e2e_app, e2e_server, request):
     Yields:
         dict with keys: agent_id (int), session_name (str)
 
-    On success: kills tmux session and truncates test DB tables.
+    On success: kills tmux session (DB cleanup handled by clean_db fixture).
     On failure: preserves tmux session and DB state for investigation.
     """
     session_name = f"headspace-test-{uuid4().hex[:8]}"
@@ -139,13 +138,10 @@ def claude_session(e2e_app, e2e_server, request):
         print(f"\n⚠️  Test FAILED — preserving tmux session: {session_name}")
         print(f"    Inspect: tmux attach-session -t {session_name}")
     else:
-        # Kill the tmux session
+        # Kill the tmux session. DB cleanup is handled by the
+        # clean_db autouse fixture (from e2e/conftest.py) which
+        # truncates tables and re-seeds the Project atomically.
         subprocess.run(
             ["tmux", "kill-session", "-t", session_name],
             capture_output=True,
         )
-        # Truncate DB tables (clean state for next test)
-        with e2e_app.app_context():
-            for table in reversed(db.metadata.sorted_tables):
-                db.session.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE'))
-            db.session.commit()
