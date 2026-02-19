@@ -16,6 +16,7 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 - [Headspace](headspace) - Frustration tracking and flow state detection
 - [Logging](logging) - Event and inference call logging
 - [Configuration](configuration) - Customizing config.yaml settings
+- [Agent-Driven Testing](agent-driven-testing) - Integration tests using real Claude Code sessions
 - [Troubleshooting](troubleshooting) - Common issues and solutions
 
 ## Keyboard Shortcuts
