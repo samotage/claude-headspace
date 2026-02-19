@@ -55,8 +55,9 @@ data/state.yaml
 brain_reboot/*
 !brain_reboot/.gitkeep
 
-# E2E test screenshots
+# Test screenshots (generated artifacts, change every run)
 tests/e2e/screenshots/
+tests/agent_driven/screenshots/
 
 # User uploads
 uploads/
