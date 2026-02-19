@@ -171,7 +171,10 @@ def e2e_server(e2e_app):
 
 @pytest.fixture(scope="session")
 def browser_context_args():
-    return {"viewport": {"width": 1280, "height": 800}}
+    return {
+        "viewport": {"width": 1280, "height": 800},
+        "permissions": ["clipboard-read", "clipboard-write"],
+    }
 
 
 # ---------------------------------------------------------------------------
