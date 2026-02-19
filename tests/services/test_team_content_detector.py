@@ -15,8 +15,19 @@ class TestXMLDetection:
     def test_system_reminder(self):
         assert is_team_internal_content("<system-reminder>Context info here</system-reminder>")
 
-    def test_task_notification_with_surrounding_text(self):
-        assert is_team_internal_content("Some prefix <task-notification>payload</task-notification> suffix")
+    def test_task_notification_mid_text_is_not_internal(self):
+        """Tags mentioned mid-text are discussion, not protocol content."""
+        assert not is_team_internal_content("Some prefix <task-notification>payload</task-notification> suffix")
+
+    def test_tag_mentioned_in_backticks_is_not_internal(self):
+        """Agent discussing tags in prose should not be flagged."""
+        assert not is_team_internal_content("Detects `<task-notification>` and `<system-reminder>` XML tags")
+
+    def test_tag_with_closing_tag_mid_text_is_not_internal(self):
+        """Even with both open+close tags, mid-text mentions are not internal."""
+        assert not is_team_internal_content(
+            "The detector checks for <task-notification> and </task-notification> patterns"
+        )
 
     def test_system_reminder_with_attributes(self):
         assert is_team_internal_content('<system-reminder foo="bar">content</system-reminder>')

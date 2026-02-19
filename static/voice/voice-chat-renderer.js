@@ -422,6 +422,8 @@ window.VoiceChatRenderer = (function () {
       var opts = turn.question_options;
       var toolInput = turn.tool_input || {};
       var allQuestions = null;
+      // Check if this question has already been answered
+      var isAlreadyAnswered = (toolInput.status === 'complete');
       if (!opts && toolInput.questions) {
         var questions = toolInput.questions;
         if (questions && questions.length > 1) {
@@ -446,10 +448,12 @@ window.VoiceChatRenderer = (function () {
         // Multi-question bubble
         html += renderMultiQuestionBubble(allQuestions, safetyClass, turn);
       } else if (opts && opts.length > 0) {
-        html += '<div class="bubble-options">';
+        html += '<div class="bubble-options' + (isAlreadyAnswered ? ' answered' : '') + '">';
         for (var i = 0; i < opts.length; i++) {
           var opt = opts[i];
-          html += '<button class="bubble-option-btn' + safetyClass + '" data-opt-idx="' + i + '" data-label="' + esc(opt.label) + '">'
+          html += '<button class="bubble-option-btn' + safetyClass + '" data-opt-idx="' + i + '" data-label="' + esc(opt.label) + '"'
+            + (isAlreadyAnswered ? ' disabled' : '')
+            + '>'
             + esc(opt.label)
             + (opt.description ? '<div class="bubble-option-desc">' + esc(opt.description) + '</div>' : '')
             + '</button>';
@@ -526,7 +530,10 @@ window.VoiceChatRenderer = (function () {
   // --- Multi-question rendering ---
 
   function renderMultiQuestionBubble(questions, safetyClass, turn) {
-    var html = '<div class="bubble-multi-question">';
+    var toolInput = turn.tool_input || {};
+    var isAlreadyAnswered = (toolInput.status === 'complete');
+    var answeredClass = isAlreadyAnswered ? ' answered' : '';
+    html = '<div class="bubble-multi-question' + answeredClass + '">';
     for (var qi = 0; qi < questions.length; qi++) {
       var q = questions[qi];
       var isMulti = q.multiSelect === true;
@@ -534,7 +541,9 @@ window.VoiceChatRenderer = (function () {
       html += '<div class="bubble-question-header">' + esc(q.header ? q.header + ': ' : '') + esc(q.question || '') + '</div>';
       var qOpts = q.options || [];
       for (var oi = 0; oi < qOpts.length; oi++) {
-        html += '<button class="bubble-option-btn' + safetyClass + '" data-q-idx="' + qi + '" data-opt-idx="' + oi + '">'
+        html += '<button class="bubble-option-btn' + safetyClass + '" data-q-idx="' + qi + '" data-opt-idx="' + oi + '"'
+          + (isAlreadyAnswered ? ' disabled' : '')
+          + '>'
           + esc(qOpts[oi].label)
           + (qOpts[oi].description ? '<div class="bubble-option-desc">' + esc(qOpts[oi].description) + '</div>' : '')
           + '</button>';

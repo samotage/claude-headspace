@@ -389,8 +389,12 @@ class TestDeleteProject:
     def test_delete_success(self, client, mock_db, mock_project):
         """Test successful project deletion."""
         mock_db.session.get.return_value = mock_project
+        mock_db.session.query.return_value.filter.return_value = MagicMock()
 
-        response = client.delete("/api/projects/1")
+        with patch("src.claude_headspace.routes.projects.InferenceCall") as mock_ic:
+            mock_ic.query.filter.return_value.delete.return_value = 0
+            response = client.delete("/api/projects/1")
+
         assert response.status_code == 200
         data = response.get_json()
         assert data["deleted"] is True
@@ -646,8 +650,11 @@ class TestSSEBroadcasting:
     def test_delete_broadcasts_event(self, client, mock_db, mock_project):
         """Test that deleting a project broadcasts project_changed event."""
         mock_db.session.get.return_value = mock_project
+        mock_db.session.query.return_value.filter.return_value = MagicMock()
 
-        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast:
+        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast, \
+             patch("src.claude_headspace.routes.projects.InferenceCall") as mock_ic:
+            mock_ic.query.filter.return_value.delete.return_value = 0
             response = client.delete("/api/projects/1")
 
             assert response.status_code == 200

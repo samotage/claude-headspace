@@ -12,7 +12,10 @@ import json
 import re
 
 # Quick regex pre-screens (cheap to check before attempting JSON parse)
-_XML_TAG_PATTERN = re.compile(r"<(task-notification|system-reminder)\b")
+# Anchored to START of text: real protocol tags are always injected at the
+# beginning of the message. Agents that DISCUSS these tags mid-text (in prose,
+# backticks, or code) must not be flagged.
+_XML_TAG_PATTERN = re.compile(r"^\s*<(task-notification|system-reminder)\b")
 _JSON_TYPE_PATTERN = re.compile(r'"type"\s*:\s*"(message|broadcast|shutdown_request|shutdown_response|plan_approval_request|plan_approval_response|idle)"')
 
 # JSON types that indicate team-internal communication
@@ -44,8 +47,10 @@ def is_team_internal_content(text: str | None) -> bool:
 
     stripped = text.strip()
 
-    # Check for XML tags injected by Claude Code for sub-agent comms
-    if _XML_TAG_PATTERN.search(stripped):
+    # Check for XML tags injected by Claude Code for sub-agent comms.
+    # Anchored to start of text — real protocol tags always appear at position 0.
+    # Agents discussing these tags mid-text are NOT internal content.
+    if _XML_TAG_PATTERN.match(stripped):
         return True
 
     # Quick check: does it look like it might contain a JSON type field?

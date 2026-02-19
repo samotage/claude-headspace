@@ -402,6 +402,24 @@ def delete_project(project_id: int):
             return jsonify({"error": "Project not found"}), 404
 
         project_name = project.name
+
+        # Delete inference_calls before the project to avoid violating
+        # ck_inference_calls_has_parent.  The project cascade (Project →
+        # Agent → Command → Turn) would SET NULL every FK on inference_calls,
+        # leaving rows with no parent at all.
+        agent_subq = db.session.query(Agent.id).filter(Agent.project_id == project_id)
+        command_subq = db.session.query(Command.id).filter(Command.agent_id.in_(agent_subq))
+        turn_subq = db.session.query(Turn.id).filter(Turn.command_id.in_(command_subq))
+
+        InferenceCall.query.filter(
+            db.or_(
+                InferenceCall.project_id == project_id,
+                InferenceCall.agent_id.in_(agent_subq),
+                InferenceCall.command_id.in_(command_subq),
+                InferenceCall.turn_id.in_(turn_subq),
+            )
+        ).delete(synchronize_session=False)
+
         db.session.delete(project)
         db.session.commit()
 

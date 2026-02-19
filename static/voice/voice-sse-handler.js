@@ -475,6 +475,12 @@ window.VoiceSSEHandler = (function () {
         }
       }
 
+      // Disable stale question buttons if agent is not awaiting input
+      var syncedState = (VoiceState.chatAgentState || '').toLowerCase();
+      if (syncedState !== 'awaiting_input' && _onMarkQuestionsAnswered) {
+        _onMarkQuestionsAnswered();
+      }
+
       // Auto-scroll if user was near the bottom before new turns were appended
       if (wasNearBottom && _onScrollChat) _onScrollChat(false);
     }).catch(function () {

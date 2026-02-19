@@ -1,13 +1,14 @@
 ---
 validation:
   status: valid
-  validated_at: '2026-02-18T15:32:15+11:00'
+  validated_at: '2026-02-19T15:05:56+11:00'
 ---
 
-## Product Requirements Document (PRD) — Agent-Driven Integration Testing
+## PRD — Agent-Driven Integration Testing: Sprint 1 — Prove the Loop
 
 **Project:** Claude Headspace
-**Scope:** Full-loop integration testing with real Claude Code sessions, Playwright browser automation, and cross-layer verification
+**Epic:** E7 — Agent-Driven Integration Testing
+**Sprint:** 1 of 3
 **Author:** Sam (workshopped with Claude)
 **Status:** Draft
 
@@ -15,21 +16,37 @@ validation:
 
 ## Executive Summary
 
-Claude Headspace has extensive unit, route, and E2E tests — but they all use mocked or simulated hooks. No test currently exercises the real production loop: a real Claude Code agent processing real prompts, firing real hooks back to the server, with the browser rendering real SSE updates. Bugs that pass mock-based tests continue to ship and break the system.
+Claude Headspace has ~2,500 tests across unit, route, integration, and E2E tiers — but they all use mocked or simulated hooks. No test currently exercises the real production loop. Bugs that pass mock-based tests continue to ship and break the system.
 
-This PRD defines an agent-driven integration testing system that replaces simulation with reality. A test orchestrator drives both a real Claude Code session (in a tmux pane) and a Playwright browser (on the voice chat UI), running predefined conversation scenarios and verifying that every layer of the stack works together correctly. Tests assert on structure — not content — because agent responses are non-deterministic.
+This sprint proves the fundamental mechanism: one test that drives a real Claude Code session through the voice chat UI via Playwright, with real hooks firing, real SSE updating the browser, and structural assertions verifying the rendered result.
 
-The system includes a conversation fixture format (markdown with YAML frontmatter) for defining test scenarios, a runner that executes them against the real system, and a workshop process for authoring new fixtures. Success means that bugs which survive mock-based testing are caught before they reach users.
+### The Loop Under Test
+
+```
+Playwright (voice chat UI)
+    → user types command in chat input
+    → POST /api/voice/command
+    → voice_bridge.py resolves agent → tmux_bridge.send_text()
+    → tmux send-keys delivers text to real Claude Code PTY
+    → Claude Code processes (real LLM, real tools)
+    → Claude Code fires hooks back to /hook/* endpoints
+    → hook_receiver processes → state transition → DB write → broadcaster.broadcast()
+    → SSE event delivered to browser
+    → voice-sse-handler.js renders response bubble
+    → Playwright asserts on rendered DOM
+```
+
+Every layer is real. Nothing is mocked.
+
+**This is the hardest sprint.** If this works, everything else is incremental.
 
 ---
 
-## 1. Context & Purpose
+## 1. Context
 
-### 1.1 Context
+### 1.1 Problem
 
-The project has ~960 tests across unit, route, integration, and E2E tiers. The E2E tests use a `HookSimulator` that fires HTTP requests to simulate Claude Code lifecycle hooks — but this skips the actual Claude Code session, tmux bridge, real hook delivery, and real LLM processing. Critical bugs in the interaction between these components pass all existing tests and only surface when a human uses the system.
-
-The existing integration testing PRD (`testing/integration-testing-framework-prd.md`) addressed mock-to-real-DB replacement but did not cover the full frontend-to-agent-to-backend loop.
+The E2E tests use a `HookSimulator` that fires HTTP requests to simulate Claude Code lifecycle hooks — but this skips the actual Claude Code session, tmux bridge, real hook delivery, and real LLM processing. Critical bugs in the interaction between these components pass all existing tests and only surface when a human uses the system.
 
 ### 1.2 Target User
 
@@ -37,7 +54,17 @@ Developers and AI agents working on Claude Headspace who need confidence that ch
 
 ### 1.3 Success Moment
 
-A developer makes a change, runs the integration test suite, and a conversation scenario that exercises the affected code path either passes (confirming the change works in the real system) or fails with clear evidence of what broke and where.
+A developer runs `pytest tests/agent_driven/test_simple_command.py`, a real Claude Code session launches, processes a command sent through the voice chat UI, and the test passes — proving the full production loop works.
+
+### 1.4 Series Context
+
+This is Sprint 1 of 3 in the Agent-Driven Integration Testing epic:
+
+- **Sprint 1 (this PRD):** Prove the loop — one test, full voice chat → Claude Code → hooks → SSE → browser roundtrip
+- **Sprint 2 (`e7-s2`):** Scenario expansion — question/answer, multi-turn, cross-layer verification (DOM vs API vs DB)
+- **Sprint 3 (`e7-s3`):** Pattern extraction — shared helpers, permission flow, bug-driven scenarios, format evaluation
+
+Each sprint has a hard gate. Sprint 2 cannot begin until Sprint 1 passes.
 
 ---
 
@@ -45,164 +72,143 @@ A developer makes a change, runs the integration test suite, and a conversation 
 
 ### 2.1 In Scope
 
-- Real Claude Code session management — launch, health check, teardown of `claude` CLI sessions in tmux panes with hooks firing to the server
-- Conversation scenario framework — a declarative way to define named conversation flows with prompts, expected progressions, and structural assertions
-- Conversation fixture format — markdown files with YAML frontmatter, human-readable and LLM-friendly
-- Conversation fixture library — predefined scenarios covering key interaction shapes
-- Conversation fixture workshop — a guided authoring process (terminal command/prompt) for creating new fixture files
-- Cross-layer verification — at each assertion point, verify consistency across browser DOM, API transcript, database state, and tmux pane content
-- Playwright browser automation — drive the voice chat UI to send commands and verify rendered output
-- Structural assertion model — assert on structure not content (turns exist, states follow valid paths, timestamps ordered, correct number of rounds)
-- Sequential test execution
-- Cost-controlled execution using cheapest viable model
-- Cleanup on success only — failed runs preserve all evidence (tmux panes, DB state, screenshots) for investigation
+- Launch a real Claude Code CLI session in a tmux pane with hooks pointing to the test server
+- Ready gate — wait for session-start hook to arrive before running the test
+- Navigate Playwright to voice chat, select the agent, send a command
+- Wait for agent response bubble to render in the voice chat DOM
+- Verify command state transitions in the database
+- Conditional teardown — cleanup on success, preserve evidence on failure
+- Cost-controlled execution (Haiku model, short deterministic prompts)
 
 ### 2.2 Out of Scope
 
-- Testing LLM intelligence or response quality
-- Load or performance testing
-- Testing Claude Code itself (that's Anthropic's responsibility)
-- Replacing existing unit, route, or E2E tests (those remain for fast feedback)
-- CI/CD integration (requires tmux, network access, API key, running server — future work)
+- Multiple scenarios (Sprint 2)
+- Cross-layer verification — DOM vs API vs DB consistency (Sprint 2)
+- Shared helpers or abstractions (Sprint 3)
+- Declarative scenario format (Sprint 3 evaluation)
+- Conversation fixture workshop / guided authoring CLI (cut from epic)
+- CI/CD integration
+- Testing LLM response quality or intelligence
 - Parallel test execution
 
 ---
 
-## 3. Success Criteria
+## 3. Functional Requirements
 
-### 3.1 Functional Success Criteria
+**FR1 — Session Launch:** A pytest fixture can launch a `claude` CLI session in a dedicated tmux pane, configured with hooks pointing to the test server URL and using the Haiku model.
 
-1. All defined conversation scenarios run against a real Claude Code session and pass
-2. Bugs that pass mock-based tests but break the real loop are detected by at least one scenario
-3. A new conversation scenario can be added by writing a markdown fixture file — no framework code changes required
-4. New conversation fixtures can be authored via a guided workshop process
-5. Cross-layer consistency is verified at every assertion point (DOM matches API matches DB)
-6. Failed test runs preserve all evidence for human investigation
+**FR2 — Ready Gate:** The fixture waits for the `session-start` hook to arrive at the test server (verified by polling DB for a new Agent record) before yielding. The Claude Code session is confirmed healthy and ready to receive prompts.
 
-### 3.2 Non-Functional Success Criteria
+**FR3 — Session Isolation:** Each test scenario runs in its own tmux session with a unique name to prevent cross-contamination.
 
-1. Each individual scenario completes within a bounded timeout (configurable, generous enough for real LLM calls)
-2. Test execution uses the cheapest viable model to control costs
-3. Conversation fixtures are readable by both humans and LLMs without requiring knowledge of the test framework internals
+**FR4 — Conditional Teardown:** On test success, the tmux session is killed and the test database is cleaned. On test failure, the tmux session, database state, and any screenshots are preserved for investigation.
 
----
+**FR5 — Voice Chat Integration:** The test navigates Playwright to the voice chat UI on the test server, selects the agent card, and sends a command using the existing `VoiceAssertions.send_chat_message()` method.
 
-## 4. Functional Requirements (FRs)
+**FR6 — Structural Response Assertion:** After sending a command, the test waits for an agent response bubble to appear in the voice chat DOM (structural: any element with `data-turn-id` and agent actor class). Timeout is configurable and generous (default 60s).
 
-### Session Management
+**FR7 — State Transition Assertion:** The test verifies that the command state transitioned through the expected path (IDLE → COMMANDED → PROCESSING → COMPLETE) by querying the database.
 
-**FR1:** The system can launch a Claude Code CLI session in a dedicated tmux pane, configured with hooks pointing to the target server.
-
-**FR2:** The system can verify that a launched Claude Code session is healthy and ready to receive prompts.
-
-**FR3:** The system can send text prompts to a Claude Code session via its tmux pane.
-
-**FR4:** The system can tear down a Claude Code session and its tmux pane on test success. On test failure, the session and pane are preserved for investigation.
-
-**FR5:** Each test scenario runs in its own isolated tmux session to prevent cross-contamination.
-
-### Conversation Fixture Format
-
-**FR6:** Conversation scenarios are defined as markdown files with YAML frontmatter containing scenario metadata (name, description, interaction shape, model, timeout).
-
-**FR7:** The body of a conversation fixture defines a sequence of steps, each specifying: the prompt to send, the expected progression (state transitions, turn creation), and structural assertions to verify.
-
-**FR8:** Conversation fixtures support assertion types including: turn existence (for both actors), state transition validation, bubble rendering in browser, DOM/API transcript consistency, timestamp ordering, question/option rendering, and expected number of interaction rounds.
-
-**FR9:** Conversation fixtures are self-contained — all information needed to run the scenario is in the file. No external configuration or code references required.
-
-### Conversation Fixture Library
-
-**FR10:** The system includes predefined conversation fixtures covering at minimum:
-- Simple command/response (command → processing → completion)
-- Structured question flow (command → AskUserQuestion with options → user picks option → completion)
-- Permission request flow (command triggers tool permission → approve → completion)
-- Permission deny flow (command triggers permission → deny → agent adapts)
-- Multi-turn conversation (3+ sequential command/response exchanges)
-- Progress updates during processing (command → agent emits progress → completion)
-- Agent session ends unexpectedly (session-end fires while processing)
-- Browser/API consistency (full cross-check at end of any flow)
-
-### Scenario Runner
-
-**FR11:** The scenario runner loads a conversation fixture, launches the required infrastructure (tmux session, browser page), and executes each step sequentially.
-
-**FR12:** At each step, the runner sends the specified prompt, waits for the expected progression to occur (with configurable timeout), and then runs all structural assertions for that step.
-
-**FR13:** The runner produces clear, structured output indicating which scenario is running, which step is executing, and pass/fail status with details for each assertion.
-
-**FR14:** The runner integrates with pytest so scenarios can be discovered, selected, and run using standard pytest commands and conventions.
-
-### Cross-Layer Verification
-
-**FR15:** At each assertion point, the system can verify that the browser DOM state is consistent with the API transcript endpoint response.
-
-**FR16:** At each assertion point, the system can verify that the database state (turns, tasks, agents) is consistent with both the browser and API.
-
-**FR17:** At each assertion point, the system can verify that the tmux pane content reflects the expected state of the Claude Code session.
-
-**FR18:** Timestamp ordering is verified: turns in the API transcript and database are monotonically ordered by timestamp.
-
-### Conversation Fixture Workshop
-
-**FR19:** A guided workshop process exists for authoring new conversation fixtures. It can be invoked from the terminal.
-
-**FR20:** The workshop walks the author through defining: scenario name and description, interaction shape, prompt sequence, expected progression at each step, and structural assertions.
-
-**FR21:** The workshop outputs a properly formatted markdown conversation fixture file that is ready to run without modification.
-
-**FR22:** The workshop validates the generated fixture against the expected format before saving.
-
-### Server Target
-
-**FR23:** The test system targets the real running server. The server URL is read from `config.yaml` (`server.application_url`).
+**FR8 — Server Target:** The test system targets the real running server. The server URL is read from `config.yaml` (`server.application_url`).
 
 ---
 
-## 5. Non-Functional Requirements (NFRs)
+## 4. Non-Functional Requirements
 
-**NFR1:** Individual scenario timeouts must be configurable, with defaults generous enough to accommodate real LLM response times (5–60 seconds per interaction).
+**NFR1:** Timeouts must be generous — 60s default per interaction, configurable per test.
 
-**NFR2:** Tests must use the cheapest viable model (e.g., Haiku) via simple, short prompts to control costs.
+**NFR2:** Must use Haiku model with a short, deterministic prompt (e.g., `"Create a file called /tmp/headspace_test_<uuid>.txt with the content hello"`).
 
-**NFR3:** Tests must use the `claude_headspace_test` database — never production or development databases.
+**NFR3:** Must use the `claude_headspace_test` database — never production or development databases.
 
-**NFR4:** Test execution is sequential — one scenario at a time — to avoid race conditions and simplify debugging.
+**NFR4:** Test execution is sequential.
 
-**NFR5:** On test failure, all artefacts are preserved: tmux panes remain open, database state is not cleaned up, screenshots are saved. Cleanup only occurs on success.
+**NFR5:** On failure, all artefacts preserved: tmux pane stays open, DB state not cleaned, screenshots saved.
 
-**NFR6:** The conversation fixture format must be readable and authorable by both humans and LLMs without specialised tooling.
+**NFR6:** No new pip dependencies. Use subprocess for tmux (consistent with existing `tmux_bridge.py`).
 
 ---
 
-## 6. Technical Context & Considerations
+## 5. Deliverables
 
-*These are implementation-relevant details preserved from the workshop. They inform the build phase but are not requirements.*
+- `tests/agent_driven/conftest.py` — `claude_session` fixture (launch, ready gate, teardown)
+- `tests/agent_driven/test_simple_command.py` — one test: send command via voice chat → verify agent response bubble + state transitions
+- Proof of execution: test output showing pass against real Claude Code session
 
-### Existing Infrastructure to Build On
+---
 
-- `tests/e2e/conftest.py` — Database fixtures (`e2e_test_db`), Flask server fixtures, Playwright browser fixtures, `clean_db` truncation
-- `tests/e2e/helpers/hook_simulator.py` — `HookSimulator` class (reference for hook payload structures; real tests use actual hooks instead)
-- `tests/e2e/helpers/dashboard_assertions.py` — SSE connection assertions, agent card state checks, screenshot capture
-- `tests/e2e/helpers/voice_assertions.py` — Voice chat navigation, bubble assertions, transcript verification
-- `tests/integration/conftest.py` — Real Postgres test database lifecycle (create/drop), per-test rollback isolation
-- `tests/integration/factories.py` — Factory Boy factories for all domain models
+## 6. Sprint Gate
 
-### Session Management Considerations
+**This sprint is NOT complete until:**
 
-- `libtmux` (Python library) is a candidate for tmux session/pane management — currently not a dependency; existing `tmux_bridge.py` uses subprocess
-- tmux `send-keys` is the mechanism for delivering prompts to Claude Code sessions
-- Each scenario needs its own tmux session for isolation
-- Claude Code hooks must be configured to fire to the target server URL
+- [ ] The test has been executed against a real Claude Code session (not mocked)
+- [ ] Playwright drove the voice chat UI to send the command (not tmux directly)
+- [ ] An agent response bubble appeared in the voice chat DOM
+- [ ] The test passed with screenshots captured
+- [ ] The tmux session was cleaned up on success
+
+**Do NOT proceed to Sprint 2 until all gates pass.**
+
+---
+
+## 7. Agent Implementation Constraints
+
+These constraints exist to prevent over-engineering, premature abstraction, and hallucination:
+
+1. **Code budget: 500 lines maximum** across conftest + test file. If you write more, you're over-engineering.
+2. **No new classes.** The session fixture is a function. Assertions use existing helpers + inline checks.
+3. **No fixture format, no runner, no scenario abstraction.** The test is a pytest function with string literals for prompts and inline assertions.
+4. **Use `subprocess` for tmux operations** (consistent with existing `tmux_bridge.py`). Do not add `libtmux` as a dependency.
+5. **Do not restructure existing E2E fixtures.** Create a new `tests/agent_driven/` directory. Reuse `e2e_test_db` and `e2e_server` from the existing E2E conftest if possible; duplicate only what's necessary.
+6. **Structural assertions only.** Never assert on LLM response content. Assert: turn exists, turn has correct actor, state reached expected value, bubble has `data-turn-id`.
+7. **Must execute against a real Claude Code session.** "Should work" is not acceptable. Run the test. Capture the output.
+
+---
+
+## 8. Technical Context
+
+*Implementation-relevant details. They inform the build phase but are not requirements.*
+
+### Production Flow (Voice Chat → Claude Code → Voice Chat)
+
+1. **Frontend → Backend:** `POST /api/voice/command` with `{ text, agent_id }`
+2. **Backend → tmux:** `tmux_bridge.send_text(pane_id, text)` delivers to Claude Code PTY
+3. **Claude Code → Backend:** Hooks fire to `/hook/*` endpoints (session-start, user-prompt-submit, post-tool-use, notification, stop, session-end)
+4. **Backend → Frontend:** `broadcaster.broadcast("turn_created", ...)` → SSE → `voice-sse-handler.js`
+5. **Frontend rendering:** Optimistic bubble promotion, agent bubble creation, state pill updates
+
+### Key Race Condition: respond_inflight
+
+When voice chat sends a command, `voice_bridge.py` sets `respond_inflight` flag BEFORE the tmux send. When Claude Code's `user-prompt-submit` hook fires later, `hook_receiver.py` checks this flag to avoid creating a duplicate USER turn. Tests must account for this timing.
+
+### Existing Infrastructure
+
+| Component | Location | Reuse |
+|-----------|----------|-------|
+| Test database fixture | `tests/e2e/conftest.py` (`e2e_test_db`) | Reuse directly or duplicate pattern |
+| Flask test server | `tests/e2e/conftest.py` (`e2e_server`) | Reuse directly |
+| Voice chat assertions | `tests/e2e/helpers/voice_assertions.py` | Reuse `VoiceAssertions` class |
+| Dashboard assertions | `tests/e2e/helpers/dashboard_assertions.py` | Reuse if dashboard checks needed |
+| Hook payload reference | `tests/e2e/helpers/hook_simulator.py` | Reference only — real tests use actual hooks |
+| Tmux operations | `src/claude_headspace/services/tmux_bridge.py` | Reference patterns; test fixtures use subprocess directly |
+
+### Session Launch Considerations
+
+- `claude` CLI must be invoked with `--model haiku` for cost control
+- Hooks must point to the test server URL (random port from `e2e_server`), NOT the production server
+- The `--hooks-endpoint` flag or equivalent environment variable controls where hooks fire
+- Each test needs its own tmux session name (e.g., `headspace-test-<uuid>`)
+- Ready gate: poll DB for Agent record with matching session UUID, timeout 30s
+- Working directory should be a temp directory to avoid polluting real projects
+
+### Cost Control
+
+- Prompt: `"Create a file called /tmp/headspace_test_<uuid>.txt with the content hello"`
+- Haiku model
+- Single interaction — verify the shape, not the depth
 
 ### Server & Network
 
 - Target server: `https://smac.griffin-blenny.ts.net:5055` (TLS via Tailscale)
 - Playwright needs `--ignore-https-errors` for Tailscale TLS certs
-- Flask debug reloader is running on the real server — no need for a separate test instance
-
-### Cost Control
-
-- Simple, predictable prompts that force specific interaction shapes (e.g., "create a file called test.txt with the content hello" rather than open-ended requests)
-- Haiku model for all test interactions
-- Keep conversation turns to the minimum needed to verify the interaction shape
+- Flask debug reloader is running — no separate test instance needed

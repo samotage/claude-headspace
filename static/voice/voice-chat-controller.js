@@ -136,6 +136,11 @@ window.VoiceChatController = (function () {
       updateChatCommandInstruction(data.turns || []);
       updateEndedAgentUI();
       updateLoadMoreIndicator();
+      // Disable stale question buttons if agent is not awaiting input
+      var agentState = (VoiceState.chatAgentState || '').toLowerCase();
+      if (agentState !== 'awaiting_input') {
+        markAllQuestionsAnswered();
+      }
     }).catch(function () {
       var nameEl = document.getElementById('chat-agent-name');
       if (nameEl) nameEl.textContent = 'Agent ' + agentId;
