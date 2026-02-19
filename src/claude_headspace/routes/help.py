@@ -31,7 +31,7 @@ TOPICS = [
     {"slug": "headspace", "title": "Headspace", "order": 10},
     {"slug": "logging", "title": "Logging", "order": 11},
     {"slug": "configuration", "title": "Configuration", "order": 12},
-    {"slug": "agent-driven-testing", "title": "Agent-Driven Testing", "order": 13},
+    {"slug": "agent-driven-testing", "title": "Agentic Testing", "order": 13},
     {"slug": "troubleshooting", "title": "Troubleshooting", "order": 14},
 ]
 

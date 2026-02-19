@@ -1,4 +1,4 @@
-# Agent-Driven Testing
+# Agentic Testing
 
 Agent-driven tests exercise the full production loop end-to-end: a real Claude Code session runs in tmux, fires real hooks into a test Flask server, and Playwright verifies that the dashboard reflects every state change in the browser DOM. Nothing is mocked.
 
