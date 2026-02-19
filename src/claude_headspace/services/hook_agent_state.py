@@ -85,6 +85,24 @@ class AgentHookState:
                 return False
             return (time.time() - ts) < _RESPOND_PENDING_TTL
 
+    def is_respond_pending(self, agent_id: int) -> bool:
+        """Non-consuming check: is a respond pending within TTL?
+
+        Unlike consume_respond_pending, this does NOT remove the flag.
+        This allows the flag to suppress multiple user_prompt_submit hooks
+        within the TTL window — important because slash commands trigger
+        a second hook when the Skill tool expands the command content.
+        """
+        with self._lock:
+            ts = self._respond_pending.get(agent_id)
+            if ts is None:
+                return False
+            if (time.time() - ts) >= _RESPOND_PENDING_TTL:
+                # Expired — clean up
+                del self._respond_pending[agent_id]
+                return False
+            return True
+
     # ── Respond Inflight ─────────────────────────────────────────────
 
     def set_respond_inflight(self, agent_id: int) -> None:

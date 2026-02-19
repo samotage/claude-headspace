@@ -24,7 +24,6 @@ from .hook_extractors import (
     mark_question_answered as _mark_question_answered,
     synthesize_permission_options as _synthesize_permission_options,
 )
-from .hook_agent_state import _RESPOND_PENDING_TTL
 from .intent_detector import detect_agent_intent
 from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
 from .team_content_detector import is_team_internal_content
@@ -751,9 +750,12 @@ def process_user_prompt_submit(
                 state_changed=False, new_state=None,
             )
 
-        import time as _time
-        respond_ts = _respond_pending_for_agent.pop(agent.id, None)
-        if respond_ts is not None and (_time.time() - respond_ts) < _RESPOND_PENDING_TTL:
+        # Use non-consuming check so the flag persists for the full TTL.
+        # Slash commands (skills) trigger a second user_prompt_submit when
+        # the Skill tool expands the command content — consuming the flag on
+        # the first hook would leave the expansion hook unguarded, creating
+        # a "COMMAND" bubble with the raw skill definition text.
+        if get_agent_hook_state().is_respond_pending(agent.id):
             # Same as respond_inflight: skip turn/state work but initialize
             # transcript position so progress capture works for this cycle.
             _progress_texts_for_agent.pop(agent.id, None)

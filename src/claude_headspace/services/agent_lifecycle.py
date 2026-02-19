@@ -278,13 +278,16 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
             message="Agent has no tmux pane — cannot send graceful shutdown",
         )
 
-    # Send /exit via tmux send-keys — skip Enter verification because
-    # the pane may vanish immediately after the agent shuts down
+    # Send /exit via tmux send-keys — verify Enter is accepted because
+    # Claude Code's autocomplete can intercept the first Enter on slash
+    # commands, leaving "/exit" sitting in the input without submitting.
+    # If the pane vanishes (agent exits immediately), verification sees
+    # content change and returns success.
     result = tmux_bridge.send_text(
         pane_id=agent.tmux_pane_id,
         text="/exit",
         timeout=5,
-        verify_enter=False,
+        verify_enter=True,
     )
 
     if not result.success:

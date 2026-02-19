@@ -384,14 +384,16 @@ def voice_command():
                 text_enter_delay_ms=text_enter_delay_ms,
             )
     else:
-        # Skip verification when agent was processing — pane content is
-        # volatile from agent output, making comparison unreliable (H1).
+        # Always verify Enter — autocomplete can swallow it on long text
+        # or slash commands, leaving the command sitting in the input box.
+        # When the agent is processing, pane content is volatile from agent
+        # output, but that actually helps: content change = Enter landed.
         result = tmux_bridge.send_text(
             pane_id=agent.tmux_pane_id,
             text=send_text,
             timeout=subprocess_timeout,
             text_enter_delay_ms=text_enter_delay_ms,
-            verify_enter=not is_processing,
+            verify_enter=True,
         )
 
     if not result.success:
