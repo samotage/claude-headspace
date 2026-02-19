@@ -119,21 +119,19 @@ def test_time_with_format_selection(claude_session, page, e2e_server, e2e_app):
     )
     va.capture("time_04_selection_made")
 
-    # --- 5. Wait for SECOND agent bubble (the actual time response) ---
-    # The first bubble was the AskUserQuestion. After the selection,
-    # Claude continues processing and responds with the time.
-    # A stop hook fires, a new AGENT turn is created, and a second
-    # bubble appears.
-    expect(agent_bubbles.nth(1)).to_be_visible(timeout=RESPONSE_TIMEOUT)
+    # --- 5. Wait for an agent bubble containing a 12-hour time ---
+    # After the selection, Claude processes and responds with the time.
+    # PROGRESS turns may insert intermediate bubbles (e.g. "WORKING..."),
+    # so we wait for ANY agent bubble matching the time pattern rather
+    # than assuming a fixed bubble index.
+    time_pattern = re.compile(r'\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?')
+    time_bubble = agent_bubbles.filter(has_text=time_pattern)
+    expect(time_bubble.first).to_be_visible(timeout=RESPONSE_TIMEOUT)
     va.capture("time_05_response_visible")
 
-    # --- 6. Verify 12-hour time format in the SECOND bubble ---
-    response_text = agent_bubbles.nth(1).inner_text()
-    # Match patterns like "3:45 PM", "12:00 AM", "3:45PM", "3:45 p.m."
-    has_12hr = bool(re.search(
-        r'\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?',
-        response_text,
-    ))
+    # --- 6. Verify 12-hour time format ---
+    response_text = time_bubble.first.inner_text()
+    has_12hr = bool(time_pattern.search(response_text))
     assert has_12hr, (
         f"Expected 12-hour time format (e.g. 3:45 PM) in response: {response_text!r}"
     )
