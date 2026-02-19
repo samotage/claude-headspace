@@ -9,6 +9,7 @@ from flask import Flask
 from src.claude_headspace.models.command import CommandState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
+from src.claude_headspace.services.command_lifecycle import AnswerCompletionResult
 from src.claude_headspace.services.tmux_bridge import SendResult
 
 
@@ -432,11 +433,13 @@ class TestVoiceCommand:
         response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 3})
         assert response.status_code == 503
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_successful_command(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+    def test_successful_command(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         response = client.post("/api/voice/command", json={"text": "option 1", "agent_id": 1})
         assert response.status_code == 200
@@ -445,31 +448,38 @@ class TestVoiceCommand:
         assert data["new_state"] == "processing"
         assert "latency_ms" in data
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_creates_answer_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+    def test_command_creates_answer_turn(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
 
-        mock_db.session.add.assert_called_once()
-        turn = mock_db.session.add.call_args[0][0]
-        assert turn.actor == TurnActor.USER
-        assert turn.intent == TurnIntent.ANSWER
-        assert turn.text == "yes"
+        # complete_answer is called with correct args (turn creation tested in test_command_lifecycle.py)
+        mock_ca.assert_called_once()
+        args = mock_ca.call_args
+        assert args[0][2] == "yes"  # text arg
+        assert args[1]["source"] == "voice_command"
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_links_answered_by_turn_id(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
-        """Answer turn should link to the most recent QUESTION turn (task 3.10)."""
+    def test_command_links_answered_by_turn_id(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+        """Answer turn should link to the most recent QUESTION turn (task 3.10).
+        (Actual linking tested in test_command_lifecycle.py::TestCompleteAnswer)"""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
-        client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
-
-        turn = mock_db.session.add.call_args[0][0]
-        assert turn.answered_by_turn_id == 100  # question turn id
+        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        assert response.status_code == 200
+        # complete_answer receives the command with question turns
+        mock_ca.assert_called_once()
+        cmd_arg = mock_ca.call_args[0][0]  # first positional arg = command
+        assert cmd_arg == mock_agent.get_current_command()
 
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
     def test_tmux_send_failure(self, mock_bridge, client, mock_db, mock_agent):
@@ -508,21 +518,24 @@ class TestVoiceCommand:
             # respond-pending should NOT be set on commit failure
             mock_get_state().set_respond_pending.assert_not_called()
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_picker_detection_sets_has_picker(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+    def test_picker_detection_sets_has_picker(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
         """When agent has structured options (picker), response includes has_picker flag."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
         assert response.status_code == 200
         data = response.get_json()
         assert data["has_picker"] is True
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_no_picker_when_free_text_question(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+    def test_no_picker_when_free_text_question(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project):
         """When agent has a free-text question (no options), has_picker is not in response."""
         agent = MagicMock()
         agent.id = 11
@@ -552,15 +565,17 @@ class TestVoiceCommand:
         agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         response = client.post("/api/voice/command", json={"text": "my-api", "agent_id": 11})
         assert response.status_code == 200
         data = response.get_json()
         assert "has_picker" not in data
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_picker_detection_via_tool_input_fallback(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+    def test_picker_detection_via_tool_input_fallback(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project):
         """Picker detection works via tool_input fallback when question_options is None."""
         agent = MagicMock()
         agent.id = 12
@@ -598,6 +613,7 @@ class TestVoiceCommand:
         agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         response = client.post("/api/voice/command", json={"text": "postgres", "agent_id": 12})
         assert response.status_code == 200
@@ -770,12 +786,14 @@ class TestAutoTarget:
         """Enable auto_target in config for these tests."""
         app.config["APP_CONFIG"]["voice_bridge"] = {"auto_target": True}
 
+    @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_auto_target_single_awaiting(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+    def test_auto_target_single_awaiting(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
         """Auto-target the single awaiting agent."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
 
         response = client.post("/api/voice/command", json={"text": "yes"})
         assert response.status_code == 200

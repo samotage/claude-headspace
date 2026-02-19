@@ -14,7 +14,13 @@ from claude_headspace.models.command import Command, CommandState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.event_writer import EventWriter, WriteResult
 from claude_headspace.services.state_machine import TransitionResult
-from claude_headspace.services.command_lifecycle import CommandLifecycleManager, TurnProcessingResult, SummarisationRequest
+from claude_headspace.services.command_lifecycle import (
+    AnswerCompletionResult,
+    CommandLifecycleManager,
+    TurnProcessingResult,
+    SummarisationRequest,
+    complete_answer,
+)
 
 
 class TestCommandLifecycleManagerUnit:
@@ -1136,3 +1142,202 @@ class TestStateTransitionEventPayload:
         assert payload["to_state"] == "awaiting_input"
         assert payload["trigger"] == "agent:question"
         assert payload["confidence"] == 0.95
+
+
+class TestCompleteAnswer:
+    """Tests for the complete_answer() standalone function."""
+
+    @pytest.fixture
+    def mock_db(self):
+        with patch("claude_headspace.services.command_lifecycle.db") as mock:
+            mock.session = MagicMock()
+            yield mock
+
+    @pytest.fixture
+    def mock_hook_state(self):
+        with patch("claude_headspace.services.command_lifecycle.get_agent_hook_state") as mock:
+            yield mock.return_value
+
+    @pytest.fixture
+    def mock_broadcast_card(self):
+        with patch("claude_headspace.services.command_lifecycle.broadcast_card_refresh") as mock:
+            yield mock
+
+    @pytest.fixture
+    def mock_broadcaster(self):
+        with patch("claude_headspace.services.command_lifecycle.get_broadcaster") as mock:
+            yield mock.return_value
+
+    @pytest.fixture
+    def mock_mark_answered(self):
+        with patch("claude_headspace.services.command_lifecycle.mark_question_answered") as mock:
+            yield mock
+
+    @pytest.fixture
+    def mock_agent(self):
+        agent = MagicMock()
+        agent.id = 1
+        agent.project_id = 10
+        return agent
+
+    @pytest.fixture
+    def mock_command(self):
+        command = MagicMock()
+        command.id = 100
+        command.state = CommandState.AWAITING_INPUT
+        command.instruction = "Fix the bug"
+        # Mock question turn for answer linking
+        q_turn = MagicMock()
+        q_turn.id = 500
+        q_turn.actor = TurnActor.AGENT
+        q_turn.intent = TurnIntent.QUESTION
+        command.turns = [q_turn]
+        return command
+
+    def test_happy_path(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """complete_answer happy path: creates turn, transitions state, commits, broadcasts."""
+        result = complete_answer(mock_command, mock_agent, "yes", source="test")
+
+        assert isinstance(result, AnswerCompletionResult)
+        assert result.new_state == CommandState.PROCESSING
+
+        # Turn was added to session
+        mock_db.session.add.assert_called_once()
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.actor == TurnActor.USER
+        assert turn.intent == TurnIntent.ANSWER
+        assert turn.text == "yes"
+        assert turn.timestamp_source == "user"
+        assert turn.answered_by_turn_id == 500
+        assert turn.file_metadata is None
+
+        # State transition applied
+        assert mock_command.state == CommandState.PROCESSING
+
+        # Question marked answered
+        mock_mark_answered.assert_called_once_with(mock_command)
+
+        # Committed
+        mock_db.session.commit.assert_called_once()
+
+        # Hook state managed
+        mock_hook_state.clear_awaiting_tool.assert_called_once_with(1)
+        mock_hook_state.set_respond_pending.assert_called_once_with(1)
+
+        # Broadcasts sent
+        mock_broadcast_card.assert_called_once_with(mock_agent, "test")
+        assert mock_broadcaster.broadcast.call_count == 2
+        broadcast_calls = [c[0][0] for c in mock_broadcaster.broadcast.call_args_list]
+        assert "state_changed" in broadcast_calls
+        assert "turn_created" in broadcast_calls
+
+    def test_file_metadata_passthrough(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """complete_answer passes file_metadata to the Turn."""
+        meta = {"original_filename": "photo.png", "stored_filename": "abc123.png"}
+        result = complete_answer(
+            mock_command, mock_agent, "[File: photo.png]",
+            file_metadata=meta, source="file_upload",
+        )
+
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.file_metadata == meta
+        assert turn.text == "[File: photo.png]"
+
+    def test_force_processing_on_invalid_transition(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent,
+    ):
+        """complete_answer forces PROCESSING when state machine rejects transition."""
+        command = MagicMock()
+        command.id = 100
+        command.state = CommandState.PROCESSING  # Not AWAITING_INPUT
+        command.instruction = "Do stuff"
+        command.turns = []
+
+        result = complete_answer(command, mock_agent, "answer", source="test")
+
+        # Should force PROCESSING even though transition was invalid
+        assert result.new_state == CommandState.PROCESSING
+        assert command.state == CommandState.PROCESSING
+
+    def test_no_question_turn_sets_none_answered_by(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent,
+    ):
+        """complete_answer sets answered_by_turn_id=None when no QUESTION turn exists."""
+        command = MagicMock()
+        command.id = 100
+        command.state = CommandState.AWAITING_INPUT
+        command.instruction = "Do stuff"
+        command.turns = []  # No turns at all
+
+        result = complete_answer(command, mock_agent, "yes", source="test")
+
+        turn = mock_db.session.add.call_args[0][0]
+        assert turn.answered_by_turn_id is None
+
+    def test_broadcast_failure_does_not_raise(
+        self, mock_db, mock_hook_state, mock_broadcast_card,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """complete_answer should not raise if broadcasts fail."""
+        with patch("claude_headspace.services.command_lifecycle.get_broadcaster") as mock_get:
+            mock_get.return_value.broadcast.side_effect = Exception("SSE down")
+
+            # Should NOT raise
+            result = complete_answer(mock_command, mock_agent, "yes", source="test")
+            assert result.new_state == CommandState.PROCESSING
+
+    def test_respond_pending_set_after_commit(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """set_respond_pending must be called AFTER commit (not before)."""
+        call_order = []
+        mock_db.session.commit.side_effect = lambda: call_order.append("commit")
+        mock_hook_state.set_respond_pending.side_effect = lambda _: call_order.append("set_respond_pending")
+
+        complete_answer(mock_command, mock_agent, "yes", source="test")
+
+        assert call_order.index("commit") < call_order.index("set_respond_pending")
+
+    def test_state_changed_broadcast_payload(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """state_changed broadcast should contain source as event_type."""
+        complete_answer(mock_command, mock_agent, "yes", source="voice_command")
+
+        state_call = [
+            c for c in mock_broadcaster.broadcast.call_args_list
+            if c[0][0] == "state_changed"
+        ][0]
+        payload = state_call[0][1]
+        assert payload["event_type"] == "voice_command"
+        assert payload["agent_id"] == 1
+        assert payload["project_id"] == 10
+        assert payload["new_state"] == "processing"
+
+    def test_turn_created_broadcast_payload(
+        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
+        mock_mark_answered, mock_agent, mock_command,
+    ):
+        """turn_created broadcast should contain turn details."""
+        complete_answer(mock_command, mock_agent, "my answer", source="respond")
+
+        turn_call = [
+            c for c in mock_broadcaster.broadcast.call_args_list
+            if c[0][0] == "turn_created"
+        ][0]
+        payload = turn_call[0][1]
+        assert payload["text"] == "my answer"
+        assert payload["actor"] == "user"
+        assert payload["intent"] == "answer"
+        assert payload["command_id"] == 100
+        assert payload["command_instruction"] == "Fix the bug"

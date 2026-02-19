@@ -2,16 +2,14 @@
 
 import logging
 import time
-from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
 
 from ..database import db
 from ..models.agent import Agent
 from ..models.command import CommandState
-from ..models.turn import Turn, TurnActor, TurnIntent
+from ..models.turn import TurnActor, TurnIntent
 from ..services import tmux_bridge
-from ..services.card_state import broadcast_card_refresh
 from ..services.tmux_bridge import TmuxBridgeErrorType
 
 logger = logging.getLogger(__name__)
@@ -294,52 +292,8 @@ def respond_to_agent(agent_id: int):
 
     # Success: create Turn record and transition state
     try:
-        # Find the most recent QUESTION turn for answer linking
-        answered_turn_id = None
-        if current_command.turns:
-            for t in reversed(current_command.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    answered_turn_id = t.id
-                    break
-
-        from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_command)
-
-        turn = Turn(
-            command_id=current_command.id,
-            actor=TurnActor.USER,
-            intent=TurnIntent.ANSWER,
-            text=record_text,
-            answered_by_turn_id=answered_turn_id,
-        )
-        db.session.add(turn)
-
-        from ..services.state_machine import validate_transition
-        from ..models.turn import TurnIntent as _TurnIntent
-        _vr = validate_transition(current_command.state, TurnActor.USER, _TurnIntent.ANSWER)
-        if _vr.valid:
-            current_command.state = _vr.to_state
-        else:
-            # Fallback: force PROCESSING (respond always means user answered)
-            logger.warning(f"respond: invalid transition {current_command.state.value} -> PROCESSING, forcing")
-            current_command.state = CommandState.PROCESSING
-        agent.last_seen_at = datetime.now(timezone.utc)
-
-        # Clear the awaiting tool tracker so subsequent hooks (stop, post_tool_use)
-        # don't incorrectly preserve AWAITING_INPUT state
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().clear_awaiting_tool(agent_id)
-
-        db.session.commit()
-
-        # Flag this agent so the upcoming user_prompt_submit hook is skipped
-        # (the respond handler owns the turn creation and state transition).
-        # Set AFTER commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().set_respond_pending(agent.id)
-
-        broadcast_card_refresh(agent, "respond")
-        _broadcast_state_change(agent, record_text, turn_id=turn.id)
+        from ..services.command_lifecycle import complete_answer
+        result = complete_answer(current_command, agent, record_text, source="respond")
 
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info(
@@ -351,12 +305,14 @@ def respond_to_agent(agent_id: int):
             "status": "ok",
             "agent_id": agent_id,
             "mode": mode,
-            "new_state": CommandState.PROCESSING.value,
+            "new_state": result.new_state.value,
             "latency_ms": latency_ms,
         }), 200
 
     except Exception as e:
         db.session.rollback()
+        from ..services.hook_agent_state import get_agent_hook_state
+        get_agent_hook_state().clear_respond_inflight(agent.id)
         logger.exception(f"Error recording response for agent {agent_id}: {e}")
         return jsonify({
             "status": "error",
@@ -396,32 +352,3 @@ def check_availability(agent_id: int):
         "commander_available": available,
     }), 200
 
-
-def _broadcast_state_change(agent: Agent, response_text: str, turn_id: int | None = None) -> None:
-    """Broadcast state change and turn creation after response."""
-    try:
-        from ..services.broadcaster import get_broadcaster
-
-        broadcaster = get_broadcaster()
-        broadcaster.broadcast("state_changed", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "event_type": "respond",
-            "new_state": "PROCESSING",
-            "message": "User responded via dashboard",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-        _command = agent.get_current_command()
-        broadcaster.broadcast("turn_created", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "text": response_text,
-            "actor": "user",
-            "intent": "answer",
-            "command_id": _command.id if _command else None,
-            "command_instruction": _command.instruction if _command else None,
-            "turn_id": turn_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception as e:
-        logger.warning(f"Response broadcast failed: {e}")

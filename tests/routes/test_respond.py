@@ -198,15 +198,21 @@ class TestRespondToAgent:
         assert data["error_type"] == "wrong_state"
         assert "no_command" in data["message"]
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_success(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Test successful response send."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        # Wire complete_answer's db to route's db so commit works
+        mock_cl_db.session = mock_db.session
 
         response = client.post(
             "/api/respond/1",
@@ -217,7 +223,7 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["status"] == "ok"
         assert data["agent_id"] == 1
-        assert data["new_state"].upper() == "PROCESSING"
+        assert data["new_state"] == "processing"
         assert data["latency_ms"] >= 0
 
         mock_bridge.send_text.assert_called_once_with(
@@ -227,15 +233,20 @@ class TestRespondToAgent:
             text_enter_delay_ms=100,
         )
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_creates_turn(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
-        """Test that successful send creates a Turn record."""
+        """Test that successful send creates a Turn record via complete_answer."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_cl_db.session = mock_db.session
 
         client.post("/api/respond/1", json={"text": "yes"})
 
@@ -245,39 +256,48 @@ class TestRespondToAgent:
         assert turn.actor.value == "user"
         assert turn.intent.value == "answer"
         assert turn.text == "yes"
+        assert turn.timestamp_source == "user"
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_transitions_state(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent, mock_cmd_awaiting
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent, mock_cmd_awaiting,
     ):
         """Test that successful send transitions command to PROCESSING."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_cl_db.session = mock_db.session
 
         client.post("/api/respond/1", json={"text": "1"})
 
         assert mock_cmd_awaiting.state == CommandState.PROCESSING
         mock_db.session.commit.assert_called_once()
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_broadcasts(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
-        """Test that successful send triggers broadcasts."""
+        """Test that successful send triggers broadcasts via complete_answer."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_cl_db.session = mock_db.session
 
         client.post("/api/respond/1", json={"text": "hello"})
 
         mock_bcast_card.assert_called_once_with(mock_agent, "respond")
-        mock_bcast_state.assert_called_once()
-        call_args = mock_bcast_state.call_args
-        assert call_args[0][0] == mock_agent
-        assert call_args[0][1] == "hello"
+        bc = mock_get_bc.return_value
+        assert bc.broadcast.call_count == 2
 
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_pane_not_found(self, mock_bridge, client, mock_db, mock_agent):
@@ -348,15 +368,16 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["error_type"] == "send_failed"
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_db_error_rollback(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, client, mock_db, mock_agent
     ):
         """Test 500 when database error occurs after successful send."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_cl_db.session = mock_db.session
         mock_db.session.commit.side_effect = Exception("DB error")
 
         response = client.post("/api/respond/1", json={"text": "hello"})
@@ -380,34 +401,42 @@ class TestRespondToAgent:
         data = response.get_json()
         assert data["error_type"] == "missing_text"
 
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_commit_failure_does_not_set_respond_pending(
-        self, mock_bridge, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, client, mock_db, mock_agent
     ):
         """Commit failure should NOT set respond-pending flag (flag is post-commit)."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_cl_db.session = mock_db.session
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
+        with patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state") as mock_get_state:
             response = client.post("/api/respond/1", json={"text": "hello"})
 
             assert response.status_code == 500
             # respond-pending should NOT be set on commit failure
-            mock_get_state().set_respond_pending.assert_not_called()
+            mock_get_state.return_value.set_respond_pending.assert_not_called()
 
 
 class TestSelectMode:
     """Tests for POST /api/respond/<agent_id> with mode=select."""
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_option_0_sends_enter_only(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Select index 0 sends just Enter (already highlighted)."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
         response = client.post(
@@ -425,14 +454,19 @@ class TestSelectMode:
             timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_option_2_sends_down_down_enter(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Select index 2 sends Down, Down, Enter."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
 
         response = client.post(
@@ -446,14 +480,19 @@ class TestSelectMode:
             timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_creates_turn_with_marker_text(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Select mode records a descriptive marker as turn text."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
         client.post("/api/respond/1", json={"mode": "select", "option_index": 1})
@@ -462,14 +501,19 @@ class TestSelectMode:
         turn = mock_db.session.add.call_args[0][0]
         assert turn.text == "[selected option 1]"
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_with_option_label_uses_label(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Select mode uses option_label as turn text when provided."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
         client.post("/api/respond/1", json={
@@ -529,14 +573,19 @@ class TestOtherMode:
     """Tests for POST /api/respond/<agent_id> with mode=other."""
 
     @patch("src.claude_headspace.routes.respond.time")
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_other_navigates_then_types(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, mock_time, client, mock_db, mock_agent, mock_cmd_awaiting
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        mock_time, client, mock_db, mock_agent, mock_cmd_awaiting
     ):
         """Other mode navigates to Other option then types text."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_time.time.side_effect = [0, 0.05, 0.1]  # start_time, respond_pending, final latency
         mock_time.sleep = MagicMock()  # don't actually sleep
 
@@ -596,14 +645,19 @@ class TestOtherMode:
 class TestMultiSelectMode:
     """Tests for POST /api/respond/<agent_id> with mode=multi_select."""
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_two_single_select_answers(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Two single-select answers produce correct key sequence."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
 
         response = client.post(
@@ -628,14 +682,19 @@ class TestMultiSelectMode:
             timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_mixed_single_and_multi_select(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Mixed single + multi-select answers produce correct key sequence."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=80)
 
         response = client.post(
@@ -656,14 +715,19 @@ class TestMultiSelectMode:
             timeout=5, sequential_delay_ms=150, verify_enter=True,
         )
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_option_index_0_no_down_keys(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Option index 0 produces no Down keys."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
         response = client.post(
@@ -720,14 +784,19 @@ class TestMultiSelectMode:
         data = response.get_json()
         assert data["error_type"] == "invalid_answers"
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_creates_turn_with_descriptive_text(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Multi-select creates a turn with descriptive summary text."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
         client.post(
@@ -842,14 +911,19 @@ class TestInvalidMode:
 class TestLegacyTextMode:
     """Verify legacy mode (no explicit mode field) still works."""
 
-    @patch("src.claude_headspace.routes.respond.broadcast_card_refresh")
-    @patch("src.claude_headspace.routes.respond._broadcast_state_change")
+    @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
+    @patch("src.claude_headspace.services.command_lifecycle.get_broadcaster")
+    @patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state")
+    @patch("src.claude_headspace.services.command_lifecycle.mark_question_answered")
+    @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_legacy_text_without_mode(
-        self, mock_bridge, mock_bcast_state, mock_bcast_card, client, mock_db, mock_agent
+        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
+        client, mock_db, mock_agent,
     ):
         """Request without mode field defaults to text mode."""
         mock_db.session.get.return_value = mock_agent
+        mock_cl_db.session = mock_db.session
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
         response = client.post(

@@ -502,69 +502,8 @@ def voice_command():
 
     # AWAITING_INPUT path: create ANSWER turn and transition state
     try:
-        answered_turn_id = None
-        if current_command.turns:
-            for t in reversed(current_command.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    answered_turn_id = t.id
-                    break
-
-        from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_command)
-
-        turn = Turn(
-            command_id=current_command.id,
-            actor=TurnActor.USER,
-            intent=TurnIntent.ANSWER,
-            text=text,
-            answered_by_turn_id=answered_turn_id,
-            timestamp_source="user",
-        )
-        db.session.add(turn)
-
-        from ..services.state_machine import validate_transition
-        vr = validate_transition(current_command.state, TurnActor.USER, TurnIntent.ANSWER)
-        if vr.valid:
-            current_command.state = vr.to_state
-        else:
-            # Intentional fallback: respond always means user answered, so force
-            # PROCESSING even if the state machine rejects the transition (e.g.
-            # if the command was concurrently modified by another hook).
-            logger.warning(
-                f"voice_bridge: invalid transition {current_command.state.value} -> PROCESSING, "
-                f"forcing (agent_id={agent.id}, command_id={current_command.id})"
-            )
-            current_command.state = CommandState.PROCESSING
-        agent.last_seen_at = datetime.now(timezone.utc)
-
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().clear_awaiting_tool(agent.id)
-
-        db.session.commit()
-
-        # Flag respond-pending AFTER commit to prevent duplicate turn from hook.
-        # Set after commit so the flag is never orphaned if the commit fails.
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().set_respond_pending(agent.id)
-
-        broadcast_card_refresh(agent, "voice_command")
-
-        # Broadcast turn_created for voice command so SSE clients see the user turn
-        try:
-            from ..services.broadcaster import get_broadcaster
-            get_broadcaster().broadcast("turn_created", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "text": text,
-                "actor": "user",
-                "intent": "answer",
-                "command_id": current_command.id,
-                "command_instruction": current_command.instruction,
-                "turn_id": turn.id,
-                "timestamp": turn.timestamp.isoformat(),
-            })
-        except Exception as e:
-            logger.warning(f"Voice command turn_created broadcast failed: {e}")
+        from ..services.command_lifecycle import complete_answer
+        result = complete_answer(current_command, agent, text, source="voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
@@ -575,7 +514,7 @@ def voice_command():
         response_data = {
             "voice": voice,
             "agent_id": agent.id,
-            "new_state": current_command.state.value,
+            "new_state": result.new_state.value,
             "latency_ms": latency_ms,
         }
         if has_picker:
@@ -719,69 +658,19 @@ def upload_file(agent_id: int):
 
     # AWAITING_INPUT path
     try:
-        answered_turn_id = None
-        if current_command.turns:
-            for t in reversed(current_command.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    answered_turn_id = t.id
-                    break
-
-        from ..services.hook_extractors import mark_question_answered
-        mark_question_answered(current_command)
-
+        from ..services.command_lifecycle import complete_answer
         display_text = text if text else f"[File: {file_metadata['original_filename']}]"
-        turn = Turn(
-            command_id=current_command.id,
-            actor=TurnActor.USER,
-            intent=TurnIntent.ANSWER,
-            text=display_text,
-            file_metadata=db_metadata,
-            answered_by_turn_id=answered_turn_id,
-            timestamp_source="user",
+        result = complete_answer(
+            current_command, agent, display_text,
+            file_metadata=db_metadata, source="file_upload",
         )
-        db.session.add(turn)
-
-        from ..services.state_machine import validate_transition
-        vr = validate_transition(current_command.state, TurnActor.USER, TurnIntent.ANSWER)
-        if vr.valid:
-            current_command.state = vr.to_state
-        else:
-            current_command.state = CommandState.PROCESSING
-        agent.last_seen_at = datetime.now(timezone.utc)
-
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().clear_awaiting_tool(agent.id)
-
-        db.session.commit()
-
-        from ..services.hook_agent_state import get_agent_hook_state
-        get_agent_hook_state().set_respond_pending(agent.id)
-
-        broadcast_card_refresh(agent, "file_upload")
-
-        # Broadcast turn_created for file upload so SSE clients see the user turn
-        try:
-            from ..services.broadcaster import get_broadcaster
-            get_broadcaster().broadcast("turn_created", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "text": display_text,
-                "actor": "user",
-                "intent": "answer",
-                "command_id": current_command.id,
-                "command_instruction": current_command.instruction,
-                "turn_id": turn.id,
-                "timestamp": turn.timestamp.isoformat(),
-            })
-        except Exception as e:
-            logger.warning(f"File upload turn_created broadcast failed: {e}")
 
         latency_ms = int((time.time() - start_time) * 1000)
         return jsonify({
             "file_metadata": file_metadata,
             "agent_id": agent.id,
-            "turn_id": turn.id,
-            "new_state": current_command.state.value,
+            "turn_id": result.turn.id,
+            "new_state": result.new_state.value,
             "latency_ms": latency_ms,
         }), 200
 

@@ -7,16 +7,29 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from ..database import db
 from ..models.agent import Agent
 from ..models.event import Event, EventType
 from ..models.command import Command, CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
+from .broadcaster import get_broadcaster
+from .card_state import broadcast_card_refresh
 from .event_writer import EventWriter, WriteResult
+from .hook_agent_state import get_agent_hook_state
+from .hook_extractors import mark_question_answered
 from .intent_detector import IntentResult, detect_intent
 from .state_machine import InvalidTransitionError, TransitionResult, validate_transition
 from .team_content_detector import is_team_internal_content
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AnswerCompletionResult:
+    """Result of completing an answer to an AWAITING_INPUT question."""
+
+    turn: Turn
+    new_state: CommandState
 
 
 @dataclass
@@ -60,6 +73,111 @@ def get_instruction_for_notification(command, max_length: int = 120) -> str | No
     except Exception as e:
         logger.warning(f"Failed to extract instruction for notification: {e}")
     return None
+
+
+def complete_answer(
+    command: Command,
+    agent: Agent,
+    text: str,
+    *,
+    file_metadata: dict | None = None,
+    source: str = "unknown",
+) -> AnswerCompletionResult:
+    """Record an AWAITING_INPUT answer: mark question answered, create turn,
+    transition state, commit, and broadcast.
+
+    This is the shared path for voice_command, upload_file, and respond routes.
+
+    Does NOT handle error/rollback or respond-inflight cleanup — the caller's
+    except block handles that since each route has different error response formats.
+
+    Args:
+        command: The current command (must be in AWAITING_INPUT state).
+        agent: The agent being answered.
+        text: The user's answer text (or display text for file uploads).
+        file_metadata: Optional file metadata dict (for file uploads).
+        source: Caller label for broadcast/logging.
+
+    Returns:
+        AnswerCompletionResult with the new Turn and the resulting state.
+    """
+    # 1. Find the most recent QUESTION turn for answer linking
+    answered_turn_id = None
+    if command.turns:
+        for t in reversed(command.turns):
+            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                answered_turn_id = t.id
+                break
+
+    # 2. Mark question as answered (updates tool_input status)
+    mark_question_answered(command)
+
+    # 3. Create USER/ANSWER turn
+    turn = Turn(
+        command_id=command.id,
+        actor=TurnActor.USER,
+        intent=TurnIntent.ANSWER,
+        text=text,
+        answered_by_turn_id=answered_turn_id,
+        timestamp_source="user",
+        file_metadata=file_metadata,
+    )
+    db.session.add(turn)
+
+    # 4. Validate state transition; force PROCESSING on failure
+    vr = validate_transition(command.state, TurnActor.USER, TurnIntent.ANSWER)
+    if vr.valid:
+        command.state = vr.to_state
+    else:
+        logger.warning(
+            f"complete_answer: invalid transition {command.state.value} -> PROCESSING, "
+            f"forcing (agent_id={agent.id}, command_id={command.id}, source={source})"
+        )
+        command.state = CommandState.PROCESSING
+
+    new_state = command.state
+
+    # 5. Update last_seen_at
+    agent.last_seen_at = datetime.now(timezone.utc)
+
+    # 6. Clear awaiting tool
+    get_agent_hook_state().clear_awaiting_tool(agent.id)
+
+    # 7. Commit
+    db.session.commit()
+
+    # 8. Set respond-pending AFTER commit
+    get_agent_hook_state().set_respond_pending(agent.id)
+
+    # 9. Broadcast card refresh
+    broadcast_card_refresh(agent, source)
+
+    # 10. Broadcast state_changed + turn_created
+    try:
+        broadcaster = get_broadcaster()
+        broadcaster.broadcast("state_changed", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "event_type": source,
+            "new_state": new_state.value,
+            "message": f"User responded via {source}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        broadcaster.broadcast("turn_created", {
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "text": text,
+            "actor": "user",
+            "intent": "answer",
+            "command_id": command.id,
+            "command_instruction": command.instruction,
+            "turn_id": turn.id,
+            "timestamp": turn.timestamp.isoformat() if turn.timestamp else datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"complete_answer broadcast failed ({source}): {e}")
+
+    return AnswerCompletionResult(turn=turn, new_state=new_state)
 
 
 class CommandLifecycleManager:
