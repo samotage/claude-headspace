@@ -28,15 +28,19 @@
         dialogEl = document.createElement('div');
         dialogEl.id = 'confirm-dialog';
         dialogEl.className = 'fixed inset-0 z-[220] hidden';
+        dialogEl.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:220;display:none';
         dialogEl.setAttribute('role', 'alertdialog');
         dialogEl.setAttribute('aria-modal', 'true');
         dialogEl.setAttribute('aria-labelledby', 'confirm-dialog-title');
         dialogEl.setAttribute('aria-describedby', 'confirm-dialog-message');
 
         dialogEl.innerHTML =
-            '<div class="absolute inset-0 bg-black/60 backdrop-blur-sm" data-confirm-backdrop></div>' +
-            '<div class="absolute inset-0 flex items-center justify-center p-4">' +
-                '<div class="bg-surface border border-border rounded-lg p-6 max-w-md w-full shadow-lg">' +
+            '<div class="absolute inset-0 bg-black/60 backdrop-blur-sm" data-confirm-backdrop ' +
+                'style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)"></div>' +
+            '<div class="absolute inset-0 flex items-start justify-center pt-16 px-4" ' +
+                'style="position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:flex-start;justify-content:center;padding-top:64px;padding-left:16px;padding-right:16px">' +
+                '<div class="bg-surface border border-border rounded-lg p-6 max-w-md w-full shadow-lg" ' +
+                    'style="max-width:28rem;width:100%">' +
                     '<h3 id="confirm-dialog-title" class="text-lg font-semibold text-primary mb-2"></h3>' +
                     '<p id="confirm-dialog-message" class="text-secondary text-sm mb-6"></p>' +
                     '<div class="flex items-center justify-end gap-3">' +
@@ -80,6 +84,7 @@
         if (!open) return;
         open = false;
         dialogEl.classList.add('hidden');
+        dialogEl.style.display = 'none';
 
         if (resolver) {
             var fn = resolver;
@@ -143,6 +148,7 @@
 
             // Show
             dialogEl.classList.remove('hidden');
+            dialogEl.style.display = '';
             open = true;
 
             // Focus the cancel button (safer default)
