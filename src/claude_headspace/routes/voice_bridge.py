@@ -382,6 +382,7 @@ def voice_command():
                 text=send_text,
                 timeout=subprocess_timeout,
                 text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
             )
     else:
         # Always verify Enter — autocomplete can swallow it on long text
@@ -625,6 +626,7 @@ def upload_file(agent_id: int):
         text=tmux_text,
         timeout=subprocess_timeout,
         text_enter_delay_ms=text_enter_delay_ms,
+        verify_enter=True,
     )
 
     if not result.success:

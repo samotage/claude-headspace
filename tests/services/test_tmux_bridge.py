@@ -16,6 +16,7 @@ from claude_headspace.services.tmux_bridge import (
     WaitResult,
     _classify_subprocess_error,
     _diagnostic_dump,
+    _extract_verification_snippet,
     _get_send_lock,
     _has_autocomplete_ghost,
     _is_process_in_tree,
@@ -1878,3 +1879,190 @@ class TestSendKeysVerifyEnter:
 
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.SEND_FAILED
+
+
+class TestExtractVerificationSnippet:
+    """Tests for _extract_verification_snippet helper."""
+
+    def test_long_text_produces_snippet(self):
+        """Text of 40+ chars produces a non-None snippet from the last non-empty line."""
+        text = "This is a long piece of text that has more than forty characters for sure"
+        snippet = _extract_verification_snippet(text)
+        assert snippet is not None
+        assert len(snippet) >= 15
+        assert len(snippet) <= 60
+
+    def test_short_text_returns_none(self):
+        """Text < 40 chars returns None."""
+        text = "Short text here"
+        assert _extract_verification_snippet(text) is None
+
+    def test_empty_text_returns_none(self):
+        """Empty/whitespace text returns None."""
+        assert _extract_verification_snippet("") is None
+        assert _extract_verification_snippet("   \n\n  ") is None
+
+    def test_short_last_line_returns_none(self):
+        """Text where the last non-empty line is < 15 chars returns None."""
+        # Total text is 40+ chars, but the last non-empty line is short
+        text = "A" * 40 + "\nshort"
+        assert _extract_verification_snippet(text) is None
+
+    def test_multiline_uses_last_nonempty_line(self):
+        """Snippet comes from the last non-empty line, not the first."""
+        text = "First line of text that is pretty long\nThe last line is also quite long and distinctive"
+        snippet = _extract_verification_snippet(text)
+        assert snippet is not None
+        assert "distinctive" in snippet
+
+    def test_truncates_to_max_len(self):
+        """Very long last line is truncated to max_len from the end."""
+        text = "A" * 100 + "\n" + "B" * 100
+        snippet = _extract_verification_snippet(text, max_len=60)
+        assert snippet is not None
+        assert len(snippet) == 60
+        assert snippet == "B" * 60
+
+    def test_trailing_blank_lines_ignored(self):
+        """Trailing blank lines are skipped when finding last non-empty line."""
+        text = "This is a sufficiently long text with meaningful content\n\n\n"
+        snippet = _extract_verification_snippet(text)
+        assert snippet is not None
+        assert "meaningful content" in snippet
+
+
+class TestVerifySubmissionTextPresence:
+    """Tests for _verify_submission with text-presence verification."""
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_text_presence_success(self, mock_capture, mock_dump):
+        """Snippet NOT in pane content → Enter accepted (text cleared)."""
+        # Post-Enter content does NOT contain the snippet
+        mock_capture.return_value = "Processing your request...\n> "
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="some baseline",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+            sent_text="This is a long message that has more than forty chars of content to verify",
+        )
+
+        assert result is True
+        mock_dump.assert_not_called()
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_text_presence_failure_then_retry(self, mock_capture, mock_run, mock_dump):
+        """Snippet IN pane on first check, then NOT on retry → success after retry."""
+        mock_run.return_value = MagicMock(returncode=0)
+        sent = "This is a long message with distinctive content at the end for verification"
+        snippet = _extract_verification_snippet(sent)
+
+        # First check: snippet still in pane (Enter failed)
+        # Ghost check: no ghost
+        # Second check: snippet gone (Enter succeeded on retry)
+        mock_capture.side_effect = [
+            f"Some pane output\n{snippet}\n> ",  # verify check 1: snippet present
+            "> ",  # ghost check: clean
+            "Processing...\n> ",  # verify check 2: snippet gone
+        ]
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="baseline",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+            sent_text=sent,
+        )
+
+        assert result is True
+        # Enter was retried
+        enter_calls = [
+            c for c in mock_run.call_args_list
+            if c[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
+        ]
+        assert len(enter_calls) == 1
+
+    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    def test_short_text_fallback(self, mock_capture, mock_dump):
+        """Short text (< 40 chars) uses _pane_content_changed logic."""
+        # Content changes → success (content-change fallback)
+        mock_capture.return_value = "Different content now\n> "
+
+        result = _verify_submission(
+            "%5",
+            pre_submit_content="Original input\n> ",
+            timeout=5,
+            clear_delay_ms=0,
+            verify_delay_ms=0,
+            max_retries=3,
+            sent_text="short",  # < 40 chars, snippet will be None
+        )
+
+        assert result is True
+
+
+class TestPostTypingGhostText:
+    """Tests for post-typing ghost text dismissal in send_text."""
+
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_post_typing_ghost_text_dismissed(self, mock_run, mock_capture):
+        """Ghost text ANSI after typing triggers Escape before Enter."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.side_effect = [
+            "> ",  # Step 1: pre-typing ghost check (clean)
+            "> \x1b[2msome suggestion\x1b[22m",  # Step 3b: post-typing ghost check (ghost!)
+        ]
+
+        result = send_text(
+            "%5", "hello world",
+            text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+        )
+
+        assert result.success is True
+        # Should have: text send, Escape (post-typing ghost), Enter
+        calls = [c[0][0] for c in mock_run.call_args_list]
+        assert ["tmux", "send-keys", "-t", "%5", "-l", "hello world"] in calls
+        assert ["tmux", "send-keys", "-t", "%5", "Escape"] in calls
+        assert ["tmux", "send-keys", "-t", "%5", "Enter"] in calls
+
+
+class TestAdaptiveDelay:
+    """Tests for adaptive delay scaling with text length."""
+
+    @patch("claude_headspace.services.tmux_bridge.time.sleep")
+    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    def test_adaptive_delay_scales_with_length(self, mock_run, mock_capture, mock_sleep):
+        """Long text (2000+ chars) uses a longer delay than short text (50 chars)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_capture.return_value = "> "  # clean prompt, no ghost
+
+        # Short text
+        send_text("%5", "x" * 50, text_enter_delay_ms=120, clear_delay_ms=0, verify_enter=False)
+        short_sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
+
+        mock_sleep.reset_mock()
+
+        # Long text
+        send_text("%5", "y" * 2000, text_enter_delay_ms=120, clear_delay_ms=0, verify_enter=False)
+        long_sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
+
+        # Short text: delay should be base (120ms = 0.12s)
+        assert any(abs(s - 0.12) < 0.001 for s in short_sleep_calls), (
+            f"Short text should use base delay ~0.12s, got {short_sleep_calls}"
+        )
+        # Long text: delay should be > base (120 + (2000-200)//10 = 300ms = 0.3s)
+        expected_long = (120 + (2000 - 200) // 10) / 1000.0  # 0.3s
+        assert any(abs(s - expected_long) < 0.001 for s in long_sleep_calls), (
+            f"Long text should use adaptive delay ~{expected_long}s, got {long_sleep_calls}"
+        )

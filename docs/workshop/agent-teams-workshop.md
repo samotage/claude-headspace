@@ -373,7 +373,7 @@ This is **not designed in v1.** The correct implementation sequence is bottom-up
 Design now, build later. These ensure v1 choices don't paint us into a corner.
 
 ### 5.1 Handoff Design Hooks (v2)
-- [ ] **Decision: What v1 design choices does the handoff system (v2) need us to make now?**
+- [x] **Decision: What v1 design choices does the handoff system (v2) need us to make now?**
 
 **Context:** Handoff (§6) requires: detect context threshold → produce handoff artefact → end session → spin up new session with same persona. v2 scope, but v1 data model choices affect it.
 
@@ -383,37 +383,74 @@ Design now, build later. These ensure v1 choices don't paint us into a corner.
 - Persona must be re-assignable to a new agent without breaking the "one active agent per persona" constraint (old agent ends first)
 - Does the current Agent model need a `predecessor_id` FK? Or is that v2 migration territory?
 
-**Resolution:** _pending_
+**Resolution:** **Hybrid handoff — DB metadata + filesystem content, operator-initiated trigger.**
+
+#### Storage: DB for orchestration, filesystem for context
+
+- **DB (Handoff record):** Lightweight metadata — id (int PK), agent_id (FK, outgoing agent), reason (context_limit, shift_end, task_boundary), file_path (pointer to handoff document), created_at. Plus a **text field containing the injection prompt** for the successor agent. This prompt is sent directly via tmux bridge — no tools needed for the successor to receive it.
+- **Filesystem (handoff document):** Rich markdown written by the outgoing agent at `data/personas/{slug}/handoffs/{iso-datetime}-{agent-8digit}.md`. Contains first-person context: what was being worked on, current progress, key decisions and rationale, blockers, files modified, next steps. The successor agent reads this file using its own tools (Read, Grep, etc.).
+
+**Design principle:** The DB content IS the orchestration prompt ("Continuing from Agent 4b6f8a2c. Read `data/personas/con/handoffs/20260220T143025-4b6f8a2c.md` to pick up context. The task is: ..."). The file IS the detailed context. Two-phase bootstrap: successor gets the prompt immediately, deepens understanding by reading the file.
+
+#### Trigger: operator-initiated via dashboard
+
+- Headspace monitors `context_percent_used` on each agent
+- When context reaches a configurable threshold, a **handoff button appears on the agent card**
+- **Operator decides when to trigger** — not automatic
+- This deliberately allows compaction to work naturally. The operator judges whether compaction is handling context well enough or whether a clean handoff is needed
+- Manual trigger also serves as the **debugging and tuning mechanism** — wind down the threshold, fire the handoff, inspect the output, refine the prompt. Human-in-the-loop iteration on handoff quality before any automation
+- Future: once the handoff prompt is tuned and reliable, auto-trigger can be added. But v1 is manual only
+
+#### Handoff flow
+
+1. Headspace detects context threshold → handoff button appears on agent card
+2. Operator clicks handoff button
+3. Headspace sends handoff instruction to outgoing agent via tmux bridge: "Write your handoff document to `data/personas/{slug}/handoffs/{iso-datetime}-{agent-8digit}.md`"
+4. Agent writes the file using its Write tool (agent-as-author — it has the richest context)
+5. Agent confirms completion in conversation
+6. Headspace detects confirmation via existing hook/turn processing
+7. Headspace creates Handoff DB record (metadata + injection prompt pointing to the file)
+8. Outgoing agent session ends
+9. New agent spins up with same persona (via `create_agent()` with persona_slug)
+10. Headspace sends injection prompt from Handoff DB record via tmux bridge
+11. Successor agent reads the handoff file with its own tools → continues work
+
+#### Agent continuity chain
+
+- Agent gains `previous_agent_id` (nullable self-referential FK) linking consecutive sessions for the same body of work
+- First agent in a chain has `previous_agent_id = NULL`
+- The Handoff record belongs to the outgoing agent. The successor finds it via the `previous_agent_id` chain (for system/operator querying — the agent itself receives the prompt directly)
+
+#### File lifecycle
+
+- Handoff files accumulate under `data/personas/{slug}/handoffs/`
+- No cleanup in v1 — files are small text documents
+- Cleanup will be addressed as part of a future system management PRD (covering DB trimming, temp file cleanup, and other housekeeping as a single effort)
+
+#### Key design rationale
+
+- **Agent-as-author:** The outgoing agent knows what it was thinking — dead ends explored, reasoning behind approaches, where it was mid-problem. Headspace can reconstruct *what happened* from DB data but not *what the agent understood*. First-person context is what makes handoffs work.
+- **File-native consumption:** Agents read files naturally via tools. No custom API endpoint needed to serve handoff content. Rich markdown with code snippets, file trees, decision logs — no DB column size concerns.
+- **Consistent with persona asset pattern:** skill.md, experience.md, handoffs/ — all filesystem assets under the persona tree, same mental model.
+- **Prompt compliance is iterable:** The manual trigger creates a tight feedback loop for tuning the handoff instruction prompt. Write the prompt, fire it, inspect the output, refine. Once reliable, automation can follow.
 
 ---
 
 ### 5.2 PM Layer Hooks (v3)
-- [ ] **Decision: What v1 design choices does Gavin's PM automation (v3) need us to make now?**
+- [x] **Decision: What v1 design choices does Gavin's PM automation (v3) need us to make now?**
 
 **Context:** In v3, Gavin receives specs and drafts task decomposition. Currently, Commands belong to Agents (1:N). There's no concept of "a PM assigns tasks across agents."
 
-**Considerations:**
-- Command model may eventually need a `assigned_by_persona_id` or `parent_command_id` for PM-decomposed work
-- The current Command belongs to one Agent. Cross-agent task assignment would need a different model (WorkItem? Assignment?)
-- For v1, operator-as-Gavin means no code changes — but should we add nullable fields now?
-- Or: keep Command model as-is, add a higher-level WorkItem model in v3 that links to multiple Commands across Agents?
-
-**Resolution:** _pending_
+**Resolution:** **Deferred until personas and handoffs are operational.** The PM layer (Gavin assigning work across agents) requires a concrete understanding of how cross-agent task decomposition works. That understanding will come from running the persona system and seeing how multi-agent work actually flows. No premature schema additions — Command model stays as-is for now.
 
 ---
 
 ### 5.3 Multi-Org Readiness (Phase 2+)
-- [ ] **Decision: What naming/structure conventions should v1 follow to not conflict with multi-org?**
+- [x] **Decision: What naming/structure conventions should v1 follow to not conflict with multi-org?**
 
 **Context:** Phase 2 introduces Marketing org. Phase 4 introduces cross-org persona sharing.
 
-**Considerations:**
-- If Persona model exists in v1, should it have a nullable `org_id` FK from the start?
-- Config structure: `personas:` at root level (global) vs `organisations.dev.personas:` (org-scoped)
-- Skill file paths: `~/.headspace/personas/{slug}/` (global) vs `~/.headspace/orgs/{org}/personas/{slug}/` (org-scoped)
-- Pool definitions: global or per-org?
-
-**Resolution:** _pending_
+**Resolution:** **Deferred.** Personas are org-independent by design (decision 2.1 — no org_id on Persona, org relationship through Position via Agent). This already avoids painting v1 into a corner. Multi-org naming and structure conventions will be designed when the second org (Marketing) is on the horizon, informed by operational experience with the dev org.
 
 ---
 
@@ -459,6 +496,9 @@ Track decisions and rationale as we resolve them.
 | 2026-02-17 | 4.1 Persona Assignment Flow | Two paths, same pipeline: system-initiated (`create_agent(persona_slug=)`) for production use, CLI-initiated (`--persona con`) for operator ad-hoc sessions. Both pass slug through hook payload → persona_id set at registration → skill injection via tmux bridge. No post-hoc reassignment — brain transplants excluded. | CLI flag is essentially free (same injection pipeline). Operator needs an escape hatch for debugging/testing persona sessions without going through the dashboard. Post-hoc assignment is semantically messy (mid-conversation identity injection) and unnecessary. |
 | 2026-02-20 | 4.2 Dashboard Identity Display | Persona name as hero text, role as suffix (e.g., "Con — developer"). Technical details (UUID, session ID, pane IDs) preserved in agent info panel and project/activity summaries. Anonymous agents keep UUID hero. No colour coding, no avatars — name as text. | Simple and clean. Persona identity is meaningful; UUID is not. Technical details still accessible where needed. Visual embellishments deferred — not needed at this stage. |
 | 2026-02-20 | 4.3 Workshop Mode — UI Implications | No distinct visual treatment in v1. Kanban hierarchy (work items above atomic agent activity) identified as a deferred dependency — build bottom-up: personas → org → then Kanban evolves from real operational data. | Premature to design the work-item Kanban layer without operational experience. The current atomic Kanban works for agent state. Higher-level work tracking will become clear once personas and org structure are running. |
+| 2026-02-20 | 5.1 Handoff Design Hooks | Hybrid handoff: DB metadata (Handoff record with injection prompt) + filesystem content (agent-written markdown at `data/personas/{slug}/handoffs/{iso-datetime}-{agent-8digit}.md`). Operator-initiated via dashboard button at context threshold. Agent-as-author writes the handoff file. Agent gains `previous_agent_id` self-ref FK for continuity chain. No auto-trigger in v1. File cleanup deferred to system management PRD. | Agent has the richest context — first-person handoffs beat reconstruction. File-native consumption (Read tool) is natural for agents. Manual trigger enables iterative prompt tuning with human-in-the-loop before automation. Two-phase bootstrap: DB prompt bootstraps immediately, file deepens understanding. |
+| 2026-02-20 | 5.2 PM Layer Hooks | Deferred. Command model stays as-is. PM task decomposition design requires operational experience with personas first. | No concrete model for cross-agent task assignment yet. Bottom-up: personas → handoffs → then PM layer informed by real usage. |
+| 2026-02-20 | 5.3 Multi-Org Readiness | Deferred. Personas are already org-independent (no org_id). No v1 conventions needed. | Existing design doesn't paint us into a corner. Design multi-org when the second org is on the horizon. |
 
 ---
 

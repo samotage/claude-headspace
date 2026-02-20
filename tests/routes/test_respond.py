@@ -231,6 +231,7 @@ class TestRespondToAgent:
             text="1",
             timeout=5,
             text_enter_delay_ms=100,
+            verify_enter=True,
         )
 
     @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
@@ -626,6 +627,7 @@ class TestOtherMode:
             text="custom answer",
             timeout=5,
             text_enter_delay_ms=100,
+            verify_enter=True,
         )
 
     def test_other_missing_text(self, client, mock_db, mock_agent):

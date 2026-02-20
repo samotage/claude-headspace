@@ -1,9 +1,8 @@
 # Claude Headspace — Organisational Model ERD (Simplified)
 
-**Date:** 17 February 2026
+**Date:** 16 February 2026
 **Status:** Simplified view — entities and relationships only, no field details
-**Revised:** Workshop review session — resolved integer PKs, shared Role lookup, dropped PositionAssignment/can_use_tools/availability constraint
-**Note:** Agent, Command, and Turn are existing Headspace 3.1 entities. SkillFile and ExperienceLog are version-managed files in the `data/` directory, not database tables. See headspace-org-erd-full.md for field-level detail.
+**Note:** Agent, Task, and Turn are existing Headspace 3.1 entities. SkillFile and ExperienceLog are version-managed files in the repo, not database tables. See headspace-org-erd-full.md for field-level detail.
 
 ---
 
@@ -11,24 +10,23 @@
 erDiagram
     Persona ||--o{ SkillFile : "has (file ref)"
     Persona ||--o{ ExperienceLog : "has (file ref)"
-    Persona }o--|| Role : "is a"
+    Persona ||--o{ PositionAssignment : "fills"
 
+    Organisation ||--o{ Role : "defines"
     Organisation ||--o{ Position : "contains"
 
-    Role ||--o{ Position : "needed by"
-    Role ||--o{ Persona : "fulfilled by"
-
-    Position }o--|| Role : "requires"
+    Position }o--|| Role : "has"
     Position }o--o| Position : "reports to"
+
+    PositionAssignment }o--|| Position : "for"
 
     Agent }o--|| Persona : "driven by"
     Agent }o--|| Position : "represents"
+    Agent }o--o| Agent : "continues from"
     Agent ||--o{ Task : "works on"
-    Agent ||--o{ Handoff : "hands off"
+    Agent ||--o| Handoff : "produces"
 
     Task ||--o{ Turn : "contains"
-
-    Handoff }o--|| Persona : "continues as"
 ```
 
 ---
@@ -37,21 +35,14 @@ erDiagram
 
 | Entity | Type | New or Existing |
 |--------|------|-----------------|
-| Role | DB table | New — shared lookup referenced by both Persona and Position |
-| Persona | DB table | New — has slug, role_id FK for filesystem path generation |
+| Persona | DB table | New |
 | Organisation | DB table | New |
-| Position | DB table | New (self-referential hierarchy, role_id FK) |
-| Handoff | DB table | New |
-| Agent | DB table | Existing — extended with persona_id, position_id |
-| Command | DB table | Existing — unchanged |
+| Role | DB table | New |
+| Position | DB table | New (self-referential hierarchy) |
+| PositionAssignment | DB join table | New (lifecycle via timestamps, availability derived from Agent) |
+| Handoff | DB table | New (content container, belongs to outgoing agent) |
+| Agent | DB table | Existing — extended with persona_id, position_id, previous_agent_id (self-ref chain) |
+| Task | DB table | Existing — unchanged |
 | Turn | DB table | Existing — unchanged |
-| SkillFile | File reference | Version-managed file at `data/personas/{slug}/skill.md` |
-| ExperienceLog | File reference | Version-managed file at `data/personas/{slug}/experience.md` |
-
-## Workshop Resolutions Applied
-
-- **Integer PKs** throughout (matching existing codebase convention)
-- **Role is a shared lookup table** — Persona.role_id and Position.role_id both reference Role. Position matching finds personas by shared role.
-- **PositionAssignment dropped** — persona-to-position relationship is established through Agent (which has both persona_id and position_id). Status derived from agent status.
-- **No availability constraint** — multiple agents can share the same persona simultaneously (duplicating a persona is advantageous, not a constraint to enforce)
-- **Slug belongs to Persona** — generated from `{role}-{name}-{id}`, no multi-joins needed
+| SkillFile | File reference | Version-managed file in repo |
+| ExperienceLog | File reference | Version-managed file in repo |

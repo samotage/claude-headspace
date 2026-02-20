@@ -229,6 +229,7 @@ def respond_to_agent(agent_id: int):
             text=text,
             timeout=subprocess_timeout,
             text_enter_delay_ms=text_enter_delay_ms,
+            verify_enter=True,
         )
         record_text = text
 
@@ -266,6 +267,7 @@ def respond_to_agent(agent_id: int):
                 text=text,
                 timeout=subprocess_timeout,
                 text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
             )
         record_text = text
 

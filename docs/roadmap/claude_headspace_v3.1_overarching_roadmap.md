@@ -42,8 +42,11 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 | **Epic 2** | UI Polish & Documentation            | 4       | 3-4 weeks   | Config UI, waypoint editing, help system, macOS notifications                             |
 | **Epic 3** | Intelligence Layer                   | 5       | 5-7 weeks   | Turn/command summarisation, priority scoring, git-based summaries, brain reboot              |
 | **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | Artifact archiving, project controls, activity monitoring, headspace/frustration tracking |
+| **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | Input bridge, tmux bridge, project show, CLI alignment, full output capture               |
+| **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | Voice bridge server/client, agent chat history, agent lifecycle, file sharing             |
+| **Epic 7** | Agent-Driven Integration Testing     | 3+      | 3-6 weeks+  | Real production loop testing, cross-layer verification, bug-driven scenarios              |
 
-**Total:** 24 sprints, ~22-28 weeks
+**Total:** 41+ sprints, ~40-53 weeks (Epics 6 and 7 are extensible)
 
 ---
 
@@ -697,6 +700,7 @@ Generate OpenSpec PRDs in this order to maintain logical dependencies:
 | ------- | ---------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-01-28 | PM Agent (John) | Initial overarching roadmap for 4 epics                                                                                                  |
 | 1.1     | 2026-01-30 | PM Agent (John) | Updated Epic 4: expanded to 4 sprints, added headspace/frustration monitoring, activity metrics, renamed to "Data Management & Wellness" |
+| 1.2     | 2026-02-20 | PM Agent (John) | Added Epic 5, Epic 6, and Epic 7 to epic breakdown table; updated totals                                                                 |
 
 ---
 

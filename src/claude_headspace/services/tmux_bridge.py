@@ -22,7 +22,7 @@ DEFAULT_TEXT_ENTER_DELAY_MS = 120  # ms between text send and Enter
 DEFAULT_CLEAR_DELAY_MS = 200  # ms after Escape before sending text
 DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 DEFAULT_ENTER_VERIFY_DELAY_MS = 200  # ms between Enter and verification check
-DEFAULT_MAX_ENTER_RETRIES = 1  # max Enter retry attempts after verification failure
+DEFAULT_MAX_ENTER_RETRIES = 3  # max Enter retry attempts after verification failure
 DEFAULT_ENTER_VERIFY_LINES = 5  # pane lines to capture for Enter verification
 
 # Per-pane send lock registry — prevents concurrent sends to the same pane
@@ -266,6 +266,36 @@ def _has_autocomplete_ghost(pane_content: str) -> bool:
     return False
 
 
+def _extract_verification_snippet(text: str, max_len: int = 60) -> str | None:
+    """Extract a verification snippet from the tail of sent text.
+
+    Used by _verify_submission to check whether sent text is still visible
+    in the pane (indicating Enter was not accepted) vs. cleared (Enter worked).
+
+    Args:
+        text: The sent text to extract a snippet from
+        max_len: Maximum snippet length (truncated from end of last line)
+
+    Returns:
+        A snippet string (15-60 chars from the last non-empty line),
+        or None if text is too short for reliable matching.
+    """
+    if not text or len(text) < 40:
+        return None
+
+    # Find the last non-empty line
+    lines = [line for line in text.split("\n") if line.strip()]
+    if not lines:
+        return None
+
+    last_line = lines[-1].strip()
+    if len(last_line) < 15:
+        return None
+
+    # Truncate from the end to max_len
+    return last_line[-max_len:]
+
+
 def _pane_content_changed(before: str, after: str) -> bool:
     """Compare two pane captures to detect meaningful content change.
 
@@ -293,12 +323,16 @@ def _verify_submission(
     clear_delay_ms: int,
     verify_delay_ms: int = DEFAULT_ENTER_VERIFY_DELAY_MS,
     max_retries: int = DEFAULT_MAX_ENTER_RETRIES,
+    sent_text: str = "",
 ) -> bool:
     """Verify that Enter was accepted by watching for pane content changes.
 
-    Polls the pane after Enter and compares with the pre-Enter baseline.
-    If the content hasn't changed, Enter was likely lost (e.g. swallowed
-    by autocomplete). Dismisses ghost text if found and retries Enter.
+    For long text (40+ chars), uses text-presence verification: checks if a
+    snippet of the sent text is still visible in the pane. If the snippet
+    disappeared (input cleared), Enter worked. If still present, Enter failed.
+
+    For short text (< 40 chars), falls back to content-change comparison
+    with the pre-Enter baseline.
 
     Args:
         pane_id: The tmux pane ID
@@ -307,21 +341,35 @@ def _verify_submission(
         clear_delay_ms: Delay in ms after Escape before retrying Enter
         verify_delay_ms: Delay in ms before each verification check
         max_retries: Maximum number of Enter retries
+        sent_text: The text that was sent (used for snippet extraction)
 
     Returns:
-        True if submission was confirmed (content changed), False if all retries exhausted
+        True if submission was confirmed, False if all retries exhausted
     """
+    snippet = _extract_verification_snippet(sent_text)
+    use_snippet = snippet is not None
+
     for attempt in range(1, max_retries + 1):
         time.sleep(verify_delay_ms / 1000.0)
         post_content = capture_pane(
             pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
         )
 
-        if _pane_content_changed(pre_submit_content, post_content):
-            logger.info(
-                f"Enter confirmed after {attempt} attempt(s) for pane {pane_id}"
-            )
-            return True
+        if use_snippet:
+            # Text-presence check: snippet NOT in pane = Enter accepted
+            if snippet not in post_content:
+                logger.info(
+                    f"Enter confirmed (text cleared) after {attempt} "
+                    f"attempt(s) for pane {pane_id}"
+                )
+                return True
+        else:
+            # Content-change fallback for short text
+            if _pane_content_changed(pre_submit_content, post_content):
+                logger.info(
+                    f"Enter confirmed after {attempt} attempt(s) for pane {pane_id}"
+                )
+                return True
 
         # Enter was lost — try to recover
         logger.debug(
@@ -454,8 +502,36 @@ def send_text(
                 capture_output=True,
             )
 
-            # Step 3: Delay between text and Enter
-            time.sleep(text_enter_delay_ms / 1000.0)
+            # Step 3: Adaptive delay between text and Enter
+            # Scale delay with text length: +1ms per 10 chars beyond 200
+            adaptive_delay_ms = text_enter_delay_ms + max(0, len(sanitised) - 200) // 10
+            if adaptive_delay_ms != text_enter_delay_ms:
+                logger.debug(
+                    f"Adaptive delay for pane {pane_id}: "
+                    f"{text_enter_delay_ms}ms -> {adaptive_delay_ms}ms "
+                    f"(text length: {len(sanitised)})"
+                )
+            time.sleep(adaptive_delay_ms / 1000.0)
+
+            # Step 3b: Post-typing ghost text dismissal
+            # Text may have triggered NEW autocomplete suggestions after typing.
+            # Dismiss them before sending Enter to prevent swallowing.
+            if detect_ghost_text:
+                post_type_content = capture_pane(
+                    pane_id, lines=3, include_escapes=True, timeout=timeout,
+                )
+                if _has_autocomplete_ghost(post_type_content):
+                    logger.debug(
+                        f"Post-typing ghost text detected in pane {pane_id}, "
+                        f"sending Escape to dismiss"
+                    )
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", pane_id, "Escape"],
+                        check=True,
+                        timeout=timeout,
+                        capture_output=True,
+                    )
+                    time.sleep(clear_delay_ms / 1000.0)
 
             # Step 4: Capture pre-Enter baseline for verification
             should_verify = verify_enter and not skip_verify_hint
@@ -484,6 +560,7 @@ def send_text(
                     clear_delay_ms=clear_delay_ms,
                     verify_delay_ms=enter_verify_delay_ms,
                     max_retries=max_enter_retries,
+                    sent_text=sanitised,
                 ):
                     latency_ms = int((time.time() - start_time) * 1000)
                     logger.warning(

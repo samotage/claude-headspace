@@ -81,13 +81,14 @@ This directory contains the complete roadmap documentation for Claude Headspace 
 | **Epic 4** | Data Management & Wellness           | 4       | 3-4 weeks   | P2            |
 | **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | P1            |
 | **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | P1            |
+| **Epic 7** | Agent-Driven Integration Testing     | 3+      | 3-6 weeks+  | P1            |
 
-**Total:** 38+ sprints, ~37-47 weeks (Epic 6 is extensible)
+**Total:** 41+ sprints, ~40-53 weeks (Epics 6 and 7 are extensible)
 
 ### Critical Path
 
 ```
-Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 (Bridge & Projects) → Epic 6 (Voice & Chat)
+Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 (Bridge & Projects) → Epic 6 (Voice & Chat) → Epic 7 (Testing)
                    ↘
                     Epic 2 (UI Polish) [parallel with Epic 3]
 ```
@@ -141,6 +142,38 @@ Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 
 
 - Generating detailed PRDs for each sprint
 - Understanding voice bridge and chat history requirements
+- Implementation planning
+- OpenSpec proposal creation
+
+---
+
+### 7. Epic 7 Detailed Roadmap
+
+**File:** `claude_headspace_v3.1_epic7_detailed_roadmap.md`
+
+**Purpose:** Sprint-by-sprint breakdown of Epic 7 with subsystem-level detail
+
+**Contents:**
+
+- 3 initial sprints (extensible — new sprints appended as scoped)
+- 3 subsystems requiring OpenSpec PRDs
+- Each sprint includes:
+  - Goal, duration, dependencies
+  - Deliverables (comprehensive list)
+  - Technical decisions
+  - Agent implementation constraints
+  - Risks & mitigation
+  - Acceptance criteria
+- Sprint dependency diagram with hard gates
+- Cross-epic dependencies
+- Acceptance test cases
+- Future sprint candidates
+- PRD generation order
+
+**Use this for:**
+
+- Generating detailed PRDs for each sprint
+- Understanding agent-driven integration testing requirements
 - Implementation planning
 - OpenSpec proposal creation
 
@@ -330,6 +363,7 @@ Launch 2-3 iTerm2 sessions with Claude Code, issue commands in each:
 | ------- | ---------- | --------------- | ---------------------------------------------------- |
 | 1.0     | 2026-01-28 | PM Agent (John) | Initial roadmap documentation with hooks integration |
 | 1.1     | 2026-02-11 | PM Agent (John) | Added Epic 5, Epic 6 entries and updated totals      |
+| 1.2     | 2026-02-20 | PM Agent (John) | Added Epic 7 (Agent-Driven Integration Testing)      |
 
 ---
 
