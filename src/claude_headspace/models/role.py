@@ -10,6 +10,7 @@ from ..database import db
 
 if TYPE_CHECKING:
     from .persona import Persona
+    from .position import Position
 
 
 class Role(db.Model):
@@ -34,6 +35,9 @@ class Role(db.Model):
     # Relationships
     personas: Mapped[list["Persona"]] = relationship(
         "Persona", back_populates="role"
+    )
+    positions: Mapped[list["Position"]] = relationship(
+        "Position", back_populates="role"
     )
 
     def __repr__(self) -> str:
