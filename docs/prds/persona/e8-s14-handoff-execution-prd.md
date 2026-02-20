@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — handoff-in-progress flag mechanism added (FR7), previous_agent_id via create_agent (FR14-15). Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:24:01+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Handoff Execution

@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — ON DELETE CASCADE added to NFR3. Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:23:55+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Position Database Model

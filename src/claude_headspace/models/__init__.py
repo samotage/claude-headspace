@@ -12,6 +12,8 @@ Models:
     - InferenceCall: LLM inference call logging
     - ActivityMetric: Hourly activity metrics time-series
     - HeadspaceSnapshot: Headspace state snapshots (frustration, flow, alerts)
+    - Role: Agent specialisation lookup (developer, tester, pm, architect)
+    - Persona: Named agent identity with role and slug
 
 Enums:
     - CommandState: idle, commanded, processing, awaiting_input, complete
@@ -26,7 +28,9 @@ from .headspace_snapshot import HeadspaceSnapshot
 from .event import Event, EventType
 from .inference_call import InferenceCall, InferenceLevel
 from .objective import Objective, ObjectiveHistory
+from .persona import Persona
 from .project import Project
+from .role import Role
 from .command import Command, CommandState
 from .turn import Turn, TurnActor, TurnIntent
 
@@ -42,6 +46,8 @@ __all__ = [
     "Turn",
     "Event",
     "InferenceCall",
+    "Role",
+    "Persona",
     # Enums
     "CommandState",
     "TurnActor",

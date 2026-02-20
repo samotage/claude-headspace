@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — added previous_agent_id parameter, clarified hook extraction ownership. Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:23:57+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Persona-Aware Agent Creation
