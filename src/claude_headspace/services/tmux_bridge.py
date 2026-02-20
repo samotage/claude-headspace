@@ -550,8 +550,16 @@ def send_text(
             )
 
             # Step 6: Verify Enter was accepted (one capture + compare,
-            # one retry on failure). Skipped when skip_verify_hint is set
+            # retry on failure). Skipped when skip_verify_hint is set
             # because pane content is too volatile for comparison.
+            #
+            # IMPORTANT: Verification failure is NOT fatal. The retries
+            # provide best-effort recovery for ghost-text swallowing, but
+            # false negatives are common because Claude Code echoes user
+            # text back into the conversation view — the snippet stays
+            # visible in the pane even after Enter lands successfully.
+            # Returning success=False here caused ~45% of voice commands
+            # to 502 despite successful delivery.
             if should_verify:
                 if not _verify_submission(
                     pane_id,
@@ -564,14 +572,9 @@ def send_text(
                 ):
                     latency_ms = int((time.time() - start_time) * 1000)
                     logger.warning(
-                        f"Enter verification failed for pane {pane_id} "
-                        f"after {max_enter_retries} retries ({latency_ms}ms)"
-                    )
-                    return SendResult(
-                        success=False,
-                        error_type=TmuxBridgeErrorType.SEND_FAILED,
-                        error_message="Enter key not accepted after retries",
-                        latency_ms=latency_ms,
+                        f"Enter verification inconclusive for pane {pane_id} "
+                        f"after {max_enter_retries} retries ({latency_ms}ms) "
+                        f"— proceeding as success (text was sent)"
                     )
 
             latency_ms = int((time.time() - start_time) * 1000)
@@ -785,7 +788,8 @@ def send_keys(
                     capture_output=True,
                 )
 
-            # Verify Enter was accepted by watching for pane content change
+            # Verify Enter was accepted by watching for pane content change.
+            # See send_text Step 6 comment — verification failure is NOT fatal.
             if verify_enter:
                 if not _verify_submission(
                     pane_id,
@@ -797,14 +801,9 @@ def send_keys(
                 ):
                     latency_ms = int((time.time() - start_time) * 1000)
                     logger.warning(
-                        f"Enter verification failed for pane {pane_id} "
-                        f"after {max_enter_retries} retries ({latency_ms}ms)"
-                    )
-                    return SendResult(
-                        success=False,
-                        error_type=TmuxBridgeErrorType.SEND_FAILED,
-                        error_message="Enter key not accepted after retries",
-                        latency_ms=latency_ms,
+                        f"Enter verification inconclusive for pane {pane_id} "
+                        f"after {max_enter_retries} retries ({latency_ms}ms) "
+                        f"— proceeding as success (keys were sent)"
                     )
 
             latency_ms = int((time.time() - start_time) * 1000)

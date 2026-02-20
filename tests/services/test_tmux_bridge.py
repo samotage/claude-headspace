@@ -1744,8 +1744,8 @@ class TestSendTextVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_failure_returns_send_failed(self, mock_run, mock_capture, mock_verify):
-        """When verification fails, returns SEND_FAILED error."""
+    def test_verify_enter_failure_still_returns_success(self, mock_run, mock_capture, mock_verify):
+        """When verification fails, still returns success (non-fatal)."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
         mock_verify.return_value = False
@@ -1754,9 +1754,7 @@ class TestSendTextVerifyEnter:
             "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=True,
         )
 
-        assert result.success is False
-        assert result.error_type == TmuxBridgeErrorType.SEND_FAILED
-        assert "Enter key not accepted" in result.error_message
+        assert result.success is True
 
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
@@ -1866,8 +1864,8 @@ class TestSendKeysVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_failure_returns_send_failed(self, mock_run, mock_capture, mock_verify):
-        """When verification fails, returns SEND_FAILED."""
+    def test_verify_enter_failure_still_returns_success(self, mock_run, mock_capture, mock_verify):
+        """When verification fails, still returns success (non-fatal)."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "options still showing\n"
         mock_verify.return_value = False
@@ -1877,8 +1875,7 @@ class TestSendKeysVerifyEnter:
             sequential_delay_ms=0, verify_enter=True,
         )
 
-        assert result.success is False
-        assert result.error_type == TmuxBridgeErrorType.SEND_FAILED
+        assert result.success is True
 
 
 class TestExtractVerificationSnippet:
