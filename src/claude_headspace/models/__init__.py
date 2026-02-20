@@ -13,6 +13,7 @@ Models:
     - ActivityMetric: Hourly activity metrics time-series
     - HeadspaceSnapshot: Headspace state snapshots (frustration, flow, alerts)
     - Organisation: Organisational grouping (active, dormant, archived)
+    - Position: Org chart seat with self-referential hierarchy
     - Role: Agent specialisation lookup (developer, tester, pm, architect)
     - Persona: Named agent identity with role and slug
 
@@ -31,6 +32,7 @@ from .inference_call import InferenceCall, InferenceLevel
 from .objective import Objective, ObjectiveHistory
 from .organisation import Organisation
 from .persona import Persona
+from .position import Position
 from .project import Project
 from .role import Role
 from .command import Command, CommandState
@@ -49,6 +51,7 @@ __all__ = [
     "Event",
     "InferenceCall",
     "Organisation",
+    "Position",
     "Role",
     "Persona",
     # Enums

@@ -1,11 +1,15 @@
 """Organisation model."""
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
+
+if TYPE_CHECKING:
+    from .position import Position
 
 
 class Organisation(db.Model):
@@ -29,6 +33,11 @@ class Organisation(db.Model):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    positions: Mapped[list["Position"]] = relationship(
+        "Position", back_populates="organisation"
     )
 
     def __repr__(self) -> str:
