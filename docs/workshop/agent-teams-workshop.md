@@ -279,7 +279,7 @@ Key design points:
 ## 4. Session & Lifecycle Integration
 
 ### 4.1 Persona Assignment Flow
-- [ ] **Decision: When and how does a persona get assigned to an agent?**
+- [x] **Decision: When and how does a persona get assigned to an agent?**
 
 **Depends on:** 1.1, 2.2, 3.2
 
@@ -296,12 +296,24 @@ Key design points:
 - The functional outline assumes personas are known before launch (operator picks from pool)
 - Need to update the `session-start` hook payload to include persona slug
 
-**Resolution:** _pending_
+**Resolution:** **Two assignment paths, no post-hoc reassignment.**
+
+Both paths converge to the same injection pipeline (resolved in 3.2):
+
+1. **System-initiated:** `create_agent(persona_slug="con")` — the production path for dashboard or future PM automation (Gavin v3). Passes persona slug through to the hook payload.
+2. **CLI-initiated:** `claude-headspace start --persona con` — operator's escape hatch for ad-hoc persona sessions (debugging skill files, quick testing). Passes persona slug in the session-start hook payload.
+
+In both cases:
+- Vanilla Claude Code session starts → hook fires → SessionCorrelator creates Agent with `persona_id` set at registration time
+- Post-registration: skill.md + experience.md injected via tmux bridge (per 3.2)
+- Agent responds in character
+
+**Post-hoc reassignment is excluded.** Assigning a persona to an already-running anonymous agent is a mid-conversation identity injection — a brain transplant. If an agent needs a persona, start it with one. Anonymous sessions (operator launches CLI without `--persona`) remain anonymous.
 
 ---
 
 ### 4.2 Dashboard Identity Display
-- [ ] **Decision: How does persona identity appear on the agent card?**
+- [x] **Decision: How does persona identity appear on the agent card?**
 
 **Depends on:** 2.2
 
@@ -313,28 +325,46 @@ Key design points:
 - **C) Persona name as primary, UUID in detail view** — Hero shows "Con", session UUID moves to the info/detail panel.
 
 **Sub-questions:**
-- [ ] Color coding per persona? Per role_type? Per pool?
-- [ ] Persona avatar/icon? (initials in a colored circle is the minimal version)
-- [ ] What shows for agents without a persona? (backward compat — keep UUID display)
+- [x] Color coding per persona? Per role_type? Per pool?
+- [x] Persona avatar/icon? (initials in a colored circle is the minimal version)
+- [x] What shows for agents without a persona? (backward compat — keep UUID display)
 
-**Resolution:** _pending_
+**Resolution:** **Persona name as hero, role as suffix. Technical details preserved elsewhere.**
+
+- **Hero text:** Persona name (e.g., "Con") replaces the UUID hero (`hero_chars` + `hero_trail`). Role shown as a suffix (e.g., "Con — developer").
+- **Technical details:** Session UUID, claude_session_id, pane IDs, and other technical identifiers remain accessible in the agent info panel on the dashboard and in project/activity page agent summaries.
+- **Anonymous agents:** Agents without a persona retain the existing UUID-based hero display. Full backward compatibility.
+- **No colour coding.** Not needed at this stage.
+- **No avatar/icon.** Name as text is sufficient. Keep it simple.
 
 ---
 
 ### 4.3 Workshop Mode — UI Implications
-- [ ] **Decision: Does workshop mode need distinct visual treatment?**
+- [x] **Decision: Does workshop mode need distinct visual treatment?**
 
 **Depends on:** 1.4
 
 **Context:** Workshop mode (Robbo) is fundamentally different — no code, documents only. The state machine is the same, but the *meaning* of states differs.
 
 **Open questions:**
-- [ ] Different card styling for workshop vs execution agents?
-- [ ] Different Kanban column grouping? (Workshop agents in their own swim lane?)
-- [ ] Different state labels? ("Drafting..." instead of "Processing..."?)
-- [ ] Workshop output display? (Robbo produces documents — show document links on card?)
+- [x] Different card styling for workshop vs execution agents?
+- [x] Different Kanban column grouping? (Workshop agents in their own swim lane?)
+- [x] Different state labels? ("Drafting..." instead of "Processing..."?)
+- [x] Workshop output display? (Robbo produces documents — show document links on card?)
 
-**Resolution:** _pending_
+**Resolution:** **No distinct visual treatment in v1. Kanban evolution deferred — build bottom-up.**
+
+- **Card styling:** No difference between workshop and execution agents. The role suffix (4.2) provides enough context. Keeping it simple given existing complexity.
+- **State labels / swim lanes / output display:** All deferred.
+
+**Deferred dependency — Kanban hierarchy:**
+
+The current Kanban tracks **agent state** at the atomic level (command/turn processing, minutes-to-hours timescale). Workshop and persona-driven work introduces a higher-level concern: **work item progress** across multi-day, multi-session event horizons. This creates a natural two-level hierarchy:
+
+- **Level 1 — Work Items:** Workshops, feature implementations, review cycles. Multi-day. Survives agent restarts and handoffs. Output of one work item feeds into the next.
+- **Level 2 — Agent Activity:** The current atomic Kanban. Minutes-to-hours. What's happening right now.
+
+This is **not designed in v1.** The correct implementation sequence is bottom-up: personas first → basic organisation → then the Kanban evolves based on what's actually running. The work-item layer and Kanban modifications will become clear once personas and org structure are operational and providing real data about how multi-session work flows through the system.
 
 ---
 
@@ -426,6 +456,9 @@ Track decisions and rationale as we resolve them.
 | 2026-02-17 | 2.3 Availability Constraint | No constraint. Multiple agents can share the same persona simultaneously. | Enforcing human scarcity on digital entities is unnecessary. Duplicating a persona (multiple Cons) is advantageous. |
 | 2026-02-17 | 3.1 Skill File Location & Structure | Location resolved by 1.2. App manages directory creation via CLI/API on persona registration. Per-org extensions deferred. No token budget management. | Skill files are lightweight priming signals, not knowledge dumps — no budget needed. CLI is the preferred management interface because agents can operate it via tools (no MCP pollution). Org-specific overlays are Phase 2+ if the need emerges. |
 | 2026-02-17 | 3.2 Skill File Loading Mechanism | First-prompt injection via tmux bridge (BMAD pattern). `create_agent()` gains optional `persona_slug`. Post-registration, Headspace reads skill.md + experience.md and sends as first user message via existing `send_text()`. Agent responds in character. General sessions unchanged. | Proven BMAD priming pattern. Uses existing tmux bridge infrastructure. No system prompt hacking — persona is conversation-level. Two creation paths: CLI for general, `create_agent()` for persona-backed. Grounded in existing `agent_lifecycle.create_agent()` mechanism. |
+| 2026-02-17 | 4.1 Persona Assignment Flow | Two paths, same pipeline: system-initiated (`create_agent(persona_slug=)`) for production use, CLI-initiated (`--persona con`) for operator ad-hoc sessions. Both pass slug through hook payload → persona_id set at registration → skill injection via tmux bridge. No post-hoc reassignment — brain transplants excluded. | CLI flag is essentially free (same injection pipeline). Operator needs an escape hatch for debugging/testing persona sessions without going through the dashboard. Post-hoc assignment is semantically messy (mid-conversation identity injection) and unnecessary. |
+| 2026-02-20 | 4.2 Dashboard Identity Display | Persona name as hero text, role as suffix (e.g., "Con — developer"). Technical details (UUID, session ID, pane IDs) preserved in agent info panel and project/activity summaries. Anonymous agents keep UUID hero. No colour coding, no avatars — name as text. | Simple and clean. Persona identity is meaningful; UUID is not. Technical details still accessible where needed. Visual embellishments deferred — not needed at this stage. |
+| 2026-02-20 | 4.3 Workshop Mode — UI Implications | No distinct visual treatment in v1. Kanban hierarchy (work items above atomic agent activity) identified as a deferred dependency — build bottom-up: personas → org → then Kanban evolves from real operational data. | Premature to design the work-item Kanban layer without operational experience. The current atomic Kanban works for agent state. Higher-level work tracking will become clear once personas and org structure are running. |
 
 ---
 

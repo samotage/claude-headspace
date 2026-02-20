@@ -16,7 +16,7 @@ from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
-from .team_content_detector import is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,11 @@ def reconcile_transcript_entries(agent, command, entries):
             continue
 
         actor = "user" if entry.role == "user" else "agent"
-        content_key = _content_hash(actor, entry.content.strip())
-        legacy_key = _legacy_content_hash(actor, entry.content.strip())
+        # Apply the same skill-expansion filter used in the hook receiver
+        # so that content hashes match the truncated text stored in turns.
+        entry_text = filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        content_key = _content_hash(actor, entry_text)
+        legacy_key = _legacy_content_hash(actor, entry_text)
 
         # Try new hash first, fall back to legacy for migration compatibility
         matched_turn = turn_index.pop(content_key, None)
@@ -121,7 +124,7 @@ def reconcile_transcript_entries(agent, command, entries):
                 matched_turn.jsonl_entry_hash = content_key
         elif not matched_turn:
             # New entry not seen via hooks — create Turn with proper intent detection
-            turn_text = entry.content.strip()
+            turn_text = entry_text  # already filtered by filter_skill_expansion above
             if actor == "user":
                 intent_result = detect_user_intent(turn_text, command.state)
                 detected_intent = intent_result.intent

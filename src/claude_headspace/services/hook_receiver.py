@@ -26,7 +26,7 @@ from .hook_extractors import (
 )
 from .intent_detector import detect_agent_intent
 from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
-from .team_content_detector import is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -845,6 +845,9 @@ def process_user_prompt_submit(
         # This lets the frontend dedup match the optimistic bubble text.
         if pending_file_meta and "_display_text" in pending_file_meta:
             prompt_text = pending_file_meta.pop("_display_text")
+        # Truncate skill/command expansion content (e.g. /orch:40-test expands
+        # to the full .md file).  Must match the same filter in transcript_reconciler.
+        prompt_text = filter_skill_expansion(prompt_text)
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,

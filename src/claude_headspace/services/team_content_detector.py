@@ -1,11 +1,8 @@
-"""Detect team-internal content from sub-agent communications.
+"""Detect and filter special content from agent communications.
 
-When a Claude Code agent spawns sub-agents (via Task tool / team creation),
-their internal messages (SendMessage JSON, task-notification XML, shutdown
-requests, idle notifications) leak into the parent agent's chat.
-
-This module provides a pure function to detect such content so it can be
-flagged with is_internal=True on Turn records at creation time.
+Provides pure functions for:
+- Team-internal content detection (sub-agent comms -> is_internal=True)
+- Skill/command expansion filtering (truncate expanded .md content)
 """
 
 import json
@@ -85,3 +82,44 @@ def is_team_internal_content(text: str | None) -> bool:
         return True
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# Skill / command expansion detection
+# ---------------------------------------------------------------------------
+# When a user invokes a slash command (e.g. /orch:40-test), Claude Code's
+# Skill tool expands the .md file and fires user-prompt-submit with the FULL
+# file content (often 5-15 KB).  Storing this verbatim pollutes the dashboard
+# chat with raw command definitions.
+#
+# This filter detects expanded skill content and truncates it to the heading
+# line.  It MUST be applied identically in both the hook receiver AND the
+# transcript reconciler so that content hashes match and no duplicates arise.
+# ---------------------------------------------------------------------------
+
+_SKILL_HEADING_RE = re.compile(r"^#\s+.+")
+_COMMAND_NAME_RE = re.compile(r"\*\*Command name:\*\*")
+
+
+def filter_skill_expansion(text: str | None) -> str | None:
+    """Truncate skill/command expansion content to just the heading line.
+
+    Detects when ``text`` is the expanded content of a .md command file
+    (as injected by Claude Code's Skill tool) and returns only the first
+    heading line.  Non-expansion text is returned unchanged.
+
+    The same function must be called in both the hook receiver and the
+    transcript reconciler so that content hashes stay consistent.
+    """
+    if not text or len(text) < 500:
+        return text
+
+    stripped = text.strip()
+
+    # Primary pattern: OTL command files start with "# NN: Title" and
+    # contain "**Command name:**" within the first 300 chars.
+    if _SKILL_HEADING_RE.match(stripped) and _COMMAND_NAME_RE.search(stripped[:300]):
+        heading = stripped.split("\n", 1)[0].strip()
+        return heading
+
+    return text

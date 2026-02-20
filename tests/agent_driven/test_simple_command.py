@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
+from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -29,51 +30,57 @@ def test_simple_command_roundtrip(claude_session, page, e2e_server, e2e_app):
     4. Wait for an agent response bubble in the DOM.
     5. Verify command state transitions in the database.
     """
+    start = scenario_header("Simple Command Round-Trip")
     agent_id = claude_session["agent_id"]
 
-    # --- 1. Navigate to voice chat ---
     va = VoiceAssertions(page, SCREENSHOT_DIR)
-    va.navigate_to_voice(e2e_server)
-    va.capture("01_voice_loaded")
+
+    # --- 1. Navigate to voice chat ---
+    with step("Navigate to voice chat", num=1, total=5):
+        va.navigate_to_voice(e2e_server)
+        va.capture("01_voice_loaded")
 
     # --- 2. Wait for agent card and select it ---
-    va.assert_agent_card_visible(agent_id, timeout=15_000)
-    va.capture("02_agent_card_visible")
-
-    va.select_agent(agent_id)
-    va.assert_chat_screen_active()
-    va.capture("03_chat_screen_active")
+    with step("Select agent card", num=2, total=5):
+        va.assert_agent_card_visible(agent_id, timeout=15_000)
+        va.capture("02_agent_card_visible")
+        va.select_agent(agent_id)
+        va.assert_chat_screen_active()
+        va.capture("03_chat_screen_active")
 
     # --- 3. Send a deterministic command ---
-    test_id = uuid4().hex[:8]
-    prompt = (
-        f"Create a file called /tmp/headspace_test_{test_id}.txt "
-        f"with the content 'hello'"
-    )
-    va.send_chat_message(prompt)
-    va.capture("04_command_sent")
+    with step("Send deterministic command", num=3, total=5):
+        test_id = uuid4().hex[:8]
+        prompt = (
+            f"Create a file called /tmp/headspace_test_{test_id}.txt "
+            f"with the content 'hello'"
+        )
+        va.send_chat_message(prompt)
+        va.capture("04_command_sent")
 
     # --- 4. Wait for agent response bubble ---
-    # Agent bubbles have class "chat-bubble agent" with data-turn-id attribute.
-    agent_bubble = page.locator(".chat-bubble.agent[data-turn-id]")
-    expect(agent_bubble.first).to_be_visible(timeout=RESPONSE_TIMEOUT)
-    va.capture("05_agent_response_visible")
+    with step("Wait for agent response bubble", num=4, total=5):
+        agent_bubble = page.locator(".chat-bubble.agent[data-turn-id]")
+        expect(agent_bubble.first).to_be_visible(timeout=RESPONSE_TIMEOUT)
+        va.capture("05_agent_response_visible")
 
     # --- 5. Verify command state transitions in DB ---
-    from claude_headspace.database import db
-    from claude_headspace.models.command import Command, CommandState
+    with step("Verify command state in database", num=5, total=5):
+        from claude_headspace.database import db
+        from claude_headspace.models.command import Command, CommandState
 
-    with e2e_app.app_context():
-        command = (
-            db.session.query(Command)
-            .filter_by(agent_id=agent_id)
-            .order_by(Command.id.desc())
-            .first()
-        )
-        assert command is not None, "No Command record found in database"
-        assert command.state in (CommandState.COMPLETE, CommandState.AWAITING_INPUT), (
-            f"Expected command state COMPLETE or AWAITING_INPUT, "
-            f"got {command.state}"
-        )
+        with e2e_app.app_context():
+            command = (
+                db.session.query(Command)
+                .filter_by(agent_id=agent_id)
+                .order_by(Command.id.desc())
+                .first()
+            )
+            assert command is not None, "No Command record found in database"
+            assert command.state in (CommandState.COMPLETE, CommandState.AWAITING_INPUT), (
+                f"Expected command state COMPLETE or AWAITING_INPUT, "
+                f"got {command.state}"
+            )
 
     va.capture("06_test_complete")
+    scenario_footer("Simple Command Round-Trip", start)

@@ -8,16 +8,16 @@
 
 ### Helper Extraction (FR15)
 
-- [ ] 2.1 Create `tests/agent_driven/helpers/__init__.py`
-- [ ] 2.2 Create `tests/agent_driven/helpers/cross_layer.py` -- extract `verify_cross_layer_consistency` from Sprint 2 tests into a shared plain function
-- [ ] 2.3 Create `tests/agent_driven/helpers/output.py` -- structured test output helper (scenario name, step progress, elapsed time)
-- [ ] 2.4 Refactor `test_question_answer.py` to use shared cross-layer helper
-- [ ] 2.5 Refactor `test_multi_turn.py` to use shared cross-layer helper
-- [ ] 2.6 Optionally refactor other test files to use shared helpers where applicable
+- [x] 2.1 Create `tests/agent_driven/helpers/__init__.py`
+- [x] 2.2 Create `tests/agent_driven/helpers/cross_layer.py` -- extract `verify_cross_layer_consistency` from Sprint 2 tests into a shared plain function
+- [x] 2.3 Create `tests/agent_driven/helpers/output.py` -- structured test output helper (scenario name, step progress, elapsed time)
+- [x] 2.4 Refactor `test_question_answer.py` to use shared cross-layer helper
+- [x] 2.5 Refactor `test_multi_turn.py` to use shared cross-layer helper
+- [x] 2.6 Optionally refactor other test files to use shared helpers where applicable
 
 ### Permission Approval Flow (FR16)
 
-- [ ] 2.7 Create `tests/agent_driven/test_permission_approval.py`
+- [x] 2.7 Create `tests/agent_driven/test_permission_approval.py`
   - Send prompt that triggers a tool permission request
   - Assert AWAITING_INPUT state reached with permission context
   - Detect permission-related UI element or tmux pane content
@@ -29,27 +29,27 @@
 
 ### Bug-Driven Scenario (FR17)
 
-- [ ] 2.8 Identify a real bug that survived mock-based testing (document commit hash/issue/description)
-- [ ] 2.9 Create bug-driven test file (e.g., `tests/agent_driven/test_bug_<name>.py`)
+- [x] 2.8 Identify a real bug that survived mock-based testing (document commit hash/issue/description)
+- [x] 2.9 Create bug-driven test file (e.g., `tests/agent_driven/test_bug_<name>.py`)
   - Document which bug it targets
   - Exercise the specific code path the bug affected
   - Would have caught the bug if it existed at the time
 
 ### Structured Test Output (FR19)
 
-- [ ] 2.10 Integrate structured output into new tests (scenario name, step progress, elapsed time)
-- [ ] 2.11 Optionally add structured output to existing Sprint 1+2 tests
+- [x] 2.10 Integrate structured output into new tests (scenario name, step progress, elapsed time)
+- [x] 2.11 Optionally add structured output to existing Sprint 1+2 tests
 
 ### Format Evaluation (FR20)
 
-- [ ] 2.12 Evaluate whether declarative YAML scenario format adds value
+- [x] 2.12 Evaluate whether declarative YAML scenario format adds value
   - If yes: implement minimal version using yaml.safe_load
   - If no: document decision in tests/agent_driven/ README or inline
   - Either way: every scenario must remain writable as plain pytest
 
 ### pytest Discovery (FR18)
 
-- [ ] 2.13 Verify all agent-driven tests are discoverable via `pytest tests/agent_driven/`
+- [x] 2.13 Verify all agent-driven tests are discoverable via `pytest tests/agent_driven/`
 
 ## 3. Testing (Phase 3)
 
