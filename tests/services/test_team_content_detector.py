@@ -1,9 +1,12 @@
-"""Tests for team_content_detector.is_team_internal_content."""
+"""Tests for team_content_detector."""
 
 import json
 import pytest
 
-from claude_headspace.services.team_content_detector import is_team_internal_content
+from claude_headspace.services.team_content_detector import (
+    filter_skill_expansion,
+    is_team_internal_content,
+)
 
 
 class TestXMLDetection:
@@ -159,3 +162,46 @@ class TestNoFalsePositives:
     def test_regular_json_object(self):
         msg = json.dumps({"name": "test", "value": 42})
         assert not is_team_internal_content(msg)
+
+
+class TestFilterSkillExpansion:
+    """Test filter_skill_expansion truncation of command .md content."""
+
+    SKILL_TEXT = (
+        "# 40: PRD Test\n\n"
+        "**Command name:** `40: prd-test`\n\n"
+        "**Purpose:** Fresh sub-agent for TEST phase.\n\n"
+        "---\n\n## Prompt\n\n" + "x" * 500
+    )
+
+    def test_truncates_skill_expansion(self):
+        result = filter_skill_expansion(self.SKILL_TEXT)
+        assert result == "# 40: PRD Test"
+
+    def test_short_text_unchanged(self):
+        assert filter_skill_expansion("fix the bug") == "fix the bug"
+
+    def test_none_returns_none(self):
+        assert filter_skill_expansion(None) is None
+
+    def test_empty_returns_empty(self):
+        assert filter_skill_expansion("") == ""
+
+    def test_long_text_without_command_name_unchanged(self):
+        long_text = "# My Long Prompt\n\n" + "paragraph " * 200
+        assert filter_skill_expansion(long_text) == long_text
+
+    def test_real_orch_command_pattern(self):
+        text = (
+            "# 30: PRD Proposal\n\n"
+            "**Command name:** `30: prd-proposal`\n\n"
+            "**Purpose:** Fresh sub-agent for PREPARE phase.\n\n"
+            "---\n\n## Prompt\n\n"
+            "You are a fresh sub-agent handling the PREPARE phase. " * 50
+        )
+        assert filter_skill_expansion(text) == "# 30: PRD Proposal"
+
+    def test_regular_long_markdown_not_filtered(self):
+        """Long user prompts with markdown headings should NOT be filtered."""
+        text = "# Please help me refactor this\n\n" + "code line\n" * 200
+        assert filter_skill_expansion(text) == text
