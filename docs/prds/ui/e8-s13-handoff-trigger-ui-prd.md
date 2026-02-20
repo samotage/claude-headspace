@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — criterion 7 and FR6 reworded for build isolation (POST to endpoint, not trigger execution). Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:24:00+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Handoff Trigger UI

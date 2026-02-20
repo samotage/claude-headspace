@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — table name fix (agents→agent), ON DELETE CASCADE. Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:23:56+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Agent Model Extensions

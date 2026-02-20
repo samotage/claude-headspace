@@ -1,7 +1,7 @@
 ---
 validation:
-  status: invalid
-  invalidated_reason: 'PRD amended post-evaluation — S7 owns hook extraction, added previous_agent_id passthrough. Requires revalidation.'
+  status: valid
+  validated_at: '2026-02-20T17:23:58+11:00'
 ---
 
 ## Product Requirements Document (PRD) — SessionCorrelator Persona Assignment
