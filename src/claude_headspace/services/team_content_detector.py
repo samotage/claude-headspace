@@ -101,6 +101,54 @@ _SKILL_HEADING_RE = re.compile(r"^#\s+.+")
 _COMMAND_NAME_RE = re.compile(r"\*\*Command name:\*\*")
 
 
+def is_skill_expansion(text: str | None) -> bool:
+    """Detect whether text is expanded skill/command content from Claude Code's Skill tool.
+
+    When a user invokes a slash command (e.g. /opsx:apply), Claude Code's Skill
+    tool expands the .md file and fires user-prompt-submit with the FULL file
+    content.  This function detects that expanded content across all skill formats:
+
+    - OTL commands: ``# Title`` + ``**Command name:**``
+    - OTL SOP/util: ``# Title`` + ``**Goal:**`` or ``**Purpose:**``
+    - OPSX commands: ``**Input**:`` or ``**Input:**`` near the start
+    - BMAD agents: ``You must fully embody this agent's persona``
+    - BMAD workflows: ``IT IS CRITICAL THAT YOU FOLLOW``
+
+    Args:
+        text: The prompt text to check
+
+    Returns:
+        True if the text is a skill expansion that should be suppressed
+    """
+    if not text or len(text) < 500:
+        return False
+
+    stripped = text.strip()
+    first_300 = stripped[:300]
+
+    # OTL commands: "# Title" + "**Command name:**"
+    if _SKILL_HEADING_RE.match(stripped) and _COMMAND_NAME_RE.search(first_300):
+        return True
+
+    # OTL SOP/util/misc: "# Title" + "**Goal:**" or "**Purpose:**"
+    if _SKILL_HEADING_RE.match(stripped) and ("**Goal:**" in first_300 or "**Purpose:**" in first_300):
+        return True
+
+    # OPSX skills: contain "**Input**:" or "**Input:**" near the start
+    if "**Input**:" in first_300 or "**Input:**" in first_300:
+        return True
+
+    # BMAD agents: start with persona activation
+    if stripped.startswith("You must fully embody this agent"):
+        return True
+
+    # BMAD modules/workflows: start with critical instruction
+    if stripped.startswith("IT IS CRITICAL THAT YOU FOLLOW"):
+        return True
+
+    return False
+
+
 def filter_skill_expansion(text: str | None) -> str | None:
     """Truncate skill/command expansion content to just the heading line.
 
@@ -108,7 +156,7 @@ def filter_skill_expansion(text: str | None) -> str | None:
     (as injected by Claude Code's Skill tool) and returns only the first
     heading line.  Non-expansion text is returned unchanged.
 
-    The same function must be called in both the hook receiver and the
+    The same function must be called in both the hook receiver AND the
     transcript reconciler so that content hashes stay consistent.
     """
     if not text or len(text) < 500:
@@ -116,10 +164,9 @@ def filter_skill_expansion(text: str | None) -> str | None:
 
     stripped = text.strip()
 
-    # Primary pattern: OTL command files start with "# NN: Title" and
-    # contain "**Command name:**" within the first 300 chars.
-    if _SKILL_HEADING_RE.match(stripped) and _COMMAND_NAME_RE.search(stripped[:300]):
-        heading = stripped.split("\n", 1)[0].strip()
-        return heading
+    if not is_skill_expansion(stripped):
+        return text
 
-    return text
+    # Return the first non-empty line as a concise label
+    first_line = stripped.split("\n", 1)[0].strip()
+    return first_line if first_line else text

@@ -440,6 +440,16 @@ window.VoiceSidebar = (function () {
     });
   }
 
+  // --- Deselect agent if it's the one currently being viewed ---
+
+  function deselectIfTarget(agentId) {
+    if (parseInt(VoiceState.targetAgentId, 10) === agentId) {
+      VoiceState.targetAgentId = null;
+      VoiceState.chatAgentEnded = false;
+      VoiceLayout.showScreen('agents');
+    }
+  }
+
   // --- Shutdown agent (private) ---
 
   function shutdownAgent(agentId) {
@@ -451,6 +461,7 @@ window.VoiceSidebar = (function () {
       ).then(function (confirmed) {
         if (!confirmed) return;
         VoiceAPI.shutdownAgent(agentId).then(function () {
+          deselectIfTarget(agentId);
           refreshAgents();
         }).catch(function (err) {
           if (window.Toast) {
@@ -463,6 +474,7 @@ window.VoiceSidebar = (function () {
     } else {
       if (!confirm('Shut down this agent?')) return;
       VoiceAPI.shutdownAgent(agentId).then(function () {
+        deselectIfTarget(agentId);
         refreshAgents();
       }).catch(function (err) {
         alert('Shutdown failed: ' + (err.error || 'unknown error'));

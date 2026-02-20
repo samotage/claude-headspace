@@ -1353,6 +1353,7 @@ body.layout-split .agent-card.selected:hover {
 /* Agent bubble — left-aligned, dark slate */
 .chat-bubble.agent {
   align-self: flex-start;
+  width: 85%;
   background: var(--agent-bubble);
   color: var(--text);
   border-bottom-left-radius: 6px;

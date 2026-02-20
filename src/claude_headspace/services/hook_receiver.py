@@ -26,7 +26,7 @@ from .hook_extractors import (
 )
 from .intent_detector import detect_agent_intent
 from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
-from .team_content_detector import filter_skill_expansion, is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -806,6 +806,26 @@ def process_user_prompt_submit(
             logger.info(
                 f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
                 f"session_id={claude_session_id}, skipped=tool_interruption_artifact"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
+        # Filter out skill/command expansion content.  When a user invokes a
+        # slash command, Claude Code's Skill tool fires a SECOND
+        # user_prompt_submit with the full .md file content.  For voice-bridge
+        # commands this is already caught by respond_pending above, but for
+        # commands typed directly in the terminal respond_pending is NOT set.
+        # This defense-in-depth check prevents the expanded content from
+        # creating a spurious COMMAND turn ("command prompt injection").
+        if prompt_text and is_skill_expansion(prompt_text):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=skill_expansion "
+                f"(len={len(prompt_text)})"
             )
             return HookEventResult(
                 success=True, agent_id=agent.id,

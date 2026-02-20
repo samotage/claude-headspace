@@ -1,7 +1,7 @@
 # Agent Teams — Design Workshop
 
-**Date:** 16 February 2026
-**Status:** Active workshop — working through design decisions
+**Date:** 16-20 February 2026
+**Status:** Complete — all 15 decisions resolved, Epic 8 roadmap generated
 **Inputs:** `headspace-platform-vision.md`, `headspace-agent-teams-functional-outline.md`
 **Method:** Grounding pass completed — vision concepts mapped against actual codebase. Decisions below need resolution before epic/sprint decomposition.
 
@@ -459,22 +459,28 @@ Design now, build later. These ensure v1 choices don't paint us into a corner.
 Once decisions above are resolved, map to implementation order.
 
 ### 6.1 Sprint Structure
-- [ ] **Decision: How many sprints for Epic 1 (Persona System & Workshop Mode)?**
-- [ ] Map resolved decisions to sprint deliverables
-- [ ] Define acceptance criteria for each sprint
-- [ ] Identify what can be tested against the running app at each stage
+- [x] **Decision: How many sprints for Epic 8 (Personable Agents)?**
+- [x] Map resolved decisions to sprint deliverables
+- [x] Define acceptance criteria for each sprint
+- [x] Identify what can be tested against the running app at each stage
+
+**Resolution:** **14 sprints, linear sequencing, detailed roadmap generated.** See `docs/roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md`. Sprints are intentionally atomic — each is independently testable with a clear "done" signal. Grouped into 5 phases: Data Foundation (S1-S4), Filesystem + Registration (S5-S6), Agent Identity (S7-S9), Dashboard Display (S10-S11), Handoff System (S12-S14).
 
 ### 6.2 Migration Strategy
-- [ ] **Decision: One migration or phased?**
-- [ ] Persona table migration
-- [ ] Agent extensions migration
-- [ ] Availability constraint migration
-- [ ] Order and dependencies
+- [x] **Decision: One migration or phased?**
+- [x] Persona table migration
+- [x] Agent extensions migration
+- [x] Availability constraint migration
+- [x] Order and dependencies
+
+**Resolution:** **Phased migrations — one per sprint as needed.** S1: Role + Persona tables. S2: Organisation table. S3: Position table. S4: Agent extensions (3 nullable FKs). S12: Handoff table. Each migration is additive and non-breaking. No availability constraint migration (decision 2.3 — no constraint).
 
 ### 6.3 Test Strategy
-- [ ] Targeted test plan for persona system
-- [ ] Integration test approach (real DB)
-- [ ] What to verify against the running app (not just unit tests)
+- [x] Targeted test plan for persona system
+- [x] Integration test approach (real DB)
+- [x] What to verify against the running app (not just unit tests)
+
+**Resolution:** **Defined per sprint in the roadmap.** Each sprint has acceptance criteria that specify what to test. Model sprints (S1-S4, S12) testable with DB queries. Registration (S6) testable end-to-end (CLI + DB + filesystem). Agent identity (S7-S9) requires running agent with real hooks. Dashboard (S10-S11) requires visual verification via Playwright screenshots. Handoff (S13-S14) requires full end-to-end cycle with running agents.
 
 ---
 
@@ -499,6 +505,9 @@ Track decisions and rationale as we resolve them.
 | 2026-02-20 | 5.1 Handoff Design Hooks | Hybrid handoff: DB metadata (Handoff record with injection prompt) + filesystem content (agent-written markdown at `data/personas/{slug}/handoffs/{iso-datetime}-{agent-8digit}.md`). Operator-initiated via dashboard button at context threshold. Agent-as-author writes the handoff file. Agent gains `previous_agent_id` self-ref FK for continuity chain. No auto-trigger in v1. File cleanup deferred to system management PRD. | Agent has the richest context — first-person handoffs beat reconstruction. File-native consumption (Read tool) is natural for agents. Manual trigger enables iterative prompt tuning with human-in-the-loop before automation. Two-phase bootstrap: DB prompt bootstraps immediately, file deepens understanding. |
 | 2026-02-20 | 5.2 PM Layer Hooks | Deferred. Command model stays as-is. PM task decomposition design requires operational experience with personas first. | No concrete model for cross-agent task assignment yet. Bottom-up: personas → handoffs → then PM layer informed by real usage. |
 | 2026-02-20 | 5.3 Multi-Org Readiness | Deferred. Personas are already org-independent (no org_id). No v1 conventions needed. | Existing design doesn't paint us into a corner. Design multi-org when the second org is on the horizon. |
+| 2026-02-20 | 6.1 Sprint Structure | 14 atomic sprints in 5 phases, linear sequencing. Full roadmap at `docs/roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md`. | Bottom-up build: models → filesystem → registration → agent identity → dashboard → handoff. Each sprint independently testable. |
+| 2026-02-20 | 6.2 Migration Strategy | Phased — one migration per sprint as needed. All additive and non-breaking. | Matches atomic sprint approach. No risky multi-table migrations. |
+| 2026-02-20 | 6.3 Test Strategy | Defined per sprint in roadmap acceptance criteria. Range from DB queries (models) to full E2E with running agents (handoff). | Matches the "verify against running app" lesson. Visual verification for UI sprints. |
 
 ---
 

@@ -16,7 +16,7 @@ from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
-from .team_content_detector import filter_skill_expansion, is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,21 @@ def reconcile_transcript_entries(agent, command, entries):
             continue
 
         actor = "user" if entry.role == "user" else "agent"
+
+        # Skip skill expansion entries entirely.  When a user invokes a slash
+        # command (e.g. /opsx:apply), Claude Code's Skill tool fires a SECOND
+        # user-prompt-submit with the expanded .md file content.  The hook
+        # receiver suppresses this via respond_pending, but the JSONL still
+        # records it.  Without this check the reconciler creates a spurious
+        # USER COMMAND turn with the raw skill definition — the "command
+        # prompt injection" bug.
+        if actor == "user" and is_skill_expansion(entry.content.strip()):
+            logger.debug(
+                f"[RECONCILER] Skipping skill expansion entry "
+                f"(agent={agent.id}, len={len(entry.content)})"
+            )
+            continue
+
         # Apply the same skill-expansion filter used in the hook receiver
         # so that content hashes match the truncated text stored in turns.
         entry_text = filter_skill_expansion(entry.content.strip()) or entry.content.strip()
@@ -287,6 +302,9 @@ def reconcile_agent_session(agent):
         if not entry.content or not entry.content.strip():
             continue
         actor = "user" if entry.role == "user" else "agent"
+        # Skip skill expansion entries (same guard as reconcile_transcript_entries)
+        if actor == "user" and is_skill_expansion(entry.content.strip()):
+            continue
         content_key = _content_hash(actor, entry.content.strip())
         legacy_key = _legacy_content_hash(actor, entry.content.strip())
         if content_key in existing_hashes or legacy_key in existing_hashes:

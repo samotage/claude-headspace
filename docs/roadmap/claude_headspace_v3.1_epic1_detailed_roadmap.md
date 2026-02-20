@@ -719,13 +719,11 @@ This document serves as the **high-level roadmap and baseline** for Epic 1 imple
   - Uses `$CLAUDE_SESSION_ID`, `$CLAUDE_WORKING_DIRECTORY` env vars
   - Timeout/retry logic (1s connect timeout, 2s max time)
   - Silent failures (exits 0 even if curl fails)
-- **Claude Code settings template** (`docs/claude-code-hooks-settings.json`):
-  - JSON for `~/.claude/settings.json` with all hook configurations
-  - Absolute paths (not ~ or $HOME)
 - **Installation script** (`bin/install-hooks.sh`):
   - Copies `notify-headspace.sh` to `~/.claude/hooks/`
-  - Merges settings template into `~/.claude/settings.json`
+  - Generates and merges hook configuration into `~/.claude/settings.json`
   - Sets executable permissions
+  - Prints correct JSON for manual setup if `jq` is not installed
 - **Hook status dashboard** (add to main dashboard):
   - Show "Hooks: enabled" vs "Polling only"
   - Last hook event time per agent
@@ -1507,14 +1505,12 @@ events
   - Uses Claude env vars: `$CLAUDE_SESSION_ID`, `$CLAUDE_WORKING_DIRECTORY`
   - Timeout: 1s connect, 2s max time
   - Silent failures (exit 0 always)
-- **Claude Code settings template** (`docs/claude-code-hooks-settings.json`):
-  - JSON with all 5 hook configurations
-  - Absolute paths required (not ~ or $HOME)
 - **Installation script** (`bin/install-hooks.sh`):
   - Copy script to `~/.claude/hooks/`
-  - Merge settings into `~/.claude/settings.json`
+  - Generate and merge hook configuration into `~/.claude/settings.json`
   - Set executable permissions
   - Validate paths are absolute
+  - Print correct JSON for manual setup if `jq` is not installed
 - **Hook status dashboard UI**:
   - Show "Hooks: enabled" or "Polling only" badge
   - Last hook event time per agent
@@ -1549,7 +1545,6 @@ events
 - `src/app.py` (register hooks blueprint)
 - `bin/notify-headspace.sh` (hook script)
 - `bin/install-hooks.sh` (installation script)
-- `docs/claude-code-hooks-settings.json` (settings template)
 - `docs/hooks-setup.md` (setup guide)
 - `templates/dashboard.html` (add hook status badge)
 

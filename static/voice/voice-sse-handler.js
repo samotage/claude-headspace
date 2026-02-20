@@ -211,6 +211,13 @@ window.VoiceSSEHandler = (function () {
         delete VoiceState.otherAgentStates[endedId];
         if (VoiceState.currentScreen === 'chat') VoiceChatRenderer.renderAttentionBanners();
       }
+      // If the dismissed agent is the one being viewed, clear the chat
+      if (endedId && data.reason === 'dismissed'
+          && parseInt(endedId, 10) === parseInt(VoiceState.targetAgentId, 10)) {
+        VoiceState.targetAgentId = null;
+        VoiceState.chatAgentEnded = false;
+        VoiceLayout.showScreen('agents');
+      }
     }
 
     // Update attention banners for non-target agents on chat screen

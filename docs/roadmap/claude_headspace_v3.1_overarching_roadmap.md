@@ -45,8 +45,9 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 | **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | Input bridge, tmux bridge, project show, CLI alignment, full output capture               |
 | **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | Voice bridge server/client, agent chat history, agent lifecycle, file sharing             |
 | **Epic 7** | Agent-Driven Integration Testing     | 3+      | 3-6 weeks+  | Real production loop testing, cross-layer verification, bug-driven scenarios              |
+| **Epic 8** | Personable Agents                    | 14      | 14-18 weeks | Named persona identity, skill files, org structure, agent handoff                         |
 
-**Total:** 41+ sprints, ~40-53 weeks (Epics 6 and 7 are extensible)
+**Total:** 55+ sprints, ~54-71 weeks (Epics 6, 7, and 8 are extensible)
 
 ---
 
@@ -480,12 +481,6 @@ def correlate_session(claude_session_id, cwd):
 - Sets executable permissions
 - Validates absolute paths (not ~ or $HOME)
 
-**4. Claude Code Settings Template** (`docs/claude-code-hooks-settings.json`):
-
-- JSON configuration for all 5 hook events
-- Absolute paths required
-- Merged into user's `~/.claude/settings.json`
-
 ### Benefits vs Polling
 
 | Aspect                 | Polling                  | Hooks                 |
@@ -499,12 +494,7 @@ def correlate_session(claude_session_id, cwd):
 ### User Setup
 
 1. Run installation script: `./bin/install-hooks.sh`
-2. Or manually:
-   - Copy `bin/notify-headspace.sh` to `~/.claude/hooks/`
-   - Make executable: `chmod +x ~/.claude/hooks/notify-headspace.sh`
-   - Merge `docs/claude-code-hooks-settings.json` into `~/.claude/settings.json`
-
-**Important:** Use absolute paths (not ~ or $HOME) in `settings.json`.
+2. The installer copies the hook script and merges configuration into `~/.claude/settings.json` automatically. If `jq` is not installed, it prints the correct JSON for manual setup.
 
 ### Verification
 

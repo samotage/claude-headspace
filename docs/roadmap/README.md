@@ -82,15 +82,16 @@ This directory contains the complete roadmap documentation for Claude Headspace 
 | **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | P1            |
 | **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | P1            |
 | **Epic 7** | Agent-Driven Integration Testing     | 3+      | 3-6 weeks+  | P1            |
+| **Epic 8** | Personable Agents                    | 14      | 14-18 weeks | P1            |
 
-**Total:** 41+ sprints, ~40-53 weeks (Epics 6 and 7 are extensible)
+**Total:** 55+ sprints, ~54-71 weeks (Epics 6, 7, and 8 are extensible)
 
 ### Critical Path
 
 ```
-Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 (Bridge & Projects) → Epic 6 (Voice & Chat) → Epic 7 (Testing)
-                   ↘
-                    Epic 2 (UI Polish) [parallel with Epic 3]
+Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 (Bridge & Projects) → Epic 6 (Voice & Chat) → Epic 8 (Personable Agents)
+                   ↘                                                                                                    ↗
+                    Epic 2 (UI Polish) [parallel with Epic 3]                                          Epic 7 (Testing) [independent]
 ```
 
 ---
@@ -179,6 +180,41 @@ Epic 1 (Foundation) → Epic 3 (Intelligence) → Epic 4 (Data Mgmt) → Epic 5 
 
 ---
 
+### 8. Epic 8 Detailed Roadmap
+
+**File:** `claude_headspace_v3.1_epic8_detailed_roadmap.md`
+
+**Purpose:** Sprint-by-sprint breakdown of Epic 8 with subsystem-level detail
+
+**Contents:**
+
+- 14 sprints covering persona system, org structure, and handoff mechanism
+- 14 subsystems requiring OpenSpec PRDs (subsystem: `persona` and `ui`)
+- Each sprint includes:
+  - Goal, duration, dependencies
+  - Deliverables (comprehensive list)
+  - Technical decisions (all from Agent Teams Design Workshop)
+  - Data model definitions
+  - Risks & mitigation
+  - Acceptance criteria
+- Sprint dependency diagram
+- Cross-epic dependencies
+- Acceptance test cases (6 test cases)
+- Deferred items (5 items with rationale)
+- Design source document references
+- PRD generation order (5 phases)
+
+**Use this for:**
+
+- Generating detailed PRDs for each sprint
+- Understanding persona system and handoff requirements
+- Implementation planning
+- OpenSpec proposal creation
+
+**Design Source:** All decisions from the Agent Teams Design Workshop (`docs/workshop/agent-teams-workshop.md`)
+
+---
+
 ## Key Architecture Decisions
 
 ### 1. Event-Driven from Day One
@@ -252,7 +288,6 @@ Track every user/agent exchange (not just command-level):
 2. **Hook API Routes** (`src/routes/hooks.py`)
 3. **Hook Script** (`bin/notify-headspace.sh`)
 4. **Installation Script** (`bin/install-hooks.sh`)
-5. **Settings Template** (`docs/claude-code-hooks-settings.json`)
 
 ### User Setup
 
@@ -261,13 +296,7 @@ Track every user/agent exchange (not just command-level):
 ./bin/install-hooks.sh
 ```
 
-Or manually:
-
-1. Copy `bin/notify-headspace.sh` to `~/.claude/hooks/`
-2. Make executable: `chmod +x ~/.claude/hooks/notify-headspace.sh`
-3. Merge `docs/claude-code-hooks-settings.json` into `~/.claude/settings.json`
-
-**Important:** Use absolute paths (not ~ or $HOME) in `settings.json`.
+The installer copies the hook script to `~/.claude/hooks/` and merges the hook configuration into `~/.claude/settings.json` automatically. If `jq` is not installed, it prints the correct JSON for manual setup.
 
 ---
 
