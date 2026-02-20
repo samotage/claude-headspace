@@ -240,7 +240,11 @@ def _has_autocomplete_ghost(pane_content: str) -> bool:
     """Check if pane content shows autocomplete ghost text.
 
     Ghost text is rendered with dim/faint ANSI styling (SGR 2 or color 90).
-    We check the last non-empty lines (the input area) for these indicators.
+    We check the last non-empty lines (the input area) for these indicators,
+    but skip lines that are purely decorative (separator lines made of
+    box-drawing characters, status bars, etc.) since Claude Code renders
+    those with dim styling too — causing false positives that trigger
+    unwanted Escape sends which clear user input.
 
     Args:
         pane_content: Pane content captured with escape sequences (-e flag)
@@ -261,6 +265,21 @@ def _has_autocomplete_ghost(pane_content: str) -> bool:
     # Only check the last 2 lines (input area)
     for line in lines[-2:]:
         if "\x1b[2m" in line or "\x1b[90m" in line:
+            # Strip ANSI escape sequences to examine the actual text content
+            clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line).strip()
+            if not clean:
+                continue
+            # Skip lines that are purely decorative: box-drawing characters
+            # (─│┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝╠╣╦╩╬), dashes, dots, and whitespace.
+            # These are Claude Code's separator/border lines rendered with
+            # dim styling — NOT autocomplete ghost text.
+            stripped = clean.replace(" ", "")
+            if stripped and all(
+                c in "─│┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝╠╣╦╩╬-—·•…" for c in stripped
+            ):
+                continue
+            # This line has dim/faint styling AND contains actual text
+            # content — likely autocomplete ghost text.
             return True
 
     return False
