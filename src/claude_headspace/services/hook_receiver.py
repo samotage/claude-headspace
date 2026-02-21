@@ -666,6 +666,18 @@ def process_session_start(
 
         db.session.commit()
         broadcast_card_refresh(agent, "session_start")
+
+        # Inject persona skill files for persona-backed agents with a tmux pane
+        if agent.persona_id and agent.tmux_pane_id:
+            try:
+                from .skill_injector import inject_persona_skills
+
+                inject_persona_skills(agent)
+            except Exception as e:
+                logger.error(
+                    f"session_start: skill injection failed for agent_id={agent.id}: {e}"
+                )
+
         logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")
         return HookEventResult(success=True, agent_id=agent.id, new_state=agent.state.value)
     except Exception as e:
@@ -687,6 +699,10 @@ def process_session_end(
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
         _transcript_positions.pop(agent.id, None)
         _progress_texts_for_agent.pop(agent.id, None)
+
+        # Clear skill injection idempotency record
+        from .skill_injector import clear_injection_record
+        clear_injection_record(agent.id)
 
         # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)
         from .session_correlator import invalidate_agent_caches
