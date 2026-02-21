@@ -49,6 +49,8 @@ export TLS_KEY="/Users/samotage/certs/smac.griffin-blenny.ts.net.key"
 # environment.  If they reach the new python3 process it skips the reloader and
 # tries to reuse a dead file descriptor, crashing with "Socket operation on non-socket".
 unset WERKZEUG_RUN_MAIN WERKZEUG_SERVER_FD
+# Strip CLAUDECODE so spawned agents don't inherit "inside another Claude Code session"
+unset CLAUDECODE
 
 # Start server in background using run.py (reads config.yaml)
 python3 run.py > /tmp/claude_headspace.log 2>&1 &
