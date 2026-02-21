@@ -1,5 +1,6 @@
 """Tests for hook receiver service."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, call, patch
 
@@ -258,6 +259,44 @@ class TestProcessSessionStart:
         # persona_id and previous_agent_id should remain None
         assert agent.persona_id is None
         assert agent.previous_agent_id is None
+
+
+    @patch("claude_headspace.services.skill_injector.inject_persona_skills")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_triggers_skill_injection_for_persona_agent(
+        self, mock_db, mock_inject, mock_agent, fresh_state
+    ):
+        """session_start triggers inject_persona_skills for agent with persona_id and tmux_pane_id."""
+        mock_agent.persona_id = 5
+        mock_agent.tmux_pane_id = "%0"
+        result = process_session_start(mock_agent, "session-123")
+        assert result.success is True
+        mock_inject.assert_called_once_with(mock_agent)
+
+    @patch("claude_headspace.services.skill_injector.inject_persona_skills")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_skips_skill_injection_without_persona(
+        self, mock_db, mock_inject, mock_agent, fresh_state
+    ):
+        """session_start skips skill injection when agent has no persona_id."""
+        mock_agent.persona_id = None
+        mock_agent.tmux_pane_id = "%0"
+        result = process_session_start(mock_agent, "session-123")
+        assert result.success is True
+        mock_inject.assert_not_called()
+
+    @patch("claude_headspace.services.skill_injector.inject_persona_skills", side_effect=RuntimeError("tmux crashed"))
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_skill_injection_failure_does_not_block(
+        self, mock_db, mock_inject, mock_agent, fresh_state, caplog
+    ):
+        """skill injection failure does not block session_start from succeeding."""
+        mock_agent.persona_id = 5
+        mock_agent.tmux_pane_id = "%0"
+        with caplog.at_level(logging.ERROR):
+            result = process_session_start(mock_agent, "session-123")
+        assert result.success is True
+        assert "skill injection failed" in caplog.text
 
 
 class TestProcessSessionEnd:
