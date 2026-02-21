@@ -13,6 +13,7 @@ from .command import CommandState
 
 if TYPE_CHECKING:
     from .command import Command
+    from .handoff import Handoff
     from .persona import Persona
     from .position import Position
     from .project import Project
@@ -120,6 +121,9 @@ class Agent(db.Model):
         "Agent",
         foreign_keys=[previous_agent_id],
         back_populates="previous_agent",
+    )
+    handoff: Mapped["Handoff | None"] = relationship(
+        "Handoff", back_populates="agent", uselist=False, passive_deletes=True
     )
 
     @property
