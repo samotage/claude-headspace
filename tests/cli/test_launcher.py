@@ -33,6 +33,7 @@ from src.claude_headspace.cli.launcher import (
     main,
     register_session,
     setup_environment,
+    validate_persona,
     validate_prerequisites,
     verify_claude_cli,
 )
@@ -449,6 +450,84 @@ class TestSetupEnvironment:
         assert env["CLAUDE_HEADSPACE_SESSION_ID"] == str(session_uuid)
         # Should include existing env vars
         assert "PATH" in env
+
+    def test_persona_slug_set(self):
+        """Test that persona slug env var is set when provided."""
+        env = setup_environment(
+            "http://localhost:5055", uuid.uuid4(), persona_slug="developer-con-1"
+        )
+        assert env["CLAUDE_HEADSPACE_PERSONA_SLUG"] == "developer-con-1"
+
+    def test_persona_slug_absent_when_none(self):
+        """Test that persona slug env var is not set when not provided."""
+        env = setup_environment("http://localhost:5055", uuid.uuid4())
+        assert "CLAUDE_HEADSPACE_PERSONA_SLUG" not in env
+
+
+class TestValidatePersona:
+    """Tests for validate_persona function."""
+
+    @patch("src.claude_headspace.cli.launcher.requests.get")
+    def test_valid_persona(self, mock_get):
+        """Test validation passes for existing active persona."""
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"valid": True, "slug": "dev-con", "id": 1, "name": "Dev Con"},
+        )
+        valid, error = validate_persona("http://localhost:5055", "dev-con")
+        assert valid is True
+        assert error is None
+        mock_get.assert_called_once_with(
+            "http://localhost:5055/api/personas/dev-con/validate",
+            timeout=2,
+            verify=False,
+        )
+
+    @patch("src.claude_headspace.cli.launcher.requests.get")
+    def test_invalid_persona(self, mock_get):
+        """Test validation fails for nonexistent persona."""
+        mock_get.return_value = MagicMock(
+            status_code=404,
+            text='{"valid": false, "error": "not found"}',
+            json=lambda: {"valid": False, "error": "Persona 'nope' not found or not active"},
+        )
+        valid, error = validate_persona("http://localhost:5055", "nope")
+        assert valid is False
+        assert "not found" in error.lower() or "not active" in error.lower()
+
+    @patch("src.claude_headspace.cli.launcher.requests.get")
+    def test_connection_error(self, mock_get):
+        """Test validation handles connection errors gracefully."""
+        import requests as req
+        mock_get.side_effect = req.exceptions.ConnectionError("refused")
+        valid, error = validate_persona("http://localhost:5055", "dev-con")
+        assert valid is False
+        assert "Cannot connect" in error
+
+    @patch("src.claude_headspace.cli.launcher.requests.get")
+    def test_timeout_error(self, mock_get):
+        """Test validation handles timeout errors gracefully."""
+        import requests as req
+        mock_get.side_effect = req.exceptions.Timeout("timed out")
+        valid, error = validate_persona("http://localhost:5055", "dev-con")
+        assert valid is False
+        assert "timed out" in error
+
+
+class TestCreateParserPersona:
+    """Tests for --persona flag in create_parser."""
+
+    def test_persona_flag_recognized(self):
+        """Test that --persona flag is parsed correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["start", "--persona", "dev-con"])
+        assert args.persona == "dev-con"
+
+    def test_persona_flag_default_none(self):
+        """Test that persona defaults to None when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["start"])
+        assert args.persona is None
 
 
 class TestLaunchClaude:

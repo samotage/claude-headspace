@@ -177,7 +177,11 @@ def force_terminate_agent(agent_id: int) -> ShutdownResult:
         )
 
 
-def create_agent(project_id: int) -> CreateResult:
+def create_agent(
+    project_id: int,
+    persona_slug: str | None = None,
+    previous_agent_id: int | None = None,
+) -> CreateResult:
     """Create a new idle Claude Code agent for a project.
 
     Invokes `claude-headspace start` in the project's directory via a new
@@ -185,6 +189,10 @@ def create_agent(project_id: int) -> CreateResult:
 
     Args:
         project_id: ID of the project to create an agent for
+        persona_slug: Optional persona slug to associate with the agent.
+            Validated against the Persona table (must exist with status "active").
+        previous_agent_id: Optional ID of the previous agent for handoff
+            continuity chains (consumed by E8-S14).
 
     Returns:
         CreateResult with success status and message
@@ -199,6 +207,18 @@ def create_agent(project_id: int) -> CreateResult:
             success=False,
             message=f"Project path does not exist: {project.path}",
         )
+
+    # Validate persona slug if provided
+    if persona_slug:
+        from ..models.persona import Persona
+
+        persona = Persona.query.filter_by(slug=persona_slug, status="active").first()
+        if not persona:
+            return CreateResult(
+                success=False,
+                message=f"Persona '{persona_slug}' not found or not active. "
+                "Register the persona first with: flask persona register --name <name> --role <role>",
+            )
 
     # Check that tmux is available
     if not shutil.which("tmux"):
@@ -218,6 +238,18 @@ def create_agent(project_id: int) -> CreateResult:
 
     session_name = f"hs-{project.slug}-{uuid.uuid4().hex[:8]}"
 
+    # Build CLI command args
+    cli_args = [cli_path, "start"]
+    if persona_slug:
+        cli_args.extend(["--persona", persona_slug])
+
+    # Build environment with optional persona/previous_agent metadata
+    env = os.environ.copy()
+    if persona_slug:
+        env["CLAUDE_HEADSPACE_PERSONA_SLUG"] = persona_slug
+    if previous_agent_id is not None:
+        env["CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID"] = str(previous_agent_id)
+
     try:
         # Start claude-headspace in a new detached tmux session
         subprocess.Popen(
@@ -231,17 +263,16 @@ def create_agent(project_id: int) -> CreateResult:
                 "-c",
                 str(project_path),
                 "--",
-                cli_path,
-                "start",
-            ],
+            ] + cli_args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            env=os.environ.copy(),
+            env=env,
         )
 
         logger.info(
             f"Started agent creation: tmux session={session_name}, "
             f"project={project.name}, path={project.path}"
+            f"{f', persona={persona_slug}' if persona_slug else ''}"
         )
 
         return CreateResult(

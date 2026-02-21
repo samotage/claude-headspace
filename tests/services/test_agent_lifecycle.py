@@ -98,6 +98,88 @@ class TestCreateAgent:
         assert not result.success
         assert "Failed" in result.message
 
+    @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
+    @patch("claude_headspace.services.agent_lifecycle.shutil.which")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_valid_persona_slug(self, mock_db, mock_which, mock_popen, tmp_path):
+        """Valid persona slug passes validation and is included in CLI args."""
+        project = _make_project(path=str(tmp_path))
+        mock_db.session.get.return_value = project
+        mock_which.side_effect = lambda cmd: "/usr/bin/" + cmd
+        mock_popen.return_value = MagicMock()
+
+        # Mock Persona.query.filter_by().first() to return a valid persona
+        mock_persona = MagicMock()
+        mock_persona.slug = "developer-con-1"
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as mock_persona_cls:
+            mock_persona_cls.query.filter_by.return_value.first.return_value = mock_persona
+            result = create_agent(1, persona_slug="developer-con-1")
+
+        assert result.success
+        # Verify --persona flag is in CLI args
+        popen_args = mock_popen.call_args[0][0]
+        assert "--persona" in popen_args
+        persona_idx = popen_args.index("--persona")
+        assert popen_args[persona_idx + 1] == "developer-con-1"
+        # Verify env var is set
+        popen_env = mock_popen.call_args[1]["env"]
+        assert popen_env["CLAUDE_HEADSPACE_PERSONA_SLUG"] == "developer-con-1"
+
+    @patch("claude_headspace.services.agent_lifecycle.shutil.which")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_invalid_persona_slug(self, mock_db, mock_which, tmp_path):
+        """Invalid persona slug returns failure without launching session."""
+        project = _make_project(path=str(tmp_path))
+        mock_db.session.get.return_value = project
+        mock_which.side_effect = lambda cmd: "/usr/bin/" + cmd
+
+        # Mock Persona.query.filter_by().first() to return None (not found)
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as mock_persona_cls:
+            mock_persona_cls.query.filter_by.return_value.first.return_value = None
+            result = create_agent(1, persona_slug="nonexistent")
+
+        assert not result.success
+        assert "nonexistent" in result.message
+        assert "not found" in result.message.lower() or "not active" in result.message.lower()
+
+    @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
+    @patch("claude_headspace.services.agent_lifecycle.shutil.which")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_no_persona_preserves_existing_behaviour(self, mock_db, mock_which, mock_popen, tmp_path):
+        """No persona slug works identically to current behaviour."""
+        project = _make_project(path=str(tmp_path))
+        mock_db.session.get.return_value = project
+        mock_which.side_effect = lambda cmd: "/usr/bin/" + cmd
+        mock_popen.return_value = MagicMock()
+
+        result = create_agent(1)
+        assert result.success
+        # Verify --persona is NOT in CLI args
+        popen_args = mock_popen.call_args[0][0]
+        assert "--persona" not in popen_args
+        # Verify persona env var is NOT set
+        popen_env = mock_popen.call_args[1]["env"]
+        assert "CLAUDE_HEADSPACE_PERSONA_SLUG" not in popen_env
+
+    @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
+    @patch("claude_headspace.services.agent_lifecycle.shutil.which")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_previous_agent_id_passed_through(self, mock_db, mock_which, mock_popen, tmp_path):
+        """previous_agent_id is passed via environment variable."""
+        project = _make_project(path=str(tmp_path))
+        mock_db.session.get.return_value = project
+        mock_which.side_effect = lambda cmd: "/usr/bin/" + cmd
+        mock_popen.return_value = MagicMock()
+
+        result = create_agent(1, previous_agent_id=42)
+        assert result.success
+        popen_env = mock_popen.call_args[1]["env"]
+        assert popen_env["CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID"] == "42"
+
 
 class TestShutdownAgent:
     """Tests for shutdown_agent function."""

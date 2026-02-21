@@ -171,6 +171,8 @@ def hook_session_start():
     transcript_path = data.get("transcript_path")
     tmux_pane = data.get("tmux_pane")
     tmux_session = data.get("tmux_session")
+    persona_slug = data.get("persona_slug")
+    previous_agent_id = data.get("previous_agent_id")
 
     # SRV-C7: Validate working_directory is a real path
     if working_directory and not os.path.isdir(working_directory):
@@ -188,6 +190,7 @@ def hook_session_start():
         result = process_session_start(
             correlation.agent, session_id, transcript_path=transcript_path,
             tmux_pane_id=tmux_pane, tmux_session=tmux_session,
+            persona_slug=persona_slug, previous_agent_id=previous_agent_id,
         )
 
         latency_ms = int((time.time() - start_time) * 1000)

@@ -243,6 +243,41 @@ def get_tmux_pane_id() -> str | None:
     return pane_id if pane_id else None
 
 
+def validate_persona(server_url: str, persona_slug: str) -> tuple[bool, str | None]:
+    """
+    Validate that a persona slug exists and is active via the server API.
+
+    Args:
+        server_url: URL of the Flask server
+        persona_slug: Persona slug to validate
+
+    Returns:
+        Tuple of (valid, error_message)
+    """
+    try:
+        response = requests.get(
+            f"{server_url}/api/personas/{persona_slug}/validate",
+            timeout=HTTP_TIMEOUT,
+            verify=False,
+        )
+        if response.status_code == 200:
+            return True, None
+        elif response.status_code == 404:
+            data = response.json() if response.text else {}
+            return False, data.get(
+                "error",
+                f"Persona '{persona_slug}' not found or not active",
+            )
+        else:
+            return False, f"Persona validation returned status {response.status_code}"
+    except requests.exceptions.ConnectionError:
+        return False, f"Cannot connect to server at {server_url}"
+    except requests.exceptions.Timeout:
+        return False, f"Server at {server_url} timed out"
+    except Exception as e:
+        return False, f"Error validating persona: {e}"
+
+
 def validate_prerequisites(server_url: str) -> tuple[bool, str | None]:
     """
     Validate that all prerequisites are met.
@@ -353,13 +388,18 @@ def cleanup_session(server_url: str, session_uuid: uuid.UUID) -> None:
         logger.warning(f"Failed to clean up session: {e}")
 
 
-def setup_environment(server_url: str, session_uuid: uuid.UUID) -> dict:
+def setup_environment(
+    server_url: str,
+    session_uuid: uuid.UUID,
+    persona_slug: str | None = None,
+) -> dict:
     """
     Set up environment variables for Claude Code.
 
     Args:
         server_url: URL of the Flask server
         session_uuid: UUID for this session
+        persona_slug: Optional persona slug to propagate via environment
 
     Returns:
         Dictionary of environment variables to set
@@ -367,6 +407,8 @@ def setup_environment(server_url: str, session_uuid: uuid.UUID) -> dict:
     env = os.environ.copy()
     env["CLAUDE_HEADSPACE_URL"] = server_url
     env["CLAUDE_HEADSPACE_SESSION_ID"] = str(session_uuid)
+    if persona_slug:
+        env["CLAUDE_HEADSPACE_PERSONA_SLUG"] = persona_slug
     return env
 
 
@@ -543,6 +585,15 @@ def cmd_start(args: argparse.Namespace) -> int:
             return EXIT_CLAUDE_NOT_FOUND
         return EXIT_ERROR
 
+    # Validate persona slug if provided
+    persona_slug = getattr(args, "persona", None)
+    if persona_slug:
+        valid, error = validate_persona(server_url, persona_slug)
+        if not valid:
+            print(f"Error: {error}", file=sys.stderr)
+            return EXIT_ERROR
+        print(f"Persona: {persona_slug}")
+
     # Get project info
     project_info = get_project_info()
     print(f"Project: {project_info.name}")
@@ -588,7 +639,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     print(f"Registered agent #{response_data['agent_id']}")
 
     # Set up environment
-    env = setup_environment(server_url, session_uuid)
+    env = setup_environment(server_url, session_uuid, persona_slug=persona_slug)
 
     # Launch claude with session management
     with SessionManager(server_url, session_uuid):
@@ -627,6 +678,12 @@ def create_parser() -> argparse.ArgumentParser:
         default=False,
         dest="no_bridge",
         help="Disable tmux bridge. Run without dashboard respond capability.",
+    )
+    start_parser.add_argument(
+        "--persona",
+        type=str,
+        default=None,
+        help="Persona slug to associate with this session. Validated against the database.",
     )
     start_parser.add_argument(
         "claude_args",
