@@ -62,6 +62,7 @@ def mock_project_with_agents(mock_project):
     active_agent.ended_at = None
     active_agent.last_seen_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     active_agent.priority_score = 50
+    active_agent.persona_id = None
 
     ended_agent = MagicMock()
     ended_agent.id = 2
@@ -71,6 +72,7 @@ def mock_project_with_agents(mock_project):
     ended_agent.ended_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
     ended_agent.last_seen_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
     ended_agent.priority_score = None
+    ended_agent.persona_id = None
 
     mock_project.agents = [active_agent, ended_agent]
     return mock_project

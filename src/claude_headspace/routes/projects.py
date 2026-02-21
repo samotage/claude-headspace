@@ -272,7 +272,7 @@ def get_project(project_id: int):
             state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
             if a.ended_at is not None:
                 state_value = "ended"
-            agents_data.append({
+            agent_dict = {
                 "id": a.id,
                 "session_uuid": str(a.session_uuid) if a.session_uuid else None,
                 "state": state_value,
@@ -283,7 +283,14 @@ def get_project(project_id: int):
                 "turn_count": metrics.get("turn_count", 0),
                 "frustration_avg": metrics.get("frustration_avg"),
                 "avg_turn_time": metrics.get("avg_turn_time"),
-            })
+            }
+            if getattr(a, "persona_id", None) is not None:
+                persona = a.persona
+                if persona is not None:
+                    role = getattr(persona, "role", None)
+                    agent_dict["persona_name"] = persona.name
+                    agent_dict["persona_role"] = role.name if role else None
+            agents_data.append(agent_dict)
 
         return jsonify({
             "id": project.id,
