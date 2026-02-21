@@ -299,7 +299,7 @@ class TestAppStartsWithoutDatabase:
 
         try:
             # App should start even though database connection will fail
-            app = create_app(config_path=str(project_root / "config.yaml"))
+            app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
             assert app is not None
             # DATABASE_CONNECTED should be False when DB is unavailable
             assert "DATABASE_CONNECTED" in app.config
@@ -353,7 +353,7 @@ class TestConnectionPoolConfig:
         os.chdir(project_root)
 
         try:
-            app = create_app(config_path=str(project_root / "config.yaml"))
+            app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
             engine_options = app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {})
             assert "pool_size" in engine_options
             assert "pool_timeout" in engine_options

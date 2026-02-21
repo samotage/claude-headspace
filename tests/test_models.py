@@ -31,10 +31,7 @@ def app_with_db():
     original_cwd = os.getcwd()
     os.chdir(project_root)
 
-    app = create_app(config_path=str(project_root / "config.yaml"))
-    app.config.update({
-        "TESTING": True,
-    })
+    app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
 
     with app.app_context():
         yield app
@@ -108,7 +105,7 @@ class TestEventTypeConstants:
 
     def test_event_type_constants(self):
         """Test EventType has all expected constants."""
-        assert EventType.SESSION_DISCOVERED == "session_discovered"
+        assert EventType.SESSION_REGISTERED == "session_registered"
         assert EventType.SESSION_ENDED == "session_ended"
         assert EventType.TURN_DETECTED == "turn_detected"
         assert EventType.STATE_TRANSITION == "state_transition"
@@ -208,10 +205,10 @@ class TestModelInstantiation:
     def test_event_instantiation(self, db_session):
         """Test Event model can be instantiated."""
         event = Event(
-            event_type=EventType.SESSION_DISCOVERED,
+            event_type=EventType.SESSION_REGISTERED,
             payload={"session_id": "abc123"}
         )
-        assert event.event_type == EventType.SESSION_DISCOVERED
+        assert event.event_type == EventType.SESSION_REGISTERED
         assert event.payload == {"session_id": "abc123"}
         assert event.project_id is None
         assert event.agent_id is None
@@ -379,10 +376,10 @@ class TestModelRepr:
 
     def test_event_repr(self):
         """Test Event __repr__."""
-        event = Event(event_type=EventType.SESSION_DISCOVERED)
+        event = Event(event_type=EventType.SESSION_REGISTERED)
         repr_str = repr(event)
         assert "Event" in repr_str
-        assert "session_discovered" in repr_str
+        assert "session_registered" in repr_str
 
     def test_objective_history_repr(self):
         """Test ObjectiveHistory __repr__."""

@@ -244,7 +244,10 @@ def dismiss_agent(agent_id: int):
         logger.exception("Failed to dismiss agent %s", agent_id)
         return jsonify({"error": "Failed to dismiss agent"}), 500
 
-    logger.info(f"Agent {agent_id} dismissed from dashboard")
+    logger.warning(
+        f"DISMISS_KILL: agent_id={agent_id} uuid={agent.session_uuid} "
+        f"tmux_pane={agent.tmux_pane_id} project={agent.project.name if agent.project else 'N/A'}"
+    )
 
     # Broadcast so other dashboard clients also remove the card
     try:

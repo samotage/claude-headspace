@@ -405,6 +405,7 @@ def setup_environment(
         Dictionary of environment variables to set
     """
     env = os.environ.copy()
+    env.pop("CLAUDECODE", None)  # Prevent "inside another Claude Code session" error
     env["CLAUDE_HEADSPACE_URL"] = server_url
     env["CLAUDE_HEADSPACE_SESSION_ID"] = str(session_uuid)
     if persona_slug:

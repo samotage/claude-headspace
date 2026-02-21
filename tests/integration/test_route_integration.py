@@ -32,8 +32,7 @@ def int_app(test_db_engine):
     from claude_headspace.app import create_app
 
     project_root = Path(__file__).parent.parent.parent
-    app = create_app(config_path=str(project_root / "config.yaml"))
-    app.config["TESTING"] = True
+    app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = str(test_db_engine.url)
 
     return app

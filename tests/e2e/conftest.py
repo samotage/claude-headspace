@@ -107,8 +107,7 @@ def e2e_app(e2e_test_db):
     from claude_headspace.app import create_app
     from claude_headspace.database import db
 
-    app = create_app(config_path=str(PROJECT_ROOT / "config.yaml"))
-    app.config["TESTING"] = True
+    app = create_app(config_path=str(PROJECT_ROOT / "config.yaml"), testing=True)
 
     # Create tables in the test database and seed required data
     with app.app_context():

@@ -59,12 +59,15 @@ def setup_logging(config: dict, app_root: Path) -> None:
     logging.config.dictConfig(logging_config)
 
 
-def create_app(config_path: str = "config.yaml") -> Flask:
+def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask:
     """
     Create and configure the Flask application.
 
     Args:
         config_path: Path to the YAML configuration file
+        testing: If True, skip background services and orphan cleanup.
+            Must be passed by test fixtures BEFORE creation so safety
+            gates work during initialization (not after).
 
     Returns:
         Configured Flask application instance
@@ -86,6 +89,12 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         template_folder=str(template_folder),
         static_folder=str(static_folder),
     )
+
+    # TESTING must be set before any safety-gated code runs.
+    # Setting it after create_app() returns is too late — background services
+    # and cleanup_orphaned_sessions() will have already executed.
+    if testing:
+        app.config["TESTING"] = True
 
     # Configure Flask
     app.config["DEBUG"] = get_value(config, "server", "debug", default=False)

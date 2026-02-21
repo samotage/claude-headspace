@@ -45,6 +45,10 @@ def _make_agent(
     agent.project = MagicMock()
     agent.project.name = "test-project"
     agent.persona = None
+    agent.persona_id = None
+    agent.context_percent_used = None
+    agent.context_remaining_tokens = None
+    agent.tmux_pane_id = None
     agent.get_current_command.return_value = None
     agent.commands = []
     return agent
@@ -399,3 +403,116 @@ class TestGetQuestionOptions:
         agent = _make_agent(state=CommandState.IDLE)
         result = build_card_state(agent)
         assert "question_options" not in result
+
+
+class TestHandoffEligibility:
+    """Tests for handoff eligibility computation in build_card_state()."""
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_persona_agent_above_threshold_is_eligible(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        agent = _make_agent()
+        agent.persona_id = 1
+        agent.persona = MagicMock()
+        agent.persona.name = "Con"
+        agent.persona.role = None
+        agent.context_percent_used = 85
+        agent.context_remaining_tokens = "12k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is True
+        assert result["context"]["handoff_threshold"] == 80
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_persona_agent_below_threshold_not_eligible(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        agent = _make_agent()
+        agent.persona_id = 1
+        agent.persona = MagicMock()
+        agent.persona.name = "Con"
+        agent.persona.role = None
+        agent.context_percent_used = 70
+        agent.context_remaining_tokens = "30k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is False
+        assert result["context"]["handoff_threshold"] == 80
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_anonymous_agent_above_threshold_not_eligible(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        agent = _make_agent()
+        # persona_id is None by default
+        agent.context_percent_used = 90
+        agent.context_remaining_tokens = "5k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is False
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_no_context_data_not_eligible(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"handoff_threshold": 80}
+        agent = _make_agent()
+        agent.persona_id = 1
+        # context_percent_used is None by default
+
+        result = build_card_state(agent)
+        assert result["context"] is None
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_exact_threshold_is_eligible(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        agent = _make_agent()
+        agent.persona_id = 1
+        agent.persona = MagicMock()
+        agent.persona.name = "Con"
+        agent.persona.role = None
+        agent.context_percent_used = 80
+        agent.context_remaining_tokens = "15k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is True
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_low_threshold_for_testing(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 10}
+        agent = _make_agent()
+        agent.persona_id = 1
+        agent.persona = MagicMock()
+        agent.persona.name = "Con"
+        agent.persona.role = None
+        agent.context_percent_used = 12
+        agent.context_remaining_tokens = "90k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is True
+        assert result["context"]["handoff_threshold"] == 10
+
+    @patch("claude_headspace.services.card_state._get_context_config")
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_default_threshold_when_not_configured(self, mock_dash, mock_ctx):
+        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_ctx.return_value = {}  # No handoff_threshold set
+        agent = _make_agent()
+        agent.persona_id = 1
+        agent.persona = MagicMock()
+        agent.persona.name = "Con"
+        agent.persona.role = None
+        agent.context_percent_used = 82
+        agent.context_remaining_tokens = "10k"
+
+        result = build_card_state(agent)
+        assert result["context"]["handoff_eligible"] is True
+        assert result["context"]["handoff_threshold"] == 80

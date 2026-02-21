@@ -96,13 +96,22 @@ def cleanup_orphaned_sessions() -> int:
     for pane in hs_panes:
         if pane.pane_id not in active_pane_ids:
             orphaned_sessions.add(pane.session_name)
+            logger.warning(
+                f"ORPHAN_CLEANUP_KILL: session={pane.session_name} pane={pane.pane_id} "
+                f"not in active_pane_ids={active_pane_ids}"
+            )
+        else:
+            logger.info(
+                f"ORPHAN_CLEANUP_KEEP: session={pane.session_name} pane={pane.pane_id} "
+                f"belongs to active agent"
+            )
 
     killed = 0
     for session_name in orphaned_sessions:
         result = tmux_bridge.kill_session(session_name)
         if result.success:
             killed += 1
-            logger.info(f"Orphan cleanup: killed session '{session_name}'")
+            logger.warning(f"ORPHAN_CLEANUP_KILLED: session '{session_name}'")
         else:
             logger.debug(
                 f"Orphan cleanup: failed to kill session '{session_name}': "
@@ -245,6 +254,7 @@ def create_agent(
 
     # Build environment with optional persona/previous_agent metadata
     env = os.environ.copy()
+    env.pop("CLAUDECODE", None)  # Prevent "inside another Claude Code session" error
     if persona_slug:
         env["CLAUDE_HEADSPACE_PERSONA_SLUG"] = persona_slug
     if previous_agent_id is not None:
@@ -331,9 +341,10 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
             success=False, message=f"Failed to send /exit: {error_msg}"
         )
 
-    logger.info(
-        f"Sent /exit to agent {agent_id} (pane {agent.tmux_pane_id}). "
-        "Hooks will handle cleanup."
+    logger.warning(
+        f"SHUTDOWN_KILL: Sent /exit to agent_id={agent_id} "
+        f"uuid={agent.session_uuid} tmux_pane={agent.tmux_pane_id} "
+        f"project={agent.project.name if agent.project else 'N/A'}"
     )
 
     return ShutdownResult(
