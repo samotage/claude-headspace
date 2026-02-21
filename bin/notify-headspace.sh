@@ -85,7 +85,13 @@ TMUX_PANE_ID="${TMUX_PANE:-}"
 # Extract tmux session name from environment (set by CLI launcher)
 TMUX_SESSION_NAME="${CLAUDE_HEADSPACE_TMUX_SESSION:-}"
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY} tmux_pane=${TMUX_PANE_ID:-EMPTY} tmux_sess=${TMUX_SESSION_NAME:-EMPTY}" >> "$DEBUG_LOG"
+# Extract persona slug from environment (set by CLI launcher or create_agent)
+PERSONA_SLUG="${CLAUDE_HEADSPACE_PERSONA_SLUG:-}"
+
+# Extract previous agent ID from environment (set by create_agent for handoff chains)
+PREVIOUS_AGENT_ID="${CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID:-}"
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') PARSED event=${EVENT_TYPE} sid=${SESSION_ID:-EMPTY} cwd=${WORKING_DIR:-EMPTY} hsid=${HEADSPACE_SESSION_ID:-EMPTY} tmux_pane=${TMUX_PANE_ID:-EMPTY} tmux_sess=${TMUX_SESSION_NAME:-EMPTY} persona=${PERSONA_SLUG:-EMPTY} prev_agent=${PREVIOUS_AGENT_ID:-EMPTY}" >> "$DEBUG_LOG"
 
 if [ -z "$SESSION_ID" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') EXIT no session_id for event=${EVENT_TYPE}" >> "$DEBUG_LOG"
@@ -109,6 +115,8 @@ PAYLOAD=$(jq -n \
     --argjson tinput "${TOOL_INPUT:-null}" \
     --arg tmux_pane "$TMUX_PANE_ID" \
     --arg tmux_session "$TMUX_SESSION_NAME" \
+    --arg persona_slug "$PERSONA_SLUG" \
+    --arg prev_agent_id "$PREVIOUS_AGENT_ID" \
     '{session_id: $sid}
      + (if $wd != "" then {working_directory: $wd} else {} end)
      + (if $hsid != "" then {headspace_session_id: $hsid} else {} end)
@@ -120,7 +128,9 @@ PAYLOAD=$(jq -n \
      + (if $tname != "" then {tool_name: $tname} else {} end)
      + (if $tinput != null then {tool_input: $tinput} else {} end)
      + (if $tmux_pane != "" then {tmux_pane: $tmux_pane} else {} end)
-     + (if $tmux_session != "" then {tmux_session: $tmux_session} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
+     + (if $tmux_session != "" then {tmux_session: $tmux_session} else {} end)
+     + (if $persona_slug != "" then {persona_slug: $persona_slug} else {} end)
+     + (if $prev_agent_id != "" then {previous_agent_id: $prev_agent_id} else {} end)' 2>/dev/null) || PAYLOAD="{\"session_id\": \"${SESSION_ID}\"}"
 
 # Send the request and capture result
 CURL_RESULT=$(curl -s -k -w "\n%{http_code}" \

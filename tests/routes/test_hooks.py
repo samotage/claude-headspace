@@ -125,6 +125,70 @@ class TestHookSessionStart:
         call_kwargs = mock_process.call_args
         assert call_kwargs[1]["tmux_pane_id"] == "%5"
 
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_session_start")
+    def test_passes_persona_slug_to_process(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that persona_slug is extracted and passed to process_session_start."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=False, new_state="idle",
+        )
+
+        response = client.post(
+            "/hook/session-start",
+            json={"session_id": "test-session", "persona_slug": "developer-con-1"},
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["persona_slug"] == "developer-con-1"
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_session_start")
+    def test_passes_previous_agent_id_to_process(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that previous_agent_id is extracted and passed to process_session_start."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=False, new_state="idle",
+        )
+
+        response = client.post(
+            "/hook/session-start",
+            json={"session_id": "test-session", "previous_agent_id": "42"},
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["previous_agent_id"] == "42"
+
+    @patch("src.claude_headspace.routes.hooks.correlate_session")
+    @patch("src.claude_headspace.routes.hooks.process_session_start")
+    def test_persona_fields_absent_when_not_provided(
+        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+    ):
+        """Test that persona_slug and previous_agent_id are None when not in payload."""
+        mock_correlate.return_value = mock_correlation
+        mock_process.return_value = HookEventResult(
+            success=True, agent_id=1, state_changed=False, new_state="idle",
+        )
+
+        response = client.post(
+            "/hook/session-start",
+            json={"session_id": "test-session"},
+        )
+
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args
+        assert call_kwargs[1]["persona_slug"] is None
+        assert call_kwargs[1]["previous_agent_id"] is None
+
     def test_hooks_disabled(self, client, mock_receiver_state):
         """Test ignored when hooks are disabled."""
         mock_receiver_state.enabled = False

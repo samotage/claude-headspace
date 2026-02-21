@@ -147,6 +147,44 @@ class TestProcessSessionStart:
         process_session_start(mock_agent, "session-123")
         assert mock_agent.ended_at is None
 
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_stores_persona_slug(self, mock_db, mock_agent, fresh_state):
+        """session_start should store persona_slug as transient attribute for S8."""
+        result = process_session_start(
+            mock_agent, "session-123", persona_slug="developer-con-1"
+        )
+        assert result.success is True
+        assert mock_agent._pending_persona_slug == "developer-con-1"
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_stores_previous_agent_id(self, mock_db, mock_agent, fresh_state):
+        """session_start should store previous_agent_id as transient attribute for S8."""
+        result = process_session_start(
+            mock_agent, "session-123", previous_agent_id="42"
+        )
+        assert result.success is True
+        assert mock_agent._pending_previous_agent_id == "42"
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_without_persona_fields(self, mock_db, mock_agent, fresh_state):
+        """session_start without persona fields preserves backward compatibility."""
+        # Use a simple namespace instead of MagicMock to detect attribute assignment
+        class SimpleAgent:
+            id = 1
+            last_seen_at = datetime.now(timezone.utc)
+            ended_at = None
+            state = MagicMock(value="idle")
+            transcript_path = None
+            claude_session_id = None
+            tmux_pane_id = None
+            tmux_session = None
+        agent = SimpleAgent()
+        result = process_session_start(agent, "session-123")
+        assert result.success is True
+        # Transient persona attributes should not be set
+        assert not hasattr(agent, "_pending_persona_slug")
+        assert not hasattr(agent, "_pending_previous_agent_id")
+
 
 class TestProcessSessionEnd:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")

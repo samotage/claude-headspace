@@ -588,12 +588,28 @@ def process_session_start(
     transcript_path: str | None = None,
     tmux_pane_id: str | None = None,
     tmux_session: str | None = None,
+    persona_slug: str | None = None,
+    previous_agent_id: str | None = None,
 ) -> HookEventResult:
     state = get_receiver_state()
     state.record_event(HookEventType.SESSION_START)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None  # Clear ended state for new session
+
+        # Store persona_slug and previous_agent_id for S8 (SessionCorrelator)
+        # consumption. S8 will use these to set agent.persona_id and
+        # agent.previous_agent_id on the Agent model.
+        if persona_slug:
+            agent._pending_persona_slug = persona_slug
+            logger.info(
+                f"session_start: persona_slug={persona_slug} stored for S8 consumption"
+            )
+        if previous_agent_id:
+            agent._pending_previous_agent_id = previous_agent_id
+            logger.info(
+                f"session_start: previous_agent_id={previous_agent_id} stored for S8 consumption"
+            )
         # Always update transcript_path — context compression creates a new
         # Claude session (and new JSONL file).  The old guard `not agent.transcript_path`
         # caused the agent to read a stale file for the rest of its lifetime.

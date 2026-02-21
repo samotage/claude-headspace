@@ -46,3 +46,29 @@ def api_register_persona():
         "id": result.id,
         "path": result.path,
     }), 201
+
+
+@personas_bp.route("/api/personas/<slug>/validate", methods=["GET"])
+def api_validate_persona(slug: str):
+    """Validate that a persona slug exists and is active.
+
+    Returns:
+        200: Persona exists and is active {valid: true, slug, id, name}
+        404: Persona not found or not active {valid: false, error}
+    """
+    from ..models.persona import Persona
+
+    persona = Persona.query.filter_by(slug=slug, status="active").first()
+    if not persona:
+        return jsonify({
+            "valid": False,
+            "error": f"Persona '{slug}' not found or not active. "
+            "Register the persona first with: flask persona register --name <name> --role <role>",
+        }), 404
+
+    return jsonify({
+        "valid": True,
+        "slug": persona.slug,
+        "id": persona.id,
+        "name": persona.name,
+    }), 200
