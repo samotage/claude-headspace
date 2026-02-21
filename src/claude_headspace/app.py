@@ -296,6 +296,12 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     from .services import tmux_bridge
     app.extensions["tmux_bridge"] = tmux_bridge
 
+    # Initialize handoff executor (requires tmux bridge and database)
+    from .services.handoff_executor import HandoffExecutor
+    handoff_executor = HandoffExecutor(app=app)
+    app.extensions["handoff_executor"] = handoff_executor
+    logger.info("Handoff executor initialized")
+
     # Initialize file upload service
     from .services.file_upload import FileUploadService
     file_upload_service = FileUploadService(config=config, app_root=str(app_root))

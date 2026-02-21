@@ -678,6 +678,33 @@ def process_session_start(
                     f"session_start: skill injection failed for agent_id={agent.id}: {e}"
                 )
 
+        # Deliver handoff injection prompt for successor agents.
+        # This runs AFTER skill injection so the successor is primed before
+        # receiving the handoff context.
+        if agent.previous_agent_id and agent.tmux_pane_id:
+            try:
+                from flask import current_app as _app
+                handoff_executor = _app.extensions.get("handoff_executor")
+                if handoff_executor:
+                    injection_result = handoff_executor.deliver_injection_prompt(agent)
+                    if injection_result.success:
+                        logger.info(
+                            f"session_start: handoff injection delivered — "
+                            f"agent_id={agent.id}, predecessor_id={agent.previous_agent_id}"
+                        )
+                    elif injection_result.error_code != "no_handoff_record":
+                        # no_handoff_record is expected for non-handoff successors
+                        logger.warning(
+                            f"session_start: handoff injection failed — "
+                            f"agent_id={agent.id}: {injection_result.message}"
+                        )
+            except RuntimeError:
+                pass  # No app context
+            except Exception as e:
+                logger.error(
+                    f"session_start: handoff injection error for agent_id={agent.id}: {e}"
+                )
+
         logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")
         return HookEventResult(success=True, agent_id=agent.id, new_state=agent.state.value)
     except Exception as e:
@@ -1019,6 +1046,40 @@ def process_stop(
     state.record_event(HookEventType.STOP)
     try:
         agent.last_seen_at = datetime.now(timezone.utc)
+
+        # Check if this agent has a handoff in progress — if so, delegate
+        # to HandoffExecutor for continuation (file verification, DB record,
+        # successor creation) instead of normal stop processing.
+        try:
+            from flask import current_app as _app
+            handoff_executor = _app.extensions.get("handoff_executor")
+            if handoff_executor and handoff_executor.is_handoff_in_progress(agent.id):
+                logger.info(
+                    f"hook_event: type=stop, agent_id={agent.id}, "
+                    f"handoff_in_progress — delegating to HandoffExecutor"
+                )
+                handoff_result = handoff_executor.continue_after_stop(agent)
+                if handoff_result.success:
+                    logger.info(
+                        f"hook_event: type=stop, agent_id={agent.id}, "
+                        f"handoff continuation complete"
+                    )
+                else:
+                    logger.error(
+                        f"hook_event: type=stop, agent_id={agent.id}, "
+                        f"handoff continuation failed: {handoff_result.message}"
+                    )
+                # Whether handoff succeeded or failed, return — don't do
+                # normal stop processing for a handoff agent.
+                db.session.commit()
+                broadcast_card_refresh(agent, "stop")
+                return HookEventResult(
+                    success=handoff_result.success,
+                    agent_id=agent.id,
+                    error_message=None if handoff_result.success else handoff_result.message,
+                )
+        except RuntimeError:
+            pass  # No app context — skip handoff check
 
         lifecycle = _get_lifecycle_manager()
         current_command = lifecycle.get_current_command(agent)
