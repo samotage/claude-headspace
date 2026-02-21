@@ -705,17 +705,27 @@
         var completionSummary = esc(data.command_completion_summary || data.command_summary || 'Completed');
         var heroChars = esc(data.hero_chars || '');
         var heroTrail = esc(data.hero_trail || '');
+        var personaName = esc(data.persona_name || '');
+        var personaRole = esc(data.persona_role || '');
         var turnCount = data.turn_count != null ? parseInt(data.turn_count, 10) : 0;
         var elapsed = esc(data.elapsed || '');
         var turnLabel = turnCount === 1 ? 'turn' : 'turns';
         var elapsedStr = elapsed ? ' \u00b7 ' + elapsed : '';
 
+        var heroHtml;
+        if (personaName) {
+            heroHtml = '<span class="agent-hero text-sm">' + personaName + '</span>' +
+                       (personaRole ? '<span class="agent-hero-trail"> \u2014 ' + personaRole + '</span>' : '');
+        } else {
+            heroHtml = '<span class="agent-hero text-sm">' + heroChars + '</span>' +
+                       '<span class="agent-hero-trail">' + heroTrail + '</span>';
+        }
+
         details.innerHTML =
             '<summary class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-hover transition-colors">' +
                 '<span class="text-xs text-muted">&#9654;</span>' +
                 '<span class="flex items-baseline gap-0.5">' +
-                    '<span class="agent-hero text-sm">' + heroChars + '</span>' +
-                    '<span class="agent-hero-trail">' + heroTrail + '</span>' +
+                    heroHtml +
                 '</span>' +
                 '<span class="command-instruction text-primary text-sm font-medium truncate flex-1" title="' + instruction + '">' + instruction + '</span>' +
             '</summary>' +
@@ -944,10 +954,13 @@
         var stateInfo = data.state_info || STATE_INFO[state] || STATE_INFO['IDLE'];
 
         // Line 01: hero identity, status badge, last-seen, uptime
-        if (data.hero_chars) {
-            var heroEl = card.querySelector('.agent-hero');
+        var heroEl = card.querySelector('.agent-hero');
+        var trailEl = card.querySelector('.agent-hero-trail');
+        if (data.persona_name) {
+            if (heroEl) heroEl.textContent = data.persona_name;
+            if (trailEl) trailEl.textContent = data.persona_role ? ' \u2014 ' + data.persona_role : '';
+        } else if (data.hero_chars) {
             if (heroEl) heroEl.textContent = data.hero_chars;
-            var trailEl = card.querySelector('.agent-hero-trail');
             if (trailEl) trailEl.textContent = data.hero_trail || '';
         }
         var statusBadge = card.querySelector('.status-badge');
