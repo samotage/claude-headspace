@@ -120,6 +120,128 @@ class TestAgentContextEndpoint:
         assert response.json["reason"] == "statusline_not_found"
 
 
+class TestHandoffAgentEndpoint:
+    """Tests for POST /api/agents/<id>/handoff."""
+
+    def test_success(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=True, message="Handoff initiated"
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post(
+            "/api/agents/1/handoff",
+            json={"reason": "context_limit"},
+        )
+        assert response.status_code == 200
+        assert response.json["status"] == "initiated"
+        mock_executor.trigger_handoff.assert_called_once_with(
+            1, reason="context_limit"
+        )
+
+    def test_default_reason(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=True, message="Handoff initiated"
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/1/handoff", json={})
+        assert response.status_code == 200
+        mock_executor.trigger_handoff.assert_called_once_with(
+            1, reason="manual"
+        )
+
+    def test_agent_not_found(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=False, message="Agent not found", error_code="not_found"
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/999/handoff", json={})
+        assert response.status_code == 404
+        assert "Agent not found" in response.json["error"]
+
+    def test_already_in_progress(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=False,
+            message="Handoff already in progress",
+            error_code="already_in_progress",
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/1/handoff", json={})
+        assert response.status_code == 409
+
+    def test_no_persona(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=False,
+            message="Agent has no persona",
+            error_code="no_persona",
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/1/handoff", json={})
+        assert response.status_code == 400
+        assert "no persona" in response.json["error"]
+
+    def test_no_tmux_pane(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=False,
+            message="Agent has no tmux pane",
+            error_code="no_tmux_pane",
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/1/handoff", json={})
+        assert response.status_code == 400
+
+    def test_not_active(self, client, app):
+        from unittest.mock import MagicMock
+
+        from claude_headspace.services.handoff_executor import HandoffResult
+
+        mock_executor = MagicMock()
+        mock_executor.trigger_handoff.return_value = HandoffResult(
+            success=False,
+            message="Agent is not active",
+            error_code="not_active",
+        )
+        app.extensions["handoff_executor"] = mock_executor
+
+        response = client.post("/api/agents/1/handoff", json={})
+        assert response.status_code == 400
+
+
 class TestAgentInfoEndpoint:
     """Tests for GET /api/agents/<id>/info."""
 

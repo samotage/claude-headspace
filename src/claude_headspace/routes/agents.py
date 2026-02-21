@@ -124,6 +124,44 @@ def agent_context_endpoint(agent_id: int):
     }), 200
 
 
+@agents_bp.route("/api/agents/<int:agent_id>/handoff", methods=["POST"])
+def handoff_agent_endpoint(agent_id: int):
+    """Initiate a handoff for an agent.
+
+    Validates preconditions and starts the async handoff flow.
+    The outgoing agent receives a handoff instruction via tmux.
+
+    Request body:
+        reason (str): Reason for handoff (e.g. "context_limit")
+
+    Returns:
+        200: Handoff initiated
+        400: Validation failed (no persona, no tmux, not active)
+        404: Agent not found
+        409: Handoff already in progress
+    """
+    from flask import current_app
+
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason", "manual")
+
+    handoff_executor = current_app.extensions.get("handoff_executor")
+    if not handoff_executor:
+        return jsonify({"error": "Handoff executor not available"}), 500
+
+    result = handoff_executor.trigger_handoff(agent_id, reason=reason)
+
+    if not result.success:
+        status_map = {
+            "not_found": 404,
+            "already_in_progress": 409,
+        }
+        status = status_map.get(result.error_code, 400)
+        return jsonify({"error": result.message}), status
+
+    return jsonify({"status": "initiated", "message": result.message}), 200
+
+
 @agents_bp.route("/api/agents/<int:agent_id>/reconcile", methods=["POST"])
 def reconcile_agent_endpoint(agent_id: int):
     """Manually trigger transcript reconciliation for an agent.
