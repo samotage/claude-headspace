@@ -208,6 +208,11 @@ def respond_to_agent(agent_id: int):
     current_command = agent.get_current_command()
     if current_command is None or current_command.state != CommandState.AWAITING_INPUT:
         actual_state = current_command.state.value if current_command else "no_command"
+        text = data.get("text", "")
+        logger.warning(
+            f"respond_rejected: agent_id={agent_id}, reason=wrong_state, "
+            f"actual_state={actual_state}, text_length={len(text) if text else 0}"
+        )
         return jsonify({
             "status": "error",
             "error_type": "wrong_state",

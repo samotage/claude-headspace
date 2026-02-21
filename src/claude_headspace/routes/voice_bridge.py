@@ -276,6 +276,10 @@ def voice_command():
         awaiting = [a for a in active if a.get_current_command() and a.get_current_command().state == CommandState.AWAITING_INPUT]
         if len(awaiting) == 0:
             # No agents awaiting input — return status summary
+            logger.warning(
+                f"voice_command_rejected: reason=no_agents_awaiting_input, "
+                f"text_length={len(text) if text else 0}, active_agents={len(active)}"
+            )
             agent_dicts = [_agent_to_voice_dict(a) for a in active]
             if formatter:
                 voice = formatter.format_error(
@@ -400,6 +404,10 @@ def voice_command():
     if not result.success:
         get_agent_hook_state().clear_respond_inflight(agent.id)
         error_msg = result.error_message or "Send failed"
+        logger.warning(
+            f"voice_command_rejected: agent_id={agent.id}, reason=tmux_send_failed, "
+            f"error={error_msg}, text_length={len(send_text) if send_text else 0}"
+        )
         if formatter:
             voice = formatter.format_command_result(agent.name, False, error_msg)
         else:

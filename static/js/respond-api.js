@@ -258,12 +258,28 @@
             autoResizeTextarea(input);
 
             this.sendResponse(agentId, text).then(function(success) {
-                input.disabled = false;
                 if (!success) {
-                    input.value = text; // Restore text on failure
-                    autoResizeTextarea(input);
+                    // Check if widget still exists in DOM
+                    if (input.isConnected) {
+                        input.disabled = false;
+                        input.value = text;
+                        autoResizeTextarea(input);
+                        input.focus();
+                    } else {
+                        // Widget was removed by SSE — save draft for recovery
+                        var draftKey = 'respond-draft-' + agentId;
+                        sessionStorage.setItem(draftKey, text);
+                        if (global.Toast) {
+                            global.Toast.show('warning',
+                                'Response not sent',
+                                'Your draft has been saved and will be restored when the agent next asks for input.'
+                            );
+                        }
+                    }
+                } else {
+                    input.disabled = false;
+                    input.focus();
                 }
-                input.focus();
             });
         },
 

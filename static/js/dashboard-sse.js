@@ -1105,9 +1105,31 @@
                         buildRespondWidget(agentId, data.command_summary || '', data.question_options || null),
                         footer
                     );
+                    // Restore any saved draft from a previous widget removal
+                    var draftKey = 'respond-draft-' + agentId;
+                    var savedDraft = sessionStorage.getItem(draftKey);
+                    if (savedDraft) {
+                        var newInput = card.querySelector('.respond-text-input');
+                        if (newInput) {
+                            newInput.value = savedDraft;
+                        }
+                        sessionStorage.removeItem(draftKey);
+                    }
                 }
             }
         } else if (existingWidget) {
+            // Check if user has unsent text before destroying the widget
+            var textarea = existingWidget.querySelector('.respond-text-input');
+            if (textarea && textarea.value && textarea.value.trim()) {
+                var draftKey = 'respond-draft-' + agentId;
+                sessionStorage.setItem(draftKey, textarea.value.trim());
+                if (global.Toast) {
+                    global.Toast.show('warning',
+                        'Response not sent',
+                        'Agent state changed. Your draft has been saved \u2014 it will be restored when the agent next asks for input.'
+                    );
+                }
+            }
             existingWidget.remove();
         }
 

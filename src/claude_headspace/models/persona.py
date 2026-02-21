@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import db
 
 if TYPE_CHECKING:
+    from .agent import Agent
     from .role import Role
 
 
@@ -49,6 +50,7 @@ class Persona(db.Model):
 
     # Relationships
     role: Mapped["Role"] = relationship("Role", back_populates="personas")
+    agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="persona")
 
     def generate_slug(self) -> str:
         """Generate slug from role name, persona name, and id.
