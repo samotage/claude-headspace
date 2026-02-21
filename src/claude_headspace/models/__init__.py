@@ -16,6 +16,7 @@ Models:
     - Position: Org chart seat with self-referential hierarchy
     - Role: Agent specialisation lookup (developer, tester, pm, architect)
     - Persona: Named agent identity with role and slug
+    - Handoff: Agent context handoff metadata
 
 Enums:
     - CommandState: idle, commanded, processing, awaiting_input, complete
@@ -28,6 +29,7 @@ from .activity_metric import ActivityMetric
 from .agent import Agent
 from .headspace_snapshot import HeadspaceSnapshot
 from .event import Event, EventType
+from .handoff import Handoff
 from .inference_call import InferenceCall, InferenceLevel
 from .objective import Objective, ObjectiveHistory
 from .organisation import Organisation
@@ -54,6 +56,7 @@ __all__ = [
     "Position",
     "Role",
     "Persona",
+    "Handoff",
     # Enums
     "CommandState",
     "TurnActor",
