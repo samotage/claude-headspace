@@ -419,7 +419,7 @@ def create_app(config_path: str = "config.yaml") -> Flask:
         }
 
     # CSRF exempt paths (hooks, SSE, and voice bridge API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/")
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/")
 
     @app.before_request
     def verify_csrf_token():
@@ -445,6 +445,9 @@ def create_app(config_path: str = "config.yaml") -> Flask:
 
     # Register blueprints
     register_blueprints(app)
+
+    # Register CLI command groups
+    register_cli_commands(app)
 
     return app
 
@@ -485,6 +488,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.logging import logging_bp
     from .routes.notifications import notifications_bp
     from .routes.objective import objective_bp
+    from .routes.personas import personas_bp
     from .routes.priority import priority_bp
     from .routes.progress_summary import progress_summary_bp
     from .routes.projects import projects_bp
@@ -510,6 +514,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(logging_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(objective_bp)
+    app.register_blueprint(personas_bp)
     app.register_blueprint(priority_bp)
     app.register_blueprint(progress_summary_bp)
     app.register_blueprint(projects_bp)
@@ -519,3 +524,10 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(summarisation_bp)
     app.register_blueprint(voice_bridge_bp)
     app.register_blueprint(waypoint_bp)
+
+
+def register_cli_commands(app: Flask) -> None:
+    """Register Flask CLI command groups."""
+    from .cli.persona_cli import persona_cli
+
+    app.cli.add_command(persona_cli)
