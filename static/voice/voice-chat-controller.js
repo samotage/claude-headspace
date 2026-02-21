@@ -418,9 +418,10 @@ window.VoiceChatController = (function () {
 
   function sendChatCommand(text) {
     if (!text || !text.trim()) return;
+    var trimmedText = text.trim();
 
     // Render optimistic user bubble immediately
-    var pendingEntry = renderOptimisticUserBubble(text.trim());
+    var pendingEntry = renderOptimisticUserBubble(trimmedText);
 
     // Clear input and reset textarea height
     var input = document.getElementById('chat-text-input');
@@ -435,15 +436,21 @@ window.VoiceChatController = (function () {
     updateTypingIndicator();
     updateChatStatePill();
 
-    VoiceAPI.sendCommand(text.trim(), VoiceState.targetAgentId).then(function () {
+    VoiceAPI.sendCommand(trimmedText, VoiceState.targetAgentId).then(function () {
       // Command sent -- SSE delivers the response directly
     }).catch(function (err) {
       // Remove the ghost optimistic bubble on failure (Finding 10)
       VoiceSSEHandler.removeOptimisticBubble(pendingEntry);
+      // Restore the text so user doesn't lose their work
+      var restoreInput = document.getElementById('chat-text-input');
+      if (restoreInput) {
+        restoreInput.value = trimmedText;
+        restoreInput.style.height = 'auto';
+      }
       // Show error as system message
       var errBubble = document.createElement('div');
       errBubble.className = 'chat-bubble agent';
-      errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + VoiceChatRenderer.esc(err.error || 'Send failed') + '</div>';
+      errBubble.innerHTML = '<div class="bubble-intent">Error</div><div class="bubble-text">' + VoiceChatRenderer.esc(err.error || 'Send failed \u2014 your text has been restored to the input.') + '</div>';
       var msgEl = document.getElementById('chat-messages');
       if (msgEl) msgEl.appendChild(errBubble);
       VoiceState.chatAgentState = 'idle';
