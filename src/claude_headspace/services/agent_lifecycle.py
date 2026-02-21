@@ -410,6 +410,18 @@ def get_agent_info(agent_id: int) -> dict | None:
         "transcript_path": agent.transcript_path,
     }
 
+    # --- Persona (optional — only when agent has a persona) ---
+    persona_info = None
+    persona = getattr(agent, "persona", None)
+    if persona is not None:
+        role = getattr(persona, "role", None)
+        persona_info = {
+            "name": persona.name,
+            "role": role.name if role else None,
+            "status": persona.status,
+            "slug": persona.slug,
+        }
+
     # Live tmux lookup — match agent's pane to get session name
     tmux_session_name = None
     tmux_pane_alive = False
@@ -534,7 +546,7 @@ def get_agent_info(agent_id: int) -> dict | None:
             "turns": turns_info,
         })
 
-    return {
+    result = {
         "identity": identity,
         "project": project_info,
         "lifecycle": lifecycle,
@@ -543,3 +555,6 @@ def get_agent_info(agent_id: int) -> dict | None:
         "frustration_scores": frustration_scores,
         "commands": commands_info,
     }
+    if persona_info is not None:
+        result["persona"] = persona_info
+    return result

@@ -51,12 +51,17 @@
             .then(function(data) {
                 state.data = data;
 
-                // Update hero chars in header
-                var short = data.identity.session_uuid_short || '';
+                // Update hero in header — persona name or UUID
                 var heroChars = document.getElementById('agent-info-hero-chars');
                 var heroTrail = document.getElementById('agent-info-hero-trail');
-                if (heroChars) heroChars.textContent = short.slice(0, 2);
-                if (heroTrail) heroTrail.textContent = short.slice(2);
+                if (data.persona && data.persona.name) {
+                    if (heroChars) heroChars.textContent = data.persona.name;
+                    if (heroTrail) heroTrail.textContent = data.persona.role ? ' \u2014 ' + data.persona.role : '';
+                } else {
+                    var short = data.identity.session_uuid_short || '';
+                    if (heroChars) heroChars.textContent = short.slice(0, 2);
+                    if (heroTrail) heroTrail.textContent = short.slice(2);
+                }
 
                 render(contentEl, data);
 
@@ -175,6 +180,26 @@
         var pri = data.priority;
         var hs = data.headspace;
         var commands = data.commands || [];
+
+        // --- Persona Section (only when agent has persona) ---
+        var per = data.persona;
+        if (per) {
+            var personaText = [
+                '## Persona',
+                '- **Name:** ' + per.name,
+                '- **Role:** ' + (per.role || '\u2014'),
+                '- **Status:** ' + (per.status || '\u2014'),
+                '- **Slug:** ' + (per.slug || '\u2014')
+            ].join('\n');
+
+            html += '<div class="agent-info-section">';
+            html += '<div class="agent-info-section-title"><span>Persona</span>' + sectionCopyBtn(personaText) + '</div>';
+            html += row('Name', '<span class="text-cyan">' + esc(per.name) + '</span>');
+            html += row('Role', esc(per.role || '\u2014'));
+            html += row('Status', per.status === 'active' ? '<span class="text-green">' + esc(per.status) + '</span>' : esc(per.status || '\u2014'));
+            html += row('Slug', esc(per.slug || '\u2014'));
+            html += '</div>';
+        }
 
         // --- Identity Section ---
         var identityText = [

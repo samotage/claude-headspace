@@ -634,9 +634,15 @@
                         var agentUuid8 = ad.agent.session_uuid
                             ? ad.agent.session_uuid.substring(0, 8)
                             : '';
-                        var agentHeroHtml = agentUuid8
-                            ? '<span class="agent-hero">' + CHUtils.escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(agentUuid8.substring(2)) + '</span>'
-                            : 'Agent ' + ad.agent.id;
+                        var agentHeroHtml;
+                        if (ad.agent.persona_name) {
+                            agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(ad.agent.persona_name) + '</span>' +
+                                (ad.agent.persona_role ? '<span class="agent-hero-trail"> \u2014 ' + CHUtils.escapeHtml(ad.agent.persona_role) + '</span>' : '');
+                        } else if (agentUuid8) {
+                            agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(agentUuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(agentUuid8.substring(2)) + '</span>';
+                        } else {
+                            agentHeroHtml = 'Agent ' + ad.agent.id;
+                        }
                         html += '<div class="agent-metric-row">' +
                             '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
                         if (agentHistory.length > 0) {

@@ -312,9 +312,15 @@
                 var rowClass = isEnded ? 'opacity-50' : '';
                 var stateClass = ProjectShow._stateColorClass(stateValue);
 
-                var agentHeroHtml = uuid8
-                    ? '<span class="agent-hero">' + CHUtils.escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(uuid8.substring(2)) + '</span>'
-                    : 'Agent ' + agent.id;
+                var agentHeroHtml;
+                if (agent.persona_name) {
+                    agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(agent.persona_name) + '</span>' +
+                        (agent.persona_role ? '<span class="agent-hero-trail"> \u2014 ' + CHUtils.escapeHtml(agent.persona_role) + '</span>' : '');
+                } else if (uuid8) {
+                    agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(uuid8.substring(2)) + '</span>';
+                } else {
+                    agentHeroHtml = 'Agent ' + agent.id;
+                }
 
                 html += '<div class="accordion-agent-row ' + rowClass + '">';
                 html += '<div class="agent-metric-row cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentCommands(' + agentId + ')">';
