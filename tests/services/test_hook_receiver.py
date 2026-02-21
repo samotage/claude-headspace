@@ -148,26 +148,98 @@ class TestProcessSessionStart:
         assert mock_agent.ended_at is None
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_stores_persona_slug(self, mock_db, mock_agent, fresh_state):
-        """session_start should store persona_slug as transient attribute for S8."""
-        result = process_session_start(
-            mock_agent, "session-123", persona_slug="developer-con-1"
-        )
+    def test_session_start_assigns_persona_from_slug(self, mock_db, mock_agent, fresh_state):
+        """session_start with valid persona_slug sets agent.persona_id."""
+        mock_persona = MagicMock()
+        mock_persona.id = 5
+        mock_persona.name = "Developer Con"
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as MockPersona:
+            MockPersona.query.filter_by.return_value.first.return_value = mock_persona
+            result = process_session_start(
+                mock_agent, "session-123", persona_slug="developer-con-1"
+            )
         assert result.success is True
-        assert mock_agent._pending_persona_slug == "developer-con-1"
+        assert mock_agent.persona_id == 5
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_stores_previous_agent_id(self, mock_db, mock_agent, fresh_state):
-        """session_start should store previous_agent_id as transient attribute for S8."""
+    def test_session_start_unknown_persona_slug_logs_warning(self, mock_db, fresh_state, caplog):
+        """session_start with unrecognised persona_slug logs warning, agent has no persona."""
+        # Use a simple object to verify persona_id is NOT set
+        class SimpleAgent:
+            id = 1
+            last_seen_at = datetime.now(timezone.utc)
+            ended_at = None
+            state = MagicMock(value="idle")
+            transcript_path = None
+            claude_session_id = None
+            tmux_pane_id = None
+            tmux_session = None
+            persona_id = None
+            previous_agent_id = None
+        agent = SimpleAgent()
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as MockPersona:
+            MockPersona.query.filter_by.return_value.first.return_value = None
+            import logging
+            with caplog.at_level(logging.WARNING):
+                result = process_session_start(
+                    agent, "session-123", persona_slug="nonexistent"
+                )
+        assert result.success is True
+        assert agent.persona_id is None
+        assert "unrecognised persona_slug=nonexistent" in caplog.text
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_no_persona_slug_skips_lookup(self, mock_db, mock_agent, fresh_state):
+        """session_start without persona_slug does not query Persona table."""
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as MockPersona:
+            result = process_session_start(mock_agent, "session-123")
+        assert result.success is True
+        MockPersona.query.filter_by.assert_not_called()
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_persona_db_error_graceful(self, mock_db, mock_agent, fresh_state, caplog):
+        """DB error during Persona lookup does not block agent registration."""
+        with patch(
+            "claude_headspace.models.persona.Persona"
+        ) as MockPersona:
+            MockPersona.query.filter_by.side_effect = Exception("DB connection lost")
+            import logging
+            with caplog.at_level(logging.ERROR):
+                result = process_session_start(
+                    mock_agent, "session-123", persona_slug="developer-con-1"
+                )
+        assert result.success is True
+        assert "DB error during Persona lookup" in caplog.text
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_previous_agent_id_converted_to_int(self, mock_db, mock_agent, fresh_state):
+        """session_start converts previous_agent_id string to int and sets on agent."""
         result = process_session_start(
             mock_agent, "session-123", previous_agent_id="42"
         )
         assert result.success is True
-        assert mock_agent._pending_previous_agent_id == "42"
+        assert mock_agent.previous_agent_id == 42
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_without_persona_fields(self, mock_db, mock_agent, fresh_state):
-        """session_start without persona fields preserves backward compatibility."""
+    def test_session_start_invalid_previous_agent_id_logs_warning(self, mock_db, mock_agent, fresh_state, caplog):
+        """session_start with non-numeric previous_agent_id logs warning."""
+        import logging
+        with caplog.at_level(logging.WARNING):
+            result = process_session_start(
+                mock_agent, "session-123", previous_agent_id="not-a-number"
+            )
+        assert result.success is True
+        assert "invalid previous_agent_id" in caplog.text
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_without_persona_or_previous_agent(self, mock_db, mock_agent, fresh_state):
+        """session_start without persona or previous_agent_id fields preserves backward compatibility."""
         # Use a simple namespace instead of MagicMock to detect attribute assignment
         class SimpleAgent:
             id = 1
@@ -178,12 +250,14 @@ class TestProcessSessionStart:
             claude_session_id = None
             tmux_pane_id = None
             tmux_session = None
+            persona_id = None
+            previous_agent_id = None
         agent = SimpleAgent()
         result = process_session_start(agent, "session-123")
         assert result.success is True
-        # Transient persona attributes should not be set
-        assert not hasattr(agent, "_pending_persona_slug")
-        assert not hasattr(agent, "_pending_previous_agent_id")
+        # persona_id and previous_agent_id should remain None
+        assert agent.persona_id is None
+        assert agent.previous_agent_id is None
 
 
 class TestProcessSessionEnd:

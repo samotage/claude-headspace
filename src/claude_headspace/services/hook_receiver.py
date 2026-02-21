@@ -597,19 +597,42 @@ def process_session_start(
         agent.last_seen_at = datetime.now(timezone.utc)
         agent.ended_at = None  # Clear ended state for new session
 
-        # Store persona_slug and previous_agent_id for S8 (SessionCorrelator)
-        # consumption. S8 will use these to set agent.persona_id and
-        # agent.previous_agent_id on the Agent model.
+        # Assign persona to agent by looking up the Persona record by slug
         if persona_slug:
-            agent._pending_persona_slug = persona_slug
-            logger.info(
-                f"session_start: persona_slug={persona_slug} stored for S8 consumption"
-            )
+            try:
+                from ..models.persona import Persona
+
+                persona = Persona.query.filter_by(slug=persona_slug).first()
+                if persona:
+                    agent.persona_id = persona.id
+                    logger.info(
+                        f"session_start: persona assigned — slug={persona_slug}, "
+                        f"persona_id={persona.id}, agent_id={agent.id}"
+                    )
+                else:
+                    logger.warning(
+                        f"session_start: unrecognised persona_slug={persona_slug}, "
+                        f"agent_id={agent.id} — agent created without persona"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"session_start: DB error during Persona lookup for "
+                    f"slug={persona_slug}, agent_id={agent.id}: {e}"
+                )
+
+        # Assign previous_agent_id (convert string from hook payload to int)
         if previous_agent_id:
-            agent._pending_previous_agent_id = previous_agent_id
-            logger.info(
-                f"session_start: previous_agent_id={previous_agent_id} stored for S8 consumption"
-            )
+            try:
+                agent.previous_agent_id = int(previous_agent_id)
+                logger.info(
+                    f"session_start: previous_agent_id={previous_agent_id} "
+                    f"set on agent_id={agent.id}"
+                )
+            except (ValueError, TypeError) as e:
+                logger.warning(
+                    f"session_start: invalid previous_agent_id={previous_agent_id!r}, "
+                    f"agent_id={agent.id}: {e}"
+                )
         # Always update transcript_path — context compression creates a new
         # Claude session (and new JSONL file).  The old guard `not agent.transcript_path`
         # caused the agent to read a stale file for the rest of its lifetime.
