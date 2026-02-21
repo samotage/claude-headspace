@@ -618,6 +618,13 @@ def build_card_state(agent: Agent) -> dict:
         "tmux_session": agent.tmux_session,
     }
 
+    # Persona identity fields (optional — only when agent has a persona)
+    persona = getattr(agent, "persona", None)
+    if persona is not None:
+        card["persona_name"] = persona.name
+        role = getattr(persona, "role", None)
+        card["persona_role"] = role.name if role else None
+
     # Plan mode label overrides (before command ID, so state_info is already in card)
     if current_command:
         if current_command.plan_content and current_command.plan_approved_at:

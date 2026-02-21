@@ -44,6 +44,7 @@ def _make_agent(
     agent.project_id = 10
     agent.project = MagicMock()
     agent.project.name = "test-project"
+    agent.persona = None
     agent.get_current_command.return_value = None
     agent.commands = []
     return agent
@@ -104,6 +105,38 @@ class TestBuildCardState:
         result = build_card_state(agent)
 
         assert result["tmux_session"] is None
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_persona_name_and_role_included_when_agent_has_persona(self, mock_config):
+        """Card state includes persona_name and persona_role when agent has a persona."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        agent = _make_agent()
+        persona = MagicMock()
+        persona.name = "Con"
+        role = MagicMock()
+        role.name = "developer"
+        persona.role = role
+        agent.persona = persona
+
+        result = build_card_state(agent)
+
+        assert result["persona_name"] == "Con"
+        assert result["persona_role"] == "developer"
+        # hero_chars and hero_trail should still be present for backward compatibility
+        assert "hero_chars" in result
+        assert "hero_trail" in result
+
+    @patch("claude_headspace.services.card_state._get_dashboard_config")
+    def test_no_persona_fields_when_agent_has_no_persona(self, mock_config):
+        """Card state has no persona fields when agent has no persona."""
+        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        agent = _make_agent()
+        agent.persona = None
+
+        result = build_card_state(agent)
+
+        assert "persona_name" not in result
+        assert "persona_role" not in result
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_with_command_and_turns(self, mock_config):

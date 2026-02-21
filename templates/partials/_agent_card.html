@@ -14,7 +14,11 @@
               title="{% if agent.tmux_session %}Attach to tmux session{% else %}Focus iTerm window{% endif %}"
               onclick="{% if agent.tmux_session %}window.FocusAPI && window.FocusAPI.attachAgent({{ agent.id }}){% else %}window.FocusAPI && window.FocusAPI.focusAgent({{ agent.id }}){% endif %}"
               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
-            <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
+            {% if agent.persona_name %}
+              <span class="agent-hero">{{ agent.persona_name }}</span>{% if agent.persona_role %}<span class="agent-hero-trail"> — {{ agent.persona_role }}</span>{% endif %}
+            {% else %}
+              <span class="agent-hero">{{ agent.hero_chars }}</span><span class="agent-hero-trail">{{ agent.hero_trail }}</span>
+            {% endif %}
           </h3>
           <span class="last-seen text-muted text-xs">{{ agent.last_seen }}</span>
         </div>
