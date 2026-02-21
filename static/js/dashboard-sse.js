@@ -1173,14 +1173,19 @@
             statsEl.style.display = 'none';
         }
 
-        // Context usage display
+        // Context usage display (with handoff tier)
         var ctxSpan = card.querySelector('.context-usage');
         if (data.context && data.context.percent_used != null) {
             var pct = data.context.percent_used;
             var ctxText = pct + '% \u00b7 ' + (data.context.remaining_tokens || '?') + ' rem';
             var ctxClass = 'text-muted';
-            if (pct >= (data.context.high_threshold || 75)) ctxClass = 'text-red';
-            else if (pct >= (data.context.warning_threshold || 65)) ctxClass = 'text-amber';
+            if (data.context.handoff_eligible) {
+                ctxClass = 'text-magenta handoff-eligible-ctx';
+            } else if (pct >= (data.context.high_threshold || 75)) {
+                ctxClass = 'text-red';
+            } else if (pct >= (data.context.warning_threshold || 65)) {
+                ctxClass = 'text-amber';
+            }
             if (ctxSpan) {
                 ctxSpan.textContent = ctxText;
                 ctxSpan.className = 'context-usage ' + ctxClass + ' text-xs font-mono whitespace-nowrap';
@@ -1196,6 +1201,25 @@
             }
         } else if (ctxSpan) {
             ctxSpan.remove();
+        }
+
+        // Handoff button: show/hide based on eligibility
+        var handoffBtn = card.querySelector('.handoff-btn');
+        if (data.context && data.context.handoff_eligible) {
+            if (!handoffBtn) {
+                var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
+                if (leftGroup) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'handoff-btn';
+                    btn.setAttribute('data-agent-id', String(data.id));
+                    btn.title = 'Trigger handoff to successor agent';
+                    btn.textContent = 'Handoff';
+                    leftGroup.appendChild(btn);
+                }
+            }
+        } else if (handoffBtn) {
+            handoffBtn.remove();
         }
 
         // Attach button: show/hide based on tmux_session

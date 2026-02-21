@@ -694,6 +694,12 @@ def process_session_end(
     state.record_event(HookEventType.SESSION_END)
     try:
         now = datetime.now(timezone.utc)
+        logger.warning(
+            f"SESSION_END_KILL: agent_id={agent.id} uuid={agent.session_uuid} "
+            f"claude_session_id={claude_session_id} "
+            f"tmux_pane={agent.tmux_pane_id} project={agent.project.name if agent.project else 'N/A'} "
+            f"age={(now - agent.started_at).total_seconds() if agent.started_at else 'N/A'}s"
+        )
         agent.last_seen_at = now
         agent.ended_at = now
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking

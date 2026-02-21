@@ -275,6 +275,42 @@
                 return;
             }
 
+            // Handoff button (card footer)
+            var handoffAction = e.target.closest('.handoff-btn');
+            if (handoffAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(handoffAction.getAttribute('data-agent-id'), 10);
+                if (agentId && !handoffAction.disabled) {
+                    handoffAction.disabled = true;
+                    handoffAction.classList.add('loading');
+                    handoffAction.textContent = 'Handing off\u2026';
+                    fetch('/api/agents/' + agentId + '/handoff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: 'context_limit' })
+                    })
+                    .then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status }; }); })
+                    .then(function(res) {
+                        if (res.status >= 200 && res.status < 300) {
+                            if (global.Toast) global.Toast.success('Handoff', 'Handoff initiated');
+                        } else {
+                            if (global.Toast) global.Toast.error('Handoff', res.data.error || 'Handoff failed');
+                            handoffAction.disabled = false;
+                            handoffAction.classList.remove('loading');
+                            handoffAction.textContent = 'Handoff';
+                        }
+                    })
+                    .catch(function() {
+                        if (global.Toast) global.Toast.error('Handoff', 'Could not reach server');
+                        handoffAction.disabled = false;
+                        handoffAction.classList.remove('loading');
+                        handoffAction.textContent = 'Handoff';
+                    });
+                }
+                return;
+            }
+
             // Kill (kebab menu item)
             var killAction = e.target.closest('.card-kill-action');
             if (killAction) {

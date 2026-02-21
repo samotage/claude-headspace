@@ -126,13 +126,18 @@
       {% endif %}
       {% if agent.context_percent_used is not none %}
         {% set ctx_class = 'text-muted' %}
-        {% if context_thresholds is defined and agent.context_percent_used >= context_thresholds.high %}
+        {% if agent.handoff_eligible is defined and agent.handoff_eligible %}
+          {% set ctx_class = 'text-magenta handoff-eligible-ctx' %}
+        {% elif context_thresholds is defined and agent.context_percent_used >= context_thresholds.high %}
           {% set ctx_class = 'text-red' %}
         {% elif context_thresholds is defined and agent.context_percent_used >= context_thresholds.warning %}
           {% set ctx_class = 'text-amber' %}
         {% endif %}
         <span class="context-usage {{ ctx_class }} text-xs font-mono whitespace-nowrap"
               data-agent-id="{{ agent.id }}">{{ agent.context_percent_used }}% · {{ agent.context_remaining_tokens }} rem</span>
+      {% endif %}
+      {% if agent.handoff_eligible is defined and agent.handoff_eligible %}
+        <button type="button" class="handoff-btn" data-agent-id="{{ agent.id }}" title="Trigger handoff to successor agent">Handoff</button>
       {% endif %}
     </div>
     <div class="card-kebab-wrapper">

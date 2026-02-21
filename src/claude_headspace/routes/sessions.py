@@ -180,7 +180,10 @@ def delete_session(session_uuid: UUID):
         agent.ended_at = now
         db.session.commit()
 
-        logger.info(f"Marked session {session_uuid} as ended (agent_id={agent.id})")
+        logger.warning(
+            f"DELETE_SESSION_KILL: agent_id={agent.id} uuid={session_uuid} "
+            f"tmux_pane={agent.tmux_pane_id} project={agent.project.name if agent.project else 'N/A'}"
+        )
 
         # Broadcast to SSE clients so dashboard removes the card
         _broadcast_session_event(agent, "session_ended")

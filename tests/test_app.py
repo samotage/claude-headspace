@@ -156,7 +156,7 @@ class TestStartupPerformance:
 
         try:
             start = time.time()
-            app = create_app(config_path=str(project_root / "config.yaml"))
+            app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
             elapsed = time.time() - start
             assert elapsed < 2.0, f"Startup took {elapsed:.2f}s, expected < 2s"
         finally:

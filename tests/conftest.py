@@ -66,10 +66,7 @@ def app():
     project_root = Path(__file__).parent.parent
     os.chdir(project_root)
 
-    app = create_app(config_path=str(project_root / "config.yaml"))
-    app.config.update({
-        "TESTING": True,
-    })
+    app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
 
     yield app
 

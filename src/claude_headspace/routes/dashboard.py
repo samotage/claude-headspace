@@ -538,6 +538,8 @@ def dashboard():
                 "context_percent_used": agent.context_percent_used,
                 "context_remaining_tokens": agent.context_remaining_tokens,
                 "tmux_session": agent.tmux_session,
+                "persona_name": agent.persona.name if agent.persona else None,
+                "persona_role": agent.persona.role.name if agent.persona and getattr(agent.persona, "role", None) else None,
             }
             # Add current command ID and plan state for on-demand drill-down
             _ct = agent.get_current_command()
@@ -562,6 +564,15 @@ def dashboard():
                             agent.id, agent.tmux_pane_id
                         )
             agent_dict["is_bridge_connected"] = is_bridge
+
+            # Handoff eligibility: persona + context data + threshold exceeded
+            handoff_eligible = False
+            ctx_pct = agent.context_percent_used
+            if agent.persona_id is not None and isinstance(ctx_pct, (int, float)):
+                _ctx_cfg = current_app.config.get("APP_CONFIG", {}).get("context_monitor", {})
+                handoff_threshold = _ctx_cfg.get("handoff_threshold", 80)
+                handoff_eligible = ctx_pct >= handoff_threshold
+            agent_dict["handoff_eligible"] = handoff_eligible
 
             agents_data.append(agent_dict)
             agent_data_map[agent.id] = agent_dict

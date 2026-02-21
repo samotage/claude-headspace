@@ -48,6 +48,9 @@ def create_mock_agent(
     agent.priority_score = None
     agent.priority_reason = None
     agent.tmux_pane_id = None
+    agent.context_percent_used = None
+    agent.context_remaining_tokens = None
+    agent.persona_id = None
     agent.commands = []
 
     # Mock get_current_command

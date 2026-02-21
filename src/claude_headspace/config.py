@@ -137,6 +137,9 @@ DEFAULTS = {
         "aging_threshold_days": 4,
         "export_filename": "brain_reboot.md",
     },
+    "context_monitor": {
+        "handoff_threshold": 80,
+    },
     "dashboard": {
         "stale_processing_seconds": 600,
         "active_timeout_minutes": 5,

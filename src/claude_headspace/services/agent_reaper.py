@@ -191,10 +191,16 @@ class AgentReaper:
 
             for agent in agents:
                 result.checked += 1
+                age_seconds = (now - agent.started_at).total_seconds() if agent.started_at else None
+                last_seen_ago = (now - agent.last_seen_at).total_seconds() if agent.last_seen_at else None
 
                 # Grace period: skip recently created agents
                 if agent.started_at > grace_cutoff:
                     result.skipped_grace += 1
+                    logger.debug(
+                        f"REAPER_CHECK agent_id={agent.id} uuid={agent.session_uuid} "
+                        f"-> SKIP (grace period, age={age_seconds:.0f}s < {self._grace_period}s)"
+                    )
                     continue
 
                 reap_reason = None
@@ -206,6 +212,11 @@ class AgentReaper:
                 # distinguish Claude Code from the bridge launcher.
                 if agent.tmux_pane_id:
                     claude_alive = _is_claude_running_in_pane(agent.tmux_pane_id)
+                    logger.info(
+                        f"REAPER_CHECK agent_id={agent.id} uuid={agent.session_uuid} "
+                        f"tmux_pane={agent.tmux_pane_id} claude_alive={claude_alive} "
+                        f"age={age_seconds:.0f}s last_seen_ago={last_seen_ago:.0f}s"
+                    )
                     if claude_alive is True:
                         result.skipped_alive += 1
                         continue
@@ -213,25 +224,53 @@ class AgentReaper:
                         # Pane exists but Claude Code has exited
                         # (bridge launcher still running)
                         reap_reason = "claude_exited"
+                        logger.warning(
+                            f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
+                            f"reason=claude_exited tmux_pane={agent.tmux_pane_id} "
+                            f"age={age_seconds:.0f}s last_seen_ago={last_seen_ago:.0f}s"
+                        )
+                else:
+                    logger.info(
+                        f"REAPER_CHECK agent_id={agent.id} uuid={agent.session_uuid} "
+                        f"NO tmux_pane, iterm_pane={agent.iterm_pane_id} "
+                        f"age={age_seconds:.0f}s last_seen_ago={last_seen_ago:.0f}s"
+                    )
 
                 # --- Fallback: iTerm pane check + inactivity ---
                 if reap_reason is None and agent.iterm_pane_id:
                     status = check_pane_exists(agent.iterm_pane_id)
+                    logger.info(
+                        f"REAPER_ITERM agent_id={agent.id} iterm_pane={agent.iterm_pane_id} "
+                        f"status={status}"
+                    )
 
                     if status == PaneStatus.FOUND:
                         pane_key = (agent.iterm_pane_id, agent.tmux_pane_id)
                         if pane_owners.get(pane_key) != agent.id:
                             reap_reason = "stale_pane"
+                            logger.warning(
+                                f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
+                                f"reason=stale_pane (owner={pane_owners.get(pane_key)}, this={agent.id})"
+                            )
                         else:
                             # iTerm says pane exists — trust it
                             result.skipped_alive += 1
                             continue
                     elif status == PaneStatus.NOT_FOUND:
                         reap_reason = "pane_not_found"
+                        logger.warning(
+                            f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
+                            f"reason=pane_not_found iterm_pane={agent.iterm_pane_id}"
+                        )
                     elif status == PaneStatus.ITERM_NOT_RUNNING:
                         # Can't verify via iTerm — fall through to inactivity
                         if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                             reap_reason = "inactivity_timeout"
+                            logger.warning(
+                                f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
+                                f"reason=inactivity_timeout (iterm_not_running) "
+                                f"last_seen_ago={last_seen_ago}s timeout={self._inactivity_timeout}s"
+                            )
                         else:
                             result.skipped_alive += 1
                             continue
@@ -243,6 +282,11 @@ class AgentReaper:
                 if reap_reason is None:
                     if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
                         reap_reason = "inactivity_timeout"
+                        logger.warning(
+                            f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
+                            f"reason=inactivity_timeout (no pane info) "
+                            f"last_seen_ago={last_seen_ago}s timeout={self._inactivity_timeout}s"
+                        )
                     else:
                         result.skipped_alive += 1
                         continue
@@ -290,8 +334,12 @@ class AgentReaper:
         agent.ended_at = now
         agent.last_seen_at = now
 
-        logger.info(
-            f"Reaped agent {agent.id} ({agent.session_uuid}): {reason}"
+        age_seconds = (now - agent.started_at).total_seconds() if agent.started_at else None
+        logger.warning(
+            f"REAPER_EXECUTING_KILL: agent_id={agent.id} uuid={agent.session_uuid} "
+            f"reason={reason} tmux_pane={agent.tmux_pane_id} iterm_pane={agent.iterm_pane_id} "
+            f"project={agent.project.name if agent.project else 'N/A'} "
+            f"age={age_seconds:.0f}s"
         )
 
         # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)

@@ -33,8 +33,7 @@ def cross_app(test_db_engine):
     """Flask app wired to integration test database for cross-service tests."""
     from claude_headspace.app import create_app
 
-    app = create_app(config_path=str(Path(_PROJECT_ROOT) / "config.yaml"))
-    app.config["TESTING"] = True
+    app = create_app(config_path=str(Path(_PROJECT_ROOT) / "config.yaml"), testing=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = str(test_db_engine.url)
 
     return app

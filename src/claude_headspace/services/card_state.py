@@ -654,15 +654,20 @@ def build_card_state(agent: Agent) -> dict:
     if options:
         card["question_options"] = options
 
-    # Context usage
+    # Context usage + handoff eligibility
     card["context"] = None
     if agent.context_percent_used is not None:
         ctx_config = _get_context_config()
+        handoff_threshold = ctx_config.get("handoff_threshold", 80)
+        has_persona = agent.persona_id is not None
+        handoff_eligible = has_persona and agent.context_percent_used >= handoff_threshold
         card["context"] = {
             "percent_used": agent.context_percent_used,
             "remaining_tokens": agent.context_remaining_tokens or "",
             "warning_threshold": ctx_config.get("warning_threshold", 65),
             "high_threshold": ctx_config.get("high_threshold", 75),
+            "handoff_eligible": handoff_eligible,
+            "handoff_threshold": handoff_threshold,
         }
 
     # Bridge connectivity: cache first, live check fallback
