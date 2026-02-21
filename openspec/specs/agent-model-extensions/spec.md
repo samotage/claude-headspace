@@ -1,10 +1,8 @@
-# Delta Spec: Agent Model Extensions
+# agent-model-extensions Specification
 
-**Change ID:** e8-s4-agent-model-extensions
-**Affects:** `agents` table, Agent model, Persona model
-
-## MODIFIED Requirements
-
+## Purpose
+TBD - created by archiving change e8-s4-agent-model-extensions. Update Purpose after archive.
+## Requirements
 ### Requirement: Agent model gains persona_id foreign key
 
 The Agent model SHALL have a `persona_id` column — an integer FK referencing `personas.id`, nullable, ON DELETE CASCADE. `Agent.persona` returns the associated Persona object. No unique constraint — multiple agents can share the same persona.
@@ -79,3 +77,4 @@ A single additive migration SHALL add three nullable integer columns (`persona_i
 #### Scenario: Migration downgrade
 - **WHEN** the migration is rolled back
 - **THEN** the three columns and their FK constraints are removed from the `agents` table
+

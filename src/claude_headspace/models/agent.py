@@ -12,8 +12,10 @@ from ..database import db
 from .command import CommandState
 
 if TYPE_CHECKING:
-    from .project import Project
     from .command import Command
+    from .persona import Persona
+    from .position import Position
+    from .project import Project
 
 
 class Agent(db.Model):
@@ -85,6 +87,17 @@ class Agent(db.Model):
         DateTime(timezone=True), nullable=True, default=None
     )
 
+    # Persona / Position / Continuity fields
+    persona_id: Mapped[int | None] = mapped_column(
+        ForeignKey("personas.id", ondelete="CASCADE"), nullable=True
+    )
+    position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("positions.id", ondelete="CASCADE"), nullable=True
+    )
+    previous_agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
+    )
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="agents")
     commands: Mapped[list["Command"]] = relationship(
@@ -92,6 +105,21 @@ class Agent(db.Model):
         back_populates="agent",
         cascade="all, delete-orphan",
         order_by="Command.started_at.desc()",
+    )
+    persona: Mapped["Persona | None"] = relationship(
+        "Persona", back_populates="agents"
+    )
+    position: Mapped["Position | None"] = relationship("Position")
+    previous_agent: Mapped["Agent | None"] = relationship(
+        "Agent",
+        remote_side="Agent.id",
+        foreign_keys=[previous_agent_id],
+        back_populates="successor_agents",
+    )
+    successor_agents: Mapped[list["Agent"]] = relationship(
+        "Agent",
+        foreign_keys=[previous_agent_id],
+        back_populates="previous_agent",
     )
 
     @property
