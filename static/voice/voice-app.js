@@ -109,6 +109,8 @@ window.VoiceApp = (function () {
         VoiceSidebar.openProjectPicker();
       } else if (action === 'voice') {
         _triggerVoiceFromMenu();
+      } else if (action === 'dashboard') {
+        window.open('/', '_blank');
       } else if (action === 'close') {
         window.location.href = '/';
       }
@@ -327,6 +329,13 @@ window.VoiceApp = (function () {
     var hamburgerBtn = document.getElementById('hamburger-btn');
     if (hamburgerBtn) {
       hamburgerBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (VoiceState.hamburgerOpen) { VoiceLayout.closeHamburger(); } else { VoiceLayout.openHamburger(); }
+      });
+    }
+    var sidebarHamburgerBtn = document.getElementById('sidebar-hamburger-btn');
+    if (sidebarHamburgerBtn) {
+      sidebarHamburgerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         if (VoiceState.hamburgerOpen) { VoiceLayout.closeHamburger(); } else { VoiceLayout.openHamburger(); }
       });
