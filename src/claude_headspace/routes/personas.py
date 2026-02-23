@@ -257,7 +257,7 @@ def api_update_persona(slug: str):
     try:
         persona = (
             db.session.query(Persona)
-            .options(selectinload(Persona.role), selectinload(Persona.agents))
+            .options(selectinload(Persona.role))
             .filter_by(slug=slug)
             .first()
         )
@@ -285,7 +285,11 @@ def api_update_persona(slug: str):
 
         db.session.commit()
 
-        agent_count = len(persona.agents)
+        agent_count = (
+            db.session.query(func.count(Agent.id))
+            .filter(Agent.persona_id == persona.id)
+            .scalar()
+        ) or 0
 
         return jsonify({
             "id": persona.id,
@@ -413,7 +417,12 @@ def api_persona_skill_write(slug: str):
     if not data or "content" not in data:
         return jsonify({"error": "Request body must include 'content' field"}), 400
 
-    write_skill_file(slug, data["content"])
+    try:
+        write_skill_file(slug, data["content"])
+    except Exception:
+        logger.exception("Failed to write skill file for %s", slug)
+        return jsonify({"error": "Failed to write skill file"}), 500
+
     return jsonify({"saved": True}), 200
 
 

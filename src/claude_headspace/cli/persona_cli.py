@@ -6,9 +6,11 @@ Provides ``flask persona register`` and ``flask persona list`` commands.
 import click
 from flask import current_app
 from flask.cli import AppGroup
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from ..database import db
+from ..models.agent import Agent
 from ..models.persona import Persona
 from ..models.role import Role
 from ..services.persona_registration import RegistrationError, register_persona
@@ -39,9 +41,16 @@ def register_command(name: str, role: str, description: str | None) -> None:
 @click.option("--role", default=None, help="Filter by role name (case-insensitive).")
 def list_command(active: bool, role: str | None) -> None:
     """List all personas in a formatted table."""
+    agent_count_subq = (
+        db.session.query(func.count(Agent.id))
+        .filter(Agent.persona_id == Persona.id)
+        .correlate(Persona)
+        .scalar_subquery()
+    )
+
     query = (
-        db.session.query(Persona)
-        .options(selectinload(Persona.role), selectinload(Persona.agents))
+        db.session.query(Persona, agent_count_subq.label("agent_count"))
+        .options(selectinload(Persona.role))
         .join(Persona.role)
     )
 
@@ -52,22 +61,21 @@ def list_command(active: bool, role: str | None) -> None:
         query = query.filter(Role.name.ilike(role))
 
     # Sort by role name, then persona name alphabetically
-    personas = query.order_by(Role.name.asc(), Persona.name.asc()).all()
+    results = query.order_by(Role.name.asc(), Persona.name.asc()).all()
 
-    if not personas:
+    if not results:
         click.echo("No personas found.")
         return
 
     # Build table data
     rows = []
-    for p in personas:
-        agent_count = len(p.agents)
+    for p, agent_count in results:
         rows.append({
             "name": p.name,
             "role": p.role.name if p.role else "-",
             "slug": p.slug,
             "status": p.status,
-            "agents": str(agent_count),
+            "agents": str(agent_count or 0),
         })
 
     # Calculate column widths

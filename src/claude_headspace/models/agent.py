@@ -90,7 +90,7 @@ class Agent(db.Model):
 
     # Persona / Position / Continuity fields
     persona_id: Mapped[int | None] = mapped_column(
-        ForeignKey("personas.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("personas.id", ondelete="SET NULL"), nullable=True
     )
     position_id: Mapped[int | None] = mapped_column(
         ForeignKey("positions.id", ondelete="CASCADE"), nullable=True
