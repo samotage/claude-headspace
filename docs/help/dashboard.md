@@ -8,7 +8,7 @@ The dashboard is the main view of Claude Headspace, showing all your active Clau
 
 The header shows:
 
-- **Navigation** - Links to Dashboard, Projects, Activity, Objective, Logging, Help, and Config pages
+- **Navigation** - Links to Dashboard, [Personas](personas), Projects, Activity, Objective, Logging, Help, and Config pages
 - **Status Counts** - How many agents are in each state (Input Needed, Working, Idle)
 - **Headspace Indicator** - Traffic-light dot showing current frustration level (see [Headspace](headspace))
 - **Connection Status** - Shows if real-time updates are connected (Live/Connecting/Offline)
@@ -58,6 +58,15 @@ When an agent is in the **Input Needed** (amber) state and a tmux pane is availa
 The widget only appears when the tmux pane is reachable. If the pane is not available, the card shows the normal state bar (click to focus iTerm) without the input widget.
 
 See [Input Bridge](input-bridge) for setup instructions and details.
+
+### Creating a New Agent
+
+Click the **New Agent** button to launch an agent from the dashboard. The creation flow has two steps:
+
+1. **Select a project** — Choose which project the agent will work on
+2. **Select a persona** (optional) — Choose from active [personas](personas) grouped by role, or select "No persona" for an anonymous agent
+
+If no active personas are registered, the persona step is skipped and the agent is created immediately after selecting a project.
 
 ## Sorting
 
