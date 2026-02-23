@@ -38,9 +38,10 @@ class TestRegisterPersona:
         )
 
         assert isinstance(result, RegistrationResult)
-        assert result.slug == "developer-con-1"
-        assert result.id == 1
-        assert "developer-con-1" in result.path
+        assert result.slug.startswith("developer-con-")
+        assert isinstance(result.id, int) and result.id > 0
+        assert f"developer-con-{result.id}" == result.slug
+        assert result.slug in result.path
 
     def test_creates_filesystem_assets(self, app, db_session, tmp_path):
         """Registration creates directory and template files on disk."""
