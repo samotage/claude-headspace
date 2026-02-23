@@ -7,6 +7,7 @@ stateless — they operate on slug strings with no database dependency.
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -219,6 +220,47 @@ def read_experience_file(slug: str, project_root: Path | None = None) -> str | N
     if not experience_path.exists():
         return None
     return experience_path.read_text(encoding="utf-8")
+
+
+def write_skill_file(
+    slug: str, content: str, project_root: Path | None = None
+) -> Path:
+    """Write content to a persona's skill.md file.
+
+    Creates the persona directory if it does not exist. Overwrites any
+    existing skill.md content.
+
+    Args:
+        slug: Persona slug.
+        content: Markdown content to write.
+        project_root: Project root directory. Defaults to cwd.
+
+    Returns:
+        Path to the written skill file.
+    """
+    persona_dir = create_persona_dir(slug, project_root)
+    skill_path = persona_dir / SKILL_FILENAME
+    skill_path.write_text(content, encoding="utf-8")
+    logger.info("Wrote skill file: %s", skill_path)
+    return skill_path
+
+
+def get_experience_mtime(slug: str, project_root: Path | None = None) -> str | None:
+    """Get the last-modified timestamp of a persona's experience.md.
+
+    Args:
+        slug: Persona slug.
+        project_root: Project root directory. Defaults to cwd.
+
+    Returns:
+        ISO 8601 timestamp string, or None if the file does not exist.
+    """
+    experience_path = get_persona_dir(slug, project_root) / EXPERIENCE_FILENAME
+    if not experience_path.exists():
+        return None
+    mtime = experience_path.stat().st_mtime
+    dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    return dt.isoformat()
 
 
 def check_assets(slug: str, project_root: Path | None = None) -> AssetStatus:

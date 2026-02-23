@@ -49,5 +49,8 @@ packages = ["src/claude_headspace"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v"
-markers = ["e2e: End-to-end browser tests (deselect with -m 'not e2e')"]
+addopts = "-v -m 'not e2e and not agent_driven'"
+markers = [
+    "e2e: End-to-end browser tests (requires Playwright, real server)",
+    "agent_driven: Agent-driven integration tests (requires real Claude Code + tmux, expensive)",
+]

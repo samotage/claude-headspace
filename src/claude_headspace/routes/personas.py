@@ -6,8 +6,16 @@ from flask import Blueprint, jsonify, render_template, request
 from sqlalchemy.orm import selectinload
 
 from ..database import db
+from ..models.agent import Agent
 from ..models.persona import Persona
 from ..models.role import Role
+from ..services.persona_assets import (
+    check_assets,
+    get_experience_mtime,
+    read_experience_file,
+    read_skill_file,
+    write_skill_file,
+)
 from ..services.persona_registration import RegistrationError, register_persona
 
 logger = logging.getLogger(__name__)
@@ -23,6 +31,22 @@ def personas_page():
     """Personas management page."""
     status_counts = {"input_needed": 0, "working": 0, "idle": 0}
     return render_template("personas.html", status_counts=status_counts)
+
+
+@personas_bp.route("/personas/<slug>")
+def persona_detail_page(slug: str):
+    """Persona detail page."""
+    persona = (
+        db.session.query(Persona)
+        .options(selectinload(Persona.role))
+        .filter_by(slug=slug)
+        .first()
+    )
+
+    if not persona:
+        return render_template("404.html"), 404
+
+    return render_template("persona_detail.html", persona=persona)
 
 
 # --- API endpoints ---
@@ -282,6 +306,125 @@ def api_delete_persona(slug: str):
         logger.exception("Failed to delete persona %s", slug)
         db.session.rollback()
         return jsonify({"error": "Failed to delete persona"}), 500
+
+
+# --- Persona asset endpoints ---
+
+
+@personas_bp.route("/api/personas/<slug>/skill", methods=["GET"])
+def api_persona_skill_read(slug: str):
+    """Read a persona's skill.md content.
+
+    Returns:
+        200: {content, exists}
+        404: Persona not found in DB
+    """
+    persona = Persona.query.filter_by(slug=slug).first()
+    if not persona:
+        return jsonify({"error": f"Persona '{slug}' not found"}), 404
+
+    content = read_skill_file(slug)
+    return jsonify({
+        "content": content or "",
+        "exists": content is not None,
+    }), 200
+
+
+@personas_bp.route("/api/personas/<slug>/skill", methods=["PUT"])
+def api_persona_skill_write(slug: str):
+    """Write a persona's skill.md content.
+
+    Accepts JSON: {content: string}
+
+    Returns:
+        200: {saved: true}
+        400: Missing content
+        404: Persona not found in DB
+    """
+    persona = Persona.query.filter_by(slug=slug).first()
+    if not persona:
+        return jsonify({"error": f"Persona '{slug}' not found"}), 404
+
+    data = request.get_json(silent=True)
+    if not data or "content" not in data:
+        return jsonify({"error": "Request body must include 'content' field"}), 400
+
+    write_skill_file(slug, data["content"])
+    return jsonify({"saved": True}), 200
+
+
+@personas_bp.route("/api/personas/<slug>/experience", methods=["GET"])
+def api_persona_experience_read(slug: str):
+    """Read a persona's experience.md content.
+
+    Returns:
+        200: {content, exists, last_modified}
+        404: Persona not found in DB
+    """
+    persona = Persona.query.filter_by(slug=slug).first()
+    if not persona:
+        return jsonify({"error": f"Persona '{slug}' not found"}), 404
+
+    content = read_experience_file(slug)
+    mtime = get_experience_mtime(slug)
+    return jsonify({
+        "content": content or "",
+        "exists": content is not None,
+        "last_modified": mtime,
+    }), 200
+
+
+@personas_bp.route("/api/personas/<slug>/assets", methods=["GET"])
+def api_persona_assets(slug: str):
+    """Check persona asset file existence.
+
+    Returns:
+        200: {skill_exists, experience_exists, directory_exists}
+        404: Persona not found in DB
+    """
+    persona = Persona.query.filter_by(slug=slug).first()
+    if not persona:
+        return jsonify({"error": f"Persona '{slug}' not found"}), 404
+
+    status = check_assets(slug)
+    return jsonify({
+        "skill_exists": status.skill_exists,
+        "experience_exists": status.experience_exists,
+        "directory_exists": status.directory_exists,
+    }), 200
+
+
+@personas_bp.route("/api/personas/<slug>/agents", methods=["GET"])
+def api_persona_linked_agents(slug: str):
+    """List agents linked to a persona.
+
+    Returns:
+        200: Array of agent detail objects
+        404: Persona not found in DB
+    """
+    persona = (
+        db.session.query(Persona)
+        .options(
+            selectinload(Persona.agents).selectinload(Agent.project),
+        )
+        .filter_by(slug=slug)
+        .first()
+    )
+
+    if not persona:
+        return jsonify({"error": f"Persona '{slug}' not found"}), 404
+
+    agents = []
+    for agent in persona.agents:
+        agents.append({
+            "id": agent.id,
+            "session_uuid": str(agent.session_uuid),
+            "project_name": agent.project.name if agent.project else None,
+            "state": agent.state.value if agent.state else None,
+            "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else None,
+        })
+
+    return jsonify(agents), 200
 
 
 @personas_bp.route("/api/roles", methods=["GET"])

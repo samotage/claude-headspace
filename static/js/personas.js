@@ -74,7 +74,7 @@
                 var created = p.created_at ? new Date(p.created_at).toLocaleDateString() : '';
 
                 return '<tr class="border-b border-border">' +
-                    '<td class="py-3 pr-4 font-medium text-primary">' + CHUtils.escapeHtml(p.name) + '</td>' +
+                    '<td class="py-3 pr-4 font-medium"><a href="/personas/' + encodeURIComponent(slug) + '" class="text-cyan hover:underline">' + CHUtils.escapeHtml(p.name) + '</a></td>' +
                     '<td class="py-3 pr-4 text-secondary text-sm">' + CHUtils.escapeHtml(p.role || '') + '</td>' +
                     '<td class="py-3 pr-4"><span class="' + statusClass + ' text-sm font-medium">' + statusLabel + '</span></td>' +
                     '<td class="py-3 pr-4 text-center text-secondary">' + p.agent_count + '</td>' +

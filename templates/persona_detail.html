@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ persona.name }} - Personas - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <!-- Back link -->
+        <div class="mb-4">
+            <a href="/personas" class="text-cyan hover:underline text-sm">&larr; Back to Personas</a>
+        </div>
+
+        <!-- Header section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-primary">{{ persona.name }}</h1>
+                    <div class="flex items-center gap-3 mt-2">
+                        {% if persona.role %}
+                        <span class="px-2 py-0.5 rounded text-xs font-medium bg-cyan/20 border border-cyan/30 text-cyan">
+                            {{ persona.role.name }}
+                        </span>
+                        {% endif %}
+                        {% if persona.status == 'active' %}
+                        <span class="px-2 py-0.5 rounded text-xs font-medium bg-green/20 border border-green/30 text-green">
+                            Active
+                        </span>
+                        {% else %}
+                        <span class="px-2 py-0.5 rounded text-xs font-medium bg-amber/20 border border-amber/30 text-amber">
+                            Archived
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metadata bar -->
+            <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-secondary">
+                <div>
+                    <span class="text-muted">Slug:</span>
+                    <code class="ml-1 font-mono text-primary bg-surface px-1.5 py-0.5 rounded text-xs">{{ persona.slug }}</code>
+                </div>
+                {% if persona.description %}
+                <div>
+                    <span class="text-muted">Description:</span>
+                    <span class="ml-1">{{ persona.description }}</span>
+                </div>
+                {% endif %}
+                {% if persona.created_at %}
+                <div>
+                    <span class="text-muted">Created:</span>
+                    <span class="ml-1">{{ persona.created_at.strftime('%Y-%m-%d') }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Skill section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6" aria-labelledby="skill-heading">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="skill-heading" class="text-lg font-bold text-primary">Skill</h2>
+                <div id="skill-toolbar" class="flex items-center gap-2">
+                    <span id="skill-dirty-indicator" class="hidden text-amber text-xs font-medium">Unsaved changes</span>
+                    <button id="skill-edit-btn" type="button"
+                            onclick="PersonaDetail.editSkill()"
+                            class="px-3 py-1.5 bg-cyan/20 border border-cyan/30 rounded text-cyan text-sm font-medium hover:bg-cyan/30 transition-colors">
+                        Edit
+                    </button>
+                </div>
+            </div>
+
+            <!-- View mode -->
+            <div id="skill-view" class="prose prose-invert max-w-none">
+                <p class="text-muted italic">Loading skill...</p>
+            </div>
+
+            <!-- Editor mode (hidden by default) -->
+            <div id="skill-editor" class="hidden">
+                <!-- Editor tabs -->
+                <div class="flex border-b border-border mb-3">
+                    <button id="skill-tab-edit" type="button"
+                            onclick="PersonaDetail.switchEditorTab('edit')"
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-cyan text-cyan -mb-px">
+                        Edit
+                    </button>
+                    <button id="skill-tab-preview" type="button"
+                            onclick="PersonaDetail.switchEditorTab('preview')"
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-muted hover:text-secondary -mb-px">
+                        Preview
+                    </button>
+                </div>
+
+                <!-- Textarea -->
+                <textarea id="skill-textarea"
+                          class="w-full h-64 bg-surface border border-border rounded p-3 font-mono text-sm text-primary resize-y focus:border-cyan focus:outline-none"
+                          placeholder="Write your skill definition in Markdown..."></textarea>
+
+                <!-- Preview pane -->
+                <div id="skill-preview-pane" class="hidden prose prose-invert max-w-none bg-surface border border-border rounded p-3 min-h-[16rem]"></div>
+
+                <!-- Action buttons -->
+                <div class="flex items-center gap-3 mt-3">
+                    <button id="skill-save-btn" type="button"
+                            onclick="PersonaDetail.saveSkill()"
+                            class="px-4 py-2 bg-green/20 border border-green/30 rounded text-green text-sm font-medium hover:bg-green/30 transition-colors">
+                        Save
+                    </button>
+                    <button id="skill-cancel-btn" type="button"
+                            onclick="PersonaDetail.cancelEdit()"
+                            class="px-4 py-2 bg-surface border border-border rounded text-muted text-sm font-medium hover:text-secondary transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Experience section -->
+        <section class="bg-elevated rounded-lg border border-border p-6 mb-6" aria-labelledby="experience-heading">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="experience-heading" class="text-lg font-bold text-primary">Experience Log</h2>
+                <span id="experience-mtime" class="text-muted text-xs"></span>
+            </div>
+
+            <div id="experience-content" class="prose prose-invert max-w-none">
+                <p class="text-muted italic">Loading experience log...</p>
+            </div>
+        </section>
+
+        <!-- Linked agents section -->
+        <section class="bg-elevated rounded-lg border border-border p-6" aria-labelledby="agents-heading">
+            <h2 id="agents-heading" class="text-lg font-bold text-primary mb-4">Linked Agents</h2>
+
+            <div id="agents-list">
+                <p class="text-muted italic">Loading agents...</p>
+            </div>
+        </section>
+    </main>
+</div>
+
+{% include "partials/_toast.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Pass persona slug to the detail page script
+    window.PERSONA_SLUG = {{ persona.slug | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/persona_detail.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}
