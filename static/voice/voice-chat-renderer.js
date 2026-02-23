@@ -533,7 +533,7 @@ window.VoiceChatRenderer = (function () {
     var toolInput = turn.tool_input || {};
     var isAlreadyAnswered = (toolInput.status === 'complete');
     var answeredClass = isAlreadyAnswered ? ' answered' : '';
-    html = '<div class="bubble-multi-question' + answeredClass + '">';
+    var html = '<div class="bubble-multi-question' + answeredClass + '">';
     for (var qi = 0; qi < questions.length; qi++) {
       var q = questions[qi];
       var isMulti = q.multiSelect === true;
