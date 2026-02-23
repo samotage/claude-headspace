@@ -21,6 +21,62 @@ from ..services.card_state import broadcast_card_refresh
 
 logger = logging.getLogger(__name__)
 
+# Affirmative patterns for matching voice text to "Yes" options
+_AFFIRMATIVE_PATTERNS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "approve", "go", "proceed", "do it", "go ahead", "absolutely", "confirmed", "confirm"}
+
+
+def _match_picker_option(text: str, labels: list[str]) -> int:
+    """Match voice text to the best picker option by label.
+
+    Used for TUI pickers that don't have an "Other" option (e.g., ExitPlanMode).
+    Tries exact match first, then fuzzy/semantic matching.
+
+    Args:
+        text: The user's voice text (e.g., "Yes", "go ahead", "no")
+        labels: The option labels in order (e.g., ["Yes", "No"])
+
+    Returns:
+        Index of the best matching option (0-based). Defaults to 0 (first option)
+        if no confident match is found — safer to approve than to reject for plan
+        approval where the user explicitly initiated the response.
+    """
+    normalized = text.strip().lower()
+
+    # Exact match (case-insensitive)
+    for i, label in enumerate(labels):
+        if normalized == label.lower():
+            return i
+
+    # Substring match — user text contains an option label
+    for i, label in enumerate(labels):
+        if label.lower() in normalized:
+            return i
+
+    # Semantic match — check for affirmative/negative intent
+    if any(p in normalized for p in _AFFIRMATIVE_PATTERNS):
+        # Find the "Yes" option
+        for i, label in enumerate(labels):
+            if label.lower() in ("yes", "approve", "ok", "proceed"):
+                return i
+        return 0  # Default to first option for affirmative
+
+    # Negative patterns
+    if any(p in normalized for p in ("no", "nope", "nah", "reject", "don't", "stop", "cancel")):
+        for i, label in enumerate(labels):
+            if label.lower() in ("no", "reject", "cancel"):
+                return i
+        return min(1, len(labels) - 1)  # Default to second option for negative
+
+    # No confident match — default to first option (typically "Yes"/approve).
+    # The user explicitly sent a response to an AWAITING_INPUT agent, so they
+    # almost certainly intended to approve rather than reject.
+    logger.warning(
+        f"No confident match for '{text}' against options {labels}, "
+        f"defaulting to index 0 ({labels[0] if labels else '?'})"
+    )
+    return 0
+
+
 voice_bridge_bp = Blueprint("voice_bridge", __name__)
 
 
@@ -310,8 +366,16 @@ def voice_command():
     # Voice chat always sends free text, which works fine for free-text prompts
     # but garbles AskUserQuestion picker UIs (C2 bug). When a picker is active,
     # route through the "Other" option instead of typing literal text.
+    #
+    # ExitPlanMode is a special case: its TUI has Yes/No options but NO "Other"
+    # option (unlike AskUserQuestion which always appends "Other"). Navigating
+    # past the last option causes Claude Code to interpret it as a rejection,
+    # killing the session. For ExitPlanMode, match the user's answer to an
+    # option and select it directly.
     has_picker = False
+    is_plan_approval = False
     picker_option_count = 0
+    picker_option_labels = []
     if is_answering and current_command and current_command.turns:
         for t in reversed(current_command.turns):
             if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
@@ -323,14 +387,21 @@ def voice_command():
                         if isinstance(opts, list) and len(opts) > 0:
                             has_picker = True
                             picker_option_count = len(opts)
+                            picker_option_labels = [
+                                o.get("label", "") for o in opts if isinstance(o, dict)
+                            ]
+                    # Detect ExitPlanMode — has "source": "exit_plan_mode_default"
+                    if t.tool_input.get("source") == "exit_plan_mode_default":
+                        is_plan_approval = True
                 # Fallback: question_options column (may not have tool_input)
                 if not has_picker and t.question_options:
                     has_picker = True
                 break
         if has_picker:
+            route_desc = "plan approval (direct select)" if is_plan_approval else "'Other'"
             logger.info(
                 f"Voice command to agent {agent.id} targeting a picker question "
-                f"({picker_option_count} options). Will route through 'Other'."
+                f"({picker_option_count} options). Will route through {route_desc}."
             )
 
     # Check tmux pane
@@ -363,8 +434,29 @@ def voice_command():
     from ..services.hook_agent_state import get_agent_hook_state
     get_agent_hook_state().set_respond_inflight(agent.id)
 
-    if has_picker and is_answering:
-        # Picker question active — navigate to "Other" option then type text,
+    if has_picker and is_answering and is_plan_approval:
+        # ExitPlanMode plan approval — NO "Other" option exists in this TUI.
+        # Match the user's answer to one of the options (Yes/No) and navigate
+        # directly to it. Sending Down past the last option causes Claude Code
+        # to interpret the input as a rejection, killing the session.
+        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
+        target_index = _match_picker_option(send_text, picker_option_labels)
+        logger.info(
+            f"Plan approval for agent {agent.id}: "
+            f"matched '{send_text}' to option {target_index} "
+            f"({picker_option_labels[target_index] if target_index < len(picker_option_labels) else '?'})"
+        )
+        # Navigate: Down × target_index (0 for first option) + Enter
+        keys = ["Down"] * target_index + ["Enter"]
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
+        )
+    elif has_picker and is_answering:
+        # AskUserQuestion picker — navigate to "Other" option then type text,
         # instead of sending literal text into the TUI arrow-key selector (C2).
         sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
         select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)

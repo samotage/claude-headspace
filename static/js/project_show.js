@@ -309,7 +309,6 @@
                 var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
                 var agentId = agent.id;
 
-                var rowClass = isEnded ? 'opacity-50' : '';
                 var stateClass = ProjectShow._stateColorClass(stateValue);
 
                 var agentHeroHtml;
@@ -322,15 +321,26 @@
                     agentHeroHtml = 'Agent ' + agent.id;
                 }
 
-                html += '<div class="accordion-agent-row ' + rowClass + '">';
+                html += '<div class="accordion-agent-row">';
                 html += '<div class="agent-metric-row cursor-pointer hover:border-border-bright transition-colors" onclick="ProjectShow.toggleAgentCommands(' + agentId + ')">';
 
-                // Arrow + state badge
+                // Arrow
                 html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '" style="flex-shrink:0">&#9654;</span>';
+
+                // Alive pill for active agents, state badge for others
+                if (!isEnded) {
+                    html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-700/50" style="flex-shrink:0">ALIVE</span>';
+                }
                 html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
 
-                // UUID hero/trail
+                // DB ID + UUID hero/trail
+                html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0">#' + agentId + '</span>';
                 html += '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
+
+                // Claude session ID (transcript identifier)
+                if (agent.claude_session_id) {
+                    html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + CHUtils.escapeHtml(agent.claude_session_id) + '">' + CHUtils.escapeHtml(agent.claude_session_id.substring(0, 12)) + '</span>';
+                }
 
                 // Metric stats
                 html += '<div class="agent-metric-stats">';

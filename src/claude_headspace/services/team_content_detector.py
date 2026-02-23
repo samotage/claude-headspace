@@ -146,6 +146,12 @@ def is_skill_expansion(text: str | None) -> bool:
     if stripped.startswith("IT IS CRITICAL THAT YOU FOLLOW"):
         return True
 
+    # Structured command files: heading + section separators + sub-headings.
+    # Catches orch v2 commands and other multi-section .md command files that
+    # don't use the legacy **Command name:** / **Goal:** / **Input:** markers.
+    if _SKILL_HEADING_RE.match(stripped) and "\n---\n" in stripped and "\n## " in stripped:
+        return True
+
     return False
 
 

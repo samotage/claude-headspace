@@ -42,7 +42,9 @@ def app_ctx(app):
         db.create_all()
         yield app
         db.session.rollback()
-        db.drop_all()
+        for table in reversed(db.metadata.sorted_tables):
+            db.session.execute(table.delete())
+        db.session.commit()
 
 
 @pytest.fixture

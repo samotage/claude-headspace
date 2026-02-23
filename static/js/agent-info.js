@@ -207,6 +207,7 @@
             '- **Agent ID:** #' + id.id,
             '- **Session UUID:** `' + id.session_uuid + '`',
             '- **Claude Session:** ' + (id.claude_session_id || '\u2014'),
+            '- **Claude PID:** ' + (id.claude_pid || '\u2014'),
             '- **tmux Pane:** ' + (id.tmux_pane_id || '\u2014'),
             '- **tmux Session:** ' + (id.tmux_session_name || '\u2014'),
             '- **tmux Alive:** ' + (id.tmux_pane_alive ? 'Yes' : 'No'),
@@ -220,6 +221,7 @@
         html += row('Agent ID', '#' + id.id);
         html += row('Session UUID', '<span class="text-cyan">' + esc(id.session_uuid) + '</span>');
         html += row('Claude Session', esc(id.claude_session_id || '\u2014'));
+        html += row('Claude PID', id.claude_pid ? '<span class="text-cyan font-mono">' + id.claude_pid + '</span>' : '<span class="text-muted">\u2014</span>');
         html += row('tmux Pane', esc(id.tmux_pane_id || '\u2014'));
         html += row('tmux Session', (id.tmux_session_name ? '<span class="text-green">' + esc(id.tmux_session_name) + '</span>' : '<span class="text-muted">\u2014</span>'));
         html += row('tmux Alive', id.tmux_pane_alive ? '<span class="text-green">Yes</span>' : '<span class="text-red">No</span>');
@@ -489,11 +491,21 @@
             '</div>';
     }
 
+    function reap() {
+        if (!state.agentId) return;
+        if (!confirm('Reap this agent? This will dismiss it from the dashboard.')) return;
+        if (window.FocusAPI && window.FocusAPI.dismissAgent) {
+            window.FocusAPI.dismissAgent(state.agentId);
+        }
+        close();
+    }
+
     // Export
     window.AgentInfo = {
         open: open,
         close: close,
-        copy: copyToClipboard
+        copy: copyToClipboard,
+        reap: reap
     };
 
 })();

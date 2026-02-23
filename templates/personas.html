@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Personas - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <section aria-labelledby="personas-heading">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 id="personas-heading" class="text-lg font-bold text-primary">Personas</h2>
+                    <button type="button"
+                            id="new-persona-btn"
+                            onclick="PersonasPage.openCreateModal()"
+                            class="px-4 py-2 bg-cyan/20 border border-cyan/30 rounded text-cyan font-medium text-sm hover:bg-cyan/30 hover:border-cyan transition-colors min-h-[44px]">
+                        + New Persona
+                    </button>
+                </div>
+
+                <!-- Personas table -->
+                <div id="personas-table-container">
+                    <table class="w-full text-base" id="personas-table">
+                        <thead>
+                            <tr class="border-b border-border text-left text-muted text-sm uppercase tracking-wider">
+                                <th class="pb-3 pr-4">Name</th>
+                                <th class="pb-3 pr-4">Role</th>
+                                <th class="pb-3 pr-4">Status</th>
+                                <th class="pb-3 pr-4 text-center">Agents</th>
+                                <th class="pb-3 pr-4">Created</th>
+                                <th class="pb-3 pr-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="personas-tbody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty state -->
+                <div id="personas-empty" class="hidden text-center py-8">
+                    <p class="text-secondary">No personas registered yet.</p>
+                    <p class="text-muted text-sm mt-1">Click "New Persona" to create your first persona.</p>
+                </div>
+
+                <!-- Loading state -->
+                <div id="personas-loading" class="text-center py-8">
+                    <p class="text-muted">Loading personas...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+{% include "partials/_persona_form_modal.html" %}
+{% include "partials/_toast.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/personas.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}

@@ -1,0 +1,115 @@
+<!-- Persona Form Modal (Create/Edit) -->
+<div id="persona-form-modal"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="persona-form-title"
+     aria-modal="true">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="PersonasPage.closeFormModal()"></div>
+
+    <!-- Modal content -->
+    <div class="modal-content" style="max-width: 32rem;">
+        <!-- Header -->
+        <div class="modal-header">
+            <h3 id="persona-form-title" class="text-lg font-semibold text-primary">New Persona</h3>
+            <button type="button"
+                    onclick="PersonasPage.closeFormModal()"
+                    class="modal-close-btn"
+                    aria-label="Close modal">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Form -->
+        <form id="persona-form" class="flex-1 overflow-y-auto px-5 py-4 space-y-4" onsubmit="event.preventDefault(); PersonasPage.submitForm();">
+            <input type="hidden" id="persona-form-slug" value="">
+            <input type="hidden" id="persona-form-mode" value="create">
+
+            <!-- Error display -->
+            <div id="persona-form-error" class="hidden p-3 bg-red/10 border border-red/30 rounded text-red text-sm"></div>
+
+            <div>
+                <label for="persona-form-name" class="block text-sm text-secondary mb-1">
+                    Name <span class="text-red">*</span>
+                </label>
+                <input type="text"
+                       id="persona-form-name"
+                       class="form-well w-full px-3 py-2"
+                       placeholder="e.g. Con, Robbo, Verner"
+                       required>
+            </div>
+
+            <!-- Role dropdown -->
+            <div>
+                <label for="persona-form-role" class="block text-sm text-secondary mb-1">
+                    Role <span class="text-red">*</span>
+                </label>
+                <select id="persona-form-role"
+                        class="form-well w-full px-3 py-2"
+                        onchange="PersonasPage.onRoleChange(this)">
+                    <option value="">Select a role...</option>
+                    <!-- Options populated by JS -->
+                    <option value="__new__">Create new role...</option>
+                </select>
+            </div>
+
+            <!-- Inline new role input (hidden by default) -->
+            <div id="persona-form-new-role-group" class="hidden">
+                <label for="persona-form-new-role" class="block text-sm text-secondary mb-1">
+                    New Role Name <span class="text-red">*</span>
+                </label>
+                <input type="text"
+                       id="persona-form-new-role"
+                       class="form-well w-full px-3 py-2"
+                       placeholder="e.g. developer, tester, pm">
+            </div>
+
+            <div>
+                <label for="persona-form-description" class="block text-sm text-secondary mb-1">
+                    Description <span class="text-muted">(optional)</span>
+                </label>
+                <textarea id="persona-form-description"
+                          rows="3"
+                          class="form-well w-full px-3 py-2 resize-y"
+                          placeholder="Brief persona description"></textarea>
+            </div>
+
+            <!-- Status toggle (edit mode only) -->
+            <div id="persona-form-status-group" class="hidden">
+                <label class="block text-sm text-secondary mb-1">Status</label>
+                <div class="flex items-center gap-3">
+                    <button type="button"
+                            id="persona-form-status-active"
+                            onclick="PersonasPage.setStatus('active')"
+                            class="px-3 py-1 rounded text-sm font-medium border transition-colors">
+                        Active
+                    </button>
+                    <button type="button"
+                            id="persona-form-status-archived"
+                            onclick="PersonasPage.setStatus('archived')"
+                            class="px-3 py-1 rounded text-sm font-medium border transition-colors">
+                        Archived
+                    </button>
+                </div>
+                <input type="hidden" id="persona-form-status" value="active">
+            </div>
+        </form>
+
+        <!-- Footer -->
+        <div class="modal-footer justify-end gap-3">
+            <button type="button"
+                    onclick="PersonasPage.closeFormModal()"
+                    class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary transition-colors min-h-[44px]">
+                Cancel
+            </button>
+            <button type="submit"
+                    form="persona-form"
+                    id="persona-form-submit"
+                    class="px-4 py-2 bg-cyan/20 border border-cyan/30 rounded text-cyan font-medium hover:bg-cyan/30 hover:border-cyan transition-colors min-h-[44px]">
+                Create Persona
+            </button>
+        </div>
+    </div>
+</div>

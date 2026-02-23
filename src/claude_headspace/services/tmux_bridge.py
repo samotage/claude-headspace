@@ -907,6 +907,64 @@ def get_pane_pid(
         return None
 
 
+def find_claude_pid(
+    pane_id: str,
+    process_names: tuple[str, ...] = ("claude",),
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT,
+) -> int | None:
+    """Find the PID of the Claude process in a tmux pane's process tree.
+
+    Walks the process tree from the pane's root PID, returning the first
+    child whose command name matches.
+
+    Args:
+        pane_id: The tmux pane ID (format: %0, %5, etc.)
+        process_names: Process names to match (case-insensitive)
+        timeout: Subprocess timeout in seconds
+
+    Returns:
+        The PID of the Claude process, or None if not found.
+    """
+    pane_pid = get_pane_pid(pane_id, timeout=timeout)
+    if pane_pid is None:
+        return None
+
+    try:
+        ps_result = subprocess.run(
+            ["ps", "-axo", "pid,ppid,comm"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if ps_result.returncode != 0:
+            return None
+
+        # Build parent -> children map
+        children: dict[str, list[tuple[str, str]]] = {}
+        for line in ps_result.stdout.strip().split("\n")[1:]:
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                pid, ppid, comm = parts[0], parts[1], parts[2]
+                children.setdefault(ppid, []).append((pid, comm))
+
+        # BFS through process tree
+        queue = [str(pane_pid)]
+        while queue:
+            current = queue.pop(0)
+            for child_pid, child_comm in children.get(current, []):
+                if any(name in child_comm.lower() for name in process_names):
+                    try:
+                        return int(child_pid)
+                    except ValueError:
+                        pass
+                queue.append(child_pid)
+
+        return None
+
+    except Exception:
+        return None
+
+
 def _is_process_in_tree(
     pane_pid: int,
     process_names: tuple[str, ...] = DEFAULT_PROCESS_NAMES,
