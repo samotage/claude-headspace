@@ -12,11 +12,13 @@ from claude_headspace.services.persona_assets import (
     check_assets,
     create_persona_assets,
     create_persona_dir,
+    get_experience_mtime,
     get_persona_dir,
     read_experience_file,
     read_skill_file,
     seed_experience_file,
     seed_skill_file,
+    write_skill_file,
 )
 
 
@@ -182,6 +184,48 @@ class TestCheckAssets:
         assert status.skill_exists is False
         assert status.experience_exists is False
         assert status.directory_exists is True
+
+
+class TestWriteSkillFile:
+    """Test writing skill.md content."""
+
+    def test_writes_new_file(self, tmp_path):
+        """Creates a new skill file with the given content."""
+        path = write_skill_file("developer-con-1", "# Custom Skill", project_root=tmp_path)
+        assert path.exists()
+        assert path.read_text(encoding="utf-8") == "# Custom Skill"
+
+    def test_overwrites_existing(self, tmp_path):
+        """Overwrites an existing skill file."""
+        seed_skill_file("developer-con-1", "Con", "developer", project_root=tmp_path)
+        write_skill_file("developer-con-1", "Updated content", project_root=tmp_path)
+        content = read_skill_file("developer-con-1", project_root=tmp_path)
+        assert content == "Updated content"
+
+    def test_creates_directory_if_missing(self, tmp_path):
+        """Creates the persona directory if it does not exist."""
+        path = write_skill_file("new-persona-99", "# New", project_root=tmp_path)
+        assert path.exists()
+        assert path.parent.is_dir()
+        assert path.read_text(encoding="utf-8") == "# New"
+
+
+class TestGetExperienceMtime:
+    """Test experience.md last-modified timestamp."""
+
+    def test_returns_iso_timestamp_when_exists(self, tmp_path):
+        """Returns an ISO 8601 timestamp when the file exists."""
+        seed_experience_file("developer-con-1", "Con", project_root=tmp_path)
+        mtime = get_experience_mtime("developer-con-1", project_root=tmp_path)
+        assert mtime is not None
+        # Should be a valid ISO 8601 string with timezone
+        assert "T" in mtime
+        assert "+" in mtime or "Z" in mtime or mtime.endswith("+00:00")
+
+    def test_returns_none_when_missing(self, tmp_path):
+        """Returns None when the experience file does not exist."""
+        result = get_experience_mtime("nonexistent-slug", project_root=tmp_path)
+        assert result is None
 
 
 class TestEdgeCases:

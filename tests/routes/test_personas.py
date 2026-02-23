@@ -1,10 +1,13 @@
 """Route tests for persona management endpoints."""
 
+from unittest.mock import patch
+
 import pytest
 
 from claude_headspace.database import db
 from claude_headspace.models.persona import Persona
 from claude_headspace.models.role import Role
+from claude_headspace.services.persona_assets import AssetStatus
 
 
 @pytest.fixture
@@ -466,3 +469,238 @@ class TestApiListRoles:
         data = response.get_json()
         names = [r["name"] for r in data]
         assert names == ["architect", "developer", "tester"]
+
+
+# ── NEW (e8-s16): GET /personas/<slug> (detail page) ──
+
+
+class TestPersonaDetailPage:
+    """Test GET /personas/<slug> detail page route."""
+
+    def test_valid_slug_returns_200(self, client, db_session):
+        """Detail page returns 200 for a valid persona slug."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        response = client.get(f"/personas/{persona.slug}")
+        assert response.status_code == 200
+
+    def test_invalid_slug_returns_404(self, client, db_session):
+        """Detail page returns 404 for non-existent slug."""
+        response = client.get("/personas/nonexistent-slug-123")
+        assert response.status_code == 404
+
+
+# ── NEW (e8-s16): GET /api/personas/<slug>/skill ──
+
+
+class TestApiPersonaSkillRead:
+    """Test GET /api/personas/<slug>/skill."""
+
+    @patch("claude_headspace.routes.personas.read_skill_file")
+    def test_skill_read_success(self, mock_read, client, db_session):
+        """Returns content and exists=true when skill file exists."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        mock_read.return_value = "# Skill Content"
+
+        response = client.get(f"/api/personas/{persona.slug}/skill")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["content"] == "# Skill Content"
+        assert data["exists"] is True
+
+    @patch("claude_headspace.routes.personas.read_skill_file")
+    def test_skill_read_not_found(self, mock_read, client, db_session):
+        """Returns exists=false when skill file is missing."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        mock_read.return_value = None
+
+        response = client.get(f"/api/personas/{persona.slug}/skill")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["content"] == ""
+        assert data["exists"] is False
+
+    def test_skill_read_persona_not_found(self, client, db_session):
+        """Returns 404 for non-existent persona."""
+        response = client.get("/api/personas/nonexistent/skill")
+        assert response.status_code == 404
+        data = response.get_json()
+        assert "error" in data
+
+
+# ── NEW (e8-s16): PUT /api/personas/<slug>/skill ──
+
+
+class TestApiPersonaSkillWrite:
+    """Test PUT /api/personas/<slug>/skill."""
+
+    @patch("claude_headspace.routes.personas.write_skill_file")
+    def test_skill_write_success(self, mock_write, client, db_session):
+        """Writes content and returns saved=true."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        response = client.put(
+            f"/api/personas/{persona.slug}/skill",
+            json={"content": "# Updated Skill"},
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["saved"] is True
+        mock_write.assert_called_once_with(persona.slug, "# Updated Skill")
+
+    def test_skill_write_no_body(self, client, db_session):
+        """Returns 400 when content field is missing."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        response = client.put(
+            f"/api/personas/{persona.slug}/skill",
+            json={},
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+
+    def test_skill_write_persona_not_found(self, client, db_session):
+        """Returns 404 for non-existent persona."""
+        response = client.put(
+            "/api/personas/nonexistent/skill",
+            json={"content": "# Test"},
+        )
+        assert response.status_code == 404
+
+
+# ── NEW (e8-s16): GET /api/personas/<slug>/experience ──
+
+
+class TestApiPersonaExperienceRead:
+    """Test GET /api/personas/<slug>/experience."""
+
+    @patch("claude_headspace.routes.personas.get_experience_mtime")
+    @patch("claude_headspace.routes.personas.read_experience_file")
+    def test_experience_read_success(self, mock_read, mock_mtime, client, db_session):
+        """Returns content, exists, and last_modified."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        mock_read.return_value = "# Experience Log"
+        mock_mtime.return_value = "2026-02-23T10:00:00+00:00"
+
+        response = client.get(f"/api/personas/{persona.slug}/experience")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["content"] == "# Experience Log"
+        assert data["exists"] is True
+        assert data["last_modified"] == "2026-02-23T10:00:00+00:00"
+
+    @patch("claude_headspace.routes.personas.get_experience_mtime")
+    @patch("claude_headspace.routes.personas.read_experience_file")
+    def test_experience_read_empty(self, mock_read, mock_mtime, client, db_session):
+        """Returns exists=false when experience file is missing."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        mock_read.return_value = None
+        mock_mtime.return_value = None
+
+        response = client.get(f"/api/personas/{persona.slug}/experience")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["content"] == ""
+        assert data["exists"] is False
+        assert data["last_modified"] is None
+
+    def test_experience_read_persona_not_found(self, client, db_session):
+        """Returns 404 for non-existent persona."""
+        response = client.get("/api/personas/nonexistent/experience")
+        assert response.status_code == 404
+
+
+# ── NEW (e8-s16): GET /api/personas/<slug>/assets ──
+
+
+class TestApiPersonaAssets:
+    """Test GET /api/personas/<slug>/assets."""
+
+    @patch("claude_headspace.routes.personas.check_assets")
+    def test_asset_status(self, mock_check, client, db_session):
+        """Reports correct file existence."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        mock_check.return_value = AssetStatus(
+            skill_exists=True,
+            experience_exists=False,
+            directory_exists=True,
+        )
+
+        response = client.get(f"/api/personas/{persona.slug}/assets")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["skill_exists"] is True
+        assert data["experience_exists"] is False
+        assert data["directory_exists"] is True
+
+    def test_asset_status_persona_not_found(self, client, db_session):
+        """Returns 404 for non-existent persona."""
+        response = client.get("/api/personas/nonexistent/assets")
+        assert response.status_code == 404
+
+
+# ── NEW (e8-s16): GET /api/personas/<slug>/agents ──
+
+
+class TestApiPersonaLinkedAgents:
+    """Test GET /api/personas/<slug>/agents."""
+
+    def test_linked_agents_with_agents(self, client, db_session):
+        """Returns agent details with project name, state, last_seen."""
+        import uuid
+
+        from claude_headspace.models.agent import Agent
+        from claude_headspace.models.project import Project
+
+        role = _create_role(db_session, "developer")
+        persona = _create_persona(db_session, name="Con", role=role)
+
+        project = Project(name="TestProject", slug="test-project", path="/tmp/test")
+        db_session.add(project)
+        db_session.flush()
+
+        agent = Agent(
+            project_id=project.id,
+            persona_id=persona.id,
+            session_uuid=uuid.uuid4(),
+        )
+        db_session.add(agent)
+        db_session.commit()
+
+        response = client.get(f"/api/personas/{persona.slug}/agents")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data) == 1
+        assert data[0]["project_name"] == "TestProject"
+        assert "session_uuid" in data[0]
+        assert "state" in data[0]
+        assert "last_seen_at" in data[0]
+
+    def test_linked_agents_empty(self, client, db_session):
+        """Returns empty array when no agents are linked."""
+        persona = _create_persona(db_session, name="Con")
+        db_session.commit()
+
+        response = client.get(f"/api/personas/{persona.slug}/agents")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data == []
+
+    def test_linked_agents_persona_not_found(self, client, db_session):
+        """Returns 404 for non-existent persona."""
+        response = client.get("/api/personas/nonexistent/agents")
+        assert response.status_code == 404

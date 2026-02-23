@@ -1,5 +1,8 @@
-## ADDED Requirements
+# persona-detail-skill-editor Specification
 
+## Purpose
+TBD - created by archiving change e8-s16-persona-detail-skill-editor. Update Purpose after archive.
+## Requirements
 ### Requirement: Persona Detail Page
 
 The application SHALL provide a detail page at `/personas/<slug>` displaying the full profile of a persona including metadata, skill content, experience log, and linked agents.
@@ -180,13 +183,7 @@ The application SHALL expose a REST API endpoint returning agents linked to a pe
 
 ---
 
-## MODIFIED Requirements
+<!-- NOTE: The persona list name column modification (names become clickable links to detail page) -->
+<!-- is implemented in static/js/personas.js but applies to the existing persona-list-crud spec. -->
+<!-- Captured here as documentation only since the target spec (persona-list-crud) is already archived. -->
 
-### Requirement: Persona List Name Column
-
-The persona list table name column SHALL render persona names as clickable links navigating to `/personas/<slug>`.
-
-#### Scenario: Click persona name in list
-
-- **WHEN** a user clicks a persona name in the list table
-- **THEN** the browser navigates to `/personas/<slug>` for that persona
