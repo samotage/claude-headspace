@@ -1,8 +1,10 @@
 """REST API endpoints for persona management."""
 
 import logging
+import shutil
 
 from flask import Blueprint, jsonify, render_template, request
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from ..database import db
@@ -12,6 +14,7 @@ from ..models.role import Role
 from ..services.persona_assets import (
     check_assets,
     get_experience_mtime,
+    get_persona_dir,
     read_experience_file,
     read_skill_file,
     write_skill_file,
@@ -157,16 +160,23 @@ def api_list_personas():
     Returns JSON array ordered by created_at descending.
     """
     try:
-        personas = (
-            db.session.query(Persona)
-            .options(selectinload(Persona.role), selectinload(Persona.agents))
+        # Use a subquery for agent count instead of eagerly loading all agents
+        agent_count_subq = (
+            db.session.query(func.count(Agent.id))
+            .filter(Agent.persona_id == Persona.id)
+            .correlate(Persona)
+            .scalar_subquery()
+        )
+
+        rows = (
+            db.session.query(Persona, agent_count_subq.label("agent_count"))
+            .options(selectinload(Persona.role))
             .order_by(Persona.created_at.desc())
             .all()
         )
 
         result = []
-        for p in personas:
-            agent_count = len(p.agents)
+        for p, agent_count in rows:
             result.append({
                 "id": p.id,
                 "slug": p.slug,
@@ -174,7 +184,7 @@ def api_list_personas():
                 "role": p.role.name if p.role else None,
                 "description": p.description,
                 "status": p.status,
-                "agent_count": agent_count,
+                "agent_count": agent_count or 0,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             })
 
@@ -196,7 +206,7 @@ def api_get_persona(slug: str):
     try:
         persona = (
             db.session.query(Persona)
-            .options(selectinload(Persona.role), selectinload(Persona.agents))
+            .options(selectinload(Persona.role))
             .filter_by(slug=slug)
             .first()
         )
@@ -204,7 +214,11 @@ def api_get_persona(slug: str):
         if not persona:
             return jsonify({"error": f"Persona '{slug}' not found"}), 404
 
-        agent_count = len(persona.agents)
+        agent_count = (
+            db.session.query(func.count(Agent.id))
+            .filter(Agent.persona_id == persona.id)
+            .scalar()
+        ) or 0
 
         return jsonify({
             "id": persona.id,
@@ -329,9 +343,22 @@ def api_delete_persona(slug: str):
 
         persona_name = persona.name
         persona_id = persona.id
+        persona_slug = persona.slug
 
         db.session.delete(persona)
         db.session.commit()
+
+        # Clean up filesystem assets (best-effort, don't fail the request)
+        try:
+            persona_dir = get_persona_dir(persona_slug)
+            if persona_dir.is_dir():
+                shutil.rmtree(persona_dir)
+                logger.info("Removed persona assets directory: %s", persona_dir)
+        except Exception:
+            logger.warning(
+                "Failed to remove persona assets directory for %s", persona_slug,
+                exc_info=True,
+            )
 
         return jsonify({
             "deleted": True,

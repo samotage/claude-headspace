@@ -113,14 +113,19 @@ window.VoiceAPI = (function () {
     return _fetch('/api/voice/agents/' + agentId + '/transcript' + q);
   }
 
-  function createAgent(projectIdOrName) {
+  function createAgent(projectIdOrName, personaSlug) {
     var body = {};
     if (typeof projectIdOrName === 'number') {
       body.project_id = projectIdOrName;
     } else {
       body.project_name = projectIdOrName;
     }
+    if (personaSlug) body.persona_slug = personaSlug;
     return _fetch('/api/voice/agents/create', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  function getActivePersonas() {
+    return _fetch('/api/personas/active');
   }
 
   function shutdownAgent(agentId) {
@@ -345,6 +350,7 @@ window.VoiceAPI = (function () {
     connectSSE: connectSSE,
     disconnectSSE: disconnectSSE,
     focusAgent: focusAgent,
-    attachAgent: attachAgent
+    attachAgent: attachAgent,
+    getActivePersonas: getActivePersonas
   };
 })();

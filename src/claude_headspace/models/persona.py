@@ -1,5 +1,6 @@
 """Persona model."""
 
+import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -52,12 +53,22 @@ class Persona(db.Model):
     role: Mapped["Role"] = relationship("Role", back_populates="personas")
     agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="persona")
 
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """Sanitize text for use in a slug: lowercase, replace spaces/special chars with hyphens."""
+        s = text.lower().strip()
+        s = re.sub(r"[^a-z0-9]+", "-", s)  # Replace non-alphanumeric with hyphens
+        s = re.sub(r"-+", "-", s)            # Collapse consecutive hyphens
+        return s.strip("-")                   # Remove leading/trailing hyphens
+
     def generate_slug(self) -> str:
         """Generate slug from role name, persona name, and id.
 
-        Format: {role_name}-{persona_name}-{id}, all lowercase.
+        Format: {role_name}-{persona_name}-{id}, all lowercase, sanitized.
         """
-        return f"{self.role.name.lower()}-{self.name.lower()}-{self.id}"
+        role_part = self._slugify(self.role.name)
+        name_part = self._slugify(self.name)
+        return f"{role_part}-{name_part}-{self.id}"
 
     def __repr__(self) -> str:
         return f"<Persona id={self.id} slug={self.slug} name={self.name}>"
@@ -66,7 +77,7 @@ class Persona(db.Model):
 @event.listens_for(Persona, "after_insert")
 def _set_persona_slug(mapper, connection, target):
     """Replace the temporary slug with the real one after insert provides the id."""
-    slug = f"{target.role.name.lower()}-{target.name.lower()}-{target.id}"
+    slug = target.generate_slug()
     connection.execute(
         Persona.__table__.update()
         .where(Persona.__table__.c.id == target.id)

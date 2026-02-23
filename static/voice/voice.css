@@ -500,6 +500,7 @@ body.layout-split .main-panel-empty.show-empty {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 17px;
 }
 
 .project-kebab-btn {
@@ -3008,4 +3009,141 @@ body.layout-split .hamburger-btn { display: none; }
   .project-picker-path { font-size: 0.8125rem; }
   .project-picker-badge { font-size: 0.75rem; padding: 3px 10px; }
   .project-picker-empty { font-size: 1rem; }
+}
+
+/* ─── Persona Picker (bottom sheet) ─── */
+
+.persona-picker-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  z-index: 80;
+}
+.persona-picker-backdrop.open { display: block; }
+
+.persona-picker {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  width: 100%;
+  max-width: 480px;
+  max-height: 70vh;
+  max-height: 70dvh;
+  background: var(--surface);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border: 1px solid var(--border-emphasis);
+  border-bottom: none;
+  z-index: 85;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.3s ease-out;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.persona-picker.open {
+  transform: translateX(-50%) translateY(0);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.persona-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.persona-picker-header h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.persona-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 8px 16px;
+}
+
+.persona-picker-role-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 12px 12px 4px;
+}
+
+.persona-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.persona-picker-row:hover {
+  background: var(--accent-subtle-hover);
+}
+.persona-picker-row:active {
+  background: var(--accent-subtle-active);
+}
+
+.persona-picker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.persona-picker-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.persona-picker-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Widescreen: enlarge persona picker */
+@media (min-width: 1024px) {
+  .persona-picker {
+    max-width: 624px;
+    max-height: 75vh;
+    max-height: 75dvh;
+  }
+  .persona-picker-header { padding: 18px 20px 14px; }
+  .persona-picker-header h2 { font-size: 1.375rem; }
+  .persona-picker-list { padding: 0 12px 20px; }
+  .persona-picker-row { padding: 14px 16px; gap: 12px; }
+  .persona-picker-name { font-size: 1.25rem; }
+  .persona-picker-desc { font-size: 0.8125rem; }
+  .persona-picker-role-header { font-size: 0.75rem; }
+}
+
+/* ─── Chat Persona Badge ─── */
+
+.chat-persona-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--success-subtle, rgba(34, 197, 94, 0.1));
+  color: var(--success, #22c55e);
+  white-space: nowrap;
+  margin-left: 6px;
+}
+.chat-persona-badge::before {
+  content: '\2713 ';
 }

@@ -66,7 +66,7 @@ class TestVoiceCreateAgent:
         assert response.status_code == 201
         assert "voice" in response.json
         assert response.json["tmux_session_name"] == "hs-test-abc"
-        mock_create.assert_called_once_with(1)
+        mock_create.assert_called_once_with(1, persona_slug=None)
 
     @patch("src.claude_headspace.routes.voice_bridge.db")
     @patch("src.claude_headspace.routes.voice_bridge.create_agent")
@@ -89,7 +89,44 @@ class TestVoiceCreateAgent:
             content_type="application/json",
         )
         assert response.status_code == 201
-        mock_create.assert_called_once_with(42)
+        mock_create.assert_called_once_with(42, persona_slug=None)
+
+    @patch("src.claude_headspace.routes.voice_bridge.create_agent")
+    def test_create_with_persona_slug(self, mock_create, client):
+        mock_create.return_value = CreateResult(
+            success=True,
+            message="Agent starting with persona.",
+            tmux_session_name="hs-test-persona",
+        )
+        response = client.post(
+            "/api/voice/agents/create",
+            json={"project_id": 1, "persona_slug": "dev-con-1"},
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        mock_create.assert_called_once_with(1, persona_slug="dev-con-1")
+
+    @patch("src.claude_headspace.routes.voice_bridge.db")
+    @patch("src.claude_headspace.routes.voice_bridge.create_agent")
+    def test_create_by_name_with_persona(self, mock_create, mock_db, client):
+        mock_project = MagicMock()
+        mock_project.id = 42
+        mock_db.session.query.return_value.filter.return_value.first.return_value = (
+            mock_project
+        )
+        mock_db.func.lower = MagicMock()
+        mock_create.return_value = CreateResult(
+            success=True,
+            message="Agent starting with persona.",
+            tmux_session_name="hs-proj-persona",
+        )
+        response = client.post(
+            "/api/voice/agents/create",
+            json={"project_name": "my-project", "persona_slug": "dev-con-1"},
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        mock_create.assert_called_once_with(42, persona_slug="dev-con-1")
 
     @patch("src.claude_headspace.routes.voice_bridge.db")
     def test_project_name_not_found(self, mock_db, client):

@@ -151,6 +151,8 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     hero_chars = truncated_uuid[:2] if truncated_uuid else ""
     hero_trail = truncated_uuid[2:] if truncated_uuid else ""
     project_name = agent.project.name if agent.project else "unknown"
+    persona_name = agent.persona.name if agent.persona else None
+    persona_role = agent.persona.role if agent.persona else None
 
     # Time since last activity
     if agent.last_seen_at:
@@ -189,6 +191,8 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "last_activity_ago": ago,
         "context": context,
         "tmux_session": agent.tmux_session,
+        "persona_name": persona_name,
+        "persona_role": persona_role,
     }
 
     if include_ended_fields and agent.ended_at:
@@ -1070,6 +1074,8 @@ def agent_transcript(agent_id: int):
         "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
         "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
         "tmux_session": agent.tmux_session,
+        "persona_name": agent.persona.name if agent.persona else None,
+        "persona_role": agent.persona.role if agent.persona else None,
     }), 200
 
 
@@ -1107,7 +1113,8 @@ def voice_create_agent():
             )
         project_id = project.id
 
-    result = create_agent(project_id)
+    persona_slug = data.get("persona_slug")
+    result = create_agent(project_id, persona_slug=persona_slug)
 
     latency_ms = int((time.time() - start_time) * 1000)
     if not result.success:

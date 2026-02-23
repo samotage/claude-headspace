@@ -28,7 +28,7 @@
             </div>
 
             <!-- Project name + staleness -->
-            <h2 id="project-{{ project.id }}-heading" class="font-semibold font-display text-xl">
+            <h2 id="project-{{ project.id }}-heading" class="font-bold font-display text-6xl">
                 <a href="/projects/{{ project.slug }}" class="text-cyan hover:text-primary text-glow-cyan transition-colors" onclick="event.stopPropagation()">{{ project.name }}</a>
             </h2>
             {% if project.staleness and project.staleness.tier == 'stale' %}

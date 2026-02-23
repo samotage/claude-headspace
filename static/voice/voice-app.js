@@ -171,6 +171,12 @@ window.VoiceApp = (function () {
     document.addEventListener('click', _handleCloseKebabs);
     document.addEventListener('touchstart', _handleCloseKebabs, { passive: true });
 
+    // Persona picker close handlers
+    var personaPickerClose = document.getElementById('persona-picker-close');
+    var personaPickerBackdrop = document.getElementById('persona-picker-backdrop');
+    if (personaPickerClose) personaPickerClose.addEventListener('click', function () { VoiceSidebar.closePersonaPicker(); });
+    if (personaPickerBackdrop) personaPickerBackdrop.addEventListener('click', function () { VoiceSidebar.closePersonaPicker(); });
+
     // Detect agent_id URL param (from dashboard "Chat" link)
     var urlParams = new URLSearchParams(window.location.search);
     var paramAgentId = urlParams.get('agent_id');

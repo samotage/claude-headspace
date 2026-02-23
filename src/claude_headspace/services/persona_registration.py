@@ -90,18 +90,15 @@ def register_persona(
         asset_dir = create_persona_assets(
             persona.slug, persona.name, role.name, project_root=project_root
         )
-        asset_path = str(asset_dir)
     except Exception as e:
-        # Partial failure: DB record exists but filesystem failed.
-        # Commit the DB record and report the error.
-        db.session.commit()
+        # Filesystem creation failed — rollback the DB record to avoid orphans.
+        db.session.rollback()
         logger.error(
-            "Filesystem creation failed for persona %s (id=%d, slug=%s): %s",
-            persona.name, persona.id, persona.slug, e,
+            "Filesystem creation failed for persona %s (slug=%s): %s",
+            persona.name, persona.slug, e,
         )
         raise RegistrationError(
-            f"Persona created in database (id={persona.id}, slug={persona.slug}) "
-            f"but filesystem creation failed: {e}"
+            f"Persona registration failed: filesystem creation error: {e}"
         ) from e
 
     db.session.commit()

@@ -67,6 +67,8 @@
         _renderTable: function(personas) {
             if (!this.tbody) return;
 
+            // Use data attributes instead of inline onclick to prevent XSS
+            // via names containing single quotes or other JS-breaking chars.
             this.tbody.innerHTML = personas.map(function(p) {
                 var statusClass = p.status === 'active' ? 'text-green' : 'text-muted';
                 var statusLabel = p.status === 'active' ? 'Active' : 'Archived';
@@ -74,25 +76,38 @@
                 var created = p.created_at ? new Date(p.created_at).toLocaleDateString() : '';
 
                 return '<tr class="border-b border-border">' +
-                    '<td class="py-3 pr-4 font-medium"><a href="/personas/' + encodeURIComponent(slug) + '" class="text-cyan hover:underline">' + CHUtils.escapeHtml(p.name) + '</a></td>' +
+                    '<td class="py-3 pr-4 font-medium"><a href="/personas/' + encodeURIComponent(p.slug || '') + '" class="text-cyan hover:underline">' + CHUtils.escapeHtml(p.name) + '</a></td>' +
                     '<td class="py-3 pr-4 text-secondary text-sm">' + CHUtils.escapeHtml(p.role || '') + '</td>' +
                     '<td class="py-3 pr-4"><span class="' + statusClass + ' text-sm font-medium">' + statusLabel + '</span></td>' +
-                    '<td class="py-3 pr-4 text-center text-secondary">' + p.agent_count + '</td>' +
+                    '<td class="py-3 pr-4 text-center text-secondary">' + (parseInt(p.agent_count, 10) || 0) + '</td>' +
                     '<td class="py-3 pr-4 text-secondary text-sm">' + CHUtils.escapeHtml(created) + '</td>' +
                     '<td class="py-3 pr-4 text-right">' +
-                        '<button onclick="PersonasPage.openEditModal(\'' + slug + '\')" ' +
+                        '<button data-action="edit" data-slug="' + slug + '" ' +
                             'class="text-cyan text-sm hover:underline mr-3" title="Edit persona">Edit</button>' +
                         (p.status === 'active'
-                            ? '<button onclick="PersonasPage.archivePersona(\'' + slug + '\', \'' + CHUtils.escapeHtml(p.name) + '\')" ' +
+                            ? '<button data-action="archive" data-slug="' + slug + '" data-name="' + CHUtils.escapeHtml(p.name) + '" ' +
                                 'class="text-amber text-sm hover:underline mr-3" title="Archive persona">Archive</button>'
-                            : '<button onclick="PersonasPage.restorePersona(\'' + slug + '\', \'' + CHUtils.escapeHtml(p.name) + '\')" ' +
+                            : '<button data-action="restore" data-slug="' + slug + '" data-name="' + CHUtils.escapeHtml(p.name) + '" ' +
                                 'class="text-green text-sm hover:underline mr-3" title="Restore persona">Restore</button>'
                         ) +
-                        '<button onclick="PersonasPage.deletePersona(\'' + slug + '\', \'' + CHUtils.escapeHtml(p.name) + '\', ' + p.agent_count + ')" ' +
+                        '<button data-action="delete" data-slug="' + slug + '" data-name="' + CHUtils.escapeHtml(p.name) + '" data-agents="' + (parseInt(p.agent_count, 10) || 0) + '" ' +
                             'class="text-red text-sm hover:underline" title="Delete persona">Delete</button>' +
                     '</td>' +
                 '</tr>';
             }).join('');
+
+            // Attach delegated click handler for action buttons
+            this.tbody.onclick = function(e) {
+                var btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                var action = btn.getAttribute('data-action');
+                var actionSlug = btn.getAttribute('data-slug');
+                var actionName = btn.getAttribute('data-name');
+                if (action === 'edit') PersonasPage.openEditModal(actionSlug);
+                else if (action === 'archive') PersonasPage.archivePersona(actionSlug, actionName);
+                else if (action === 'restore') PersonasPage.restorePersona(actionSlug, actionName);
+                else if (action === 'delete') PersonasPage.deletePersona(actionSlug, actionName, parseInt(btn.getAttribute('data-agents'), 10) || 0);
+            };
         },
 
         // --- Create Modal ---

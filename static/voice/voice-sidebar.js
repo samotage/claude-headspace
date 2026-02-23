@@ -259,12 +259,21 @@ window.VoiceSidebar = (function () {
           + '</div>';
       }
 
+      // Persona name replaces hero chars when available
+      var heroHtml;
+      if (a.persona_name) {
+        var roleSuffix = a.persona_role ? ' <span class="agent-hero-trail">' + VoiceChatRenderer.esc(a.persona_role) + '</span>' : '';
+        heroHtml = '<span class="agent-hero">' + VoiceChatRenderer.esc(a.persona_name) + '</span>' + roleSuffix;
+      } else {
+        heroHtml = '<span class="agent-hero">' + VoiceChatRenderer.esc(heroChars) + '</span>'
+          + '<span class="agent-hero-trail">' + VoiceChatRenderer.esc(heroTrail) + '</span>';
+      }
+
       return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
         + '<div class="agent-header">'
         + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
         + '<div class="agent-hero-id">'
-        + '<span class="agent-hero">' + VoiceChatRenderer.esc(heroChars) + '</span>'
-        + '<span class="agent-hero-trail">' + VoiceChatRenderer.esc(heroTrail) + '</span>'
+        + heroHtml
         + '</div>'
         + '</a>'
         + '<div class="agent-header-actions">'
@@ -481,9 +490,23 @@ window.VoiceSidebar = (function () {
   // --- Create agent for project ---
 
   function createAgentForProject(projectName) {
+    // Fetch personas; if any exist, show persona picker before creating
+    VoiceAPI.getActivePersonas().then(function (data) {
+      var personas = (data && data.personas) ? data.personas : [];
+      if (personas.length === 0) {
+        _doCreateAgent(projectName, null);
+      } else {
+        showPersonaPicker(projectName, personas);
+      }
+    }).catch(function () {
+      _doCreateAgent(projectName, null);
+    });
+  }
+
+  function _doCreateAgent(projectName, personaSlug) {
     VoiceState.pendingNewAgentProject = projectName;
     showPendingAgentPlaceholder(projectName);
-    VoiceAPI.createAgent(projectName).then(function (data) {
+    VoiceAPI.createAgent(projectName, personaSlug).then(function (data) {
       showToast('Agent starting\u2026');
       refreshAgents();
     }).catch(function (err) {
@@ -495,6 +518,81 @@ window.VoiceSidebar = (function () {
         alert('Create failed: ' + (err.error || 'unknown error'));
       }
     });
+  }
+
+  // --- Persona Picker ---
+
+  var _pendingPersonaProject = null;
+
+  function showPersonaPicker(projectName, personas) {
+    _pendingPersonaProject = projectName;
+    var bd = document.getElementById('persona-picker-backdrop');
+    var pk = document.getElementById('persona-picker');
+    if (bd) bd.classList.add('open');
+    if (pk) pk.classList.add('open');
+    renderPersonaList(personas);
+  }
+
+  function closePersonaPicker() {
+    _pendingPersonaProject = null;
+    var bd = document.getElementById('persona-picker-backdrop');
+    var pk = document.getElementById('persona-picker');
+    if (bd) bd.classList.remove('open');
+    if (pk) pk.classList.remove('open');
+  }
+
+  function renderPersonaList(personas) {
+    var list = document.getElementById('persona-picker-list');
+    if (!list) return;
+
+    // "No persona" default option
+    var html = '<div class="persona-picker-row" data-persona-slug="">'
+      + '<div class="persona-picker-info">'
+      + '<div class="persona-picker-name">No persona (default)</div>'
+      + '<div class="persona-picker-desc">Standard Claude agent without persona</div>'
+      + '</div>'
+      + '</div>';
+
+    // Group by role
+    var roleGroups = {};
+    var roleOrder = [];
+    for (var i = 0; i < personas.length; i++) {
+      var p = personas[i];
+      var role = p.role || 'Other';
+      if (!roleGroups[role]) {
+        roleGroups[role] = [];
+        roleOrder.push(role);
+      }
+      roleGroups[role].push(p);
+    }
+
+    for (var r = 0; r < roleOrder.length; r++) {
+      var roleName = roleOrder[r];
+      var group = roleGroups[roleName];
+      html += '<div class="persona-picker-role-header">' + VoiceChatRenderer.esc(roleName) + '</div>';
+      for (var j = 0; j < group.length; j++) {
+        var persona = group[j];
+        var desc = persona.description || '';
+        html += '<div class="persona-picker-row" data-persona-slug="' + VoiceChatRenderer.esc(persona.slug) + '">'
+          + '<div class="persona-picker-info">'
+          + '<div class="persona-picker-name">' + VoiceChatRenderer.esc(persona.name) + '</div>'
+          + (desc ? '<div class="persona-picker-desc">' + VoiceChatRenderer.esc(desc) + '</div>' : '')
+          + '</div>'
+          + '</div>';
+      }
+    }
+    list.innerHTML = html;
+
+    // Bind click handlers
+    var rows = list.querySelectorAll('.persona-picker-row');
+    for (var k = 0; k < rows.length; k++) {
+      rows[k].addEventListener('click', function () {
+        var slug = this.getAttribute('data-persona-slug') || null;
+        var projName = _pendingPersonaProject;
+        closePersonaPicker();
+        if (projName) _doCreateAgent(projName, slug);
+      });
+    }
   }
 
   // --- Pending agent placeholder (private) ---
@@ -616,7 +714,9 @@ window.VoiceSidebar = (function () {
               hero_trail: a.hero_trail || '',
               command_instruction: a.command_instruction || '',
               state: (a.state || '').toLowerCase(),
-              project_name: a.project || ''
+              project_name: a.project || '',
+              persona_name: a.persona_name || '',
+              persona_role: a.persona_role || ''
             };
           }
         }
@@ -638,6 +738,7 @@ window.VoiceSidebar = (function () {
     refreshAgents: refreshAgents,
     openProjectPicker: openProjectPicker,
     closeProjectPicker: closeProjectPicker,
+    closePersonaPicker: closePersonaPicker,
     filterProjectList: filterProjectList,
     showToast: showToast
   };

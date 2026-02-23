@@ -189,7 +189,7 @@ class TestRegisterPersona:
         assert role.name == "developer"
 
     def test_partial_failure_filesystem(self, app, db_session, tmp_path, monkeypatch):
-        """If filesystem creation fails, error includes persona ID."""
+        """If filesystem creation fails, DB record is rolled back."""
         def failing_create(*args, **kwargs):
             raise OSError("Permission denied")
 
@@ -198,10 +198,10 @@ class TestRegisterPersona:
             failing_create,
         )
 
-        with pytest.raises(RegistrationError, match="filesystem creation failed"):
+        with pytest.raises(RegistrationError, match="filesystem creation error"):
             register_persona(
                 name="Con", role_name="developer", project_root=tmp_path
             )
 
-        # DB record should still exist (not rolled back)
-        assert Persona.query.count() == 1
+        # DB record should be rolled back — no orphan records
+        assert Persona.query.count() == 0

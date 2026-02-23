@@ -35,10 +35,10 @@ class Position(db.Model):
         String(128), nullable=False
     )
     reports_to_id: Mapped[int | None] = mapped_column(
-        ForeignKey("positions.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("positions.id", ondelete="SET NULL"), nullable=True
     )
     escalates_to_id: Mapped[int | None] = mapped_column(
-        ForeignKey("positions.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("positions.id", ondelete="SET NULL"), nullable=True
     )
     level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0

@@ -18,6 +18,14 @@
         mode: 'view'  // 'view' | 'edit' | 'preview'
     };
 
+    // Warn on navigation when skill editor has unsaved changes
+    function _beforeUnloadHandler(e) {
+        if (state.isDirty) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    }
+
     var PersonaDetail = {
 
         /**
@@ -28,6 +36,7 @@
                 console.error('PersonaDetail: No PERSONA_SLUG defined');
                 return;
             }
+            window.addEventListener('beforeunload', _beforeUnloadHandler);
             this.loadSkill();
             this.loadExperience();
             this.loadLinkedAgents();
@@ -123,7 +132,7 @@
             var content = textarea.value;
 
             try {
-                var response = await fetch(API_BASE + '/skill', {
+                var response = await CHUtils.apiFetch(API_BASE + '/skill', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content: content })
@@ -275,10 +284,10 @@
                     var lastSeen = a.last_seen_at ? new Date(a.last_seen_at).toLocaleString() : 'N/A';
 
                     html += '<tr class="border-b border-border/50">' +
-                        '<td class="py-2 pr-4 font-mono text-primary">' + sessionShort + '</td>' +
-                        '<td class="py-2 pr-4 text-secondary">' + project + '</td>' +
-                        '<td class="py-2 pr-4 text-secondary">' + agentState + '</td>' +
-                        '<td class="py-2 pr-4 text-muted">' + lastSeen + '</td>' +
+                        '<td class="py-2 pr-4 font-mono text-primary">' + CHUtils.escapeHtml(sessionShort) + '</td>' +
+                        '<td class="py-2 pr-4 text-secondary">' + CHUtils.escapeHtml(project) + '</td>' +
+                        '<td class="py-2 pr-4 text-secondary">' + CHUtils.escapeHtml(agentState) + '</td>' +
+                        '<td class="py-2 pr-4 text-muted">' + CHUtils.escapeHtml(lastSeen) + '</td>' +
                         '</tr>';
                 });
 

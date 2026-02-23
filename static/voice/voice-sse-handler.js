@@ -230,6 +230,8 @@ window.VoiceSSEHandler = (function () {
           if (data.command_instruction) VoiceState.otherAgentStates[agentId].command_instruction = data.command_instruction;
           if (data.hero_chars) VoiceState.otherAgentStates[agentId].hero_chars = data.hero_chars;
           if (data.hero_trail) VoiceState.otherAgentStates[agentId].hero_trail = data.hero_trail;
+          if (data.persona_name) VoiceState.otherAgentStates[agentId].persona_name = data.persona_name;
+          if (data.persona_role) VoiceState.otherAgentStates[agentId].persona_role = data.persona_role;
           VoiceChatRenderer.renderAttentionBanners();
         } else if (newState && !VoiceState.otherAgentStates[agentId]) {
           // New agent appeared via SSE -- add it
@@ -238,7 +240,9 @@ window.VoiceSSEHandler = (function () {
             hero_trail: data.hero_trail || '',
             command_instruction: data.command_instruction || '',
             state: newState.toLowerCase(),
-            project_name: data.project || ''
+            project_name: data.project || '',
+            persona_name: data.persona_name || '',
+            persona_role: data.persona_role || ''
           };
           VoiceChatRenderer.renderAttentionBanners();
         }

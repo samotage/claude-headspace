@@ -84,15 +84,29 @@ window.VoiceChatController = (function () {
       var projEl = document.getElementById('chat-project-name');
       var heroEl = document.getElementById('chat-hero');
       if (heroEl) {
-        var hc = data.hero_chars || '';
-        var ht = data.hero_trail || '';
-        heroEl.innerHTML = '<span class="agent-hero">' + VoiceChatRenderer.esc(hc) + '</span><span class="agent-hero-trail">' + VoiceChatRenderer.esc(ht) + '</span>';
+        if (data.persona_name) {
+          heroEl.innerHTML = '<span class="agent-hero">' + VoiceChatRenderer.esc(data.persona_name) + '</span>';
+        } else {
+          var hc = data.hero_chars || '';
+          var ht = data.hero_trail || '';
+          heroEl.innerHTML = '<span class="agent-hero">' + VoiceChatRenderer.esc(hc) + '</span><span class="agent-hero-trail">' + VoiceChatRenderer.esc(ht) + '</span>';
+        }
+      }
+      // Show/hide persona badge
+      var personaBadge = document.getElementById('chat-persona-badge');
+      if (personaBadge) {
+        if (data.persona_name) {
+          personaBadge.textContent = data.persona_name;
+          personaBadge.style.display = '';
+        } else {
+          personaBadge.style.display = 'none';
+        }
       }
       if (nameEl) nameEl.textContent = data.project || 'Agent';
       if (projEl) projEl.textContent = '';
 
       // Update browser tab title with agent identity
-      var titleHero = (data.hero_chars || '').trim();
+      var titleHero = data.persona_name || (data.hero_chars || '').trim();
       var titleProject = (data.project || 'Agent').trim();
       document.title = titleHero + ' ' + titleProject + ' \u2014 Claude Chat';
 

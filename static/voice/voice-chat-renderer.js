@@ -724,10 +724,16 @@ window.VoiceChatRenderer = (function () {
     for (var j = 0; j < bannerAgents.length; j++) {
       var ba = bannerAgents[j];
       var text = ba.info.command_instruction || 'Needs input';
+      var bannerHeroHtml;
+      if (ba.info.persona_name) {
+        bannerHeroHtml = '<span class="agent-hero">' + esc(ba.info.persona_name) + '</span>';
+      } else {
+        bannerHeroHtml = '<span class="agent-hero">' + esc(ba.info.hero_chars) + '</span>'
+          + '<span class="agent-hero-trail">' + esc(ba.info.hero_trail) + '</span>';
+      }
       html += '<div class="attention-banner" data-agent-id="' + ba.id + '">'
         + '<div class="attention-banner-hero">'
-        + '<span class="agent-hero">' + esc(ba.info.hero_chars) + '</span>'
-        + '<span class="agent-hero-trail">' + esc(ba.info.hero_trail) + '</span>'
+        + bannerHeroHtml
         + '</div>'
         + '<div class="attention-banner-text">' + esc(text) + '</div>'
         + '<div class="attention-banner-arrow">&#8250;</div>'

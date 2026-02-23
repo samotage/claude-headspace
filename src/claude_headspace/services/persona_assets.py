@@ -37,6 +37,8 @@ def _resolve_personas_dir(project_root: Path | None = None) -> Path:
         pass
 
     return Path.cwd() / PERSONAS_DIR
+
+
 SKILL_FILENAME = "skill.md"
 EXPERIENCE_FILENAME = "experience.md"
 
