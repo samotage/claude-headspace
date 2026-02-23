@@ -275,6 +275,7 @@ def get_project(project_id: int):
             agent_dict = {
                 "id": a.id,
                 "session_uuid": str(a.session_uuid) if a.session_uuid else None,
+                "claude_session_id": a.claude_session_id,
                 "state": state_value,
                 "started_at": a.started_at.isoformat() if a.started_at else None,
                 "ended_at": a.ended_at.isoformat() if a.ended_at else None,

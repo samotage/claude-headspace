@@ -448,6 +448,15 @@ def get_agent_info(agent_id: int) -> dict | None:
     identity["tmux_session_name"] = tmux_session_name
     identity["tmux_pane_alive"] = tmux_pane_alive
 
+    # Claude process PID lookup
+    claude_pid = None
+    if agent.tmux_pane_id and tmux_pane_alive:
+        try:
+            claude_pid = tmux_bridge.find_claude_pid(agent.tmux_pane_id)
+        except Exception:
+            pass
+    identity["claude_pid"] = claude_pid
+
     # Bridge status
     bridge_available = False
     try:

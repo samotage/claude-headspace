@@ -23,7 +23,9 @@ def db_session(app):
         db.create_all()
         yield db.session
         db.session.rollback()
-        db.drop_all()
+        for table in reversed(db.metadata.sorted_tables):
+            db.session.execute(table.delete())
+        db.session.commit()
 
 
 class TestRegisterPersona:

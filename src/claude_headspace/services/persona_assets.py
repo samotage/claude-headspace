@@ -13,6 +13,29 @@ logger = logging.getLogger(__name__)
 
 # Directory and filename constants
 PERSONAS_DIR = "data/personas"
+
+
+def _resolve_personas_dir(project_root: Path | None = None) -> Path:
+    """Resolve the base personas directory.
+
+    Resolution order:
+    1. Explicit ``project_root`` argument (direct service/test calls).
+    2. ``current_app.config["PERSONA_DATA_ROOT"]`` (HTTP/CLI context).
+    3. ``Path.cwd() / PERSONAS_DIR`` (fallback for non-Flask context).
+    """
+    if project_root is not None:
+        return project_root / PERSONAS_DIR
+
+    try:
+        from flask import current_app
+        configured = current_app.config.get("PERSONA_DATA_ROOT")
+        if configured:
+            return Path(configured)
+    except (ImportError, RuntimeError):
+        # No Flask or outside application context — fall through
+        pass
+
+    return Path.cwd() / PERSONAS_DIR
 SKILL_FILENAME = "skill.md"
 EXPERIENCE_FILENAME = "experience.md"
 
@@ -58,8 +81,7 @@ def get_persona_dir(slug: str, project_root: Path | None = None) -> Path:
     Returns:
         Path to the persona's asset directory.
     """
-    root = project_root or Path.cwd()
-    return root / PERSONAS_DIR / slug
+    return _resolve_personas_dir(project_root) / slug
 
 
 def create_persona_dir(slug: str, project_root: Path | None = None) -> Path:

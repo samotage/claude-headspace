@@ -103,6 +103,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     app.config["APP_CONFIG"] = config
     app.config["APP_VERSION"] = __version__
     app.config["APP_ROOT"] = str(app_root)
+    app.config["PERSONA_DATA_ROOT"] = str(app_root / "data" / "personas")
 
     # Setup logging
     setup_logging(config, app_root)

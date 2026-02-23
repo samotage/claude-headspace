@@ -73,6 +73,12 @@ def app():
     os.chdir(original_cwd)
 
 
+@pytest.fixture(autouse=True)
+def _persona_data_isolation(app, tmp_path):
+    """Redirect persona filesystem writes to a temp directory."""
+    app.config["PERSONA_DATA_ROOT"] = str(tmp_path / "data" / "personas")
+
+
 @pytest.fixture
 def client(app):
     """Create a test client."""

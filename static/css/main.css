@@ -841,6 +841,10 @@ select.form-well {
   margin-right: 0.5rem;
 }
 
+.mr-3 {
+  margin-right: 0.75rem;
+}
+
 .mt-0\.5 {
   margin-top: 0.125rem;
 }
@@ -1381,6 +1385,10 @@ select.form-well {
   border-color: rgb(86 212 221 / 0.4);
 }
 
+.border-emerald-700\/50 {
+  border-color: rgb(4 120 87 / 0.5);
+}
+
 .border-green\/10 {
   border-color: rgb(115 224 160 / 0.1);
 }
@@ -1483,6 +1491,10 @@ select.form-well {
   background-color: rgb(24 24 28 / var(--tw-bg-opacity, 1));
 }
 
+.bg-emerald-900\/40 {
+  background-color: rgb(6 78 59 / 0.4);
+}
+
 .bg-green {
   --tw-bg-opacity: 1;
   background-color: rgb(115 224 160 / var(--tw-bg-opacity, 1));
@@ -1582,6 +1594,11 @@ select.form-well {
 .px-2 {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
+}
+
+.px-2\.5 {
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
 }
 
 .px-3 {
@@ -1702,6 +1719,10 @@ select.form-well {
   text-align: center;
 }
 
+.text-right {
+  text-align: right;
+}
+
 .font-display {
   font-family: Exo 2, SF Mono, monospace;
 }
@@ -1799,6 +1820,11 @@ select.form-well {
 .text-cyan {
   --tw-text-opacity: 1;
   color: rgb(86 212 221 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-400 {
+  --tw-text-opacity: 1;
+  color: rgb(52 211 153 / var(--tw-text-opacity, 1));
 }
 
 .text-green {
@@ -3989,6 +4015,10 @@ article.kebab-open {
 .hover\:border-red:hover {
   --tw-border-opacity: 1;
   border-color: rgb(224 115 115 / var(--tw-border-opacity, 1));
+}
+
+.hover\:border-red\/50:hover {
+  border-color: rgb(224 115 115 / 0.5);
 }
 
 .hover\:bg-amber\/10:hover {

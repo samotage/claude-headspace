@@ -45,6 +45,9 @@ config.local.yaml
 data/projects/*
 !data/projects/project.yaml.example
 
+# Persona assets (runtime)
+data/personas/
+
 # Headspace state (runtime)
 data/headspace.yaml
 data/session_state.yaml
