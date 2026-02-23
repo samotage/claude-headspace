@@ -141,8 +141,11 @@ def events():
     project_id = parse_int_param(request.args.get("project_id"))
     agent_id = parse_int_param(request.args.get("agent_id"))
 
-    # Parse Last-Event-ID for replay on reconnect
-    last_event_id_raw = request.headers.get("Last-Event-ID")
+    # Parse Last-Event-ID for replay on reconnect.
+    # Check both the standard header (browser auto-retry) and a query param
+    # fallback (our SSE client manually closes+recreates the EventSource,
+    # which doesn't send the header, so it passes the ID via query param).
+    last_event_id_raw = request.headers.get("Last-Event-ID") or request.args.get("last_event_id")
     last_event_id: int | None = None
     if last_event_id_raw:
         try:

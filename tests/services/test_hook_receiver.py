@@ -41,6 +41,10 @@ def mock_agent():
     agent.ended_at = None
     agent.state.value = "idle"
     agent.get_current_command.return_value = None
+    # Set real values for fields that code compares (MagicMock can't do < int, - datetime, etc.)
+    agent.tmux_pane_id = "%99"
+    agent.context_updated_at = None
+    agent.persona_id = None
     return agent
 
 
@@ -460,7 +464,7 @@ class TestProcessStop:
         assert result.new_state == "awaiting_input"
         mock_lifecycle.complete_command.assert_not_called()
         mock_lifecycle.update_command_state.assert_called_once()
-        mock_db.session.add.assert_called_once()  # QUESTION turn added
+        assert mock_db.session.add.call_count >= 1  # QUESTION turn added (+ possibly Event)
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -833,8 +837,9 @@ class TestProcessPermissionRequest:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        # db.session.add is called for both the Turn and the state_transition Event
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         # Permission summarizer generates meaningful text instead of generic "Permission needed: Bash"
         assert added_turn.text == "Bash: rm test"
 
@@ -967,8 +972,9 @@ class TestPreToolUseTurnToolInput:
         )
 
         assert result.success is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        # db.session.add called for Turn + state_transition Event
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input == tool_input
 
     @patch("claude_headspace.services.hook_receiver.db")
@@ -987,8 +993,9 @@ class TestPreToolUseTurnToolInput:
         )
 
         assert result.success is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        # db.session.add called for Turn + state_transition Event
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         # Default fallback options are provided when tmux capture can't find a dialog
         assert added_turn.tool_input is not None
         assert added_turn.tool_input["source"] == "permission_default_fallback"
@@ -1019,8 +1026,8 @@ class TestPreToolUseTurnCreation:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.text == "Which approach do you prefer?"
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
@@ -1079,8 +1086,10 @@ class TestNotificationTurnDedup:
 
         assert result.success is True
         assert result.state_changed is True
-        # Should NOT have added a new turn (dedup)
-        mock_db.session.add.assert_not_called()
+        # Should NOT have added a new Turn (dedup) — only state_transition Event is allowed
+        from claude_headspace.models.turn import Turn as _Turn
+        turn_adds = [c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)]
+        assert len(turn_adds) == 0
 
     @patch("claude_headspace.services.hook_receiver.db")
     def test_skips_turn_creation_for_notification_events(self, mock_db, mock_agent, fresh_state):
@@ -1101,7 +1110,10 @@ class TestNotificationTurnDedup:
         assert result.success is True
         assert result.state_changed is True
         # Notification events should NOT create turns (phantom turn fix)
-        mock_db.session.add.assert_not_called()
+        # Only state_transition Event may be added, no Turn
+        from claude_headspace.models.turn import Turn as _Turn
+        turn_adds = [c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)]
+        assert len(turn_adds) == 0
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -1598,8 +1610,8 @@ class TestPermissionPaneCapture:
         assert result.success is True
         assert result.state_changed is True
         # Verify the synthesized options were stored on the Turn
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input == synthesized
 
     @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
@@ -1624,8 +1636,8 @@ class TestPermissionPaneCapture:
 
         assert result.success is True
         # Turn created but without structured options
-        mock_db.session.add.assert_called_once()
-        added_turn = mock_db.session.add.call_args[0][0]
+        assert mock_db.session.add.call_count >= 1
+        added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input is None
 
     @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")

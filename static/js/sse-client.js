@@ -43,6 +43,7 @@
       this.handlers = new Map();
       this.stateChangeCallbacks = [];
       this._reconnectTimer = null;
+      this._lastEventId = null; // Track server event ID for replay on reconnect
 
       // Bind methods
       this._onOpen = this._onOpen.bind(this);
@@ -66,6 +67,13 @@
 
       if (this.config.agentId) {
         url.searchParams.set("agent_id", this.config.agentId);
+      }
+
+      // Include last event ID so server replays missed events on reconnect.
+      // The browser's built-in Last-Event-ID header isn't sent because we
+      // manually close+recreate the EventSource; query param is the fallback.
+      if (this._lastEventId) {
+        url.searchParams.set("last_event_id", this._lastEventId);
       }
 
       return url.toString();
@@ -136,6 +144,11 @@
      */
     _onMessage(event) {
       try {
+        // Track server event ID for replay on reconnect
+        if (event.lastEventId) {
+          this._lastEventId = event.lastEventId;
+        }
+
         // Parse event data
         const data = JSON.parse(event.data);
 

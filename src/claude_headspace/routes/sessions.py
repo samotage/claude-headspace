@@ -71,6 +71,7 @@ def create_session():
     tmux_pane_id = data.get("tmux_pane_id")
     project_name = data.get("project_name")
     current_branch = data.get("current_branch")
+    persona_slug = data.get("persona_slug")
 
     # Default project name to directory name if not provided
     if not project_name:
@@ -111,12 +112,24 @@ def create_session():
                 "error": f"Session {session_uuid} already exists",
             }), 409
 
+        # Look up persona if slug provided
+        persona_id = None
+        if persona_slug:
+            from ..models.persona import Persona
+            persona = Persona.query.filter_by(slug=persona_slug).first()
+            if persona:
+                persona_id = persona.id
+                logger.info(f"Persona resolved at registration: slug={persona_slug}, id={persona_id}")
+            else:
+                logger.warning(f"Persona slug not found at registration: {persona_slug}")
+
         # Create agent
         agent = Agent(
             session_uuid=session_uuid,
             project_id=project.id,
             iterm_pane_id=iterm_pane_id,
             tmux_pane_id=tmux_pane_id,
+            persona_id=persona_id,
             started_at=datetime.now(timezone.utc),
             last_seen_at=datetime.now(timezone.utc),
         )

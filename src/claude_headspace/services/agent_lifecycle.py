@@ -261,19 +261,26 @@ def create_agent(
         env["CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID"] = str(previous_agent_id)
 
     try:
+        # Build tmux command with -e flags for env vars that must reach the
+        # session's shell.  Popen(env=...) only affects the tmux client binary,
+        # NOT the command running inside the session — only -e vars propagate.
+        tmux_cmd = [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            session_name,
+            "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
+        ]
+        if persona_slug:
+            tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PERSONA_SLUG={persona_slug}"])
+        if previous_agent_id is not None:
+            tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"])
+        tmux_cmd.extend(["-c", str(project_path), "--"])
+
         # Start claude-headspace in a new detached tmux session
         subprocess.Popen(
-            [
-                "tmux",
-                "new-session",
-                "-d",
-                "-s",
-                session_name,
-                "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
-                "-c",
-                str(project_path),
-                "--",
-            ] + cli_args,
+            tmux_cmd + cli_args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=env,

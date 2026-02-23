@@ -394,6 +394,7 @@ def register_session(
     iterm_pane_id: str | None,
     *,
     tmux_pane_id: str | None = None,
+    persona_slug: str | None = None,
 ) -> tuple[bool, dict | None, str | None]:
     """
     Register a session with the Flask server.
@@ -404,6 +405,7 @@ def register_session(
         project_info: Project information
         iterm_pane_id: Optional iTerm pane ID
         tmux_pane_id: Optional tmux pane ID for input bridge
+        persona_slug: Optional persona slug to assign at creation time
 
     Returns:
         Tuple of (success, response_data, error_message)
@@ -421,6 +423,9 @@ def register_session(
 
     if tmux_pane_id:
         payload["tmux_pane_id"] = tmux_pane_id
+
+    if persona_slug:
+        payload["persona_slug"] = persona_slug
 
     try:
         response = requests.post(
@@ -716,6 +721,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     success, response_data, error = register_session(
         server_url, session_uuid, project_info, iterm_pane_id,
         tmux_pane_id=tmux_pane_id,
+        persona_slug=persona_slug,
     )
 
     if not success:
