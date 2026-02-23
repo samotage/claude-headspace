@@ -436,8 +436,10 @@ window.VoiceChatController = (function () {
     updateTypingIndicator();
     updateChatStatePill();
 
-    VoiceAPI.sendCommand(trimmedText, VoiceState.targetAgentId).then(function () {
-      // Command sent -- SSE delivers the response directly
+    VoiceAPI.sendCommand(trimmedText, VoiceState.targetAgentId).then(function (data) {
+      if (data && data.interrupted) {
+        VoiceSidebar.showToast('Interrupted agent — sending new instruction');
+      }
     }).catch(function (err) {
       // Remove the ghost optimistic bubble on failure (Finding 10)
       VoiceSSEHandler.removeOptimisticBubble(pendingEntry);

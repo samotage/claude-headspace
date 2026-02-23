@@ -404,10 +404,10 @@ class TestVoiceCommand:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_processing_agent_gets_queued_send_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
-        """PROCESSING agent gets queued send_text (no interrupt) and a turn is created."""
+    def test_processing_agent_gets_interrupt_and_send_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+        """PROCESSING agent gets interrupt_and_send_text and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
 
         with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
@@ -424,9 +424,11 @@ class TestVoiceCommand:
 
             response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
             assert response.status_code == 200
-            mock_bridge.send_text.assert_called_once()
-            mock_bridge.interrupt_and_send_text.assert_not_called()
+            mock_bridge.interrupt_and_send_text.assert_called_once()
+            mock_bridge.send_text.assert_not_called()
             mock_lc.process_turn.assert_called_once()
+            data = response.get_json()
+            assert data["interrupted"] is True
 
     def test_no_pane_id(self, client, mock_db, mock_agent_no_pane):
         mock_db.session.get.return_value = mock_agent_no_pane
@@ -753,10 +755,10 @@ class TestVoiceCommandToIdle:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_processing_command_creates_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
-        """PROCESSING agent gets queued send_text (no interrupt) and a turn is created."""
+    def test_processing_command_interrupts_and_creates_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+        """PROCESSING agent gets interrupt_and_send_text and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
 
         with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
             mock_lc = MagicMock()
@@ -773,9 +775,11 @@ class TestVoiceCommandToIdle:
 
             response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
             assert response.status_code == 200
-            mock_bridge.send_text.assert_called_once()
-            mock_bridge.interrupt_and_send_text.assert_not_called()
+            mock_bridge.interrupt_and_send_text.assert_called_once()
+            mock_bridge.send_text.assert_not_called()
             mock_lc.process_turn.assert_called_once()
+            data = response.get_json()
+            assert data["interrupted"] is True
 
 
 class TestAutoTarget:

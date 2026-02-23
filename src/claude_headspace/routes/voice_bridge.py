@@ -389,17 +389,25 @@ def voice_command():
                 verify_enter=True,
             )
     else:
-        # Always verify Enter — autocomplete can swallow it on long text
-        # or slash commands, leaving the command sitting in the input box.
-        # When the agent is processing, pane content is volatile from agent
-        # output, but that actually helps: content change = Enter landed.
-        result = tmux_bridge.send_text(
-            pane_id=agent.tmux_pane_id,
-            text=send_text,
-            timeout=subprocess_timeout,
-            text_enter_delay_ms=text_enter_delay_ms,
-            verify_enter=True,
-        )
+        if is_processing:
+            # Agent is busy — interrupt first (Escape), then send the new instruction
+            result = tmux_bridge.interrupt_and_send_text(
+                pane_id=agent.tmux_pane_id,
+                text=send_text,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
+            )
+        else:
+            # Always verify Enter — autocomplete can swallow it on long text
+            # or slash commands, leaving the command sitting in the input box.
+            result = tmux_bridge.send_text(
+                pane_id=agent.tmux_pane_id,
+                text=send_text,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
+            )
 
     if not result.success:
         get_agent_hook_state().clear_respond_inflight(agent.id)
@@ -504,12 +512,15 @@ def voice_command():
         if turn_result and turn_result.command:
             new_state = turn_result.command.state.value
 
-        return jsonify({
+        response_data = {
             "voice": voice,
             "agent_id": agent.id,
             "new_state": new_state,
             "latency_ms": latency_ms,
-        }), 200
+        }
+        if is_processing:
+            response_data["interrupted"] = True
+        return jsonify(response_data), 200
 
     # AWAITING_INPUT path: create ANSWER turn and transition state
     try:
