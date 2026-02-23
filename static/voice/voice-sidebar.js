@@ -55,12 +55,8 @@ window.VoiceSidebar = (function () {
       return;
     }
 
-    // Sort: projects with active agents first, then alphabetical
+    // Sort alphabetically by name
     var sorted = projects.slice().sort(function (a, b) {
-      var aCount = a.agent_count || 0;
-      var bCount = b.agent_count || 0;
-      if (aCount > 0 && bCount === 0) return -1;
-      if (aCount === 0 && bCount > 0) return 1;
       return (a.name || '').localeCompare(b.name || '');
     });
 

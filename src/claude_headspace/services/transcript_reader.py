@@ -105,7 +105,10 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         # Reverse-read strategy: only read the last 64KB instead of the whole file
         _TAIL_SIZE = 64 * 1024
         file_size = os.path.getsize(transcript_path)
-        with open(transcript_path, "r") as f:
+        # errors="replace" handles seeking into the middle of a multi-byte
+        # UTF-8 sequence — replacement chars land in the partial line that
+        # readline() discards, so actual content is unaffected.
+        with open(transcript_path, "r", errors="replace") as f:
             start_pos = max(0, file_size - _TAIL_SIZE)
             if start_pos > 0:
                 f.seek(start_pos)
@@ -192,7 +195,7 @@ def read_last_user_message(transcript_path: str) -> TranscriptReadResult:
     try:
         _TAIL_SIZE = 64 * 1024
         file_size = os.path.getsize(transcript_path)
-        with open(transcript_path, "r") as f:
+        with open(transcript_path, "r", errors="replace") as f:
             start_pos = max(0, file_size - _TAIL_SIZE)
             if start_pos > 0:
                 f.seek(start_pos)
@@ -256,7 +259,7 @@ def read_new_entries_from_position(
         return [], position
 
     try:
-        with open(transcript_path, "r") as f:
+        with open(transcript_path, "r", errors="replace") as f:
             f.seek(position)
             new_content = f.read()
             new_position = f.tell()

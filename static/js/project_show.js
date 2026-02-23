@@ -1033,7 +1033,19 @@
             var errEl = document.getElementById('project-form-error');
             if (errEl) { errEl.textContent = ''; errEl.classList.add('hidden'); }
 
-            // Populate from server
+            // Pre-fill from cached data so modal opens instantly
+            if (projectData) {
+                document.getElementById('project-form-name').value = projectData.name || '';
+                document.getElementById('project-form-path').value = projectData.path || '';
+                document.getElementById('project-form-github').value = projectData.github_repo || '';
+                document.getElementById('project-form-description').value = projectData.description || '';
+            }
+
+            // Show modal immediately
+            document.getElementById('project-form-modal').classList.remove('hidden');
+            document.getElementById('project-form-name').focus();
+
+            // Refresh from server in background
             fetch('/api/projects/' + projectId)
                 .then(function(r) { return r.json(); })
                 .then(function(p) {
@@ -1041,10 +1053,8 @@
                     document.getElementById('project-form-path').value = p.path || '';
                     document.getElementById('project-form-github').value = p.github_repo || '';
                     document.getElementById('project-form-description').value = p.description || '';
-                    document.getElementById('project-form-modal').classList.remove('hidden');
-                    document.getElementById('project-form-name').focus();
                 })
-                .catch(function(err) { console.warn('ProjectShow: Failed to load project for edit', err); });
+                .catch(function(err) { console.warn('ProjectShow: Failed to refresh project data', err); });
         },
 
         closeFormModal: function() {
@@ -1078,9 +1088,13 @@
                 var data = await response.json();
 
                 if (!response.ok) {
+                    var errMsg = data.error || 'Failed to save project (status ' + response.status + ').';
+                    if (response.status === 403) {
+                        errMsg += ' Try refreshing the page.';
+                    }
                     var errEl2 = document.getElementById('project-form-error');
                     if (errEl2) {
-                        errEl2.textContent = data.error || 'Failed to save project.';
+                        errEl2.textContent = errMsg;
                         errEl2.classList.remove('hidden');
                     }
                     return;
@@ -1089,7 +1103,7 @@
                 document.getElementById('project-form-modal').classList.add('hidden');
 
                 // Update display
-                this._updateMetadataDisplay(data);
+                ProjectShow._updateMetadataDisplay(data);
 
                 // If slug changed, update URL
                 if (data.slug && data.slug !== projectSlug) {
@@ -1097,7 +1111,11 @@
                     window.history.replaceState(null, '', '/projects/' + data.slug);
                 }
             } catch (e) {
-                console.error('ProjectShow: Submit failed', e);
+                var errEl3 = document.getElementById('project-form-error');
+                if (errEl3) {
+                    errEl3.textContent = 'Save failed: ' + (e.message || e);
+                    errEl3.classList.remove('hidden');
+                }
             }
         },
 
@@ -1155,11 +1173,15 @@
                 if (response.ok) {
                     window.location.href = '/projects';
                 } else {
-                    var data = await response.json();
-                    console.error('ProjectShow: Delete failed', data.error);
+                    var data = await response.json().catch(function() { return {}; });
+                    var msg = data.error || 'Delete failed (status ' + response.status + ')';
+                    if (response.status === 403) {
+                        msg += '. Try refreshing the page and deleting again.';
+                    }
+                    alert(msg);
                 }
             } catch (e) {
-                console.error('ProjectShow: Delete failed', e);
+                alert('Delete failed: ' + (e.message || e));
             }
         },
 

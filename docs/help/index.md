@@ -6,6 +6,8 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 
 - [Getting Started](getting-started) - New to Claude Headspace? Start here
 - [Dashboard](dashboard) - Understanding the main dashboard
+- [Personas](personas) - Named agent identities with persistent skills
+- [Handoff](handoff) - Context transfer between persona agents
 - [Projects](projects) - Managing projects and the project detail page
 - [Input Bridge](input-bridge) - Responding to prompts from the dashboard
 - [Voice Bridge](voice-bridge) - Hands-free voice interaction from your phone

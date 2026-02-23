@@ -29,11 +29,13 @@ By default, agents are grouped by project. Each project group shows:
 Each agent has a card showing:
 
 - **Status Badge** - ACTIVE or IDLE
-- **Session ID** - Unique identifier
+- **Persona Identity** - Agents with a [persona](personas) show their name and role (e.g., "Con — developer") instead of a truncated UUID
 - **State Bar** - Visual indicator of current state (click to focus iTerm window)
+- **Context Bar** - Shows context usage percentage; changes colour when [handoff](handoff) threshold is reached
 - **Command Instruction** - The current prompt or command being worked on
 - **Command Summary** - AI-generated summary of progress
 - **Respond Widget** - Quick-action buttons and text input (only when awaiting input with tmux pane available)
+- **Handoff Button** - Appears on persona agents when context usage exceeds the handoff threshold (see [Handoff](handoff))
 - **Priority Score** - Used for sorting
 
 ### Recommended Next

@@ -75,7 +75,7 @@ def list_projects():
         projects = (
             db.session.query(Project)
             .options(selectinload(Project.agents))
-            .order_by(Project.created_at.desc())
+            .order_by(db.func.lower(Project.name).asc())
             .all()
         )
 

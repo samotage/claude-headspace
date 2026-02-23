@@ -121,9 +121,22 @@ Each agent card shows its current state:
 
 Click the state bar on any agent card to bring its iTerm window to the foreground.
 
+## Starting with a Persona
+
+You can give your agents named identities with [Personas](personas). Register a persona first, then launch with `--persona`:
+
+```bash
+flask persona register --name "Con" --role "developer"
+claude-headspace start --persona con
+```
+
+The agent appears on the dashboard as "Con — developer" instead of an anonymous UUID, and its skill file is automatically injected at startup. See [Personas](personas) for details.
+
 ## Next Steps
 
 - [Dashboard Overview](dashboard) - Learn about all dashboard features
+- [Personas](personas) - Give agents named identities with persistent skills
+- [Handoff](handoff) - Transfer context between agents at context limits
 - [Input Bridge](input-bridge) - Respond to prompts from the dashboard
 - [Voice Bridge](voice-bridge) - Hands-free voice interaction from your phone
 - [Set an Objective](objective) - Guide Claude's priorities

@@ -450,7 +450,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         if not token:
             return jsonify({"error": "Missing CSRF token"}), 403
         try:
-            csrf_serializer.loads(token, salt="csrf-salt", max_age=3600)
+            csrf_serializer.loads(token, salt="csrf-salt", max_age=86400 * 7)
         except Exception:
             return jsonify({"error": "Invalid or expired CSRF token"}), 403
         return None
