@@ -492,7 +492,7 @@ window.VoiceSidebar = (function () {
   function createAgentForProject(projectName) {
     // Fetch personas; if any exist, show persona picker before creating
     VoiceAPI.getActivePersonas().then(function (data) {
-      var personas = (data && data.personas) ? data.personas : [];
+      var personas = Array.isArray(data) ? data : (data && data.personas) ? data.personas : [];
       if (personas.length === 0) {
         _doCreateAgent(projectName, null);
       } else {
