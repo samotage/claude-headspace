@@ -201,6 +201,37 @@ class TestFilterSkillExpansion:
         )
         assert filter_skill_expansion(text) == "# 30: PRD Proposal"
 
+    def test_orch_v2_lead_command(self):
+        """New-format orch commands (heading + --- + ## sections) should be filtered."""
+        text = (
+            "# PRD Orchestration Lead\n\n"
+            "You are the persistent orchestration lead. You manage the full PRD processing "
+            "pipeline by spawning foreground worker agents via the `Task` tool for each phase, "
+            "handling all checkpoints, and maintaining state recovery.\n\n"
+            "**Key principles:**\n"
+            "- You spawn workers using `Task(subagent_type=\"general-purpose\")`\n\n"
+            "---\n\n"
+            "## Step 1: Resume Detection\n\n"
+            "Check if a previous run was interrupted.\n\n"
+            "```bash\nruby orch/orchestrator.rb state show\n```\n\n"
+            "---\n\n"
+            "## Step 2: Queue Check\n\n" + "x" * 200
+        )
+        assert filter_skill_expansion(text) == "# PRD Orchestration Lead"
+
+    def test_orch_v2_queue_status(self):
+        """Queue status utility command should be filtered."""
+        text = (
+            "# Queue Status\n\n"
+            "Display the current PRD orchestration status.\n\n"
+            "---\n\n"
+            "## Get Status\n\n"
+            "```bash\nruby orch/orchestrator.rb status\n```\n\n"
+            "---\n\n"
+            "## Display\n\n" + "x" * 500
+        )
+        assert filter_skill_expansion(text) == "# Queue Status"
+
     def test_regular_long_markdown_not_filtered(self):
         """Long user prompts with markdown headings should NOT be filtered."""
         text = "# Please help me refactor this\n\n" + "code line\n" * 200
