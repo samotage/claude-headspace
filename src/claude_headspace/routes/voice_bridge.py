@@ -152,7 +152,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     hero_trail = truncated_uuid[2:] if truncated_uuid else ""
     project_name = agent.project.name if agent.project else "unknown"
     persona_name = agent.persona.name if agent.persona else None
-    persona_role = agent.persona.role if agent.persona else None
+    persona_role = agent.persona.role.name if agent.persona and agent.persona.role else None
 
     # Time since last activity
     if agent.last_seen_at:
@@ -1075,7 +1075,7 @@ def agent_transcript(agent_id: int):
         "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
         "tmux_session": agent.tmux_session,
         "persona_name": agent.persona.name if agent.persona else None,
-        "persona_role": agent.persona.role if agent.persona else None,
+        "persona_role": agent.persona.role.name if agent.persona and agent.persona.role else None,
     }), 200
 
 

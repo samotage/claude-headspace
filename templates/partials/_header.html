@@ -12,6 +12,9 @@
         <a href="{{ url_for('dashboard.dashboard') }}" data-nav-key="dashboard"
            class="tab-link {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}"
            {% if request.endpoint == 'dashboard.dashboard' %}aria-current="page"{% endif %}>dashboard</a>
+        <a href="{{ url_for('personas.personas_page') }}" data-nav-key="personas"
+           class="tab-link {% if request.endpoint and request.endpoint.startswith('personas.') %}active{% endif %}"
+           {% if request.endpoint and request.endpoint.startswith('personas.') %}aria-current="page"{% endif %}>personas</a>
         <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
            class="tab-link {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}"
            {% if request.endpoint and request.endpoint.startswith('projects.') %}aria-current="page"{% endif %}>projects</a>
@@ -30,9 +33,6 @@
         <a href="{{ url_for('help.help_page') }}" data-nav-key="help"
            class="tab-link {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}"
            {% if request.endpoint and request.endpoint.startswith('help.') %}aria-current="page"{% endif %}>help</a>
-        <a href="{{ url_for('personas.personas_page') }}" data-nav-key="personas"
-           class="tab-link {% if request.endpoint and request.endpoint.startswith('personas.') %}active{% endif %}"
-           {% if request.endpoint and request.endpoint.startswith('personas.') %}aria-current="page"{% endif %}>personas</a>
     </div>
     <!-- Hamburger Menu Button (mobile only) -->
     <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
@@ -54,6 +54,11 @@
            class="mobile-menu-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
             <span class="mobile-menu-icon">&#9632;</span>
             <span>dashboard</span>
+        </a>
+        <a href="{{ url_for('personas.personas_page') }}" data-nav-key="personas"
+           class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('personas.') %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9786;</span>
+            <span>personas</span>
         </a>
         <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
            class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}">
@@ -84,11 +89,6 @@
            class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('help.') %}active{% endif %}">
             <span class="mobile-menu-icon">?</span>
             <span>help</span>
-        </a>
-        <a href="{{ url_for('personas.personas_page') }}" data-nav-key="personas"
-           class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('personas.') %}active{% endif %}">
-            <span class="mobile-menu-icon">&#9786;</span>
-            <span>personas</span>
         </a>
     </div>
 </div>

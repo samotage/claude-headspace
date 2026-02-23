@@ -9,6 +9,7 @@ import os
 import signal
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -307,6 +308,10 @@ def create_agent(
 def shutdown_agent(agent_id: int) -> ShutdownResult:
     """Gracefully shut down an agent by sending /exit to its tmux pane.
 
+    Sends /exit via tmux send-keys, then polls for the pane to close.
+    If the pane remains alive (Enter was swallowed by autocomplete),
+    sends additional Enter keys to push the command through.
+
     Args:
         agent_id: ID of the agent to shut down
 
@@ -326,13 +331,15 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
             message="Agent has no tmux pane — cannot send graceful shutdown",
         )
 
+    pane_id = agent.tmux_pane_id
+
     # Send /exit via tmux send-keys — verify Enter is accepted because
     # Claude Code's autocomplete can intercept the first Enter on slash
     # commands, leaving "/exit" sitting in the input without submitting.
     # If the pane vanishes (agent exits immediately), verification sees
     # content change and returns success.
     result = tmux_bridge.send_text(
-        pane_id=agent.tmux_pane_id,
+        pane_id=pane_id,
         text="/exit",
         timeout=5,
         verify_enter=True,
@@ -342,7 +349,7 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
         error_msg = result.error_message or "Send failed"
         logger.warning(
             f"Failed to send /exit to agent {agent_id} "
-            f"(pane {agent.tmux_pane_id}): {error_msg}"
+            f"(pane {pane_id}): {error_msg}"
         )
         return ShutdownResult(
             success=False, message=f"Failed to send /exit: {error_msg}"
@@ -350,13 +357,51 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
 
     logger.warning(
         f"SHUTDOWN_KILL: Sent /exit to agent_id={agent_id} "
-        f"uuid={agent.session_uuid} tmux_pane={agent.tmux_pane_id} "
+        f"uuid={agent.session_uuid} tmux_pane={pane_id} "
         f"project={agent.project.name if agent.project else 'N/A'}"
     )
 
+    # Post-send verification: poll for pane closure.
+    # send_text returns success even when Enter verification fails (non-fatal
+    # for voice chat), so we verify the shutdown actually happened.  If the
+    # pane is still alive, /exit text is already typed — send more Enter keys
+    # until one lands.
+    max_exit_polls = 5
+    exit_poll_interval_s = 0.4
+
+    for poll in range(max_exit_polls):
+        time.sleep(exit_poll_interval_s)
+
+        health = tmux_bridge.check_health(
+            pane_id, level=tmux_bridge.HealthCheckLevel.EXISTS,
+        )
+        if not health.available:
+            logger.info(
+                f"SHUTDOWN_VERIFIED: agent_id={agent_id} pane {pane_id} "
+                f"closed after {poll + 1} poll(s)"
+            )
+            return ShutdownResult(
+                success=True,
+                message="Agent shutdown confirmed.",
+            )
+
+        # Pane still alive — /exit is typed but Enter didn't land.
+        # Send a bare Enter to retry submission.
+        logger.debug(
+            f"Shutdown poll {poll + 1}/{max_exit_polls}: pane {pane_id} "
+            f"still alive, sending Enter"
+        )
+        tmux_bridge.send_keys(pane_id, "Enter")
+
+    # All polls exhausted — pane is still alive
+    logger.warning(
+        f"SHUTDOWN_STALE: agent_id={agent_id} pane {pane_id} still alive "
+        f"after {max_exit_polls} Enter retries — agent may need manual exit"
+    )
+
     return ShutdownResult(
-        success=True,
-        message="Shutdown command sent. Agent will terminate via hooks.",
+        success=False,
+        message="Sent /exit but agent did not exit. Try again or dismiss manually.",
     )
 
 

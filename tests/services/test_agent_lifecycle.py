@@ -207,18 +207,54 @@ class TestShutdownAgent:
         assert not result.success
         assert "no tmux pane" in result.message.lower()
 
+    @patch("claude_headspace.services.agent_lifecycle.time")
     @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
     @patch("claude_headspace.services.agent_lifecycle.db")
-    def test_success(self, mock_db, mock_tmux):
+    def test_success(self, mock_db, mock_tmux, mock_time):
         agent = _make_agent()
         mock_db.session.get.return_value = agent
         mock_tmux.send_text.return_value = MagicMock(success=True)
+        # Pane closes on first poll
+        mock_tmux.check_health.return_value = MagicMock(available=False)
         result = shutdown_agent(1)
         assert result.success
         assert "shutdown" in result.message.lower()
         mock_tmux.send_text.assert_called_once_with(
             pane_id="%5", text="/exit", timeout=5, verify_enter=True,
         )
+
+    @patch("claude_headspace.services.agent_lifecycle.time")
+    @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_success_after_extra_enters(self, mock_db, mock_tmux, mock_time):
+        """Pane stays alive for 2 polls, then closes on 3rd."""
+        agent = _make_agent()
+        mock_db.session.get.return_value = agent
+        mock_tmux.send_text.return_value = MagicMock(success=True)
+        mock_tmux.send_keys.return_value = MagicMock(success=True)
+        # Pane alive twice, then gone
+        mock_tmux.check_health.side_effect = [
+            MagicMock(available=True),
+            MagicMock(available=True),
+            MagicMock(available=False),
+        ]
+        result = shutdown_agent(1)
+        assert result.success
+        assert mock_tmux.send_keys.call_count == 2  # 2 extra Enters
+
+    @patch("claude_headspace.services.agent_lifecycle.time")
+    @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    def test_pane_still_alive_after_retries(self, mock_db, mock_tmux, mock_time):
+        """All polls exhausted — pane never closes."""
+        agent = _make_agent()
+        mock_db.session.get.return_value = agent
+        mock_tmux.send_text.return_value = MagicMock(success=True)
+        mock_tmux.send_keys.return_value = MagicMock(success=True)
+        mock_tmux.check_health.return_value = MagicMock(available=True)
+        result = shutdown_agent(1)
+        assert not result.success
+        assert "did not exit" in result.message.lower()
 
     @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
     @patch("claude_headspace.services.agent_lifecycle.db")

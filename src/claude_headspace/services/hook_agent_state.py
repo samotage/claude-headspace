@@ -53,6 +53,10 @@ class AgentHookState:
         # Track file metadata for IDLE-state file uploads via voice bridge
         self._file_metadata_pending: dict[int, dict] = {}
 
+        # Track agents with a pending skill injection whose priming
+        # user_prompt_submit should be marked is_internal=True.
+        self._skill_injection_pending: set[int] = set()
+
     # ── Awaiting Tool ────────────────────────────────────────────────
 
     def set_awaiting_tool(self, agent_id: int, tool_name: str) -> None:
@@ -195,6 +199,28 @@ class AgentHookState:
         with self._lock:
             return self._file_metadata_pending.pop(agent_id, None)
 
+    # ── Skill Injection Pending ─────────────────────────────────────
+
+    def set_skill_injection_pending(self, agent_id: int) -> None:
+        """Mark that a skill injection was just sent to this agent.
+
+        The next user_prompt_submit for this agent is the priming message
+        echoed back by Claude Code and should be marked is_internal=True.
+        """
+        with self._lock:
+            self._skill_injection_pending.add(agent_id)
+
+    def consume_skill_injection_pending(self, agent_id: int) -> bool:
+        """Atomically check and clear the skill injection pending flag.
+
+        Returns True if the flag was set (and is now cleared).
+        """
+        with self._lock:
+            if agent_id in self._skill_injection_pending:
+                self._skill_injection_pending.discard(agent_id)
+                return True
+            return False
+
     # ── Lifecycle (bulk operations) ──────────────────────────────────
 
     def on_session_start(self, agent_id: int) -> None:
@@ -210,6 +236,7 @@ class AgentHookState:
             self._respond_inflight.pop(agent_id, None)
             self._transcript_positions.pop(agent_id, None)
             self._progress_texts.pop(agent_id, None)
+            self._skill_injection_pending.discard(agent_id)
 
     def on_new_response_cycle(self, agent_id: int) -> None:
         """Clear state for a new user→agent response cycle."""
@@ -229,6 +256,7 @@ class AgentHookState:
             self._transcript_positions.clear()
             self._progress_texts.clear()
             self._file_metadata_pending.clear()
+            self._skill_injection_pending.clear()
 
 
 # ── Module-level singleton ───────────────────────────────────────────
