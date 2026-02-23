@@ -516,6 +516,38 @@ article.kebab-open {
     font-size: 12px;
     font-style: italic;
 }
+.new-agent-back-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px 0 0;
+    transition: color 0.12s;
+}
+.new-agent-back-btn:hover {
+    color: var(--green);
+}
+.new-agent-persona-role-header {
+    padding: 6px 14px 2px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    opacity: 0.6;
+    user-select: none;
+}
+.new-agent-persona-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
 
 /* Card text truncation — 3-line clamp with ellipsis */
 .command-instruction,

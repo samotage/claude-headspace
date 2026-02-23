@@ -26,14 +26,16 @@ def create_agent_endpoint():
 
     Request body:
         project_id (int): ID of the project
+        persona_slug (str, optional): Persona slug to associate with the agent
 
     Returns:
         201: Agent creation initiated
         400: Missing project_id
-        422: Creation failed (project not found, path invalid, etc.)
+        422: Creation failed (project not found, path invalid, persona not found, etc.)
     """
     data = request.get_json(silent=True) or {}
     project_id = data.get("project_id")
+    persona_slug = data.get("persona_slug")
 
     if not project_id:
         return jsonify({"error": "project_id is required"}), 400
@@ -43,7 +45,7 @@ def create_agent_endpoint():
     except (TypeError, ValueError):
         return jsonify({"error": "project_id must be an integer"}), 400
 
-    result = create_agent(project_id)
+    result = create_agent(project_id, persona_slug=persona_slug)
 
     if not result.success:
         return jsonify({"error": result.message}), 422

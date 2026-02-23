@@ -113,6 +113,43 @@ def api_validate_persona(slug: str):
     }), 200
 
 
+@personas_bp.route("/api/personas/active", methods=["GET"])
+def api_list_active_personas():
+    """List active personas grouped by role for the agent creation selector.
+
+    Returns JSON array of active personas with role info, ordered by role name
+    then persona name. Designed for the dashboard "New Agent" persona selector.
+
+    Returns:
+        200: Array of active persona objects with role grouping info
+    """
+    try:
+        personas = (
+            db.session.query(Persona)
+            .options(selectinload(Persona.role))
+            .filter(Persona.status == "active")
+            .join(Persona.role)
+            .order_by(Role.name.asc(), Persona.name.asc())
+            .all()
+        )
+
+        result = []
+        for p in personas:
+            result.append({
+                "id": p.id,
+                "slug": p.slug,
+                "name": p.name,
+                "role": p.role.name if p.role else None,
+                "description": p.description,
+            })
+
+        return jsonify(result), 200
+
+    except Exception:
+        logger.exception("Failed to list active personas")
+        return jsonify({"error": "Failed to list active personas"}), 500
+
+
 @personas_bp.route("/api/personas", methods=["GET"])
 def api_list_personas():
     """List all personas with role name, status, agent count, created_at.
