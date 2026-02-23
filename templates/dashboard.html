@@ -27,14 +27,28 @@
                         + Agent
                     </button>
                     <div id="new-agent-menu" class="new-agent-menu">
-                        <div class="new-agent-menu-header">spawn agent</div>
-                        <div class="new-agent-menu-body">
-                            {% for project in all_projects %}
-                            <button class="new-agent-item" data-project-id="{{ project.id }}">{{ project.name }}</button>
-                            {% endfor %}
-                            {% if not all_projects %}
-                            <span class="new-agent-item-empty">No projects found</span>
-                            {% endif %}
+                        <!-- Step 1: Project selection -->
+                        <div id="new-agent-step-project">
+                            <div class="new-agent-menu-header">spawn agent</div>
+                            <div class="new-agent-menu-body">
+                                {% for project in all_projects %}
+                                <button class="new-agent-item new-agent-project-item" data-project-id="{{ project.id }}">{{ project.name }}</button>
+                                {% endfor %}
+                                {% if not all_projects %}
+                                <span class="new-agent-item-empty">No projects found</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <!-- Step 2: Persona selection (hidden until project chosen) -->
+                        <div id="new-agent-step-persona" style="display:none;">
+                            <div class="new-agent-menu-header">
+                                <button id="new-agent-back-btn" class="new-agent-back-btn" title="Back to projects">&larr;</button>
+                                <span>select persona</span>
+                            </div>
+                            <div class="new-agent-menu-body" id="new-agent-persona-list">
+                                <button class="new-agent-item new-agent-persona-item" data-persona-slug="">No persona (default)</button>
+                                <!-- Personas loaded dynamically from API -->
+                            </div>
                         </div>
                     </div>
                 </div>

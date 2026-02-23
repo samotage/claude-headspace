@@ -785,6 +785,10 @@ select.form-well {
   margin-bottom: 0.5rem;
 }
 
+.-mb-px {
+  margin-bottom: -1px;
+}
+
 .-mr-2 {
   margin-right: -0.5rem;
 }
@@ -932,6 +936,10 @@ select.form-well {
   height: 1.5rem;
 }
 
+.h-64 {
+  height: 16rem;
+}
+
 .h-7 {
   height: 1.75rem;
 }
@@ -942,6 +950,10 @@ select.form-well {
 
 .max-h-64 {
   max-height: 16rem;
+}
+
+.min-h-\[16rem\] {
+  min-height: 16rem;
 }
 
 .min-h-\[36px\] {
@@ -1213,6 +1225,10 @@ select.form-well {
   row-gap: 0.25rem;
 }
 
+.gap-y-2 {
+  row-gap: 0.5rem;
+}
+
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
   margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
@@ -1335,6 +1351,10 @@ select.form-well {
   border-bottom-width: 1px;
 }
 
+.border-b-2 {
+  border-bottom-width: 2px;
+}
+
 .border-r {
   border-right-width: 1px;
 }
@@ -1371,6 +1391,15 @@ select.form-well {
 .border-border {
   --tw-border-opacity: 1;
   border-color: rgb(37 37 48 / var(--tw-border-opacity, 1));
+}
+
+.border-border\/50 {
+  border-color: rgb(37 37 48 / 0.5);
+}
+
+.border-cyan {
+  --tw-border-opacity: 1;
+  border-color: rgb(86 212 221 / var(--tw-border-opacity, 1));
 }
 
 .border-cyan\/20 {
@@ -1420,6 +1449,10 @@ select.form-well {
 
 .border-red\/40 {
   border-color: rgb(224 115 115 / 0.4);
+}
+
+.border-transparent {
+  border-color: transparent;
 }
 
 .bg-amber {
@@ -2531,6 +2564,44 @@ article.kebab-open {
   font-family: var(--font-mono);
   font-size: 12px;
   font-style: italic;
+}
+
+.new-agent-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px 0 0;
+  transition: color 0.12s;
+}
+
+.new-agent-back-btn:hover {
+  color: var(--green);
+}
+
+.new-agent-persona-role-header {
+  padding: 6px 14px 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.6;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+}
+
+.new-agent-persona-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 
 /* Card text truncation — 3-line clamp with ellipsis */
@@ -4117,6 +4188,11 @@ article.kebab-open {
 
 .hover\:underline:hover {
   text-decoration-line: underline;
+}
+
+.focus\:border-cyan:focus {
+  --tw-border-opacity: 1;
+  border-color: rgb(86 212 221 / var(--tw-border-opacity, 1));
 }
 
 .focus\:outline-none:focus {

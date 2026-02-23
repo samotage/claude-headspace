@@ -13,15 +13,20 @@
     var API_BASE = '/api/agents';
 
     /**
-     * Create a new agent for a project.
+     * Create a new agent for a project, optionally with a persona.
      * @param {number} projectId - The project ID
+     * @param {string|null} personaSlug - Optional persona slug
      * @returns {Promise}
      */
-    function createAgent(projectId) {
+    function createAgent(projectId, personaSlug) {
+        var body = { project_id: projectId };
+        if (personaSlug) {
+            body.persona_slug = personaSlug;
+        }
         return CHUtils.apiFetch(API_BASE, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId })
+            body: JSON.stringify(body)
         }).then(function(res) {
             return res.json().then(function(data) {
                 if (res.ok) {
@@ -108,13 +113,122 @@
     }
 
     /**
-     * Close the new-agent popover menu.
+     * Close the new-agent popover menu and reset to project step.
      */
     function closeNewAgentMenu() {
         var menu = document.getElementById('new-agent-menu');
         var btn = document.getElementById('new-agent-btn');
         if (menu) menu.classList.remove('open');
         if (btn) btn.setAttribute('aria-expanded', 'false');
+        // Reset to project step for next open
+        var projectStep = document.getElementById('new-agent-step-project');
+        var personaStep = document.getElementById('new-agent-step-persona');
+        if (projectStep) projectStep.style.display = '';
+        if (personaStep) personaStep.style.display = 'none';
+    }
+
+    // Track the selected project ID for two-step flow
+    var _selectedProjectId = null;
+    // Cache fetched personas
+    var _personasCache = null;
+
+    /**
+     * Fetch active personas from the API (cached).
+     * @returns {Promise<Array>}
+     */
+    function fetchActivePersonas() {
+        if (_personasCache !== null) {
+            return Promise.resolve(_personasCache);
+        }
+        return CHUtils.apiFetch('/api/personas/active')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (Array.isArray(data)) {
+                    _personasCache = data;
+                    return data;
+                }
+                return [];
+            })
+            .catch(function() { return []; });
+    }
+
+    /**
+     * Render the persona selector list grouped by role.
+     * @param {Array} personas - Active personas from API
+     */
+    function renderPersonaSelector(personas) {
+        var container = document.getElementById('new-agent-persona-list');
+        if (!container) return;
+
+        // Keep the "No persona" default button, remove any dynamic content
+        var defaultBtn = container.querySelector('.new-agent-persona-item[data-persona-slug=""]');
+        container.innerHTML = '';
+        if (defaultBtn) {
+            container.appendChild(defaultBtn);
+        } else {
+            var noPersonaBtn = document.createElement('button');
+            noPersonaBtn.className = 'new-agent-item new-agent-persona-item';
+            noPersonaBtn.setAttribute('data-persona-slug', '');
+            noPersonaBtn.textContent = 'No persona (default)';
+            container.appendChild(noPersonaBtn);
+        }
+
+        // Group by role
+        var grouped = {};
+        for (var i = 0; i < personas.length; i++) {
+            var p = personas[i];
+            var role = p.role || 'other';
+            if (!grouped[role]) grouped[role] = [];
+            grouped[role].push(p);
+        }
+
+        // Render groups
+        var roles = Object.keys(grouped).sort();
+        for (var r = 0; r < roles.length; r++) {
+            var roleName = roles[r];
+            var header = document.createElement('div');
+            header.className = 'new-agent-persona-role-header';
+            header.textContent = roleName;
+            container.appendChild(header);
+
+            var group = grouped[roleName];
+            for (var j = 0; j < group.length; j++) {
+                var persona = group[j];
+                var btn = document.createElement('button');
+                btn.className = 'new-agent-item new-agent-persona-item';
+                btn.setAttribute('data-persona-slug', persona.slug);
+                var nameSpan = document.createTextNode(persona.name);
+                btn.appendChild(nameSpan);
+                if (persona.description) {
+                    var desc = document.createElement('div');
+                    desc.className = 'new-agent-persona-desc';
+                    desc.textContent = persona.description;
+                    btn.appendChild(desc);
+                }
+                container.appendChild(btn);
+            }
+        }
+    }
+
+    /**
+     * Show the persona selection step.
+     */
+    function showPersonaStep() {
+        var projectStep = document.getElementById('new-agent-step-project');
+        var personaStep = document.getElementById('new-agent-step-persona');
+        if (projectStep) projectStep.style.display = 'none';
+        if (personaStep) personaStep.style.display = '';
+    }
+
+    /**
+     * Show the project selection step (reset).
+     */
+    function showProjectStep() {
+        var projectStep = document.getElementById('new-agent-step-project');
+        var personaStep = document.getElementById('new-agent-step-persona');
+        if (projectStep) projectStep.style.display = '';
+        if (personaStep) personaStep.style.display = 'none';
+        _selectedProjectId = null;
     }
 
     /**
@@ -135,33 +249,78 @@
                 if (isOpen) {
                     closeNewAgentMenu();
                 } else {
+                    // Always reset to project step when opening
+                    showProjectStep();
                     menu.classList.add('open');
                     createBtn.setAttribute('aria-expanded', 'true');
                 }
             });
 
-            // Handle project item clicks
+            // Handle project item clicks — transition to persona step
             menu.addEventListener('click', function(e) {
-                var item = e.target.closest('.new-agent-item');
-                if (!item) return;
-                e.stopPropagation();
+                // Project selection (step 1)
+                var projectItem = e.target.closest('.new-agent-project-item');
+                if (projectItem) {
+                    e.stopPropagation();
+                    var projectId = parseInt(projectItem.getAttribute('data-project-id'), 10);
+                    if (!projectId) return;
 
-                var projectId = parseInt(item.getAttribute('data-project-id'), 10);
-                if (!projectId) return;
+                    _selectedProjectId = projectId;
 
-                var originalText = item.textContent;
-                item.textContent = 'Starting...';
-                item.style.pointerEvents = 'none';
+                    // Fetch personas and show step 2
+                    fetchActivePersonas().then(function(personas) {
+                        if (personas.length === 0) {
+                            // No personas — create agent directly without persona
+                            var originalText = projectItem.textContent;
+                            projectItem.textContent = 'Starting...';
+                            projectItem.style.pointerEvents = 'none';
 
-                createAgent(projectId).then(function() {
-                    closeNewAgentMenu();
-                    item.textContent = originalText;
-                    item.style.pointerEvents = '';
-                }).catch(function() {
-                    item.textContent = originalText;
-                    item.style.pointerEvents = '';
-                    closeNewAgentMenu();
-                });
+                            createAgent(projectId).then(function() {
+                                closeNewAgentMenu();
+                                projectItem.textContent = originalText;
+                                projectItem.style.pointerEvents = '';
+                            }).catch(function() {
+                                projectItem.textContent = originalText;
+                                projectItem.style.pointerEvents = '';
+                                closeNewAgentMenu();
+                            });
+                        } else {
+                            renderPersonaSelector(personas);
+                            showPersonaStep();
+                        }
+                    });
+                    return;
+                }
+
+                // Persona selection (step 2)
+                var personaItem = e.target.closest('.new-agent-persona-item');
+                if (personaItem && _selectedProjectId) {
+                    e.stopPropagation();
+                    var personaSlug = personaItem.getAttribute('data-persona-slug') || null;
+
+                    var originalText = personaItem.textContent;
+                    personaItem.textContent = 'Starting...';
+                    personaItem.style.pointerEvents = 'none';
+
+                    createAgent(_selectedProjectId, personaSlug).then(function() {
+                        closeNewAgentMenu();
+                        personaItem.textContent = originalText;
+                        personaItem.style.pointerEvents = '';
+                    }).catch(function() {
+                        personaItem.textContent = originalText;
+                        personaItem.style.pointerEvents = '';
+                        closeNewAgentMenu();
+                    });
+                    return;
+                }
+
+                // Back button
+                var backBtn = e.target.closest('#new-agent-back-btn');
+                if (backBtn) {
+                    e.stopPropagation();
+                    showProjectStep();
+                    return;
+                }
             });
 
             // Close on Escape

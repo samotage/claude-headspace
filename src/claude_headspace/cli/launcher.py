@@ -243,6 +243,86 @@ def get_tmux_pane_id() -> str | None:
     return pane_id if pane_id else None
 
 
+def resolve_persona_slug(server_url: str, short_name: str) -> tuple[str | None, str | None]:
+    """
+    Resolve a short persona name to a full slug via the server API.
+
+    Performs case-insensitive substring matching against persona names.
+    If exactly one match is found, returns the slug. If multiple matches
+    are found, presents an interactive disambiguation prompt. If no
+    matches are found, displays available personas and returns an error.
+
+    This function is only called when the provided value does not match
+    an exact slug (i.e., validate_persona() returned invalid).
+
+    Args:
+        server_url: URL of the Flask server
+        short_name: Short name or partial name to resolve
+
+    Returns:
+        Tuple of (resolved_slug, error_message).
+        On success: (slug, None). On failure: (None, error_message).
+    """
+    try:
+        response = requests.get(
+            f"{server_url}/api/personas",
+            timeout=HTTP_TIMEOUT,
+            verify=False,
+        )
+        if response.status_code != 200:
+            return None, f"Failed to fetch personas (status {response.status_code})"
+
+        personas = response.json()
+    except requests.exceptions.ConnectionError:
+        return None, f"Cannot connect to server at {server_url}"
+    except requests.exceptions.Timeout:
+        return None, f"Server at {server_url} timed out"
+    except Exception as e:
+        return None, f"Error fetching personas: {e}"
+
+    # Filter to active personas matching the short name (case-insensitive substring)
+    needle = short_name.lower()
+    matches = [
+        p for p in personas
+        if p.get("status") == "active" and needle in p.get("name", "").lower()
+    ]
+
+    if len(matches) == 1:
+        return matches[0]["slug"], None
+
+    if len(matches) > 1:
+        # Present disambiguation prompt
+        print(f"\nMultiple personas match '{short_name}':\n")
+        for i, p in enumerate(matches, 1):
+            role = p.get("role", "unknown")
+            print(f"  {i}. {p['name']} ({role}) — {p['slug']}")
+        print()
+
+        try:
+            import click as _click
+
+            choice = _click.prompt(
+                "Select a persona",
+                type=_click.IntRange(1, len(matches)),
+            )
+            return matches[choice - 1]["slug"], None
+        except (KeyboardInterrupt, EOFError, _click.Abort):
+            return None, "Selection cancelled"
+
+    # No matches — display available personas
+    active_personas = [p for p in personas if p.get("status") == "active"]
+    if active_personas:
+        print(f"\nNo persona matching '{short_name}'. Available personas:\n")
+        for p in active_personas:
+            role = p.get("role", "unknown")
+            print(f"  - {p['name']} ({role}) — {p['slug']}")
+        print()
+    else:
+        print(f"\nNo persona matching '{short_name}' and no active personas found.\n")
+
+    return None, f"No persona matching '{short_name}'"
+
+
 def validate_persona(server_url: str, persona_slug: str) -> tuple[bool, str | None]:
     """
     Validate that a persona slug exists and is active via the server API.
@@ -586,13 +666,18 @@ def cmd_start(args: argparse.Namespace) -> int:
             return EXIT_CLAUDE_NOT_FOUND
         return EXIT_ERROR
 
-    # Validate persona slug if provided
+    # Validate persona slug if provided (with short-name fallback)
     persona_slug = getattr(args, "persona", None)
     if persona_slug:
         valid, error = validate_persona(server_url, persona_slug)
         if not valid:
-            print(f"Error: {error}", file=sys.stderr)
-            return EXIT_ERROR
+            # Try short-name resolution before giving up
+            resolved_slug, resolve_error = resolve_persona_slug(server_url, persona_slug)
+            if resolved_slug:
+                persona_slug = resolved_slug
+            else:
+                print(f"Error: {resolve_error}", file=sys.stderr)
+                return EXIT_ERROR
         print(f"Persona: {persona_slug}")
 
     # Get project info
