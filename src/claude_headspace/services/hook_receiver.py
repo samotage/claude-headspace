@@ -709,6 +709,11 @@ def process_session_start(
                     f"session_start: handoff injection error for agent_id={agent.id}: {e}"
                 )
 
+        # Commit post-injection state (prompt_injected_at) so the
+        # idempotency guard survives across requests (e.g. context compression
+        # re-triggering session_start for the same agent).
+        db.session.commit()
+
         logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")
         return HookEventResult(success=True, agent_id=agent.id, new_state=agent.state.value)
     except Exception as e:

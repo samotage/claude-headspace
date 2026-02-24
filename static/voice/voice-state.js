@@ -106,7 +106,7 @@ window.VoiceState = (function () {
     commanded: 'Command received',
     processing: 'Processing\u2026',
     awaiting_input: 'Input needed',
-    complete: 'Command complete',
+    complete: 'Complete',
     timed_out: 'Timed out'
   };
 

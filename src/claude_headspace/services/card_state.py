@@ -403,7 +403,7 @@ def get_state_info(state: CommandState | str) -> dict:
         CommandState.COMPLETE: {
             "color": "green",
             "bg_class": "bg-green",
-            "label": "Command complete",
+            "label": "Complete",
         },
     }
     return state_map.get(

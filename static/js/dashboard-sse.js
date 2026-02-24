@@ -34,7 +34,7 @@
         'COMMANDED': { color: 'yellow', bg_class: 'bg-amber', label: 'Command received' },
         'PROCESSING': { color: 'blue', bg_class: 'bg-blue', label: 'Processing...' },
         'AWAITING_INPUT': { color: 'orange', bg_class: 'bg-amber', label: 'Input needed' },
-        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Command complete' },
+        'COMPLETE': { color: 'green', bg_class: 'bg-green', label: 'Complete' },
         'TIMED_OUT': { color: 'red', bg_class: 'bg-red', label: 'Timed out' }
     };
 

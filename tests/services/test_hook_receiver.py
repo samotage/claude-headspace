@@ -131,7 +131,8 @@ class TestProcessSessionStart:
         assert result.success is True
         assert result.agent_id == 1
         assert result.state_changed is False
-        mock_db.session.commit.assert_called_once()
+        # Two commits: (1) agent fields, (2) post-injection state (prompt_injected_at)
+        assert mock_db.session.commit.call_count == 2
 
     @patch("claude_headspace.services.hook_receiver.db")
     def test_session_start_updates_timestamp(self, mock_db, mock_agent, fresh_state):
