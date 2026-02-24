@@ -117,6 +117,13 @@ class SummarisationService:
         if turn.summary:
             return turn.summary
 
+        # Internal turn guard: skip summarisation for system plumbing turns
+        # (e.g. persona skill injection priming messages).
+        # Use `is True` for strict comparison — avoids MagicMock truthiness in tests.
+        if getattr(turn, 'is_internal', False) is True:
+            logger.debug(f"Skipping turn summarisation for turn {turn.id}: is_internal=True")
+            return None
+
         # Empty text guard: skip summarisation when text is None/empty
         if not turn.text or not turn.text.strip():
             logger.debug(f"Skipping turn summarisation for turn {turn.id}: empty text")
@@ -326,6 +333,18 @@ class SummarisationService:
         if command.completion_summary:
             return command.completion_summary
 
+        # Internal turns guard: skip if all user turns are internal
+        # (e.g. command created entirely by persona injection priming)
+        try:
+            turns = command.turns if hasattr(command, "turns") and command.turns else []
+        except Exception:
+            turns = []
+        if turns:
+            user_turns = [t for t in turns if hasattr(t, 'actor') and (t.actor.value if hasattr(t.actor, 'value') else str(t.actor)) == 'user']
+            if user_turns and all(getattr(t, 'is_internal', False) is True for t in user_turns):
+                logger.debug(f"Skipping command summarisation for command {command.id}: all user turns are internal")
+                return None
+
         if not self._inference.is_available:
             logger.debug("Inference service unavailable, skipping command summarisation")
             return None
@@ -399,6 +418,17 @@ class SummarisationService:
         if not command_text or not command_text.strip():
             logger.debug(f"Skipping instruction summarisation for command {command.id}: empty command text")
             return None
+
+        # Internal turns guard: skip if all user turns on this command are internal
+        try:
+            turns = command.turns if hasattr(command, "turns") and command.turns else []
+        except Exception:
+            turns = []
+        if turns:
+            user_turns = [t for t in turns if hasattr(t, 'actor') and (t.actor.value if hasattr(t.actor, 'value') else str(t.actor)) == 'user']
+            if user_turns and all(getattr(t, 'is_internal', False) is True for t in user_turns):
+                logger.debug(f"Skipping instruction summarisation for command {command.id}: all user turns are internal")
+                return None
 
         # Slash command bypass: use the command name directly as the instruction
         stripped = command_text.strip()

@@ -26,7 +26,7 @@ from .hook_extractors import (
 )
 from .intent_detector import detect_agent_intent
 from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
-from .team_content_detector import filter_skill_expansion, is_skill_expansion, is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -904,6 +904,55 @@ def process_user_prompt_submit(
                 state_changed=False, new_state=None,
             )
 
+        # Filter out persona injection priming messages by content pattern.
+        # When inject_persona_skills() sends a priming message via tmux,
+        # Claude Code echoes it back as user_prompt_submit — potentially
+        # many times if there's a session lifecycle collision.  This
+        # content-based check catches persona injection regardless of
+        # the skill_injection_pending flag state.
+        if prompt_text and is_persona_injection(prompt_text):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=persona_injection_content "
+                f"(len={len(prompt_text)})"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
+        # Content deduplication: suppress identical prompts within 30s.
+        # Defence-in-depth against Claude Code firing the same hook hundreds
+        # of times (e.g. persona injection storm — 395 times in 97 seconds).
+        if prompt_text and get_agent_hook_state().is_duplicate_prompt(agent.id, prompt_text):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=content_dedup "
+                f"(len={len(prompt_text)})"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
+        # Command creation rate limiting: cap blast radius even if dedup misses.
+        # Max 5 commands per 10s per agent.
+        if get_agent_hook_state().is_command_rate_limited(agent.id):
+            agent.last_seen_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.warning(
+                f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
+                f"session_id={claude_session_id}, skipped=command_rate_limited"
+            )
+            return HookEventResult(
+                success=True, agent_id=agent.id,
+                state_changed=False, new_state=None,
+            )
+
         # Filter out skill/command expansion content.  When a user invokes a
         # slash command, Claude Code's Skill tool fires a SECOND
         # user_prompt_submit with the full .md file content.  For voice-bridge
@@ -976,6 +1025,9 @@ def process_user_prompt_submit(
 
         if result.success:
             _trigger_priority_scoring()
+            # Record command creation for rate limiting
+            if result.new_command_created:
+                get_agent_hook_state().record_command_creation(agent.id)
 
         # Commit turn FIRST — turn must survive even if state transition fails.
         pending = lifecycle.get_pending_summarisations()

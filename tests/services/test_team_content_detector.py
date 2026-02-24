@@ -5,6 +5,7 @@ import pytest
 
 from claude_headspace.services.team_content_detector import (
     filter_skill_expansion,
+    is_persona_injection,
     is_team_internal_content,
 )
 
@@ -162,6 +163,58 @@ class TestNoFalsePositives:
     def test_regular_json_object(self):
         msg = json.dumps({"name": "test", "value": 42})
         assert not is_team_internal_content(msg)
+
+
+class TestPersonaInjectionDetection:
+    """Test detection of persona injection priming messages."""
+
+    PRIMING_MESSAGE = (
+        "You are Con. Read the following skill and experience "
+        "content carefully. Absorb this identity and respond in character "
+        "with a brief greeting confirming who you are and what you do.\n\n"
+        "## Skills\n\n"
+        "# Con — developer\n\nBackend specialist with Flask expertise.\n\n"
+        "## Experience\n\n"
+        "# Experience Log\n\nLearned Flask patterns."
+    )
+
+    PRIMING_SKILL_ONLY = (
+        "You are Al. Read the following skill and experience "
+        "content carefully. Absorb this identity and respond in character "
+        "with a brief greeting confirming who you are and what you do.\n\n"
+        "## Skills\n\n"
+        "# Al — researcher\n\nResearch specialist with deep analysis."
+    )
+
+    def test_detects_full_priming_message(self):
+        assert is_persona_injection(self.PRIMING_MESSAGE) is True
+
+    def test_detects_skill_only_priming(self):
+        assert is_persona_injection(self.PRIMING_SKILL_ONLY) is True
+
+    def test_none_returns_false(self):
+        assert is_persona_injection(None) is False
+
+    def test_empty_returns_false(self):
+        assert is_persona_injection("") is False
+
+    def test_short_text_returns_false(self):
+        assert is_persona_injection("You are Con.") is False
+
+    def test_normal_user_text_returns_false(self):
+        assert is_persona_injection("Fix the login bug in the authentication module") is False
+
+    def test_you_are_without_skill_heading_returns_false(self):
+        long_text = "You are going to fix this bug. " * 20
+        assert is_persona_injection(long_text) is False
+
+    def test_text_with_skills_but_wrong_prefix_returns_false(self):
+        text = "Please review the following:\n\n## Skills\n\n" + "x" * 200
+        assert is_persona_injection(text) is False
+
+    def test_text_mentioning_persona_but_not_matching_pattern(self):
+        text = "The user said 'You are Con. Read the following skill and experience' but it was " + "x" * 200
+        assert is_persona_injection(text) is False
 
 
 class TestFilterSkillExpansion:

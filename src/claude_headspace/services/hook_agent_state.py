@@ -8,6 +8,7 @@ clears multiple dicts atomically) and hold times are microsecond-level.
 This follows the same locking pattern used by Broadcaster and SessionRegistry.
 """
 
+import hashlib
 import logging
 import threading
 import time
@@ -56,6 +57,17 @@ class AgentHookState:
         # Track agents with a pending skill injection whose priming
         # user_prompt_submit should be marked is_internal=True.
         self._skill_injection_pending: set[int] = set()
+
+        # Content dedup: recent prompt hashes per agent for detecting
+        # duplicate user_prompt_submit hooks (e.g. Claude Code firing
+        # the same persona text 395 times).
+        # dict[agent_id, list[tuple[hash_hex, timestamp]]]
+        self._recent_prompt_hashes: dict[int, list[tuple[str, float]]] = {}
+
+        # Command creation rate limiting: timestamps of recent command
+        # creations per agent.  Prevents blast radius when dedup misses.
+        # dict[agent_id, list[float]]
+        self._command_creation_times: dict[int, list[float]] = {}
 
     # ── Awaiting Tool ────────────────────────────────────────────────
 
@@ -221,6 +233,81 @@ class AgentHookState:
                 return True
             return False
 
+    # ── Content Dedup ─────────────────────────────────────────────────
+    # Defence-in-depth against Claude Code's spurious hook firing.
+    # Tracks sha256 hashes of recent prompts per agent with a 30s window.
+
+    _DEDUP_WINDOW_SECONDS = 30.0
+    _DEDUP_MAX_HISTORY = 5
+
+    def is_duplicate_prompt(self, agent_id: int, text: str | None) -> bool:
+        """Check if this prompt text was already seen within the dedup window.
+
+        First occurrence records the hash and returns False.
+        Subsequent identical prompts within 30s return True.
+
+        Args:
+            agent_id: The agent receiving the prompt
+            text: The prompt text to check
+
+        Returns:
+            True if this is a duplicate (should be suppressed)
+        """
+        if not text:
+            return False
+
+        prompt_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
+        now = time.time()
+
+        with self._lock:
+            history = self._recent_prompt_hashes.get(agent_id, [])
+
+            # Prune expired entries
+            history = [(h, ts) for h, ts in history if (now - ts) < self._DEDUP_WINDOW_SECONDS]
+
+            # Check for duplicate
+            for h, _ts in history:
+                if h == prompt_hash:
+                    return True
+
+            # Record this prompt
+            history.append((prompt_hash, now))
+            # Keep only the most recent entries
+            if len(history) > self._DEDUP_MAX_HISTORY:
+                history = history[-self._DEDUP_MAX_HISTORY:]
+
+            self._recent_prompt_hashes[agent_id] = history
+            return False
+
+    # ── Command Rate Limiting ─────────────────────────────────────────
+    # Caps blast radius even if dedup misses.
+    # Max 5 commands per 10s per agent.
+
+    _RATE_LIMIT_WINDOW_SECONDS = 10.0
+    _RATE_LIMIT_MAX_COMMANDS = 5
+
+    def is_command_rate_limited(self, agent_id: int) -> bool:
+        """Check if command creation is rate-limited for this agent.
+
+        Returns True if the agent has created >= max commands within the window.
+        """
+        now = time.time()
+        with self._lock:
+            times = self._command_creation_times.get(agent_id, [])
+            # Prune expired
+            times = [t for t in times if (now - t) < self._RATE_LIMIT_WINDOW_SECONDS]
+            self._command_creation_times[agent_id] = times
+            return len(times) >= self._RATE_LIMIT_MAX_COMMANDS
+
+    def record_command_creation(self, agent_id: int) -> None:
+        """Record a command creation timestamp for rate limiting."""
+        now = time.time()
+        with self._lock:
+            times = self._command_creation_times.get(agent_id, [])
+            times = [t for t in times if (now - t) < self._RATE_LIMIT_WINDOW_SECONDS]
+            times.append(now)
+            self._command_creation_times[agent_id] = times
+
     # ── Lifecycle (bulk operations) ──────────────────────────────────
 
     def on_session_start(self, agent_id: int) -> None:
@@ -237,6 +324,8 @@ class AgentHookState:
             self._transcript_positions.pop(agent_id, None)
             self._progress_texts.pop(agent_id, None)
             self._skill_injection_pending.discard(agent_id)
+            self._recent_prompt_hashes.pop(agent_id, None)
+            self._command_creation_times.pop(agent_id, None)
 
     def on_new_response_cycle(self, agent_id: int) -> None:
         """Clear state for a new user→agent response cycle."""
@@ -257,6 +346,8 @@ class AgentHookState:
             self._progress_texts.clear()
             self._file_metadata_pending.clear()
             self._skill_injection_pending.clear()
+            self._recent_prompt_hashes.clear()
+            self._command_creation_times.clear()
 
 
 # ── Module-level singleton ───────────────────────────────────────────

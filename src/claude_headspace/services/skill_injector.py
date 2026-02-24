@@ -6,16 +6,20 @@ as a priming message to the agent's tmux pane via the tmux bridge.
 
 import logging
 import threading
+import time
 
 from ..services.persona_assets import read_experience_file, read_skill_file
 from ..services.tmux_bridge import HealthCheckLevel, check_health, send_text
 
 logger = logging.getLogger(__name__)
 
-# In-memory set of agent IDs that have already received injection.
-# Thread-safe via _injected_lock.
-_injected_agents: set[int] = set()
+# In-memory dict of agent_id -> injection timestamp.
+# Uses a cooldown period instead of permanent idempotency so that
+# session_end clearing the record (which caused re-injection storms)
+# is no longer needed.  Thread-safe via _injected_lock.
+_injected_agents: dict[int, float] = {}
 _injected_lock = threading.Lock()
+_INJECTION_COOLDOWN_SECONDS = 300.0  # 5 minutes
 
 
 def _compose_priming_message(
@@ -66,13 +70,17 @@ def inject_persona_skills(agent) -> bool:
         )
         return False
 
-    # Idempotency check
+    # Cooldown check: skip if injected within the cooldown period
     with _injected_lock:
-        if agent_id in _injected_agents:
-            logger.debug(
-                f"skill_injection: skipped — agent_id={agent_id}, already injected"
-            )
-            return False
+        last_injected = _injected_agents.get(agent_id)
+        if last_injected is not None:
+            elapsed = time.time() - last_injected
+            if elapsed < _INJECTION_COOLDOWN_SECONDS:
+                logger.debug(
+                    f"skill_injection: skipped — agent_id={agent_id}, "
+                    f"injected {elapsed:.0f}s ago (cooldown={_INJECTION_COOLDOWN_SECONDS}s)"
+                )
+                return False
 
     # Load persona slug
     persona = getattr(agent, "persona", None)
@@ -128,9 +136,9 @@ def inject_persona_skills(agent) -> bool:
         )
         return False
 
-    # Record injection
+    # Record injection with timestamp
     with _injected_lock:
-        _injected_agents.add(agent_id)
+        _injected_agents[agent_id] = time.time()
 
     logger.info(
         f"skill_injection: success — agent_id={agent_id}, slug={slug}, "
@@ -140,12 +148,18 @@ def inject_persona_skills(agent) -> bool:
 
 
 def clear_injection_record(agent_id: int) -> None:
-    """Remove an agent from the injected set (called on session end)."""
-    with _injected_lock:
-        _injected_agents.discard(agent_id)
+    """No-op: cooldown handles expiry naturally.
+
+    Previously this cleared the idempotency flag on session_end, which
+    caused re-injection storms when session_end/session_start collided.
+    The cooldown-based approach makes this unnecessary — the injection
+    record expires automatically after _INJECTION_COOLDOWN_SECONDS.
+    """
+    # Intentionally a no-op. The cooldown timer handles expiry.
 
 
 def reset_injection_state() -> None:
     """Clear all injection records (for testing)."""
+    global _injected_agents
     with _injected_lock:
         _injected_agents.clear()

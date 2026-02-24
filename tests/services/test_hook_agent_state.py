@@ -256,6 +256,99 @@ class TestSingleton:
         assert b.get_awaiting_tool(1) is None
 
 
+class TestContentDedup:
+    """Tests for is_duplicate_prompt() — content deduplication."""
+
+    def test_first_prompt_not_duplicate(self, state):
+        assert state.is_duplicate_prompt(1, "Fix the bug") is False
+
+    def test_second_identical_prompt_is_duplicate(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        assert state.is_duplicate_prompt(1, "Fix the bug") is True
+
+    def test_different_prompt_not_duplicate(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        assert state.is_duplicate_prompt(1, "Add a feature") is False
+
+    def test_different_agent_not_duplicate(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        assert state.is_duplicate_prompt(2, "Fix the bug") is False
+
+    def test_none_text_not_duplicate(self, state):
+        assert state.is_duplicate_prompt(1, None) is False
+
+    def test_empty_text_not_duplicate(self, state):
+        assert state.is_duplicate_prompt(1, "") is False
+
+    def test_expired_entry_not_duplicate(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        # Expire the entry
+        with state._lock:
+            state._recent_prompt_hashes[1] = [
+                (state._recent_prompt_hashes[1][0][0], time.time() - 60)
+            ]
+        assert state.is_duplicate_prompt(1, "Fix the bug") is False
+
+    def test_session_end_clears_dedup(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        state.on_session_end(1)
+        assert state.is_duplicate_prompt(1, "Fix the bug") is False
+
+    def test_reset_clears_dedup(self, state):
+        state.is_duplicate_prompt(1, "Fix the bug")
+        state.reset()
+        assert state.is_duplicate_prompt(1, "Fix the bug") is False
+
+    def test_max_history_respected(self, state):
+        """History should be capped at _DEDUP_MAX_HISTORY entries."""
+        for i in range(10):
+            state.is_duplicate_prompt(1, f"prompt-{i}")
+        with state._lock:
+            assert len(state._recent_prompt_hashes.get(1, [])) <= state._DEDUP_MAX_HISTORY
+
+
+class TestCommandRateLimiting:
+    """Tests for is_command_rate_limited() and record_command_creation()."""
+
+    def test_not_rate_limited_initially(self, state):
+        assert state.is_command_rate_limited(1) is False
+
+    def test_rate_limited_after_max_commands(self, state):
+        for _ in range(5):
+            state.record_command_creation(1)
+        assert state.is_command_rate_limited(1) is True
+
+    def test_not_rate_limited_under_max(self, state):
+        for _ in range(4):
+            state.record_command_creation(1)
+        assert state.is_command_rate_limited(1) is False
+
+    def test_different_agents_independent(self, state):
+        for _ in range(5):
+            state.record_command_creation(1)
+        assert state.is_command_rate_limited(2) is False
+
+    def test_expired_entries_not_counted(self, state):
+        for _ in range(5):
+            state.record_command_creation(1)
+        # Expire all entries
+        with state._lock:
+            state._command_creation_times[1] = [time.time() - 20 for _ in range(5)]
+        assert state.is_command_rate_limited(1) is False
+
+    def test_session_end_clears_rate_limit(self, state):
+        for _ in range(5):
+            state.record_command_creation(1)
+        state.on_session_end(1)
+        assert state.is_command_rate_limited(1) is False
+
+    def test_reset_clears_rate_limit(self, state):
+        for _ in range(5):
+            state.record_command_creation(1)
+        state.reset()
+        assert state.is_command_rate_limited(1) is False
+
+
 class TestThreadSafety:
     """Thread-safety stress tests following Broadcaster test patterns."""
 

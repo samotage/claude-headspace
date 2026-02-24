@@ -85,6 +85,49 @@ def is_team_internal_content(text: str | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Persona injection detection
+# ---------------------------------------------------------------------------
+# When inject_persona_skills() sends a priming message via tmux, Claude Code
+# echoes it back as a user_prompt_submit.  If the skill_injection_pending flag
+# was already consumed or never set (session lifecycle collision), the hook
+# receiver can't distinguish the priming message from real user input.
+#
+# This content-based detector catches the persona priming message pattern
+# regardless of flag state, providing defence-in-depth against duplicate
+# persona injection turns creating phantom commands.
+# ---------------------------------------------------------------------------
+
+_PERSONA_PRIMING_PREFIX = "You are "
+_PERSONA_PRIMING_MIDDLE = ". Read the following skill and experience"
+_PERSONA_SKILLS_HEADING = "## Skills"
+
+
+def is_persona_injection(text: str | None) -> bool:
+    """Detect whether text is a persona injection priming message.
+
+    Matches the pattern produced by skill_injector._compose_priming_message():
+      "You are {name}. Read the following skill and experience..."
+      followed by "## Skills"
+
+    Args:
+        text: The prompt text to check
+
+    Returns:
+        True if the text matches the persona injection pattern
+    """
+    if not text or len(text) < 100:
+        return False
+
+    stripped = text.strip()
+    if not stripped.startswith(_PERSONA_PRIMING_PREFIX):
+        return False
+
+    # Check for the characteristic middle phrase and skills heading
+    first_500 = stripped[:500]
+    return _PERSONA_PRIMING_MIDDLE in first_500 and _PERSONA_SKILLS_HEADING in stripped
+
+
+# ---------------------------------------------------------------------------
 # Skill / command expansion detection
 # ---------------------------------------------------------------------------
 # When a user invokes a slash command (e.g. /orch:40-test), Claude Code's

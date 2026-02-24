@@ -30,6 +30,7 @@ def mock_turn():
     turn.intent.value = "progress"
     turn.summary = None
     turn.summary_generated_at = None
+    turn.is_internal = False
     turn.command_id = 10
     turn.command.agent_id = 5
     turn.command.agent.project_id = 3
@@ -324,6 +325,7 @@ class TestExecutePending:
         mock_turn.id = 1
         mock_turn.text = "Working on fix"
         mock_turn.summary = None
+        mock_turn.is_internal = False
         mock_turn.command.agent_id = 5
         mock_turn.command.agent.project_id = 3
 
@@ -410,6 +412,7 @@ class TestExecutePending:
         mock_turn_1.id = 1
         mock_turn_1.text = "First"
         mock_turn_1.summary = None
+        mock_turn_1.is_internal = False
         mock_turn_1.command.agent_id = 5
         mock_turn_1.command.agent.project_id = 3
 
@@ -417,6 +420,7 @@ class TestExecutePending:
         mock_turn_2.id = 2
         mock_turn_2.text = "Second"
         mock_turn_2.summary = None
+        mock_turn_2.is_internal = False
         mock_turn_2.command.agent_id = 5
         mock_turn_2.command.agent.project_id = 3
 
@@ -933,3 +937,141 @@ class TestResolveCommandPromptResilience:
         # With instruction but no turns, should return instruction-only prompt
         assert result is not None
         assert "Fix the auth module" in result
+
+
+class TestInternalTurnSkip:
+    """Tests for is_internal=True turn skipping — prevents inference waste on system plumbing turns."""
+
+    def test_summarise_turn_skips_internal(self, service, mock_inference):
+        """summarise_turn() should return None for is_internal=True turns."""
+        turn = MagicMock()
+        turn.id = 1
+        turn.text = "You are Con. Read the following skill and experience..."
+        turn.summary = None
+        turn.is_internal = True
+
+        result = service.summarise_turn(turn)
+
+        assert result is None
+        mock_inference.infer.assert_not_called()
+
+    def test_summarise_turn_processes_non_internal(self, service, mock_inference, mock_turn):
+        """summarise_turn() should process turns with is_internal=False."""
+        mock_turn.is_internal = False
+        mock_inference.infer.return_value = InferenceResult(
+            text="Summary", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        result = service.summarise_turn(mock_turn)
+
+        assert result == "Summary"
+        mock_inference.infer.assert_called_once()
+
+    def test_summarise_turn_processes_missing_is_internal(self, service, mock_inference, mock_turn):
+        """summarise_turn() should process turns without is_internal attribute."""
+        # MagicMock will return a truthy MagicMock for any attribute by default,
+        # so we need to explicitly delete it to test getattr fallback
+        del mock_turn.is_internal
+        mock_inference.infer.return_value = InferenceResult(
+            text="Summary", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        result = service.summarise_turn(mock_turn)
+
+        assert result == "Summary"
+
+    def test_summarise_command_skips_all_internal_user_turns(self, service, mock_inference):
+        """summarise_command() should skip when all user turns are internal."""
+        mock_command = MagicMock()
+        mock_command.id = 10
+        mock_command.completion_summary = None
+        mock_command.instruction = "Internal instruction"
+        mock_command.agent_id = 5
+        mock_command.agent.project_id = 3
+
+        # Create mock turns — all user turns are internal
+        user_turn = MagicMock()
+        user_turn.actor.value = "user"
+        user_turn.is_internal = True
+        user_turn.text = "persona priming text"
+        agent_turn = MagicMock()
+        agent_turn.actor.value = "agent"
+        agent_turn.is_internal = False
+        agent_turn.text = "Hello, I'm Con"
+        mock_command.turns = [user_turn, agent_turn]
+
+        result = service.summarise_command(mock_command)
+
+        assert result is None
+        mock_inference.infer.assert_not_called()
+
+    def test_summarise_command_processes_mixed_turns(self, service, mock_inference):
+        """summarise_command() should process when at least one user turn is NOT internal."""
+        mock_command = MagicMock()
+        mock_command.id = 10
+        mock_command.completion_summary = None
+        mock_command.instruction = "Fix the bug"
+        mock_command.agent_id = 5
+        mock_command.agent.project_id = 3
+
+        internal_turn = MagicMock()
+        internal_turn.actor.value = "user"
+        internal_turn.is_internal = True
+        real_turn = MagicMock()
+        real_turn.actor.value = "user"
+        real_turn.is_internal = False
+        agent_turn = MagicMock()
+        agent_turn.actor.value = "agent"
+        agent_turn.text = "Done fixing"
+        mock_command.turns = [internal_turn, real_turn, agent_turn]
+
+        mock_inference.infer.return_value = InferenceResult(
+            text="Fixed the bug", input_tokens=50, output_tokens=10,
+            model="model", latency_ms=200,
+        )
+
+        result = service.summarise_command(mock_command)
+
+        assert result == "Fixed the bug"
+        mock_inference.infer.assert_called_once()
+
+    def test_summarise_instruction_skips_all_internal_user_turns(self, service, mock_inference):
+        """summarise_instruction() should skip when all user turns are internal."""
+        mock_command = MagicMock()
+        mock_command.id = 10
+        mock_command.instruction = None
+
+        user_turn = MagicMock()
+        user_turn.actor.value = "user"
+        user_turn.is_internal = True
+        mock_command.turns = [user_turn]
+
+        result = service.summarise_instruction(mock_command, "persona priming text")
+
+        assert result is None
+        mock_inference.infer.assert_not_called()
+
+    def test_summarise_instruction_processes_non_internal(self, service, mock_inference):
+        """summarise_instruction() should process when user turns are not internal."""
+        mock_command = MagicMock()
+        mock_command.id = 10
+        mock_command.instruction = None
+        mock_command.agent_id = 5
+        mock_command.agent.project_id = 3
+
+        user_turn = MagicMock()
+        user_turn.actor.value = "user"
+        user_turn.is_internal = False
+        mock_command.turns = [user_turn]
+
+        mock_inference.infer.return_value = InferenceResult(
+            text="Fix the login bug", input_tokens=10, output_tokens=5,
+            model="model", latency_ms=100,
+        )
+
+        result = service.summarise_instruction(mock_command, "Fix the login bug")
+
+        assert result == "Fix the login bug"
+        mock_inference.infer.assert_called_once()
