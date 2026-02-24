@@ -2,24 +2,20 @@
 
 Reads persona skill and experience content from disk and delivers it
 as a priming message to the agent's tmux pane via the tmux bridge.
+
+Idempotency is enforced via the agent.prompt_injected_at DB column —
+once set, re-injection is blocked for the lifetime of the agent record.
+This survives server restarts and eliminates the session lifecycle
+collision that previously caused re-injection storms.
 """
 
 import logging
-import threading
-import time
+from datetime import datetime, timezone
 
 from ..services.persona_assets import read_experience_file, read_skill_file
 from ..services.tmux_bridge import HealthCheckLevel, check_health, send_text
 
 logger = logging.getLogger(__name__)
-
-# In-memory dict of agent_id -> injection timestamp.
-# Uses a cooldown period instead of permanent idempotency so that
-# session_end clearing the record (which caused re-injection storms)
-# is no longer needed.  Thread-safe via _injected_lock.
-_injected_agents: dict[int, float] = {}
-_injected_lock = threading.Lock()
-_INJECTION_COOLDOWN_SECONDS = 300.0  # 5 minutes
 
 
 def _compose_priming_message(
@@ -50,9 +46,13 @@ def _compose_priming_message(
 def inject_persona_skills(agent) -> bool:
     """Inject persona skill and experience content into an agent's tmux pane.
 
+    Idempotency is enforced by the agent.prompt_injected_at column.
+    Once set, this function returns False immediately — no in-memory
+    state, no cooldown timers, no race conditions.
+
     Args:
-        agent: Agent record with persona_id, tmux_pane_id, and persona
-               relationship attributes.
+        agent: Agent record with persona_id, tmux_pane_id, persona
+               relationship, and prompt_injected_at attributes.
 
     Returns:
         True if injection was performed, False if skipped or failed.
@@ -70,17 +70,13 @@ def inject_persona_skills(agent) -> bool:
         )
         return False
 
-    # Cooldown check: skip if injected within the cooldown period
-    with _injected_lock:
-        last_injected = _injected_agents.get(agent_id)
-        if last_injected is not None:
-            elapsed = time.time() - last_injected
-            if elapsed < _INJECTION_COOLDOWN_SECONDS:
-                logger.debug(
-                    f"skill_injection: skipped — agent_id={agent_id}, "
-                    f"injected {elapsed:.0f}s ago (cooldown={_INJECTION_COOLDOWN_SECONDS}s)"
-                )
-                return False
+    # DB-level idempotency: skip if already injected
+    if getattr(agent, "prompt_injected_at", None) is not None:
+        logger.debug(
+            f"skill_injection: skipped — agent_id={agent_id}, "
+            f"already injected at {agent.prompt_injected_at}"
+        )
+        return False
 
     # Load persona slug
     persona = getattr(agent, "persona", None)
@@ -136,9 +132,10 @@ def inject_persona_skills(agent) -> bool:
         )
         return False
 
-    # Record injection with timestamp
-    with _injected_lock:
-        _injected_agents[agent_id] = time.time()
+    # Record injection in DB — this is the source of truth for idempotency.
+    # The caller (process_session_start) commits this along with other
+    # session_start changes.
+    agent.prompt_injected_at = datetime.now(timezone.utc)
 
     logger.info(
         f"skill_injection: success — agent_id={agent_id}, slug={slug}, "
@@ -148,18 +145,17 @@ def inject_persona_skills(agent) -> bool:
 
 
 def clear_injection_record(agent_id: int) -> None:
-    """No-op: cooldown handles expiry naturally.
+    """No-op: prompt_injected_at on the agent record handles idempotency.
 
-    Previously this cleared the idempotency flag on session_end, which
-    caused re-injection storms when session_end/session_start collided.
-    The cooldown-based approach makes this unnecessary — the injection
-    record expires automatically after _INJECTION_COOLDOWN_SECONDS.
+    This function exists for backwards compatibility with callers in
+    process_session_end. The DB column is never cleared — once injected,
+    the agent record permanently records the fact.
     """
-    # Intentionally a no-op. The cooldown timer handles expiry.
 
 
 def reset_injection_state() -> None:
-    """Clear all injection records (for testing)."""
-    global _injected_agents
-    with _injected_lock:
-        _injected_agents.clear()
+    """No-op: injection state is now in the DB, not in memory.
+
+    Tests that need to reset injection state should set
+    agent.prompt_injected_at = None on their mock/fixture directly.
+    """

@@ -1,33 +1,30 @@
-"""Tests for skill injector service."""
+"""Tests for skill injector service.
+
+Tests the DB-based idempotency approach: agent.prompt_injected_at
+controls whether persona skills have been injected.
+"""
 
 import logging
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from claude_headspace.services.skill_injector import (
-    _injected_agents,
-    _injected_lock,
     clear_injection_record,
     inject_persona_skills,
     reset_injection_state,
 )
 
 
-@pytest.fixture(autouse=True)
-def clean_injection_state():
-    """Reset injection state before each test."""
-    reset_injection_state()
-    yield
-    reset_injection_state()
-
-
-def _make_agent(agent_id=1, persona_id=5, tmux_pane_id="%0", slug="developer-con-1", name="Con"):
+def _make_agent(agent_id=1, persona_id=5, tmux_pane_id="%0", slug="developer-con-1", name="Con",
+                prompt_injected_at=None):
     """Create a mock agent with persona relationship."""
     agent = MagicMock()
     agent.id = agent_id
     agent.persona_id = persona_id
     agent.tmux_pane_id = tmux_pane_id
+    agent.prompt_injected_at = prompt_injected_at
     persona = MagicMock()
     persona.slug = slug
     persona.name = name
@@ -62,6 +59,27 @@ class TestInjectPersonaSkills:
         assert "Backend specialist" in sent_text
         assert "Flask patterns" in sent_text
         assert "You are Con" in sent_text
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_successful_injection_sets_prompt_injected_at(
+        self, mock_read_skill, mock_read_exp, mock_health, mock_send
+    ):
+        """Successful injection sets prompt_injected_at on the agent."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=True)
+
+        agent = _make_agent()
+        assert agent.prompt_injected_at is None
+
+        inject_persona_skills(agent)
+
+        assert agent.prompt_injected_at is not None
+        assert isinstance(agent.prompt_injected_at, datetime)
 
     @patch("claude_headspace.services.skill_injector.send_text")
     @patch("claude_headspace.services.skill_injector.check_health")
@@ -103,7 +121,7 @@ class TestInjectPersonaSkills:
     def test_idempotency_second_call_is_noop(
         self, mock_read_skill, mock_read_exp, mock_health, mock_send, caplog
     ):
-        """Second injection call for same agent within cooldown is a no-op."""
+        """Second injection call for same agent is a no-op (DB idempotency)."""
         mock_read_skill.return_value = "# skill content"
         mock_read_exp.return_value = None
         mock_health.return_value = MagicMock(available=True)
@@ -113,11 +131,12 @@ class TestInjectPersonaSkills:
         result1 = inject_persona_skills(agent)
         assert result1 is True
 
+        # prompt_injected_at is now set, so second call should be blocked
         with caplog.at_level(logging.DEBUG):
             result2 = inject_persona_skills(agent)
 
         assert result2 is False
-        assert "cooldown" in caplog.text
+        assert "already injected" in caplog.text
         # send_text should only have been called once
         assert mock_send.call_count == 1
 
@@ -171,40 +190,46 @@ class TestInjectPersonaSkills:
         assert result is False
         assert "send_text error" in caplog.text
 
-
-class TestInjectionCooldown:
-    """Tests for cooldown-based idempotency (replaces permanent set)."""
-
     @patch("claude_headspace.services.skill_injector.send_text")
     @patch("claude_headspace.services.skill_injector.check_health")
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
-    def test_cooldown_blocks_reinjection(
-        self, mock_read_skill, mock_read_exp, mock_health, mock_send, caplog
-    ):
-        """Second injection within cooldown is blocked."""
-        mock_read_skill.return_value = "# skill content"
-        mock_read_exp.return_value = None
-        mock_health.return_value = MagicMock(available=True)
-        mock_send.return_value = MagicMock(success=True)
-
-        agent = _make_agent()
-        assert inject_persona_skills(agent) is True
-
-        with caplog.at_level(logging.DEBUG):
-            assert inject_persona_skills(agent) is False
-        assert "cooldown" in caplog.text
-
-    @patch("claude_headspace.services.skill_injector.send_text")
-    @patch("claude_headspace.services.skill_injector.check_health")
-    @patch("claude_headspace.services.skill_injector.read_experience_file")
-    @patch("claude_headspace.services.skill_injector.read_skill_file")
-    def test_cooldown_expires_allows_reinjection(
+    def test_send_failure_does_not_set_prompt_injected_at(
         self, mock_read_skill, mock_read_exp, mock_health, mock_send
     ):
-        """After cooldown expires, re-injection is allowed."""
-        import time
+        """send_text failure should NOT set prompt_injected_at."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=False, error_message="tmux error")
 
+        agent = _make_agent()
+        inject_persona_skills(agent)
+
+        assert agent.prompt_injected_at is None
+
+
+class TestDBIdempotency:
+    """Tests for DB-based idempotency via agent.prompt_injected_at."""
+
+    def test_already_injected_agent_is_skipped(self, caplog):
+        """Agent with prompt_injected_at already set is skipped immediately."""
+        agent = _make_agent(prompt_injected_at=datetime.now(timezone.utc))
+
+        with caplog.at_level(logging.DEBUG):
+            result = inject_persona_skills(agent)
+
+        assert result is False
+        assert "already injected" in caplog.text
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_injection_then_reinjection_blocked(
+        self, mock_read_skill, mock_read_exp, mock_health, mock_send
+    ):
+        """After successful injection, re-injection is blocked by DB column."""
         mock_read_skill.return_value = "# skill content"
         mock_read_exp.return_value = None
         mock_health.return_value = MagicMock(available=True)
@@ -212,26 +237,40 @@ class TestInjectionCooldown:
 
         agent = _make_agent()
         assert inject_persona_skills(agent) is True
+        assert inject_persona_skills(agent) is False
+        assert mock_send.call_count == 1
 
-        # Expire the cooldown
-        with _injected_lock:
-            _injected_agents[agent.id] = time.time() - 400
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_resetting_prompt_injected_at_allows_reinjection(
+        self, mock_read_skill, mock_read_exp, mock_health, mock_send
+    ):
+        """Setting prompt_injected_at back to None allows re-injection (for tests)."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=True)
 
+        agent = _make_agent()
+        assert inject_persona_skills(agent) is True
+        assert mock_send.call_count == 1
+
+        # Reset — simulates what tests should do
+        agent.prompt_injected_at = None
         assert inject_persona_skills(agent) is True
         assert mock_send.call_count == 2
 
     def test_clear_injection_record_is_noop(self):
-        """clear_injection_record() should be a no-op (cooldown handles expiry)."""
-        import time
-
-        with _injected_lock:
-            _injected_agents[42] = time.time()
-
+        """clear_injection_record() is a no-op — DB column handles idempotency."""
+        # Should not raise
         clear_injection_record(42)
 
-        # Record should still exist — clear_injection_record is a no-op
-        with _injected_lock:
-            assert 42 in _injected_agents
+    def test_reset_injection_state_is_noop(self):
+        """reset_injection_state() is a no-op — injection state is in DB."""
+        # Should not raise
+        reset_injection_state()
 
     @patch("claude_headspace.services.skill_injector.send_text")
     @patch("claude_headspace.services.skill_injector.check_health")
@@ -240,7 +279,7 @@ class TestInjectionCooldown:
     def test_session_end_clear_does_not_enable_reinjection(
         self, mock_read_skill, mock_read_exp, mock_health, mock_send
     ):
-        """Session end calling clear_injection_record should NOT allow immediate re-injection."""
+        """Session end calling clear_injection_record should NOT allow re-injection."""
         mock_read_skill.return_value = "# skill content"
         mock_read_exp.return_value = None
         mock_health.return_value = MagicMock(available=True)
@@ -252,5 +291,5 @@ class TestInjectionCooldown:
         # Simulate session_end calling clear_injection_record
         clear_injection_record(agent.id)
 
-        # Re-injection should still be blocked (cooldown not expired)
+        # Re-injection should still be blocked (DB column is still set)
         assert inject_persona_skills(agent) is False
