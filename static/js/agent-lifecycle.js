@@ -125,6 +125,23 @@
         var personaStep = document.getElementById('new-agent-step-persona');
         if (projectStep) projectStep.style.display = '';
         if (personaStep) personaStep.style.display = 'none';
+        // Remove mobile backdrop if present
+        var backdrop = document.getElementById('new-agent-backdrop');
+        if (backdrop) backdrop.remove();
+    }
+
+    /**
+     * Show mobile backdrop overlay behind the bottom-sheet menu.
+     */
+    function showMobileBackdrop() {
+        if (window.innerWidth > 640) return;
+        var existing = document.getElementById('new-agent-backdrop');
+        if (existing) return;
+        var backdrop = document.createElement('div');
+        backdrop.id = 'new-agent-backdrop';
+        backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:49;';
+        backdrop.addEventListener('click', function() { closeNewAgentMenu(); });
+        document.body.appendChild(backdrop);
     }
 
     // Track the selected project ID for two-step flow
@@ -251,6 +268,7 @@
                 } else {
                     // Always reset to project step when opening
                     showProjectStep();
+                    showMobileBackdrop();
                     menu.classList.add('open');
                     createBtn.setAttribute('aria-expanded', 'true');
                 }

@@ -4,13 +4,15 @@ import logging
 import shutil
 
 from flask import Blueprint, jsonify, render_template, request
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models.agent import Agent
+from ..models.command import Command
 from ..models.persona import Persona
 from ..models.role import Role
+from ..models.turn import Turn
 from ..services.persona_assets import (
     check_assets,
     get_experience_mtime,
@@ -471,15 +473,16 @@ def api_persona_assets(slug: str):
 def api_persona_linked_agents(slug: str):
     """List agents linked to a persona.
 
+    Supports ``include_ended=true`` query param to include ended agents
+    (default: only active agents).  Returns ``active_agent_count`` alongside
+    the agents list so the frontend can display a count badge.
+
     Returns:
-        200: Array of agent detail objects
+        200: ``{ agents: [...], active_agent_count: int }``
         404: Persona not found in DB
     """
     persona = (
         db.session.query(Persona)
-        .options(
-            selectinload(Persona.agents).selectinload(Agent.project),
-        )
         .filter_by(slug=slug)
         .first()
     )
@@ -487,17 +490,111 @@ def api_persona_linked_agents(slug: str):
     if not persona:
         return jsonify({"error": f"Persona '{slug}' not found"}), 404
 
-    agents = []
-    for agent in persona.agents:
-        agents.append({
-            "id": agent.id,
-            "session_uuid": str(agent.session_uuid),
-            "project_name": agent.project.name if agent.project else None,
-            "state": agent.state.value if agent.state else None,
-            "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else None,
+    include_ended = request.args.get("include_ended", "false").lower() == "true"
+
+    agents_query = (
+        db.session.query(Agent)
+        .options(selectinload(Agent.project))
+        .filter(Agent.persona_id == persona.id)
+    )
+    if not include_ended:
+        agents_query = agents_query.filter(Agent.ended_at.is_(None))
+    agents_query = agents_query.order_by(Agent.last_seen_at.desc().nullslast())
+    agents_list = agents_query.all()
+
+    active_agent_count = (
+        db.session.query(Agent)
+        .filter(Agent.persona_id == persona.id, Agent.ended_at.is_(None))
+        .count()
+    )
+
+    # Batch-compute per-agent metrics
+    agent_ids = [a.id for a in agents_list]
+    agent_metrics: dict = {}
+    if agent_ids:
+        turn_stats = (
+            db.session.query(
+                Command.agent_id,
+                func.count(Turn.id).label("turn_count"),
+                func.avg(Turn.frustration_score).label("frustration_avg"),
+            )
+            .join(Turn, Turn.command_id == Command.id)
+            .filter(Command.agent_id.in_(agent_ids))
+            .group_by(Command.agent_id)
+            .all()
+        )
+        for row in turn_stats:
+            agent_metrics[row.agent_id] = {
+                "turn_count": row.turn_count or 0,
+                "frustration_avg": (
+                    round(float(row.frustration_avg), 1)
+                    if row.frustration_avg is not None
+                    else None
+                ),
+            }
+
+        avg_turn_time_sub = (
+            db.session.query(
+                Command.agent_id,
+                case(
+                    (
+                        func.count(Turn.id) > 1,
+                        func.extract(
+                            "epoch",
+                            func.max(Turn.timestamp) - func.min(Turn.timestamp),
+                        )
+                        / (func.count(Turn.id) - 1),
+                    ),
+                    else_=None,
+                ).label("avg_turn_time"),
+            )
+            .join(Turn, Turn.command_id == Command.id)
+            .filter(Command.agent_id.in_(agent_ids))
+            .group_by(Command.agent_id, Command.id)
+        ).subquery()
+
+        avg_per_agent = (
+            db.session.query(
+                avg_turn_time_sub.c.agent_id,
+                func.avg(avg_turn_time_sub.c.avg_turn_time).label("avg_turn_time"),
+            )
+            .group_by(avg_turn_time_sub.c.agent_id)
+            .all()
+        )
+        for row in avg_per_agent:
+            entry = agent_metrics.setdefault(
+                row.agent_id,
+                {"turn_count": 0, "frustration_avg": None},
+            )
+            entry["avg_turn_time"] = (
+                round(float(row.avg_turn_time), 1)
+                if row.avg_turn_time is not None
+                else None
+            )
+
+    agents_data = []
+    for a in agents_list:
+        metrics = agent_metrics.get(a.id, {})
+        state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
+        if a.ended_at is not None:
+            state_value = "ended"
+        agents_data.append({
+            "id": a.id,
+            "session_uuid": str(a.session_uuid) if a.session_uuid else None,
+            "project_name": a.project.name if a.project else None,
+            "state": state_value,
+            "started_at": a.started_at.isoformat() if a.started_at else None,
+            "ended_at": a.ended_at.isoformat() if a.ended_at else None,
+            "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+            "turn_count": metrics.get("turn_count", 0),
+            "frustration_avg": metrics.get("frustration_avg"),
+            "avg_turn_time": metrics.get("avg_turn_time"),
         })
 
-    return jsonify(agents), 200
+    return jsonify({
+        "agents": agents_data,
+        "active_agent_count": active_agent_count,
+    }), 200
 
 
 @personas_bp.route("/api/roles", methods=["GET"])

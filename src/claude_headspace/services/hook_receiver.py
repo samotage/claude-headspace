@@ -909,23 +909,23 @@ def process_user_prompt_submit(
                 state_changed=False, new_state=None,
             )
 
-        # Filter out persona injection priming messages by content pattern.
+        # Detect persona injection priming messages by content pattern.
         # When inject_persona_skills() sends a priming message via tmux,
-        # Claude Code echoes it back as user_prompt_submit — potentially
-        # many times if there's a session lifecycle collision.  This
-        # content-based check catches persona injection regardless of
-        # the skill_injection_pending flag state.
-        if prompt_text and is_persona_injection(prompt_text):
-            agent.last_seen_at = datetime.now(timezone.utc)
-            db.session.commit()
+        # Claude Code echoes it back as user_prompt_submit.  We must NOT
+        # skip this entirely — a Command + internal Turn must be created
+        # so the subsequent stop hook has a command to attach the agent's
+        # introduction response to.  Without a command, the introduction
+        # text is orphaned and absorbed into the next real command's
+        # transcript.  The flag is used at process_turn() to mark the
+        # Turn as is_internal so it doesn't appear in voice chat.
+        content_is_persona_injection = bool(
+            prompt_text and is_persona_injection(prompt_text)
+        )
+        if content_is_persona_injection:
             logger.info(
                 f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
-                f"session_id={claude_session_id}, skipped=persona_injection_content "
+                f"session_id={claude_session_id}, persona_injection_content=true "
                 f"(len={len(prompt_text)})"
-            )
-            return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
             )
 
         # Content deduplication: suppress identical prompts within 30s.
@@ -1020,12 +1020,14 @@ def process_user_prompt_submit(
         # Claude Code echoes it back as a user_prompt_submit.  That turn is
         # system plumbing, not real user input — mark it internal so the
         # voice transcript query filters it out.
+        # Two detection layers: flag-based (set during session_start) and
+        # content-based (set earlier in this function).
         is_injection = get_agent_hook_state().consume_skill_injection_pending(agent.id)
 
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,
-            is_internal=is_injection or is_team_internal_content(prompt_text),
+            is_internal=is_injection or content_is_persona_injection or is_team_internal_content(prompt_text),
         )
 
         if result.success:

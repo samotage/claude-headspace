@@ -867,9 +867,15 @@ body.layout-split .agent-card.selected:hover {
   line-height: 1.4;
   margin-bottom: 4px;
   font-style: italic;
-  max-height: 8.5em;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 768px) {
+  .agent-summary {
+    -webkit-line-clamp: 2;
+  }
 }
 
 .needs-input {

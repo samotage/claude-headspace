@@ -907,6 +907,88 @@ Existing services for context:
 
 ---
 
+### Epic 8 Sprint 18: Agent Revival ("Seance")
+
+**PRD:** `docs/prds/agents/e8-s18-agent-revival-prd.md`
+
+> Create a PRD for dead agent revival ("Seance") — enabling operators to revive dead agents by spinning up a successor that self-briefs from the predecessor's conversation history. This is Epic 8, Sprint 18. Reference Sprint 18 (E8-S18) in the [Epic 8 Detailed Roadmap](../roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md#sprint-18-agent-revival--seance-e8-s18).
+>
+> **Dependencies:** E8-S9 (skill injection), E8-S7 (persona-aware agent creation), E8-S4 (Agent.previous_agent_id)
+>
+> **Deliverables:**
+>
+> **CLI Transcript Command:**
+>
+> - New `claude-headspace transcript <agent-id>` CLI command
+> - Queries database: Agent -> Commands -> Turns
+> - Outputs structured markdown: commands as section headers (instruction text), turns as `**User:**` / `**Agent:**` blocks with timestamps
+> - Conversational content only — no metadata (frustration scores, command states, turn summaries)
+> - Uses Flask CLI infrastructure (Click commands within Flask context)
+> - Handles edge cases: no commands, no turns, empty turn text, invalid agent ID
+>
+> **Revive API Endpoint:**
+>
+> - REST endpoint triggered by dashboard UI
+> - Validates agent exists and is dead (`ended_at IS NOT NULL`)
+> - Creates successor with same project and persona config via `create_agent()`
+> - Sets `previous_agent_id` for continuity chain
+> - Orchestrates revival instruction injection after agent comes online
+>
+> **Revival Instruction Injection:**
+>
+> - Delivered via tmux bridge (reuses persona injection mechanism)
+> - For persona agents: injected after skill injection completes (same sequencing as handoff)
+> - For non-persona agents: injected as sole first instruction
+> - Instruction tells new agent to run `claude-headspace transcript <predecessor-id>` and self-brief
+>
+> **Revive UI Trigger:**
+>
+> - "Revive" button/action on dead agent cards and agent detail view
+> - Only visible for agents where `ended_at IS NOT NULL`
+> - Provides feedback during revival (spinner/status)
+> - Successor card shows predecessor link via `previous_agent_id`
+>
+> **Technical Decisions (all decided — PRD workshop):**
+>
+> - Agent self-briefs from CLI output — no pre-summarisation
+> - CLI outputs conversational content only — no metadata
+> - Agent database ID as identifier for CLI command
+> - Reuses persona injection mechanism (tmux bridge)
+> - Works for both persona and anonymous agents
+> - Complementary to handoff (S14), not a replacement
+> - Always allow revival regardless of conversation length
+>
+> **Integration Points:**
+>
+> - New CLI command: `src/claude_headspace/cli/` (transcript extraction)
+> - New route: `src/claude_headspace/routes/agents.py` (revive endpoint)
+> - New service or extension: revival orchestration logic
+> - Uses: `src/claude_headspace/services/agent_lifecycle.py` (`create_agent()`)
+> - Uses: `src/claude_headspace/services/tmux_bridge.py` (`send_text()`)
+> - Uses: `src/claude_headspace/services/skill_injector.py` (injection sequencing)
+> - Modify: dashboard templates/JS (revive button on dead agent cards)
+
+Review the PRD at:
+
+- docs/prds/agents/e8-s15-agent-revival-prd.md
+
+And also the roadmap artifacts:
+
+- docs/roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md (Sprint 15 section)
+- docs/roadmap/claude_headspace_v3.1_overarching_roadmap.md
+
+Existing services for context:
+
+- src/claude_headspace/services/agent_lifecycle.py
+- src/claude_headspace/services/skill_injector.py
+- src/claude_headspace/services/handoff_executor.py (pattern reference)
+- src/claude_headspace/services/tmux_bridge.py
+- src/claude_headspace/models/agent.py
+- src/claude_headspace/models/command.py
+- src/claude_headspace/models/turn.py
+
+---
+
 ## Usage
 
 1. Copy the prompt for the target sprint
@@ -952,10 +1034,14 @@ Existing services for context:
                └──▶ E8-S13 (Handoff Trigger UI) ◄── E8-S10
                        │
                        └──▶ E8-S14 (Handoff Execution) ◄── E8-S9, E8-S7, E8-S12
+
+   E8-S9 (Skill Injection) + E8-S7 (Persona-Aware Agent Creation) + E8-S4 (Agent Extensions)
+       │
+       └──▶ E8-S18 (Agent Revival / "Seance") ◄── E8-S9, E8-S7, E8-S4
                                │
                                └──▶ [Epic 8 Complete]
 ```
 
-**Linear Build Order:** S1 → S2 → S3 → S4 → S5 → S6 → S7 → S8 → S9 → S10 → S11 → S12 → S13 → S14
+**Linear Build Order:** S1 → S2 → S3 → S4 → S5 → S6 → S7 → S8 → S9 → S10 → S11 → S12 → S13 → S14 → S15 → S16 → S17 → S18
 
 **Note:** All sprints built sequentially. Each sprint builds on the foundation of previous sprints.

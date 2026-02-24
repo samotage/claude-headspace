@@ -15,7 +15,9 @@
     var state = {
         originalContent: '',
         isDirty: false,
-        mode: 'view'  // 'view' | 'edit' | 'preview'
+        mode: 'view',  // 'view' | 'edit' | 'preview'
+        showEnded: false,
+        activeAgentCount: 0
     };
 
     // Warn on navigation when skill editor has unsaved changes
@@ -247,57 +249,178 @@
 
         // --- Linked Agents ---
 
+        toggleShowEnded: function() {
+            var btn = document.getElementById('btn-show-ended');
+            if (state.showEnded) {
+                state.showEnded = false;
+                if (btn) {
+                    btn.textContent = 'Show ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-border text-muted hover:text-secondary hover:border-border-bright transition-colors';
+                }
+            } else {
+                state.showEnded = true;
+                if (btn) {
+                    btn.textContent = 'Hide ended';
+                    btn.className = 'px-2 py-1 text-xs rounded border border-cyan/30 text-cyan hover:text-primary transition-colors';
+                }
+            }
+            this.loadLinkedAgents();
+        },
+
         /**
-         * Fetch linked agents and render a table.
+         * Fetch linked agents and render using agent-metric-row pattern.
          */
         loadLinkedAgents: async function() {
+            var container = document.getElementById('agents-list');
+            container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading agents...</span></p>';
+
             try {
-                var response = await fetch(API_BASE + '/agents');
+                var url = API_BASE + '/agents';
+                if (state.showEnded) url += '?include_ended=true';
+                var response = await fetch(url);
                 if (!response.ok) {
-                    document.getElementById('agents-list').innerHTML =
-                        '<p class="text-red italic">Failed to load agents.</p>';
+                    container.innerHTML = '<p class="text-red italic">Failed to load agents.</p>';
                     return;
                 }
 
-                var agents = await response.json();
+                var data = await response.json();
+                var agents = data.agents || [];
+                state.activeAgentCount = data.active_agent_count || 0;
+                this._updateAgentsBadge(agents.length);
 
                 if (agents.length === 0) {
-                    document.getElementById('agents-list').innerHTML =
-                        '<p class="text-muted italic">No agents linked to this persona.</p>';
+                    container.innerHTML = '<p class="text-muted italic text-sm">No agents linked to this persona.</p>';
                     return;
                 }
 
-                var html = '<table class="w-full text-sm">' +
-                    '<thead>' +
-                    '<tr class="border-b border-border text-left text-muted text-xs uppercase tracking-wider">' +
-                    '<th class="pb-2 pr-4">Session</th>' +
-                    '<th class="pb-2 pr-4">Project</th>' +
-                    '<th class="pb-2 pr-4">State</th>' +
-                    '<th class="pb-2 pr-4">Last Seen</th>' +
-                    '</tr>' +
-                    '</thead><tbody>';
-
-                agents.forEach(function(a) {
-                    var sessionShort = a.session_uuid ? a.session_uuid.substring(0, 8) : 'N/A';
-                    var project = a.project_name || 'Unknown';
-                    var agentState = a.state || 'unknown';
-                    var lastSeen = a.last_seen_at ? new Date(a.last_seen_at).toLocaleString() : 'N/A';
-
-                    html += '<tr class="border-b border-border/50">' +
-                        '<td class="py-2 pr-4 font-mono text-primary">' + CHUtils.escapeHtml(sessionShort) + '</td>' +
-                        '<td class="py-2 pr-4 text-secondary">' + CHUtils.escapeHtml(project) + '</td>' +
-                        '<td class="py-2 pr-4 text-secondary">' + CHUtils.escapeHtml(agentState) + '</td>' +
-                        '<td class="py-2 pr-4 text-muted">' + CHUtils.escapeHtml(lastSeen) + '</td>' +
-                        '</tr>';
-                });
-
-                html += '</tbody></table>';
-                document.getElementById('agents-list').innerHTML = html;
+                this._renderAgentsList(container, agents);
             } catch (error) {
                 console.error('PersonaDetail: Failed to load agents', error);
-                document.getElementById('agents-list').innerHTML =
-                    '<p class="text-red italic">Error loading agents.</p>';
+                container.innerHTML = '<p class="text-red italic">Error loading agents.</p>';
             }
+        },
+
+        _updateAgentsBadge: function(totalCount) {
+            var badge = document.getElementById('agents-count-badge');
+            if (!badge) return;
+            var active = state.activeAgentCount;
+            if (state.showEnded && totalCount !== active) {
+                badge.textContent = '(' + active + ' active / ' + totalCount + ' total)';
+            } else {
+                badge.textContent = '(' + active + ')';
+            }
+        },
+
+        _renderAgentsList: function(container, agents) {
+            // Sort: active first, then by last_seen_at descending
+            if (agents.length > 1) {
+                agents = agents.slice().sort(function(a, b) {
+                    var aEnded = !!a.ended_at;
+                    var bEnded = !!b.ended_at;
+                    if (aEnded !== bEnded) return aEnded ? 1 : -1;
+                    var aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+                    var bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+                    return bTime - aTime;
+                });
+            }
+
+            var html = '';
+            var self = this;
+            agents.forEach(function(agent) {
+                var isEnded = !!agent.ended_at;
+                var stateValue = agent.state || 'idle';
+                if (isEnded) stateValue = 'ended';
+                var stateClass = self._stateColorClass(stateValue);
+                var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
+
+                html += '<div class="agent-metric-row">';
+
+                // Alive pill for active agents
+                if (!isEnded) {
+                    html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-700/50" style="flex-shrink:0">ALIVE</span>';
+                }
+                // State badge
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
+
+                // Agent ID + UUID
+                html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0">#' + agent.id + '</span>';
+                if (uuid8) {
+                    html += '<span class="agent-metric-tag"><span class="font-mono text-xs text-secondary">' + CHUtils.escapeHtml(uuid8) + '</span></span>';
+                }
+
+                // Project name
+                if (agent.project_name) {
+                    html += '<span class="text-xs text-secondary" style="flex-shrink:0">' + CHUtils.escapeHtml(agent.project_name) + '</span>';
+                }
+
+                // Metrics
+                html += '<div class="agent-metric-stats">';
+                html += '<span><span class="stat-value">' + (agent.turn_count || 0) + '</span><span class="stat-label">turns</span></span>';
+                if (agent.avg_turn_time != null) {
+                    html += '<span><span class="stat-value">' + agent.avg_turn_time.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
+                }
+                if (agent.frustration_avg != null) {
+                    var frustLevel = agent.frustration_avg >= 7 ? 'text-red' : (agent.frustration_avg >= 4 ? 'text-amber' : 'text-green');
+                    html += '<span><span class="stat-value ' + frustLevel + '">' + agent.frustration_avg.toFixed(1) + '</span><span class="stat-label">frust</span></span>';
+                }
+                html += '</div>';
+
+                // Last seen / ended badge
+                if (isEnded) {
+                    html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';
+                    if (agent.started_at && agent.ended_at) {
+                        html += '<span class="text-xs text-muted" style="flex-shrink:0">' + self._formatDuration(agent.started_at, agent.ended_at) + '</span>';
+                    }
+                } else if (agent.last_seen_at) {
+                    html += '<span class="text-xs text-muted" style="flex-shrink:0">' + self._timeAgo(agent.last_seen_at) + '</span>';
+                }
+
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        },
+
+        // --- Agent display utilities ---
+
+        _stateColorClass: function(s) {
+            s = (s || '').toLowerCase();
+            var map = {
+                idle: 'bg-surface text-muted',
+                commanded: 'bg-amber/15 text-amber',
+                processing: 'bg-blue/15 text-blue',
+                awaiting_input: 'bg-amber/15 text-amber',
+                complete: 'bg-green/15 text-green',
+                ended: 'bg-surface text-muted opacity-60'
+            };
+            return map[s] || 'bg-surface text-muted';
+        },
+
+        _timeAgo: function(dateString) {
+            var date = new Date(dateString);
+            var now = new Date();
+            var seconds = Math.floor((now - date) / 1000);
+            if (seconds < 60) return 'just now';
+            var minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return minutes + ' minute' + (minutes !== 1 ? 's' : '') + ' ago';
+            var hours = Math.floor(minutes / 60);
+            if (hours < 24) return hours + ' hour' + (hours !== 1 ? 's' : '') + ' ago';
+            var days = Math.floor(hours / 24);
+            if (days < 30) return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
+            var months = Math.floor(days / 30);
+            return months + ' month' + (months !== 1 ? 's' : '') + ' ago';
+        },
+
+        _formatDuration: function(startStr, endStr) {
+            var start = new Date(startStr);
+            var end = new Date(endStr);
+            var seconds = Math.floor((end - start) / 1000);
+            if (seconds < 60) return seconds + 's';
+            var minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return minutes + 'm';
+            var hours = Math.floor(minutes / 60);
+            var mins = minutes % 60;
+            return hours + 'h ' + mins + 'm';
         }
     };
 

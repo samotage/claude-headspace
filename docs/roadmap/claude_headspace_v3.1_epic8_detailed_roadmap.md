@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 8 implementation. It breaks Epic 8 into 14 sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem. This roadmap is designed to grow as new ideas emerge — additional sprints will be appended as they are scoped and workshopped.
+This document serves as the **high-level roadmap and baseline** for Epic 8 implementation. It breaks Epic 8 into 18 sprints (1 sprint = 1 PRD = 1 OpenSpec change), identifies subsystems that require OpenSpec PRDs, and provides the foundation for generating detailed Product Requirements Documents for each subsystem. This roadmap is designed to grow as new ideas emerge — additional sprints will be appended as they are scoped and workshopped.
 
 **Epic 8 Goal:** Introduce named personas as first-class entities in Claude Headspace — persistent identities with skills and experience that drive Claude Code agents, replacing anonymous UUID-identified sessions with meaningful, recognisable team members.
 
@@ -58,6 +58,10 @@ This document serves as the **high-level roadmap and baseline** for Epic 8 imple
 | E8-S12   | Handoff database model                                  | `persona`          | persona/      | 12     | P1       |
 | E8-S13   | Handoff trigger UI (context threshold + button)         | `persona`          | ui/           | 13     | P1       |
 | E8-S14   | Handoff execution (agent-written document + successor)  | `persona`          | persona/      | 14     | P1       |
+| E8-S15   | Persona list & CRUD UI                                  | `persona`          | persona/      | 15     | P1       |
+| E8-S16   | Persona detail page & skill editor                      | `persona`          | persona/      | 16     | P1       |
+| E8-S17   | Persona-aware agent creation UI & CLI discovery         | `persona`          | persona/      | 17     | P1       |
+| E8-S18   | Agent revival ("Seance") — dead agent context recovery  | `agents`           | agents/       | 18     | P1       |
 
 ---
 
@@ -1044,6 +1048,151 @@ The orchestration message sent directly via tmux bridge:
 
 ---
 
+### Sprint 15: Persona List & CRUD UI (E8-S15)
+
+**Goal:** Deliver the persona management UI: a Personas tab in the main navigation, a list page showing all registered personas, and full CRUD operations (create, edit, archive/delete) via modal forms with role management inline.
+
+**Duration:** 1 week
+**Dependencies:** E8-S6 (persona registration — backend CRUD exists), E8-S10 (card persona identity — establishes UI patterns)
+**Status:** Complete (23 Feb 2026)
+
+**Deliverables:**
+
+- Personas tab in main navigation (top-level, alongside Projects/Config/Help)
+- Persona list page (`/personas`) with table: name, role, status, linked agent count, created date
+- Create persona modal: name (required), role (select existing or create new), description (optional)
+- Edit persona modal for name, description, and status updates
+- Archive and delete actions with confirmation dialogs
+- Toast notifications for CRUD outcomes
+- API endpoints powering the UI
+
+**PRD Location:** `docs/prds/persona/done/e8-s15-persona-list-crud-prd.md`
+
+---
+
+### Sprint 16: Persona Detail Page & Skill Editor (E8-S16)
+
+**Goal:** Add the persona detail page with a markdown skill file editor, experience log viewer, and linked agent display — completing the per-persona management experience.
+
+**Duration:** 1 week
+**Dependencies:** E8-S15 (persona list — provides navigation to detail page), E8-S5 (filesystem assets — skill.md and experience.md exist on disk)
+**Status:** Complete (23 Feb 2026)
+
+**Deliverables:**
+
+- Persona detail page (`/personas/<slug>`) with full profile
+- Skill file editor with markdown editing and preview modes (following waypoint editor pattern)
+- Experience log viewer (read-only, rendered markdown)
+- Linked agents list showing agents currently assigned to this persona
+- API endpoints for skill file read/write, experience file read, persona asset status
+- Back navigation to persona list
+
+**PRD Location:** `docs/prds/persona/done/e8-s16-persona-detail-skill-editor-prd.md`
+
+---
+
+### Sprint 17: Persona-Aware Agent Creation UI & CLI Discovery (E8-S17)
+
+**Goal:** Integrate persona selection into the agent creation workflow from the dashboard and enhance the CLI with persona discovery and short-name matching.
+
+**Duration:** 1 week
+**Dependencies:** E8-S15 (persona list UI), E8-S7 (persona-aware agent creation backend)
+**Status:** Complete (23 Feb 2026)
+
+**Deliverables:**
+
+- Persona selector in dashboard agent creation flow (dropdown, grouped by role, active only)
+- Persona quick-info display during selection (role, description preview)
+- Agent creation API accepting optional `persona_slug` parameter
+- CLI `flask persona list` for persona discovery
+- CLI short-name matching for `--persona` flag (e.g., `--persona con` resolves to `developer-con-1`)
+- Disambiguation prompt when short-name matches multiple personas
+
+**PRD Location:** `docs/prds/persona/done/e8-s17-persona-agent-creation-prd.md`
+
+---
+
+### Sprint 18: Agent Revival — "Seance" (E8-S18)
+
+**Goal:** Enable operators to revive dead agents by spinning up a successor that self-briefs from the predecessor's conversation history stored in the database. Where handoff (S14) requires a living agent to curate context, revival reconstructs context from the raw conversational record — a "seance" for dead agents.
+
+**Duration:** 1-2 weeks
+**Dependencies:** E8-S9 (skill injection — persona agents need priming before revival instruction), E8-S7 (persona-aware agent creation — successor created with same persona), E8-S4 (Agent.previous_agent_id for continuity chain)
+
+**Deliverables:**
+
+**CLI Transcript Command:**
+
+- New `claude-headspace transcript <agent-id>` CLI command
+- Queries database: Agent → Commands → Turns
+- Outputs structured markdown: commands as section headers, turns as `**User:**` / `**Agent:**` blocks with timestamps
+- Conversational content only — no metadata (frustration scores, command states, turn summaries)
+- Uses Flask CLI infrastructure (Click commands within Flask context)
+- Handles edge cases: no commands, no turns, empty turn text
+
+**Revive API Endpoint:**
+
+- REST endpoint triggered by dashboard UI
+- Validates agent exists and is dead (`ended_at IS NOT NULL`)
+- Creates successor agent with same project and persona config
+- Sets `previous_agent_id` to link continuity chain
+- Orchestrates revival instruction injection after agent comes online
+
+**Revival Instruction Injection:**
+
+- Delivered via tmux bridge (same mechanism as persona injection)
+- For persona agents: injected after skill injection completes
+- For non-persona agents: injected as the sole first instruction
+- Instruction tells the new agent to run `claude-headspace transcript <predecessor-id>` and self-brief
+
+**Revive UI Trigger:**
+
+- "Revive" button/action on dead agent cards and agent detail view
+- Only visible for agents where `ended_at IS NOT NULL`
+- Provides feedback during revival flow (spinner/status)
+- Successor card shows predecessor link in continuity chain
+
+**Subsystem Requiring PRD:**
+
+18. `agents` — Agent revival CLI, API endpoint, injection, and UI trigger
+
+**PRD Location:** `docs/prds/agents/e8-s18-agent-revival-prd.md`
+
+**Stories:**
+
+- E8-S18: Agent revival — CLI transcript extraction, revive API, injection, and dashboard trigger
+
+**Technical Decisions Made:**
+
+- Agent self-briefs from CLI output — no pre-summarisation by the system — **decided** (PRD workshop)
+- CLI outputs conversational content only — no metadata — **decided** (PRD workshop)
+- Agent database ID as the identifier — **decided** (PRD workshop)
+- Reuses persona injection mechanism (tmux bridge) — **decided** (PRD workshop)
+- Works for both persona and anonymous agents — **decided** (PRD workshop)
+- Complementary to handoff (S14), not a replacement — **decided** (PRD workshop)
+- Always allow revival regardless of conversation length — **decided** (PRD workshop)
+
+**Risks:**
+
+- Long conversation histories may exceed the new agent's context window (mitigated: agent processes what it can; operator can start a second revival if needed)
+- CLI command requires Flask app context for DB access (mitigated: use existing Flask CLI infrastructure)
+- Revival instruction timing — must arrive after skill injection for persona agents (mitigated: same sequencing pattern as handoff injection in S14)
+
+**Acceptance Criteria:**
+
+- [ ] `claude-headspace transcript <agent-id>` outputs structured markdown of conversation history
+- [ ] CLI handles edge cases (no commands, no turns, invalid agent ID)
+- [ ] Revive endpoint validates agent is dead before proceeding
+- [ ] Successor agent created with same project and persona as predecessor
+- [ ] `previous_agent_id` links successor to predecessor
+- [ ] Revival instruction injected after skill injection (persona agents) or as first instruction (anonymous agents)
+- [ ] New agent retrieves and processes predecessor's conversation history
+- [ ] Dashboard shows "Revive" action on dead agent cards
+- [ ] Revive action not visible on active agents
+- [ ] Revival works for both persona-based and anonymous agents
+
+---
+
 ## Sprint Dependencies & Sequencing
 
 ```
@@ -1076,14 +1225,26 @@ E8-S4 (Agent Extensions)
            └──▶ E8-S13 (Handoff Trigger UI) ◄── E8-S10
                    │
                    └──▶ E8-S14 (Handoff Execution) ◄── E8-S9, E8-S7, E8-S12
+
+E8-S6 (Registration) + E8-S10 (Card Identity)
+   │
+   └──▶ E8-S15 (Persona List & CRUD UI) ◄── E8-S6, E8-S10
+           │
+           └──▶ E8-S16 (Persona Detail & Skill Editor) ◄── E8-S5
+                   │
+                   └──▶ E8-S17 (Persona-Aware Agent Creation UI) ◄── E8-S7
+
+E8-S9 (Skill Injection) + E8-S7 (Persona-Aware Agent Creation) + E8-S4 (Agent Extensions)
+   │
+   └──▶ E8-S18 (Agent Revival / "Seance") ◄── E8-S9, E8-S7, E8-S4
 ```
 
-**Critical Path:** E8-S1 → E8-S5 → E8-S6 → E8-S7 → E8-S8 → E8-S9 → E8-S14
+**Critical Path:** E8-S1 → E8-S5 → E8-S6 → E8-S7 → E8-S8 → E8-S9 → E8-S14/S18
 
 **Linear Build Order (implementation sequence):**
 
 ```
-S1 → S2 → S3 → S4 → S5 → S6 → S7 → S8 → S9 → S10 → S11 → S12 → S13 → S14
+S1 → S2 → S3 → S4 → S5 → S6 → S7 → S8 → S9 → S10 → S11 → S12 → S13 → S14 → S15 → S16 → S17 → S18
 ```
 
 All sprints are built sequentially. Each sprint builds on the foundation of previous sprints.
@@ -1267,6 +1428,24 @@ Generate OpenSpec PRDs in implementation order:
 14. **handoff-execution** (`docs/prds/persona/e8-s14-handoff-execution-prd.md`) — Full handoff cycle: agent-written document, DB record, successor bootstrap
 
 **Checkpoint:** Full handoff cycle works. Persona context carries across agent sessions.
+
+---
+
+### Phase 5b: Persona Management UI (Sprints 15-17) [COMPLETE]
+
+15. **persona-list-crud** (`docs/prds/persona/done/e8-s15-persona-list-crud-prd.md`) — Personas tab, list page, create/edit/archive/delete modals, role management
+16. **persona-detail-skill-editor** (`docs/prds/persona/done/e8-s16-persona-detail-skill-editor-prd.md`) — Persona detail page, skill file markdown editor, experience log viewer, linked agents
+17. **persona-agent-creation-ui** (`docs/prds/persona/done/e8-s17-persona-agent-creation-prd.md`) — Persona selector in agent creation flow, CLI persona discovery, short-name matching
+
+**Checkpoint:** Full persona management UI. Create, edit, inspect, and assign personas entirely from the dashboard.
+
+---
+
+### Phase 6: Agent Revival (Sprint 18)
+
+18. **agent-revival** (`docs/prds/agents/e8-s18-agent-revival-prd.md`) — CLI transcript extraction, revive API, injection, and dashboard trigger for dead agent context recovery
+
+**Checkpoint:** Dead agents can be revived. Successor agents self-brief from predecessor conversation history.
 
 ---
 

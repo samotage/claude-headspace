@@ -130,9 +130,18 @@
 
         <!-- Linked agents section -->
         <section class="bg-elevated rounded-lg border border-border p-6" aria-labelledby="agents-heading">
-            <h2 id="agents-heading" class="text-lg font-bold text-primary mb-4">Linked Agents</h2>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <h2 id="agents-heading" class="text-lg font-bold text-primary">Linked Agents</h2>
+                    <span id="agents-count-badge" class="text-sm text-muted"></span>
+                </div>
+                <button type="button" id="btn-show-ended" onclick="PersonaDetail.toggleShowEnded()"
+                        class="px-2 py-1 text-xs rounded border border-border text-muted hover:text-secondary hover:border-border-bright transition-colors">
+                    Show ended
+                </button>
+            </div>
 
-            <div id="agents-list">
+            <div id="agents-list" class="space-y-2">
                 <p class="text-muted italic">Loading agents...</p>
             </div>
         </section>

@@ -684,11 +684,60 @@ class TestApiPersonaLinkedAgents:
         response = client.get(f"/api/personas/{persona.slug}/agents")
         assert response.status_code == 200
         data = response.get_json()
-        assert len(data) == 1
-        assert data[0]["project_name"] == "TestProject"
-        assert "session_uuid" in data[0]
-        assert "state" in data[0]
-        assert "last_seen_at" in data[0]
+        agents = data["agents"]
+        assert len(agents) == 1
+        assert agents[0]["project_name"] == "TestProject"
+        assert "session_uuid" in agents[0]
+        assert "state" in agents[0]
+        assert "last_seen_at" in agents[0]
+        assert data["active_agent_count"] == 1
+
+    def test_linked_agents_excludes_ended_by_default(self, client, db_session):
+        """Active-only by default; include_ended=true returns all."""
+        import uuid
+        from datetime import datetime, timezone
+
+        from claude_headspace.models.agent import Agent
+        from claude_headspace.models.project import Project
+
+        role = _create_role(db_session, "developer")
+        persona = _create_persona(db_session, name="Con", role=role)
+
+        project = Project(name="TestProject", slug="test-project", path="/tmp/test")
+        db_session.add(project)
+        db_session.flush()
+
+        # Active agent
+        active = Agent(
+            project_id=project.id,
+            persona_id=persona.id,
+            session_uuid=uuid.uuid4(),
+        )
+        # Ended agent
+        ended = Agent(
+            project_id=project.id,
+            persona_id=persona.id,
+            session_uuid=uuid.uuid4(),
+            ended_at=datetime.now(timezone.utc),
+        )
+        db_session.add_all([active, ended])
+        db_session.commit()
+
+        # Default: only active
+        resp = client.get(f"/api/personas/{persona.slug}/agents")
+        data = resp.get_json()
+        assert len(data["agents"]) == 1
+        assert data["active_agent_count"] == 1
+
+        # include_ended=true: both
+        resp2 = client.get(f"/api/personas/{persona.slug}/agents?include_ended=true")
+        data2 = resp2.get_json()
+        assert len(data2["agents"]) == 2
+        assert data2["active_agent_count"] == 1
+        # Ended agent should have state overridden
+        ended_agents = [a for a in data2["agents"] if a["ended_at"] is not None]
+        assert len(ended_agents) == 1
+        assert ended_agents[0]["state"] == "ended"
 
     def test_linked_agents_empty(self, client, db_session):
         """Returns empty array when no agents are linked."""
@@ -698,7 +747,8 @@ class TestApiPersonaLinkedAgents:
         response = client.get(f"/api/personas/{persona.slug}/agents")
         assert response.status_code == 200
         data = response.get_json()
-        assert data == []
+        assert data["agents"] == []
+        assert data["active_agent_count"] == 0
 
     def test_linked_agents_persona_not_found(self, client, db_session):
         """Returns 404 for non-existent persona."""

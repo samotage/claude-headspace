@@ -45,9 +45,9 @@ This document defines the **complete implementation roadmap** for Claude Headspa
 | **Epic 5** | Voice Bridge & Project Enhancement   | 9       | 8-10 weeks  | Input bridge, tmux bridge, project show, CLI alignment, full output capture               |
 | **Epic 6** | Voice Bridge & Agent Chat            | 5+      | 7-9 weeks+  | Voice bridge server/client, agent chat history, agent lifecycle, file sharing             |
 | **Epic 7** | Agent-Driven Integration Testing     | 3+      | 3-6 weeks+  | Real production loop testing, cross-layer verification, bug-driven scenarios              |
-| **Epic 8** | Personable Agents                    | 14      | 14-18 weeks | Named persona identity, skill files, org structure, agent handoff                         |
+| **Epic 8** | Personable Agents                    | 18      | 18-22 weeks | Named persona identity, skill files, org structure, agent handoff, agent revival           |
 
-**Total:** 55+ sprints, ~54-71 weeks (Epics 6, 7, and 8 are extensible)
+**Total:** 59+ sprints, ~58-75 weeks (Epics 6, 7, and 8 are extensible)
 
 ---
 
