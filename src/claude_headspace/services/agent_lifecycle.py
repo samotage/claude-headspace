@@ -60,12 +60,24 @@ def cleanup_orphaned_sessions() -> int:
     in the database. Sessions whose pane IDs don't belong to any active agent
     are killed.
 
+    Safety guards prevent mass-kill scenarios (e.g. during Werkzeug reloader
+    restarts when the DB may return stale/empty results):
+    - Skips entirely during Werkzeug reloader restarts (WERKZEUG_RUN_MAIN)
+    - Aborts if DB returns 0 active agents but hs-* sessions exist
+    - Aborts if it would kill ALL hs-* sessions and there are more than 1
+
     Should be called once during startup, after DB init and before background
     threads start.
 
     Returns:
         Number of orphaned sessions killed.
     """
+    # Layer 2b: Belt-and-suspenders reloader guard inside the function itself,
+    # in case a future caller bypasses the app.py guard.
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        logger.debug("cleanup_orphaned_sessions: skipping (Werkzeug reloader)")
+        return 0
+
     try:
         panes = tmux_bridge.list_panes()
     except Exception as e:
@@ -91,6 +103,16 @@ def cleanup_orphaned_sessions() -> int:
         logger.warning(f"Orphan cleanup: DB query failed (non-fatal): {e}")
         return 0
 
+    # Layer 2: Empty-set guard — if DB says 0 active agents but tmux has
+    # hs-* sessions, the DB result is untrustworthy (e.g. reloader restart,
+    # connection pool not yet warmed). Abort to avoid killing live agents.
+    if not active_pane_ids and hs_panes:
+        logger.warning(
+            "ORPHAN_CLEANUP_ABORTED: DB returned 0 active agents but tmux "
+            f"shows {len(hs_panes)} hs-* session(s) — refusing to kill"
+        )
+        return 0
+
     # Find orphaned sessions (hs-* sessions whose pane IDs aren't in active agents)
     # Group by session name so we kill each session at most once
     orphaned_sessions: set[str] = set()
@@ -106,6 +128,21 @@ def cleanup_orphaned_sessions() -> int:
                 f"ORPHAN_CLEANUP_KEEP: session={pane.session_name} pane={pane.pane_id} "
                 f"belongs to active agent"
             )
+
+    # Layer 3: Kill-all guard — if we would kill ALL hs-* sessions and there
+    # are more than 1, something is almost certainly wrong (DB query failure,
+    # stale connection, reloader timing). Abort.
+    hs_session_names = {p.session_name for p in hs_panes}
+    if (
+        orphaned_sessions
+        and orphaned_sessions == hs_session_names
+        and len(hs_session_names) > 1
+    ):
+        logger.warning(
+            f"ORPHAN_CLEANUP_ABORTED: would kill ALL {len(hs_session_names)} "
+            "hs-* sessions — looks like a DB query failure, refusing to kill"
+        )
+        return 0
 
     killed = 0
     for session_name in orphaned_sessions:

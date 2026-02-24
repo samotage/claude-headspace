@@ -262,7 +262,12 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         logger.info("File watcher disabled (hooks are the primary event path)")
 
     # Clean up orphaned tmux sessions on startup (only in non-testing environments)
-    if not app.config.get("TESTING") and db_connected:
+    # Skip during Werkzeug reloader restarts — the DB may return stale/empty results
+    # because the reloader kills and re-spawns the process mid-flight.
+    # WERKZEUG_RUN_MAIN is set to "true" in the reloader child process.
+    # restart_server.sh already unsets it, so genuine cold starts are unaffected.
+    is_reloader_restart = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if not app.config.get("TESTING") and db_connected and not is_reloader_restart:
         try:
             from .services.agent_lifecycle import cleanup_orphaned_sessions
             with app.app_context():
@@ -271,6 +276,8 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
                     logger.info(f"Startup: cleaned up {killed} orphaned tmux session(s)")
         except Exception as e:
             logger.warning(f"Startup orphan cleanup failed (non-fatal): {e}")
+    elif is_reloader_restart:
+        logger.debug("Skipping orphan cleanup (Werkzeug reloader restart)")
 
     # Initialize agent reaper (only in non-testing environments, requires database)
     if not app.config.get("TESTING") and db_connected:

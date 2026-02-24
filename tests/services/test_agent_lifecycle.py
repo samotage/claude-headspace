@@ -333,6 +333,11 @@ class TestGetContextUsage:
 class TestCleanupOrphanedSessions:
     """Tests for cleanup_orphaned_sessions function (WU5)."""
 
+    @pytest.fixture(autouse=True)
+    def _unset_werkzeug_env(self, monkeypatch):
+        """Ensure WERKZEUG_RUN_MAIN is not set so the reloader guard doesn't fire."""
+        monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
+
     @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
     def test_no_hs_sessions(self, mock_tmux):
         """No hs-* sessions means nothing to clean up."""
@@ -358,14 +363,19 @@ class TestCleanupOrphanedSessions:
     @patch("claude_headspace.services.agent_lifecycle.db")
     @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
     def test_kills_orphaned_session(self, mock_tmux, mock_db):
-        """hs-* session with no matching active agent is killed."""
+        """hs-* session with no matching active agent is killed.
+
+        Must have at least one active agent in DB (so the empty-set guard
+        doesn't abort), and the orphan's pane ID must not be in the active set.
+        """
         from claude_headspace.services.tmux_bridge import PaneInfo, SendResult
 
         mock_tmux.list_panes.return_value = [
             PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
+            PaneInfo(pane_id="%20", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
         ]
-        # No active agents with %10
-        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+        # Active agent owns %20 but NOT %10 — so hs-proj-abc is the orphan
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [("%20",)]
         mock_tmux.kill_session.return_value = SendResult(success=True)
 
         result = cleanup_orphaned_sessions()
@@ -401,6 +411,51 @@ class TestCleanupOrphanedSessions:
 
         result = cleanup_orphaned_sessions()
         assert result == 0
+
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
+    def test_aborts_when_db_returns_empty_but_sessions_exist(self, mock_tmux, mock_db):
+        """DB returns 0 active agents but hs-* sessions exist -> abort, no kills."""
+        from claude_headspace.services.tmux_bridge import PaneInfo
+
+        mock_tmux.list_panes.return_value = [
+            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
+            PaneInfo(pane_id="%11", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
+        ]
+        # DB returns empty — no active agents at all
+        mock_db.session.query.return_value.filter.return_value.all.return_value = []
+
+        result = cleanup_orphaned_sessions()
+        assert result == 0
+        mock_tmux.kill_session.assert_not_called()
+
+    @patch("claude_headspace.services.agent_lifecycle.db")
+    @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
+    def test_aborts_when_would_kill_all_sessions(self, mock_tmux, mock_db):
+        """Would kill ALL hs-* sessions (>1) -> abort, no kills."""
+        from claude_headspace.services.tmux_bridge import PaneInfo
+
+        mock_tmux.list_panes.return_value = [
+            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
+            PaneInfo(pane_id="%11", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
+            PaneInfo(pane_id="%12", session_name="hs-proj-ghi", current_command="claude", working_directory="/proj3"),
+        ]
+        # DB returns 1 agent with an unrelated pane ID — all 3 sessions look orphaned
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [("%99",)]
+
+        result = cleanup_orphaned_sessions()
+        assert result == 0
+        mock_tmux.kill_session.assert_not_called()
+
+    @patch("claude_headspace.services.agent_lifecycle.os.environ.get")
+    @patch("claude_headspace.services.agent_lifecycle.tmux_bridge")
+    def test_skips_during_werkzeug_reloader(self, mock_tmux, mock_env_get):
+        """WERKZEUG_RUN_MAIN=true -> skip entirely, list_panes never called."""
+        mock_env_get.return_value = "true"
+
+        result = cleanup_orphaned_sessions()
+        assert result == 0
+        mock_tmux.list_panes.assert_not_called()
 
 
 class TestForceTerminateAgent:
