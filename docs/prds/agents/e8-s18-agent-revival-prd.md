@@ -1,3 +1,9 @@
+---
+validation:
+  status: valid
+  validated_at: '2026-02-25T10:42:19+11:00'
+---
+
 ## Product Requirements Document (PRD) — Agent Revival ("Seance")
 
 **Project:** Claude Headspace
