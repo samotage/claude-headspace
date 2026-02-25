@@ -35,6 +35,7 @@ TOPICS = [
     {"slug": "configuration", "title": "Configuration", "order": 14},
     {"slug": "agent-driven-testing", "title": "Agentic Testing", "order": 15},
     {"slug": "troubleshooting", "title": "Troubleshooting", "order": 16},
+    {"slug": "external-api", "title": "External API", "order": 17},
 ]
 
 

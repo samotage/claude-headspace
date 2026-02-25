@@ -1,0 +1,825 @@
+openapi: "3.1.0"
+
+info:
+  title: Claude Headspace Remote Agent API
+  version: "1.0.0"
+  description: |
+    API for creating, monitoring, and shutting down Claude Code agents from external applications.
+
+    This API allows LLM-powered agents and external systems to programmatically manage Claude Code
+    sessions within Claude Headspace. The typical workflow is:
+
+    1. **Create** a remote agent by sending a project slug, persona slug, and initial prompt.
+       The response includes a session token and an embed URL.
+    2. **Monitor** the agent's liveness using the alive endpoint.
+    3. **Shut down** the agent when work is complete.
+    4. Optionally, **embed** the agent's chat interface in an iframe using the embed URL.
+
+    **Authentication:** All endpoints except create require a session token. The token is returned
+    in the create response. Pass it as a Bearer token in the Authorization header or as a `token`
+    query parameter. Each token is scoped to a single agent and cannot be used to access other agents.
+
+    **Error handling:** All error responses use a standardised envelope with a machine-readable error
+    code, a human-readable message, an HTTP status code, and a retryable flag. See the ErrorEnvelope
+    schema for details.
+
+    **CORS:** Cross-origin requests are supported. Allowed origins are configured on the server.
+    Preflight OPTIONS requests are handled automatically. The `Access-Control-Allow-Credentials`
+    header is set to `true` for allowed origins.
+
+    For human-readable documentation, see the help topic at `/help/external-api`.
+
+servers:
+  - url: "{baseUrl}"
+    description: |
+      Replace {baseUrl} with the base URL of your Claude Headspace instance.
+      For example: https://your-host:5055
+      The server uses HTTPS with TLS certificates. Do not use http:// or localhost.
+    variables:
+      baseUrl:
+        default: https://your-host:5055
+        description: >
+          The full base URL (scheme + host + port) of your Claude Headspace instance.
+          This varies by deployment. Ask the administrator for the correct URL.
+
+paths:
+  /api/remote_agents/create:
+    post:
+      operationId: createRemoteAgent
+      summary: Create a new remote agent
+      description: |
+        Creates a new Claude Code agent session in a tmux terminal, waits for it to become
+        ready (persona skill injected and session registered), sends the initial prompt,
+        generates a session token, and returns all the information needed to interact with
+        the agent.
+
+        This is a synchronous (blocking) call. The server polls internally until the agent
+        is ready or the creation timeout is reached (default: 15 seconds). If the agent does
+        not become ready in time, a 408 Timeout error is returned. The caller can retry.
+
+        **No authentication required.** The session token is generated and returned as part
+        of the successful response. Use that token for all subsequent requests to this agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRequest"
+            example:
+              project_slug: "may-belle"
+              persona_slug: "backend-dev"
+              initial_prompt: "Review the authentication module and suggest improvements."
+              feature_flags:
+                file_upload: true
+                voice_mic: false
+      responses:
+        "201":
+          description: Agent created successfully and is ready to accept input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResponse"
+              example:
+                agent_id: 42
+                embed_url: "https://your-host:5055/embed/42?token=abc123..."
+                session_token: "abc123def456ghi789jkl012mno345pqr678stu901v"
+                project_slug: "may-belle"
+                persona_slug: "backend-dev"
+                tmux_session_name: "claude-may-belle-1"
+                status: "ready"
+        "400":
+          description: |
+            Request validation failed. Either required fields are missing or feature_flags
+            is not a valid JSON object. Check the error code to determine which case.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                missing_fields:
+                  summary: Required fields missing
+                  value:
+                    error:
+                      code: "missing_fields"
+                      message: "Missing required fields: project_slug, initial_prompt"
+                      status: 400
+                      retryable: false
+                      retry_after_seconds: null
+                invalid_feature_flags:
+                  summary: feature_flags is not a JSON object
+                  value:
+                    error:
+                      code: "invalid_feature_flags"
+                      message: "feature_flags must be a JSON object"
+                      status: 400
+                      retryable: false
+                      retry_after_seconds: null
+        "404":
+          description: |
+            The specified project or persona was not found. Check the error code to determine
+            which resource is missing. Verify that the slug is correct and the resource exists
+            on the server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                project_not_found:
+                  summary: Project slug does not match any project
+                  value:
+                    error:
+                      code: "project_not_found"
+                      message: "Project 'nonexistent' not found"
+                      status: 404
+                      retryable: false
+                      retry_after_seconds: null
+                persona_not_found:
+                  summary: Persona slug does not match any active persona
+                  value:
+                    error:
+                      code: "persona_not_found"
+                      message: "Persona 'nonexistent' not found or not active"
+                      status: 404
+                      retryable: false
+                      retry_after_seconds: null
+        "408":
+          description: |
+            The agent was created but did not become ready within the timeout period
+            (default: 15 seconds). This is retryable. Wait a few seconds and try again.
+            The server may be under heavy load or the tmux session may have been slow to start.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "agent_creation_timeout"
+                  message: "Agent did not become ready within 15 seconds"
+                  status: 408
+                  retryable: true
+                  retry_after_seconds: 5
+        "500":
+          description: |
+            An unexpected server error occurred during agent creation. This is generally
+            not retryable without investigation, but transient errors may resolve on retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "server_error"
+                  message: "Internal server error during agent creation"
+                  status: 500
+                  retryable: false
+                  retry_after_seconds: null
+        "503":
+          description: |
+            The remote agent service is not available on the server. This typically means
+            the service is not configured or not initialised. Contact the administrator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "service_unavailable"
+                  message: "Remote agent service not available"
+                  status: 503
+                  retryable: false
+                  retry_after_seconds: null
+    options:
+      operationId: createRemoteAgentPreflight
+      summary: CORS preflight for create endpoint
+      description: |
+        Handles CORS preflight requests. Returns 204 with appropriate
+        Access-Control-Allow-* headers if the requesting origin is in the
+        server's allowed origins list.
+      responses:
+        "204":
+          description: Preflight successful. CORS headers are included in the response.
+
+  /api/remote_agents/{agent_id}/alive:
+    get:
+      operationId: checkAgentAlive
+      summary: Check if an agent is alive
+      description: |
+        Returns whether the specified agent is currently alive (running) or not.
+
+        If the agent is alive, the response includes the agent's current state
+        (e.g., "idle", "processing", "awaiting_input") and the project it belongs to.
+
+        If the agent is not alive, the response includes a reason explaining why
+        (e.g., "agent_not_found" if the ID does not exist, or "agent_ended" if the
+        agent has been shut down).
+
+        **Authentication required.** The session token must be scoped to the agent_id
+        in the URL path. A token for a different agent will be rejected with 401.
+      security:
+        - sessionToken: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          description: >
+            The numeric ID of the agent to check. This is the agent_id value returned
+            by the create endpoint.
+          schema:
+            type: integer
+            minimum: 1
+          example: 42
+      responses:
+        "200":
+          description: |
+            Alive status returned successfully. Check the `alive` boolean field to
+            determine if the agent is running. The response shape differs based on
+            whether the agent is alive or not.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AliveResponseAlive"
+                  - $ref: "#/components/schemas/AliveResponseNotAlive"
+              examples:
+                alive:
+                  summary: Agent is alive and processing
+                  value:
+                    alive: true
+                    agent_id: 42
+                    state: "processing"
+                    project_slug: "may-belle"
+                not_alive_ended:
+                  summary: Agent has ended
+                  value:
+                    alive: false
+                    reason: "agent_ended"
+                not_alive_not_found:
+                  summary: Agent does not exist
+                  value:
+                    alive: false
+                    reason: "agent_not_found"
+        "401":
+          description: |
+            Session token is missing, invalid, expired, or not scoped to this agent.
+            Obtain a valid token from the create endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "invalid_session_token"
+                  message: "Invalid or expired session token"
+                  status: 401
+                  retryable: false
+                  retry_after_seconds: null
+        "503":
+          description: Remote agent service is not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "service_unavailable"
+                  message: "Remote agent service not available"
+                  status: 503
+                  retryable: false
+                  retry_after_seconds: null
+    options:
+      operationId: checkAgentAlivePreflight
+      summary: CORS preflight for alive endpoint
+      description: Handles CORS preflight requests for the alive endpoint.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Preflight successful.
+
+  /api/remote_agents/{agent_id}/shutdown:
+    post:
+      operationId: shutdownRemoteAgent
+      summary: Initiate graceful agent shutdown
+      description: |
+        Initiates a graceful shutdown of the specified agent. This is a non-blocking
+        operation: the server revokes the agent's session token immediately and then
+        starts the actual tmux session termination in the background. The response
+        is returned immediately without waiting for the tmux session to fully close.
+
+        If the agent has already been terminated, the response indicates this with
+        a message of "Agent already terminated" instead of an error.
+
+        After shutdown, the session token is revoked and can no longer be used for
+        any endpoint. If you need to create a new agent, call the create endpoint again.
+
+        **Authentication required.** The session token must be scoped to the agent_id
+        in the URL path.
+      security:
+        - sessionToken: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          description: >
+            The numeric ID of the agent to shut down. This is the agent_id value returned
+            by the create endpoint.
+          schema:
+            type: integer
+            minimum: 1
+          example: 42
+      responses:
+        "200":
+          description: |
+            Shutdown initiated or agent was already terminated. Check the message field
+            to distinguish between the two cases.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShutdownResponse"
+              examples:
+                initiated:
+                  summary: Shutdown has been initiated
+                  value:
+                    status: "ok"
+                    agent_id: 42
+                    message: "Agent shutdown initiated"
+                already_terminated:
+                  summary: Agent was already terminated
+                  value:
+                    status: "ok"
+                    agent_id: 42
+                    message: "Agent already terminated"
+        "401":
+          description: Session token is missing, invalid, expired, or not scoped to this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "invalid_session_token"
+                  message: "Invalid or expired session token"
+                  status: 401
+                  retryable: false
+                  retry_after_seconds: null
+        "404":
+          description: No agent exists with the specified ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "agent_not_found"
+                  message: "Agent 999 not found"
+                  status: 404
+                  retryable: false
+                  retry_after_seconds: null
+        "503":
+          description: Remote agent service is not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "service_unavailable"
+                  message: "Remote agent service not available"
+                  status: 503
+                  retryable: false
+                  retry_after_seconds: null
+    options:
+      operationId: shutdownRemoteAgentPreflight
+      summary: CORS preflight for shutdown endpoint
+      description: Handles CORS preflight requests for the shutdown endpoint.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Preflight successful.
+
+  /embed/{agent_id}:
+    get:
+      operationId: getEmbedView
+      summary: Retrieve the embeddable chat view for an agent
+      description: |
+        Returns an HTML page containing a chrome-free chat interface for the specified
+        agent. This page is designed to be embedded in an iframe within an external
+        application.
+
+        The session token must be passed as a query parameter (not a header) because
+        iframes cannot set custom HTTP headers. The token is validated server-side
+        before rendering the page.
+
+        Feature flags control which UI elements are visible in the embed view.
+        Flags can be set at three levels (later levels override earlier ones):
+        1. Server configuration defaults (in config.yaml under remote_agents.embed_defaults)
+        2. Token-level flags (set when creating the agent via feature_flags in the create request)
+        3. URL query parameters (override everything, useful for testing)
+
+        **Authentication required.** Pass the session token as the `token` query parameter.
+      security:
+        - sessionTokenQuery: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          description: >
+            The numeric ID of the agent whose chat view to embed. This is the agent_id
+            value returned by the create endpoint.
+          schema:
+            type: integer
+            minimum: 1
+          example: 42
+        - name: token
+          in: query
+          required: true
+          description: >
+            The session token for this agent. Required for authentication.
+            This is the session_token value returned by the create endpoint.
+          schema:
+            type: string
+          example: "abc123def456ghi789jkl012mno345pqr678stu901v"
+        - name: file_upload
+          in: query
+          required: false
+          description: >
+            Override the file upload feature flag. Set to "1" or "true" to enable
+            the file upload button in the chat interface. Set to "0" or "false" to
+            disable it. If not provided, the token-level or server default is used.
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false"]
+          example: "1"
+        - name: context_usage
+          in: query
+          required: false
+          description: >
+            Override the context usage display feature flag. Set to "1" or "true" to
+            show context usage information in the chat interface. Set to "0" or "false"
+            to hide it. If not provided, the token-level or server default is used.
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false"]
+          example: "0"
+        - name: voice_mic
+          in: query
+          required: false
+          description: >
+            Override the voice microphone feature flag. Set to "1" or "true" to show
+            the voice input button in the chat interface. Set to "0" or "false" to
+            hide it. If not provided, the token-level or server default is used.
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false"]
+          example: "0"
+      responses:
+        "200":
+          description: |
+            Returns an HTML page containing the embeddable chat interface. Embed this
+            in an iframe. The page connects to the server via SSE for real-time updates.
+          content:
+            text/html:
+              schema:
+                type: string
+                description: Complete HTML page with embedded chat interface.
+        "401":
+          description: Session token is missing, invalid, expired, or not scoped to this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "invalid_session_token"
+                  message: "Invalid or expired session token"
+                  status: 401
+                  retryable: false
+                  retry_after_seconds: null
+        "503":
+          description: Token service is not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: "service_unavailable"
+                  message: "Token service not available"
+                  status: 503
+                  retryable: false
+                  retry_after_seconds: null
+
+components:
+  securitySchemes:
+    sessionToken:
+      type: http
+      scheme: bearer
+      description: |
+        Session token authentication using a Bearer token. Pass the token in the
+        Authorization header as: `Authorization: Bearer <token>`
+
+        The token is obtained from the `session_token` field in the create endpoint
+        response. Each token is cryptographically generated and scoped to a single
+        agent. It cannot be used to access other agents.
+
+        Tokens are stored in server memory and do not survive server restarts.
+        If the server restarts, you must create a new agent to get a new token.
+
+        Tokens are revoked automatically when an agent is shut down.
+    sessionTokenQuery:
+      type: apiKey
+      in: query
+      name: token
+      description: |
+        Session token passed as a URL query parameter. This is used by the embed
+        endpoint because iframes cannot set custom HTTP headers.
+
+        The token value is the same `session_token` returned by the create endpoint.
+
+  schemas:
+    CreateRequest:
+      type: object
+      required:
+        - project_slug
+        - persona_slug
+        - initial_prompt
+      properties:
+        project_slug:
+          type: string
+          description: >
+            The URL-safe slug identifying the project where the agent will work.
+            This must match the slug of an existing project in Claude Headspace.
+            Example: "may-belle", "my-project". The slug is typically a lowercase
+            kebab-case version of the project name.
+          example: "may-belle"
+        persona_slug:
+          type: string
+          description: >
+            The slug identifying the persona (agent identity) to use. Personas define
+            the agent's skills, behaviour, and system prompt. The persona must exist
+            and be active in the system. Example: "backend-dev", "frontend-dev".
+          example: "backend-dev"
+        initial_prompt:
+          type: string
+          description: >
+            The first message to send to the agent after it is created and ready.
+            This is delivered via the tmux bridge as if a human typed it. The agent
+            will begin working on this prompt immediately. Can be any length but
+            should be a clear, actionable instruction.
+          example: "Review the authentication module and suggest improvements."
+        feature_flags:
+          type: ["object", "null"]
+          description: >
+            Optional dictionary of feature flags that control the embed chat view UI.
+            If not provided or null, server defaults are used. Each flag is a boolean.
+            Currently supported flags: file_upload (show file upload button),
+            context_usage (show context usage display), voice_mic (show voice input button).
+          properties:
+            file_upload:
+              type: boolean
+              description: >
+                Whether to show the file upload button in the embed chat view.
+                Default: false (determined by server configuration).
+            context_usage:
+              type: boolean
+              description: >
+                Whether to show the context usage indicator in the embed chat view.
+                Default: false (determined by server configuration).
+            voice_mic:
+              type: boolean
+              description: >
+                Whether to show the voice microphone button in the embed chat view.
+                Default: false (determined by server configuration).
+          example:
+            file_upload: true
+            voice_mic: false
+
+    CreateResponse:
+      type: object
+      required:
+        - agent_id
+        - embed_url
+        - session_token
+        - project_slug
+        - persona_slug
+        - tmux_session_name
+        - status
+      properties:
+        agent_id:
+          type: integer
+          description: >
+            The unique numeric identifier for the created agent. Use this ID in all
+            subsequent API calls (alive check, shutdown) that reference this agent.
+          example: 42
+        embed_url:
+          type: string
+          format: uri
+          description: >
+            A fully-qualified URL to the embeddable chat interface for this agent.
+            The URL includes the session token as a query parameter. Embed this in
+            an iframe to display the agent's chat interface in your application.
+            The URL is constructed from the server's application_url configuration.
+          example: "https://your-host:5055/embed/42?token=abc123..."
+        session_token:
+          type: string
+          description: >
+            An opaque, cryptographically-generated authentication token scoped to
+            this agent. Use this token in the Authorization header (as Bearer token)
+            for all subsequent API calls to this agent. The token is 43 characters
+            of URL-safe base64. It is revoked when the agent is shut down and does
+            not survive server restarts.
+          example: "abc123def456ghi789jkl012mno345pqr678stu901v"
+        project_slug:
+          type: string
+          description: >
+            The slug of the project the agent was created in. This echoes back the
+            project_slug from the request for confirmation.
+          example: "may-belle"
+        persona_slug:
+          type: string
+          description: >
+            The slug of the persona assigned to the agent. This echoes back the
+            persona_slug from the request for confirmation.
+          example: "backend-dev"
+        tmux_session_name:
+          type: string
+          description: >
+            The name of the tmux session running the agent's Claude Code process.
+            This is primarily useful for debugging or advanced integrations that
+            need to interact with the terminal directly. Format is typically
+            "claude-{project}-{number}".
+          example: "claude-may-belle-1"
+        status:
+          type: string
+          enum:
+            - ready
+          description: >
+            The status of the agent after creation. Always "ready" in a successful
+            response, meaning the agent has been created, the persona skill has been
+            injected, and the initial prompt has been sent.
+          example: "ready"
+
+    AliveResponseAlive:
+      type: object
+      required:
+        - alive
+        - agent_id
+        - state
+        - project_slug
+      properties:
+        alive:
+          type: boolean
+          enum: [true]
+          description: >
+            Indicates the agent is currently alive and running. Always true in this
+            response variant.
+          example: true
+        agent_id:
+          type: integer
+          description: >
+            The numeric ID of the agent. Matches the agent_id from the URL path.
+          example: 42
+        state:
+          type: string
+          description: >
+            The agent's current operational state. Possible values correspond to
+            command lifecycle states: "idle" (no active command), "commanded" (received
+            a command, not yet processing), "processing" (actively working), "awaiting_input"
+            (waiting for user input), or "complete" (finished current command).
+          enum:
+            - idle
+            - commanded
+            - processing
+            - awaiting_input
+            - complete
+          example: "processing"
+        project_slug:
+          type: ["string", "null"]
+          description: >
+            The slug of the project this agent belongs to. May be null if the agent
+            is not associated with a project (unusual but possible).
+          example: "may-belle"
+
+    AliveResponseNotAlive:
+      type: object
+      required:
+        - alive
+        - reason
+      properties:
+        alive:
+          type: boolean
+          enum: [false]
+          description: >
+            Indicates the agent is not alive. Always false in this response variant.
+          example: false
+        reason:
+          type: string
+          description: >
+            Explains why the agent is not alive. "agent_not_found" means no agent with
+            that ID exists in the database. "agent_ended" means the agent existed but
+            has been shut down or terminated.
+          enum:
+            - agent_not_found
+            - agent_ended
+          example: "agent_ended"
+
+    ShutdownResponse:
+      type: object
+      required:
+        - status
+        - agent_id
+        - message
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+          description: >
+            Always "ok" for successful shutdown responses (both initiated and
+            already-terminated cases).
+          example: "ok"
+        agent_id:
+          type: integer
+          description: >
+            The numeric ID of the agent that was shut down. Matches the agent_id
+            from the URL path.
+          example: 42
+        message:
+          type: string
+          description: >
+            A human-readable message describing the shutdown result.
+            "Agent shutdown initiated" means the shutdown process has started
+            (token revoked, tmux termination in progress).
+            "Agent already terminated" means the agent was already shut down
+            before this request.
+          enum:
+            - "Agent shutdown initiated"
+            - "Agent already terminated"
+          example: "Agent shutdown initiated"
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - status
+            - retryable
+            - retry_after_seconds
+          properties:
+            code:
+              type: string
+              description: >
+                A machine-readable error code that identifies the specific error condition.
+                Use this for programmatic error handling. Do not rely on the message field
+                for error identification as messages may change.
+              enum:
+                - missing_fields
+                - invalid_feature_flags
+                - invalid_session_token
+                - project_not_found
+                - persona_not_found
+                - agent_not_found
+                - agent_creation_timeout
+                - server_error
+                - service_unavailable
+              example: "missing_fields"
+            message:
+              type: string
+              description: >
+                A human-readable description of the error. This may include specific
+                details such as which fields are missing or which resource was not found.
+                Do not parse this field programmatically; use the code field instead.
+              example: "Missing required fields: project_slug, initial_prompt"
+            status:
+              type: integer
+              description: >
+                The HTTP status code associated with this error. This matches the
+                HTTP response status code and is included in the body for convenience.
+              example: 400
+            retryable:
+              type: boolean
+              description: >
+                Whether this error is safe to retry. If true, the caller should wait
+                for retry_after_seconds and then retry the same request. If false,
+                retrying with the same parameters will produce the same error.
+              example: false
+            retry_after_seconds:
+              type: ["integer", "null"]
+              description: >
+                If retryable is true, this is the recommended number of seconds to
+                wait before retrying. If retryable is false, this is null.
+              example: null
