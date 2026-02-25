@@ -192,7 +192,7 @@ class TestSend:
     @patch("claude_headspace.services.exception_reporter.requests.post")
     def test_send_posts_to_webhook(self, mock_post):
         mock_response = MagicMock()
-        mock_response.status_code = 200
+        mock_response.status_code = 201
         mock_response.json.return_value = {
             "status": "accepted",
             "exception_event_id": 42,

@@ -13,8 +13,12 @@ import traceback as tb_module
 from typing import Any
 
 import requests
+import urllib3
 
 logger = logging.getLogger(__name__)
+
+# Suppress InsecureRequestWarning for Tailscale cert calls
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ExceptionReporter:
@@ -126,7 +130,7 @@ class ExceptionReporter:
                 timeout=self._timeout,
                 verify=False,  # Tailscale certs
             )
-            if response.status_code == 200:
+            if response.status_code in (200, 201):
                 data = response.json()
                 logger.debug(
                     "Exception reported to otageMon (event_id=%s, issue_id=%s)",
