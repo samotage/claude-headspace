@@ -682,16 +682,18 @@ def process_session_start(
                     f"session_start: skill injection failed for agent_id={agent.id}: {e}"
                 )
 
-        # Deliver handoff injection prompt for successor agents.
+        # Deliver handoff or revival injection prompt for successor agents.
         # This runs AFTER skill injection so the successor is primed before
-        # receiving the handoff context.
+        # receiving the handoff/revival context.
         if agent.previous_agent_id and agent.tmux_pane_id:
             try:
                 from flask import current_app as _app
                 handoff_executor = _app.extensions.get("handoff_executor")
+                handoff_delivered = False
                 if handoff_executor:
                     injection_result = handoff_executor.deliver_injection_prompt(agent)
                     if injection_result.success:
+                        handoff_delivered = True
                         logger.info(
                             f"session_start: handoff injection delivered — "
                             f"agent_id={agent.id}, predecessor_id={agent.previous_agent_id}"
@@ -702,11 +704,38 @@ def process_session_start(
                             f"session_start: handoff injection failed — "
                             f"agent_id={agent.id}: {injection_result.message}"
                         )
+
+                # Revival injection: if no handoff record exists on the
+                # predecessor, this is a revival successor. Inject the
+                # revival instruction telling the agent to read its
+                # predecessor's transcript.
+                if not handoff_delivered:
+                    from .revival_service import (
+                        compose_revival_instruction,
+                        is_revival_successor,
+                    )
+
+                    if is_revival_successor(agent):
+                        revival_msg = compose_revival_instruction(agent.previous_agent_id)
+                        from . import tmux_bridge
+                        send_result = tmux_bridge.send_text(
+                            agent.tmux_pane_id, revival_msg
+                        )
+                        if send_result.success:
+                            logger.info(
+                                f"session_start: revival injection delivered — "
+                                f"agent_id={agent.id}, predecessor_id={agent.previous_agent_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"session_start: revival injection failed — "
+                                f"agent_id={agent.id}: {send_result.error_message}"
+                            )
             except RuntimeError:
                 pass  # No app context
             except Exception as e:
                 logger.error(
-                    f"session_start: handoff injection error for agent_id={agent.id}: {e}"
+                    f"session_start: handoff/revival injection error for agent_id={agent.id}: {e}"
                 )
 
         # Commit post-injection state (prompt_injected_at) so the

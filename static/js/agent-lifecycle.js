@@ -89,6 +89,32 @@
     }
 
     /**
+     * Revive a dead agent by creating a successor.
+     * @param {number} agentId - The agent ID to revive
+     * @returns {Promise}
+     */
+    function reviveAgent(agentId) {
+        return CHUtils.apiFetch(API_BASE + '/' + agentId + '/revive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        }).then(function(res) {
+            return res.json().then(function(data) {
+                if (res.ok) {
+                    if (global.Toast) {
+                        global.Toast.success('Revival initiated', data.message || 'Successor agent starting');
+                    }
+                } else {
+                    if (global.Toast) {
+                        global.Toast.error('Revival failed', data.error || 'Unknown error');
+                    }
+                }
+                return data;
+            });
+        });
+    }
+
+    /**
      * Close all open card footer kebab menus.
      */
     function closeCardKebabs() {
@@ -452,6 +478,19 @@
                 return;
             }
 
+            // Revive (kebab menu item)
+            var reviveAction = e.target.closest('.card-revive-action');
+            if (reviveAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(reviveAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId) {
+                    reviveAgent(agentId);
+                }
+                return;
+            }
+
             // Handoff button (card footer)
             var handoffAction = e.target.closest('.handoff-btn');
             if (handoffAction) {
@@ -598,7 +637,8 @@
         init: init,
         createAgent: createAgent,
         shutdownAgent: shutdownAgent,
-        checkContext: checkContext
+        checkContext: checkContext,
+        reviveAgent: reviveAgent
     };
 
     // Auto-initialize on DOM ready

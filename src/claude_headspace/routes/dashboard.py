@@ -540,6 +540,7 @@ def dashboard():
                 "tmux_session": agent.tmux_session,
                 "persona_name": agent.persona.name if agent.persona else None,
                 "persona_role": agent.persona.role.name if agent.persona and getattr(agent.persona, "role", None) else None,
+                "previous_agent_id": agent.previous_agent_id,
             }
             # Add current command ID and plan state for on-demand drill-down
             _ct = agent.get_current_command()

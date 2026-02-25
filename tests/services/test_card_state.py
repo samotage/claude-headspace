@@ -72,6 +72,7 @@ class TestBuildCardState:
             "turn_count", "elapsed", "current_command_id", "is_bridge_connected",
             "project_name", "project_slug", "project_id",
             "has_plan", "tmux_session", "context",
+            "previous_agent_id",
         }
         assert set(result.keys()) == expected_keys
 
