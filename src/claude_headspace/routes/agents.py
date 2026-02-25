@@ -214,3 +214,36 @@ def reconcile_agent_endpoint(agent_id: int):
         "status": "ok",
         "created": len(result["created"]),
     })
+
+
+@agents_bp.route("/api/agents/<int:agent_id>/revive", methods=["POST"])
+def revive_agent_endpoint(agent_id: int):
+    """Revive a dead agent by creating a successor with the same config.
+
+    The successor agent will receive the predecessor's transcript at
+    session_start via tmux bridge injection.
+
+    Returns:
+        201: Revival initiated (successor agent starting)
+        400: Validation failed (agent still alive, no project)
+        404: Agent not found
+    """
+    from ..services.revival_service import revive_agent
+
+    result = revive_agent(agent_id)
+
+    if not result.success:
+        status_map = {
+            "not_found": 404,
+            "still_alive": 400,
+            "no_project": 400,
+            "creation_failed": 422,
+        }
+        status = status_map.get(result.error_code, 400)
+        return jsonify({"error": result.message}), status
+
+    return jsonify({
+        "status": "initiated",
+        "message": result.message,
+        "tmux_session_name": result.successor_agent_tmux_session,
+    }), 201

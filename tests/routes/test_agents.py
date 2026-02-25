@@ -296,3 +296,71 @@ class TestAgentInfoEndpoint:
         response = client.get("/api/agents/999/info")
         assert response.status_code == 404
         assert "error" in response.json
+
+
+class TestReviveAgentEndpoint:
+    """Tests for POST /api/agents/<id>/revive."""
+
+    @patch("claude_headspace.services.revival_service.revive_agent")
+    def test_success(self, mock_revive, client):
+        from claude_headspace.services.revival_service import RevivalResult
+
+        mock_revive.return_value = RevivalResult(
+            success=True,
+            message="Successor agent starting in tmux session 'hs-test-abc'.",
+            successor_agent_tmux_session="hs-test-abc",
+        )
+        response = client.post("/api/agents/1/revive", json={})
+        assert response.status_code == 201
+        assert response.json["status"] == "initiated"
+        assert response.json["tmux_session_name"] == "hs-test-abc"
+
+    @patch("claude_headspace.services.revival_service.revive_agent")
+    def test_agent_not_found(self, mock_revive, client):
+        from claude_headspace.services.revival_service import RevivalResult
+
+        mock_revive.return_value = RevivalResult(
+            success=False,
+            message="Agent not found",
+            error_code="not_found",
+        )
+        response = client.post("/api/agents/999/revive", json={})
+        assert response.status_code == 404
+        assert "not found" in response.json["error"].lower()
+
+    @patch("claude_headspace.services.revival_service.revive_agent")
+    def test_agent_still_alive(self, mock_revive, client):
+        from claude_headspace.services.revival_service import RevivalResult
+
+        mock_revive.return_value = RevivalResult(
+            success=False,
+            message="Agent is still alive",
+            error_code="still_alive",
+        )
+        response = client.post("/api/agents/1/revive", json={})
+        assert response.status_code == 400
+        assert "still alive" in response.json["error"].lower()
+
+    @patch("claude_headspace.services.revival_service.revive_agent")
+    def test_no_project(self, mock_revive, client):
+        from claude_headspace.services.revival_service import RevivalResult
+
+        mock_revive.return_value = RevivalResult(
+            success=False,
+            message="Agent has no project",
+            error_code="no_project",
+        )
+        response = client.post("/api/agents/1/revive", json={})
+        assert response.status_code == 400
+
+    @patch("claude_headspace.services.revival_service.revive_agent")
+    def test_creation_failed(self, mock_revive, client):
+        from claude_headspace.services.revival_service import RevivalResult
+
+        mock_revive.return_value = RevivalResult(
+            success=False,
+            message="tmux is not installed",
+            error_code="creation_failed",
+        )
+        response = client.post("/api/agents/1/revive", json={})
+        assert response.status_code == 422

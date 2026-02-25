@@ -670,6 +670,9 @@ def build_card_state(agent: Agent) -> dict:
             "handoff_threshold": handoff_threshold,
         }
 
+    # Predecessor link for revival/handoff successor agents
+    card["previous_agent_id"] = agent.previous_agent_id
+
     # Bridge connectivity: cache first, live check fallback
     card["is_bridge_connected"] = False
     if agent.tmux_pane_id:

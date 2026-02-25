@@ -784,7 +784,53 @@ def create_parser() -> argparse.ArgumentParser:
         help="Additional arguments to pass to claude (use -- to separate)",
     )
 
+    # 'transcript' command
+    transcript_parser = subparsers.add_parser(
+        "transcript",
+        help="Output an agent's conversation history as markdown",
+    )
+    transcript_parser.add_argument(
+        "agent_id",
+        type=int,
+        help="ID of the agent whose transcript to extract",
+    )
+
     return parser
+
+
+def cmd_transcript(args: argparse.Namespace) -> int:
+    """Handle the 'transcript' command.
+
+    Delegates to the Flask CLI transcript command by invoking
+    ``flask transcript show <agent-id>`` via subprocess, or
+    creates a minimal Flask app context to run the query directly.
+
+    Args:
+        args: Parsed command line arguments
+
+    Returns:
+        Exit code
+    """
+    try:
+        from ..app import create_app
+        from .transcript_cli import format_transcript
+        from ..database import db
+        from ..models.agent import Agent
+
+        app = create_app()
+        with app.app_context():
+            agent = db.session.get(Agent, args.agent_id)
+            if not agent:
+                print(f"Error: Agent #{args.agent_id} not found", file=sys.stderr)
+                return EXIT_ERROR
+
+            output = format_transcript(agent)
+            print(output)
+            return EXIT_SUCCESS
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return EXIT_ERROR
 
 
 def main(args: list[str] | None = None) -> int:
@@ -828,6 +874,8 @@ def main(args: list[str] | None = None) -> int:
 
     if parsed.command == "start":
         return cmd_start(parsed)
+    elif parsed.command == "transcript":
+        return cmd_transcript(parsed)
     elif parsed.command is None:
         parser.print_help()
         return EXIT_SUCCESS

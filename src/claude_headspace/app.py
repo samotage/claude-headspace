@@ -552,5 +552,7 @@ def register_blueprints(app: Flask) -> None:
 def register_cli_commands(app: Flask) -> None:
     """Register Flask CLI command groups."""
     from .cli.persona_cli import persona_cli
+    from .cli.transcript_cli import transcript_cli
 
     app.cli.add_command(persona_cli)
+    app.cli.add_command(transcript_cli)
