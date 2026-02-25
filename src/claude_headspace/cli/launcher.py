@@ -495,6 +495,8 @@ def setup_environment(
     env["CLAUDE_HEADSPACE_SESSION_ID"] = str(session_uuid)
     if persona_slug:
         env["CLAUDE_HEADSPACE_PERSONA_SLUG"] = persona_slug
+    else:
+        env.pop("CLAUDE_HEADSPACE_PERSONA_SLUG", None)
     return env
 
 

@@ -295,6 +295,8 @@ def create_agent(
     env.pop("CLAUDECODE", None)  # Prevent "inside another Claude Code session" error
     if persona_slug:
         env["CLAUDE_HEADSPACE_PERSONA_SLUG"] = persona_slug
+    else:
+        env.pop("CLAUDE_HEADSPACE_PERSONA_SLUG", None)
     if previous_agent_id is not None:
         env["CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID"] = str(previous_agent_id)
 
@@ -310,8 +312,9 @@ def create_agent(
             session_name,
             "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
         ]
-        if persona_slug:
-            tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PERSONA_SLUG={persona_slug}"])
+        # Always set persona slug explicitly — empty string prevents inheritance
+        # from the tmux server's global environment or parent process.
+        tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PERSONA_SLUG={persona_slug or ''}"])
         if previous_agent_id is not None:
             tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"])
         tmux_cmd.extend(["-c", str(project_path), "--"])
