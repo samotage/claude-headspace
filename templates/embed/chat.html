@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Agent Chat</title>
+  <link rel="stylesheet" href="/static/embed/embed.css">
+</head>
+<body>
+  <div id="embed-root">
+    <!-- Loading state -->
+    <div id="embed-loading" class="embed-loading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Connecting to agent...</div>
+    </div>
+
+    <!-- Error state -->
+    <div id="embed-error" class="embed-error" style="display: none;">
+      <div class="error-icon">!</div>
+      <div class="error-message" id="error-message">Connection failed</div>
+      <button class="error-retry" id="error-retry">Retry</button>
+    </div>
+
+    <!-- Chat interface -->
+    <div id="embed-chat" class="embed-chat" style="display: none;">
+      <!-- Status bar -->
+      <div class="embed-status-bar">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">Connecting...</span>
+      </div>
+
+      <!-- Message thread -->
+      <div class="embed-messages" id="embed-messages">
+        <!-- Messages inserted here by JS -->
+      </div>
+
+      <!-- Typing indicator -->
+      <div class="embed-typing" id="embed-typing" style="display: none;">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </div>
+
+      <!-- Question options container -->
+      <div class="embed-options" id="embed-options" style="display: none;">
+        <!-- Option buttons inserted here by JS -->
+      </div>
+
+      <!-- Input area -->
+      <div class="embed-input-area">
+        <textarea
+          id="embed-input"
+          class="embed-input"
+          placeholder="Type a message..."
+          rows="1"
+          autocomplete="off"
+        ></textarea>
+        <button class="embed-send" id="embed-send" disabled>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M3 10l7-7 7 7M10 3v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-90 10 10)"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Feature flags: file upload (conditionally rendered) -->
+      {% if feature_flags.file_upload %}
+      <input type="file" id="embed-file-input" class="embed-file-hidden" accept="*/*">
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Configuration injected from server -->
+  <script>
+    window.EMBED_CONFIG = {
+      agentId: {{ agent_id }},
+      sessionToken: "{{ session_token }}",
+      applicationUrl: "{{ application_url }}",
+      featureFlags: {
+        fileUpload: {{ 'true' if feature_flags.file_upload else 'false' }},
+        contextUsage: {{ 'true' if feature_flags.context_usage else 'false' }},
+        voiceMic: {{ 'true' if feature_flags.voice_mic else 'false' }}
+      }
+    };
+  </script>
+  <script src="/static/embed/embed-sse.js"></script>
+  <script src="/static/embed/embed-app.js"></script>
+</body>
+</html>
