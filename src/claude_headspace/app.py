@@ -110,6 +110,62 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     logger = logging.getLogger(__name__)
     logger.info(f"Starting Claude Headspace v{__version__}")
 
+    # Initialize exception reporter — must happen before background threads start
+    # so threading.excepthook catches any early thread crashes.
+    from .services.exception_reporter import ExceptionReporter
+    exception_reporter = ExceptionReporter(config=config)
+    app.extensions["exception_reporter"] = exception_reporter
+
+    if exception_reporter.is_configured and not app.config.get("TESTING"):
+        # Capture unhandled thread exceptions
+        _original_threading_excepthook = getattr(threading, "excepthook", None)
+
+        def _handle_thread_exception(args):
+            if args.exc_value is not None:
+                exception_reporter.report(
+                    exc=args.exc_value,
+                    source="background_thread",
+                    severity="critical",
+                    context={
+                        "thread_name": args.thread.name if args.thread else "unknown",
+                    },
+                )
+            if _original_threading_excepthook:
+                _original_threading_excepthook(args)
+
+        threading.excepthook = _handle_thread_exception
+
+        # Capture unhandled request exceptions (actual errors only, not 404s etc.)
+        from flask import got_request_exception
+        from werkzeug.exceptions import HTTPException
+
+        def _handle_request_exception(sender, exception, **kwargs):
+            if isinstance(exception, HTTPException) and exception.code < 500:
+                return
+            ctx = {}
+            try:
+                ctx = {
+                    "request_path": request.path,
+                    "request_method": request.method,
+                    "endpoint": request.endpoint,
+                }
+            except RuntimeError:
+                pass  # Outside request context
+            exception_reporter.report(
+                exc=exception,
+                source="request",
+                severity="error",
+                context=ctx,
+            )
+
+        got_request_exception.connect(_handle_request_exception, app)
+        logger.info(
+            "Exception reporter initialized (webhook=%s)",
+            exception_reporter._webhook_url,
+        )
+    elif not app.config.get("TESTING"):
+        logger.info("Exception reporter disabled (no webhook URL or secret)")
+
     # Initialize database (continues even if connection fails)
     db_connected = init_database(app, config)
     app.config["DATABASE_CONNECTED"] = db_connected

@@ -183,10 +183,16 @@ window.VoiceSidebar = (function () {
         projectOrder.push(endedProj);
       }
     }
-    // Sort each group: newest agent first (highest agent_id)
+    // Sort project groups alphabetically (case-insensitive)
+    projectOrder.sort(function (a, b) {
+      return a.toLowerCase().localeCompare(b.toLowerCase());
+    });
+    // Sort each group: newest agent first (by started_at descending)
     for (var si = 0; si < projectOrder.length; si++) {
       projectGroups[projectOrder[si]].sort(function (a, b) {
-        return b.agent_id - a.agent_id;
+        var aTime = a.started_at ? new Date(a.started_at).getTime() : 0;
+        var bTime = b.started_at ? new Date(b.started_at).getTime() : 0;
+        return bTime - aTime;
       });
     }
 
@@ -320,8 +326,13 @@ window.VoiceSidebar = (function () {
         html += buildCardHtml(group[j], false);
       }
 
-      // Ended agents (with divider if there are active agents above)
+      // Ended agents (sorted by started_at descending, with divider if there are active agents above)
       if (endedGroup.length > 0) {
+        endedGroup.sort(function (a, b) {
+          var aTime = a.started_at ? new Date(a.started_at).getTime() : 0;
+          var bTime = b.started_at ? new Date(b.started_at).getTime() : 0;
+          return bTime - aTime;
+        });
         if (group.length > 0) {
           html += '<div class="ended-divider"></div>';
         }

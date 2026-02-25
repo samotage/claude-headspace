@@ -193,6 +193,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "tmux_session": agent.tmux_session,
         "persona_name": persona_name,
         "persona_role": persona_role,
+        "started_at": agent.started_at.isoformat() if agent.started_at else None,
     }
 
     if include_ended_fields and agent.ended_at:

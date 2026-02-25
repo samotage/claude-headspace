@@ -51,7 +51,7 @@ class TestCreateBlocking:
         mock_db.session.query.return_value.filter.return_value.first.return_value = None
 
         result = service.create_blocking(
-            project_name="nonexistent",
+            project_slug="nonexistent",
             persona_slug="test",
             initial_prompt="hello",
         )
@@ -64,7 +64,7 @@ class TestCreateBlocking:
     def test_persona_not_found(self, mock_create, mock_db, service):
         mock_project = MagicMock()
         mock_project.id = 1
-        mock_project.name = "test-project"
+        mock_project.slug = "test-project"
         mock_db.session.query.return_value.filter.return_value.first.return_value = mock_project
 
         from claude_headspace.services.agent_lifecycle import CreateResult
@@ -74,7 +74,7 @@ class TestCreateBlocking:
         )
 
         result = service.create_blocking(
-            project_name="test-project",
+            project_slug="test-project",
             persona_slug="bad",
             initial_prompt="hello",
         )
@@ -89,7 +89,7 @@ class TestCreateBlocking:
         """Agent never becomes ready — should timeout."""
         mock_project = MagicMock()
         mock_project.id = 1
-        mock_project.name = "test-project"
+        mock_project.slug = "test-project"
 
         from claude_headspace.services.agent_lifecycle import CreateResult
         mock_create.return_value = CreateResult(
@@ -111,7 +111,6 @@ class TestCreateBlocking:
                 mock_chain.filter.return_value.first.return_value = None
             return mock_chain
         mock_db.session.query.side_effect = query_side_effect
-        mock_db.func.lower = MagicMock(return_value="test-project")
 
         # Use a counter that increments past timeout after a few calls
         time_counter = [0.0]
@@ -123,7 +122,7 @@ class TestCreateBlocking:
         mock_time.sleep = MagicMock()
 
         result = service.create_blocking(
-            project_name="test-project",
+            project_slug="test-project",
             persona_slug="test",
             initial_prompt="hello",
         )
@@ -138,7 +137,7 @@ class TestCreateBlocking:
         """Agent becomes ready — should return full result."""
         mock_project = MagicMock()
         mock_project.id = 1
-        mock_project.name = "test-project"
+        mock_project.slug = "test-project"
 
         mock_agent = MagicMock()
         mock_agent.id = 42
@@ -169,7 +168,6 @@ class TestCreateBlocking:
                 mock_chain.filter.return_value.first.return_value = mock_agent
             return mock_chain
         mock_db.session.query.side_effect = query_side_effect
-        mock_db.func.lower = MagicMock(return_value="test-project")
 
         # Use a counter — returns small values (well within 2s timeout)
         time_counter = [0.0]
@@ -187,7 +185,7 @@ class TestCreateBlocking:
             mock_tmux.send_text.return_value = mock_send_result
 
             result = service.create_blocking(
-                project_name="test-project",
+                project_slug="test-project",
                 persona_slug="test",
                 initial_prompt="hello",
                 feature_flags={"file_upload": True},
@@ -198,7 +196,7 @@ class TestCreateBlocking:
         assert result.status == "ready"
         assert result.session_token is not None
         assert "embed/42" in result.embed_url
-        assert result.project_name == "test-project"
+        assert result.project_slug == "test-project"
         assert result.persona_slug == "test"
 
         # Verify token was stored
@@ -242,27 +240,49 @@ class TestCheckAlive:
 
 
 class TestShutdown:
-    """Tests for agent shutdown."""
+    """Tests for agent shutdown (non-blocking, S5 FR3 contract)."""
 
     @patch("claude_headspace.services.remote_agent_service.shutdown_agent")
     @patch("claude_headspace.services.remote_agent_service.db")
-    def test_successful_shutdown(self, mock_db, mock_shutdown, service, token_service):
-        from claude_headspace.services.agent_lifecycle import ShutdownResult
-        mock_shutdown.return_value = ShutdownResult(success=True, message="Agent shutdown confirmed.")
+    def test_initiated_shutdown(self, mock_db, mock_shutdown, service, token_service):
+        """Active agent → result='initiated', tokens revoked, async shutdown fired."""
+        agent = MagicMock()
+        agent.ended_at = None
+        mock_db.session.get.return_value = agent
 
-        # Generate a token for the agent so we can verify it gets revoked
         token_service.generate(agent_id=1)
         assert token_service.token_count == 1
 
         result = service.shutdown(1)
-        assert result["success"] is True
+        assert result["result"] == "initiated"
+        assert result["agent_id"] == 1
         assert token_service.token_count == 0  # Token revoked
+
+        # Give the daemon thread a moment to fire
+        import time
+        time.sleep(0.1)
+        mock_shutdown.assert_called_once_with(1)
 
     @patch("claude_headspace.services.remote_agent_service.shutdown_agent")
     @patch("claude_headspace.services.remote_agent_service.db")
-    def test_failed_shutdown(self, mock_db, mock_shutdown, service):
-        from claude_headspace.services.agent_lifecycle import ShutdownResult
-        mock_shutdown.return_value = ShutdownResult(success=False, message="Agent not found")
+    def test_already_terminated(self, mock_db, mock_shutdown, service):
+        """Agent with ended_at set → result='already_terminated', no shutdown call."""
+        agent = MagicMock()
+        agent.ended_at = datetime.now(timezone.utc)
+        mock_db.session.get.return_value = agent
+
+        result = service.shutdown(1)
+        assert result["result"] == "already_terminated"
+        assert result["agent_id"] == 1
+        mock_shutdown.assert_not_called()
+
+    @patch("claude_headspace.services.remote_agent_service.shutdown_agent")
+    @patch("claude_headspace.services.remote_agent_service.db")
+    def test_agent_not_found(self, mock_db, mock_shutdown, service):
+        """No agent record → result='not_found'."""
+        mock_db.session.get.return_value = None
 
         result = service.shutdown(999)
-        assert result["success"] is False
+        assert result["result"] == "not_found"
+        assert result["agent_id"] == 999
+        mock_shutdown.assert_not_called()

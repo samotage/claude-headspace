@@ -185,6 +185,12 @@ DEFAULTS = {
         "default_verbosity": "concise",
         "auto_target": False,
     },
+    "otagemon": {
+        "enabled": True,
+        "webhook_url": "",
+        "timeout": 5,
+        "rate_limit_per_second": 5,
+    },
 }
 
 # Environment variable mappings

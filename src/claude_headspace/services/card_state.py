@@ -383,7 +383,7 @@ def get_state_info(state: CommandState | str) -> dict:
         CommandState.IDLE: {
             "color": "green",
             "bg_class": "bg-green",
-            "label": "Idle - ready for command",
+            "label": "Idle",
         },
         CommandState.COMMANDED: {
             "color": "yellow",

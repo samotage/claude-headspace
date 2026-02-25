@@ -6,6 +6,7 @@ module with blocking semantics suitable for synchronous API consumers.
 """
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -35,7 +36,7 @@ class RemoteAgentResult:
     agent_id: Optional[int] = None
     embed_url: Optional[str] = None
     session_token: Optional[str] = None
-    project_name: Optional[str] = None
+    project_slug: Optional[str] = None
     persona_slug: Optional[str] = None
     tmux_session_name: Optional[str] = None
     status: str = "error"
@@ -74,7 +75,7 @@ class RemoteAgentService:
 
     def create_blocking(
         self,
-        project_name: str,
+        project_slug: str,
         persona_slug: str,
         initial_prompt: str,
         feature_flags: dict | None = None,
@@ -82,7 +83,7 @@ class RemoteAgentService:
         """Create an agent and block until it is fully ready.
 
         Flow:
-        1. Resolve project by name
+        1. Resolve project by slug
         2. Call create_agent() (fire-and-forget tmux session)
         3. Poll DB for agent readiness (agent registered + persona skill injected)
         4. Send initial prompt via tmux bridge
@@ -90,7 +91,7 @@ class RemoteAgentService:
         6. Return complete result
 
         Args:
-            project_name: Name of the project (case-insensitive match).
+            project_slug: Slug of the project (e.g. "may-belle").
             persona_slug: Slug of the persona to use.
             initial_prompt: Text to send as the first user prompt.
             feature_flags: Optional feature flags for the embed view.
@@ -98,17 +99,17 @@ class RemoteAgentService:
         Returns:
             RemoteAgentResult with all creation details or error info.
         """
-        # 1. Resolve project
+        # 1. Resolve project by slug
         project = (
             db.session.query(Project)
-            .filter(db.func.lower(Project.name) == project_name.lower())
+            .filter(Project.slug == project_slug)
             .first()
         )
         if not project:
             return RemoteAgentResult(
                 success=False,
                 error_code="project_not_found",
-                error_message=f"Project '{project_name}' not found",
+                error_message=f"Project '{project_slug}' not found",
             )
 
         # 2. Call create_agent (fire-and-forget)
@@ -127,7 +128,7 @@ class RemoteAgentService:
         tmux_session_name = create_result.tmux_session_name
         logger.info(
             f"Remote agent creation started: tmux_session={tmux_session_name}, "
-            f"project={project_name}, persona={persona_slug}"
+            f"project={project_slug}, persona={persona_slug}"
         )
 
         # 3. Poll for agent readiness
@@ -217,7 +218,7 @@ class RemoteAgentService:
             agent_id=agent.id,
             embed_url=embed_url,
             session_token=session_token,
-            project_name=project.name,
+            project_slug=project.slug,
             persona_slug=persona_slug,
             tmux_session_name=tmux_session_name,
             status="ready",
@@ -247,24 +248,53 @@ class RemoteAgentService:
             "alive": True,
             "agent_id": agent.id,
             "state": state,
-            "project_name": agent.project.name if agent.project else None,
+            "project_slug": agent.project.slug if agent.project else None,
         }
 
     def shutdown(self, agent_id: int) -> dict:
-        """Initiate graceful agent shutdown.
+        """Initiate graceful agent shutdown (non-blocking).
+
+        Checks agent state synchronously, revokes tokens, then fires the
+        actual tmux shutdown asynchronously so the HTTP response returns
+        immediately.
 
         Args:
             agent_id: ID of the agent to shut down.
 
         Returns:
-            Dict with shutdown result.
+            Dict with ``result`` key: ``"initiated"``, ``"already_terminated"``,
+            or ``"not_found"``.
         """
-        # Also revoke the session token
+        agent = db.session.get(Agent, agent_id)
+
+        if not agent:
+            return {"result": "not_found", "agent_id": agent_id}
+
+        if agent.ended_at is not None:
+            return {"result": "already_terminated", "agent_id": agent_id}
+
+        # Revoke tokens synchronously (fast, in-memory)
         token_service = self._get_token_service()
         token_service.revoke_for_agent(agent_id)
 
-        result = shutdown_agent(agent_id)
-        return {
-            "success": result.success,
-            "message": result.message,
-        }
+        # Fire the actual tmux shutdown asynchronously so the caller
+        # gets an immediate response (S5 FR3: non-blocking).
+        app = self._app or current_app._get_current_object()
+        threading.Thread(
+            target=self._async_shutdown,
+            args=(app, agent_id),
+            daemon=True,
+            name=f"shutdown-agent-{agent_id}",
+        ).start()
+
+        return {"result": "initiated", "agent_id": agent_id}
+
+    @staticmethod
+    def _async_shutdown(app, agent_id: int):
+        """Run shutdown_agent inside an app context on a background thread."""
+        with app.app_context():
+            result = shutdown_agent(agent_id)
+            if not result.success:
+                logger.warning(
+                    f"Async shutdown of agent {agent_id} failed: {result.message}"
+                )

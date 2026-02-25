@@ -69,23 +69,23 @@ class TestCreateEndpoint:
         resp = client.post("/api/remote_agents/create", json={})
         assert resp.status_code == 400
         data = resp.get_json()
-        assert data["error_code"] == "missing_fields"
+        assert data["error"]["code"] == "missing_fields"
 
     def test_partial_fields_returns_400(self, client):
         resp = client.post(
             "/api/remote_agents/create",
-            json={"project_name": "test"},
+            json={"project_slug": "test"},
         )
         assert resp.status_code == 400
         data = resp.get_json()
-        assert "persona_slug" in data["message"]
-        assert "initial_prompt" in data["message"]
+        assert "persona_slug" in data["error"]["message"]
+        assert "initial_prompt" in data["error"]["message"]
 
     def test_invalid_feature_flags_returns_400(self, client):
         resp = client.post(
             "/api/remote_agents/create",
             json={
-                "project_name": "test",
+                "project_slug": "test",
                 "persona_slug": "test",
                 "initial_prompt": "hello",
                 "feature_flags": "not-a-dict",
@@ -93,7 +93,7 @@ class TestCreateEndpoint:
         )
         assert resp.status_code == 400
         data = resp.get_json()
-        assert data["error_code"] == "invalid_feature_flags"
+        assert data["error"]["code"] == "invalid_feature_flags"
 
     def test_successful_create_returns_201(self, client, mock_remote_service):
         mock_remote_service.create_blocking.return_value = RemoteAgentResult(
@@ -101,7 +101,7 @@ class TestCreateEndpoint:
             agent_id=42,
             embed_url="https://test.example.com:5055/embed/42?token=abc",
             session_token="abc",
-            project_name="test-project",
+            project_slug="test-project",
             persona_slug="test",
             tmux_session_name="hs-test-abc123",
             status="ready",
@@ -110,7 +110,7 @@ class TestCreateEndpoint:
         resp = client.post(
             "/api/remote_agents/create",
             json={
-                "project_name": "test-project",
+                "project_slug": "test-project",
                 "persona_slug": "test",
                 "initial_prompt": "hello",
             },
@@ -131,14 +131,14 @@ class TestCreateEndpoint:
         resp = client.post(
             "/api/remote_agents/create",
             json={
-                "project_name": "bad",
+                "project_slug": "bad",
                 "persona_slug": "test",
                 "initial_prompt": "hello",
             },
         )
         assert resp.status_code == 404
         data = resp.get_json()
-        assert data["error_code"] == "project_not_found"
+        assert data["error"]["code"] == "project_not_found"
 
     def test_timeout_returns_408_with_retryable(self, client, mock_remote_service):
         mock_remote_service.create_blocking.return_value = RemoteAgentResult(
@@ -150,16 +150,16 @@ class TestCreateEndpoint:
         resp = client.post(
             "/api/remote_agents/create",
             json={
-                "project_name": "test",
+                "project_slug": "test",
                 "persona_slug": "test",
                 "initial_prompt": "hello",
             },
         )
         assert resp.status_code == 408
         data = resp.get_json()
-        assert data["error_code"] == "agent_creation_timeout"
-        assert data["retryable"] is True
-        assert data["retry_after_seconds"] == 5
+        assert data["error"]["code"] == "agent_creation_timeout"
+        assert data["error"]["retryable"] is True
+        assert data["error"]["retry_after_seconds"] == 5
 
 
 # ──────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ class TestAliveEndpoint:
         resp = client.get("/api/remote_agents/1/alive")
         assert resp.status_code == 401
         data = resp.get_json()
-        assert data["error_code"] == "missing_token"
+        assert data["error"]["code"] == "invalid_session_token"
 
     def test_invalid_token_returns_401(self, client):
         resp = client.get(
@@ -182,7 +182,7 @@ class TestAliveEndpoint:
         )
         assert resp.status_code == 401
         data = resp.get_json()
-        assert data["error_code"] == "invalid_token"
+        assert data["error"]["code"] == "invalid_session_token"
 
     def test_wrong_agent_token_returns_401(self, client, token_service):
         """Token for agent 2 should not work for agent 1."""
@@ -222,17 +222,26 @@ class TestAliveEndpoint:
 # ──────────────────────────────────────────────────────────────
 
 class TestShutdownEndpoint:
-    """Tests for POST /api/remote_agents/<id>/shutdown."""
+    """Tests for POST /api/remote_agents/<id>/shutdown.
+
+    Response shapes per S5 FR3 contract:
+    - 200 initiated: {"status": "ok", "agent_id": N, "message": "Agent shutdown initiated"}
+    - 200 idempotent: {"status": "ok", "agent_id": N, "message": "Agent already terminated"}
+    - 401: standard error envelope (invalid_session_token)
+    - 404: standard error envelope (agent_not_found)
+    """
 
     def test_missing_token_returns_401(self, client):
         resp = client.post("/api/remote_agents/1/shutdown")
         assert resp.status_code == 401
+        data = resp.get_json()
+        assert data["error"]["code"] == "invalid_session_token"
 
-    def test_successful_shutdown(self, client, token_service, mock_remote_service):
+    def test_shutdown_initiated(self, client, token_service, mock_remote_service):
         token = token_service.generate(agent_id=1)
         mock_remote_service.shutdown.return_value = {
-            "success": True,
-            "message": "Agent shutdown confirmed.",
+            "result": "initiated",
+            "agent_id": 1,
         }
 
         resp = client.post(
@@ -241,20 +250,42 @@ class TestShutdownEndpoint:
         )
         assert resp.status_code == 200
         data = resp.get_json()
-        assert data["success"] is True
+        assert data["status"] == "ok"
+        assert data["agent_id"] == 1
+        assert data["message"] == "Agent shutdown initiated"
 
-    def test_failed_shutdown_returns_422(self, client, token_service, mock_remote_service):
+    def test_already_terminated_returns_200(self, client, token_service, mock_remote_service):
+        """Idempotent — double-shutdown returns 200, not an error."""
         token = token_service.generate(agent_id=1)
         mock_remote_service.shutdown.return_value = {
-            "success": False,
-            "message": "Agent not found",
+            "result": "already_terminated",
+            "agent_id": 1,
         }
 
         resp = client.post(
             "/api/remote_agents/1/shutdown",
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "ok"
+        assert data["agent_id"] == 1
+        assert data["message"] == "Agent already terminated"
+
+    def test_agent_not_found_returns_404(self, client, token_service, mock_remote_service):
+        token = token_service.generate(agent_id=1)
+        mock_remote_service.shutdown.return_value = {
+            "result": "not_found",
+            "agent_id": 1,
+        }
+
+        resp = client.post(
+            "/api/remote_agents/1/shutdown",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+        data = resp.get_json()
+        assert data["error"]["code"] == "agent_not_found"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -328,20 +359,23 @@ class TestEmbedView:
 # ──────────────────────────────────────────────────────────────
 
 class TestErrorEnvelope:
-    """Tests for standardised error response format."""
+    """Tests for standardised error response format (S5 FR5 contract).
+
+    Error envelope: {"error": {"code": "...", "message": "...", "status": N,
+                               "retryable": bool, "retry_after_seconds": N|null}}
+    """
 
     def test_error_envelope_structure(self, client):
         resp = client.get("/api/remote_agents/1/alive")
         data = resp.get_json()
 
-        assert "status" in data
-        assert "error_code" in data
-        assert "message" in data
-        assert "retryable" in data
-        assert isinstance(data["status"], int)
-        assert isinstance(data["error_code"], str)
-        assert isinstance(data["message"], str)
-        assert isinstance(data["retryable"], bool)
+        assert "error" in data
+        err = data["error"]
+        assert isinstance(err["code"], str)
+        assert isinstance(err["message"], str)
+        assert isinstance(err["status"], int)
+        assert isinstance(err["retryable"], bool)
+        assert "retry_after_seconds" in err  # always present, even if null
 
     def test_retryable_includes_retry_after(self, client, mock_remote_service):
         mock_remote_service.create_blocking.return_value = RemoteAgentResult(
@@ -353,11 +387,18 @@ class TestErrorEnvelope:
         resp = client.post(
             "/api/remote_agents/create",
             json={
-                "project_name": "test",
+                "project_slug": "test",
                 "persona_slug": "test",
                 "initial_prompt": "hello",
             },
         )
         data = resp.get_json()
-        assert data["retryable"] is True
-        assert "retry_after_seconds" in data
+        assert data["error"]["retryable"] is True
+        assert data["error"]["retry_after_seconds"] == 5
+
+    def test_non_retryable_has_null_retry_after(self, client):
+        """Non-retryable errors have retry_after_seconds: null."""
+        resp = client.get("/api/remote_agents/1/alive")
+        data = resp.get_json()
+        assert data["error"]["retryable"] is False
+        assert data["error"]["retry_after_seconds"] is None

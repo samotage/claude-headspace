@@ -30,7 +30,7 @@
 
     // State info mapping (matches Python get_state_info)
     const STATE_INFO = {
-        'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle - ready for command' },
+        'IDLE': { color: 'green', bg_class: 'bg-green', label: 'Idle' },
         'COMMANDED': { color: 'yellow', bg_class: 'bg-amber', label: 'Command received' },
         'PROCESSING': { color: 'blue', bg_class: 'bg-blue', label: 'Processing...' },
         'AWAITING_INPUT': { color: 'orange', bg_class: 'bg-amber', label: 'Input needed' },

@@ -28,6 +28,9 @@ def _error_response(
 ):
     """Build a standardised JSON error response.
 
+    Returns a nested error envelope matching the cross-system contract (S5 FR5):
+    ``{"error": {"code": "...", "message": "...", "status": N, ...}}``
+
     Args:
         status_code: HTTP status code.
         error_code: Machine-readable error code.
@@ -39,13 +42,14 @@ def _error_response(
         Flask response tuple (body, status_code).
     """
     body = {
-        "status": status_code,
-        "error_code": error_code,
-        "message": message,
-        "retryable": retryable,
+        "error": {
+            "code": error_code,
+            "message": message,
+            "status": status_code,
+            "retryable": retryable,
+            "retry_after_seconds": retry_after_seconds,
+        }
     }
-    if retry_after_seconds is not None:
-        body["retry_after_seconds"] = retry_after_seconds
     return jsonify(body), status_code
 
 
@@ -82,7 +86,7 @@ def require_session_token(f):
     def decorated(*args, **kwargs):
         token = _get_token_from_request()
         if not token:
-            return _error_response(401, "missing_token", "Session token is required")
+            return _error_response(401, "invalid_session_token", "Session token is required")
 
         token_service = _get_session_token_service()
         if not token_service:
@@ -96,7 +100,7 @@ def require_session_token(f):
             token_info = token_service.validate(token)
 
         if not token_info:
-            return _error_response(401, "invalid_token", "Invalid or expired session token")
+            return _error_response(401, "invalid_session_token", "Invalid or expired session token")
 
         kwargs["token_info"] = token_info
         return f(*args, **kwargs)
@@ -146,7 +150,7 @@ def create_remote_agent():
     """Create a new remote agent (Task 2.2.2).
 
     Request body:
-        project_name: Name of the project (required)
+        project_slug: Project slug (required, e.g. "may-belle")
         persona_slug: Persona slug (required)
         initial_prompt: First prompt to send (required)
         feature_flags: Optional dict of feature flags
@@ -160,15 +164,15 @@ def create_remote_agent():
     """
     data = request.get_json(silent=True) or {}
 
-    project_name = data.get("project_name", "").strip()
+    project_slug = data.get("project_slug", "").strip()
     persona_slug = data.get("persona_slug", "").strip()
     initial_prompt = data.get("initial_prompt", "").strip()
     feature_flags = data.get("feature_flags")
 
     # Validate required fields
     missing = []
-    if not project_name:
-        missing.append("project_name")
+    if not project_slug:
+        missing.append("project_slug")
     if not persona_slug:
         missing.append("persona_slug")
     if not initial_prompt:
@@ -195,7 +199,7 @@ def create_remote_agent():
 
     try:
         result = remote_service.create_blocking(
-            project_name=project_name,
+            project_slug=project_slug,
             persona_slug=persona_slug,
             initial_prompt=initial_prompt,
             feature_flags=feature_flags,
@@ -225,7 +229,7 @@ def create_remote_agent():
         "agent_id": result.agent_id,
         "embed_url": result.embed_url,
         "session_token": result.session_token,
-        "project_name": result.project_name,
+        "project_slug": result.project_slug,
         "persona_slug": result.persona_slug,
         "tmux_session_name": result.tmux_session_name,
         "status": result.status,
@@ -256,12 +260,15 @@ def check_alive(agent_id: int, token_info=None):
 def shutdown_remote_agent(agent_id: int, token_info=None):
     """Shut down an agent (Task 2.2.4).
 
-    Requires session token scoped to this agent.
+    Requires session token scoped to this agent.  Non-blocking — initiates
+    termination and returns immediately.  The tmux session cleanup happens
+    asynchronously.
 
-    Returns:
-        200: Shutdown initiated
-        401: Invalid or missing token
-        422: Shutdown failed
+    Response shapes (S5 FR3 contract):
+        200: {"status": "ok", "agent_id": N, "message": "Agent shutdown initiated"}
+        200: {"status": "ok", "agent_id": N, "message": "Agent already terminated"}
+        401: Standard error envelope (invalid_session_token)
+        404: Standard error envelope (agent_not_found)
     """
     remote_service = current_app.extensions.get("remote_agent_service")
     if not remote_service:
@@ -269,12 +276,20 @@ def shutdown_remote_agent(agent_id: int, token_info=None):
 
     result = remote_service.shutdown(agent_id)
 
-    if not result["success"]:
-        return _error_response(422, "shutdown_failed", result["message"])
+    if result["result"] == "not_found":
+        return _error_response(404, "agent_not_found", f"Agent {agent_id} not found")
+
+    if result["result"] == "already_terminated":
+        return jsonify({
+            "status": "ok",
+            "agent_id": agent_id,
+            "message": "Agent already terminated",
+        }), 200
 
     return jsonify({
-        "success": True,
-        "message": result["message"],
+        "status": "ok",
+        "agent_id": agent_id,
+        "message": "Agent shutdown initiated",
     }), 200
 
 
@@ -295,7 +310,7 @@ def embed_view(agent_id: int):
 
     token = request.args.get("token")
     if not token:
-        return _error_response(401, "missing_token", "Session token is required")
+        return _error_response(401, "invalid_session_token", "Session token is required")
 
     token_service = _get_session_token_service()
     if not token_service:
@@ -303,7 +318,7 @@ def embed_view(agent_id: int):
 
     token_info = token_service.validate_for_agent(token, agent_id)
     if not token_info:
-        return _error_response(401, "invalid_token", "Invalid or expired session token")
+        return _error_response(401, "invalid_session_token", "Invalid or expired session token")
 
     # Resolve feature flags: URL params override token defaults
     config = current_app.config.get("APP_CONFIG", {})

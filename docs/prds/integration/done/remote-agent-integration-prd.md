@@ -54,8 +54,8 @@ An external application makes a single POST request to Headspace, receives a rea
 ### 2.1 In Scope
 
 - New `remote_agents` API namespace (`/api/remote_agents/`) — completely independent of existing voice bridge endpoints
-- Blocking agent creation endpoint — accepts project name, persona slug, and initial prompt; returns only when the agent is fully ready (registered, skill-injected, prompt delivered)
-- Create response payload with all identifiers the calling application needs: `agent_id`, `embed_url`, `session_token`, `project_name`, `persona_slug`, `tmux_session_name`, `status`
+- Blocking agent creation endpoint — accepts project slug, persona slug, and initial prompt; returns only when the agent is fully ready (registered, skill-injected, prompt delivered)
+- Create response payload with all identifiers the calling application needs: `agent_id`, `embed_url`, `session_token`, `project_slug`, `persona_slug`, `tmux_session_name`, `status`
 - Session token authentication — opaque token returned by create, required for subsequent API calls (liveness, shutdown) and embedded in the embed URL for iframe access
 - Agent liveness check endpoint — calling application checks whether a previously created agent is still alive for idempotent reuse (page refresh, re-navigation)
 - Agent shutdown endpoint — calling application requests graceful agent termination when done
@@ -85,7 +85,7 @@ An external application makes a single POST request to Headspace, receives a rea
 
 ### 3.1 Functional Success Criteria
 
-1. An external application can create an agent with a single POST to `/api/remote_agents/create` providing `project_name`, `persona_slug`, and `initial_prompt`, and receive a complete response with `agent_id`, `embed_url`, `session_token`, and identifying metadata
+1. An external application can create an agent with a single POST to `/api/remote_agents/create` providing `project_slug`, `persona_slug`, and `initial_prompt`, and receive a complete response with `agent_id`, `embed_url`, `session_token`, and identifying metadata
 2. The create endpoint blocks until the agent is fully ready: registered in the database, persona skill injected, initial prompt delivered — or returns a timeout error within the configured timeout period
 3. The `embed_url` renders a single-agent chat interface in an iframe with no Headspace chrome visible — no header, no session list, no navigation, no dashboard links
 4. The embedded chat view supports real-time updates via SSE scoped to the single agent — agent responses appear without polling or page refresh
@@ -110,7 +110,7 @@ An external application makes a single POST request to Headspace, receives a rea
 
 **FR1: Remote Agent Creation Endpoint**
 
-The system provides a `POST /api/remote_agents/create` endpoint that creates a fully ready agent and returns all information the calling application needs. The endpoint accepts a project name, persona slug, and initial prompt. It blocks until the agent is registered in the database, the persona skill file is injected, and the initial prompt is delivered to the agent. The response includes the agent ID, a scoped embed URL for iframe embedding, an opaque session token for subsequent API calls and iframe authentication, the project name and persona slug echoed back, the tmux session name (for operator debugging), and a status indicator. If the agent fails to become ready within the configured timeout, the endpoint returns a timeout error.
+The system provides a `POST /api/remote_agents/create` endpoint that creates a fully ready agent and returns all information the calling application needs. The endpoint accepts a project slug (e.g. `may-belle`), persona slug, and initial prompt. It blocks until the agent is registered in the database, the persona skill file is injected, and the initial prompt is delivered to the agent. The response includes the agent ID, a scoped embed URL for iframe embedding, an opaque session token for subsequent API calls and iframe authentication, the project slug and persona slug echoed back, the tmux session name (for operator debugging), and a status indicator. If the agent fails to become ready within the configured timeout, the endpoint returns a timeout error.
 
 **FR2: Agent Liveness Check**
 
@@ -118,7 +118,14 @@ The system provides a `GET /api/remote_agents/<id>/alive` endpoint that reports 
 
 **FR3: Agent Shutdown**
 
-The system provides a `POST /api/remote_agents/<id>/shutdown` endpoint that requests graceful termination of an agent. The calling application uses this when the user's task is complete or the user navigates away. The endpoint requires a valid session token. The response confirms whether the shutdown was initiated successfully.
+The system provides a `POST /api/remote_agents/<id>/shutdown` endpoint that requests graceful termination of an agent. The calling application uses this when the user's task is complete or the user navigates away. The endpoint requires a valid session token. Shutdown is non-blocking — Headspace initiates termination and returns immediately; tmux session cleanup happens asynchronously. The endpoint is idempotent — calling shutdown on an already-terminated agent returns success, not an error.
+
+Explicit response shapes (S5 contract amendment):
+
+1. **Success (200):** `{"status": "ok", "agent_id": N, "message": "Agent shutdown initiated"}`
+2. **Already-shutdown / idempotent (200):** `{"status": "ok", "agent_id": N, "message": "Agent already terminated"}`
+3. **Invalid or missing session token (401):** Standard error envelope: `{"error": {"code": "invalid_session_token", "message": "...", "status": 401, "retryable": false, "retry_after_seconds": null}}`
+4. **Agent not found (404):** Standard error envelope: `{"error": {"code": "agent_not_found", "message": "...", "status": 404, "retryable": false, "retry_after_seconds": null}}`
 
 **FR4: Scoped Embed View**
 
@@ -142,7 +149,7 @@ The system supports configurable CORS allowed origins for cross-origin iframe em
 
 **FR9: Standardised Error Responses**
 
-All `remote_agents` endpoints return errors in a consistent JSON envelope. The envelope includes: HTTP status code, a machine-readable error code, a human-readable error message, and retry guidance (whether the error is retryable, suggested backoff). Specific error conditions include: project not found (404), persona not found (404), agent creation timeout (408), invalid or missing session token (401), agent not found (404), server error (500), and service unavailable (503).
+All `remote_agents` endpoints return errors in a consistent nested JSON envelope (S5 FR5 contract): `{"error": {"code": "...", "message": "...", "status": N, "retryable": bool, "retry_after_seconds": N|null}}`. The `retry_after_seconds` field is always present (null when not applicable). Specific error conditions include: project not found (404), persona not found (404), agent creation timeout (408, retryable), invalid or missing session token (401), agent not found (404), server error (500), and service unavailable (503).
 
 **FR10: Configuration**
 
