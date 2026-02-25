@@ -156,5 +156,6 @@
     // Pass persona slug to the detail page script
     window.PERSONA_SLUG = {{ persona.slug | tojson }};
 </script>
+<script src="{{ url_for('static', filename='js/agent-listing.js') }}?v={{ cache_bust }}"></script>
 <script src="{{ url_for('static', filename='js/persona_detail.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

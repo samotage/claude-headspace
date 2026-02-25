@@ -478,19 +478,6 @@
                 return;
             }
 
-            // Revive (kebab menu item)
-            var reviveAction = e.target.closest('.card-revive-action');
-            if (reviveAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(reviveAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId) {
-                    reviveAgent(agentId);
-                }
-                return;
-            }
-
             // Handoff button (card footer)
             var handoffAction = e.target.closest('.handoff-btn');
             if (handoffAction) {

@@ -568,19 +568,10 @@
                 // Recalculate header counts
                 updateStatusCounts();
 
-                // Show toast with Revive action for the ended agent
+                // Show toast for the ended agent
                 if (global.Toast) {
                     global.Toast.info('Agent ended', 'Agent #' + agentId + ' session ended', {
-                        duration: 10000,
-                        actions: [{
-                            label: 'Revive',
-                            className: 'toast-action-revive',
-                            onClick: function() {
-                                if (global.AgentLifecycle) {
-                                    global.AgentLifecycle.reviveAgent(agentId);
-                                }
-                            }
-                        }]
+                        duration: 10000
                     });
                 }
                 return;

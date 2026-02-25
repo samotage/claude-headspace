@@ -312,115 +312,11 @@
         },
 
         _renderAgentsList: function(container, agents) {
-            // Sort: active first, then by last_seen_at descending
-            if (agents.length > 1) {
-                agents = agents.slice().sort(function(a, b) {
-                    var aEnded = !!a.ended_at;
-                    var bEnded = !!b.ended_at;
-                    if (aEnded !== bEnded) return aEnded ? 1 : -1;
-                    var aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
-                    var bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
-                    return bTime - aTime;
-                });
-            }
-
-            var html = '';
-            var self = this;
-            agents.forEach(function(agent) {
-                var isEnded = !!agent.ended_at;
-                var stateValue = agent.state || 'idle';
-                if (isEnded) stateValue = 'ended';
-                var stateClass = self._stateColorClass(stateValue);
-                var uuid8 = agent.session_uuid ? agent.session_uuid.substring(0, 8) : '';
-
-                html += '<div class="agent-metric-row">';
-
-                // Alive pill for active agents
-                if (!isEnded) {
-                    html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-700/50" style="flex-shrink:0">ALIVE</span>';
-                }
-                // State badge
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
-
-                // Agent ID + UUID
-                html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0">#' + agent.id + '</span>';
-                if (uuid8) {
-                    html += '<span class="agent-metric-tag"><span class="font-mono text-xs text-secondary">' + CHUtils.escapeHtml(uuid8) + '</span></span>';
-                }
-
-                // Project name
-                if (agent.project_name) {
-                    html += '<span class="text-xs text-secondary" style="flex-shrink:0">' + CHUtils.escapeHtml(agent.project_name) + '</span>';
-                }
-
-                // Metrics
-                html += '<div class="agent-metric-stats">';
-                html += '<span><span class="stat-value">' + (agent.turn_count || 0) + '</span><span class="stat-label">turns</span></span>';
-                if (agent.avg_turn_time != null) {
-                    html += '<span><span class="stat-value">' + agent.avg_turn_time.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
-                }
-                if (agent.frustration_avg != null) {
-                    var frustLevel = agent.frustration_avg >= 7 ? 'text-red' : (agent.frustration_avg >= 4 ? 'text-amber' : 'text-green');
-                    html += '<span><span class="stat-value ' + frustLevel + '">' + agent.frustration_avg.toFixed(1) + '</span><span class="stat-label">frust</span></span>';
-                }
-                html += '</div>';
-
-                // Last seen / ended badge
-                if (isEnded) {
-                    html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';
-                    if (agent.started_at && agent.ended_at) {
-                        html += '<span class="text-xs text-muted" style="flex-shrink:0">' + self._formatDuration(agent.started_at, agent.ended_at) + '</span>';
-                    }
-                } else if (agent.last_seen_at) {
-                    html += '<span class="text-xs text-muted" style="flex-shrink:0">' + self._timeAgo(agent.last_seen_at) + '</span>';
-                }
-
-                html += '</div>';
+            AgentListing.renderAgentsList(container, agents, {
+                showProjectName: true,
+                showReviveButton: true,
+                emptyMessage: 'No agents linked to this persona.'
             });
-
-            container.innerHTML = html;
-        },
-
-        // --- Agent display utilities ---
-
-        _stateColorClass: function(s) {
-            s = (s || '').toLowerCase();
-            var map = {
-                idle: 'bg-surface text-muted',
-                commanded: 'bg-amber/15 text-amber',
-                processing: 'bg-blue/15 text-blue',
-                awaiting_input: 'bg-amber/15 text-amber',
-                complete: 'bg-green/15 text-green',
-                ended: 'bg-surface text-muted opacity-60'
-            };
-            return map[s] || 'bg-surface text-muted';
-        },
-
-        _timeAgo: function(dateString) {
-            var date = new Date(dateString);
-            var now = new Date();
-            var seconds = Math.floor((now - date) / 1000);
-            if (seconds < 60) return 'just now';
-            var minutes = Math.floor(seconds / 60);
-            if (minutes < 60) return minutes + ' minute' + (minutes !== 1 ? 's' : '') + ' ago';
-            var hours = Math.floor(minutes / 60);
-            if (hours < 24) return hours + ' hour' + (hours !== 1 ? 's' : '') + ' ago';
-            var days = Math.floor(hours / 24);
-            if (days < 30) return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
-            var months = Math.floor(days / 30);
-            return months + ' month' + (months !== 1 ? 's' : '') + ' ago';
-        },
-
-        _formatDuration: function(startStr, endStr) {
-            var start = new Date(startStr);
-            var end = new Date(endStr);
-            var seconds = Math.floor((end - start) / 1000);
-            if (seconds < 60) return seconds + 's';
-            var minutes = Math.floor(seconds / 60);
-            if (minutes < 60) return minutes + 'm';
-            var hours = Math.floor(minutes / 60);
-            var mins = minutes % 60;
-            return hours + 'h ' + mins + 'm';
         }
     };
 

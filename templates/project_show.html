@@ -288,6 +288,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/agent-listing.js') }}?v={{ cache_bust }}"></script>
 <script src="{{ url_for('static', filename='js/project_show.js') }}?v={{ cache_bust }}"></script>
 <script src="{{ url_for('static', filename='js/full-text-modal.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

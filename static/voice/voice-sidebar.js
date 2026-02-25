@@ -239,13 +239,17 @@ window.VoiceSidebar = (function () {
       var selectedClass = (VoiceState.layoutMode === 'split' && a.agent_id === VoiceState.targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
-      // Kebab menu: ended agents only get "Fetch context"
+      // Kebab menu: ended agents get "Fetch context" + "Revive"
       var kebabMenuHtml;
       if (isEnded) {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
+          + '<div class="kebab-divider"></div>'
+          + '<button class="kebab-menu-item agent-revive-action" data-agent-id="' + a.agent_id + '">'
+          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v6M5 4l3-3 3 3"/><path d="M2 8a6 6 0 1 0 12 0"/></svg>'
+          + '<span>Revive</span></button>'
           + '</div>';
       } else {
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
@@ -380,6 +384,25 @@ window.VoiceSidebar = (function () {
         var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
         closeAllKebabMenus();
         shutdownAgent(agentId);
+      });
+    }
+    var reviveActions = list.querySelectorAll('.agent-revive-action');
+    for (var ra = 0; ra < reviveActions.length; ra++) {
+      reviveActions[ra].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
+        closeAllKebabMenus();
+        CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) {
+              showToast('Revival failed: ' + data.error);
+            } else {
+              showToast('Revival initiated');
+              refreshAgents();
+            }
+          })
+          .catch(function () { showToast('Revival failed'); });
       });
     }
     // Bind project kebab menu buttons
