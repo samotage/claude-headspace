@@ -20,6 +20,7 @@ Welcome to Claude Headspace - a Kanban-style dashboard for tracking Claude Code 
 - [Configuration](configuration) - Customizing config.yaml settings
 - [Agentic Testing](agent-driven-testing) - Integration tests using real Claude Code sessions
 - [Troubleshooting](troubleshooting) - Common issues and solutions
+- [External API](external-api) - Machine-readable API documentation for external integrations
 
 ## Keyboard Shortcuts
 

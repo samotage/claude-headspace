@@ -36,6 +36,10 @@ def temp_help_dir():
         (help_dir / "index.md").write_text("# Help Overview\n\nWelcome to help.")
         (help_dir / "getting-started.md").write_text("# Getting Started\n\nQuick start guide.")
         (help_dir / "dashboard.md").write_text("# Dashboard\n\nDashboard overview.")
+        (help_dir / "external-api.md").write_text(
+            "# External API\n\nAPI documentation for external integrations.\n\n"
+            "Spec URL: `/static/api/remote-agents.yaml`"
+        )
 
         yield help_dir
 
@@ -207,3 +211,45 @@ class TestExtractTitle:
         content = "# First Title\n\n# Second Title"
         title = extract_title(content, "Default")
         assert title == "First Title"
+
+
+class TestExternalApiTopic:
+    """Tests for the external-api help topic registration."""
+
+    def test_external_api_in_topics_list(self):
+        """external-api must be registered in TOPICS."""
+        from src.claude_headspace.routes.help import TOPICS
+
+        slugs = [t["slug"] for t in TOPICS]
+        assert "external-api" in slugs
+
+    def test_external_api_topic_metadata(self):
+        """external-api topic must have correct metadata."""
+        from src.claude_headspace.routes.help import TOPICS
+
+        topic = next(t for t in TOPICS if t["slug"] == "external-api")
+        assert topic["title"] == "External API"
+        assert topic["order"] == 17
+
+    @patch("src.claude_headspace.routes.help.get_help_dir")
+    def test_external_api_topic_loads(self, mock_get_dir, client, temp_help_dir):
+        """GET /api/help/topics/external-api should return 200 with content."""
+        mock_get_dir.return_value = temp_help_dir
+
+        response = client.get("/api/help/topics/external-api")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["slug"] == "external-api"
+        assert "External API" in data["title"]
+
+    @patch("src.claude_headspace.routes.help.get_help_dir")
+    def test_external_api_appears_in_topic_list(self, mock_get_dir, client, temp_help_dir):
+        """GET /api/help/topics should include external-api."""
+        mock_get_dir.return_value = temp_help_dir
+
+        response = client.get("/api/help/topics")
+
+        data = response.get_json()
+        slugs = [t["slug"] for t in data["topics"]]
+        assert "external-api" in slugs
