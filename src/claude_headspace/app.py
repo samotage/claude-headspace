@@ -337,6 +337,26 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         app.extensions["voice_auth"] = None
         app.extensions["voice_formatter"] = None
 
+    # Initialize remote agent services (session token + remote agent service)
+    ra_enabled = get_value(config, "remote_agents", "enabled", default=True)
+    if ra_enabled:
+        from .services.session_token import SessionTokenService
+        from .services.remote_agent_service import RemoteAgentService
+
+        session_token_service = SessionTokenService()
+        app.extensions["session_token_service"] = session_token_service
+
+        remote_agent_service = RemoteAgentService(
+            app=app,
+            session_token_service=session_token_service,
+        )
+        app.extensions["remote_agent_service"] = remote_agent_service
+        logger.info("Remote agent services initialized")
+    else:
+        app.extensions["session_token_service"] = None
+        app.extensions["remote_agent_service"] = None
+        logger.info("Remote agent services disabled")
+
     # Initialize commander availability tracker (uses tmux_bridge internally)
     from .services.commander_availability import CommanderAvailability
     commander_availability = CommanderAvailability(app=app, config=config)
@@ -441,8 +461,8 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
             "csrf_token": token,
         }
 
-    # CSRF exempt paths (hooks, SSE, and voice bridge API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/")
+    # CSRF exempt paths (hooks, SSE, voice bridge API, and remote agents API)
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/", "/api/remote_agents/", "/embed/")
 
     @app.before_request
     def verify_csrf_token():
@@ -519,6 +539,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
+    from .routes.remote_agents import remote_agents_bp
     from .routes.voice_bridge import voice_bridge_bp
     from .routes.waypoint import waypoint_bp
 
@@ -545,6 +566,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)
+    app.register_blueprint(remote_agents_bp)
     app.register_blueprint(voice_bridge_bp)
     app.register_blueprint(waypoint_bp)
 
