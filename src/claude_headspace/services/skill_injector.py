@@ -12,7 +12,11 @@ collision that previously caused re-injection storms.
 import logging
 from datetime import datetime, timezone
 
-from ..services.persona_assets import read_experience_file, read_skill_file
+from ..services.persona_assets import (
+    read_experience_file,
+    read_guardrails_file,
+    read_skill_file,
+)
 from ..services.tmux_bridge import HealthCheckLevel, check_health, send_text
 
 logger = logging.getLogger(__name__)
@@ -22,9 +26,25 @@ def _compose_priming_message(
     persona_name: str,
     skill_content: str,
     experience_content: str | None = None,
+    guardrails_content: str | None = None,
 ) -> str:
-    """Compose the priming message from skill and experience content."""
-    parts = [
+    """Compose the priming message from guardrails, skill, and experience content.
+
+    Guardrails are prepended BEFORE persona content so they take
+    precedence — the guardrails document itself states it overrides
+    all other instructions.
+    """
+    parts = []
+
+    if guardrails_content:
+        parts.extend([
+            "## Platform Guardrails",
+            "",
+            guardrails_content.strip(),
+            "",
+        ])
+
+    parts.extend([
         f"You are {persona_name}. Read the following skill and experience "
         "content carefully. Absorb this identity and respond in character "
         "with a brief greeting confirming who you are and what you do.",
@@ -32,7 +52,7 @@ def _compose_priming_message(
         "## Skills",
         "",
         skill_content.strip(),
-    ]
+    ])
     if experience_content:
         parts.extend([
             "",
@@ -112,6 +132,14 @@ def inject_persona_skills(agent) -> bool:
             f"proceeding with skill.md only"
         )
 
+    # Read platform guardrails (optional but strongly expected)
+    guardrails_content = read_guardrails_file()
+    if guardrails_content is None:
+        logger.warning(
+            f"skill_injection: platform-guardrails.md not found — "
+            f"agent_id={agent_id} will operate WITHOUT platform guardrails"
+        )
+
     # Health check
     health = check_health(agent.tmux_pane_id, level=HealthCheckLevel.COMMAND)
     if not health.available:
@@ -122,7 +150,9 @@ def inject_persona_skills(agent) -> bool:
         return False
 
     # Compose and send
-    message = _compose_priming_message(persona_name, skill_content, experience_content)
+    message = _compose_priming_message(
+        persona_name, skill_content, experience_content, guardrails_content
+    )
     result = send_text(agent.tmux_pane_id, message)
 
     if not result.success:

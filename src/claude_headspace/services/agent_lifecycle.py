@@ -319,7 +319,10 @@ def create_agent(
             tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"])
         tmux_cmd.extend(["-c", str(project_path), "--"])
 
-        # Start claude-headspace in a new detached tmux session
+        # Start claude-headspace in a new detached tmux session.
+        # Do NOT activate the project's venv here — claude-headspace
+        # uses #!/usr/bin/env python3 and needs the Python environment
+        # where claude_headspace is installed, not the project's.
         subprocess.Popen(
             tmux_cmd + cli_args,
             stdout=subprocess.DEVNULL,

@@ -118,7 +118,7 @@ class TestCreateAgent:
             result = create_agent(1, persona_slug="developer-con-1")
 
         assert result.success
-        # Verify --persona flag is in CLI args
+        # Verify --persona flag is in the CLI args passed to tmux
         popen_args = mock_popen.call_args[0][0]
         assert "--persona" in popen_args
         persona_idx = popen_args.index("--persona")
@@ -158,7 +158,7 @@ class TestCreateAgent:
 
         result = create_agent(1)
         assert result.success
-        # Verify --persona is NOT in CLI args
+        # Verify --persona is NOT in the CLI args passed to tmux
         popen_args = mock_popen.call_args[0][0]
         assert "--persona" not in popen_args
         # Verify persona env var is NOT set

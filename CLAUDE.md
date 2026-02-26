@@ -17,6 +17,11 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 - Brain reboot: generate waypoint + progress summary snapshots for project context resets
 - Project management with inference pause controls, metadata detection, and per-project settings
 - Activity metrics: hourly aggregation at agent, project, and system-wide scope
+- Persona system: named agent identities with roles, skills, experience files, and org hierarchy
+- Remote agents API: external applications create/monitor agents via REST with session token auth
+- Embed chat widget: iframe-embeddable chat interface for remote agent interaction
+- Voice bridge: voice-first API with semantic picker matching and response formatting
+- Context monitoring: background polling of agent context window usage
 
 ## CRITICAL: Server & URL Rules
 
@@ -86,6 +91,12 @@ Flask application factory (`app.py`) with:
 |  Activity Aggregator (hourly metrics)                   |
 |  Agent Reaper (cleanup inactive agents)                 |
 |                                                         |
+|  Persona System (roles, skills, org hierarchy, handoff) |
+|  Remote Agents API (REST + session tokens + CORS)       |
+|  Embed Chat Widget (iframe chat for remote agents)      |
+|  Voice Bridge (voice-first API + picker matching)       |
+|  Context Poller (background context window monitoring)  |
+|                                                         |
 |  Broadcaster -> SSE -> Dashboard (real-time updates)    |
 |  Event Writer -> PostgreSQL (audit trail)               |
 +---------------------------------------------------------+
@@ -94,7 +105,7 @@ Flask application factory (`app.py`) with:
 ## Tech Stack
 
 - **Python:** 3.10+
-- **Framework:** Flask 3.0+ with 22 blueprints
+- **Framework:** Flask 3.0+ with 26 blueprints
 - **Database:** PostgreSQL via Flask-SQLAlchemy 3.1+ and Alembic (Flask-Migrate)
 - **Build:** Hatchling (pyproject.toml)
 - **Config:** PyYAML + python-dotenv
@@ -112,10 +123,12 @@ claude-headspace start              # Start monitored session (bridge enabled by
 claude-headspace start --no-bridge  # Start without tmux bridge
 ./restart_server.sh                  # Start or restart the server (ONLY way — see Critical Rules above)
 flask db upgrade                     # Run pending migrations
+flask persona register --name X --role Y  # Register a persona
+flask persona list [--active] [--role Y]  # List personas
 npx tailwindcss -i static/css/src/input.css -o static/css/main.css --watch  # Tailwind dev (v3)
 pytest tests/services/test_foo.py    # Run targeted tests (preferred)
 pytest tests/routes/ tests/services/ # Run relevant directories
-pytest                               # Full suite (~80 test files) -- only when asked
+pytest                               # Full suite -- only when asked
 pytest --cov=src                     # Full suite with coverage -- only when asked
 pip install -e ".[dev]"              # Install with dev dependencies
 npm install                          # Install Tailwind/Node dependencies
@@ -134,30 +147,37 @@ claude_headspace/
 |   +-- app.py                       # Flask app factory
 |   +-- config.py                    # Config loading (YAML + env overrides)
 |   +-- database.py                  # SQLAlchemy init
-|   +-- models/                      # 10 domain models (project, agent, command, turn, event, etc.)
-|   +-- routes/                      # 22 Flask blueprints (dashboard, hooks, sse, projects, etc.)
-|   +-- services/                    # 40 service modules (see Key Services below)
+|   +-- models/                      # 15 domain models (see Data Models below)
+|   +-- routes/                      # 26 Flask blueprints (see API Endpoints below)
+|   +-- services/                    # ~60 service modules (see Key Services below)
+|   +-- cli/                         # Flask CLI commands (persona, transcript)
 +-- tests/
 |   +-- conftest.py                  # Root fixtures (app, client, _force_test_database)
-|   +-- services/                    # Service unit tests (~40 files)
-|   +-- routes/                      # Route tests (~25 files)
-|   +-- integration/                 # Real PostgreSQL tests (~7 files, factory-boy)
+|   +-- services/                    # Service unit tests
+|   +-- routes/                      # Route tests
+|   +-- integration/                 # Real PostgreSQL tests (factory-boy)
+|   +-- cli/                         # CLI command tests
 |   +-- e2e/                         # Playwright browser tests
+|   +-- agent_driven/                # Real Claude Code + tmux tests (excluded by default)
++-- data/                            # Persona assets (data/personas/{slug}/skill.md, experience.md)
 +-- migrations/versions/             # Alembic migration scripts
 +-- templates/                       # Jinja2 templates (base.html, dashboard.html, partials/)
+|   +-- embed/                       # Embed chat widget template (chat.html)
 +-- static/
 |   +-- css/src/input.css            # Tailwind source (-> compiled to css/main.css)
-|   +-- js/                          # Vanilla JS modules (SSE, dashboard, etc.)
+|   +-- js/                          # Vanilla JS modules (25+ modules: SSE, dashboard, personas, etc.)
+|   +-- embed/                       # Embed chat widget (embed-app.js, embed-sse.js, embed.css)
++-- uploads/                         # File upload storage (voice bridge)
 +-- bin/                             # Scripts (hooks installer, launcher, watcher)
 +-- docs/                            # Architecture docs, PRDs, help topics, roadmaps
 +-- openspec/                        # OpenSpec change management (specs + changes)
 +-- orch/                            # PRD orchestration (Ruby)
-+-- .claude/                         # Claude Code settings, rules, skills
++-- .claude/                         # Claude Code settings, rules, skills, agents (personas)
 ```
 
 ## Configuration
 
-All configuration is in `config.yaml`. Sections: `server`, `logging`, `database`, `claude`, `file_watcher`, `event_system`, `sse`, `hooks`, `tmux_bridge`, `notifications`, `activity`, `openrouter` (models, rate_limits, cache, retry, priority_scoring, pricing), `dashboard`, `reaper`, `headspace` (thresholds, flow_detection), `commander`, `archive`.
+All configuration is in `config.yaml`. Sections: `server`, `logging`, `database`, `claude`, `file_watcher`, `event_system`, `sse`, `hooks`, `tmux_bridge`, `notifications`, `activity`, `openrouter` (models, rate_limits, cache, retry, priority_scoring, pricing), `dashboard`, `reaper`, `headspace` (thresholds, flow_detection), `commander`, `archive`, `voice_bridge` (auth, rate_limit, verbosity), `remote_agents` (creation_timeout, allowed_origins, embed_defaults, feature_flags), `context_monitor` (poll_interval, warning/high thresholds).
 
 Key things to know:
 
@@ -189,6 +209,9 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 - **SessionCorrelator** (`session_correlator.py`) -- maps Claude Code sessions to Agent records via 5-strategy cascade: memory cache, DB lookup, headspace UUID, working directory, or new agent creation
 - **SessionRegistry** (`session_registry.py`) -- in-memory registry of active sessions for fast lookup
 - **HookLifecycleBridge** (`hook_lifecycle_bridge.py`) -- translates hook events into command lifecycle actions
+- **HookAgentState** (`hook_agent_state.py`) -- agent state transitions from hook events
+- **HookDeferredStop** (`hook_deferred_stop.py`) -- deferred agent shutdown orchestration
+- **HookExtractors** (`hook_extractors.py`) -- utility extractors for hook payload fields
 - **TranscriptReader** (`transcript_reader.py`) -- reads and parses Claude Code transcript files
 - **TranscriptReconciler** (`transcript_reconciler.py`) -- reconciles JSONL transcript entries against database Turn records; corrects Turn timestamps from approximate (server time) to accurate (JSONL conversation time); creates Turns for events missed by hooks; broadcasts SSE corrections
 - **PermissionSummarizer** (`permission_summarizer.py`) -- summarises permission request details for display
@@ -212,6 +235,10 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 - **ActivityAggregator** (`activity_aggregator.py`) -- background thread that computes hourly activity metrics at agent, project, and system-wide scope
 - **StalenessService** (`staleness.py`) -- detects stale PROCESSING state (>10 min) for display-only TIMED_OUT indicator
 - **CommanderAvailability** (`commander_availability.py`) -- background thread monitoring tmux pane availability for each agent
+- **ContextPoller** (`context_poller.py`) -- background thread polling active agents' tmux statusline for context window usage; persists to Agent.context_* fields
+- **ContextParser** (`context_parser.py`) -- parses Claude Code statusline context info (% used, remaining tokens)
+- **TmuxWatchdog** (`tmux_watchdog.py`) -- background thread monitoring tmux pane availability
+- **RevivalService** (`revival_service.py`) -- agent revival/recovery mechanisms
 
 ### Communication
 
@@ -235,12 +262,34 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 - **ProcessMonitor** (`process_monitor.py`) -- monitors Claude Code process status
 - **PathConstants** (`path_constants.py`) -- centralised path definitions for Claude Code directories
 
+### Persona & Organisation
+
+- **PersonaRegistration** (`persona_registration.py`) -- end-to-end persona creation: validation, role lookup/create, DB insert, filesystem asset setup (skill.md, experience.md)
+- **PersonaAssets** (`persona_assets.py`) -- persona directory/file ops: read skills, read experience, check asset completeness
+- **SkillInjector** (`skill_injector.py`) -- persona skill/experience priming via tmux; idempotent (enforced by `agent.prompt_injected_at` DB column)
+- **HandoffExecutor** (`handoff_executor.py`) -- full handoff orchestration: validate preconditions, create DB record, shutdown agent, create successor
+- **TeamContentDetector** (`team_content_detector.py`) -- detects team/org keywords in agent output to trigger persona/handoff features
+
+### Remote Agents & Embed
+
+- **RemoteAgentService** (`remote_agent_service.py`) -- blocking agent creation with readiness polling; wraps agent lifecycle with synchronous semantics for external APIs
+- **SessionToken** (`session_token.py`) -- in-memory token store for remote agent auth; generates opaque tokens, validates per-agent scoping, thread-safe
+
+### Voice Bridge
+
+- **VoiceAuth** (`voice_auth.py`) -- token + rate limiting for voice bridge; localhost bypass option; sliding window rate limiter
+- **VoiceFormatter** (`voice_formatter.py`) -- voice-friendly response formatting: status_line + results + next_action; 3 verbosity levels (concise/normal/detailed)
+
+### File Upload
+
+- **FileUpload** (`file_upload.py`) -- file upload validation, storage, serving, cleanup; magic byte validation; quota enforcement
+
 ## Data Models
 
 | Model | Purpose | Key Fields |
 |-------|---------|------------|
 | **Project** | Monitored codebase | name, slug, path, github_repo, current_branch, description, inference_paused |
-| **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason, iterm_pane_id, tmux_pane_id, transcript_path, started_at, last_seen_at, ended_at, priority_updated_at |
+| **Agent** | Claude Code session | session_uuid, claude_session_id, priority_score, priority_reason, iterm_pane_id, tmux_pane_id, transcript_path, started_at, last_seen_at, ended_at, persona_id (FK), position_id (FK), previous_agent_id (self-ref FK), prompt_injected_at |
 | **Command** | Unit of work (5-state) | state, instruction, completion_summary, started_at, completed_at |
 | **Turn** | Individual exchange | actor (USER/AGENT), intent, text, summary, frustration_score |
 | **Event** | Audit trail | event_type, payload (JSONB), project/agent/command/turn refs |
@@ -249,6 +298,11 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 | **ObjectiveHistory** | Objective change log | text, constraints, started_at, ended_at |
 | **ActivityMetric** | Hourly activity data | bucket_start, turn_count, avg_turn_time, active_agents, scope (agent/project/overall), avg_frustration, max_frustration |
 | **HeadspaceSnapshot** | Monitoring state | frustration_rolling_10/30min/3hr, state (green/yellow/red), is_flow_state, turn_rate_per_hour, flow_duration_minutes, last_alert_at |
+| **Persona** | Named agent identity | name, slug (auto-generated), description, role_id (FK), active |
+| **Role** | Agent specialisation | name (unique, lowercased), description |
+| **Organisation** | Org grouping | name, description |
+| **Position** | Org seat / hierarchy | title, organisation_id (FK), role_id (FK), level, reports_to_id (self-ref FK), escalates_to_id (self-ref FK) |
+| **Handoff** | Agent context handoff | reason, file_path, injection_prompt, predecessor_agent_id (FK), successor_agent_id (FK) |
 
 **Command States:** `IDLE -> COMMANDED -> PROCESSING -> AWAITING_INPUT -> COMPLETE`
 
@@ -262,7 +316,7 @@ Services are registered in `app.extensions` and accessed via `app.extensions["se
 
 ## API Endpoints
 
-Routes are organised into 22 blueprints in `src/claude_headspace/routes/`. Key groups:
+Routes are organised into 26 blueprints in `src/claude_headspace/routes/`. Key groups:
 
 - **Dashboard:** `/`, `/dashboard`, `/api/events/stream` (SSE)
 - **Hooks:** `/hook/{session-start,session-end,stop,notification,user-prompt-submit,pre-tool-use,post-tool-use,permission-request,status}`
@@ -270,6 +324,9 @@ Routes are organised into 22 blueprints in `src/claude_headspace/routes/`. Key g
 - **Intelligence:** `/api/inference/*`, `/api/summarise/*`, `/api/priority/*`
 - **Agents:** `/api/sessions/*`, `/api/focus/*`, `/api/agents/*/dismiss`, `/api/respond/*`
 - **Headspace:** `/api/headspace/*`, `/api/metrics/*`, `/activity`
+- **Personas:** `/personas`, `/personas/<slug>`, `/api/personas/register`, `/api/personas/<slug>/validate`
+- **Remote Agents:** `/api/remote_agents/{create,<id>/alive,<id>/shutdown,openapi.yaml}`, `/embed/<agent_id>` (session token auth + CORS)
+- **Voice Bridge:** `/api/voice_bridge/*` (Bearer token auth + localhost bypass)
 - **Other:** `/objective`, `/config`, `/logging`, `/health`, `/help`
 
 Discover specific endpoints by reading the relevant route file in `src/claude_headspace/routes/`.
@@ -297,7 +354,8 @@ This applies when you finish implementing all tasks from a plan/spec or complete
 Test database safety rules and testing policies are in `.claude/rules/ai-guardrails.md`. Key points:
 
 - Tests MUST use `_test` databases only (enforced by `_force_test_database` fixture)
-- 4-tier architecture: unit (`tests/services/`), route (`tests/routes/`), integration (`tests/integration/`), E2E (`tests/e2e/`)
+- 6-tier architecture: unit (`tests/services/`), route (`tests/routes/`), CLI (`tests/cli/`), integration (`tests/integration/`), E2E (`tests/e2e/`, marker `e2e`), agent-driven (`tests/agent_driven/`, marker `agent_driven`)
+- E2E and agent-driven tiers are excluded by default (`addopts` in pyproject.toml); run with `pytest -m e2e` or `pytest -m agent_driven`
 - Integration tests use factory-boy (`tests/integration/factories.py`) -- see `docs/testing/integration-testing-guide.md`
 - Run targeted tests by default, full suite only when asked
 

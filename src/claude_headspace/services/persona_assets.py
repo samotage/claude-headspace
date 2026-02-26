@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Directory and filename constants
 PERSONAS_DIR = "data/personas"
+GUARDRAILS_FILENAME = "platform-guardrails.md"
+GUARDRAILS_DIR = "data"
 
 
 def _resolve_personas_dir(project_root: Path | None = None) -> Path:
@@ -37,6 +39,41 @@ def _resolve_personas_dir(project_root: Path | None = None) -> Path:
         pass
 
     return Path.cwd() / PERSONAS_DIR
+
+
+def _resolve_guardrails_path(project_root: Path | None = None) -> Path:
+    """Resolve the platform guardrails file path.
+
+    Uses the same resolution order as ``_resolve_personas_dir`` but
+    targets ``data/platform-guardrails.md`` — a platform-level file
+    that applies to ALL personas.
+    """
+    if project_root is not None:
+        return project_root / GUARDRAILS_DIR / GUARDRAILS_FILENAME
+
+    try:
+        from flask import current_app
+        configured = current_app.config.get("PERSONA_DATA_ROOT")
+        if configured:
+            # PERSONA_DATA_ROOT points at data/personas — go up one level
+            return Path(configured).parent / GUARDRAILS_FILENAME
+    except (ImportError, RuntimeError):
+        pass
+
+    return Path.cwd() / GUARDRAILS_DIR / GUARDRAILS_FILENAME
+
+
+def read_guardrails_file(project_root: Path | None = None) -> str | None:
+    """Read the platform-level guardrails content.
+
+    Returns:
+        File content as a string, or None if the file does not exist.
+    """
+    guardrails_path = _resolve_guardrails_path(project_root)
+    if not guardrails_path.exists():
+        logger.warning("Platform guardrails file not found: %s", guardrails_path)
+        return None
+    return guardrails_path.read_text(encoding="utf-8")
 
 
 SKILL_FILENAME = "skill.md"

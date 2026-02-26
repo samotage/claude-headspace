@@ -356,6 +356,11 @@ def embed_view(agent_id: int):
         if param is not None:
             feature_flags[key] = param in ("1", "true", "True")
 
+    # Resolve theme: URL param overrides default (light)
+    theme = request.args.get("theme", "light")
+    if theme not in ("light", "dark"):
+        theme = "light"
+
     # Get application URL for SSE endpoint
     application_url = config.get("server", {}).get(
         "application_url", "https://localhost:5055"
@@ -367,4 +372,5 @@ def embed_view(agent_id: int):
         session_token=token,
         feature_flags=feature_flags,
         application_url=application_url,
+        theme=theme,
     )
