@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}API Log - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        {% include "partials/_logging_tabs.html" %}
+
+        <!-- Filter Bar -->
+        <section class="mb-6" aria-labelledby="filter-heading">
+            <div class="bg-elevated rounded-lg border border-border p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                    <h2 id="filter-heading" class="sr-only">API Call Filters</h2>
+
+                    <!-- Search Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto sm:flex-1">
+                        <label for="filter-search" class="text-sm text-secondary whitespace-nowrap">Search:</label>
+                        <input type="text" id="filter-search"
+                               class="form-well flex-1 px-3 py-2 min-h-[44px]"
+                               placeholder="Search request & response bodies..."
+                               aria-label="Search API call content">
+                    </div>
+
+                    <!-- Endpoint Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-endpoint" class="text-sm text-secondary whitespace-nowrap">Endpoint:</label>
+                        <select id="filter-endpoint"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
+                                aria-label="Filter by endpoint">
+                            <option value="">All Endpoints</option>
+                        </select>
+                    </div>
+
+                    <!-- Method Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-method" class="text-sm text-secondary whitespace-nowrap">Method:</label>
+                        <select id="filter-method"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
+                                aria-label="Filter by HTTP method">
+                            <option value="">All Methods</option>
+                        </select>
+                    </div>
+
+                    <!-- Status Category Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-status" class="text-sm text-secondary whitespace-nowrap">Status:</label>
+                        <select id="filter-status"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
+                                aria-label="Filter by status category">
+                            <option value="">All Statuses</option>
+                        </select>
+                    </div>
+
+                    <!-- Auth Status Filter -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label for="filter-auth" class="text-sm text-secondary whitespace-nowrap">Auth:</label>
+                        <select id="filter-auth"
+                                class="form-well flex-1 sm:flex-initial px-3 py-2 min-h-[44px]"
+                                aria-label="Filter by auth status">
+                            <option value="">All Auth</option>
+                        </select>
+                    </div>
+
+                    <!-- Clear Filters Button -->
+                    <button id="clear-filters-btn"
+                            class="w-full sm:w-auto px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px]"
+                            aria-label="Clear all filters">
+                        Clear Filters
+                    </button>
+
+                    <!-- Clear All Logs Button with inline confirm -->
+                    <div id="clear-logs-group" class="flex items-center gap-2 w-full sm:w-auto">
+                        <button id="clear-logs-btn"
+                                class="w-full sm:w-auto px-4 py-2 bg-red/10 border border-red/30 rounded text-red hover:bg-red/20 hover:border-red transition-colors min-h-[44px]"
+                                aria-label="Clear all API logs">
+                            Clear All Logs
+                        </button>
+                        <div id="clear-logs-confirm" class="hidden flex items-center gap-2">
+                            <span class="text-sm text-secondary whitespace-nowrap">Delete all?</span>
+                            <button id="clear-logs-yes"
+                                    class="px-3 py-2 bg-red border border-red rounded text-white hover:bg-red/80 transition-colors min-h-[44px] text-sm font-medium"
+                                    aria-label="Confirm delete all API logs">
+                                Yes, delete
+                            </button>
+                            <button id="clear-logs-cancel"
+                                    class="px-3 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] text-sm"
+                                    aria-label="Cancel delete">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- API Calls Table Section -->
+        <section aria-labelledby="api-calls-heading">
+            <div class="bg-elevated rounded-lg border border-border">
+                <h2 id="api-calls-heading" class="sr-only">API Calls</h2>
+
+                <!-- API Calls Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full" aria-describedby="api-calls-heading">
+                        <thead class="bg-surface border-b border-border">
+                            <tr>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Timestamp</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Method</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Endpoint</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Status</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Latency</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Source IP</th>
+                                <th scope="col" class="px-4 py-3 text-left text-sm font-medium text-secondary">Auth</th>
+                            </tr>
+                        </thead>
+                        <tbody id="api-calls-table-body" class="divide-y divide-border">
+                            <!-- API calls will be rendered by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden text-center py-12">
+                    <p class="text-secondary">No API calls recorded yet.</p>
+                    <p class="text-muted text-sm mt-1">API calls to external endpoints will appear here as they occur.</p>
+                </div>
+
+                <!-- No Results State -->
+                <div id="no-results-state" class="hidden text-center py-12">
+                    <p class="text-secondary">No API calls match the current filters.</p>
+                    <p class="text-muted text-sm mt-1">Try adjusting your filter criteria.</p>
+                </div>
+
+                <!-- Error State -->
+                <div id="error-state" class="hidden text-center py-12">
+                    <p class="text-red">Failed to load API calls.</p>
+                    <p class="text-muted text-sm mt-1">Please try refreshing the page.</p>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading-state" class="text-center py-12">
+                    <p class="text-secondary">Loading API calls...</p>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div id="pagination-controls" class="hidden flex items-center justify-between px-4 py-3 border-t border-border">
+                    <div class="flex items-center gap-2">
+                        <button id="prev-page-btn"
+                                class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled
+                                aria-label="Previous page">
+                            Previous
+                        </button>
+                        <button id="next-page-btn"
+                                class="px-4 py-2 bg-surface border border-border rounded text-secondary hover:text-primary hover:border-cyan transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled
+                                aria-label="Next page">
+                            Next
+                        </button>
+                    </div>
+                    <div id="page-indicator" class="text-sm text-muted">
+                        Page 1 of 1
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/logging-api.js') }}"></script>
+{% endblock %}

@@ -14,4 +14,11 @@
         <span class="subtab-icon">&loz;</span>
         <span class="subtab-label">Inference</span>
     </a>
+    <a href="{{ url_for('logging.api_log_page') }}"
+       role="tab"
+       class="logging-subtab {% if request.endpoint == 'logging.api_log_page' %}active{% endif %}"
+       {% if request.endpoint == 'logging.api_log_page' %}aria-selected="true" aria-current="page"{% else %}aria-selected="false"{% endif %}>
+        <span class="subtab-icon">&harr;</span>
+        <span class="subtab-label">API</span>
+    </a>
 </nav>

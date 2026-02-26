@@ -280,18 +280,20 @@ The system SHALL handle empty and error states gracefully.
 - **WHEN** the API request to load records fails
 - **THEN** an error message "Failed to load API calls" is displayed
 
-## MODIFIED Requirements
+### Requirement: Logging Tab Navigation
 
-### Requirement: Logging Tab Navigation (from e1-s10-logging-tab)
+The logging tab navigation partial SHALL include three tabs.
 
-The logging tab navigation partial SHALL include three tabs instead of two.
-
-#### Scenario: Updated tab bar
+#### Scenario: Tab bar layout
 
 - **WHEN** the logging subsystem navigation renders
 - **THEN** three tabs are shown: Events, Inference, API
 - **AND** the API tab links to `/logging/api`
 - **AND** the API tab active state is determined by `request.endpoint == 'logging.api_log_page'`
+
+## MODIFIED Requirements
+
+None.
 
 ## REMOVED Requirements
 
