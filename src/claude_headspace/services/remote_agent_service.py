@@ -139,6 +139,12 @@ class RemoteAgentService:
         while time.time() - start < timeout:
             time.sleep(_POLL_INTERVAL)
 
+            # Expire cached ORM instances so the query re-reads from DB.
+            # prompt_injected_at is set by the hook receiver on a different
+            # request thread — without expiry the identity map returns the
+            # stale first-fetched instance indefinitely.
+            db.session.expire_all()
+
             # Look for an agent with matching tmux_session
             agent = (
                 db.session.query(Agent)

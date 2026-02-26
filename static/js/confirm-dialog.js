@@ -151,8 +151,8 @@
             dialogEl.style.display = '';
             open = true;
 
-            // Focus the cancel button (safer default)
-            cancelBtn.focus();
+            // Focus the confirm button so Enter fires the action
+            okBtn.focus();
 
             return new Promise(function(res) {
                 resolver = res;
