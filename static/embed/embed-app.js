@@ -137,8 +137,8 @@
     if (isUser) {
       bubble.textContent = text;
     } else {
-      // Agent turns: render as HTML (simple markdown-like)
-      bubble.innerHTML = escapeAndFormat(text);
+      // Agent turns: strip internal markers and render as HTML
+      bubble.innerHTML = escapeAndFormat(stripCommandComplete(text));
     }
 
     // Timestamp
@@ -169,6 +169,11 @@
   function removeOptimisticBubble(nonce) {
     var el = messagesEl.querySelector('[data-nonce="' + nonce + '"]');
     if (el) el.remove();
+  }
+
+  function stripCommandComplete(text) {
+    // Remove "---\nCOMMAND COMPLETE — ...\n---" block (with optional trailing whitespace)
+    return text.replace(/\n?---\nCOMMAND COMPLETE\s*[—–-].*\n---\s*$/s, '').trimEnd();
   }
 
   function escapeAndFormat(text) {

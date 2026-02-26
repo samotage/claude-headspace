@@ -73,7 +73,9 @@ def _compose_priming_message(
     parts.extend([
         f"You are {persona_name}. Read the following skill and experience "
         "content carefully. Absorb this identity and respond in character "
-        "with a brief greeting confirming who you are and what you do.",
+        "with a brief greeting confirming who you are. Your first task "
+        "will be provided immediately after this greeting — do not ask "
+        "the user what they need help with.",
         "",
         "## Skills",
         "",

@@ -6,6 +6,7 @@ to provide remote agent lifecycle management.
 
 import logging
 import os
+import shlex
 import signal
 import shutil
 import subprocess
@@ -300,6 +301,12 @@ def create_agent(
     if previous_agent_id is not None:
         env["CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID"] = str(previous_agent_id)
 
+    # Check if the project has a virtualenv whose bin should be on PATH
+    venv_bin = project_path / "venv" / "bin"
+    has_venv = venv_bin.is_dir()
+    if has_venv:
+        logger.info(f"Project venv detected: {venv_bin}")
+
     try:
         # Build tmux command with -e flags for env vars that must reach the
         # session's shell.  Popen(env=...) only affects the tmux client binary,
@@ -319,12 +326,22 @@ def create_agent(
             tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"])
         tmux_cmd.extend(["-c", str(project_path), "--"])
 
-        # Start claude-headspace in a new detached tmux session.
-        # Do NOT activate the project's venv here — claude-headspace
-        # uses #!/usr/bin/env python3 and needs the Python environment
-        # where claude_headspace is installed, not the project's.
+        # Build the shell command to run inside the tmux session.
+        # If the project has a venv, append its bin to PATH so that
+        # project CLI entry points (e.g. `maybelle`) are findable by
+        # Claude Code's Bash tool.  We APPEND rather than prepend so
+        # that `python3` still resolves to the system/headspace Python
+        # (claude-headspace needs claude_headspace importable).
+        cli_str = " ".join(shlex.quote(arg) for arg in cli_args)
+        if has_venv:
+            shell_cmd = f"export PATH=\"$PATH:{shlex.quote(str(venv_bin))}\" && exec {cli_str}"
+        else:
+            shell_cmd = f"exec {cli_str}"
+        session_cmd = ["bash", "-c", shell_cmd]
+
+        # Start claude-headspace in a new detached tmux session
         subprocess.Popen(
-            tmux_cmd + cli_args,
+            tmux_cmd + session_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=env,

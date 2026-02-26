@@ -118,11 +118,11 @@ class TestCreateAgent:
             result = create_agent(1, persona_slug="developer-con-1")
 
         assert result.success
-        # Verify --persona flag is in the CLI args passed to tmux
+        # Verify --persona flag is in the shell command string
         popen_args = mock_popen.call_args[0][0]
-        assert "--persona" in popen_args
-        persona_idx = popen_args.index("--persona")
-        assert popen_args[persona_idx + 1] == "developer-con-1"
+        # CLI args are now wrapped in bash -c "..."
+        shell_cmd = popen_args[-1]  # last element is the bash -c command string
+        assert "--persona developer-con-1" in shell_cmd
         # Verify env var is set
         popen_env = mock_popen.call_args[1]["env"]
         assert popen_env["CLAUDE_HEADSPACE_PERSONA_SLUG"] == "developer-con-1"
@@ -158,9 +158,10 @@ class TestCreateAgent:
 
         result = create_agent(1)
         assert result.success
-        # Verify --persona is NOT in the CLI args passed to tmux
+        # Verify --persona is NOT in the shell command string
         popen_args = mock_popen.call_args[0][0]
-        assert "--persona" not in popen_args
+        shell_cmd = popen_args[-1]  # last element is the bash -c command string
+        assert "--persona" not in shell_cmd
         # Verify persona env var is NOT set
         popen_env = mock_popen.call_args[1]["env"]
         assert "CLAUDE_HEADSPACE_PERSONA_SLUG" not in popen_env
