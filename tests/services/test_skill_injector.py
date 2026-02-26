@@ -2,6 +2,9 @@
 
 Tests the DB-based idempotency approach: agent.prompt_injected_at
 controls whether persona skills have been injected.
+
+Also tests fail-closed guardrail injection for remote agents,
+version hash storage, and otageMon reporting.
 """
 
 import logging
@@ -10,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from claude_headspace.services.persona_assets import GuardrailValidationError
 from claude_headspace.services.skill_injector import (
     clear_injection_record,
     inject_persona_skills,
@@ -18,13 +22,15 @@ from claude_headspace.services.skill_injector import (
 
 
 def _make_agent(agent_id=1, persona_id=5, tmux_pane_id="%0", slug="developer-con-1", name="Con",
-                prompt_injected_at=None):
+                prompt_injected_at=None, is_remote_agent=False, guardrails_version_hash=None):
     """Create a mock agent with persona relationship."""
     agent = MagicMock()
     agent.id = agent_id
     agent.persona_id = persona_id
     agent.tmux_pane_id = tmux_pane_id
     agent.prompt_injected_at = prompt_injected_at
+    agent.guardrails_version_hash = guardrails_version_hash
+    agent._is_remote_agent = is_remote_agent
     persona = MagicMock()
     persona.slug = slug
     persona.name = name
@@ -293,3 +299,161 @@ class TestDBIdempotency:
 
         # Re-injection should still be blocked (DB column is still set)
         assert inject_persona_skills(agent) is False
+
+
+class TestFailClosedGuardrails:
+    """Tests for fail-closed guardrail injection (remote agents)."""
+
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_remote_agent_fails_when_guardrails_missing(
+        self, mock_read_skill, mock_read_exp, mock_validate, caplog
+    ):
+        """Remote agent injection FAILS when guardrails are missing."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.side_effect = GuardrailValidationError("file not found")
+
+        agent = _make_agent(is_remote_agent=True)
+        with caplog.at_level(logging.ERROR):
+            result = inject_persona_skills(agent)
+
+        assert result is False
+        assert "FAILED (fail-closed)" in caplog.text
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_local_agent_warns_when_guardrails_missing(
+        self, mock_read_skill, mock_read_exp, mock_validate, mock_health, mock_send, caplog
+    ):
+        """Local agent injection WARNS but proceeds when guardrails are missing."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.side_effect = GuardrailValidationError("file not found")
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=True)
+
+        agent = _make_agent(is_remote_agent=False)
+        with caplog.at_level(logging.WARNING):
+            result = inject_persona_skills(agent)
+
+        assert result is True
+        assert "will operate WITHOUT platform guardrails" in caplog.text
+
+    @patch("claude_headspace.services.skill_injector._report_guardrail_failure")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_remote_agent_reports_to_otagemon_on_failure(
+        self, mock_read_skill, mock_read_exp, mock_validate, mock_report
+    ):
+        """Remote agent guardrail failure triggers otageMon report."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.side_effect = GuardrailValidationError("file not found")
+
+        agent = _make_agent(is_remote_agent=True)
+        inject_persona_skills(agent)
+
+        mock_report.assert_called_once()
+        call_args = mock_report.call_args
+        assert call_args[0][0] == agent.id
+        assert "file not found" in call_args[0][1]
+
+    @patch("claude_headspace.services.skill_injector._report_guardrail_failure")
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_remote_agent_reports_tmux_send_failure(
+        self, mock_read_skill, mock_read_exp, mock_validate,
+        mock_health, mock_send, mock_report
+    ):
+        """Remote agent tmux send failure triggers otageMon report."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.return_value = ("guardrails content", "abc123" * 10 + "abcd")
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=False, error_message="tmux error")
+
+        agent = _make_agent(is_remote_agent=True)
+        result = inject_persona_skills(agent)
+
+        assert result is False
+        mock_report.assert_called_once()
+        assert "tmux send failure" in mock_report.call_args[0][1]
+
+
+class TestGuardrailsVersionHash:
+    """Tests for guardrails version hash storage on agent."""
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_hash_stored_on_agent_after_successful_injection(
+        self, mock_read_skill, mock_read_exp, mock_validate,
+        mock_health, mock_send
+    ):
+        """Successful injection stores guardrails_version_hash on the agent."""
+        expected_hash = "a" * 64
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.return_value = ("guardrails content", expected_hash)
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=True)
+
+        agent = _make_agent()
+        assert agent.guardrails_version_hash is None
+
+        inject_persona_skills(agent)
+
+        assert agent.guardrails_version_hash == expected_hash
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_hash_not_stored_on_send_failure(
+        self, mock_read_skill, mock_read_exp, mock_validate,
+        mock_health, mock_send
+    ):
+        """Failed injection does NOT store guardrails_version_hash."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.return_value = ("guardrails content", "b" * 64)
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=False, error_message="error")
+
+        agent = _make_agent()
+        inject_persona_skills(agent)
+
+        assert agent.guardrails_version_hash is None
+
+    @patch("claude_headspace.services.skill_injector.send_text")
+    @patch("claude_headspace.services.skill_injector.check_health")
+    @patch("claude_headspace.services.skill_injector.validate_guardrails_content")
+    @patch("claude_headspace.services.skill_injector.read_experience_file")
+    @patch("claude_headspace.services.skill_injector.read_skill_file")
+    def test_hash_not_stored_when_guardrails_unavailable(
+        self, mock_read_skill, mock_read_exp, mock_validate,
+        mock_health, mock_send
+    ):
+        """When guardrails are unavailable (local agent), hash is not stored."""
+        mock_read_skill.return_value = "# skill content"
+        mock_read_exp.return_value = None
+        mock_validate.side_effect = GuardrailValidationError("missing")
+        mock_health.return_value = MagicMock(available=True)
+        mock_send.return_value = MagicMock(success=True)
+
+        agent = _make_agent(is_remote_agent=False)
+        inject_persona_skills(agent)
+
+        assert agent.guardrails_version_hash is None

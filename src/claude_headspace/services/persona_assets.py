@@ -3,8 +3,14 @@
 Manages persona asset files (skill.md, experience.md) using the
 ``data/personas/{slug}/`` directory convention. All functions are
 stateless — they operate on slug strings with no database dependency.
+
+Also provides platform guardrail versioning via SHA-256 content hashing:
+- ``compute_guardrails_hash()`` — deterministic hash of guardrails content
+- ``validate_guardrails_content()`` — validates and returns (content, hash)
+- ``get_current_guardrails_hash()`` — reads file and computes hash at call time
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -74,6 +80,93 @@ def read_guardrails_file(project_root: Path | None = None) -> str | None:
         logger.warning("Platform guardrails file not found: %s", guardrails_path)
         return None
     return guardrails_path.read_text(encoding="utf-8")
+
+
+# ──────────────────────────────────────────────────────────────
+# Guardrail versioning
+# ──────────────────────────────────────────────────────────────
+
+
+class GuardrailValidationError(Exception):
+    """Raised when guardrails content is missing, empty, or unreadable."""
+
+
+def compute_guardrails_hash(content: str) -> str:
+    """Compute a SHA-256 content hash of guardrails text.
+
+    The hash is deterministic: identical content always produces the same hash.
+
+    Args:
+        content: Guardrails file content.
+
+    Returns:
+        64-character hex digest of the SHA-256 hash.
+    """
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def validate_guardrails_content(
+    project_root: Path | None = None,
+) -> tuple[str, str]:
+    """Validate and return guardrails content with its version hash.
+
+    Performs three checks:
+    1. File exists on disk
+    2. File is readable
+    3. File content is non-empty (after stripping whitespace)
+
+    Args:
+        project_root: Project root directory. Defaults to Flask config or cwd.
+
+    Returns:
+        Tuple of (content, hash) where content is the raw file text and
+        hash is the 64-char SHA-256 hex digest.
+
+    Raises:
+        GuardrailValidationError: If the file is missing, unreadable, or empty.
+    """
+    guardrails_path = _resolve_guardrails_path(project_root)
+
+    if not guardrails_path.exists():
+        raise GuardrailValidationError(
+            f"Platform guardrails file not found: {guardrails_path}"
+        )
+
+    try:
+        content = guardrails_path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise GuardrailValidationError(
+            f"Platform guardrails file unreadable: {guardrails_path}: {e}"
+        ) from e
+
+    if not content.strip():
+        raise GuardrailValidationError(
+            f"Platform guardrails file is empty: {guardrails_path}"
+        )
+
+    return content, compute_guardrails_hash(content)
+
+
+def get_current_guardrails_hash(
+    project_root: Path | None = None,
+) -> str | None:
+    """Read the platform guardrails file and compute its current hash.
+
+    Convenience function for staleness comparison — reads the file at
+    call time and returns the hash. Returns None if the file is missing,
+    empty, or unreadable.
+
+    Args:
+        project_root: Project root directory. Defaults to Flask config or cwd.
+
+    Returns:
+        64-char SHA-256 hex digest, or None if guardrails are unavailable.
+    """
+    try:
+        _, hash_value = validate_guardrails_content(project_root)
+        return hash_value
+    except GuardrailValidationError:
+        return None
 
 
 SKILL_FILENAME = "skill.md"

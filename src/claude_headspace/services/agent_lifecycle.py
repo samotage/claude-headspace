@@ -661,6 +661,18 @@ def get_agent_info(agent_id: int) -> dict | None:
             "turns": turns_info,
         })
 
+    # --- Guardrails ---
+    guardrails_info = None
+    guardrails_hash = getattr(agent, "guardrails_version_hash", None)
+    if guardrails_hash is not None:
+        from .persona_assets import get_current_guardrails_hash
+        current_hash = get_current_guardrails_hash()
+        guardrails_info = {
+            "version_hash": guardrails_hash,
+            "current_hash": current_hash,
+            "stale": current_hash is not None and current_hash != guardrails_hash,
+        }
+
     result = {
         "identity": identity,
         "project": project_info,
@@ -672,4 +684,6 @@ def get_agent_info(agent_id: int) -> dict | None:
     }
     if persona_info is not None:
         result["persona"] = persona_info
+    if guardrails_info is not None:
+        result["guardrails"] = guardrails_info
     return result

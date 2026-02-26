@@ -7,19 +7,45 @@ Idempotency is enforced via the agent.prompt_injected_at DB column —
 once set, re-injection is blocked for the lifetime of the agent record.
 This survives server restarts and eliminates the session lifecycle
 collision that previously caused re-injection storms.
+
+Guardrail injection is FAIL-CLOSED for remote agents: if the platform
+guardrails file is missing, empty, or unreadable, injection fails and
+the agent is not primed. Failures are reported to otageMon via
+ExceptionReporter.
 """
 
 import logging
 from datetime import datetime, timezone
 
 from ..services.persona_assets import (
+    GuardrailValidationError,
     read_experience_file,
-    read_guardrails_file,
     read_skill_file,
+    validate_guardrails_content,
 )
 from ..services.tmux_bridge import HealthCheckLevel, check_health, send_text
 
 logger = logging.getLogger(__name__)
+
+
+def _report_guardrail_failure(agent_id: int, reason: str) -> None:
+    """Report a guardrail injection failure to otageMon via ExceptionReporter.
+
+    Best-effort: silently drops if ExceptionReporter is not configured.
+    """
+    try:
+        from flask import current_app
+        reporter = current_app.extensions.get("exception_reporter")
+        if reporter and reporter.is_configured:
+            exc = GuardrailValidationError(reason)
+            reporter.report(
+                exc=exc,
+                source="guardrail_injection",
+                severity="error",
+                context={"agent_id": agent_id, "reason": reason},
+            )
+    except (ImportError, RuntimeError):
+        pass  # Outside Flask context — cannot report
 
 
 def _compose_priming_message(
@@ -132,13 +158,30 @@ def inject_persona_skills(agent) -> bool:
             f"proceeding with skill.md only"
         )
 
-    # Read platform guardrails (optional but strongly expected)
-    guardrails_content = read_guardrails_file()
-    if guardrails_content is None:
-        logger.warning(
-            f"skill_injection: platform-guardrails.md not found — "
-            f"agent_id={agent_id} will operate WITHOUT platform guardrails"
-        )
+    # Read platform guardrails — FAIL-CLOSED for remote agents.
+    # For remote agents (created via RemoteAgentService), missing or empty
+    # guardrails is a hard failure. For local/dashboard agents, it remains
+    # a warning to avoid breaking the operator's local workflow.
+    is_remote_agent = getattr(agent, "_is_remote_agent", False)
+    guardrails_content = None
+    guardrails_hash = None
+    try:
+        guardrails_content, guardrails_hash = validate_guardrails_content()
+    except GuardrailValidationError as e:
+        reason = str(e)
+        if is_remote_agent:
+            logger.error(
+                f"skill_injection: FAILED (fail-closed) — agent_id={agent_id}, "
+                f"guardrails validation error: {reason}"
+            )
+            _report_guardrail_failure(agent_id, reason)
+            return False
+        else:
+            logger.warning(
+                f"skill_injection: platform-guardrails.md not available — "
+                f"agent_id={agent_id} will operate WITHOUT platform guardrails "
+                f"({reason})"
+            )
 
     # Health check
     health = check_health(agent.tmux_pane_id, level=HealthCheckLevel.COMMAND)
@@ -156,10 +199,16 @@ def inject_persona_skills(agent) -> bool:
     result = send_text(agent.tmux_pane_id, message)
 
     if not result.success:
+        error_msg = result.error_message or "unknown tmux error"
         logger.error(
             f"skill_injection: failed — agent_id={agent_id}, slug={slug}, "
-            f"send_text error: {result.error_message}"
+            f"send_text error: {error_msg}"
         )
+        if is_remote_agent:
+            _report_guardrail_failure(
+                agent_id,
+                f"tmux send failure during guardrail delivery: {error_msg}",
+            )
         return False
 
     # Record injection in DB — this is the source of truth for idempotency.
@@ -167,9 +216,13 @@ def inject_persona_skills(agent) -> bool:
     # session_start changes.
     agent.prompt_injected_at = datetime.now(timezone.utc)
 
+    # Store guardrails version hash for staleness detection.
+    if guardrails_hash:
+        agent.guardrails_version_hash = guardrails_hash
+
     logger.info(
         f"skill_injection: success — agent_id={agent_id}, slug={slug}, "
-        f"persona_name={persona_name}"
+        f"persona_name={persona_name}, guardrails_hash={guardrails_hash or 'none'}"
     )
     return True
 

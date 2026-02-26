@@ -17,6 +17,7 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.project import Project
 from .agent_lifecycle import create_agent, shutdown_agent
+from .persona_assets import GuardrailValidationError, validate_guardrails_content
 from .session_token import SessionTokenService
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class RemoteAgentResult:
     status: str = "error"
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    guardrails_version: Optional[str] = None
 
 
 class RemoteAgentService:
@@ -110,6 +112,20 @@ class RemoteAgentService:
                 success=False,
                 error_code="project_not_found",
                 error_message=f"Project '{project_slug}' not found",
+            )
+
+        # 1b. Pre-validate guardrails — fail fast before creating tmux session
+        guardrails_hash = None
+        try:
+            _content, guardrails_hash = validate_guardrails_content()
+        except GuardrailValidationError as e:
+            logger.warning(
+                f"Remote agent creation blocked: guardrails validation failed: {e}"
+            )
+            return RemoteAgentResult(
+                success=False,
+                error_code="guardrails_missing",
+                error_message="Platform guardrails are missing or invalid",
             )
 
         # 2. Call create_agent (fire-and-forget)
@@ -228,17 +244,23 @@ class RemoteAgentService:
             persona_slug=persona_slug,
             tmux_session_name=tmux_session_name,
             status="ready",
+            guardrails_version=guardrails_hash,
         )
 
     def check_alive(self, agent_id: int) -> dict:
         """Check if an agent is alive.
 
+        Includes guardrail staleness info: compares the agent's stored
+        guardrails hash against the current file on disk.
+
         Args:
             agent_id: ID of the agent to check.
 
         Returns:
-            Dict with alive status and agent state info.
+            Dict with alive status, agent state info, and guardrail staleness.
         """
+        from .persona_assets import get_current_guardrails_hash
+
         agent = db.session.get(Agent, agent_id)
         if not agent:
             return {"alive": False, "reason": "agent_not_found"}
@@ -250,12 +272,26 @@ class RemoteAgentService:
         current_command = agent.get_current_command()
         state = current_command.state.value if current_command else "idle"
 
-        return {
+        # Guardrail staleness detection
+        guardrails_stale = None
+        guardrails_version = getattr(agent, "guardrails_version_hash", None)
+        if guardrails_version:
+            current_hash = get_current_guardrails_hash()
+            guardrails_stale = (
+                current_hash is not None and current_hash != guardrails_version
+            )
+
+        result = {
             "alive": True,
             "agent_id": agent.id,
             "state": state,
             "project_slug": agent.project.slug if agent.project else None,
         }
+        if guardrails_version is not None:
+            result["guardrails_version"] = guardrails_version
+            result["guardrails_stale"] = guardrails_stale
+
+        return result
 
     def shutdown(self, agent_id: int) -> dict:
         """Initiate graceful agent shutdown (non-blocking).

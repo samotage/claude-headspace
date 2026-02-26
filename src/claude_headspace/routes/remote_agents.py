@@ -229,6 +229,7 @@ def create_remote_agent():
         status_map = {
             "project_not_found": 404,
             "persona_not_found": 404,
+            "guardrails_missing": 422,
             "agent_creation_timeout": 408,
         }
         status = status_map.get(result.error_code, 500)
@@ -241,7 +242,7 @@ def create_remote_agent():
             retry_after_seconds=5 if retryable else None,
         )
 
-    return jsonify({
+    response_body = {
         "agent_id": result.agent_id,
         "embed_url": result.embed_url,
         "session_token": result.session_token,
@@ -249,7 +250,11 @@ def create_remote_agent():
         "persona_slug": result.persona_slug,
         "tmux_session_name": result.tmux_session_name,
         "status": result.status,
-    }), 201
+    }
+    if result.guardrails_version:
+        response_body["guardrails_version"] = result.guardrails_version
+
+    return jsonify(response_body), 201
 
 
 @remote_agents_bp.route("/api/remote_agents/<int:agent_id>/alive", methods=["GET"])

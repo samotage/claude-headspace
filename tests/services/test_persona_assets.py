@@ -3,21 +3,28 @@
 Uses pytest tmp_path fixture — no database or Flask app context needed.
 """
 
+import pytest
 from pathlib import Path
 
 from claude_headspace.services.persona_assets import (
     AssetStatus,
     EXPERIENCE_FILENAME,
+    GUARDRAILS_DIR,
+    GUARDRAILS_FILENAME,
+    GuardrailValidationError,
     SKILL_FILENAME,
     check_assets,
+    compute_guardrails_hash,
     create_persona_assets,
     create_persona_dir,
+    get_current_guardrails_hash,
     get_experience_mtime,
     get_persona_dir,
     read_experience_file,
     read_skill_file,
     seed_experience_file,
     seed_skill_file,
+    validate_guardrails_content,
     write_skill_file,
 )
 
@@ -240,3 +247,93 @@ class TestEdgeCases:
         result = create_persona_assets("dev-con-1", "Con", "dev", project_root=tmp_path)
         assert result.is_dir()
         assert read_skill_file("dev-con-1", project_root=tmp_path) is not None
+
+
+# ──────────────────────────────────────────────────────────────
+# Guardrail Versioning Tests
+# ──────────────────────────────────────────────────────────────
+
+
+def _create_guardrails(tmp_path, content="# Platform Guardrails\n\nThese are the rules."):
+    """Helper to create a guardrails file in the expected location."""
+    guardrails_dir = tmp_path / GUARDRAILS_DIR
+    guardrails_dir.mkdir(parents=True, exist_ok=True)
+    guardrails_path = guardrails_dir / GUARDRAILS_FILENAME
+    guardrails_path.write_text(content, encoding="utf-8")
+    return guardrails_path
+
+
+class TestComputeGuardrailsHash:
+    """Test SHA-256 content hashing of guardrails."""
+
+    def test_deterministic_hash(self):
+        """Same content always produces the same hash."""
+        content = "# Platform Guardrails\n\nRule 1."
+        hash1 = compute_guardrails_hash(content)
+        hash2 = compute_guardrails_hash(content)
+        assert hash1 == hash2
+
+    def test_hash_is_64_char_hex(self):
+        """Hash is a 64-character hex digest (SHA-256)."""
+        h = compute_guardrails_hash("some content")
+        assert len(h) == 64
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_hash_changes_with_content(self):
+        """Different content produces a different hash."""
+        h1 = compute_guardrails_hash("Version 1")
+        h2 = compute_guardrails_hash("Version 2")
+        assert h1 != h2
+
+    def test_empty_string_has_valid_hash(self):
+        """Empty string still produces a valid SHA-256 hash."""
+        h = compute_guardrails_hash("")
+        assert len(h) == 64
+
+
+class TestValidateGuardrailsContent:
+    """Test guardrails file validation."""
+
+    def test_valid_file_returns_content_and_hash(self, tmp_path):
+        """Valid guardrails file returns (content, hash) tuple."""
+        content_text = "# Guardrails\n\nThese are the rules."
+        _create_guardrails(tmp_path, content_text)
+        content, hash_val = validate_guardrails_content(project_root=tmp_path)
+        assert content == content_text
+        assert hash_val == compute_guardrails_hash(content_text)
+
+    def test_missing_file_raises(self, tmp_path):
+        """Missing guardrails file raises GuardrailValidationError."""
+        with pytest.raises(GuardrailValidationError, match="not found"):
+            validate_guardrails_content(project_root=tmp_path)
+
+    def test_empty_file_raises(self, tmp_path):
+        """Empty guardrails file (whitespace only) raises GuardrailValidationError."""
+        _create_guardrails(tmp_path, "   \n\n  ")
+        with pytest.raises(GuardrailValidationError, match="empty"):
+            validate_guardrails_content(project_root=tmp_path)
+
+    def test_whitespace_only_raises(self, tmp_path):
+        """File with only whitespace is treated as empty."""
+        _create_guardrails(tmp_path, "\t  \n  \t")
+        with pytest.raises(GuardrailValidationError, match="empty"):
+            validate_guardrails_content(project_root=tmp_path)
+
+
+class TestGetCurrentGuardrailsHash:
+    """Test convenience function for staleness comparison."""
+
+    def test_returns_hash_for_valid_file(self, tmp_path):
+        content = "# Valid guardrails"
+        _create_guardrails(tmp_path, content)
+        h = get_current_guardrails_hash(project_root=tmp_path)
+        assert h == compute_guardrails_hash(content)
+
+    def test_returns_none_for_missing_file(self, tmp_path):
+        h = get_current_guardrails_hash(project_root=tmp_path)
+        assert h is None
+
+    def test_returns_none_for_empty_file(self, tmp_path):
+        _create_guardrails(tmp_path, "  ")
+        h = get_current_guardrails_hash(project_root=tmp_path)
+        assert h is None

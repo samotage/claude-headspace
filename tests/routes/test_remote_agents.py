@@ -402,3 +402,105 @@ class TestErrorEnvelope:
         data = resp.get_json()
         assert data["error"]["retryable"] is False
         assert data["error"]["retry_after_seconds"] is None
+
+
+# ──────────────────────────────────────────────────────────────
+# Guardrails enforcement tests (E8-S19)
+# ──────────────────────────────────────────────────────────────
+
+class TestGuardrailsEnforcement:
+    """Tests for guardrail enforcement in remote agent creation."""
+
+    def test_guardrails_missing_returns_422(self, client, mock_remote_service):
+        """Missing guardrails returns 422 with guardrails_missing error code."""
+        mock_remote_service.create_blocking.return_value = RemoteAgentResult(
+            success=False,
+            error_code="guardrails_missing",
+            error_message="Platform guardrails are missing or invalid",
+        )
+
+        resp = client.post(
+            "/api/remote_agents/create",
+            json={
+                "project_slug": "test",
+                "persona_slug": "test",
+                "initial_prompt": "hello",
+            },
+        )
+        assert resp.status_code == 422
+        data = resp.get_json()
+        assert data["error"]["code"] == "guardrails_missing"
+        assert data["error"]["retryable"] is False
+
+    def test_successful_create_includes_guardrails_version(self, client, mock_remote_service):
+        """Successful creation includes guardrails_version in response."""
+        mock_remote_service.create_blocking.return_value = RemoteAgentResult(
+            success=True,
+            agent_id=42,
+            embed_url="https://test.example.com:5055/embed/42?token=abc",
+            session_token="abc",
+            project_slug="test-project",
+            persona_slug="test",
+            tmux_session_name="hs-test-abc123",
+            status="ready",
+            guardrails_version="a" * 64,
+        )
+
+        resp = client.post(
+            "/api/remote_agents/create",
+            json={
+                "project_slug": "test-project",
+                "persona_slug": "test",
+                "initial_prompt": "hello",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.get_json()
+        assert data["guardrails_version"] == "a" * 64
+
+    def test_successful_create_without_guardrails_version(self, client, mock_remote_service):
+        """Successful creation without guardrails_version omits the field."""
+        mock_remote_service.create_blocking.return_value = RemoteAgentResult(
+            success=True,
+            agent_id=42,
+            embed_url="https://test.example.com:5055/embed/42?token=abc",
+            session_token="abc",
+            project_slug="test-project",
+            persona_slug="test",
+            tmux_session_name="hs-test-abc123",
+            status="ready",
+            guardrails_version=None,
+        )
+
+        resp = client.post(
+            "/api/remote_agents/create",
+            json={
+                "project_slug": "test-project",
+                "persona_slug": "test",
+                "initial_prompt": "hello",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.get_json()
+        assert "guardrails_version" not in data
+
+    def test_alive_includes_staleness_info(self, client, token_service, mock_remote_service):
+        """Alive endpoint includes guardrail staleness when agent has guardrails."""
+        token = token_service.generate(agent_id=1)
+        mock_remote_service.check_alive.return_value = {
+            "alive": True,
+            "agent_id": 1,
+            "state": "processing",
+            "project_slug": "test",
+            "guardrails_version": "a" * 64,
+            "guardrails_stale": False,
+        }
+
+        resp = client.get(
+            "/api/remote_agents/1/alive",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["guardrails_version"] == "a" * 64
+        assert data["guardrails_stale"] is False
