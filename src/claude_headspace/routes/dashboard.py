@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from ..database import db
 from ..models import Agent, Project, Command, CommandState
 from ..models.objective import Objective
+from ..models.turn import TurnActor
 from ..services.card_state import (
     TIMED_OUT,
     _get_current_command_elapsed,
@@ -27,6 +28,31 @@ from ..services.card_state import (
 logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+
+def _get_completed_instruction(command) -> str:
+    """Get a display instruction for a completed command.
+
+    Fallback chain:
+    1. command.instruction (LLM-generated summary)
+    2. First non-internal USER turn's summary
+    3. First non-internal USER turn's text (truncated to 80 chars)
+    4. "Command" (final fallback)
+    """
+    if command.instruction:
+        return command.instruction
+
+    for turn in command.turns:
+        if turn.actor == TurnActor.USER and not turn.is_internal:
+            if turn.summary:
+                return turn.summary
+            if turn.text:
+                text = turn.text
+                if len(text) > 80:
+                    return text[:80] + "..."
+                return text
+
+    return "Command"
 
 
 def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
@@ -344,7 +370,7 @@ def _prepare_kanban_data(
                             "agent": agent_data,
                             "command_id": command.id,
                             "completion_summary": completion_summary or "Completed",
-                            "instruction": command.instruction or "Command",
+                            "instruction": _get_completed_instruction(command),
                             "completed_at": command.completed_at,
                             "turn_count": len(command.turns),
                             "elapsed": elapsed,

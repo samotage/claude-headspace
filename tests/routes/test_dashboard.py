@@ -10,6 +10,7 @@ from flask import Flask
 from src.claude_headspace.models import CommandState
 from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.dashboard import (
+    _get_completed_instruction,
     calculate_status_counts,
     count_active_agents,
     dashboard_bp,
@@ -1110,3 +1111,139 @@ class TestGetCommandCompletionSummary:
         result = get_command_completion_summary(agent)
 
         assert result == "Done"
+
+
+class TestGetCompletedInstruction:
+    """Tests for _get_completed_instruction() fallback chain."""
+
+    def test_returns_instruction_when_set(self):
+        """First priority: command.instruction."""
+        cmd = MagicMock()
+        cmd.instruction = "Fix the login page"
+        cmd.turns = []
+        assert _get_completed_instruction(cmd) == "Fix the login page"
+
+    def test_falls_back_to_user_turn_summary(self):
+        """Second priority: first non-internal USER turn's summary."""
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.is_internal = False
+        turn.summary = "Prepare prompt for Maybell fix"
+        turn.text = "Please prepare a prompt to fix the Maybell front-end bug"
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [turn]
+        assert _get_completed_instruction(cmd) == "Prepare prompt for Maybell fix"
+
+    def test_falls_back_to_user_turn_text(self):
+        """Third priority: first non-internal USER turn's text."""
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.is_internal = False
+        turn.summary = None
+        turn.text = "Fix the front-end bug"
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [turn]
+        assert _get_completed_instruction(cmd) == "Fix the front-end bug"
+
+    def test_truncates_long_user_turn_text(self):
+        """User turn text longer than 80 chars is truncated."""
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.is_internal = False
+        turn.summary = None
+        turn.text = "x" * 100
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [turn]
+        result = _get_completed_instruction(cmd)
+        assert result == "x" * 80 + "..."
+        assert len(result) == 83
+
+    def test_skips_internal_turns(self):
+        """Internal turns (sub-agent comms) are skipped."""
+        internal_turn = MagicMock()
+        internal_turn.actor = TurnActor.USER
+        internal_turn.is_internal = True
+        internal_turn.summary = "Internal message"
+        internal_turn.text = "Some internal text"
+
+        real_turn = MagicMock()
+        real_turn.actor = TurnActor.USER
+        real_turn.is_internal = False
+        real_turn.summary = None
+        real_turn.text = "The real user command"
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [internal_turn, real_turn]
+        assert _get_completed_instruction(cmd) == "The real user command"
+
+    def test_skips_agent_turns(self):
+        """AGENT turns are skipped, only USER turns considered."""
+        agent_turn = MagicMock()
+        agent_turn.actor = TurnActor.AGENT
+        agent_turn.is_internal = False
+        agent_turn.summary = "Agent response"
+        agent_turn.text = "I'll fix that for you"
+
+        user_turn = MagicMock()
+        user_turn.actor = TurnActor.USER
+        user_turn.is_internal = False
+        user_turn.summary = None
+        user_turn.text = "Fix the bug"
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [agent_turn, user_turn]
+        assert _get_completed_instruction(cmd) == "Fix the bug"
+
+    def test_returns_command_fallback_when_no_turns(self):
+        """Final fallback: 'Command' when no turns exist."""
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = []
+        assert _get_completed_instruction(cmd) == "Command"
+
+    def test_returns_command_fallback_when_only_internal_turns(self):
+        """Final fallback when all turns are internal."""
+        internal_turn = MagicMock()
+        internal_turn.actor = TurnActor.USER
+        internal_turn.is_internal = True
+        internal_turn.summary = "Internal"
+        internal_turn.text = "Internal text"
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [internal_turn]
+        assert _get_completed_instruction(cmd) == "Command"
+
+    def test_instruction_takes_priority_over_turn_data(self):
+        """command.instruction takes priority even when turns have data."""
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.is_internal = False
+        turn.summary = "Turn summary"
+        turn.text = "Turn text"
+
+        cmd = MagicMock()
+        cmd.instruction = "LLM-generated instruction"
+        cmd.turns = [turn]
+        assert _get_completed_instruction(cmd) == "LLM-generated instruction"
+
+    def test_exactly_80_chars_not_truncated(self):
+        """Text of exactly 80 chars should not be truncated."""
+        turn = MagicMock()
+        turn.actor = TurnActor.USER
+        turn.is_internal = False
+        turn.summary = None
+        turn.text = "x" * 80
+
+        cmd = MagicMock()
+        cmd.instruction = None
+        cmd.turns = [turn]
+        assert _get_completed_instruction(cmd) == "x" * 80
