@@ -2,6 +2,7 @@
 
 import logging
 import logging.config
+import mimetypes
 import os
 import threading
 import time
@@ -83,6 +84,10 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Create Flask app with correct template and static paths
     template_folder = app_root / "templates"
     static_folder = app_root / "static"
+
+    # Serve .yaml files as text so browsers render them inline
+    mimetypes.add_type("text/plain", ".yaml")
+    mimetypes.add_type("text/plain", ".yml")
 
     app = Flask(
         __name__,

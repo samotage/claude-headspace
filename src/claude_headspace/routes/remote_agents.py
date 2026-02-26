@@ -7,8 +7,9 @@ Uses session token authentication instead of CSRF tokens.
 
 import logging
 from functools import wraps
+from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,21 @@ def _apply_cors_headers(response):
 def _cors_preflight(**kwargs):
     """Handle CORS preflight requests."""
     return "", 204
+
+
+# ──────────────────────────────────────────────────────────────
+# OpenAPI spec (served as text/plain for browser rendering)
+# ──────────────────────────────────────────────────────────────
+
+@remote_agents_bp.route("/api/remote_agents/openapi.yaml", methods=["GET"])
+def openapi_spec():
+    """Serve the OpenAPI 3.1 spec as plain text."""
+    project_root = Path(current_app.root_path).parent.parent
+    spec_path = project_root / "static" / "api" / "remote-agents.yaml"
+    if not spec_path.exists():
+        return _error_response(404, "not_found", "OpenAPI spec not found")
+    content = spec_path.read_text(encoding="utf-8")
+    return Response(content, mimetype="text/plain")
 
 
 # ──────────────────────────────────────────────────────────────

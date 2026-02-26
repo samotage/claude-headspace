@@ -6,13 +6,13 @@ Claude Headspace provides an external API for creating and managing Claude Code 
 
 The complete machine-readable API specification is available as an OpenAPI 3.1 YAML file:
 
-**URL:** `/static/api/remote-agents.yaml`
+**URL:** `/api/remote_agents/openapi.yaml`
 
 Fetch this file from your Claude Headspace instance to get full endpoint documentation, request/response schemas, authentication details, and error codes. The spec is optimised for LLM consumption with detailed field descriptions and realistic examples.
 
 ## Quick Start for LLM Consumers
 
-1. **Fetch the spec:** `GET /static/api/remote-agents.yaml` from your Claude Headspace instance
+1. **Fetch the spec:** `GET /api/remote_agents/openapi.yaml` from your Claude Headspace instance
 2. **Parse the YAML** to discover endpoints, schemas, and authentication requirements
 3. **Create an agent:** `POST /api/remote_agents/create` with a JSON body containing `project_slug`, `persona_slug`, and `initial_prompt`
 4. **Save the session token** from the response — you need it for all subsequent requests
