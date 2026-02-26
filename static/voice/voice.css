@@ -119,8 +119,17 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-#sidebar-hamburger-btn {
+.total-agent-count {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-family: monospace;
   margin-left: auto;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+#sidebar-hamburger-btn {
+  flex-shrink: 0;
 }
 
 .main-header {

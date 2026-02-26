@@ -100,6 +100,7 @@ def is_team_internal_content(text: str | None) -> bool:
 _PERSONA_PRIMING_PREFIX = "You are "
 _PERSONA_PRIMING_MIDDLE = ". Read the following skill and experience"
 _PERSONA_SKILLS_HEADING = "## Skills"
+_GUARDRAILS_PREFIX = "## Platform Guardrails"
 
 
 def is_persona_injection(text: str | None) -> bool:
@@ -108,6 +109,9 @@ def is_persona_injection(text: str | None) -> bool:
     Matches the pattern produced by skill_injector._compose_priming_message():
       "You are {name}. Read the following skill and experience..."
       followed by "## Skills"
+
+    Also matches the guardrails-prefixed variant where the message starts
+    with "## Platform Guardrails" followed by the persona priming pattern.
 
     Args:
         text: The prompt text to check
@@ -119,12 +123,26 @@ def is_persona_injection(text: str | None) -> bool:
         return False
 
     stripped = text.strip()
-    if not stripped.startswith(_PERSONA_PRIMING_PREFIX):
-        return False
 
-    # Check for the characteristic middle phrase and skills heading
-    first_500 = stripped[:500]
-    return _PERSONA_PRIMING_MIDDLE in first_500 and _PERSONA_SKILLS_HEADING in stripped
+    # Direct persona priming (no guardrails prefix)
+    if stripped.startswith(_PERSONA_PRIMING_PREFIX):
+        first_500 = stripped[:500]
+        return _PERSONA_PRIMING_MIDDLE in first_500 and _PERSONA_SKILLS_HEADING in stripped
+
+    # Guardrails-prefixed variant: "## Platform Guardrails\n...\nYou are ..."
+    # The guardrails block can be ~10 KB, so the persona priming markers
+    # ("You are {name}. Read the following skill and experience …")
+    # appear well past position 2000.  Use a 16 KB window to accommodate
+    # current and future guardrails growth.
+    if stripped.startswith(_GUARDRAILS_PREFIX):
+        first_16k = stripped[:16384]
+        return (
+            _PERSONA_PRIMING_PREFIX in first_16k
+            and _PERSONA_PRIMING_MIDDLE in first_16k
+            and _PERSONA_SKILLS_HEADING in stripped
+        )
+
+    return False
 
 
 # ---------------------------------------------------------------------------

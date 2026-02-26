@@ -302,6 +302,13 @@ window.VoiceSidebar = (function () {
         + '</div>';
     }
 
+    // Update total active agent count in sidebar header
+    var totalCountEl = document.getElementById('total-agent-count');
+    if (totalCountEl) {
+      var totalActive = VoiceState.agents.length;
+      totalCountEl.textContent = '(' + totalActive + ')';
+    }
+
     var html = '';
     for (var p = 0; p < projectOrder.length; p++) {
       var projName = projectOrder[p];

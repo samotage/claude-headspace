@@ -7,8 +7,10 @@ as genuine keyboard input.
 """
 
 import logging
+import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from enum import Enum
@@ -24,6 +26,11 @@ DEFAULT_SEQUENTIAL_SEND_DELAY_MS = 150  # ms between rapid sequential sends
 DEFAULT_ENTER_VERIFY_DELAY_MS = 200  # ms between Enter and verification check
 DEFAULT_MAX_ENTER_RETRIES = 3  # max Enter retry attempts after verification failure
 DEFAULT_ENTER_VERIFY_LINES = 5  # pane lines to capture for Enter verification
+
+# Conservative byte limit for send-keys -l arguments.  tmux versions vary
+# in their internal message limits; some reject send-keys above ~2-4 KB.
+# Anything larger is routed through load-buffer + paste-buffer instead.
+SEND_KEYS_LITERAL_MAX = 4096
 
 # Per-pane send lock registry — prevents concurrent sends to the same pane
 # from interleaving text and corrupting the prompt.
@@ -432,6 +439,69 @@ def _verify_submission(
     return False
 
 
+def _send_literal_text(
+    pane_id: str,
+    text: str,
+    timeout: float,
+) -> None:
+    """Send literal text to a tmux pane, choosing the best transport.
+
+    For short text (<= SEND_KEYS_LITERAL_MAX bytes), uses ``send-keys -l``.
+    For longer text, writes to a temp file and uses ``load-buffer`` +
+    ``paste-buffer`` to bypass the send-keys argument length limit.
+
+    Args:
+        pane_id: The tmux pane ID
+        text: The literal text to send (no trailing Enter)
+        timeout: Subprocess timeout in seconds
+
+    Raises:
+        subprocess.CalledProcessError: If any tmux command fails
+        FileNotFoundError: If tmux binary not found
+        subprocess.TimeoutExpired: If any tmux command times out
+    """
+    if len(text.encode("utf-8")) <= SEND_KEYS_LITERAL_MAX:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", pane_id, "-l", text],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+        return
+
+    # Large text: write to a temp file, load into a named tmux buffer,
+    # then paste that buffer into the target pane.
+    logger.debug(
+        f"Text exceeds send-keys limit ({len(text)} chars / "
+        f"{len(text.encode('utf-8'))} bytes), "
+        f"using load-buffer for pane {pane_id}"
+    )
+    buffer_name = f"inject-{pane_id.replace('%', '')}"
+    fd, tmppath = tempfile.mkstemp(prefix="tmux_inject_", suffix=".txt")
+    try:
+        os.write(fd, text.encode("utf-8"))
+        os.close(fd)
+
+        subprocess.run(
+            ["tmux", "load-buffer", "-b", buffer_name, tmppath],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+
+        subprocess.run(
+            ["tmux", "paste-buffer", "-t", pane_id, "-b", buffer_name, "-d"],
+            check=True,
+            timeout=timeout,
+            capture_output=True,
+        )
+    finally:
+        try:
+            os.unlink(tmppath)
+        except OSError:
+            pass
+
+
 def send_text(
     pane_id: str,
     text: str,
@@ -514,12 +584,9 @@ def send_text(
                     time.sleep(clear_delay_ms / 1000.0)
 
             # Step 2: Send literal text (does NOT interpret key names)
-            subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, "-l", sanitised],
-                check=True,
-                timeout=timeout,
-                capture_output=True,
-            )
+            # Uses load-buffer + paste-buffer for large payloads to avoid
+            # the tmux send-keys argument length limit.
+            _send_literal_text(pane_id, sanitised, timeout)
 
             # Step 3: Adaptive delay between text and Enter
             # Scale delay with text length: +1ms per 10 chars beyond 200

@@ -216,6 +216,38 @@ class TestPersonaInjectionDetection:
         text = "The user said 'You are Con. Read the following skill and experience' but it was " + "x" * 200
         assert is_persona_injection(text) is False
 
+    def test_detects_guardrails_prefixed_large_guardrails(self):
+        """Guardrails can be ~10KB. Persona markers appear after the guardrails
+        block and must still be detected despite being past position 2000."""
+        # Simulate a ~10KB guardrails block (realistic size)
+        guardrails_block = "These rules are absolute. " * 400  # ~10KB
+        message = (
+            "## Platform Guardrails\n\n"
+            + guardrails_block
+            + "\n\n"
+            "You are Jen. Read the following skill and experience "
+            "content carefully. Absorb this identity and respond in character "
+            "with a brief greeting confirming who you are and what you do.\n\n"
+            "## Skills\n\n"
+            "# Jen — assistant\n\nFriendly application assistant.\n\n"
+            "## Experience\n\n"
+            "No prior experience."
+        )
+        assert is_persona_injection(message) is True
+
+    def test_detects_guardrails_prefixed_small_guardrails(self):
+        """Small guardrails block where markers are within 2KB."""
+        message = (
+            "## Platform Guardrails\n\n"
+            "Short guardrails content.\n\n"
+            "You are Con. Read the following skill and experience "
+            "content carefully. Absorb this identity and respond in character "
+            "with a brief greeting confirming who you are and what you do.\n\n"
+            "## Skills\n\n"
+            "# Con — developer\n\nBackend specialist."
+        )
+        assert is_persona_injection(message) is True
+
 
 class TestFilterSkillExpansion:
     """Test filter_skill_expansion truncation of command .md content."""

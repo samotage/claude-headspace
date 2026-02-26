@@ -307,6 +307,9 @@
   function handleTurnCreated(data) {
     if (parseInt(data.agent_id, 10) !== agentId) return;
 
+    // Skip internal/system turns (skill injection, team comms, etc.)
+    if (data.is_internal) return;
+
     // Clean up matching optimistic bubble
     if (data.actor === 'user' && data.text) {
       for (var nonce in pendingUserSends) {

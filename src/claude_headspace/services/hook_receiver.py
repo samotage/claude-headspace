@@ -1053,6 +1053,13 @@ def process_user_prompt_submit(
         # content-based (set earlier in this function).
         is_injection = get_agent_hook_state().consume_skill_injection_pending(agent.id)
 
+        # Replace persona injection priming text with a clean label so the
+        # dashboard card shows the persona name, not raw guardrails/skill content.
+        if is_injection or content_is_persona_injection:
+            persona = getattr(agent, "persona", None)
+            persona_name = persona.name if persona else "agent"
+            prompt_text = f"{persona_name} is ready"
+
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,
@@ -1108,7 +1115,7 @@ def process_user_prompt_submit(
                     "command_id": result.command.id if result.command else None,
                     "command_instruction": result.command.instruction if result.command else None,
                     "turn_id": user_turn_id,
-                    "is_internal": is_injection or is_team_internal_content(prompt_text),
+                    "is_internal": is_injection or content_is_persona_injection or is_team_internal_content(prompt_text),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
