@@ -24,15 +24,6 @@ if [[ -n "$SERVER_PIDS" ]]; then
     fi
 fi
 
-# Also kill any orphaned run.py processes that lost their socket but are still alive.
-# On macOS, framework Python shows as "Python run.py" (no full path in args).
-# Scope by checking each candidate's cwd matches this project directory.
-for pid in $(pgrep -f "[Pp]ython.*run\.py" 2>/dev/null); do
-    pid_cwd=$(lsof -p "$pid" -d cwd -Fn 2>/dev/null | tail -1 | sed 's/^n//')
-    if [[ "$pid_cwd" == "$(pwd)" ]]; then
-        kill -9 "$pid" 2>/dev/null
-    fi
-done
 
 # Activate venv if it exists
 if [[ -d "venv" ]]; then
