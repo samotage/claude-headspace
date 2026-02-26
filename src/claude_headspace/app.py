@@ -418,6 +418,12 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         app.extensions["remote_agent_service"] = None
         logger.info("Remote agent services disabled")
 
+    # Initialize API call logger middleware (captures external API traffic)
+    from .services.api_call_logger import ApiCallLogger
+    api_call_logger = ApiCallLogger(app=app)
+    app.extensions["api_call_logger"] = api_call_logger
+    logger.info("API call logger initialized")
+
     # Initialize commander availability tracker (uses tmux_bridge internally)
     from .services.commander_availability import CommanderAvailability
     commander_availability = CommanderAvailability(app=app, config=config)

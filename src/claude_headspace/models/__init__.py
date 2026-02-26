@@ -10,6 +10,7 @@ Models:
     - Turn: Individual exchanges (user <-> agent)
     - Event: Audit trail events
     - InferenceCall: LLM inference call logging
+    - ApiCallLog: External API request/response logging
     - ActivityMetric: Hourly activity metrics time-series
     - HeadspaceSnapshot: Headspace state snapshots (frustration, flow, alerts)
     - Organisation: Organisational grouping (active, dormant, archived)
@@ -23,10 +24,12 @@ Enums:
     - TurnActor: user, agent
     - TurnIntent: command, answer, question, completion, progress
     - InferenceLevel: turn, command, project, objective
+    - AuthStatus: authenticated, failed, unauthenticated, bypassed
 """
 
 from .activity_metric import ActivityMetric
 from .agent import Agent
+from .api_call_log import ApiCallLog, AuthStatus
 from .headspace_snapshot import HeadspaceSnapshot
 from .event import Event, EventType
 from .handoff import Handoff
@@ -43,6 +46,7 @@ from .turn import Turn, TurnActor, TurnIntent
 __all__ = [
     # Models
     "ActivityMetric",
+    "ApiCallLog",
     "HeadspaceSnapshot",
     "Objective",
     "ObjectiveHistory",
@@ -58,6 +62,7 @@ __all__ = [
     "Persona",
     "Handoff",
     # Enums
+    "AuthStatus",
     "CommandState",
     "TurnActor",
     "TurnIntent",

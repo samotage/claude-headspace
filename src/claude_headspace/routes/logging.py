@@ -8,6 +8,7 @@ from sqlalchemy import func, or_
 
 from ..database import db
 from ..models.agent import Agent
+from ..models.api_call_log import ApiCallLog
 from ..models.event import Event, EventType
 from ..models.inference_call import InferenceCall
 from ..models.project import Project
@@ -515,3 +516,249 @@ def clear_inference_calls():
         logger.exception("Failed to clear inference calls")
         db.session.rollback()
         return jsonify({"error": "Failed to clear inference calls"}), 500
+
+
+# ---------------------------------------------------------------------------
+# API Call Log endpoints
+# ---------------------------------------------------------------------------
+
+
+@logging_bp.route("/logging/api")
+def api_log_page():
+    """
+    API call log sub-tab page.
+
+    Returns:
+        Rendered API log template
+    """
+    status_counts = {"input_needed": 0, "working": 0, "idle": 0}
+    return render_template("logging_api.html", status_counts=status_counts)
+
+
+@logging_bp.route("/api/logging/api-calls", methods=["GET"])
+def get_api_calls():
+    """
+    Get paginated API call logs with optional filtering.
+
+    Query parameters:
+        - endpoint_path (optional): Filter by endpoint path
+        - http_method (optional): Filter by HTTP method
+        - status_category (optional): Filter by status category (2xx/4xx/5xx)
+        - auth_status (optional): Filter by auth status
+        - search (optional): Text search across request_body and response_body
+        - page (optional, default=1): Page number
+        - per_page (optional, default=50): Items per page (max 100)
+
+    Returns:
+        JSON with paginated API call logs and metadata
+    """
+    try:
+        endpoint_path = request.args.get("endpoint_path", type=str)
+        http_method = request.args.get("http_method", type=str)
+        status_category = request.args.get("status_category", type=str)
+        auth_status = request.args.get("auth_status", type=str)
+        search = request.args.get("search", type=str)
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 50, type=int)
+
+        if page < 1:
+            page = 1
+        per_page = max(1, min(per_page, 100))
+
+        query = db.session.query(ApiCallLog)
+
+        if endpoint_path:
+            query = query.filter(ApiCallLog.endpoint_path == endpoint_path)
+        if http_method:
+            query = query.filter(ApiCallLog.http_method == http_method)
+        if status_category:
+            if status_category == "2xx":
+                query = query.filter(
+                    ApiCallLog.response_status_code >= 200,
+                    ApiCallLog.response_status_code < 300,
+                )
+            elif status_category == "4xx":
+                query = query.filter(
+                    ApiCallLog.response_status_code >= 400,
+                    ApiCallLog.response_status_code < 500,
+                )
+            elif status_category == "5xx":
+                query = query.filter(
+                    ApiCallLog.response_status_code >= 500,
+                    ApiCallLog.response_status_code < 600,
+                )
+        if auth_status:
+            query = query.filter(ApiCallLog.auth_status == auth_status)
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    ApiCallLog.request_body.ilike(search_pattern),
+                    ApiCallLog.response_body.ilike(search_pattern),
+                )
+            )
+
+        total = query.count()
+        offset = (page - 1) * per_page
+
+        calls = (
+            query.order_by(ApiCallLog.timestamp.desc())
+            .offset(offset)
+            .limit(per_page)
+            .all()
+        )
+
+        # Resolve project names
+        call_project_ids = {c.project_id for c in calls if c.project_id is not None}
+        project_names = {}
+        if call_project_ids:
+            projects = (
+                db.session.query(Project.id, Project.name)
+                .filter(Project.id.in_(call_project_ids))
+                .all()
+            )
+            project_names = {p.id: p.name for p in projects}
+
+        # Resolve agent session UUIDs
+        call_agent_ids = {c.agent_id for c in calls if c.agent_id is not None}
+        agent_sessions = {}
+        if call_agent_ids:
+            agents = (
+                db.session.query(Agent.id, Agent.session_uuid)
+                .filter(Agent.id.in_(call_agent_ids))
+                .all()
+            )
+            agent_sessions = {a.id: str(a.session_uuid) for a in agents}
+
+        pages = (total + per_page - 1) // per_page if total > 0 else 0
+
+        return jsonify(
+            {
+                "calls": [
+                    {
+                        "id": call.id,
+                        "timestamp": (
+                            call.timestamp.isoformat() if call.timestamp else None
+                        ),
+                        "http_method": call.http_method,
+                        "endpoint_path": call.endpoint_path,
+                        "query_string": call.query_string,
+                        "request_content_type": call.request_content_type,
+                        "request_headers": call.request_headers,
+                        "request_body": call.request_body,
+                        "response_status_code": call.response_status_code,
+                        "response_content_type": call.response_content_type,
+                        "response_body": call.response_body,
+                        "latency_ms": call.latency_ms,
+                        "source_ip": call.source_ip,
+                        "auth_status": call.auth_status,
+                        "project_id": call.project_id,
+                        "project_name": project_names.get(call.project_id),
+                        "agent_id": call.agent_id,
+                        "agent_session": agent_sessions.get(call.agent_id),
+                    }
+                    for call in calls
+                ],
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "pages": pages,
+                "has_next": page < pages,
+                "has_previous": page > 1,
+            }
+        )
+
+    except Exception as e:
+        logger.exception("Failed to fetch API call logs")
+        return jsonify({"error": "Failed to fetch API call logs"}), 500
+
+
+@logging_bp.route("/api/logging/api-calls/filters", methods=["GET"])
+def get_api_call_filters():
+    """
+    Get available filter options for API call logs.
+
+    Returns:
+        JSON with distinct endpoint paths, HTTP methods, status categories,
+        and auth statuses from existing records
+    """
+    try:
+        endpoints = (
+            db.session.query(ApiCallLog.endpoint_path)
+            .distinct()
+            .order_by(ApiCallLog.endpoint_path)
+            .all()
+        )
+
+        methods = (
+            db.session.query(ApiCallLog.http_method)
+            .distinct()
+            .order_by(ApiCallLog.http_method)
+            .all()
+        )
+
+        auth_statuses = (
+            db.session.query(ApiCallLog.auth_status)
+            .distinct()
+            .order_by(ApiCallLog.auth_status)
+            .all()
+        )
+
+        # Determine which status categories exist
+        status_categories = []
+        has_2xx = db.session.query(ApiCallLog.id).filter(
+            ApiCallLog.response_status_code >= 200,
+            ApiCallLog.response_status_code < 300,
+        ).first() is not None
+        has_4xx = db.session.query(ApiCallLog.id).filter(
+            ApiCallLog.response_status_code >= 400,
+            ApiCallLog.response_status_code < 500,
+        ).first() is not None
+        has_5xx = db.session.query(ApiCallLog.id).filter(
+            ApiCallLog.response_status_code >= 500,
+            ApiCallLog.response_status_code < 600,
+        ).first() is not None
+
+        if has_2xx:
+            status_categories.append("2xx")
+        if has_4xx:
+            status_categories.append("4xx")
+        if has_5xx:
+            status_categories.append("5xx")
+
+        return jsonify(
+            {
+                "endpoints": [ep[0] for ep in endpoints],
+                "methods": [m[0] for m in methods],
+                "status_categories": status_categories,
+                "auth_statuses": [a[0] for a in auth_statuses],
+            }
+        )
+
+    except Exception as e:
+        logger.exception("Failed to fetch API call filter options")
+        return jsonify({"error": "Failed to fetch filter options"}), 500
+
+
+@logging_bp.route("/api/logging/api-calls", methods=["DELETE"])
+def clear_api_calls():
+    """
+    Delete all API call log records.
+
+    Requires X-Confirm-Destructive: true header to prevent accidental calls.
+
+    Returns:
+        JSON with count of deleted records
+    """
+    if request.headers.get("X-Confirm-Destructive") != "true":
+        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+
+    try:
+        count = db.session.query(ApiCallLog).count()
+        db.session.query(ApiCallLog).delete()
+        db.session.commit()
+        return jsonify({"deleted": count})
+    except Exception as e:
+        logger.exception("Failed to clear API call logs")
+        db.session.rollback()
+        return jsonify({"error": "Failed to clear API call logs"}), 500
