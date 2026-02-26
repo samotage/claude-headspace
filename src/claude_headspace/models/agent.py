@@ -95,6 +95,9 @@ class Agent(db.Model):
     prompt_injected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    guardrails_version_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None
+    )
     position_id: Mapped[int | None] = mapped_column(
         ForeignKey("positions.id", ondelete="CASCADE"), nullable=True
     )

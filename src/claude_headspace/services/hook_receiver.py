@@ -26,6 +26,7 @@ from .hook_extractors import (
 )
 from .intent_detector import detect_agent_intent
 from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
+from .guardrail_sanitiser import contains_error_patterns, sanitise_error_output
 from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
@@ -254,8 +255,17 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
 
     from .transcript_reconciler import _content_hash
 
+    # Determine if this agent has guardrails (remote agent) — if so,
+    # sanitise any error output to prevent system detail leakage.
+    has_guardrails = getattr(agent, "guardrails_version_hash", None) is not None
+
     for entry in progress_entries:
         text = entry.content.strip()
+
+        # Sanitise error output for guardrail-protected agents
+        if has_guardrails and contains_error_patterns(text):
+            text = sanitise_error_output(text)
+
         content_key = _content_hash("agent", text)
 
         # Skip if reconciler already created this turn (race condition guard)
