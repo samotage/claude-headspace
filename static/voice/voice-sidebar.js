@@ -391,7 +391,7 @@ window.VoiceSidebar = (function () {
       });
     }
 
-    // Bind kebab menu actions
+    // Bind kebab menu actions (click for desktop, touchend for touch devices)
     var ctxActions = list.querySelectorAll('.agent-ctx-action');
     for (var ca = 0; ca < ctxActions.length; ca++) {
       ctxActions[ca].addEventListener('click', function (e) {
@@ -438,6 +438,37 @@ window.VoiceSidebar = (function () {
         handoffAgent(agentId);
       });
     }
+
+    // Touch fix: on touch devices the absolutely-positioned dropdown extends
+    // below .agent-header-actions.  The browser retargets the synthesised
+    // click to that parent, so the item's click handler never fires.  Handle
+    // the action on touchend instead and preventDefault to suppress the bad
+    // synthesised click.
+    var agentMenus = list.querySelectorAll('.agent-kebab-menu');
+    for (var am = 0; am < agentMenus.length; am++) {
+      agentMenus[am].addEventListener('touchend', function (e) {
+        var item = e.target.closest('.kebab-menu-item');
+        if (!item) return;
+        e.preventDefault();
+        var agentId = parseInt(item.getAttribute('data-agent-id'), 10);
+        closeAllKebabMenus();
+        if (item.classList.contains('agent-ctx-action')) {
+          checkAgentContext(agentId);
+        } else if (item.classList.contains('agent-kill-action')) {
+          shutdownAgent(agentId);
+        } else if (item.classList.contains('agent-handoff-action')) {
+          handoffAgent(agentId);
+        } else if (item.classList.contains('agent-revive-action')) {
+          CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (data.error) { showToast('Revival failed: ' + data.error); }
+              else { showToast('Revival initiated'); refreshAgents(); }
+            })
+            .catch(function () { showToast('Revival failed'); });
+        }
+      });
+    }
     // Bind project kebab menu buttons
     var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
     for (var pk = 0; pk < projKebabBtns.length; pk++) {
@@ -474,6 +505,13 @@ window.VoiceSidebar = (function () {
   // --- Agent card click handler (private) ---
 
   function onAgentCardClick(e) {
+    // Guard: on touch devices the browser retargets the synthesised click
+    // to .agent-header-actions when the dropdown extends beyond its layout
+    // box, so we must also block clicks originating from that wrapper.
+    if (e.target.closest('.agent-kebab-menu') || e.target.closest('.agent-kebab-btn')
+        || e.target.closest('.agent-header-actions')) {
+      return;
+    }
     var card = e.currentTarget;
     var id = parseInt(card.getAttribute('data-agent-id'), 10);
     selectAgent(id);
