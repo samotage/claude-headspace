@@ -129,7 +129,6 @@ class ActivityAggregator:
             # Single bulk query: fetch all turns in this bucket for all relevant agents
             from ..models.command import Command
             agent_ids = [a.id for a in relevant_agents]
-            agent_map = {a.id: a for a in relevant_agents}
 
             all_turns = (
                 db.session.query(Turn, Command.agent_id)

@@ -263,7 +263,7 @@ class TmuxWatchdog:
 
                 cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
                 agent_turns = (
-                    Turn.query
+                    db.session.query(Turn)
                     .join(Turn.command)
                     .filter(
                         Command.agent_id == agent_id,

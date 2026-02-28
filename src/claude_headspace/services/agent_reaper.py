@@ -355,8 +355,8 @@ class AgentReaper:
             watchdog = self._app.extensions.get("tmux_watchdog")
             if watchdog:
                 watchdog.unregister_agent(agent.id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Reaper watchdog unregister failed (non-fatal): {e}")
 
         # Complete any orphaned commands (PROCESSING, COMMANDED, AWAITING_INPUT)
         self._complete_orphaned_commands(agent)

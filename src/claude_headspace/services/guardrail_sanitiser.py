@@ -70,8 +70,18 @@ _ENV_VAR = re.compile(
 # Generic replacement for redacted content
 _REDACTION = "[details redacted]"
 
+# Pre-lowercased error indicators for efficient matching
+_ERROR_INDICATORS = [
+    "traceback (most recent call last)",
+    "error:",
+    "exception:",
+    "failed",
+    "fatal:",
+    "panic:",
+]
 
-def sanitise_error_output(text: str) -> str:
+
+def sanitise_error_output(text: str | None) -> str | None:
     """Strip system-revealing information from error output text.
 
     Removes file paths, stack traces, module names, environment details,
@@ -141,19 +151,10 @@ def contains_error_patterns(text: str) -> bool:
     if not text:
         return False
 
-    # Check for common error indicators
-    error_indicators = [
-        "Traceback (most recent call last)",
-        "Error:",
-        "Exception:",
-        "FAILED",
-        "error:",
-        "fatal:",
-        "panic:",
-    ]
+    # Check for common error indicators (pre-lowercased for efficiency)
     text_lower = text.lower()
-    for indicator in error_indicators:
-        if indicator.lower() in text_lower:
+    for indicator in _ERROR_INDICATORS:
+        if indicator in text_lower:
             return True
 
     # Check for file path patterns in context that suggests error output

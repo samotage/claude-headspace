@@ -567,7 +567,8 @@ class CommandLifecycleManager:
                 if (
                     current_command
                     and current_state == CommandState.PROCESSING
-                    and Turn.query.filter_by(command_id=current_command.id)
+                    and self._session.query(Turn)
+                    .filter_by(command_id=current_command.id)
                     .filter(Turn.actor == TurnActor.USER)
                     .count() == 0
                 ):

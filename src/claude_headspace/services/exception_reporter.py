@@ -53,7 +53,7 @@ class ExceptionReporter:
         """Token bucket rate limiter. Returns True if a send is allowed."""
         with self._lock:
             now = time.monotonic()
-            elapsed = now - self._last_refill
+            elapsed = max(0, now - self._last_refill)
             self._tokens = min(
                 self._rate_limit,
                 self._tokens + elapsed * self._rate_limit,

@@ -54,7 +54,7 @@ class SessionTokenService:
             The generated opaque token string.
         """
         token = secrets.token_urlsafe(_TOKEN_BYTES)
-        info = TokenInfo(agent_id=agent_id, feature_flags=feature_flags or {})
+        info = TokenInfo(agent_id=agent_id, feature_flags=dict(feature_flags or {}))
 
         with self._lock:
             # Revoke existing token for this agent (if any)

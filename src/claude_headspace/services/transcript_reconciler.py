@@ -320,13 +320,15 @@ def reconcile_agent_session(agent):
         # Skip persona injection entries (same guard as reconcile_transcript_entries)
         if actor == "user" and is_persona_injection(entry.content.strip()):
             continue
-        content_key = _content_hash(actor, entry.content.strip())
-        legacy_key = _legacy_content_hash(actor, entry.content.strip())
+        # Apply the same skill-expansion filter used in reconcile_transcript_entries
+        # so that content hashes match the truncated text stored in turns.
+        turn_text = filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        content_key = _content_hash(actor, turn_text)
+        legacy_key = _legacy_content_hash(actor, turn_text)
         if content_key in existing_hashes or legacy_key in existing_hashes:
             continue
         existing_hashes.add(content_key)
         existing_hashes.add(legacy_key)
-        turn_text = entry.content.strip()
         if actor == "user":
             intent_result = detect_user_intent(turn_text, latest_command.state)
             detected_intent = intent_result.intent

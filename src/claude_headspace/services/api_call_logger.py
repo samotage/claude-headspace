@@ -241,4 +241,4 @@ class ApiCallLogger:
 
             broadcaster.broadcast("api_call_logged", event_data)
         except Exception:
-            logger.debug("Failed to broadcast api_call_logged event", exc_info=True)
+            logger.warning("Failed to broadcast api_call_logged event", exc_info=True)
