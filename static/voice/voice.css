@@ -115,7 +115,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 10px 0;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -138,7 +138,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 10;
@@ -320,7 +320,7 @@ body.layout-stacked #main-panel.show-main {
 /* Compact header on stacked (phone) mode */
 body.layout-stacked .main-header {
   gap: 8px;
-  padding: 8px 12px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
 }
 body.layout-stacked .chat-focus-link {
   gap: 8px;
@@ -481,7 +481,19 @@ body.layout-split .main-panel-empty.show-empty {
 .agent-hero-id {
   display: flex;
   align-items: baseline;
-  flex-shrink: 0;
+  min-width: 0;       /* allow flex child to shrink below content size */
+  overflow: hidden;
+  white-space: nowrap;
+}
+.agent-hero-id .agent-hero {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.agent-hero-id .agent-hero-trail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 2;     /* role truncates first, then name */
 }
 
 /* --- Project group headers --- */
@@ -807,6 +819,14 @@ body.layout-split .agent-card.selected:hover {
   background: var(--border);
 }
 
+.kebab-menu-item.agent-handoff-action:hover {
+  color: var(--magenta, #d073e0);
+  background: rgba(208, 115, 224, 0.08);
+  padding-left: 16px;
+}
+.kebab-menu-item.agent-handoff-action:hover .kebab-icon {
+  opacity: 1;
+}
 .kebab-menu-item.agent-kill-action {
   color: var(--text-muted);
 }
@@ -1819,9 +1839,18 @@ body.layout-split .agent-card.selected:hover {
   resize: none;
   overflow-y: auto;
   min-height: 36px;
-  max-height: 240px;
+  max-height: 142px; /* 6 lines: 6×20.25 + 18px pad + 2px border */
   line-height: 1.35;
   transition: border-color 0.15s;
+}
+
+/* iPad / tablet: 8 lines */
+@media (min-width: 768px) {
+  .chat-text-field { max-height: 182px; }
+}
+/* Desktop / Mac: 12 lines */
+@media (min-width: 1024px) {
+  .chat-text-field { max-height: 265px; }
 }
 .chat-text-field:focus {
   border-color: var(--accent-field-border);
@@ -2806,7 +2835,7 @@ body.layout-split .hamburger-btn { display: none; }
   display: none;
   flex-direction: column;
   position: fixed;
-  top: 48px;
+  top: calc(48px + env(safe-area-inset-top, 0px));
   right: 12px;
   background: var(--surface-raised);
   border: 1px solid var(--border-emphasis);

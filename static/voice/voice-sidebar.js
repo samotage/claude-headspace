@@ -257,10 +257,17 @@ window.VoiceSidebar = (function () {
           + '<span>Revive</span></button>'
           + '</div>';
       } else {
+        var handoffHtml = '';
+        if (a.persona_name) {
+          handoffHtml = '<button class="kebab-menu-item agent-handoff-action" data-agent-id="' + a.agent_id + '">'
+            + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2v12M11 2v12"/><path d="M5 8h6"/><path d="M1 5l4 3-4 3"/><path d="M15 5l-4 3 4 3"/></svg>'
+            + '<span>Handoff</span></button>';
+        }
         kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
           + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
           + '<span>Fetch context</span></button>'
+          + handoffHtml
           + '<div class="kebab-divider"></div>'
           + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
           + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
@@ -422,6 +429,15 @@ window.VoiceSidebar = (function () {
           .catch(function () { showToast('Revival failed'); });
       });
     }
+    var handoffActions = list.querySelectorAll('.agent-handoff-action');
+    for (var ha = 0; ha < handoffActions.length; ha++) {
+      handoffActions[ha].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
+        closeAllKebabMenus();
+        handoffAgent(agentId);
+      });
+    }
     // Bind project kebab menu buttons
     var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
     for (var pk = 0; pk < projKebabBtns.length; pk++) {
@@ -525,6 +541,42 @@ window.VoiceSidebar = (function () {
         alert('Shutdown failed: ' + (err.error || 'unknown error'));
       });
     }
+  }
+
+  // --- Handoff agent (private) ---
+
+  function handoffAgent(agentId) {
+    if (typeof ConfirmDialog !== 'undefined') {
+      ConfirmDialog.show(
+        'Handoff agent?',
+        'The agent will write a handoff document and a successor agent will be created with the same persona. The current agent will remain alive.',
+        { confirmText: 'Handoff', cancelText: 'Cancel' }
+      ).then(function (confirmed) {
+        if (!confirmed) return;
+        _doHandoff(agentId);
+      });
+    } else {
+      if (!confirm('Handoff this agent to a successor?')) return;
+      _doHandoff(agentId);
+    }
+  }
+
+  function _doHandoff(agentId) {
+    CHUtils.apiFetch('/api/agents/' + agentId + '/handoff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'manual' })
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (res.ok) {
+          showToast(data.message || 'Handoff initiated — agent writing handoff document');
+        } else {
+          showToast('Handoff failed: ' + (data.error || 'unknown error'));
+        }
+      });
+    }).catch(function () {
+      showToast('Handoff failed');
+    });
   }
 
   // --- Create agent for project ---
