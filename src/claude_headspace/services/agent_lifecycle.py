@@ -426,8 +426,8 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
     # for voice chat), so we verify the shutdown actually happened.  If the
     # pane is still alive, /exit text is already typed — send more Enter keys
     # until one lands.
-    max_exit_polls = 5
-    exit_poll_interval_s = 0.4
+    max_exit_polls = 8
+    exit_poll_interval_s = 0.8
 
     for poll in range(max_exit_polls):
         time.sleep(exit_poll_interval_s)
