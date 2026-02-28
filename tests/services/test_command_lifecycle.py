@@ -184,6 +184,9 @@ class TestCommandLifecycleManagerUnit:
         mock_command.state = CommandState.PROCESSING
         mock_command.completed_at = None
 
+        # Mock query chain for PROGRESS dedup check — no existing progress turn
+        mock_session.query.return_value.filter_by.return_value.filter.return_value.first.return_value = None
+
         result = manager.complete_command(mock_command, agent_text="Command completed successfully.")
 
         assert result is True
@@ -1044,6 +1047,8 @@ class TestCompleteCommandSummarisation:
     def test_complete_command_creates_turn_for_nonempty_text(self):
         """complete_command with non-empty agent_text should create a Turn."""
         mock_session = MagicMock(spec=Session)
+        # Mock query chain for PROGRESS dedup check — no existing progress turn
+        mock_session.query.return_value.filter_by.return_value.filter.return_value.first.return_value = None
 
         mock_agent = MagicMock()
         mock_agent.id = 1

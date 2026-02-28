@@ -4,7 +4,7 @@
     align-items: center;
     background: var(--bg-deep);
     border-bottom: 1px solid var(--border);
-    padding: 0;
+    padding: env(safe-area-inset-top, 0px) 0 0 0;
     position: fixed;
     top: 0;
     left: 0;
@@ -132,7 +132,7 @@
 /* Dashboard activity bar (fixed, between nav and stats bar) */
 #dashboard-activity-bar {
     position: fixed;
-    top: 52px;
+    top: calc(52px + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
     z-index: 99;
@@ -150,7 +150,7 @@
     background: var(--bg-deep);
     border-bottom: 1px solid var(--border);
     position: fixed;
-    top: 52px;
+    top: calc(52px + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
     z-index: 98;
@@ -159,11 +159,11 @@
 
 /* When dashboard has activity bar, push stats bar and content down */
 body:has(#dashboard-activity-bar) .stats-bar {
-    top: 118px;
+    top: calc(118px + env(safe-area-inset-top, 0px));
 }
 
 body:has(#dashboard-activity-bar) .page-content {
-    padding-top: 158px; /* 52px nav + 66px activity bar + 40px stats bar */
+    padding-top: calc(158px + env(safe-area-inset-top, 0px)); /* 52px nav + 66px activity bar + 40px stats bar + safe area */
 }
 
 .stats-bar .stat-item {
@@ -281,7 +281,7 @@ body:has(#dashboard-activity-bar) .page-content {
     background: rgba(224,115,115,0.1);
     border-bottom: 1px solid rgba(224,115,115,0.3);
     position: fixed;
-    top: 92px; /* nav 52px + stats bar 40px */
+    top: calc(92px + env(safe-area-inset-top, 0px)); /* nav 52px + stats bar 40px + safe area */
     left: 0;
     right: 0;
     z-index: 98;
@@ -338,7 +338,7 @@ body:has(#dashboard-activity-bar) .page-content {
 /* Headspace flow toast */
 .headspace-flow-toast {
     position: fixed;
-    top: 92px;
+    top: calc(92px + env(safe-area-inset-top, 0px));
     left: 50%;
     transform: translateX(-50%);
     z-index: 97;
@@ -365,7 +365,8 @@ body:has(#dashboard-activity-bar) .page-content {
 
 /* Page content offset for fixed nav + stats bar */
 .page-content {
-    padding-top: 92px; /* 52px nav + 40px stats bar */
+    padding-top: calc(92px + env(safe-area-inset-top, 0px)); /* 52px nav + 40px stats bar + safe area */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Hamburger button - hidden by default, shown via JS when items overflow */
@@ -485,7 +486,7 @@ body:has(#dashboard-activity-bar) .page-content {
 
 .mobile-menu-items {
     flex: 1;
-    padding: 12px 0;
+    padding: 12px 0 env(safe-area-inset-bottom, 12px);
     overflow-y: auto;
 }
 
@@ -548,7 +549,7 @@ body:has(#dashboard-activity-bar) .page-content {
     }
 
     .page-content {
-        padding-top: 80px;
+        padding-top: calc(80px + env(safe-area-inset-top, 0px));
     }
 
     /* Stats bar: compact on mobile */
@@ -576,12 +577,12 @@ body:has(#dashboard-activity-bar) .page-content {
     }
 
     .headspace-alert-banner {
-        top: 80px;
+        top: calc(80px + env(safe-area-inset-top, 0px));
         padding: 8px 12px;
     }
 
     .headspace-flow-toast {
-        top: 80px;
+        top: calc(80px + env(safe-area-inset-top, 0px));
     }
 }
 

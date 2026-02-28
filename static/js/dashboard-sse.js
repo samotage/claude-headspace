@@ -66,13 +66,22 @@
     }
 
     /**
-     * Safe reload that defers if a ConfirmDialog is open or a respond widget
-     * input is focused (FE-H3). Prevents SSE-triggered reloads from
-     * flashing/dismissing dialogs or losing typed responses.
+     * Safe reload that defers if user is mid-interaction: ConfirmDialog open,
+     * kebab menu open, or respond widget focused (FE-H3). Prevents
+     * SSE-triggered reloads from flashing/dismissing dialogs, closing menus,
+     * or losing typed responses.
      */
     function safeDashboardReload() {
         if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
             console.log('SSE reload deferred — ConfirmDialog is open');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
+        // Defer reload if a kebab menu is open (user is mid-interaction)
+        if (document.querySelector('.card-kebab-menu.open')) {
+            console.log('SSE reload deferred — kebab menu is open');
             window._sseReloadDeferred = function() {
                 window.location.reload();
             };

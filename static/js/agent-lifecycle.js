@@ -136,6 +136,22 @@
         for (var m = 0; m < unclipped.length; m++) {
             unclipped[m].classList.remove('kebab-child-open');
         }
+        // Execute any deferred SSE reload now that menus are closed.
+        // setTimeout(0) runs AFTER the current event handler stack,
+        // so if a kebab action (dismiss, etc.) opens a ConfirmDialog,
+        // the deferred reload won't fire prematurely.
+        if (global._sseReloadDeferred) {
+            setTimeout(function() {
+                if (!global._sseReloadDeferred) return;
+                if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) return;
+                if (document.querySelector('.card-kebab-menu.open')) return;
+                var active = document.activeElement;
+                if (active && active.closest && active.closest('.respond-widget')) return;
+                var deferred = global._sseReloadDeferred;
+                global._sseReloadDeferred = null;
+                deferred();
+            }, 0);
+        }
     }
 
     /**

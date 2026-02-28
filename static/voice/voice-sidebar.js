@@ -60,24 +60,23 @@ window.VoiceSidebar = (function () {
       return (a.name || '').localeCompare(b.name || '');
     });
 
-    var html = '';
+    var html = '<div class="project-picker-grid">';
     for (var i = 0; i < sorted.length; i++) {
       var p = sorted[i];
       var count = p.agent_count || 0;
-      var badgeClass = count === 0 ? 'project-picker-badge zero' : 'project-picker-badge';
+      var badgeClass = count === 0 ? 'project-picker-cell-badge zero' : 'project-picker-cell-badge';
       var shortPath = (p.path || '').replace(/^\/Users\/[^/]+\//, '~/');
-      html += '<div class="project-picker-row" data-project-name="' + VoiceChatRenderer.esc(p.name) + '">'
-        + '<div class="project-picker-info">'
-        + '<div class="project-picker-name">' + VoiceChatRenderer.esc(p.name) + '</div>'
-        + '<div class="project-picker-path">' + VoiceChatRenderer.esc(shortPath) + '</div>'
-        + '</div>'
+      html += '<div class="project-picker-cell" data-project-name="' + VoiceChatRenderer.esc(p.name) + '"'
+        + ' title="' + VoiceChatRenderer.esc(shortPath) + '">'
+        + '<div class="project-picker-cell-name">' + VoiceChatRenderer.esc(p.name) + '</div>'
         + '<span class="' + badgeClass + '">' + count + ' agent' + (count !== 1 ? 's' : '') + '</span>'
         + '</div>';
     }
+    html += '</div>';
     list.innerHTML = html;
 
     // Bind click handlers
-    var rows = list.querySelectorAll('.project-picker-row');
+    var rows = list.querySelectorAll('.project-picker-cell');
     for (var r = 0; r < rows.length; r++) {
       rows[r].addEventListener('click', function () {
         var name = this.getAttribute('data-project-name');
@@ -586,48 +585,46 @@ window.VoiceSidebar = (function () {
     var list = document.getElementById('persona-picker-list');
     if (!list) return;
 
-    // "No persona" default option
-    var html = '<div class="persona-picker-row" data-persona-slug="">'
+    // "No persona" default option (full width, above grid)
+    var html = '<div class="persona-picker-row persona-picker-default" data-persona-slug="">'
       + '<div class="persona-picker-info">'
       + '<div class="persona-picker-name">No persona (default)</div>'
       + '<div class="persona-picker-desc">Standard Claude agent without persona</div>'
       + '</div>'
       + '</div>';
 
-    // Group by role
-    var roleGroups = {};
-    var roleOrder = [];
-    for (var i = 0; i < personas.length; i++) {
-      var p = personas[i];
-      var role = p.role || 'Other';
-      if (!roleGroups[role]) {
-        roleGroups[role] = [];
-        roleOrder.push(role);
-      }
-      roleGroups[role].push(p);
-    }
+    // Sort personas by role then name
+    var sorted = personas.slice().sort(function(a, b) {
+      var ra = (a.role || 'other').toLowerCase();
+      var rb = (b.role || 'other').toLowerCase();
+      if (ra < rb) return -1;
+      if (ra > rb) return 1;
+      var na = (a.name || '').toLowerCase();
+      var nb = (b.name || '').toLowerCase();
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      return 0;
+    });
 
-    for (var r = 0; r < roleOrder.length; r++) {
-      var roleName = roleOrder[r];
-      var group = roleGroups[roleName];
-      html += '<div class="persona-picker-role-header">' + VoiceChatRenderer.esc(roleName) + '</div>';
-      for (var j = 0; j < group.length; j++) {
-        var persona = group[j];
-        var desc = persona.description || '';
-        html += '<div class="persona-picker-row" data-persona-slug="' + VoiceChatRenderer.esc(persona.slug) + '">'
-          + '<div class="persona-picker-info">'
-          + '<div class="persona-picker-name">' + VoiceChatRenderer.esc(persona.name) + '</div>'
-          + (desc ? '<div class="persona-picker-desc">' + VoiceChatRenderer.esc(desc) + '</div>' : '')
-          + '</div>'
-          + '</div>';
-      }
+    // Two-column grid of persona cells
+    html += '<div class="persona-picker-grid">';
+    for (var i = 0; i < sorted.length; i++) {
+      var persona = sorted[i];
+      var desc = persona.description || '';
+      var role = persona.role || 'Other';
+      html += '<div class="persona-picker-cell" data-persona-slug="' + VoiceChatRenderer.esc(persona.slug) + '"'
+        + (desc ? ' title="' + VoiceChatRenderer.esc(desc) + '"' : '') + '>'
+        + '<div class="persona-picker-cell-role">' + VoiceChatRenderer.esc(role) + '</div>'
+        + '<div class="persona-picker-cell-name">' + VoiceChatRenderer.esc(persona.name) + '</div>'
+        + '</div>';
     }
+    html += '</div>';
     list.innerHTML = html;
 
-    // Bind click handlers
-    var rows = list.querySelectorAll('.persona-picker-row');
-    for (var k = 0; k < rows.length; k++) {
-      rows[k].addEventListener('click', function () {
+    // Bind click handlers for default row and grid cells
+    var clickables = list.querySelectorAll('.persona-picker-row, .persona-picker-cell');
+    for (var k = 0; k < clickables.length; k++) {
+      clickables[k].addEventListener('click', function () {
         var slug = this.getAttribute('data-persona-slug') || null;
         var projName = _pendingPersonaProject;
         closePersonaPicker();

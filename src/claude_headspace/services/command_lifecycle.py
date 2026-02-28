@@ -419,17 +419,39 @@ class CommandLifecycleManager:
 
         # Create completion turn record only when there is actual content.
         # Empty/whitespace-only text produces noisy Turn records that add no value.
+        #
+        # Dedup: if a PROGRESS turn already captured the same text (common during
+        # persona injection where post_tool_use fires before stop), upgrade the
+        # existing turn's intent instead of creating a duplicate.
         turn = None
         if agent_text and agent_text.strip():
-            turn = Turn(
-                command_id=command.id,
-                actor=TurnActor.AGENT,
-                intent=intent,
-                text=agent_text,
-                is_internal=is_team_internal_content(agent_text),
+            existing_progress = (
+                self._session.query(Turn)
+                .filter_by(
+                    command_id=command.id,
+                    actor=TurnActor.AGENT,
+                    intent=TurnIntent.PROGRESS,
+                )
+                .filter(Turn.text == agent_text)
+                .first()
             )
-            self._session.add(turn)
-            self._session.flush()
+            if existing_progress:
+                existing_progress.intent = intent
+                turn = existing_progress
+                logger.info(
+                    f"complete_command: upgraded PROGRESS turn {turn.id} to {intent.value} "
+                    f"(dedup, command_id={command.id})"
+                )
+            else:
+                turn = Turn(
+                    command_id=command.id,
+                    actor=TurnActor.AGENT,
+                    intent=intent,
+                    text=agent_text,
+                    is_internal=is_team_internal_content(agent_text),
+                )
+                self._session.add(turn)
+                self._session.flush()
 
         logger.info(f"Command id={command.id} completed at {command.completed_at.isoformat()}")
 

@@ -16,7 +16,7 @@ from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
-from .team_content_detector import filter_skill_expansion, is_skill_expansion, is_team_internal_content
+from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,18 @@ def reconcile_transcript_entries(agent, command, entries):
         if actor == "user" and is_skill_expansion(entry.content.strip()):
             logger.debug(
                 f"[RECONCILER] Skipping skill expansion entry "
+                f"(agent={agent.id}, len={len(entry.content)})"
+            )
+            continue
+
+        # Skip persona injection entries.  The hook receiver detects persona
+        # priming messages (via is_persona_injection) and replaces the ~10KB
+        # text with a clean "{persona_name} is ready" label.  The JSONL still
+        # contains the full priming text, which produces a different hash and
+        # causes the reconciler to create a duplicate USER turn.
+        if actor == "user" and is_persona_injection(entry.content.strip()):
+            logger.debug(
+                f"[RECONCILER] Skipping persona injection entry "
                 f"(agent={agent.id}, len={len(entry.content)})"
             )
             continue
@@ -304,6 +316,9 @@ def reconcile_agent_session(agent):
         actor = "user" if entry.role == "user" else "agent"
         # Skip skill expansion entries (same guard as reconcile_transcript_entries)
         if actor == "user" and is_skill_expansion(entry.content.strip()):
+            continue
+        # Skip persona injection entries (same guard as reconcile_transcript_entries)
+        if actor == "user" and is_persona_injection(entry.content.strip()):
             continue
         content_key = _content_hash(actor, entry.content.strip())
         legacy_key = _legacy_content_hash(actor, entry.content.strip())

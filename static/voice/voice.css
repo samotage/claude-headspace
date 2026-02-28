@@ -472,7 +472,7 @@ body.layout-split .main-panel-empty.show-empty {
 
 .agent-hero-trail {
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 400;
   color: var(--text-dim);
   line-height: 1;
@@ -486,7 +486,11 @@ body.layout-split .main-panel-empty.show-empty {
 
 /* --- Project group headers --- */
 .project-group {
-  margin-bottom: 20px;
+  margin-bottom: 4px;
+}
+.project-group + .project-group {
+  border-top: 1px solid var(--border-emphasis);
+  padding-top: 4px;
 }
 
 .project-group-header {
@@ -494,13 +498,11 @@ body.layout-split .main-panel-empty.show-empty {
   align-items: center;
   justify-content: space-between;
   position: relative;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text);
-  padding: 10px 2px 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 2px 6px;
+  letter-spacing: 0.01em;
 }
 
 .project-group-name {
@@ -509,22 +511,22 @@ body.layout-split .main-panel-empty.show-empty {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .project-kebab-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
   background: none;
   border: 1px solid transparent;
   color: var(--text-dim, #aaa);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -565,7 +567,7 @@ body.layout-split .main-panel-empty.show-empty {
 }
 
 .project-group-cards {
-  padding-left: 12px;
+  padding-left: 0;
 }
 
 /* --- Agent list --- */
@@ -576,9 +578,9 @@ body.layout-split .main-panel-empty.show-empty {
 }
 .agent-card {
   background: var(--surface);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-bottom: 8px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
   cursor: pointer;
   border-left: 3px solid var(--idle);
   transition: transform 0.1s, background 0.15s, box-shadow 0.15s;
@@ -681,8 +683,8 @@ body.layout-split .agent-card.selected:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: 6px;
+  margin-bottom: 2px;
 }
 
 /* --- Kebab menu --- */
@@ -698,15 +700,15 @@ body.layout-split .agent-card.selected:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
   background: none;
   border: 1px solid transparent;
   color: var(--text-dim, #aaa);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -750,11 +752,15 @@ body.layout-split .agent-card.selected:hover {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Larger kebab dots on touch devices (iPhone, iPad) */
+/* Larger kebab touch targets on touch devices (iPhone, iPad) */
 @media (pointer: coarse) {
   .project-kebab-btn,
   .agent-kebab-btn {
-    font-size: 32px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    font-size: 24px;
   }
 }
 
@@ -814,9 +820,9 @@ body.layout-split .agent-card.selected:hover {
 }
 
 .agent-state {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 8px;
   background: var(--state-bg);
   text-transform: uppercase;
   font-weight: 600;
@@ -863,28 +869,22 @@ body.layout-split .agent-card.selected:hover {
   font-size: var(--chat-font-size, 15px);
   color: var(--text);
   font-weight: 500;
-  line-height: 1.4;
-  margin-bottom: 4px;
+  line-height: 1.3;
+  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .agent-summary {
-  font-size: var(--chat-font-size, 15px);
+  font-size: 13px;
   color: var(--text-dim);
-  line-height: 1.4;
-  margin-bottom: 4px;
+  line-height: 1.3;
+  margin-bottom: 2px;
   font-style: italic;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
-}
-@media (max-width: 768px) {
-  .agent-summary {
-    -webkit-line-clamp: 2;
-  }
+  text-overflow: ellipsis;
 }
 
 .needs-input {
@@ -894,29 +894,29 @@ body.layout-split .agent-card.selected:hover {
 }
 
 .agent-ago {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text-muted);
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 .agent-ago .agent-ctx-inline {
   flex-shrink: 0;
 }
 
 .agent-ctx-inline {
-  font-size: 12px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
 }
 
 /* Larger agent-ago text on iPads and iPhones for easier reading */
 @media (max-width: 1024px) {
   .agent-ago {
-    font-size: 16px;
+    font-size: 13px;
   }
   .agent-ago .agent-ctx-inline {
-    font-size: 16px;
+    font-size: 13px;
   }
 }
 .agent-ctx-inline.ctx-normal { color: var(--text-muted); }
@@ -2938,28 +2938,31 @@ body.layout-split .hamburger-btn { display: none; }
   font-size: 14px;
 }
 
-.project-picker-row {
+/* Two-column project grid */
+.project-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+}
+
+.project-picker-cell {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 10px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s;
 }
-.project-picker-row:hover {
+.project-picker-cell:hover {
   background: var(--accent-subtle-hover);
 }
-.project-picker-row:active {
+.project-picker-cell:active {
   background: var(--accent-subtle-active);
 }
 
-.project-picker-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.project-picker-name {
+.project-picker-cell-name {
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
@@ -2968,33 +2971,25 @@ body.layout-split .hamburger-btn { display: none; }
   text-overflow: ellipsis;
 }
 
-.project-picker-path {
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-picker-badge {
-  flex-shrink: 0;
-  font-size: 11px;
+.project-picker-cell-badge {
+  font-size: 10px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 1px 6px;
+  border-radius: 99px;
   background: var(--accent-focus);
   color: var(--accent);
+  align-self: flex-start;
 }
-.project-picker-badge.zero {
+.project-picker-cell-badge.zero {
   background: var(--state-bg);
   color: var(--text-muted);
 }
 
-.project-picker-row.creating {
+.project-picker-cell.creating {
   opacity: 0.5;
   pointer-events: none;
 }
-.project-picker-row.creating .project-picker-badge::after {
+.project-picker-cell.creating .project-picker-cell-badge::after {
   content: '';
   display: inline-block;
   width: 10px;
@@ -3019,10 +3014,10 @@ body.layout-split .hamburger-btn { display: none; }
   .project-picker-search-wrap { padding: 10px 20px 12px; }
   .project-picker-search { font-size: 1rem; padding: 11px 14px; }
   .project-picker-list { padding: 0 12px 20px; }
-  .project-picker-row { padding: 14px 16px; gap: 12px; }
-  .project-picker-name { font-size: 1.25rem; }
-  .project-picker-path { font-size: 0.8125rem; }
-  .project-picker-badge { font-size: 0.75rem; padding: 3px 10px; }
+  .project-picker-grid { gap: 6px; padding: 6px; }
+  .project-picker-cell { padding: 10px 12px; }
+  .project-picker-cell-name { font-size: 1.125rem; }
+  .project-picker-cell-badge { font-size: 0.6875rem; padding: 2px 8px; }
   .project-picker-empty { font-size: 1rem; }
 }
 
@@ -3083,13 +3078,9 @@ body.layout-split .hamburger-btn { display: none; }
   padding: 0 8px 16px;
 }
 
-.persona-picker-role-header {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  padding: 12px 12px 4px;
+.persona-picker-default {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 
 .persona-picker-row {
@@ -3130,6 +3121,45 @@ body.layout-split .hamburger-btn { display: none; }
   text-overflow: ellipsis;
 }
 
+/* Two-column persona grid */
+.persona-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+}
+
+.persona-picker-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.persona-picker-cell:hover {
+  background: var(--accent-subtle-hover);
+}
+.persona-picker-cell:active {
+  background: var(--accent-subtle-active);
+}
+
+.persona-picker-cell-role {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.persona-picker-cell-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
 /* Widescreen: enlarge persona picker */
 @media (min-width: 1024px) {
   .persona-picker {
@@ -3143,7 +3173,10 @@ body.layout-split .hamburger-btn { display: none; }
   .persona-picker-row { padding: 14px 16px; gap: 12px; }
   .persona-picker-name { font-size: 1.25rem; }
   .persona-picker-desc { font-size: 0.8125rem; }
-  .persona-picker-role-header { font-size: 0.75rem; }
+  .persona-picker-grid { gap: 6px; padding: 6px; }
+  .persona-picker-cell { padding: 10px 12px; }
+  .persona-picker-cell-role { font-size: 10px; }
+  .persona-picker-cell-name { font-size: 1.125rem; }
 }
 
 /* ─── Chat Persona Badge ─── */
