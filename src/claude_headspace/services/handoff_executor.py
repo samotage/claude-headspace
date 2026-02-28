@@ -122,13 +122,20 @@ class HandoffExecutor:
 
     # ── Handoff instruction composition ──────────────────────────────
 
-    def compose_handoff_instruction(self, file_path: str) -> str:
+    def compose_handoff_instruction(
+        self, file_path: str, context: str | None = None
+    ) -> str:
         """Compose the instruction sent to the outgoing agent via tmux.
 
         Tells the agent to write a handoff document to the specified path.
         The agent is NOT told to exit — it stays alive after writing.
+
+        Args:
+            file_path: Absolute path for the handoff document.
+            context: Optional user-provided context to include in the instruction
+                (e.g., additional notes or focus areas for the successor).
         """
-        return (
+        parts = [
             f"HANDOFF REQUESTED: Write a handoff document for your successor.\n\n"
             f"Write the document to: {file_path}\n\n"
             f"The document MUST include:\n"
@@ -140,7 +147,12 @@ class HandoffExecutor:
             f"6. Next steps: What your successor should do next\n\n"
             f"A successor agent will be created automatically with this context "
             f"once the document is written."
-        )
+        ]
+        if context:
+            parts.append(
+                f"\n\nADDITIONAL CONTEXT FROM OPERATOR:\n{context}"
+            )
+        return "".join(parts)
 
     # ── Injection prompt composition ─────────────────────────────────
 
@@ -169,13 +181,21 @@ class HandoffExecutor:
 
     # ── Trigger handoff (async initiation) ───────────────────────────
 
-    def trigger_handoff(self, agent_id: int, reason: str) -> HandoffResult:
+    def trigger_handoff(
+        self, agent_id: int, reason: str, context: str | None = None
+    ) -> HandoffResult:
         """Initiate the handoff flow for an agent.
 
         Validates preconditions, generates the file path, sends the handoff
         instruction to the agent via tmux, sets the handoff-in-progress flag,
         and starts a background polling thread to detect the handoff file.
         Returns immediately.
+
+        Args:
+            agent_id: ID of the agent to hand off.
+            reason: Reason for the handoff (e.g., "manual", "context_limit", "voice").
+            context: Optional user-provided context to include in the handoff
+                instruction (e.g., additional notes for the successor).
         """
         # Validate preconditions
         validation = self.validate_preconditions(agent_id)
@@ -192,7 +212,7 @@ class HandoffExecutor:
         dir_path.mkdir(parents=True, exist_ok=True)
 
         # Compose instruction
-        instruction = self.compose_handoff_instruction(file_path)
+        instruction = self.compose_handoff_instruction(file_path, context=context)
 
         # Send instruction via tmux bridge
         from . import tmux_bridge
@@ -231,9 +251,10 @@ class HandoffExecutor:
 
         # Post "preparing handoff" message to voice chat so humans and machines
         # can see the handoff is in progress before summarisation begins.
-        self._post_handoff_status_turn(
-            agent, "Preparing handoff — summarising context for successor agent"
-        )
+        status_msg = "Preparing handoff — summarising context for successor agent"
+        if context:
+            status_msg += f"\n\nOperator context: {context}"
+        self._post_handoff_status_turn(agent, status_msg)
 
         # Start background polling thread to detect when the file is written
         poll_thread = threading.Thread(

@@ -146,12 +146,13 @@ def handoff_agent_endpoint(agent_id: int):
 
     data = request.get_json(silent=True) or {}
     reason = data.get("reason", "manual")
+    context = data.get("context")  # Optional operator context for the handoff
 
     handoff_executor = current_app.extensions.get("handoff_executor")
     if not handoff_executor:
         return jsonify({"error": "Handoff executor not available"}), 500
 
-    result = handoff_executor.trigger_handoff(agent_id, reason=reason)
+    result = handoff_executor.trigger_handoff(agent_id, reason=reason, context=context)
 
     if not result.success:
         status_map = {

@@ -141,7 +141,7 @@ class TestHandoffAgentEndpoint:
         assert response.status_code == 200
         assert response.json["status"] == "initiated"
         mock_executor.trigger_handoff.assert_called_once_with(
-            1, reason="context_limit"
+            1, reason="context_limit", context=None
         )
 
     def test_default_reason(self, client, app):
@@ -158,7 +158,7 @@ class TestHandoffAgentEndpoint:
         response = client.post("/api/agents/1/handoff", json={})
         assert response.status_code == 200
         mock_executor.trigger_handoff.assert_called_once_with(
-            1, reason="manual"
+            1, reason="manual", context=None
         )
 
     def test_agent_not_found(self, client, app):

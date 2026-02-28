@@ -360,6 +360,40 @@ def voice_command():
             )
         agent = awaiting[0]
 
+    # ── Handoff intent detection ─────────────────────────────────────
+    # If the user says "handoff" or "hand off", route to the handoff flow
+    # instead of sending the text to the agent via tmux. Any text beyond
+    # the trigger keyword becomes operator context for the handoff.
+    import re
+    handoff_match = re.match(
+        r"^(?:please\s+)?(?:do\s+a?\s*)?hand\s*off\b[.!]?\s*(.*)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if handoff_match:
+        handoff_context = handoff_match.group(1).strip() or None
+        handoff_executor = current_app.extensions.get("handoff_executor")
+        if not handoff_executor:
+            return _voice_error(
+                "Handoff not available.", "Server configuration error.", 503
+            )
+        result = handoff_executor.trigger_handoff(
+            agent.id, reason="voice", context=handoff_context
+        )
+        if not result.success:
+            return _voice_error(result.message, "Check agent eligibility.", 400)
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        if formatter:
+            voice = formatter.format_command_result(agent.name, True, "Handoff initiated")
+        else:
+            voice = {
+                "status_line": f"Handoff initiated for {agent.name}.",
+                "results": [],
+                "next_action": "Successor agent will be created when summary is written.",
+            }
+        return jsonify({"voice": voice, "agent_id": agent.id, "handoff": True, "latency_ms": latency_ms}), 200
+
     # Determine agent state
     current_command = agent.get_current_command()
     current_state = current_command.state if current_command else None
