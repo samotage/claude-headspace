@@ -154,7 +154,10 @@ class TestGenerateHandoffFilePath:
 
         path = executor.generate_handoff_file_path(agent)
 
-        assert path.startswith("data/personas/developer-con-1/handoffs/")
+        # Path must be absolute so agents write to the correct location
+        # regardless of their working directory
+        assert os.path.isabs(path), f"Expected absolute path, got: {path}"
+        assert "data/personas/developer-con-1/handoffs/" in path
         assert path.endswith("-00000042.md")
         # Check timestamp format (YYYYMMDDTHHmmss)
         filename = path.split("/")[-1]

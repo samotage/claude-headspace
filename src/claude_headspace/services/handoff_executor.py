@@ -101,15 +101,24 @@ class HandoffExecutor:
     # ── File path generation ─────────────────────────────────────────
 
     def generate_handoff_file_path(self, agent: Agent) -> str:
-        """Generate the handoff file path.
+        """Generate an absolute handoff file path.
 
-        Format: data/personas/{slug}/handoffs/{YYYYMMDDTHHmmss}-{agent-8digit}.md
+        Returns an absolute path so the agent writes to the correct location
+        regardless of its working directory.
+
+        Format: <project_root>/data/personas/{slug}/handoffs/{YYYYMMDDTHHmmss}-{agent-8digit}.md
         """
+        # app.root_path points to the package dir (src/claude_headspace/)
+        # parent.parent gets us to the project root (alongside data/, src/, etc.)
+        project_root = Path(self.app.root_path).parent.parent
         persona = agent.persona
         slug = persona.slug
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         agent_suffix = str(agent.id).zfill(8)
-        return f"data/personas/{slug}/handoffs/{timestamp}-{agent_suffix}.md"
+        return str(
+            project_root / "data" / "personas" / slug / "handoffs"
+            / f"{timestamp}-{agent_suffix}.md"
+        )
 
     # ── Handoff instruction composition ──────────────────────────────
 
@@ -218,6 +227,12 @@ class HandoffExecutor:
         logger.info(
             f"handoff_trigger: initiated — agent_id={agent_id}, "
             f"file_path={file_path}, reason={reason}"
+        )
+
+        # Post "preparing handoff" message to voice chat so humans and machines
+        # can see the handoff is in progress before summarisation begins.
+        self._post_handoff_status_turn(
+            agent, "Preparing handoff — summarising context for successor agent"
         )
 
         # Start background polling thread to detect when the file is written
@@ -599,6 +614,54 @@ class HandoffExecutor:
             )
         except Exception as e:
             logger.warning(f"Handoff success broadcast failed: {e}")
+
+    def _post_handoff_status_turn(self, agent: Agent, text: str) -> None:
+        """Post a PROGRESS turn to voice chat for handoff status visibility.
+
+        Creates a Turn record and broadcasts turn_created SSE so the message
+        appears in voice/embed chat for both human viewers and machine consumers.
+        """
+        try:
+            from ..models.turn import Turn, TurnActor, TurnIntent
+
+            current_command = agent.get_current_command()
+            if not current_command:
+                logger.warning(
+                    f"handoff_status_turn: agent {agent.id} has no current command "
+                    f"— skipping status turn"
+                )
+                return
+
+            turn = Turn(
+                command_id=current_command.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.PROGRESS,
+                text=text,
+                timestamp_source="server",
+            )
+            db.session.add(turn)
+            db.session.commit()
+
+            from .broadcaster import get_broadcaster
+
+            get_broadcaster().broadcast("turn_created", {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": text,
+                "actor": "agent",
+                "intent": "progress",
+                "command_id": current_command.id,
+                "command_instruction": current_command.instruction,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat(),
+            })
+
+            logger.info(
+                f"handoff_status_turn: posted — agent_id={agent.id}, "
+                f"turn_id={turn.id}, text='{text}'"
+            )
+        except Exception as e:
+            logger.warning(f"handoff_status_turn: failed — {e}")
 
     def _notify_error(self, agent: Agent, message: str) -> None:
         """Send an OS notification for a handoff error."""
