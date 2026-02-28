@@ -150,6 +150,34 @@ def reconcile_transcript_entries(agent, command, entries):
             if not matched_turn.jsonl_entry_hash:
                 matched_turn.jsonl_entry_hash = content_key
         elif not matched_turn:
+            # Fuzzy fallback: check paragraph-level similarity against recent
+            # turns before creating a new one. Catches near-identical content
+            # where minor formatting differences cause hash mismatches.
+            fuzzy_dup = None
+            for existing_turn in recent_turns:
+                if existing_turn.actor.value == actor and is_content_duplicate(existing_turn.text, entry_text, actor=actor):
+                    fuzzy_dup = existing_turn
+                    break
+            if fuzzy_dup:
+                # Update timestamp if JSONL has one (still valuable)
+                if entry.timestamp and fuzzy_dup.timestamp != entry.timestamp:
+                    old_ts = fuzzy_dup.timestamp
+                    fuzzy_dup.timestamp = entry.timestamp
+                    fuzzy_dup.timestamp_source = "jsonl"
+                    if not fuzzy_dup.jsonl_entry_hash:
+                        fuzzy_dup.jsonl_entry_hash = content_key
+                    result["updated"].append((fuzzy_dup.id, old_ts, entry.timestamp))
+                    logger.info(
+                        f"[RECONCILER] Fuzzy dedup: matched JSONL entry to turn {fuzzy_dup.id} "
+                        f"(paragraph similarity) — updated timestamp"
+                    )
+                else:
+                    logger.debug(
+                        f"[RECONCILER] Fuzzy dedup: matched JSONL entry to turn {fuzzy_dup.id} "
+                        f"(paragraph similarity) — skipping duplicate"
+                    )
+                continue
+
             # New entry not seen via hooks — create Turn with proper intent detection
             turn_text = entry_text  # already filtered by filter_skill_expansion above
             if actor == "user":
@@ -265,6 +293,54 @@ def _legacy_content_hash(actor, text):
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
+# Minimum number of matching sentences to consider two texts as duplicates.
+_SENTENCE_DEDUP_THRESHOLD = 2
+
+
+def _extract_sentences(text):
+    """Split text into normalised sentences for fuzzy dedup comparison.
+
+    Splits on sentence-ending punctuation, strips whitespace, lowercases.
+    Skips very short fragments (< 20 chars) that are too generic to be
+    meaningful dedup signals.
+    """
+    import re
+    raw = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [
+        s.strip().lower()
+        for s in raw
+        if len(s.strip()) >= 20
+    ]
+
+
+def is_content_duplicate(existing_text, new_text, actor="agent"):
+    """Check if new_text is a duplicate of existing_text using duck-typing.
+
+    Two-tier approach:
+    1. Hash match (exact content after strip+lowercase) — fast path.
+    2. Paragraph/sentence similarity — if 2+ sentences match, it's a dup.
+
+    Returns True if the content is likely a duplicate.
+    """
+    if not existing_text or not new_text:
+        return False
+
+    # Tier 1: exact hash match (normalised)
+    if _content_hash(actor, existing_text) == _content_hash(actor, new_text):
+        return True
+
+    # Tier 2: paragraph-level duck typing.
+    # Split into sentences, check for overlapping meaningful sentences.
+    existing_sentences = set(_extract_sentences(existing_text))
+    new_sentences = _extract_sentences(new_text)
+
+    if not existing_sentences or not new_sentences:
+        return False
+
+    matching = sum(1 for s in new_sentences if s in existing_sentences)
+    return matching >= _SENTENCE_DEDUP_THRESHOLD
+
+
 def reconcile_agent_session(agent):
     """Full-session reconciliation — run at session end.
 
@@ -326,6 +402,18 @@ def reconcile_agent_session(agent):
         content_key = _content_hash(actor, turn_text)
         legacy_key = _legacy_content_hash(actor, turn_text)
         if content_key in existing_hashes or legacy_key in existing_hashes:
+            continue
+        # Fuzzy fallback: check paragraph-level similarity against existing turns
+        fuzzy_match = False
+        for et in existing_turns:
+            if et.actor.value == actor and is_content_duplicate(et.text, turn_text, actor=actor):
+                logger.debug(
+                    f"[RECONCILER] Session reconcile fuzzy dedup: JSONL entry matches "
+                    f"turn {et.id} (paragraph similarity) — skipping"
+                )
+                fuzzy_match = True
+                break
+        if fuzzy_match:
             continue
         existing_hashes.add(content_key)
         existing_hashes.add(legacy_key)

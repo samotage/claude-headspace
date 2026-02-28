@@ -441,10 +441,11 @@ window.VoiceApp = (function () {
           chatForm.requestSubmit();
         }
       });
-      // Auto-resize textarea as content grows
+      // Auto-resize textarea as content grows (cap from CSS max-height)
       chatInput.addEventListener('input', function () {
+        var limit = parseInt(getComputedStyle(this).maxHeight, 10) || 240;
         this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 240) + 'px';
+        this.style.height = Math.min(this.scrollHeight, limit) + 'px';
       });
       // iOS Safari: when keyboard opens, scroll the input into view
       // after a short delay (let Safari finish its viewport resize).

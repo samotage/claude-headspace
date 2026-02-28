@@ -213,6 +213,11 @@ def is_skill_expansion(text: str | None) -> bool:
     if _SKILL_HEADING_RE.match(stripped) and "\n---\n" in stripped and "\n## " in stripped:
         return True
 
+    # Claude Code user skills (.claude/skills/): the Skill tool prepends
+    # "Base directory for this skill:\n/path/to/skill\n\n" before the .md content.
+    if "Base directory for this skill:" in first_300:
+        return True
+
     return False
 
 
@@ -233,6 +238,16 @@ def filter_skill_expansion(text: str | None) -> str | None:
 
     if not is_skill_expansion(stripped):
         return text
+
+    # For Claude Code user skills, the first line is "Base directory for this
+    # skill:" which is not a useful label.  Extract the first markdown heading.
+    if "Base directory for this skill:" in stripped[:300]:
+        for line in stripped.split("\n"):
+            line = line.strip()
+            if line.startswith("# "):
+                return line
+        # Fallback: no heading found
+        return "Skill execution"
 
     # Return the first non-empty line as a concise label
     first_line = stripped.split("\n", 1)[0].strip()

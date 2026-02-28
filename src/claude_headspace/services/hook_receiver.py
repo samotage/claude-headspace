@@ -967,6 +967,12 @@ def process_user_prompt_submit(
                 f"(len={len(prompt_text)})"
             )
 
+        # Detect skill expansion content BEFORE filter_skill_expansion truncates
+        # it. Mark as is_internal so voice chat suppresses the raw skill .md file.
+        content_is_skill_expansion = bool(
+            prompt_text and is_skill_expansion(prompt_text)
+        )
+
         # Content deduplication: suppress identical prompts within 30s.
         # Defence-in-depth against Claude Code firing the same hook hundreds
         # of times (e.g. persona injection storm — 395 times in 97 seconds).
@@ -1073,7 +1079,7 @@ def process_user_prompt_submit(
         result = lifecycle.process_turn(
             agent=agent, actor=TurnActor.USER, text=prompt_text,
             file_metadata=pending_file_meta,
-            is_internal=is_injection or content_is_persona_injection or is_team_internal_content(prompt_text),
+            is_internal=is_injection or content_is_persona_injection or content_is_skill_expansion or is_team_internal_content(prompt_text),
         )
 
         if result.success:
@@ -1125,7 +1131,7 @@ def process_user_prompt_submit(
                     "command_id": result.command.id if result.command else None,
                     "command_instruction": result.command.instruction if result.command else None,
                     "turn_id": user_turn_id,
-                    "is_internal": is_injection or content_is_persona_injection or is_team_internal_content(prompt_text),
+                    "is_internal": is_injection or content_is_persona_injection or content_is_skill_expansion or is_team_internal_content(prompt_text),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
@@ -1319,10 +1325,69 @@ def process_stop(
                     stale_notification_turn = t
                     break
 
-        from .transcript_reconciler import _content_hash
+        from .transcript_reconciler import _content_hash, is_content_duplicate
         agent_content_key = _content_hash("agent", full_agent_text or "")
 
-        if intent_result.intent == TurnIntent.QUESTION:
+        # Dedup guard: check if reconciler already created a turn with this
+        # content (race condition — JSONL reconciliation can run between the
+        # agent's response appearing in the transcript and the stop hook firing).
+        existing_dup = None
+        if full_agent_text and current_command.turns:
+            for t in reversed(current_command.turns):
+                if t.actor != TurnActor.AGENT:
+                    continue
+                # Tier 1: exact hash match
+                if t.jsonl_entry_hash and t.jsonl_entry_hash == agent_content_key:
+                    existing_dup = t
+                    break
+                # Tier 2: paragraph-level duck-typing for near-identical content
+                # (e.g. minor whitespace/formatting differences between hook and JSONL text)
+                if t.intent in (TurnIntent.QUESTION, TurnIntent.COMPLETION,
+                                TurnIntent.END_OF_COMMAND, TurnIntent.PROGRESS):
+                    if is_content_duplicate(t.text, full_agent_text, actor="agent"):
+                        existing_dup = t
+                        logger.info(
+                            f"[HOOK_RECEIVER] process_stop dedup: fuzzy match against "
+                            f"turn {t.id} (paragraph similarity) — skipping duplicate"
+                        )
+                        break
+
+        if existing_dup:
+            # Reconciler already has this turn — update it in-place rather than
+            # creating a duplicate. Upgrade intent if the stop hook detected a
+            # more specific one (e.g. QUESTION vs PROGRESS).
+            if existing_dup.intent == TurnIntent.PROGRESS and intent_result.intent != TurnIntent.PROGRESS:
+                existing_dup.intent = intent_result.intent
+            if intent_result.intent == TurnIntent.QUESTION:
+                existing_dup.question_text = full_agent_text or ""
+                existing_dup.question_source_type = "free_text"
+            if not existing_dup.jsonl_entry_hash:
+                existing_dup.jsonl_entry_hash = agent_content_key
+            db.session.commit()
+            logger.info(
+                f"[HOOK_RECEIVER] process_stop dedup: reusing existing turn {existing_dup.id} "
+                f"(hash={agent_content_key}) instead of creating duplicate"
+            )
+            # Still drive lifecycle for COMPLETION/END_OF_COMMAND — the reconciler
+            # may not have driven it (e.g. lifecycle failed on first attempt).
+            # complete_command is idempotent via the state machine; if already
+            # COMPLETE, the transition fails harmlessly and gets caught below.
+            if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
+                try:
+                    trigger = "hook:stop:end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop"
+                    lifecycle.complete_command(
+                        command=current_command, trigger=trigger,
+                        agent_text=completion_text, intent=intent_result.intent,
+                    )
+                    if completion_text != full_agent_text:
+                        current_command.full_output = full_agent_text
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.debug(
+                        f"[HOOK_RECEIVER] process_stop dedup lifecycle (expected if already complete): {e}"
+                    )
+        elif intent_result.intent == TurnIntent.QUESTION:
             if stale_notification_turn:
                 stale_notification_turn.text = full_agent_text or ""
                 stale_notification_turn.question_text = full_agent_text or ""
