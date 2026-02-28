@@ -322,6 +322,18 @@
         // Handle commander availability changes (Input Bridge)
         client.on('commander_availability', handleCommanderAvailability);
 
+        // Handle handoff events (completion + errors)
+        client.on('handoff_complete', function(data) {
+            if (global.Toast) {
+                global.Toast.success('Handoff complete', data.message || 'Successor agent starting');
+            }
+        });
+        client.on('handoff_error', function(data) {
+            if (global.Toast) {
+                global.Toast.error('Handoff error', data.message || 'Handoff failed');
+            }
+        });
+
         // Handle activity bar updates on turn events
         client.on('turn_detected', handleActivityBarUpdate);
         client.on('turn_created', handleActivityBarUpdate);

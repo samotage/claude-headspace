@@ -201,11 +201,15 @@ class TestComposeHandoffInstruction:
         assert "Files modified" in instruction
         assert "Next steps" in instruction
 
-    def test_instruction_mentions_exit(self, app):
+    def test_instruction_does_not_mention_exit(self, app):
+        """Handoff instruction should NOT tell the agent to /exit.
+
+        The outgoing agent stays alive; the successor is created alongside it.
+        """
         executor = HandoffExecutor(app=app)
         instruction = executor.compose_handoff_instruction("test.md")
 
-        assert "/exit" in instruction
+        assert "/exit" not in instruction
 
 
 class TestVerifyHandoffFile:
@@ -399,15 +403,124 @@ class TestContinueAfterStop:
                     "triggered_at": "2026-01-01T00:00:00",
                 }
 
-            with patch.object(
+            with patch(
+                "claude_headspace.services.handoff_executor.db"
+            ) as mock_db, patch.object(
                 executor, "_broadcast_error"
             ), patch.object(executor, "_notify_error"):
+                mock_db.session.get.return_value = agent
                 result = executor.continue_after_stop(agent)
 
         assert not result.success
         assert result.error_code == "file_not_found"
         # Flag should be cleared on failure
         assert not executor.is_handoff_in_progress(agent.id)
+
+
+class TestCompleteHandoff:
+    """Tests for complete_handoff (core completion logic)."""
+
+    def test_no_handoff_in_progress(self, app):
+        with app.app_context():
+            executor = HandoffExecutor(app=app)
+            result = executor.complete_handoff(999)
+
+        assert not result.success
+        assert result.error_code == "no_handoff"
+
+    def test_idempotent_when_already_completed(self, app, tmp_path):
+        """complete_handoff returns success if Handoff record already exists."""
+        with app.app_context():
+            executor = HandoffExecutor(app=app)
+            agent = _make_agent()
+
+            # Write a valid handoff file
+            handoff_file = tmp_path / "handoff.md"
+            handoff_file.write_text("# Handoff\nSome content")
+
+            from claude_headspace.services.handoff_executor import (
+                _handoff_in_progress,
+                _handoff_lock,
+            )
+
+            with _handoff_lock:
+                _handoff_in_progress[agent.id] = {
+                    "file_path": str(handoff_file),
+                    "reason": "manual",
+                    "triggered_at": "2026-01-01T00:00:00",
+                }
+
+            with patch(
+                "claude_headspace.services.handoff_executor.db"
+            ) as mock_db, patch(
+                "claude_headspace.services.handoff_executor.Handoff"
+            ) as mock_handoff:
+                mock_db.session.get.return_value = agent
+                # Simulate existing Handoff record
+                mock_handoff.query.filter_by.return_value.first.return_value = (
+                    MagicMock()
+                )
+                result = executor.complete_handoff(agent.id)
+
+        assert result.success
+        assert result.error_code == "already_completed"
+        # Flag should be cleared
+        assert not executor.is_handoff_in_progress(agent.id)
+
+    def test_successful_completion(self, app, tmp_path):
+        """complete_handoff creates record and successor, no shutdown."""
+        with app.app_context():
+            executor = HandoffExecutor(app=app)
+            agent = _make_agent()
+
+            # Write a valid handoff file
+            handoff_file = tmp_path / "handoff.md"
+            handoff_file.write_text("# Handoff\nDetailed context here")
+
+            from claude_headspace.services.handoff_executor import (
+                _handoff_in_progress,
+                _handoff_lock,
+            )
+
+            with _handoff_lock:
+                _handoff_in_progress[agent.id] = {
+                    "file_path": str(handoff_file),
+                    "reason": "manual",
+                    "triggered_at": "2026-01-01T00:00:00",
+                }
+
+            mock_handoff_record = MagicMock()
+            mock_handoff_record.id = 42
+
+            with patch(
+                "claude_headspace.services.handoff_executor.db"
+            ) as mock_db, patch(
+                "claude_headspace.services.handoff_executor.Handoff"
+            ) as mock_handoff_cls, patch.object(
+                executor, "_create_successor"
+            ) as mock_create, patch.object(
+                executor, "_broadcast_success"
+            ):
+                mock_db.session.get.return_value = agent
+                # No existing Handoff record
+                mock_handoff_cls.query.filter_by.return_value.first.return_value = None
+                # Handoff() constructor returns our mock
+                mock_handoff_cls.return_value = mock_handoff_record
+                mock_create.return_value = HandoffResult(
+                    success=True, message="Successor created"
+                )
+
+                result = executor.complete_handoff(agent.id)
+
+        assert result.success
+        assert result.message == "Handoff complete"
+        # Flag should be cleared
+        assert not executor.is_handoff_in_progress(agent.id)
+        # Verify successor was created
+        mock_create.assert_called_once_with(agent)
+        # Verify DB record was added
+        mock_db.session.add.assert_called_once_with(mock_handoff_record)
+        mock_db.session.commit.assert_called_once()
 
 
 class TestDeliverInjectionPrompt:

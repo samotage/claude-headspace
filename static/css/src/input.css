@@ -408,6 +408,14 @@ article.kebab-open {
     margin: 4px 12px;
     background: var(--border);
 }
+.card-kebab-item.card-handoff-action:hover {
+    color: var(--magenta);
+    background: rgba(208, 115, 224, 0.08);
+    padding-left: 16px;
+}
+.card-kebab-item.card-handoff-action:hover .kebab-icon {
+    opacity: 1;
+}
 .card-kebab-item.card-kill-action {
     color: var(--text-muted);
 }

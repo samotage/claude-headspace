@@ -115,6 +115,35 @@
     }
 
     /**
+     * Initiate a handoff for an agent via the API.
+     * @param {number} agentId - The agent ID
+     */
+    function _doHandoff(agentId) {
+        CHUtils.apiFetch(API_BASE + '/' + agentId + '/handoff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'manual' })
+        }).then(function(res) {
+            return res.json().then(function(data) {
+                if (res.ok) {
+                    if (global.Toast) {
+                        global.Toast.success('Handoff', data.message || 'Handoff initiated — agent writing handoff document');
+                    }
+                } else {
+                    if (global.Toast) {
+                        global.Toast.error('Handoff', data.error || 'Handoff failed');
+                    }
+                }
+                return data;
+            });
+        }).catch(function() {
+            if (global.Toast) {
+                global.Toast.error('Handoff', 'Could not reach server');
+            }
+        });
+    }
+
+    /**
      * Close all open card footer kebab menus.
      */
     function closeCardKebabs() {
@@ -526,6 +555,31 @@
                         handoffAction.classList.remove('loading');
                         handoffAction.textContent = 'Handoff';
                     });
+                }
+                return;
+            }
+
+            // Handoff (kebab menu item)
+            var handoffKebabAction = e.target.closest('.card-handoff-action');
+            if (handoffKebabAction) {
+                e.preventDefault();
+                e.stopPropagation();
+                var agentId = parseInt(handoffKebabAction.getAttribute('data-agent-id'), 10);
+                closeCardKebabs();
+                if (agentId) {
+                    if (typeof ConfirmDialog !== 'undefined') {
+                        ConfirmDialog.show(
+                            'Handoff this agent?',
+                            'The agent will write a handoff document and a successor agent will be created with the same persona. The current agent will remain alive.',
+                            { confirmText: 'Handoff', cancelText: 'Cancel' }
+                        ).then(function(confirmed) {
+                            if (confirmed) {
+                                _doHandoff(agentId);
+                            }
+                        });
+                    } else if (confirm('Handoff this agent? A successor will be created.')) {
+                        _doHandoff(agentId);
+                    }
                 }
                 return;
             }

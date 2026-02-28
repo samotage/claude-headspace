@@ -2,13 +2,24 @@
 
 Orchestrates the full handoff lifecycle: validate preconditions, instruct the
 outgoing agent to write a handoff document, verify the file, create a Handoff
-DB record, shut down the outgoing agent, create a successor with the same
-persona, and deliver the handoff injection prompt after skill injection.
+DB record, create a successor with the same persona, and deliver the handoff
+injection prompt after skill injection.
+
+The outgoing agent is NOT shut down — it remains alive after writing the
+handoff document. The successor receives persona skill injection followed
+by the handoff context via tmux bridge.
+
+Two completion paths exist:
+1. Background polling thread detects the handoff file (primary path).
+2. Stop hook fires while handoff is in progress (fallback — agent chose to
+   /exit on its own).
+Both paths call complete_handoff(), which is idempotent.
 """
 
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -25,6 +36,10 @@ logger = logging.getLogger(__name__)
 # Maps agent_id -> handoff metadata dict.
 _handoff_in_progress: dict[int, dict] = {}
 _handoff_lock = threading.Lock()
+
+# Polling configuration
+POLL_INTERVAL_SECONDS = 3
+POLL_TIMEOUT_SECONDS = 300  # 5 minutes
 
 
 class HandoffResult(NamedTuple):
@@ -102,11 +117,11 @@ class HandoffExecutor:
         """Compose the instruction sent to the outgoing agent via tmux.
 
         Tells the agent to write a handoff document to the specified path.
+        The agent is NOT told to exit — it stays alive after writing.
         """
         return (
-            f"IMPORTANT: Your context window is running low. You need to write a "
-            f"handoff document for your successor before stopping.\n\n"
-            f"Write a handoff document to: {file_path}\n\n"
+            f"HANDOFF REQUESTED: Write a handoff document for your successor.\n\n"
+            f"Write the document to: {file_path}\n\n"
             f"The document MUST include:\n"
             f"1. Current work: What you are working on right now\n"
             f"2. Progress: What has been completed so far\n"
@@ -114,8 +129,8 @@ class HandoffExecutor:
             f"4. Blockers: Any issues or blockers encountered\n"
             f"5. Files modified: List of files you have changed\n"
             f"6. Next steps: What your successor should do next\n\n"
-            f"After writing the document, use /exit to end your session. "
-            f"A successor agent will be created automatically with this context."
+            f"A successor agent will be created automatically with this context "
+            f"once the document is written."
         )
 
     # ── Injection prompt composition ─────────────────────────────────
@@ -149,8 +164,9 @@ class HandoffExecutor:
         """Initiate the handoff flow for an agent.
 
         Validates preconditions, generates the file path, sends the handoff
-        instruction to the agent via tmux, and sets the handoff-in-progress flag.
-        Returns immediately — the flow continues when the stop hook fires.
+        instruction to the agent via tmux, sets the handoff-in-progress flag,
+        and starts a background polling thread to detect the handoff file.
+        Returns immediately.
         """
         # Validate preconditions
         validation = self.validate_preconditions(agent_id)
@@ -204,9 +220,196 @@ class HandoffExecutor:
             f"file_path={file_path}, reason={reason}"
         )
 
+        # Start background polling thread to detect when the file is written
+        poll_thread = threading.Thread(
+            target=self._poll_for_handoff_file,
+            args=(agent_id,),
+            daemon=True,
+            name=f"handoff-poll-{agent_id}",
+        )
+        poll_thread.start()
+
         return HandoffResult(success=True, message="Handoff initiated")
 
-    # ── Stop hook continuation ───────────────────────────────────────
+    # ── Background file polling ───────────────────────────────────────
+
+    def _poll_for_handoff_file(self, agent_id: int) -> None:
+        """Poll for the handoff file in a background thread.
+
+        Runs with app context. When the file is detected (exists + non-empty),
+        calls complete_handoff(). Times out after POLL_TIMEOUT_SECONDS.
+        """
+        metadata = self.get_handoff_metadata(agent_id)
+        if not metadata:
+            return
+
+        file_path = metadata["file_path"]
+        start_time = time.monotonic()
+
+        logger.info(
+            f"handoff_poll: started — agent_id={agent_id}, file_path={file_path}"
+        )
+
+        while time.monotonic() - start_time < POLL_TIMEOUT_SECONDS:
+            # Check if handoff was already completed (e.g. by stop hook path)
+            if not self.is_handoff_in_progress(agent_id):
+                logger.info(
+                    f"handoff_poll: flag cleared (completed elsewhere) — "
+                    f"agent_id={agent_id}"
+                )
+                return
+
+            # Check for the file
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                logger.info(
+                    f"handoff_poll: file detected — agent_id={agent_id}, "
+                    f"file_path={file_path}"
+                )
+                # Complete the handoff within app context
+                with self.app.app_context():
+                    result = self.complete_handoff(agent_id)
+                    if result.success:
+                        logger.info(
+                            f"handoff_poll: completion success — agent_id={agent_id}"
+                        )
+                    elif result.error_code == "already_completed":
+                        logger.info(
+                            f"handoff_poll: already completed — agent_id={agent_id}"
+                        )
+                    else:
+                        logger.error(
+                            f"handoff_poll: completion failed — agent_id={agent_id}, "
+                            f"error={result.message}"
+                        )
+                return
+
+            time.sleep(POLL_INTERVAL_SECONDS)
+
+        # Timeout — file was never written
+        logger.error(
+            f"handoff_poll: timeout — agent_id={agent_id}, "
+            f"file_path={file_path}, waited {POLL_TIMEOUT_SECONDS}s"
+        )
+        with self.app.app_context():
+            agent = db.session.get(Agent, agent_id)
+            if agent:
+                self._broadcast_error(
+                    agent,
+                    f"Handoff timed out: agent did not write the handoff file "
+                    f"within {POLL_TIMEOUT_SECONDS // 60} minutes",
+                )
+                self._notify_error(
+                    agent,
+                    f"Handoff timed out after {POLL_TIMEOUT_SECONDS // 60} minutes",
+                )
+        self._clear_handoff_flag(agent_id)
+
+    # ── Core handoff completion ───────────────────────────────────────
+
+    def complete_handoff(self, agent_id: int) -> HandoffResult:
+        """Complete the handoff after the file is verified.
+
+        Creates the Handoff DB record, creates the successor agent, and
+        clears the handoff flag. The outgoing agent is NOT shut down.
+
+        This method is idempotent — if a Handoff record already exists
+        for this agent, it returns success without creating a duplicate.
+        """
+        metadata = self.get_handoff_metadata(agent_id)
+        if not metadata:
+            return HandoffResult(
+                success=False,
+                message="No handoff in progress for this agent",
+                error_code="no_handoff",
+            )
+
+        file_path = metadata["file_path"]
+        reason = metadata["reason"]
+
+        # Verify handoff file
+        verification = self.verify_handoff_file(file_path)
+        if not verification.success:
+            logger.error(
+                f"handoff_complete: file verification failed — "
+                f"agent_id={agent_id}, file_path={file_path}: {verification.message}"
+            )
+            agent = db.session.get(Agent, agent_id)
+            if agent:
+                self._broadcast_error(
+                    agent, f"Handoff file verification failed: {verification.message}"
+                )
+                self._notify_error(
+                    agent,
+                    f"Handoff file verification failed: {verification.message}",
+                )
+            self._clear_handoff_flag(agent_id)
+            return verification
+
+        # Idempotent check — already completed by another path?
+        existing = Handoff.query.filter_by(agent_id=agent_id).first()
+        if existing:
+            self._clear_handoff_flag(agent_id)
+            return HandoffResult(
+                success=True,
+                message="Handoff already completed",
+                error_code="already_completed",
+            )
+
+        agent = db.session.get(Agent, agent_id)
+        if not agent:
+            self._clear_handoff_flag(agent_id)
+            return HandoffResult(
+                success=False,
+                message="Agent not found",
+                error_code="not_found",
+            )
+
+        # Create Handoff DB record
+        injection_prompt = self.compose_injection_prompt(agent, file_path)
+        handoff_record = Handoff(
+            agent_id=agent.id,
+            reason=reason,
+            file_path=file_path,
+            injection_prompt=injection_prompt,
+        )
+        db.session.add(handoff_record)
+        db.session.commit()
+
+        logger.info(
+            f"handoff_complete: record created — "
+            f"handoff_id={handoff_record.id}, agent_id={agent.id}"
+        )
+
+        # Create successor agent (outgoing agent stays alive)
+        successor_result = self._create_successor(agent)
+        if not successor_result.success:
+            logger.error(
+                f"handoff_complete: successor creation failed — "
+                f"agent_id={agent.id}: {successor_result.message}"
+            )
+            self._broadcast_error(
+                agent, f"Successor creation failed: {successor_result.message}"
+            )
+            self._notify_error(
+                agent, f"Successor creation failed: {successor_result.message}"
+            )
+            self._clear_handoff_flag(agent.id)
+            return successor_result
+
+        # Clear the handoff-in-progress flag
+        self._clear_handoff_flag(agent.id)
+
+        # Broadcast success
+        self._broadcast_success(agent)
+
+        logger.info(
+            f"handoff_complete: done — outgoing_agent_id={agent.id}, "
+            f"handoff_id={handoff_record.id}, successor pending registration"
+        )
+
+        return HandoffResult(success=True, message="Handoff complete")
+
+    # ── Stop hook continuation (backward-compat fallback) ─────────────
 
     def is_handoff_in_progress(self, agent_id: int) -> bool:
         """Check if a handoff is in progress for the given agent."""
@@ -222,95 +425,13 @@ class HandoffExecutor:
         """Continue the handoff flow after the stop hook fires.
 
         Called by hook_receiver.process_stop() when it detects the
-        handoff-in-progress flag. Verifies the file, creates the DB record,
-        shuts down the outgoing agent, creates the successor, and schedules
-        injection delivery.
+        handoff-in-progress flag. Delegates to complete_handoff() which
+        is idempotent — safe even if the polling thread already completed it.
+
+        The outgoing agent is NOT shut down (it already stopped on its own
+        if the stop hook fired).
         """
-        metadata = self.get_handoff_metadata(agent.id)
-        if not metadata:
-            return HandoffResult(
-                success=False,
-                message="No handoff in progress for this agent",
-                error_code="no_handoff",
-            )
-
-        file_path = metadata["file_path"]
-        reason = metadata["reason"]
-
-        # Step 1: Verify handoff file
-        verification = self.verify_handoff_file(file_path)
-        if not verification.success:
-            logger.error(
-                f"handoff_continuation: file verification failed — "
-                f"agent_id={agent.id}, file_path={file_path}: {verification.message}"
-            )
-            self._broadcast_error(
-                agent, f"Handoff file verification failed: {verification.message}"
-            )
-            self._notify_error(
-                agent,
-                f"Handoff file verification failed: {verification.message}",
-            )
-            # Clear the flag — handoff failed
-            self._clear_handoff_flag(agent.id)
-            return verification
-
-        # Step 2: Create Handoff DB record
-        injection_prompt = self.compose_injection_prompt(agent, file_path)
-        handoff_record = Handoff(
-            agent_id=agent.id,
-            reason=reason,
-            file_path=file_path,
-            injection_prompt=injection_prompt,
-        )
-        db.session.add(handoff_record)
-        db.session.commit()
-
-        logger.info(
-            f"handoff_continuation: record created — "
-            f"handoff_id={handoff_record.id}, agent_id={agent.id}"
-        )
-
-        # Step 3: Shut down outgoing agent
-        from .agent_lifecycle import shutdown_agent
-
-        shutdown_result = shutdown_agent(agent.id)
-        if not shutdown_result.success:
-            logger.warning(
-                f"handoff_continuation: shutdown failed — agent_id={agent.id}: "
-                f"{shutdown_result.message} (proceeding anyway)"
-            )
-
-        # Step 4: Create successor agent
-        successor_result = self._create_successor(agent)
-        if not successor_result.success:
-            logger.error(
-                f"handoff_continuation: successor creation failed — "
-                f"agent_id={agent.id}: {successor_result.message}"
-            )
-            self._broadcast_error(
-                agent, f"Successor creation failed: {successor_result.message}"
-            )
-            self._notify_error(
-                agent, f"Successor creation failed: {successor_result.message}"
-            )
-            # Clear the flag — handoff partially completed (record preserved)
-            self._clear_handoff_flag(agent.id)
-            return successor_result
-
-        # Clear the handoff-in-progress flag
-        self._clear_handoff_flag(agent.id)
-
-        # Step 5: Schedule injection delivery for the successor
-        # The successor will register via session-start hook, receive skill
-        # injection, then get the handoff injection prompt.
-        # We store the handoff record ID so the session-start hook can find it.
-        logger.info(
-            f"handoff_continuation: complete — outgoing_agent_id={agent.id}, "
-            f"handoff_id={handoff_record.id}, successor pending registration"
-        )
-
-        return HandoffResult(success=True, message="Handoff continuation complete")
+        return self.complete_handoff(agent.id)
 
     # ── Successor injection delivery ─────────────────────────────────
 
@@ -459,6 +580,25 @@ class HandoffExecutor:
             )
         except Exception as e:
             logger.warning(f"Handoff error broadcast failed: {e}")
+
+    def _broadcast_success(self, agent: Agent) -> None:
+        """Broadcast a handoff success via SSE."""
+        try:
+            from .broadcaster import get_broadcaster
+
+            persona_name = agent.persona.name if agent.persona else "Unknown"
+            get_broadcaster().broadcast(
+                "handoff_complete",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "persona_name": persona_name,
+                    "message": f"Handoff complete — successor {persona_name} starting",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Handoff success broadcast failed: {e}")
 
     def _notify_error(self, agent: Agent, message: str) -> None:
         """Send an OS notification for a handoff error."""
