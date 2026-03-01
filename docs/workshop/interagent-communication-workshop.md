@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Pending workshop. Sections 0–5 defined.
+**Status:** Active workshop. Section 0 resolved (4 decisions). Section 0A seeded (7 decisions, pending workshop). Sections 1–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -31,7 +31,8 @@ Sections are designed to be completable in a single workshop session. Start each
 
 | Date | Session | Sections | Key Decisions |
 |------|---------|----------|---------------|
-| | | | |
+| 2 Mar 2026 | Sam + Robbo | 0A (seeded) | Handoff continuity: filesystem-driven detection, summary-in-filename, synthetic injection primitive, operator-gated rehydration. 7 decisions seeded, pending formal workshop. |
+| 2 Mar 2026 | Sam + Robbo | 0 (resolved) | Infrastructure audit: 7 communication paths mapped, per-pane parallel fan-out confirmed, completion-only relay rule, envelope format with persona+agent ID, channel behavioral primer as injectable asset, chair role in channels. Incorporated Paula's AR Director guidance: two-layer primer (base + intent), persona-based membership, chair capabilities (delivery priority deferred to v2). |
 
 ---
 
@@ -64,70 +65,429 @@ Everything downstream — task delegation, escalation, reporting, org-aware rout
 ---
 
 ### 0.1 Current Communication Paths
-- [ ] **Decision: What communication paths exist today, and what's their scope/limitation?**
+- [x] **Decision: What communication paths exist today, and what's their scope/limitation?**
 
 **Depends on:** None
 
-**Context:** Before designing channels, we need to map what's already built. The existing system has several communication paths, none of which are channel-aware:
+**Context:** Before designing channels, we need to map what's already built. The existing system has several communication paths, none of which are channel-aware.
 
-**Known paths to audit:**
-- Operator → Agent: tmux bridge (`send_text()`) — types into agent's terminal
-- Agent → Operator: hook events surfaced on dashboard (passive observation, not active sending)
-- Dashboard → Agent: respond endpoint via tmux bridge (operator types in dashboard, delivered to agent)
-- Voice bridge → Agent: voice-first API, routes to tmux bridge
-- Remote agent communication: embed chat widget, SSE for status
-- Agent → Headspace: hook lifecycle events (session-start, stop, tool-use, etc.)
-- Skill injection: tmux-based persona priming at session startup
+**Resolution:**
 
-**Questions to resolve:**
-- Which of these paths are reusable as channel delivery mechanisms?
-- What's the current tmux bridge's capacity for concurrent delivery (fan-out to multiple panes)?
-- Are there threading/locking concerns with simultaneous tmux sends to multiple agents?
-- What's the hook receiver's capacity to ingest and route messages from multiple agents simultaneously?
+Seven communication paths exist today. Audit findings:
 
-**Resolution:** _(Pending)_
+| # | Path | Direction | Mechanism | Latency | Reusable for Channels? |
+|---|------|-----------|-----------|---------|----------------------|
+| 1 | **Dashboard Respond** | Operator → Agent | `tmux send_text()` via `/api/respond/<agent_id>` | ~120-500ms (text + Enter + verify) | **Yes — this IS the delivery primitive** |
+| 2 | **Voice Bridge** | Operator → Agent | `tmux send_text()` or `interrupt_and_send_text()` via `/api/voice/command` | Same + audio processing | **Yes — routes through same tmux primitive** |
+| 3 | **Skill Injection** | Headspace → Agent | `tmux send_text()` one-shot at startup | Same | **Pattern reusable — idempotency guard pattern (`prompt_injected_at`) is a reference** |
+| 4 | **Hook Events** | Agent → Headspace | 8 hook endpoints, HTTP POST from Claude Code | Near-instant (same machine) | **Yes — how we know what agents are doing** |
+| 5 | **SSE Broadcast** | Headspace → Dashboard | Event queue per client, filter-based routing | Near-instant | **Yes — operator delivery path** |
+| 6 | **Remote Agent API** | External → Headspace | REST + session tokens + CORS | HTTP latency | **Partially — needs extension for channel semantics** |
+| 7 | **File Watcher** | Agent → Headspace (indirect) | Watchdog + polling on `.jsonl` files | 1-5s polling interval | **Backup only — too slow for real-time chat** |
+
+**Tmux bridge concurrent fan-out capacity:**
+
+- **Per-pane `RLock`:** The tmux bridge uses `_send_locks` dict with independent locks per pane. Concurrent fan-out to different panes is safe — different locks, no contention. Two messages to the *same* pane serialize correctly.
+- **No global lock:** No global send lock across all panes. Fan-out to N agents = N independent lock acquisitions in parallel. A 3-person channel fan-out takes ~120-500ms (parallel), not 360-1500ms (serial).
+- **Large text:** Messages over 4KB route through `load-buffer` + `paste-buffer` (temp file) instead of `send-keys -l`. Handles formatted channel messages.
+- **Interrupt capability:** `interrupt_and_send_text()` sends Escape + 500ms settle + text. Currently used by voice bridge. Available for high-priority channel messages but destructive to in-progress work.
+
+**Gaps identified:**
+- No agent-to-agent path exists. Everything routes through the operator or is passively observed.
+- No mechanism for agents to explicitly *send* to another entity. Agents produce output captured by hooks; they can't address a recipient.
+- Hook receiver has no concept of "this output is addressed to a channel."
 
 ---
 
 ### 0.2 Agent Response Capture
-- [ ] **Decision: How are agent responses currently captured, and can this feed into channels?**
+- [x] **Decision: How are agent responses currently captured, and can this feed into channels?**
 
 **Depends on:** 0.1
 
-**Context:** For channel fan-out to work, Headspace needs to capture what an agent says and relay it to other channel members. Currently, agent output is captured via hooks (post-tool-use, stop events) and optionally via transcript file watching.
+**Context:** For channel fan-out to work, Headspace needs to capture what an agent says and relay it to other channel members.
 
-**Questions to resolve:**
-- What hook events carry the agent's actual response content?
-- Is the content available in real-time (as the agent produces it) or only after completion?
-- What's the latency between an agent producing output and Headspace having it available?
-- Can hook payloads be used directly as channel messages, or do they need transformation?
-- How does this work for remote agents (no hooks, API-based)?
+**Resolution:**
 
-**Resolution:** _(Pending)_
+**Current capture mechanisms:**
+
+1. **`stop` hook → transcript extraction (primary):** When Claude Code fires the stop hook, `_extract_transcript_content()` reads the last assistant response from the `.jsonl` transcript file. This is the agent's composed, finished response.
+2. **PROGRESS turns via `post_tool_use` (intermediate):** During processing, the hook receiver reads new transcript entries incrementally and creates PROGRESS turns. These are partial/intermediate output — the agent's internal thinking, file reads, tool use results.
+3. **Deferred re-check (fallback):** If the transcript isn't flushed when `stop` fires, a background thread retries after a short delay.
+
+**Timing:** Capture is **turn-completion-based, not streaming.** The full response is available after the stop hook fires — when the agent is done talking. PROGRESS turns provide intermediate visibility but are inherently partial.
+
+**Critical design decision — completion-only relay:**
+
+Only **COMPLETION turns** (the agent's finished, composed response from the stop hook) are relayed to channel members. PROGRESS turns, intermediate tool use output, and internal thinking stay on the agent's individual card/voice chat for operator monitoring but **never fan out to the channel.**
+
+**Rationale:** PROGRESS turns are the agent's internal notes — useful for monitoring what an individual agent is doing, but noise in a group conversation. Relaying them would pollute groupthink and potentially derail the discussion's direction. Agents in a group channel should present composed, self-evaluated responses — not stream of consciousness.
+
+**COMMAND COMPLETE marker handling:** The `COMMAND COMPLETE` footer (machine-parseable signal for monitoring software) is **stripped from channel messages** before relay. It's metadata, not conversational content. Retained in individual agent monitoring.
+
+**Relay flow:**
+1. Agent's stop hook fires → transcript extracted → COMPLETION turn created
+2. Channel relay service checks: is this agent a member of any active channel?
+3. If yes: strip `COMMAND COMPLETE` footer → wrap in channel envelope → fan out to other members
+4. PROGRESS/intermediate output → SSE/dashboard/voice chat for individual agent only
+
+**Remote agents:** No hooks (no tmux). Would need API-based response submission — a different capture path. Deferred to channel data model design (Section 1.5).
 
 ---
 
 ### 0.3 Delivery Mechanism Constraints
-- [ ] **Decision: What are the practical constraints on message delivery to agents?**
+- [x] **Decision: What are the practical constraints on message delivery to agents?**
 
 **Depends on:** 0.1
 
-**Context:** Delivering a message to an agent (via tmux injection) has practical constraints that affect channel design: timing, agent state, message format, and the risk of interrupting mid-output.
+**Context:** Delivering a message to an agent (via tmux injection) has practical constraints that affect channel design.
+
+**Resolution:**
+
+**Agent state safety for message delivery:**
+
+| Agent State | Safe to Deliver? | Reason |
+|-------------|-----------------|--------|
+| AWAITING_INPUT | **Yes — ideal** | Agent is waiting for input, prompt is ready |
+| IDLE | **Yes** | No active command |
+| COMPLETE | **Yes** | Command just finished, before next prompt |
+| COMMANDED | **Risky** | Agent is processing user's command, may be mid-output |
+| PROCESSING | **No** | Agent actively producing output, injection will interleave |
+
+Channel delivery should target AWAITING_INPUT/IDLE/COMPLETE states. Messages to agents in PROCESSING state should be queued and delivered when the agent reaches a safe state (the stop hook is the natural trigger — the agent just finished, now deliver queued messages).
+
+**Maximum message size:** 4KB via `send-keys -l`, effectively unlimited via `load-buffer` + `paste-buffer`. Not a practical constraint for channel messages.
+
+**The envelope — message attribution and identity:**
+
+Channel messages require a formatting envelope so agents can distinguish channel messages from operator commands and identify who said what. Resolved format:
+
+```
+[#channel-name] PersonaName (agent:ID):
+<message content>
+```
+
+Components:
+- **`[#channel-name]`** — identifies this as a channel message and which channel
+- **`PersonaName`** — the persona name (who said it, conversationally)
+- **`(agent:ID)`** — the specific agent instance ID (traceable back to individual agent card, full history, thinking)
+
+Example:
+```
+[#persona-alignment-workshop] Paula (agent:1087):
+I disagree with the approach to skill file injection. The current
+tmux-based priming has a fundamental timing problem...
+```
+
+**Traceability:** The agent ID in the envelope links directly to the agent's individual card on the dashboard, where the operator can see all PROGRESS turns, tool use, and internal thinking. The channel view shows composed responses only; the individual card shows everything.
+
+**Channel vs individual view:** These are separate views. The channel shows only composed responses relayed between members. The agent's individual card shows their full history including PROGRESS turns and internal processing. Linked by agent ID and timestamp but not interleaved.
+
+---
+
+### 0.4 Channel Behavioral Primer
+- [x] **Decision: How do agents know they're in a group conversation and how to behave?**
+
+**Depends on:** 0.1, 0.3
+
+**Context:** Agents in solo mode are verbose, exploratory, and stream-of-consciousness — which is fine when it's just the operator monitoring. In a group channel, this behaviour is disruptive. Agents need a behavioral frame that shapes them into good group participants.
+
+**Resolution:**
+
+**Two-layer primer architecture** (incorporating AR Director guidance from `docs/workshop/paula-channel-intent-guidance.md`):
+
+**Layer 1 — Base Primer (universal, platform asset):**
+
+Injected into every channel participant on join. Contains behavioral ground rules that apply regardless of channel type, role, or purpose. Maintained as a platform asset at a stable path (e.g., `data/templates/channel-base-primer.md`) alongside `platform-guardrails.md`. Changes follow the same review process as guardrails.
+
+```markdown
+[CHANNEL CONTEXT] You are participating in a group conversation
+in channel #<channel-name>.
+
+Members: <list of PersonaName (agent:ID) or OperatorName (operator)>
+Chair: <chair name> — sets direction, resolves disagreements
+
+Ground rules:
+- You are one voice among several. Be concise and composed.
+- Self-evaluate before responding: does this add value to the
+  discussion, or am I just thinking out loud?
+- Respond to the substance of what others said. Reference their
+  points by name.
+- If you disagree, say so directly and explain why — but stay
+  constructive.
+- Do not monologue. Make your point, then let others respond.
+- If you need to do research or read files to inform your
+  response, do it — but your channel response should be the
+  conclusion, not the journey.
+```
+
+**Layer 2 — Channel Intent (per-channel-type):**
+
+Injected alongside the base primer on join. Tells participants what this specific channel is optimising for. Set at channel creation — either from a channel-type template or explicitly by the creator. Short: 2-3 sentences maximum. Answers: "What is this channel for, and what does good participation look like here?"
+
+| Channel Type | Intent Example |
+|---|---|
+| **Workshop** | Resolve decisions with documented rationale. Challenge assumptions, propose alternatives, converge on decisions. Output is decisions, not discussion. |
+| **Delegation** | Task completion to spec. Chair defines the task; members execute and report. Conversation is scoped to the task. Tangents are flagged, not followed. |
+| **Review** | Finding problems before they ship. Adversarial by design. Silence is not agreement — if you haven't found an issue, say why it's sound. |
+| **Standup** | Status visibility and blocker surfacing. Brief updates: what's done, what's next, what's blocked. No problem-solving in the channel — spin off a delegation channel for that. |
+| **Broadcast** | Information dissemination. One-way from chair. Members acknowledge receipt. Questions go to a follow-up channel, not inline. |
+
+**Key design decisions:**
+
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| **Injection timing** | Once on channel join | Repeating per-message wastes tokens and annoys agents. This is context, not content. |
+| **Two-layer split** | Base primer (universal) + channel intent (per-type) | Separates "how to behave in any group" from "what this group is optimising for." Different governance: base is platform-level, intent is per-channel. |
+| **Asset type** | Organisation-level injectable markdown | Consistent with persona skill/experience pattern |
+| **Channel types** | Enum on Channel model with intent templates | Feeds into Section 1.1. Each type has a default intent; creators can override with custom intent text. |
+| **Chair role** | Every channel has a chair | Someone must set direction. Operator when present; designated agent (e.g., Gavin as PM) for autonomous group chats. Any persona can chair — it's per-channel authority, not a persona trait. |
+| **Chair capabilities** | Membership management, intent setting, channel closure | Chair manages the channel. Delivery priority deferred to v2 — group chat is a pipeline (chronological), not a priority queue. Priority delivery suits a different interaction pattern (all-hands). |
+| **Channel purpose** | Set at channel creation via type template or explicit override | Feeds directly into the primer. Gives agents a relevance filter for their responses. |
+
+**Behavioural shift from solo to group mode:**
+
+| Solo Agent | Group Channel |
+|------------|---------------|
+| Verbose exploration is fine | Composed, evaluated responses only |
+| Stream of consciousness acceptable | Make your point, then yield the floor |
+| All output goes to the operator | Response goes to *everyone* — calibrate accordingly |
+| Internal monologue useful for monitoring | Internal monologue is noise — stays off the channel |
+| Can go deep on tangents | Stay aligned with channel purpose/intent |
+
+**Forward context for Section 1 (from AR Director guidance):**
+
+- **Persona-based membership (→ Section 1.4):** Membership is persona-scoped, not agent-scoped. The persona is the stable channel identity; the agent ID is the mutable delivery target. On handoff, membership persists — only the delivery target changes. Messages are attributed to the persona with agent ID as metadata. If no active agent exists for a persona, membership stays but delivery is suspended.
+- **Operator as member (→ Section 1.4):** The operator is not a persona or agent but is a channel member and potentially the chair. The membership model must accommodate human participants without forcing them into the persona/agent model. Future-proofed: there may be multiple human team members in the future.
+- **Channel type on model (→ Section 1.1):** The Channel table should carry a `channel_type` field (enum) that maps to an intent template, plus an optional `intent_override` (text) for custom channels.
+
+---
+
+## Section 0A: Handoff Continuity & Synthetic Injection
+
+**Purpose:** Design the agent lifecycle continuity system — startup detection of prior handoffs, operator-gated rehydration, and on-demand handoff history. Introduces the "synthetic injection" delivery primitive: a software-generated precursor turn injected into the agent's conversation by the application, distinct from both hook responses and tmux send-keys.
+
+**Added:** 2 March 2026, based on workshop session between operator (Sam) and architect (Robbo).
+
+**Relationship to channels:** This section is independent of the channel model (Sections 1–4) and can be delivered as a standalone sprint. However, the synthetic injection mechanism introduced here may inform channel message delivery design. The channel sections should reference this primitive when considering how software-generated messages enter an agent's context.
+
+---
+
+### Design Context (from workshop session)
+
+The operator identified three gaps in the current handoff system:
+
+1. **No startup detection:** When a new agent starts, it has no awareness of prior handoffs for its persona. The current system pushes handoff context via tmux injection — the agent is told what to read. If the successor was created by the handoff executor, it gets the injection. But if an agent is started manually (operator fires up a new Robbo session), there's no way to know that Robbo's predecessor left work behind.
+
+2. **No scannable handoff index:** The current filename format (`{YYYYMMDDTHHmmss}-{agent-8digit}.md`) is opaque. You can't tell what a handoff is about without opening the file. The directory listing is useless as an index.
+
+3. **No operator gate:** The current system auto-injects handoff context into the successor's conversation. The operator has no say in whether the agent should continue from a handoff or start fresh. The injection consumes context window whether or not the work is still relevant.
+
+**Operator's design direction:**
+- Detection is **deterministic** — software scans the filesystem, not the agent
+- Presentation is a **synthetic injection** — a software-generated precursor turn, not tmux
+- Rehydration is **operator-gated** — the operator decides, then tells the agent to read a specific file
+- Summary is **baked into the filename** — the departing agent writes the summary as part of the handoff instruction
+- Scope is **by persona** — handoff directory lives under `data/personas/{slug}/handoffs/`
+
+---
+
+### 0A.1 Handoff Document Filename Format
+- [ ] **Decision: What filename format makes the handoff directory a scannable index?**
+
+**Depends on:** None
+
+**Context:** The current format is `{YYYYMMDDTHHmmss}-{agent-8digit}.md`. The operator's direction is to include a summary description in the filename so the directory listing itself becomes the handoff history.
+
+**Proposed format:** `{ISO-timestamp}_{summary-desc}_{agent_id:NNN}.md`
+Example: `2026-03-01T10:23:32_advisory-locking-implementation-complete_{agent_id:342}.md`
+
+The agent ID is included as a simple `{agent_id:NNN}` tag (no zero-padding) so the listing shows who wrote the handoff without opening the file. The summary description is a kebab-case slug generated by the departing agent.
 
 **Questions to resolve:**
-- Can we inject into an agent's terminal while it's actively processing (mid-tool-use)?
-- What happens if we inject while the agent is producing output — does the injected text interleave?
-- Is there a "safe window" for injection (e.g., when agent is in AWAITING_INPUT state)?
-- What's the maximum practical message size for tmux injection?
-- How does the agent distinguish a channel message from an operator command?
+- Summary description constraints: max length? Character set restrictions? Slug-style (kebab-case)?
+- Who generates the summary — the departing agent as instructed, or Headspace via inference after the document is written?
+- Does the handoff instruction template need to change to tell the agent to include a summary descriptor?
+- How does the compose_handoff_instruction() method change to specify the new filename format?
+- What about legacy handoffs in the old format — do we migrate or just accept mixed formats?
+- Does the Handoff DB model need a `summary` column, or is the filename sufficient?
 
-**Resolution:** _(Pending)_
+**Operator input:** The departing agent writes the summary. The handoff instruction changes to specify the full path including summary slug and agent ID in the filename. The agent is told: "Write the document to: `data/personas/{slug}/handoffs/{timestamp}_<insert-summary-desc>_{agent_id:NNN}.md`" — the software generates the timestamp and agent ID portions; the agent fills in the summary part. ID at the end follows the project's emerging convention (cf. persona slug: `{role}-{name}-{id}`).
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.2 Startup Detection Mechanism
+- [ ] **Decision: How does the software detect available handoffs when an agent starts?**
+
+**Depends on:** 0A.1 (filename format must be settled to parse summaries)
+
+**Context:** When a new agent is created and associated with a persona, Headspace should scan the persona's handoff directory for existing handoff documents and surface the most recent ones.
+
+**Proposed flow:**
+1. Agent starts → session-start hook fires → SessionCorrelator assigns persona
+2. Software checks `data/personas/{slug}/handoffs/` directory
+3. If handoff documents exist, sort by timestamp (from filename), take most recent 3
+4. Generate a synthetic injection turn listing the available handoffs with file paths and summaries
+
+**Questions to resolve:**
+- Trigger point: at what moment in the startup sequence does detection run? After persona assignment? After skill injection?
+- What if the persona has no handoff directory? (First-ever agent for this persona — no handoffs to find)
+- What if handoff documents exist but are from weeks/months ago? Is there a staleness threshold?
+- Does detection fire for every agent startup, or only for agents that don't have a `previous_agent_id`? (A successor created by HandoffExecutor already gets the injection prompt — should it also get the startup list?)
+- Edge case: agent starts, detection finds handoffs, but the agent was actually created by the handoff executor and already has the relevant handoff in its injection prompt. Do we skip detection?
+
+**Operator input:** Detection fires on agent creation. Shows most recent 3 handoffs. Scoped by persona — looks in the persona's handoff directory on the filesystem.
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.3 Synthetic Injection Mechanism
+- [ ] **Decision: What is "synthetic injection" and how does it deliver software-generated turns into an agent's conversation?**
+
+**Depends on:** 0A.2 (detection must run before injection)
+
+**Context:** The operator explicitly requested a new delivery mechanism — not a hook response, not tmux send-keys. A software-generated "precursor turn" that appears in the agent's conversation before any human or agent interaction.
+
+This is a new primitive. Current delivery mechanisms:
+- **Hook response:** The hook endpoint returns content that Claude Code displays. Limited to the hook event lifecycle.
+- **Tmux send-keys:** Injects text into the agent's terminal as if someone typed it. Requires tmux pane, interleaving risk.
+- **Skill injection:** A specific form of tmux injection for persona priming. One-shot, idempotent.
+
+Synthetic injection is different — it's the application generating a conversation turn that is presented to the agent as context, not as a command. The agent sees it but doesn't need to act on it. The operator sees it and can decide to act.
+
+**Questions to resolve:**
+- What is the concrete mechanism? Options:
+  - A) A new hook response field — the session-start hook returns additional context that Claude Code renders
+  - B) A dashboard-only display — the agent doesn't see it, only the operator (via SSE/card)
+  - C) A tmux injection with a specific format marker (e.g., `[SYSTEM NOTE]`) that the agent recognises as informational
+  - D) A new API endpoint that Claude Code polls for "pending messages" on startup
+  - E) Something else entirely?
+- Does the agent see the synthetic turn, or only the operator?
+- If the agent sees it, how do we prevent it from acting on it autonomously? (The operator should decide)
+- If only the operator sees it, how does the operator tell the agent to read a specific handoff? (Dashboard respond? Direct tmux?)
+- Should synthetic injection be a general-purpose mechanism (reusable for other system-generated context) or specific to handoff detection?
+- How does this interact with the existing skill injection flow? (Ordering: skill injection → synthetic injection → agent greeting?)
+
+**Operator input:** This is a new mechanism — not hook response or tmux. The operator sees the list and decides whether to tell the agent to read a handoff. The agent is not aware of the handoff file paths until the operator sends them.
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.4 Operator Rehydration Flow
+- [ ] **Decision: How does the operator tell an agent to rehydrate from a specific handoff?**
+
+**Depends on:** 0A.3 (synthetic injection must present the list), 0A.2 (detection must find the handoffs)
+
+**Context:** After the startup list is presented, the operator reviews the available handoffs and may choose to tell the agent to read one. This is a manual step — the operator picks a handoff, sends the file path to the agent, and instructs it to read and continue.
+
+**Proposed flow:**
+1. Agent starts → synthetic injection shows: "3 handoff documents available for this persona"
+2. Operator reviews the list (summaries visible from filenames)
+3. Operator decides to rehydrate → sends agent a message: "Read the handoff at `{file_path}` and continue working on this task"
+4. Agent reads the file, absorbs the context, and proceeds
+
+**Questions to resolve:**
+- How does the operator send the rehydration instruction? Dashboard respond box? Direct tmux? Voice bridge?
+- Is the instruction format standardised, or does the operator just type naturally?
+- Should there be a "rehydrate" button on the dashboard card that auto-sends the instruction?
+- What if the operator wants the agent to read multiple handoffs? (Not just the most recent)
+- Does Headspace track whether a handoff was "consumed" by a successor? (For the handoff history display)
+- After rehydration, should the agent's card/status reflect that it's continuing from a handoff?
+
+**Operator input:** The operator takes the file path from the presented list, sends it to the agent, and tells them to read it and continue. Simple and manual.
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.5 On-Demand Handoff History
+- [ ] **Decision: How can the operator or agent query the handoff history for a persona?**
+
+**Depends on:** 0A.1 (filename format determines what's in the listing)
+
+**Context:** Beyond startup detection, the operator wants to be able to ask "what handoffs have happened for this persona?" at any time. The handoff directory is the source of truth — each file is a record.
+
+**Questions to resolve:**
+- Query interface: CLI command (`flask org persona handoffs <slug>`)? API endpoint? Dashboard view?
+- What information per entry: filename (with summary), file path, timestamp, file size, predecessor agent ID?
+- Does this query the filesystem (handoff directory) or the DB (Handoff records) or both?
+- If filesystem-only: what about Handoff DB records that reference files that have been moved/deleted?
+- If DB + filesystem: how do we reconcile if they disagree?
+- Should the handoff history be visible on the persona's dashboard card/panel?
+- Depth: all handoffs ever, or configurable limit?
+
+**Operator input:** The listing should show purpose (from filename summary) so the operator can decide which handoff is relevant without opening each file. Initial scope is by persona.
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.6 Handoff Instruction Changes
+- [ ] **Decision: What changes to the handoff instruction template enable the new filename format?**
+
+**Depends on:** 0A.1 (filename format)
+
+**Context:** The current `compose_handoff_instruction()` method tells the departing agent to write a 6-section document to a specific path. The filename is generated by the software with no summary component. The new design requires the agent to contribute a summary description to the filename.
+
+**Current instruction:** "Write the document to: `{file_path}`" — where `file_path` is fully generated by the software.
+
+**Proposed change:** The instruction tells the agent to write to a path where the summary portion is a placeholder: "Write the document to: `data/personas/{slug}/handoffs/{timestamp}_<insert-summary-desc>_{agent_id:NNN}.md`". The software pre-fills the timestamp and agent ID; the agent replaces `<insert-summary-desc>` with a kebab-case summary of the handoff content.
+
+**Questions to resolve:**
+- Does the agent reliably follow filename instructions? (Risk: agent writes to a different path, polling thread never finds it)
+- Should the software generate the timestamp portion and the agent only fills in the summary? Or does the agent generate the entire filename?
+- Fallback: if the polling thread doesn't find the file at the expected pattern, should it glob for `{timestamp}_*.md` in the handoff directory?
+- Does the 6-section document structure change, or just the filename?
+- Should the instruction explicitly tell the agent to use kebab-case, max N characters for the summary?
+
+**Operator input:** The instruction changes to specify the new path format. The software generates the timestamp; the agent generates the summary slug.
+
+**Resolution:** _(Pending workshop)_
+
+---
+
+### 0A.7 CLI & Organisation Workshop Integration
+- [ ] **Decision: What CLI commands support handoff continuity, and how do they integrate with the `flask org` CLI?**
+
+**Depends on:** 0A.5 (handoff history query), Organisation Workshop Section 1.3 (CLI design)
+
+**Context:** The Organisation Workshop (Section 1.3) defined `flask org` as the unified CLI with subgroups including `flask org persona`. Handoff history queries naturally live under the persona subgroup.
+
+**Proposed additions:**
+```
+flask org persona handoffs <slug>           # List handoff history for a persona
+flask org persona handoffs <slug> --limit N # Limit to most recent N
+flask org persona handoffs <slug> --detail  # Show file content summaries
+```
+
+**Questions to resolve:**
+- Does this belong under `flask org persona` or as a standalone `flask handoff` group?
+- Output format: table? YAML? Markdown?
+- Does the CLI query filesystem, DB, or both?
+- Should there be a handoff "detail" command that reads and summarises a specific handoff document?
+
+**Operator input:** This goes into the CLI spec in the Organisation Workshop and is implemented as part of the interagent communication workshop sprints.
+
+**Resolution:** _(Pending workshop)_
 
 ---
 
 ## Section 1: Channel Data Model
 
 **Purpose:** Design the data model for channels, messages, and membership. This is the structural foundation — get the model right and the behaviour follows.
+
+### UI/UX Context (from operator, 2 Mar 2026)
+
+The primary interaction interface for channels is the **Voice Chat PWA** (`/voice`). Channels are cross-project — a channel can have members from different projects (e.g., Kent from economy, Robbo from headspace, Paula from org design). Key UI decisions:
+
+- **Voice Chat PWA** is the primary participation interface. Channel API endpoints must be voice-chat-friendly (REST, token auth, voice-formatted responses — same patterns as existing voice bridge).
+- **Dashboard card** for each active channel sits at the **top of the dashboard, above all project sections**. Shows: channel name, member list, last message summary/detail line.
+- **Dashboard management tab** — new tab area for channel management (create, view, archive). Separate from the Kanban and existing views.
+- **Kanban and other views evolve later** as the organisation builds out. Channel management is a new, separate surface.
+- **Channels are NOT project-scoped by default.** A channel may optionally reference a project, but the common case is cross-project. This is more Slack (workspace-level channels) than GitHub (repo-scoped discussions).
 
 ---
 
