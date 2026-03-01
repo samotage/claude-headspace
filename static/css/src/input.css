@@ -372,6 +372,7 @@ article.kebab-open {
     align-items: center;
     gap: 10px;
     width: 100%;
+    min-height: 44px;
     padding: 9px 14px;
     background: none;
     border: none;

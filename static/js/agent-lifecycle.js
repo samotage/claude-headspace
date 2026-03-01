@@ -689,58 +689,13 @@
         }, true); // capture phase — runs before the main click handler
     }
 
-    /**
-     * Direct onclick handler for kill/dismiss action.
-     * Bypasses event delegation for reliability across browsers.
-     * @param {HTMLElement} btn - The kill action button element
-     */
-    function handleKill(btn) {
-        var agentId = parseInt(btn.getAttribute('data-agent-id'), 10);
-        closeCardKebabs();
-        if (!agentId) return;
-
-        var heroChars = btn.getAttribute('data-hero-chars') || '';
-        var heroTrail = btn.getAttribute('data-hero-trail') || '';
-        var heroLabel = heroChars + heroTrail || ('#' + agentId);
-
-        if (typeof ConfirmDialog !== 'undefined') {
-            var styledTitle = heroChars
-                ? 'Shut down agent ' + CHUtils.heroHTML(heroChars, heroTrail) + '?'
-                : 'Shut down agent #' + agentId + '?';
-            ConfirmDialog.show(
-                'Shut down agent ' + heroLabel + '?',
-                'This will send /exit to the agent. It will clean up and fire shutdown hooks.',
-                { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
-            ).then(function(confirmed) {
-                if (confirmed) {
-                    shutdownAgent(agentId).then(function(data) {
-                        if (data && data.error) {
-                            window.FocusAPI.dismissAgent(agentId);
-                        }
-                    }).catch(function() {
-                        window.FocusAPI.dismissAgent(agentId);
-                    });
-                }
-            });
-        } else if (confirm('Shut down agent ' + heroLabel + '?')) {
-            shutdownAgent(agentId).then(function(data) {
-                if (data && data.error) {
-                    window.FocusAPI.dismissAgent(agentId);
-                }
-            }).catch(function() {
-                window.FocusAPI.dismissAgent(agentId);
-            });
-        }
-    }
-
     // Export
     global.AgentLifecycle = {
         init: init,
         createAgent: createAgent,
         shutdownAgent: shutdownAgent,
         checkContext: checkContext,
-        reviveAgent: reviveAgent,
-        _handleKill: handleKill
+        reviveAgent: reviveAgent
     };
 
     // Auto-initialize on DOM ready

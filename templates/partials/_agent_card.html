@@ -121,7 +121,7 @@
   </div>
   {% endif %}
   <!-- Priority + command stats footer -->
-  <div class="relative z-[1] flex items-center justify-between gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
+  <div class="relative flex items-center justify-between gap-3 py-2 border-t border-border" style="padding-left:10px;padding-right:12px">
     <div class="flex items-center gap-3">
       <span class="priority-score px-1.5 py-0.5 text-[11px] font-mono font-medium rounded-sm" data-priority="{{ agent.priority }}">{{ agent.priority }}</span>
       {% if agent.turn_count and agent.turn_count > 0 %}
@@ -150,6 +150,11 @@
           <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h1l7-7-1-1-7 7zm9.5-9.5 1 1m-2-2 1.44-1.44a.7.7 0 0 1 1 0l1 1a.7.7 0 0 1 0 1L12.5 4.5"/></svg>
           <span>Chat</span>
         </button>
+        <button class="card-kebab-item card-kill-action" data-agent-id="{{ agent.id }}" data-hero-chars="{{ agent.hero_chars }}" data-hero-trail="{{ agent.hero_trail }}">
+          <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          <span>Dismiss agent</span>
+        </button>
+        <div class="kebab-divider"></div>
         {% if agent.tmux_session %}
         <button class="card-kebab-item card-attach-action" data-agent-id="{{ agent.id }}">
           <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg>
@@ -174,12 +179,6 @@
           <span>Handoff</span>
         </button>
         {% endif %}
-        <div class="kebab-divider"></div>
-        <button class="card-kebab-item card-kill-action" data-agent-id="{{ agent.id }}" data-hero-chars="{{ agent.hero_chars }}" data-hero-trail="{{ agent.hero_trail }}"
-                onclick="event.stopPropagation(); AgentLifecycle._handleKill(this);">
-          <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
-          <span>Dismiss agent</span>
-        </button>
       </div>
     </div>
   </div>
