@@ -679,8 +679,8 @@ class TestBackfillTmuxPane:
 class TestRateLimiterCleanup:
     """Tests for rate limiter cleanup of empty IP keys."""
 
-    def test_empty_ip_keys_pruned(self, app):
-        """Stale IP entries should be removed from rate limit counters."""
+    def test_stale_timestamps_pruned_and_current_recorded(self, app):
+        """Stale timestamps are pruned but the current request is still recorded."""
         from src.claude_headspace.routes.hooks import _rate_limit_counters, _check_rate_limit
 
         _rate_limit_counters.clear()
@@ -688,9 +688,14 @@ class TestRateLimiterCleanup:
         _rate_limit_counters["old-ip"] = [0.0]
 
         with app.app_context():
-            _check_rate_limit("old-ip")
+            result = _check_rate_limit("old-ip")
 
-        # Stale entry should be pruned (all timestamps expired, key removed)
-        assert "old-ip" not in _rate_limit_counters
+        # Request should be allowed
+        assert result is True
+        # The stale timestamp is pruned but the current request IS recorded
+        assert "old-ip" in _rate_limit_counters
+        assert len(_rate_limit_counters["old-ip"]) == 1
+        # The recorded timestamp should be recent (not the old 0.0)
+        assert _rate_limit_counters["old-ip"][0] > 1_000_000
 
         _rate_limit_counters.clear()

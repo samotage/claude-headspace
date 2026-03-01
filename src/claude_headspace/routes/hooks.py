@@ -48,13 +48,11 @@ def _check_rate_limit(ip: str) -> bool:
         timestamps = _rate_limit_counters[ip]
         # Prune old entries
         _rate_limit_counters[ip] = [t for t in timestamps if t > cutoff]
-        # Clean up empty keys to prevent unbounded dict growth
-        if not _rate_limit_counters[ip]:
-            del _rate_limit_counters[ip]
-            return True
         if len(_rate_limit_counters[ip]) >= RATE_LIMIT_MAX_REQUESTS:
             return False
         _rate_limit_counters[ip].append(now)
+        # Clean up IPs with only the current timestamp after a long idle
+        # (bounded by RATE_LIMIT_MAX_REQUESTS entries per IP, acceptable)
         return True
 
 

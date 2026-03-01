@@ -176,9 +176,9 @@ def reconcile_agent_endpoint(agent_id: int):
         200: Reconciliation result with created count
         404: Agent not found
     """
+    from ..services.advisory_lock import AdvisoryLockError, LockNamespace, advisory_lock_or_skip
     from ..services.transcript_reconciler import (
         broadcast_reconciliation,
-        get_reconcile_lock,
         reconcile_agent_session,
     )
 
@@ -186,30 +186,28 @@ def reconcile_agent_endpoint(agent_id: int):
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
-    # Per-agent lock prevents concurrent reconciliation (endpoint + watchdog)
-    lock = get_reconcile_lock(agent_id)
-    if not lock.acquire(blocking=False):
-        return jsonify({
-            "status": "busy",
-            "created": 0,
-            "message": "Reconciliation already in progress",
-        }), 409
+    # Per-agent advisory lock prevents concurrent reconciliation
+    with advisory_lock_or_skip(LockNamespace.AGENT, agent.id) as acquired:
+        if not acquired:
+            return jsonify({
+                "status": "busy",
+                "created": 0,
+                "message": "Reconciliation already in progress",
+            }), 409
 
-    try:
-        result = reconcile_agent_session(agent)
         try:
-            broadcast_reconciliation(agent, result)
+            result = reconcile_agent_session(agent)
+            try:
+                broadcast_reconciliation(agent, result)
+            except Exception as e:
+                logger.warning(f"Reconcile broadcast failed for agent {agent_id}: {e}")
+            db.session.commit()
         except Exception as e:
-            logger.warning(f"Reconcile broadcast failed for agent {agent_id}: {e}")
-        db.session.commit()
-    except Exception as e:
-        logger.error(f"Reconciliation failed for agent {agent_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-        }), 500
-    finally:
-        lock.release()
+            logger.error(f"Reconciliation failed for agent {agent_id}: {e}")
+            return jsonify({
+                "status": "error",
+                "error": str(e),
+            }), 500
 
     return jsonify({
         "status": "ok",

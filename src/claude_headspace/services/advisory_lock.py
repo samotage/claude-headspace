@@ -102,8 +102,12 @@ def advisory_lock(namespace: LockNamespace, entity_id: int, timeout: float = 15.
 
     conn = engine.connect()
     try:
-        # Set lock_timeout for this connection
+        # Set lock_timeout for this connection.
+        # SET does not support bound parameters in PostgreSQL, so we use
+        # f-string formatting. Safe because timeout_ms is always an int.
         timeout_ms = int(timeout * 1000)
+        if not isinstance(timeout_ms, int) or timeout_ms < 0:
+            raise ValueError(f"Invalid lock timeout: {timeout_ms}")
         conn.execute(text(f"SET lock_timeout = '{timeout_ms}ms'"))
 
         # Attempt to acquire session-scoped advisory lock

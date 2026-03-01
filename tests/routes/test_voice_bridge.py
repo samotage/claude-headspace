@@ -108,6 +108,7 @@ def mock_agent(mock_project):
     agent.context_remaining_tokens = None
     agent.session_uuid = "abcdef12-3456-7890-abcd-ef1234567890"
     agent.started_at = datetime.now(timezone.utc)
+    agent.state = CommandState.AWAITING_INPUT  # get_effective_state reads this
 
     cmd = MagicMock()
     cmd.id = 10
@@ -318,25 +319,18 @@ class TestListSessions:
         assert "settings" in data
         assert data["settings"]["auto_target"] is False
 
-    def test_stale_agent_excluded(self, client, mock_db, mock_project):
-        """Agent with last_seen_at older than timeout is excluded."""
+    @patch("src.claude_headspace.routes.voice_bridge._agent_to_voice_dict")
+    def test_stale_agent_still_returned(self, mock_to_dict, client, mock_db, mock_project):
+        """Active agents with old last_seen_at are still returned (no stale filtering)."""
         stale_agent = MagicMock()
         stale_agent.id = 99
-        stale_agent.name = "stale"
-        stale_agent.project = mock_project
-        stale_agent.ended_at = None
-        stale_agent.last_seen_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
-        stale_agent.get_current_command.return_value = None
-        stale_agent.persona = None
-        stale_agent.context_percent_used = None
-        stale_agent.context_remaining_tokens = None
-        stale_agent.session_uuid = "abcdef12-3456-7890-abcd-ef1234567890"
-        stale_agent.started_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
+        mock_to_dict.return_value = {"agent_id": 99, "name": "stale", "state": "IDLE"}
         mock_db.session.query.return_value.filter.return_value.all.return_value = [stale_agent]
         response = client.get("/api/voice/sessions")
         data = response.get_json()
-        assert len(data["agents"]) == 0
+        # Voice bridge does not filter by staleness — DB query filters by ended_at only
+        assert len(data["agents"]) == 1
 
     def test_no_ended_agents_by_default(self, client, mock_db):
         """Ended agents are not included unless include_ended=true."""

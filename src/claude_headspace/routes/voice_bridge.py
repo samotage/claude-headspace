@@ -52,20 +52,22 @@ def _match_picker_option(text: str, labels: list[str]) -> int:
         if label.lower() in normalized:
             return i
 
-    # Semantic match — check for affirmative/negative intent
-    if any(p in normalized for p in _AFFIRMATIVE_PATTERNS):
-        # Find the "Yes" option
-        for i, label in enumerate(labels):
-            if label.lower() in ("yes", "approve", "ok", "proceed"):
-                return i
-        return 0  # Default to first option for affirmative
-
-    # Negative patterns
-    if any(p in normalized for p in ("no", "nope", "nah", "reject", "don't", "stop", "cancel")):
+    # Semantic match — check negation FIRST so "don't do it" doesn't match
+    # the affirmative "do it" pattern.
+    words = set(normalized.split())
+    _negative_words = {"no", "nope", "nah", "reject", "stop", "cancel"}
+    if words & _negative_words or "don't" in normalized or "not" in words:
         for i, label in enumerate(labels):
             if label.lower() in ("no", "reject", "cancel"):
                 return i
         return min(1, len(labels) - 1)  # Default to second option for negative
+
+    # Affirmative patterns (after negation check to prevent "don't do it" → "do it")
+    if any(p in normalized for p in _AFFIRMATIVE_PATTERNS):
+        for i, label in enumerate(labels):
+            if label.lower() in ("yes", "approve", "ok", "proceed"):
+                return i
+        return 0  # Default to first option for affirmative
 
     # No confident match — default to first option (typically "Yes"/approve).
     # The user explicitly sent a response to an AWAITING_INPUT agent, so they
@@ -242,9 +244,16 @@ def _is_local_or_lan(addr: str) -> bool:
                     return True
             except ValueError:
                 pass
-    # Tailscale CGNAT range (100.64.0.0/10)
+    # Tailscale CGNAT range (100.64.0.0/10 = 100.64.0.0 – 100.127.255.255)
     if addr.startswith("100."):
-        return True
+        parts = addr.split(".")
+        if len(parts) >= 2:
+            try:
+                second = int(parts[1])
+                if 64 <= second <= 127:
+                    return True
+            except ValueError:
+                pass
     return False
 
 

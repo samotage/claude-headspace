@@ -621,9 +621,9 @@ def save_config_file(
         logger.error(error_msg)
         return False, error_msg
 
-    except Exception:
+    except Exception as e:
         # Never log config values (may contain password)
-        error_msg = f"Failed to save configuration: {type(Exception).__name__}"
+        error_msg = f"Failed to save configuration: {type(e).__name__}"
         logger.error(error_msg)
         return False, error_msg
 

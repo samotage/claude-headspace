@@ -22,108 +22,16 @@ from .advisory_lock import LockNamespace, advisory_lock
 logger = logging.getLogger(__name__)
 
 
-# ── Inlined helper functions ─────────────────────────────────────────
-# Formerly imported from hook_helpers.py — direct service access.
-
-
-def _get_lifecycle_manager():
-    """Create a CommandLifecycleManager with the current app's event writer."""
-    from .command_lifecycle import CommandLifecycleManager
-
-    event_writer = None
-    try:
-        from flask import current_app
-        event_writer = current_app.extensions.get("event_writer")
-    except RuntimeError:
-        logger.debug("No app context for event_writer")
-    return CommandLifecycleManager(
-        session=db.session,
-        event_writer=event_writer,
-    )
-
-
-def _trigger_priority_scoring() -> None:
-    """Trigger rate-limited priority scoring after state transitions."""
-    try:
-        from flask import current_app
-        service = current_app.extensions.get("priority_scoring_service")
-        if service:
-            service.trigger_scoring()
-    except Exception as e:
-        logger.warning(f"Priority scoring trigger failed: {e}")
-
-
-def _execute_pending_summarisations(pending: list) -> None:
-    """Execute pending summarisation requests from the lifecycle manager."""
-    if not pending:
-        return
-    try:
-        from flask import current_app
-        service = current_app.extensions.get("summarisation_service")
-        if service:
-            service.execute_pending(pending, db.session)
-    except Exception as e:
-        logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
-
-
-def _broadcast_turn_created(agent: Agent, text: str, command, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
-    """Broadcast a turn_created SSE event."""
-    try:
-        from .broadcaster import get_broadcaster
-        payload = {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "text": text,
-            "actor": "agent",
-            "intent": intent,
-            "command_id": command.id if command else None,
-            "command_instruction": command.instruction if command else None,
-            "turn_id": turn_id,
-            "question_source_type": question_source_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        if tool_input:
-            payload["tool_input"] = tool_input
-        get_broadcaster().broadcast("turn_created", payload)
-    except Exception as e:
-        logger.warning(f"Turn created broadcast failed: {e}")
-
-
-def _send_completion_notification(agent: Agent, command) -> None:
-    """Send command-complete notification using AI-generated summaries."""
-    try:
-        from .notification_service import get_notification_service
-        from .command_lifecycle import get_instruction_for_notification
-        svc = get_notification_service()
-        svc.notify_command_complete(
-            agent_id=str(agent.id),
-            agent_name=agent.name or f"Agent {agent.id}",
-            project=agent.project.name if agent.project else None,
-            command_instruction=get_instruction_for_notification(command),
-            turn_text=command.completion_summary or None,
-        )
-    except Exception as e:
-        logger.warning(f"Completion notification failed (non-fatal): {e}")
-
-
-def _extract_transcript_content(agent: Agent) -> str:
-    """Extract the last agent response from the transcript file."""
-    if not agent.transcript_path:
-        logger.debug(f"TRANSCRIPT_EXTRACT agent={agent.id}: no transcript_path")
-        return ""
-    try:
-        from .transcript_reader import read_transcript_file
-        result = read_transcript_file(agent.transcript_path)
-        logger.debug(
-            f"TRANSCRIPT_EXTRACT agent={agent.id}: success={result.success}, "
-            f"text_len={len(result.text) if result.text else 0}, "
-            f"error={result.error}"
-        )
-        if result.success and result.text:
-            return result.text
-    except Exception as e:
-        logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
-    return ""
+# ── Shared helpers imported from hook_receiver ───────────────────────
+# These were formerly inlined copies. Now imported to eliminate duplication.
+from .hook_receiver import (
+    _get_lifecycle_manager,
+    _trigger_priority_scoring,
+    _execute_pending_summarisations,
+    _broadcast_turn_created,
+    _send_completion_notification,
+    _extract_transcript_content,
+)
 
 
 # ── Public API ───────────────────────────────────────────────────────
