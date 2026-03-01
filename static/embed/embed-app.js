@@ -56,6 +56,7 @@
     // Start SSE and load transcript
     EmbedSSE.init(config, {
       onTurnCreated: handleTurnCreated,
+      onTurnUpdated: handleTurnUpdated,
       onCardRefresh: handleCardRefresh,
       onStateChange: handleStateChange,
       onAgentEnded: handleAgentEnded,
@@ -128,6 +129,11 @@
   }
 
   function appendTurnBubble(turn) {
+    // DOM dedup: skip if a bubble with this turn_id already exists
+    if (turn.id && messagesEl.querySelector('[data-turn-id="' + turn.id + '"]')) {
+      return;
+    }
+
     var bubble = document.createElement('div');
     var isUser = turn.actor === 'user';
     bubble.className = 'embed-bubble ' + (isUser ? 'embed-bubble-user' : 'embed-bubble-agent');
@@ -342,6 +348,22 @@
 
     updateTyping();
     scrollToBottom();
+  }
+
+  function handleTurnUpdated(data) {
+    if (parseInt(data.agent_id, 10) !== agentId) return;
+
+    // turn_updated carries timestamp corrections from transcript reconciliation.
+    // Update the timestamp on the existing bubble; do NOT create a new bubble.
+    if (!data.turn_id) return;
+
+    var existing = messagesEl.querySelector('[data-turn-id="' + data.turn_id + '"]');
+    if (existing && data.timestamp) {
+      var timeEl = existing.querySelector('.embed-bubble-time');
+      if (timeEl) {
+        timeEl.textContent = formatTime(data.timestamp);
+      }
+    }
   }
 
   function handleCardRefresh(data) {

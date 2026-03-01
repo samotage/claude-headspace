@@ -94,7 +94,7 @@ window.EmbedSSE = (function () {
         if (_callbacks.onStateChange) _callbacks.onStateChange(data);
         break;
       case 'turn_updated':
-        if (_callbacks.onTurnCreated) _callbacks.onTurnCreated(data);
+        if (_callbacks.onTurnUpdated) _callbacks.onTurnUpdated(data);
         break;
       case 'agent_ended':
         if (_callbacks.onAgentEnded) _callbacks.onAgentEnded(data);

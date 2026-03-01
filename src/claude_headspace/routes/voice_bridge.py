@@ -1068,6 +1068,32 @@ def agent_transcript(agent_id: int):
             "command_state": command.state.value,
         })
 
+    # Deduplicate: suppress PROGRESS turns whose text is fully contained in
+    # a COMPLETION/END_OF_COMMAND turn for the same command.  This prevents
+    # the chat from showing intermediate progress AND the final response.
+    if turn_list:
+        completion_text_by_cmd: dict[int, str] = {}
+        for t in turn_list:
+            if t.get("type") == "command_boundary":
+                continue
+            if t.get("actor") == "agent" and t.get("intent") in ("completion", "end_of_command"):
+                existing = completion_text_by_cmd.get(t["command_id"], "")
+                if len(t.get("text", "") or "") > len(existing):
+                    completion_text_by_cmd[t["command_id"]] = t.get("text", "") or ""
+
+        if completion_text_by_cmd:
+            deduped = []
+            for t in turn_list:
+                if (t.get("intent") == "progress"
+                        and t.get("actor") == "agent"
+                        and t.get("command_id") in completion_text_by_cmd):
+                    completion_text = completion_text_by_cmd[t["command_id"]]
+                    progress_text = (t.get("text", "") or "").strip()
+                    if progress_text and progress_text in completion_text:
+                        continue
+                deduped.append(t)
+            turn_list = deduped
+
     # Inject synthetic command_boundary entries for commands with no turns in this page.
     # This ensures command dividers appear at their chronological position even when
     # a command lost its turns (e.g. during server downtime).

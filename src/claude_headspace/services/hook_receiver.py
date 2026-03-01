@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import NamedTuple
 
+from sqlalchemy.exc import IntegrityError
+
 from ..database import db
 from ..models.agent import Agent
 from ..models.command import CommandState
@@ -294,7 +296,18 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
         db.session.add(turn)
         # Commit PROGRESS turn immediately — turn must survive even if the
         # caller's subsequent operations (state transitions, etc.) fail.
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            # Belt-and-suspenders: DB unique constraint caught a duplicate
+            # that slipped past the application-level check (e.g. race
+            # between the per-agent lock and a background reconciler).
+            db.session.rollback()
+            logger.info(
+                f"progress_capture: duplicate hash {content_key} for "
+                f"command {current_command.id} — caught by DB constraint"
+            )
+            continue
 
         try:
             from .broadcaster import get_broadcaster
@@ -575,8 +588,23 @@ def reset_receiver_state() -> None:
 # This wrapper provides the default AgentHookState for callers within this module.
 
 def _capture_progress_text(agent: Agent, current_command) -> None:
-    """Wrapper that passes AgentHookState to the implementation."""
-    _capture_progress_text_impl(agent, current_command, get_agent_hook_state())
+    """Wrapper that serialises progress capture per agent.
+
+    Acquires a per-agent lock so concurrent hooks (e.g. post_tool_use +
+    pre_tool_use firing within ms) cannot both create PROGRESS turns from
+    the same JSONL entries (TOCTOU race).
+    """
+    state = get_agent_hook_state()
+    lock = state.get_progress_capture_lock(agent.id)
+    if not lock.acquire(timeout=5.0):
+        logger.warning(
+            f"progress_capture: agent_id={agent.id}, lock timeout — skipping"
+        )
+        return
+    try:
+        _capture_progress_text_impl(agent, current_command, state)
+    finally:
+        lock.release()
 
 
 # --- Deferred stop handler (INT-H1: non-blocking transcript retry) ---
@@ -1265,6 +1293,7 @@ def process_stop(
         full_agent_text = agent_text
         captured = _progress_texts_for_agent.pop(agent.id, None)
         completion_text = agent_text
+        all_captured_by_progress = False
         if captured:
             pos = _transcript_positions.get(agent.id, 0)
             if pos > 0 and agent.transcript_path:
@@ -1277,11 +1306,10 @@ def process_stop(
                 if new_texts:
                     completion_text = "\n\n".join(new_texts)
                 else:
-                    # All text was captured as PROGRESS turns — use
-                    # full_agent_text so a COMPLETION Turn is still created.
-                    # Without this, the voice chat never sees the response
-                    # (the PROGRESS broadcast gets deduped client-side).
+                    # All text was captured as PROGRESS turns — upgrade
+                    # the last PROGRESS turn instead of creating a duplicate.
                     completion_text = full_agent_text
+                    all_captured_by_progress = True
             logger.info(
                 f"hook_event: type=stop, agent_id={agent.id}, "
                 f"progress_dedup: captured={len(captured)} turns, "
@@ -1387,6 +1415,43 @@ def process_stop(
                     logger.debug(
                         f"[HOOK_RECEIVER] process_stop dedup lifecycle (expected if already complete): {e}"
                     )
+        elif all_captured_by_progress:
+            # All agent text was captured as PROGRESS turns — upgrade the
+            # last PROGRESS turn's intent rather than creating a duplicate
+            # COMPLETION turn with the same content.
+            progress_turns = [
+                t for t in current_command.turns
+                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS
+            ]
+            if progress_turns:
+                last_progress = progress_turns[-1]
+                if intent_result.intent != TurnIntent.PROGRESS:
+                    last_progress.intent = intent_result.intent
+                if intent_result.intent == TurnIntent.QUESTION:
+                    last_progress.question_text = full_agent_text or ""
+                    last_progress.question_source_type = "free_text"
+                if not last_progress.jsonl_entry_hash:
+                    last_progress.jsonl_entry_hash = agent_content_key
+                db.session.commit()
+                logger.info(
+                    f"[HOOK_RECEIVER] process_stop: all text captured by PROGRESS — "
+                    f"upgraded turn {last_progress.id} to {intent_result.intent.value}"
+                )
+                if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
+                    try:
+                        trigger = "hook:stop:end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop"
+                        lifecycle.complete_command(
+                            command=current_command, trigger=trigger,
+                            agent_text=completion_text, intent=intent_result.intent,
+                        )
+                        if completion_text != full_agent_text:
+                            current_command.full_output = full_agent_text
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        logger.debug(
+                            f"[HOOK_RECEIVER] process_stop progress-upgrade lifecycle: {e}"
+                        )
         elif intent_result.intent == TurnIntent.QUESTION:
             if stale_notification_turn:
                 stale_notification_turn.text = full_agent_text or ""

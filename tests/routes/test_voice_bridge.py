@@ -103,6 +103,11 @@ def mock_agent(mock_project):
     agent.tmux_session = None
     agent.last_seen_at = datetime.now(timezone.utc)
     agent.ended_at = None
+    agent.persona = None
+    agent.context_percent_used = None
+    agent.context_remaining_tokens = None
+    agent.session_uuid = "abcdef12-3456-7890-abcd-ef1234567890"
+    agent.started_at = datetime.now(timezone.utc)
 
     cmd = MagicMock()
     cmd.id = 10
@@ -322,6 +327,11 @@ class TestListSessions:
         stale_agent.ended_at = None
         stale_agent.last_seen_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
         stale_agent.get_current_command.return_value = None
+        stale_agent.persona = None
+        stale_agent.context_percent_used = None
+        stale_agent.context_remaining_tokens = None
+        stale_agent.session_uuid = "abcdef12-3456-7890-abcd-ef1234567890"
+        stale_agent.started_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [stale_agent]
         response = client.get("/api/voice/sessions")
@@ -1193,6 +1203,11 @@ class TestAgentTranscript:
         agent.tmux_session = None
         agent.ended_at = datetime(2026, 2, 10, tzinfo=timezone.utc)
         agent.get_current_command.return_value = None
+        agent.persona = None
+        agent.context_percent_used = None
+        agent.context_remaining_tokens = None
+        agent.session_uuid = "abcdef12-3456-7890-abcd-ef1234567890"
+        agent.started_at = datetime(2026, 2, 10, tzinfo=timezone.utc)
 
         mock_db.session.get.return_value = agent
 
@@ -1364,3 +1379,194 @@ class TestAgentTranscript:
         # Verify chronological order: turn1 (01:00), boundary (01:03), turn2 (01:10)
         timestamps = [t["timestamp"] for t in data["turns"]]
         assert timestamps == sorted(timestamps)
+
+
+# ──────────────────────────────────────────────────────────────
+# Transcript PROGRESS / COMPLETION dedup tests
+# ──────────────────────────────────────────────────────────────
+
+def _make_mock_turn(
+    turn_id, actor, intent, text, command_id, timestamp,
+    summary=None, tool_input=None,
+):
+    """Helper: create a MagicMock turn with all required fields."""
+    t = MagicMock()
+    t.id = turn_id
+    t.actor = actor
+    t.intent = intent
+    t.text = text
+    t.summary = summary
+    t.timestamp = timestamp
+    t.tool_input = tool_input
+    t.question_text = None
+    t.question_options = None
+    t.question_source_type = None
+    t.answered_by_turn_id = None
+    t.file_metadata = None
+    return t
+
+
+def _make_mock_cmd(cmd_id, instruction="Test", state=CommandState.COMPLETE):
+    """Helper: create a MagicMock command."""
+    cmd = MagicMock()
+    cmd.id = cmd_id
+    cmd.instruction = instruction
+    cmd.state = state
+    return cmd
+
+
+class TestTranscriptProgressDedup:
+    """Tests for PROGRESS/COMPLETION dedup in transcript endpoint.
+
+    When a PROGRESS turn's text is a substring of a COMPLETION turn for the
+    same command, the PROGRESS turn should be suppressed in the response.
+    """
+
+    def test_progress_suppressed_when_subset_of_completion(self, client, mock_db, mock_agent):
+        """PROGRESS turn whose text ⊂ COMPLETION text is filtered out."""
+        mock_db.session.get.return_value = mock_agent
+        cmd = _make_mock_cmd(10)
+
+        progress = _make_mock_turn(
+            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            "I'm working on the fix",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
+        )
+        completion = _make_mock_turn(
+            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            "I'm working on the fix and it's now complete.",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),
+        )
+
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(completion, cmd), (progress, cmd)]
+
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Only the COMPLETION turn should remain
+        assert len(data["turns"]) == 1
+        assert data["turns"][0]["intent"] == "completion"
+        assert data["turns"][0]["id"] == 2
+
+    def test_progress_kept_when_not_subset(self, client, mock_db, mock_agent):
+        """PROGRESS turn with unique content NOT in COMPLETION is kept."""
+        mock_db.session.get.return_value = mock_agent
+        cmd = _make_mock_cmd(10)
+
+        progress = _make_mock_turn(
+            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            "Reading config files for database setup",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
+        )
+        completion = _make_mock_turn(
+            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            "Fixed the authentication bug in login.py",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),
+        )
+
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(completion, cmd), (progress, cmd)]
+
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Both turns should remain — progress has unique content
+        assert len(data["turns"]) == 2
+
+    def test_progress_kept_when_no_completion_exists(self, client, mock_db, mock_agent):
+        """PROGRESS turn is kept when its command has no COMPLETION turn."""
+        mock_db.session.get.return_value = mock_agent
+        cmd = _make_mock_cmd(10, state=CommandState.PROCESSING)
+
+        progress = _make_mock_turn(
+            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            "Working on the implementation",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
+        )
+
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(progress, cmd)]
+
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # PROGRESS should be kept — no completion exists
+        assert len(data["turns"]) == 1
+        assert data["turns"][0]["intent"] == "progress"
+
+    def test_user_turns_unaffected_by_dedup(self, client, mock_db, mock_agent):
+        """USER turns are never filtered even if text matches COMPLETION."""
+        mock_db.session.get.return_value = mock_agent
+        cmd = _make_mock_cmd(10)
+
+        user_turn = _make_mock_turn(
+            1, TurnActor.USER, TurnIntent.COMMAND,
+            "Fix the bug",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
+        )
+        completion = _make_mock_turn(
+            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            "Fix the bug — done!",
+            command_id=10,
+            timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),
+        )
+
+        turn_query = MagicMock()
+        turn_query.join.return_value = turn_query
+        turn_query.filter.return_value = turn_query
+        turn_query.order_by.return_value = turn_query
+        turn_query.limit.return_value = turn_query
+        turn_query.all.return_value = [(completion, cmd), (user_turn, cmd)]
+
+        empty_cmd_query = MagicMock()
+        empty_cmd_query.filter.return_value = empty_cmd_query
+        empty_cmd_query.all.return_value = []
+
+        mock_db.session.query.side_effect = [turn_query, empty_cmd_query]
+
+        response = client.get("/api/voice/agents/1/transcript")
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Both turns should remain — user turn is never filtered
+        assert len(data["turns"]) == 2

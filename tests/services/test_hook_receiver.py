@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from claude_headspace.models.command import CommandState
+from claude_headspace.models.turn import TurnActor, TurnIntent
 from claude_headspace.services.hook_receiver import (
     HookEventResult,
     HookEventType,
@@ -1840,3 +1842,175 @@ class TestResetReceiverState:
                 assert mock_thread.call_count == 1  # Still just 1
 
         _deferred_stop_pending.clear()
+
+
+# ---------------------------------------------------------------------------
+# Stop hook: PROGRESS coverage dedup
+# ---------------------------------------------------------------------------
+
+
+class TestStopHookProgressDedup:
+    """Verify process_stop upgrades PROGRESS turns instead of duplicating."""
+
+    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver._trigger_priority_scoring")
+    @patch("claude_headspace.services.hook_receiver._broadcast_state_change")
+    @patch("claude_headspace.services.hook_receiver._send_completion_notification")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_all_captured_upgrades_progress(
+        self, mock_db, mock_notif, mock_state_bc, mock_priority,
+        mock_turn_bc, mock_card_bc, mock_extract, mock_detect, fresh_state,
+    ):
+        """When all text captured by PROGRESS, stop hook upgrades last PROGRESS turn.
+
+        The progress turns are fragments (not the full text), so the existing_dup
+        fuzzy matcher won't claim them as duplicates of the full agent text.
+        The all_captured_by_progress branch should fire instead.
+        """
+        from claude_headspace.services.hook_receiver import process_stop
+        from claude_headspace.services.intent_detector import IntentResult
+
+        # Full agent text is much larger than any single PROGRESS fragment
+        agent_text = (
+            "First I analysed the requirements thoroughly.\n\n"
+            "Then I implemented the feature with full test coverage.\n\n"
+            "The implementation is now complete and ready for review."
+        )
+
+        # Intent detector returns COMPLETION (realistic — stop hook means agent finished)
+        mock_detect.return_value = IntentResult(
+            intent=TurnIntent.COMPLETION, confidence=0.9, matched_pattern="test",
+        )
+
+        # Mock agent
+        agent = MagicMock()
+        agent.id = 42
+        agent.project_id = 1
+        agent.transcript_path = "/tmp/fake.jsonl"
+        agent.guardrails_version_hash = None
+
+        # Mock progress turns — fragments of the full text
+        progress_turn1 = MagicMock()
+        progress_turn1.id = 100
+        progress_turn1.actor = TurnActor.AGENT
+        progress_turn1.intent = TurnIntent.PROGRESS
+        progress_turn1.text = "First I analysed the requirements thoroughly."
+        progress_turn1.jsonl_entry_hash = "hash_frag1"
+        progress_turn1.question_source_type = None
+
+        progress_turn2 = MagicMock()
+        progress_turn2.id = 101
+        progress_turn2.actor = TurnActor.AGENT
+        progress_turn2.intent = TurnIntent.PROGRESS
+        progress_turn2.text = "Then I implemented the feature with full test coverage."
+        progress_turn2.jsonl_entry_hash = "hash_frag2"
+        progress_turn2.question_source_type = None
+
+        progress_turn3 = MagicMock()
+        progress_turn3.id = 102
+        progress_turn3.actor = TurnActor.AGENT
+        progress_turn3.intent = TurnIntent.PROGRESS
+        progress_turn3.text = "The implementation is now complete and ready for review."
+        progress_turn3.jsonl_entry_hash = "hash_frag3"
+        progress_turn3.question_source_type = None
+
+        # Mock command with multiple progress turns
+        command = MagicMock()
+        command.id = 10
+        command.state = CommandState.PROCESSING
+        command.turns = [progress_turn1, progress_turn2, progress_turn3]
+        command.instruction = "Do something"
+        agent.get_current_command.return_value = command
+
+        # Setup: transcript returns the full agent text
+        mock_extract.return_value = agent_text
+
+        # Pre-populate captured progress texts with the fragments
+        from claude_headspace.services.hook_receiver import (
+            _progress_texts_for_agent,
+            _transcript_positions,
+        )
+        _progress_texts_for_agent[42] = [
+            progress_turn1.text, progress_turn2.text, progress_turn3.text,
+        ]
+        _transcript_positions[42] = 999  # Position past all entries
+
+        # Mock read_new_entries to return empty (all captured)
+        # Also mock is_content_duplicate to return False (fragments don't match full text)
+        with patch(
+            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+            return_value=([], 999),
+        ), patch(
+            "claude_headspace.services.transcript_reconciler.is_content_duplicate",
+            return_value=False,
+        ):
+            # Mock lifecycle — ensure it returns OUR command object
+            with patch(
+                "claude_headspace.services.hook_receiver._get_lifecycle_manager"
+            ) as mock_lifecycle_factory:
+                mock_lifecycle = MagicMock()
+                mock_lifecycle.get_current_command.return_value = command
+                mock_lifecycle.get_pending_summarisations.return_value = []
+                mock_lifecycle_factory.return_value = mock_lifecycle
+
+                result = process_stop(agent, "test-session")
+
+        assert result.success
+
+        # The last progress turn's intent should have been upgraded to COMPLETION
+        assert progress_turn3.intent == TurnIntent.COMPLETION
+
+    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver._trigger_priority_scoring")
+    @patch("claude_headspace.services.hook_receiver._broadcast_state_change")
+    @patch("claude_headspace.services.hook_receiver._send_completion_notification")
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_new_text_creates_completion(
+        self, mock_db, mock_notif, mock_state_bc, mock_priority,
+        mock_turn_bc, mock_card_bc, mock_extract, fresh_state,
+    ):
+        """When new text exists beyond PROGRESS, a COMPLETION turn IS created."""
+        from claude_headspace.services.hook_receiver import process_stop
+
+        full_text = "Progress text. And new completion text."
+
+        agent = MagicMock()
+        agent.id = 43
+        agent.project_id = 1
+        agent.transcript_path = "/tmp/fake.jsonl"
+        agent.guardrails_version_hash = None
+
+        command = MagicMock()
+        command.id = 11
+        command.state = CommandState.PROCESSING
+        command.turns = []  # No existing PROGRESS turns in command
+        command.instruction = "Do something"
+        agent.get_current_command.return_value = command
+
+        mock_extract.return_value = full_text
+
+        # No captured progress — all text is new
+        from claude_headspace.services.hook_receiver import (
+            _progress_texts_for_agent,
+            _transcript_positions,
+        )
+        _progress_texts_for_agent.pop(43, None)
+        _transcript_positions.pop(43, None)
+
+        with patch(
+            "claude_headspace.services.hook_receiver._get_lifecycle_manager"
+        ) as mock_lifecycle_factory:
+            mock_lifecycle = MagicMock()
+            mock_lifecycle.get_pending_summarisations.return_value = []
+            mock_lifecycle_factory.return_value = mock_lifecycle
+
+            result = process_stop(agent, "test-session")
+
+        assert result.success
+        # lifecycle.complete_command should have been called (new COMPLETION turn)
+        mock_lifecycle.complete_command.assert_called()

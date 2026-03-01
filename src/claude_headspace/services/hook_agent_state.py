@@ -51,6 +51,12 @@ class AgentHookState:
         # Track text of PROGRESS turns captured during the current agent response
         self._progress_texts: dict[int, list[str]] = {}
 
+        # Per-agent locks for progress capture atomicity.
+        # Unlike _lock (which protects dict operations), these wrap the entire
+        # read-position/read-JSONL/check-hash/create-Turn flow to prevent
+        # TOCTOU races between concurrent hooks for the same agent.
+        self._progress_capture_locks: dict[int, threading.Lock] = {}
+
         # Track file metadata for IDLE-state file uploads via voice bridge
         self._file_metadata_pending: dict[int, dict] = {}
 
@@ -200,6 +206,20 @@ class AgentHookState:
         with self._lock:
             self._progress_texts.pop(agent_id, None)
 
+    # ── Progress Capture Locks ────────────────────────────────────────
+
+    def get_progress_capture_lock(self, agent_id: int) -> threading.Lock:
+        """Get or create a per-agent lock for progress capture atomicity.
+
+        Serialises the entire read-position → read-JSONL → check-hash →
+        create-Turn flow within _capture_progress_text_impl so concurrent
+        hooks for the same agent cannot create duplicate PROGRESS turns.
+        """
+        with self._lock:
+            if agent_id not in self._progress_capture_locks:
+                self._progress_capture_locks[agent_id] = threading.Lock()
+            return self._progress_capture_locks[agent_id]
+
     # ── File Metadata Pending ────────────────────────────────────────
 
     def set_file_metadata_pending(self, agent_id: int, metadata: dict) -> None:
@@ -326,6 +346,7 @@ class AgentHookState:
             self._skill_injection_pending.discard(agent_id)
             self._recent_prompt_hashes.pop(agent_id, None)
             self._command_creation_times.pop(agent_id, None)
+            self._progress_capture_locks.pop(agent_id, None)
 
     def on_new_response_cycle(self, agent_id: int) -> None:
         """Clear state for a new user→agent response cycle."""
@@ -348,6 +369,7 @@ class AgentHookState:
             self._skill_injection_pending.clear()
             self._recent_prompt_hashes.clear()
             self._command_creation_times.clear()
+            self._progress_capture_locks.clear()
 
 
 # ── Module-level singleton ───────────────────────────────────────────
