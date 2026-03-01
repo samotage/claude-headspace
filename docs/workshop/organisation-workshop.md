@@ -1,7 +1,7 @@
 # Organisation — Design Workshop
 
 **Date:** 1 March 2026
-**Status:** Sections 0–1 RESOLVED. Sections 2–9 pending workshop.
+**Status:** Sections 0–1 RESOLVED. Sections 2–9 ON HOLD — pending Epic 9 (Inter-Agent Communication).
 **Inputs:**
 - `docs/conceptual/headspace-agent-teams-functional-outline.md` — Agent Teams vision and architecture layers
 - `docs/roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md` — Epic 8 sprint breakdown (18 sprints)
@@ -688,7 +688,33 @@ All model changes required by Section 1 decisions, consolidated for implementati
 
 ---
 
+## ⏸ HOLD — Sections 2–9 Blocked on Epic 9
+
+**Added:** 1 March 2026 — Workshop session with Robbo (architect-robbo-3, agent #1077)
+
+**What happened:** During the Section 2 workshop, a fundamental architectural insight emerged. The operator's first real use case for inter-agent communication is a **group chat** — Sam, Robbo, and Paula workshopping persona alignment together. This is not a point-to-point delegation pattern. It's a multi-participant conversation where everyone sees everything, and any response while others are thinking is an interrupt.
+
+**The insight:** The communication primitive is not "Agent A sends a message to Agent B." It's "a message is posted to a channel, and all participants receive it." This is the Slack/Discord model — a well-solved problem with a well-understood data model (channels, messages, membership, fan-out delivery).
+
+**Why this changes the trajectory:** If channels are the foundational primitive, then almost everything in Sections 2–9 of this workshop *sits on top of them*:
+- Task delegation (Section 3) → Gavin creates a channel with Con, posts the task there
+- Agent interaction patterns (Section 4) → conversation patterns with different membership shapes
+- Escalation → add someone to a channel, or create a new one with context
+- Org hierarchy → informs *who gets added* to channels, not how messages move
+
+The channel infrastructure is the nervous system. The organisation mechanics are the brain that decides which nerves to fire. Building the org without the nervous system is backwards.
+
+**Decision:** Inter-agent communication via channels is extracted into **Epic 9** with its own dedicated workshop (`docs/workshop/interagent-communication-workshop.md`). This workshop (Organisation) resumes after Epic 9 delivers working channel infrastructure.
+
+**What remains valid:** Sections 0–1 (codebase audit, organisation serialization) are fully resolved and do not depend on channels. Their decisions stand. The migration checklist at the end of Section 1 can be implemented independently.
+
+**What needs revisiting:** Sections 2–9 will be reworked once channels exist. The original Section 2 questions (2.1–2.6) are superseded by the channel workshop — they were framed around point-to-point messaging. Sections 3–9 (tasks, interaction patterns, lifecycle, etc.) will be designed to build on channel infrastructure.
+
+---
+
 ## Section 2: Inter-Agent Communication
+
+> **STATUS: SUPERSEDED** — This section's decisions (2.1–2.6) are replaced by the Epic 9 Inter-Agent Communication Workshop. The questions below are preserved for reference but will not be resolved here. See `docs/workshop/interagent-communication-workshop.md`.
 
 **Purpose:** Design the communication channel that allows agents to send messages to each other through Headspace. This is the nervous system of the organisation — every delegation, report, question, and escalation flows through it.
 

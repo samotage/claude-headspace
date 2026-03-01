@@ -88,3 +88,22 @@ Investigation into skill visibility regression after Claude Code 2.1.50 → 2.1.
 ### Migrate commands to skills
 
 Migrate existing Claude Code commands (.claude/commands/) to the newer skills format. Assess which commands should become skills, plan the migration path, and execute the transition. Consider backward compatibility, discoverability, and how this interacts with the persona skill assignment architecture above.
+
+## Persona & Organisation
+
+### Persona spec reconciliation — group review of AR Status Report
+
+Review and act on the findings from the Persona Alignment Workshop (`docs/workshop/personna_alignment/`). The workshop produced a full persona catalogue, specification template, and AR Status Report with a prioritised 12-item roadmap. This should be a group session (Sam, Robbo, Paula) to decide and execute next steps.
+
+**Workshop outputs to review:**
+- `docs/workshop/personna_alignment/01-persona-catalogue.md` — 11 personas catalogued with intent-encoding assessments
+- `data/templates/persona-spec-template.md` — Persona Specification Template (v1.0)
+- `docs/workshop/personna_alignment/03-ar-status-report.md` — AR Status Report with gap analysis, intent audit, and roadmap
+
+**Key decisions needed:**
+1. **Spec upgrades** — Robbo, Gavin, and Verner have the weakest intent encoding despite the highest architectural responsibility (spec-depth inversion). Confirm priority order (report recommends Robbo → Gavin → Verner) and schedule the upgrades.
+2. **New persona registration** — Leon (Ops) confirmed needed. Mark (full-stack generalist) and May (database) to be assessed.
+3. **Architecture formalisation** — Support Layer (Ferret, Judy) and Systems sublayer (Shorty) should be documented in the functional outline. Robbo's domain.
+4. **Template rollout** — Confirm the spec template at `data/templates/persona-spec-template.md` as the standard for all future persona creation and review.
+
+**Format:** Group chat session with Sam, Robbo, and Paula. Paula facilitates from the AR Status Report.

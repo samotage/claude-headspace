@@ -271,6 +271,33 @@ def _run_deferred_stop(
         project_id=project_id, agent_id=agent_id,
     )
 
+    # Dedup guard: the TmuxWatchdog reconciler may have already created a
+    # turn from this same JSONL content while the deferred stop was sleeping.
+    # Check by content hash AND fuzzy matching (same guard as process_stop).
+    from .transcript_reconciler import _content_hash, is_content_duplicate
+    from ..models.turn import Turn as _Turn
+
+    agent_content_key = _content_hash("agent", full_agent_text or "")
+    existing_dup = None
+    # Refresh cmd.turns from DB to pick up reconciler-created turns
+    db.session.refresh(cmd)
+    if full_agent_text and cmd.turns:
+        for t in reversed(cmd.turns):
+            if t.actor != TurnActor.AGENT:
+                continue
+            if t.jsonl_entry_hash and t.jsonl_entry_hash == agent_content_key:
+                existing_dup = t
+                break
+            if t.intent in (TurnIntent.QUESTION, TurnIntent.COMPLETION,
+                            TurnIntent.END_OF_COMMAND, TurnIntent.PROGRESS):
+                if is_content_duplicate(t.text, full_agent_text, actor="agent"):
+                    existing_dup = t
+                    logger.info(
+                        f"[DEFERRED_STOP] dedup: fuzzy match against "
+                        f"turn {t.id} (paragraph similarity)"
+                    )
+                    break
+
     # Check for stale notification turn to replace
     stale_notification_turn = None
     if cmd.turns:
@@ -281,18 +308,48 @@ def _run_deferred_stop(
                 break
 
     lifecycle = _get_lifecycle_manager()
-    if intent_result.intent == TurnIntent.QUESTION:
+    if existing_dup:
+        # Reconciler already created this turn — upgrade intent if needed
+        if existing_dup.intent == TurnIntent.PROGRESS and intent_result.intent != TurnIntent.PROGRESS:
+            existing_dup.intent = intent_result.intent
+        if intent_result.intent == TurnIntent.QUESTION:
+            existing_dup.question_text = full_agent_text or ""
+            existing_dup.question_source_type = "free_text"
+        if not existing_dup.jsonl_entry_hash:
+            existing_dup.jsonl_entry_hash = agent_content_key
+        db.session.commit()
+        logger.info(
+            f"[DEFERRED_STOP] dedup: reusing existing turn {existing_dup.id} "
+            f"(hash={agent_content_key}) instead of creating duplicate"
+        )
+        # Still drive lifecycle for state-relevant intents
+        if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
+            try:
+                trigger = "hook:stop:deferred_end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop:deferred"
+                lifecycle.complete_command(
+                    command=cmd, trigger=trigger,
+                    agent_text=completion_text, intent=intent_result.intent,
+                )
+                if completion_text != full_agent_text:
+                    cmd.full_output = full_agent_text
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.debug(
+                    f"[DEFERRED_STOP] dedup lifecycle (expected if already complete): {e}"
+                )
+    elif intent_result.intent == TurnIntent.QUESTION:
         if stale_notification_turn:
             stale_notification_turn.text = full_agent_text
             stale_notification_turn.question_text = full_agent_text
             stale_notification_turn.question_source_type = "free_text"
         else:
-            from ..models.turn import Turn as _Turn
             turn = _Turn(
                 command_id=cmd.id, actor=TurnActor.AGENT,
                 intent=TurnIntent.QUESTION, text=full_agent_text,
                 question_text=full_agent_text,
                 question_source_type="free_text",
+                jsonl_entry_hash=agent_content_key,
             )
             db.session.add(turn)
     elif intent_result.intent == TurnIntent.END_OF_COMMAND:
@@ -301,6 +358,7 @@ def _run_deferred_stop(
             stale_notification_turn.intent = TurnIntent.END_OF_COMMAND
             stale_notification_turn.question_text = None
             stale_notification_turn.question_source_type = None
+            stale_notification_turn.jsonl_entry_hash = agent_content_key
         lifecycle.complete_command(
             command=cmd, trigger="hook:stop:deferred_end_of_command",
             agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
@@ -313,6 +371,7 @@ def _run_deferred_stop(
             stale_notification_turn.intent = TurnIntent.COMPLETION
             stale_notification_turn.question_text = None
             stale_notification_turn.question_source_type = None
+            stale_notification_turn.jsonl_entry_hash = agent_content_key
         lifecycle.complete_command(command=cmd, trigger="hook:stop:deferred", agent_text=completion_text)
         if completion_text != full_agent_text:
             cmd.full_output = full_agent_text

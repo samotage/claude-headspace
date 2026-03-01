@@ -99,7 +99,7 @@ Build this iteratively — look at what works in the existing skill files (some 
 
 Saved to `docs/workshop/personna_alignment/`:
 1. `01-persona-catalogue.md` — Full catalogue with intent-encoding assessment and architecture mapping
-2. `02-persona-spec-template.md` — Persona Specification Template with guardrails layer and domain intent
+2. `02-persona-spec-template.md` — Pointer to canonical template at `data/templates/persona-spec-template.md`
 
 ---
 
@@ -109,9 +109,11 @@ Saved to `docs/workshop/personna_alignment/`:
 
 **Goal:** Perform gap analysis, intent audit, and model currency check. Produce the initial AR Status Report.
 
+**Status:** COMPLETE — 1 March 2026, Paula (Agent #1085 produced Phase 1 outputs; successor agent completed Phase 2 analysis and report).
+
 ### Tasks
 
-#### 2.1 Gap Analysis: Personas vs Architecture
+#### 2.1 Gap Analysis: Personas vs Architecture — COMPLETE
 
 Using the catalogue from Phase 1 and the conceptual architecture, produce a structured gap analysis. Map each existing persona onto the architecture and categorise:
 
@@ -120,17 +122,36 @@ Using the catalogue from Phase 1 and the conceptual architecture, produce a stru
 - **No architectural home** — persona exists but doesn't fit the target architecture (candidate for restructuring or deprecation)
 - **Unfilled role** — architectural role with no persona assigned (gap to fill)
 
-#### 2.2 Intent Audit
+**Resolution:** Gap analysis consolidated into Section 1 of `03-ar-status-report.md`. Key findings:
+
+- **Clean fit (5):** Robbo → Workshop/Architect, Gavin → PM, Con → Execution/Backend, Al → Execution/Frontend, Verner → QA. All map directly to architectural roles; varying degrees of intent alignment needed.
+- **Organic additions to formalise (3):** Shorty fills a genuine systems/infrastructure gap between Robbo's architecture and execution-layer code. Ferret and Judy provide cross-cutting support (research and writing) not in the original architecture. Recommended: formalise a Support Layer and a Systems sublayer within Execution.
+- **Separate domain (2):** Jen (Mable/NDIS application assistant) and Kent Voss (agentic economy) belong to different organisations. Currently coexist in the flat pool — no operational impact now, but organisational separation required when the org layer is activated.
+- **Governance (1):** Paula sits above the architecture layers as cross-cutting governance (the governance triangle: Sam, Robbo, Paula).
+- **Unfilled roles (3):** May (database — currently absorbed by Con, low priority), Mark (full-stack generalist — medium priority, gap felt on cross-stack work), Leon (ops — medium-high priority, operator confirmed should be registered).
+
+#### 2.2 Intent Audit — COMPLETE
 
 For each persona, assess against the five intent-encoding elements using the template from Phase 1 as the benchmark. Rate each element as: present, partial, or absent.
 
 Identify the most critical gaps — which personas are doing the most important work with the least intent encoding?
 
-#### 2.3 Model Currency Check
+**Resolution:** Full audit in Section 2 of `03-ar-status-report.md`. Two tiers emerged:
+
+- **Tier 1 — Mature (minor gaps):** Con, Al, Shorty (4.0/5 each), Kent Voss (4.0/5), Paula (4.5/5), Jen (3.5/5). These have strong intent encoding. Remaining gaps are tradeoff hierarchies under pressure and formal alignment feedback loops.
+- **Tier 2 — Adequate (significant gaps):** Robbo (1.5/5), Gavin (1.5/5), Verner (1.5/5), Ferret (1.5/5), Judy (2.0/5). These describe what the persona does but not what it optimises for. Missing: domain intent, tradeoff hierarchies, quality definitions, alignment feedback loops.
+
+**Critical finding: spec-depth inversion.** The personas with the most architectural responsibility (Robbo, Gavin, Verner) have the weakest intent encoding. Tolerable now because the operator provides the intent context that specs lack. Untenable as autonomy increases.
+
+**Priority ranking for spec upgrades:** (1) Robbo — gates the entire build cycle, 63 agents, weakest intent encoding at his responsibility level. (2) Gavin — PM automation on the roadmap requires deeper spec before granting autonomy. (3) Verner — QA gatekeeper, must reach execution-persona spec quality before activation.
+
+#### 2.3 Model Currency Check — COMPLETE
 
 Assess whether existing persona specifications are optimised for the current model version (Claude Opus 4.6 / Sonnet 4.6) and platform capabilities (Claude Code with MCP, tool use, extended context). Flag any specifications that rely on patterns from older model versions or that aren't leveraging current capabilities.
 
-#### 2.4 AR Status Report
+**Resolution:** No model currency issues found. Portfolio is 6 days old, built entirely on the current model generation. Platform capabilities (tool use, Playwright CLI, extended context) are appropriately leveraged where relevant — Al's visual verification, Jen's sandboxed command list, context budget guidance in the template. One observation for future: execution persona specs (Con, Al, Shorty) are the most model-specific and should be first reviewed on any model generation change.
+
+#### 2.4 AR Status Report — COMPLETE
 
 Produce the initial AR Status Report (`docs/workshop/personna_alignment/03-ar-status-report.md`) consolidating everything:
 
@@ -143,10 +164,34 @@ Produce the initial AR Status Report (`docs/workshop/personna_alignment/03-ar-st
 - Immediate risks or misalignments that need attention now
 - Recommendations for the first personas to create, refactor, or align
 
+**Resolution:** AR Status Report produced at `03-ar-status-report.md`. Consolidates gap analysis, intent audit, model currency check, and a 12-item prioritised roadmap across three time horizons (immediate, near-term, medium-term). Three active risks identified: spec-depth inversion (high), Verner activation without spec upgrade (medium), flat pool mixing domains (low/current). Five observations documented including the gold standard execution spec pattern and the governance triangle working relationship.
+
+**Post-report actions taken during this session:**
+- **Living document discipline** identified as a cross-cutting gap. Both Paula and Robbo were caught producing incomplete workshop resolutions (status without substance). Experience entries written for both. Template updated to include living document discipline in Working Method guidance. Roadmap items 1-3 amended to include this discipline in spec upgrades.
+- **Template relocated** from workshop output directory (`docs/workshop/personna_alignment/02-persona-spec-template.md`) to canonical location (`data/templates/persona-spec-template.md`) with YAML front matter (version 1.0, changelog). Workshop copy replaced with a pointer. Sam directed this move — the template is a durable standard, not a workshop artefact.
+- **Paula's skill file updated** to reference the template's canonical location at `data/templates/persona-spec-template.md`.
+
 ### Phase 2 Outputs
 
-Save to `docs/workshop/personna_alignment/`:
+Saved to `docs/workshop/personna_alignment/`:
 3. `03-ar-status-report.md` — Initial AR Status Report
+
+---
+
+## Workshop Status
+
+**Both phases COMPLETE.** All outputs produced, committed, and pushed.
+
+**Next steps:**
+
+**BLOCKED — awaiting inter-agent communication (group chat) build.** Sam and Robbo decided (1 March 2026) to fast-track Organisation Workshop Section 2 (Inter-Agent Communication) as the next epic. The persona reconciliation group review and subsequent spec upgrades are dependent on this capability existing — the review is designed as a group session (Sam, Robbo, Paula) which requires the communication layer. The spec upgrades are also more valuable after communication protocols exist, since upgraded specs can encode interaction patterns that don't exist yet.
+
+Once group chat is operational:
+1. **Group review of AR Status Report** — Sam, Robbo, Paula. Decide spec upgrade priority and template rollout. (See `docs/todo/TODO.md`, Persona & Organisation section.)
+2. Spec upgrades (report recommends Robbo → Gavin → Verner) — can now include communication protocols
+3. Register Leon (Ops) — operator confirmed this is needed
+4. Formalise architecture updates (Support Layer, Systems sublayer) — Robbo's domain
+5. Schedule periodic intent audits and model currency checks as standing practice
 
 ---
 
@@ -156,4 +201,4 @@ Save to `docs/workshop/personna_alignment/`:
 - When uncertain about architectural intent, flag the question for Robbo.
 - When uncertain about organisational priority, flag the question for Sam.
 - The organisation workshop (`docs/workshop/organisation-workshop.md`) is evolving in parallel. Paula's work here informs and is informed by that workshop — they are complementary, not sequential.
-- After completing both phases, Paula and Sam will review the outputs together and decide next steps (persona refactoring, new persona creation, template rollout).
+- **Template canonical location:** `data/templates/persona-spec-template.md` — all references should point here, not to the workshop directory.

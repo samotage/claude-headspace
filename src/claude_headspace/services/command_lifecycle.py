@@ -420,27 +420,30 @@ class CommandLifecycleManager:
         # Create completion turn record only when there is actual content.
         # Empty/whitespace-only text produces noisy Turn records that add no value.
         #
-        # Dedup: if a PROGRESS turn already captured the same text (common during
-        # persona injection where post_tool_use fires before stop), upgrade the
-        # existing turn's intent instead of creating a duplicate.
+        # Dedup: check for ANY existing agent turn with the same text — not just
+        # PROGRESS.  The TmuxWatchdog reconciler can race with the deferred stop
+        # and create a COMPLETION turn from the same JSONL entry before
+        # complete_command runs.  Checking all intents prevents duplicates.
         turn = None
         if agent_text and agent_text.strip():
-            existing_progress = (
+            # Check all agent turns (any intent) with exact text match
+            existing_turn = (
                 self._session.query(Turn)
                 .filter_by(
                     command_id=command.id,
                     actor=TurnActor.AGENT,
-                    intent=TurnIntent.PROGRESS,
                 )
                 .filter(Turn.text == agent_text)
                 .first()
             )
-            if existing_progress:
-                existing_progress.intent = intent
-                turn = existing_progress
+            if existing_turn:
+                if existing_turn.intent != intent:
+                    existing_turn.intent = intent
+                turn = existing_turn
                 logger.info(
-                    f"complete_command: upgraded PROGRESS turn {turn.id} to {intent.value} "
-                    f"(dedup, command_id={command.id})"
+                    f"complete_command: reusing existing turn {turn.id} "
+                    f"(was {existing_turn.intent.value}, now {intent.value}, "
+                    f"dedup, command_id={command.id})"
                 )
             else:
                 turn = Turn(

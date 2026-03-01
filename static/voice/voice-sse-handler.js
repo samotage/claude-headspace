@@ -174,11 +174,19 @@ window.VoiceSSEHandler = (function () {
       }
     }
 
-    // Skip if already rendered in DOM -- but always render terminal intents
-    // (completion/end_of_command) so the agent's final response is visible
-    // even if a PROGRESS turn with the same ID was already shown.
-    if (document.querySelector('[data-turn-id="' + turn.id + '"]')) {
-      if (!isTerminalIntent) return;
+    // Skip if already rendered in DOM.
+    // For terminal intents (completion/end_of_command), REPLACE the existing
+    // bubble in-place so the final response text is visible without creating
+    // a duplicate.  The deferred stop and TmuxWatchdog reconciler can race,
+    // causing the same turn_id to be broadcast twice with different intents.
+    var existingBubble = document.querySelector('[data-turn-id="' + turn.id + '"]');
+    if (existingBubble) {
+      if (isTerminalIntent) {
+        // Replace content of existing bubble with the terminal version
+        var newBubble = VoiceChatRenderer.createBubbleEl(turn, null, isTerminalIntent);
+        if (newBubble) existingBubble.replaceWith(newBubble);
+      }
+      return;
     }
 
     // Insert command separator + bubble via appendChild (not insertBubbleOrdered)
