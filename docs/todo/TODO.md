@@ -101,7 +101,7 @@ Migrate existing Claude Code commands (.claude/commands/) to the newer skills fo
 - `docs/workshop/personna_alignment/01-persona-catalogue.md` — 11 personas catalogued with intent-encoding assessments
 - `data/templates/persona-spec-template.md` — Persona Specification Template (v1.0)
 - `docs/workshop/personna_alignment/03-ar-status-report.md` — AR Status Report with gap analysis, intent audit, and 12-item roadmap
-- `docs/briefs/personal-assistant-pip-brief.md` — Pip (personal assistant) brief for architectural review
+- `data/briefs/personal-assistant-pip-brief.md` — Pip (personal assistant) brief for architectural review
 
 **Workshop backlog (priority order per AR Status Report + new items):**
 
@@ -113,7 +113,7 @@ Migrate existing Claude Code commands (.claude/commands/) to the newer skills fo
 
 #### New persona creation
 
-4. **Pip** (Personal Assistant) — Sam's PA. Calendar + email management via Google Workspace. Read-heavy, write-light autonomy. Requires: Robbo architectural review of brief, Shorty connector/credential evaluation, then Paula drafts skill file. See brief at `docs/briefs/personal-assistant-pip-brief.md`.
+4. **Pip** (Personal Assistant) — Sam's PA. Calendar + email management via Google Workspace. Read-heavy, write-light autonomy. Requires: Robbo architectural review of brief, Shorty connector/credential evaluation, then Paula drafts skill file. See brief at `data/briefs/personal-assistant-pip-brief.md`.
 5. **Leon** (Ops) — Operator confirmed needed. No ops capability currently exists. Exception triage, severity classification, auto-remediation boundaries.
 6. **Mark** (Full-stack generalist) — Medium priority. Gap felt on cross-stack tasks. Assess whether workload warrants a dedicated persona.
 7. **May** (Database) — Low priority. Currently absorbed by Con. Assess whether schema complexity warrants a specialist.
