@@ -91,19 +91,45 @@ Migrate existing Claude Code commands (.claude/commands/) to the newer skills fo
 
 ## Persona & Organisation
 
-### Persona spec reconciliation — group review of AR Status Report
+### Persona workshop series — group review and spec work
 
-Review and act on the findings from the Persona Alignment Workshop (`docs/workshop/personna_alignment/`). The workshop produced a full persona catalogue, specification template, and AR Status Report with a prioritised 12-item roadmap. This should be a group session (Sam, Robbo, Paula) to decide and execute next steps.
+**BLOCKED — awaiting inter-agent communication (group chat).** Sam confirmed (2 March 2026) that the back-and-forth-between-sessions model is not sustainable for this volume of work. Group chat must be operational before this workshop series runs.
 
-**Workshop outputs to review:**
+**Format:** Group sessions with Sam, Robbo, Paula (+ Shorty for infrastructure items). Paula facilitates.
+
+**Inputs:**
 - `docs/workshop/personna_alignment/01-persona-catalogue.md` — 11 personas catalogued with intent-encoding assessments
 - `data/templates/persona-spec-template.md` — Persona Specification Template (v1.0)
-- `docs/workshop/personna_alignment/03-ar-status-report.md` — AR Status Report with gap analysis, intent audit, and roadmap
+- `docs/workshop/personna_alignment/03-ar-status-report.md` — AR Status Report with gap analysis, intent audit, and 12-item roadmap
+- `docs/briefs/personal-assistant-pip-brief.md` — Pip (personal assistant) brief for architectural review
 
-**Key decisions needed:**
-1. **Spec upgrades** — Robbo, Gavin, and Verner have the weakest intent encoding despite the highest architectural responsibility (spec-depth inversion). Confirm priority order (report recommends Robbo → Gavin → Verner) and schedule the upgrades.
-2. **New persona registration** — Leon (Ops) confirmed needed. Mark (full-stack generalist) and May (database) to be assessed.
-3. **Architecture formalisation** — Support Layer (Ferret, Judy) and Systems sublayer (Shorty) should be documented in the functional outline. Robbo's domain.
-4. **Template rollout** — Confirm the spec template at `data/templates/persona-spec-template.md` as the standard for all future persona creation and review.
+**Workshop backlog (priority order per AR Status Report + new items):**
 
-**Format:** Group chat session with Sam, Robbo, and Paula. Paula facilitates from the AR Status Report.
+#### Spec upgrades (spec-depth inversion — highest leverage)
+
+1. **Robbo** — Gates the entire build cycle. 63 agents. Weakest intent encoding at his responsibility level. Add: domain intent, definition of done for specs, review criteria, tradeoff hierarchies.
+2. **Gavin** — PM automation on the roadmap requires deeper spec before granting autonomy. Add: domain intent, authority matrix, tradeoff hierarchies, quality definitions.
+3. **Verner** — QA gatekeeper, never activated (0 agents). Must reach execution-persona spec quality before activation. Preserve three-way resolution model.
+
+#### New persona creation
+
+4. **Pip** (Personal Assistant) — Sam's PA. Calendar + email management via Google Workspace. Read-heavy, write-light autonomy. Requires: Robbo architectural review of brief, Shorty connector/credential evaluation, then Paula drafts skill file. See brief at `docs/briefs/personal-assistant-pip-brief.md`.
+5. **Leon** (Ops) — Operator confirmed needed. No ops capability currently exists. Exception triage, severity classification, auto-remediation boundaries.
+6. **Mark** (Full-stack generalist) — Medium priority. Gap felt on cross-stack tasks. Assess whether workload warrants a dedicated persona.
+7. **May** (Database) — Low priority. Currently absorbed by Con. Assess whether schema complexity warrants a specialist.
+
+#### Support persona upgrades
+
+8. **Ferret** — Add domain intent (what makes research "good enough"), tradeoff guidance (breadth vs depth), definition of done.
+9. **Judy** — Add domain intent beyond editorial quality, strategic alignment (writing the right things, not just writing well).
+
+#### Execution persona refinements (minor)
+
+10. **Con, Al, Shorty** — Add explicit tradeoff hierarchies under pressure, formalise alignment feedback loops. Minor gaps — refinement, not restructuring.
+
+#### Architecture decisions (Robbo's domain, reviewed in session)
+
+11. **Formalise Support Layer** (Ferret, Judy) and **Systems sublayer** (Shorty) in the functional outline.
+12. **Template rollout** — Confirm spec template as the standard for all future persona creation and review.
+13. **Credential storage architecture** — Cross-cutting platform capability. Not just for Pip — future projects and personas will need credential management. Robbo scopes, Shorty evaluates infrastructure.
+14. **Persona-scoped skill/command assignment** — Ties into the architecture TODO above (skill whitelist / platform enforcement). Review in context of the full persona portfolio.

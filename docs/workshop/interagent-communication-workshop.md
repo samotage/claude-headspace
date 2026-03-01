@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). Section 0A seeded (7 decisions, pending workshop). Sections 1–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). Section 1.1 resolved. Section 0A seeded (7 decisions, pending workshop). Sections 1.2–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -33,6 +33,7 @@ Sections are designed to be completable in a single workshop session. Start each
 |------|---------|----------|---------------|
 | 2 Mar 2026 | Sam + Robbo | 0A (seeded) | Handoff continuity: filesystem-driven detection, summary-in-filename, synthetic injection primitive, operator-gated rehydration. 7 decisions seeded, pending formal workshop. |
 | 2 Mar 2026 | Sam + Robbo | 0 (resolved) | Infrastructure audit: 7 communication paths mapped, per-pane parallel fan-out confirmed, completion-only relay rule, envelope format with persona+agent ID, channel behavioral primer as injectable asset, chair role in channels. Incorporated Paula's AR Director guidance: two-layer primer (base + intent), persona-based membership, chair capabilities (delivery priority deferred to v2). |
+| 2 Mar 2026 | Sam + Robbo | 1.1 (resolved) | Channel model: 3 new tables (Channel, ChannelMembership, Message). PersonaType parent table introduced (2×2 matrix: agent/person × internal/external). Channels cross-project and optionally org-scoped. Membership persona-based with explicit PositionAssignment FK for org capacity. Operator participates as internal-person Persona. External persons/agents modelled for future cross-system collaboration (dragons acknowledged, scope held). |
 
 ---
 
@@ -492,7 +493,7 @@ The primary interaction interface for channels is the **Voice Chat PWA** (`/voic
 ---
 
 ### 1.1 Channel Model
-- [ ] **Decision: What is a Channel, and what does the table look like?**
+- [x] **Decision: What is a Channel, and what does the table look like?**
 
 **Depends on:** Section 0 (infrastructure audit must confirm feasibility)
 
@@ -509,7 +510,240 @@ The primary interaction interface for channels is the **Voice Chat PWA** (`/voic
 - Do we need channel topics/subjects (like Slack)?
 - How does the channel relate to existing models (Project, Organisation)?
 
-**Resolution:** _(Pending)_
+**Resolution:** Resolved 2 March 2026.
+
+**Three new tables (Channel, ChannelMembership, Message) plus one new parent table (PersonaType).** The channel data model introduces a communication layer that sits above projects and optionally scopes to organisations. All participants — agents, operator, and future external collaborators — are unified under the Persona identity model via a type hierarchy.
+
+#### PersonaType — New Parent Table
+
+The operator's participation requirement ("I should be able to walk into any channel and start interacting") revealed that Persona needs a type hierarchy. A Persona is an identity — it can be an AI agent or a human person. The type determines delivery mechanism, trust boundaries, and visibility scope, not schema structure.
+
+**PersonaType table (lookup, 4 rows):**
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | `int` | PK | Standard integer PK |
+| `type_key` | `String(16)` | NOT NULL | `agent` or `person` |
+| `subtype` | `String(16)` | NOT NULL | `internal` or `external` |
+
+**Unique constraint** on `(type_key, subtype)`. Four rows, no nulls, no ambiguity:
+
+| id | type_key | subtype | Who |
+|----|----------|---------|-----|
+| 1 | agent | internal | Robbo, Con, Al, Paula, Gavin, Verner — run on operator's hardware |
+| 2 | agent | external | Another system's agents — future cross-system collaboration |
+| 3 | person | internal | Sam (operator) — physical access to hardware, god-mode dashboard |
+| 4 | person | external | Client, prospect, collaborator — remote, scoped visibility |
+
+**Persona gains `persona_type_id` FK** (NOT NULL) to PersonaType. Every Persona is in exactly one quadrant from creation.
+
+**Behavioural differences by quadrant** (service-layer, not schema):
+
+| Concern | Agent Internal | Agent External | Person Internal | Person External |
+|---------|---------------|----------------|-----------------|-----------------|
+| Delivery | tmux send-keys | API | SSE/dashboard/voice | Embed widget/API |
+| Observation | Own channels | Own channels | All channels (god-mode) | Only joined channels |
+| Skill injection | Yes | No | No | No |
+| Handoff | Yes | No | No | No |
+| Position in org | Via PositionAssignment | TBD | Above hierarchy | Outside hierarchy |
+| Hardware access | Local machine | None | Local machine | None |
+| Trust | Full | Dragons | Full | Scoped |
+
+**Rationale:** The 2×2 matrix (agent/person × internal/external) was driven by the operator's insight that external collaborators (clients, prospects) should be able to join channels for co-design workshops alongside internal agents. The same structure also accommodates future inter-system agent communication (external agents). Both `type_key` and `subtype` are NOT NULL — no guessing which quadrant a Persona belongs to.
+
+**Scope note:** v1 builds for internal agents and internal persons only. External agent and external person quadrants are modelled in the schema but not exercised. The pipes are in the slab; the dragon's bathroom is a future epic.
+
+#### Channel Table
+
+A channel is a named conversation container at the system level. Cross-project by default, optionally scoped to an Organisation and/or Project.
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | `int` | PK | Standard integer PK |
+| `name` | `String(128)` | NOT NULL | Human-readable name, e.g. "persona-alignment-workshop" |
+| `slug` | `String(128)` | NOT NULL, UNIQUE | Auto-generated URL/CLI-safe identifier. Pattern: `{channel_type}-{name}-{id}` (consistent with Persona/Org slug patterns). Used in CLI: `flask channel send --channel workshop-persona-alignment-7` |
+| `channel_type` | `Enum(ChannelType)` | NOT NULL | One of: `workshop`, `delegation`, `review`, `standup`, `broadcast`. Maps to Paula's intent templates (two-layer primer from Decision 0.4). |
+| `description` | `Text` | NULLABLE | What this channel is for. Set at creation. Serves double duty as Slack's "topic" — no separate mutable topic field in v1. |
+| `intent_override` | `Text` | NULLABLE | Custom 2-3 sentence intent that overrides the channel_type's default intent template. NULL means "use the type's default intent." Per Paula's two-layer primer architecture. |
+| `organisation_id` | `int FK → organisations` | NULLABLE, ondelete SET NULL | Optional org scope. Most channels are cross-org (NULL). Org-scoped channels may enforce position-based membership validation in future. |
+| `project_id` | `int FK → projects` | NULLABLE, ondelete SET NULL | Optional project scope. Most channels are cross-project (NULL). Economy planning channel references the economy project; persona workshop references nothing. |
+| `created_by_persona_id` | `int FK → personas` | NULLABLE, ondelete SET NULL | Who created the channel. NULL = system-generated. Persona-based, not agent-based (stable identity). |
+| `status` | `String(16)` | NOT NULL, default `"active"` | `active` or `archived`. A channel is active from the moment of creation — no intermediate "created" state. |
+| `created_at` | `DateTime(timezone=True)` | NOT NULL | Standard UTC timestamp. |
+| `archived_at` | `DateTime(timezone=True)` | NULLABLE | When the channel was archived. NULL = still active. |
+
+**ChannelType enum:**
+
+```python
+class ChannelType(enum.Enum):
+    WORKSHOP = "workshop"       # Resolved decisions with documented rationale
+    DELEGATION = "delegation"   # Task completion to spec
+    REVIEW = "review"           # Adversarial finding problems
+    STANDUP = "standup"         # Status visibility and blocker surfacing
+    BROADCAST = "broadcast"     # One-way from chair
+```
+
+**Slug auto-generation:** Same after_insert event mechanism as Persona and Organisation. Temp slug on insert, replaced with `{channel_type}-{name}-{id}` post-insert.
+
+#### ChannelMembership Table
+
+Membership is persona-based with explicit organisational capacity. The persona is the stable identity; the agent is the mutable delivery target. The position assignment records in what organisational capacity the persona participates.
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | `int` | PK | Standard integer PK |
+| `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
+| `persona_id` | `int FK → personas` | NOT NULL, ondelete CASCADE | Who (stable identity — survives agent handoff) |
+| `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Current delivery target (mutable). Updated on handoff. NULL when persona has no active agent ("offline"). NULL for person-type personas (no Agent instance). |
+| `position_assignment_id` | `int FK → position_assignments` | NULLABLE, ondelete SET NULL | In what organisational capacity. Set for org-scoped channels where the persona participates as a position holder. NULL for cross-org channels, the operator, or personas without positions. Enables future validation: position must belong to the channel's organisation. |
+| `is_chair` | `bool` | NOT NULL, default `false` | Channel authority. Exactly one member per channel has `is_chair = true`. Chair capabilities: membership management, intent setting, channel closure. Delivery priority deferred to v2 (Decision 0.4). |
+| `status` | `String(16)` | NOT NULL, default `"active"` | `active`, `left`, or `muted`. |
+| `joined_at` | `DateTime(timezone=True)` | NOT NULL | When the persona joined the channel. |
+| `left_at` | `DateTime(timezone=True)` | NULLABLE | When the persona left. NULL = still active. |
+
+**Unique constraint** on `(channel_id, persona_id)` — a persona can only be in a channel once.
+
+**Handoff continuity:** When HandoffExecutor creates a successor agent, it updates `agent_id` on all active channel memberships for that persona. The membership record persists; only the delivery target changes. From the channel's perspective, the persona never left.
+
+#### Message Table
+
+Defined here at the entity level for the ERD. Full column design is Decision 1.2. Key structural relationships:
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | `int` | PK | Standard integer PK |
+| `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
+| `persona_id` | `int FK → personas` | NOT NULL, ondelete SET NULL | Who sent it (stable identity) |
+| `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Which agent instance sent it (traceability). NULL for person-type personas. |
+| `content` | `Text` | NOT NULL | Message content |
+| `message_type` | `Enum` | NOT NULL | Deferred to Decision 1.3 |
+| `sent_at` | `DateTime(timezone=True)` | NOT NULL | When the message was sent |
+
+**Note:** Full Message column design (metadata, references to Task/Command, immutability) resolved in 1.2. This table is included here to complete the ERD relationships.
+
+#### High-Level ERD
+
+```mermaid
+erDiagram
+    PersonaType {
+        int id PK
+        string type_key "agent | person"
+        string subtype "internal | external"
+    }
+
+    Organisation {
+        int id PK
+        string name
+        string purpose
+        string slug
+    }
+
+    Role {
+        int id PK
+        string name "global"
+    }
+
+    Position {
+        int id PK
+        string title
+        int level
+    }
+
+    PositionAssignment {
+        int id PK
+    }
+
+    Persona {
+        int id PK
+        string name
+        string slug
+        string status
+    }
+
+    Agent {
+        int id PK
+        string _note "EXISTING - agent type only"
+    }
+
+    Project {
+        int id PK
+        string _note "EXISTING"
+    }
+
+    Channel {
+        int id PK
+        string name
+        string slug
+        enum channel_type
+        string status
+        text intent_override
+    }
+
+    ChannelMembership {
+        int id PK
+        boolean is_chair
+        string status
+    }
+
+    Message {
+        int id PK
+        text content
+        enum message_type
+        timestamp sent_at
+    }
+
+    %% === Persona type hierarchy ===
+    Persona }o--|| PersonaType : "is a"
+    Persona }o--|| Role : "has"
+    Agent }o--o| Persona : "instance of (agent type only)"
+
+    %% === Org hierarchy ===
+    Organisation ||--o{ Position : "contains"
+    Position }o--|| Role : "requires"
+    Position }o--o| Position : "reports_to"
+    Position }o--o| Position : "escalates_to"
+    PositionAssignment }o--|| Position : "for seat"
+    PositionAssignment }o--|| Persona : "filled by"
+
+    %% === Channel scoping ===
+    Channel }o--o| Organisation : "optionally scoped to"
+    Channel }o--o| Project : "optionally scoped to"
+    Channel }o--o| Persona : "created by"
+
+    %% === Membership (persona-based, positionally explicit) ===
+    Channel ||--o{ ChannelMembership : "has members"
+    ChannelMembership }o--|| Persona : "identity (stable)"
+    ChannelMembership }o--o| Agent : "delivery target (mutable)"
+    ChannelMembership }o--o| PositionAssignment : "in capacity of"
+
+    %% === Messages (attributed to persona, traced to agent) ===
+    Channel ||--o{ Message : "contains"
+    Message }o--|| Persona : "sent by (identity)"
+    Message }o--o| Agent : "sent by (instance)"
+```
+
+#### Design Decisions & Rationale
+
+| Decision | Rationale |
+|----------|-----------|
+| **PersonaType as parent table** | The operator needs to participate in channels as a first-class identity. External collaborators (clients, prospects) need the same. A type hierarchy (agent/person × internal/external) unifies all participants under Persona without discriminator fields or special cases in the membership model. |
+| **PersonaType.subtype NOT NULL** | Four quadrants, no ambiguity. Every Persona is classified at creation. No inference, no guessing "well if subtype is null it's probably internal." |
+| **Cross-project, optionally org-scoped** | Operator's first use case spans projects and orgs. Channel sits at system level. Optional `organisation_id` and `project_id` FKs with SET NULL provide light scoping without enforcing it. |
+| **Membership via PositionAssignment** | A persona can hold multiple positions across multiple orgs. Without the explicit FK, org-scoped channel membership requires inference across an ambiguous many-to-many. The explicit link answers "in what capacity" in one hop. |
+| **No separate topic field** | Slack has description + topic. For agent channels, the chair states focus in a message. `description` covers the static purpose. Avoid field proliferation. |
+| **Slug follows existing patterns** | `{channel_type}-{name}-{id}` consistent with Persona (`{role}-{name}-{id}`) and Organisation (`{purpose}-{name}-{id}`). Same after_insert mechanism. |
+| **No reactivation from archived** | Archived means done. Create a new channel if needed. Revisiting old channels is a v2 concern. |
+| **`created_by_persona_id` not agent_id** | Persona is the stable identity. If Robbo creates a channel and hands off, the channel was created by Robbo, not by agent #1103. |
+| **Channel type as fixed enum** | Five types from Paula's guidance. New channel types are architectural decisions, not runtime configuration. Enum is cleaner than freeform string. |
+| **External quadrants modelled but not exercised** | "Lay the pipes in the slab." The schema supports external agents and external persons without migration when that day comes. Service-layer trust/delivery/visibility concerns are deferred. |
+
+#### Forward Context for Subsequent Decisions
+
+- **1.2 (Message Model):** Message entity defined here at the structural level. Full column design (metadata JSONB, references to Task/Command, immutability, edit/delete policy) to be resolved.
+- **1.3 (Message Types):** `message_type` enum deferred. Channel types may influence message type semantics.
+- **1.4 (Membership Model):** Structurally resolved here. Remaining questions: operator walk-in/walk-out UX flow, mute semantics, membership change events (system messages like "Sam joined the channel").
+- **1.5 (Relationship to Existing Models):** Key question remains — does a received channel message create a Turn on the receiving agent? Robbo's lean: separate entities, linked by FK on Message.
+- **Section 5 (Migration Checklist):** New tables: `persona_types`, `channels`, `channel_memberships`, `messages`. New column: `personas.persona_type_id` (FK, NOT NULL — requires backfill migration for existing personas as `agent/internal`).
 
 ---
 
@@ -803,9 +1037,14 @@ This closes the loop — messages flow in both directions through the channel.
 
 ### Database Changes
 
-| Migration | Model | Change | Priority |
-|---|---|---|---|
-| _(populated as decisions resolve)_ | | | |
+| Migration | Model | Change | Priority | Source |
+|---|---|---|---|---|
+| Create `persona_types` table | PersonaType | New lookup table: 4 rows (agent/person × internal/external). `type_key` and `subtype` both NOT NULL. Unique constraint on `(type_key, subtype)`. | High — blocks all other channel migrations | 1.1 |
+| Add `persona_type_id` to `personas` | Persona | New FK to `persona_types`, NOT NULL. Backfill existing personas as agent/internal (type_key='agent', subtype='internal'). | High — blocks channel membership | 1.1 |
+| Create `channels` table | Channel | New table: name, slug, channel_type enum, description, intent_override, organisation_id (FK nullable), project_id (FK nullable), created_by_persona_id (FK nullable), status, created_at, archived_at. Slug auto-generated via after_insert event. | High | 1.1 |
+| Create `channel_memberships` table | ChannelMembership | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), position_assignment_id (FK nullable), is_chair, status, joined_at, left_at. Unique constraint on `(channel_id, persona_id)`. | High | 1.1 |
+| Create `messages` table | Message | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), content, message_type enum, sent_at. Full column design in 1.2. | High | 1.1/1.2 |
+| Create operator Persona | Persona (data) | Insert person/internal Persona for operator (Sam). Role: "operator" (create Role if needed). No Agent instances, no PositionAssignment. | Medium — needed for channel participation | 1.1 |
 
 ### New Services
 
