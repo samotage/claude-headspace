@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from . import tmux_bridge
+from .advisory_lock import LockNamespace, advisory_lock_or_skip
 
 logger = logging.getLogger(__name__)
 
@@ -296,26 +297,26 @@ class TmuxWatchdog:
             return False
 
     def _trigger_reconciliation(self, agent_id: int):
-        """Trigger reconciliation for an agent via the per-agent lock."""
+        """Trigger reconciliation for an agent via advisory lock."""
         try:
             with self._app.app_context():
                 from ..database import db
                 from ..models.agent import Agent
                 from .transcript_reconciler import (
                     broadcast_reconciliation,
-                    get_reconcile_lock,
                     reconcile_agent_session,
                 )
 
-                lock = get_reconcile_lock(agent_id)
-                if not lock.acquire(blocking=False):
-                    logger.debug(
-                        f"[TMUX_WATCHDOG] Agent {agent_id} reconciliation "
-                        f"already in progress — skipping"
-                    )
-                    return
+                # Non-blocking advisory lock: skip if agent is being
+                # processed by hook routes or another background thread.
+                with advisory_lock_or_skip(LockNamespace.AGENT, agent_id) as acquired:
+                    if not acquired:
+                        logger.debug(
+                            f"[TMUX_WATCHDOG] Agent {agent_id} advisory lock "
+                            f"held — skipping reconciliation"
+                        )
+                        return
 
-                try:
                     agent = db.session.get(Agent, agent_id)
                     if not agent:
                         return
@@ -334,7 +335,5 @@ class TmuxWatchdog:
                             f"[TMUX_WATCHDOG] Reconciliation for agent {agent_id} "
                             f"created {len(result['created'])} turn(s)"
                         )
-                finally:
-                    lock.release()
         except Exception as e:
             logger.debug(f"[TMUX_WATCHDOG] Reconciliation failed for agent {agent_id}: {e}")

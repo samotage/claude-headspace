@@ -396,10 +396,10 @@ class TestContinueAfterStop:
             # Manually set the flag
             from claude_headspace.services.handoff_executor import (
                 _handoff_in_progress,
-                _handoff_lock,
+                _handoff_in_progress_lock,
             )
 
-            with _handoff_lock:
+            with _handoff_in_progress_lock:
                 _handoff_in_progress[agent.id] = {
                     "file_path": "/nonexistent/file.md",
                     "reason": "test",
@@ -443,10 +443,10 @@ class TestCompleteHandoff:
 
             from claude_headspace.services.handoff_executor import (
                 _handoff_in_progress,
-                _handoff_lock,
+                _handoff_in_progress_lock,
             )
 
-            with _handoff_lock:
+            with _handoff_in_progress_lock:
                 _handoff_in_progress[agent.id] = {
                     "file_path": str(handoff_file),
                     "reason": "manual",
@@ -482,10 +482,10 @@ class TestCompleteHandoff:
 
             from claude_headspace.services.handoff_executor import (
                 _handoff_in_progress,
-                _handoff_lock,
+                _handoff_in_progress_lock,
             )
 
-            with _handoff_lock:
+            with _handoff_in_progress_lock:
                 _handoff_in_progress[agent.id] = {
                     "file_path": str(handoff_file),
                     "reason": "manual",

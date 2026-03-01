@@ -23,6 +23,7 @@ from ..config import get_value
 from ..database import db
 from ..models.agent import Agent
 from . import tmux_bridge
+from .advisory_lock import LockNamespace, advisory_lock_or_skip
 from .card_state import broadcast_card_refresh
 from .context_parser import parse_context_usage
 
@@ -186,37 +187,46 @@ class ContextPoller:
                     if elapsed < DEBOUNCE_SECONDS:
                         continue
 
-                # Capture pane and parse context (with sidecar fallback)
-                ctx = None
-                pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
-                if pane_text:
-                    ctx = parse_context_usage(pane_text)
+                # Non-blocking advisory lock: skip agents currently being
+                # processed by hook routes to avoid contention.
+                with advisory_lock_or_skip(LockNamespace.AGENT, agent.id) as acquired:
+                    if not acquired:
+                        logger.debug(
+                            f"Context poller: agent {agent.id} locked — skipping"
+                        )
+                        continue
 
-                # Fallback: read sidecar file written by statusline-command.sh
-                # (handles narrow terminals where the statusline is truncated)
-                if not ctx:
-                    ctx = _read_sidecar(agent.tmux_pane_id)
+                    # Capture pane and parse context (with sidecar fallback)
+                    ctx = None
+                    pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
+                    if pane_text:
+                        ctx = parse_context_usage(pane_text)
 
-                if not ctx:
-                    continue
+                    # Fallback: read sidecar file written by statusline-command.sh
+                    # (handles narrow terminals where the statusline is truncated)
+                    if not ctx:
+                        ctx = _read_sidecar(agent.tmux_pane_id)
 
-                # Update agent columns
-                agent.context_percent_used = ctx["percent_used"]
-                agent.context_remaining_tokens = ctx["remaining_tokens"]
-                agent.context_updated_at = now
+                    if not ctx:
+                        continue
 
-                # Check if tier changed
-                new_tier = _compute_tier(
-                    ctx["percent_used"], warning_threshold, high_threshold
-                )
-                old_tier = self._last_tiers.get(agent.id)
-                self._last_tiers[agent.id] = new_tier
+                    # Update agent columns
+                    agent.context_percent_used = ctx["percent_used"]
+                    agent.context_remaining_tokens = ctx["remaining_tokens"]
+                    agent.context_updated_at = now
 
-                if old_tier is None or old_tier != new_tier:
-                    broadcast_agents.append(agent)
+                    # Check if tier changed
+                    new_tier = _compute_tier(
+                        ctx["percent_used"], warning_threshold, high_threshold
+                    )
+                    old_tier = self._last_tiers.get(agent.id)
+                    self._last_tiers[agent.id] = new_tier
 
-            if checked > 0:
-                db.session.commit()
+                    if old_tier is None or old_tier != new_tier:
+                        broadcast_agents.append(agent)
+
+                    # Commit inside lock scope so state is visible immediately
+                    db.session.commit()
 
             # Broadcast card_refresh for agents whose tier changed (after commit)
             if broadcast_agents:

@@ -11,6 +11,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request
 
 from ..database import db
+from ..services.advisory_lock import AdvisoryLockError, LockNamespace, advisory_lock
 from ..services.hook_receiver import (
     HookMode,
     get_receiver_state,
@@ -186,40 +187,46 @@ def hook_session_start():
         # Correlate session to agent
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
 
-        # Process the event
-        result = process_session_start(
-            correlation.agent, session_id, transcript_path=transcript_path,
-            tmux_pane_id=tmux_pane, tmux_session=tmux_session,
-            persona_slug=persona_slug, previous_agent_id=previous_agent_id,
-        )
+        # Acquire per-agent advisory lock to serialise hook processing
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            # Process the event
+            result = process_session_start(
+                correlation.agent, session_id, transcript_path=transcript_path,
+                tmux_pane_id=tmux_pane, tmux_session=tmux_session,
+                persona_slug=persona_slug, previous_agent_id=previous_agent_id,
+            )
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("session_start", session_id, latency_ms)
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("session_start", session_id, latency_ms)
 
-        if result.success:
-            if correlation.is_new:
-                try:
-                    from ..services.broadcaster import get_broadcaster
-                    get_broadcaster().broadcast("session_created", {
-                        "agent_id": result.agent_id,
-                        "project_id": correlation.agent.project_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-                except Exception as e:
-                    logger.warning(f"Session created broadcast failed: {e}")
+            if result.success:
+                if correlation.is_new:
+                    try:
+                        from ..services.broadcaster import get_broadcaster
+                        get_broadcaster().broadcast("session_created", {
+                            "agent_id": result.agent_id,
+                            "project_id": correlation.agent.project_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                    except Exception as e:
+                        logger.warning(f"Session created broadcast failed: {e}")
 
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "is_new_agent": correlation.is_new,
-                "correlation_method": correlation.correlation_method,
-                "state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "is_new_agent": correlation.is_new,
+                    "correlation_method": correlation.correlation_method,
+                    "state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for session_start: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for session_start: {e}")
@@ -265,23 +272,29 @@ def hook_session_end():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_session_end(correlation.agent, session_id)
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("session_end", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_session_end(correlation.agent, session_id)
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("session_end", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for session_end: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for session_end: {e}")
@@ -327,24 +340,30 @@ def hook_user_prompt_submit():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_user_prompt_submit(correlation.agent, session_id, prompt_text=prompt_text)
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("user_prompt_submit", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_user_prompt_submit(correlation.agent, session_id, prompt_text=prompt_text)
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state": result.new_state,
-                "state_changed": result.state_changed,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("user_prompt_submit", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state": result.new_state,
+                    "state_changed": result.state_changed,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for user_prompt_submit: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for user_prompt_submit: {e}")
@@ -389,27 +408,30 @@ def hook_stop():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_stop(correlation.agent, session_id)
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("stop", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_stop(correlation.agent, session_id)
 
-        if result.success:
-            # The stop hook fires at end-of-turn only, so this indicates
-            # the agent has finished its current turn and the command is complete.
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("stop", session_id, latency_ms)
 
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state": result.new_state,
-                "state_changed": result.state_changed,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state": result.new_state,
+                    "state_changed": result.state_changed,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for stop: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for stop: {e}")
@@ -458,30 +480,36 @@ def hook_notification():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_notification(
-            correlation.agent,
-            session_id,
-            message=message,
-            title=title,
-            notification_type=notification_type,
-        )
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("notification", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_notification(
+                correlation.agent,
+                session_id,
+                message=message,
+                title=title,
+                notification_type=notification_type,
+            )
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state_changed": result.state_changed,
-                "new_state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("notification", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state_changed": result.state_changed,
+                    "new_state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for notification: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for notification: {e}")
@@ -533,33 +561,39 @@ def hook_post_tool_use():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
 
-        # Backfill transcript_path if provided and not yet set
-        transcript_path = data.get("transcript_path")
-        if transcript_path and not correlation.agent.transcript_path:
-            correlation.agent.transcript_path = transcript_path
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
 
-        result = process_post_tool_use(
-            correlation.agent, session_id, tool_name=tool_name,
-            tool_input=tool_input,
-        )
+            # Backfill transcript_path if provided and not yet set
+            transcript_path = data.get("transcript_path")
+            if transcript_path and not correlation.agent.transcript_path:
+                correlation.agent.transcript_path = transcript_path
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("post_tool_use", session_id, latency_ms)
+            result = process_post_tool_use(
+                correlation.agent, session_id, tool_name=tool_name,
+                tool_input=tool_input,
+            )
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state_changed": result.state_changed,
-                "new_state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("post_tool_use", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state_changed": result.state_changed,
+                    "new_state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for post_tool_use: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for post_tool_use: {e}")
@@ -610,26 +644,32 @@ def hook_pre_tool_use():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_pre_tool_use(
-            correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
-        )
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("pre_tool_use", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_pre_tool_use(
+                correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
+            )
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state_changed": result.state_changed,
-                "new_state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("pre_tool_use", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state_changed": result.state_changed,
+                    "new_state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for pre_tool_use: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for pre_tool_use: {e}")
@@ -679,26 +719,32 @@ def hook_permission_request():
 
     try:
         correlation = correlate_session(session_id, working_directory, headspace_session_id, tmux_pane_id=tmux_pane)
-        _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
-        result = process_permission_request(
-            correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
-        )
 
-        latency_ms = int((time.time() - start_time) * 1000)
-        _log_hook_event("permission_request", session_id, latency_ms)
+        with advisory_lock(LockNamespace.AGENT, correlation.agent.id):
+            _backfill_tmux_pane(correlation.agent, tmux_pane, tmux_session)
+            result = process_permission_request(
+                correlation.agent, session_id, tool_name=tool_name, tool_input=tool_input
+            )
 
-        if result.success:
-            return jsonify({
-                "status": "ok",
-                "agent_id": result.agent_id,
-                "state_changed": result.state_changed,
-                "new_state": result.new_state,
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": result.error_message,
-            }), 500
+            latency_ms = int((time.time() - start_time) * 1000)
+            _log_hook_event("permission_request", session_id, latency_ms)
+
+            if result.success:
+                return jsonify({
+                    "status": "ok",
+                    "agent_id": result.agent_id,
+                    "state_changed": result.state_changed,
+                    "new_state": result.new_state,
+                }), 200
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error_message,
+                }), 500
+
+    except AdvisoryLockError as e:
+        logger.warning(f"Advisory lock timeout for permission_request: {e}")
+        return jsonify({"status": "error", "message": "Lock contention timeout"}), 503
 
     except ValueError as e:
         logger.warning(f"Session correlation failed for permission_request: {e}")

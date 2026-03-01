@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from ..database import db
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
+from .advisory_lock import LockNamespace, advisory_lock_or_skip
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
 from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
@@ -24,24 +25,33 @@ logger = logging.getLogger(__name__)
 # 120s is generous enough to catch delayed JSONL writes without matching stale turns.
 MATCH_WINDOW_SECONDS = 120
 
-# Per-agent reconciliation locks to prevent concurrent reconciliation
-# (manual endpoint + watchdog racing).
-_reconcile_locks: dict[int, threading.Lock] = {}
-_reconcile_locks_guard = threading.Lock()
 
+def get_reconcile_lock(agent_id: int):
+    """DEPRECATED: No-op stub for backward compatibility.
 
-def get_reconcile_lock(agent_id: int) -> threading.Lock:
-    """Get or create a per-agent reconciliation lock."""
-    with _reconcile_locks_guard:
-        if agent_id not in _reconcile_locks:
-            _reconcile_locks[agent_id] = threading.Lock()
-        return _reconcile_locks[agent_id]
+    Advisory locks now handle reconciliation serialisation.
+    Returns a dummy object whose acquire() always returns True
+    and release() is a no-op, so existing callers (tmux_watchdog)
+    continue to work until they are updated.
+    """
+    class _DummyLock:
+        def acquire(self, blocking=True, timeout=-1):
+            return True
+        def release(self):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+    return _DummyLock()
 
 
 def remove_reconcile_lock(agent_id: int) -> None:
-    """Remove a per-agent reconciliation lock (cleanup on session end / reap)."""
-    with _reconcile_locks_guard:
-        _reconcile_locks.pop(agent_id, None)
+    """DEPRECATED: No-op stub for backward compatibility.
+
+    Advisory locks handle cleanup automatically.
+    """
+    pass
 
 
 def reconcile_transcript_entries(agent, command, entries):

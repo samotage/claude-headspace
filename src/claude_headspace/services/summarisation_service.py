@@ -129,6 +129,46 @@ class SummarisationService:
             logger.debug(f"Skipping turn summarisation for turn {turn.id}: empty text")
             return None
 
+        # Row-level dedup: SELECT ... FOR UPDATE NOWAIT to prevent concurrent
+        # summarisation of the same turn. If another thread holds the row lock,
+        # we skip immediately instead of making a duplicate LLM call.
+        if db_session and hasattr(turn, 'id') and turn.id:
+            try:
+                from sqlalchemy.orm import Session as SASession
+                from ..models.turn import Turn as TurnModel
+
+                # Only attempt row lock with a real SQLAlchemy session
+                if isinstance(db_session, SASession):
+                    locked_turn = (
+                        db_session.query(TurnModel)
+                        .filter(TurnModel.id == turn.id)
+                        .with_for_update(nowait=True)
+                        .first()
+                    )
+                    if locked_turn and isinstance(locked_turn.summary, str) and locked_turn.summary:
+                        # Another thread completed summarisation while we waited
+                        return locked_turn.summary
+                    if locked_turn:
+                        turn = locked_turn
+            except Exception as e:
+                # OperationalError from FOR UPDATE NOWAIT = another thread has the row
+                error_str = str(e)
+                if "could not obtain lock" in error_str or "lock not available" in error_str:
+                    logger.debug(
+                        f"Turn {turn.id} row locked by another thread — skipping summarisation"
+                    )
+                    try:
+                        db_session.rollback()
+                    except Exception:
+                        pass
+                    return None
+                # Other errors: log and continue without the row lock
+                logger.debug(f"FOR UPDATE NOWAIT failed for turn {turn.id}: {e}")
+                try:
+                    db_session.rollback()
+                except Exception:
+                    pass
+
         # Trivial input bypass: skip LLM for slash commands and short confirmations
         trivial = self._check_trivial_input(turn)
         if trivial is not None:

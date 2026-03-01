@@ -17,6 +17,7 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
+from .advisory_lock import LockNamespace, advisory_lock
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,8 @@ def _run_deferred_stop(
 
     state = get_agent_hook_state()
 
-    # Poll for transcript content with backoff
+    # Phase 1: Sleep/retry loop WITHOUT holding the advisory lock.
+    # The lock is only needed for state mutation, not for polling.
     delays = [0.5, 1.0, 1.5, 2.0]  # Total: 5s max
     agent_text = ""
     for delay in delays:
@@ -225,10 +227,57 @@ def _run_deferred_stop(
         if agent_text:
             break
 
+    # Phase 2: Acquire advisory lock BEFORE any state mutation.
+    # Re-check command state after acquisition in case session_end
+    # completed the command while we were waiting for the lock.
+    with advisory_lock(LockNamespace.AGENT, agent_id):
+        cmd = db.session.get(Command, command_id)
+        if not cmd:
+            return
+        db.session.refresh(cmd)
+        if cmd.state == CommandState.COMPLETE:
+            logger.info(
+                f"deferred_stop: agent_id={agent_id}, "
+                f"command already COMPLETE after lock acquisition — skipping"
+            )
+            return
+
+        agent_obj = db.session.get(Agent, agent_id)
+        if not agent_obj:
+            return
+
+        _run_deferred_stop_locked(
+            app=app,
+            agent_id=agent_id,
+            agent_obj=agent_obj,
+            cmd=cmd,
+            agent_text=agent_text,
+            command_id=command_id,
+            project_id=project_id,
+            state=state,
+            delays=delays,
+        )
+
+
+def _run_deferred_stop_locked(
+    app,
+    agent_id: int,
+    agent_obj,
+    cmd,
+    agent_text: str,
+    command_id: int,
+    project_id: int,
+    state,
+    delays: list,
+) -> None:
+    """Core deferred stop logic, called while holding the advisory lock."""
+    from .card_state import broadcast_card_refresh
+    from .intent_detector import detect_agent_intent
+
     logger.info(
         f"deferred_stop: agent_id={agent_id}, "
         f"transcript_retry: len={len(agent_text) if agent_text else 0}, "
-        f"polls={delays.index(delay) + 1 if agent_text else len(delays)}"
+        f"polls={len(delays)}"
     )
     if not agent_text:
         # Still empty — complete with no transcript

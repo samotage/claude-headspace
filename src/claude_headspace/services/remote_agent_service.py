@@ -18,6 +18,7 @@ from ..models.agent import Agent
 from ..models.project import Project
 from .agent_lifecycle import create_agent, shutdown_agent
 from .persona_assets import GuardrailValidationError, validate_guardrails_content
+from .advisory_lock import LockNamespace, advisory_lock
 from .session_token import SessionTokenService
 
 logger = logging.getLogger(__name__)
@@ -197,39 +198,46 @@ class RemoteAgentService:
                 error_message=f"Agent did not become ready within {timeout} seconds",
             )
 
-        # 4. Send initial prompt via tmux bridge
-        from . import tmux_bridge
+        # 4. Send initial prompt via tmux bridge.
+        # Acquire advisory lock around the readiness-to-send window to prevent
+        # race conditions between the initial prompt delivery and concurrent
+        # hook events that might modify agent state.
+        with advisory_lock(LockNamespace.AGENT, agent.id):
+            # Refresh agent to get latest state after lock acquisition
+            db.session.refresh(agent)
 
-        app = self._app or current_app._get_current_object()
-        config = app.config.get("APP_CONFIG", {})
-        bridge_config = config.get("tmux_bridge", {})
-        subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
-        text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
+            from . import tmux_bridge
 
-        send_result = tmux_bridge.send_text(
-            pane_id=agent.tmux_pane_id,
-            text=initial_prompt,
-            timeout=subprocess_timeout,
-            text_enter_delay_ms=text_enter_delay_ms,
-            verify_enter=True,
-        )
+            app = self._app or current_app._get_current_object()
+            config = app.config.get("APP_CONFIG", {})
+            bridge_config = config.get("tmux_bridge", {})
+            subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
+            text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
 
-        if not send_result.success:
-            logger.warning(
-                f"Remote agent initial prompt delivery failed: agent_id={agent.id}, "
-                f"error={send_result.error_message}"
+            send_result = tmux_bridge.send_text(
+                pane_id=agent.tmux_pane_id,
+                text=initial_prompt,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
             )
-            # Agent is created but prompt failed — still return success
-            # with a note. The calling app can retry via the embed view.
 
-        # 5. Generate session token
-        token_service = self._get_token_service()
-        session_token = token_service.generate(
-            agent_id=agent.id,
-            feature_flags=feature_flags or {},
-        )
+            if not send_result.success:
+                logger.warning(
+                    f"Remote agent initial prompt delivery failed: agent_id={agent.id}, "
+                    f"error={send_result.error_message}"
+                )
+                # Agent is created but prompt failed — still return success
+                # with a note. The calling app can retry via the embed view.
 
-        # 6. Build embed URL
+            # 5. Generate session token
+            token_service = self._get_token_service()
+            session_token = token_service.generate(
+                agent_id=agent.id,
+                feature_flags=feature_flags or {},
+            )
+
+        # 6. Build embed URL (outside lock — no DB state needed)
         application_url = config.get("server", {}).get(
             "application_url", "https://localhost:5055"
         )

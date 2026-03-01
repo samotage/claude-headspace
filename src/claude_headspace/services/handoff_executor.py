@@ -29,13 +29,14 @@ from flask import current_app
 from ..database import db
 from ..models.agent import Agent
 from ..models.handoff import Handoff
+from .advisory_lock import LockNamespace, advisory_lock
 
 logger = logging.getLogger(__name__)
 
 # In-memory tracking of agents with handoff in progress.
 # Maps agent_id -> handoff metadata dict.
 _handoff_in_progress: dict[int, dict] = {}
-_handoff_lock = threading.Lock()
+_handoff_in_progress_lock = threading.Lock()  # Protects the dict only, not business logic
 
 # Polling configuration
 POLL_INTERVAL_SECONDS = 3
@@ -191,12 +192,22 @@ class HandoffExecutor:
         and starts a background polling thread to detect the handoff file.
         Returns immediately.
 
+        Uses advisory_lock(AGENT, agent_id) to prevent concurrent handoff
+        initiation for the same agent.
+
         Args:
             agent_id: ID of the agent to hand off.
             reason: Reason for the handoff (e.g., "manual", "context_limit", "voice").
             context: Optional user-provided context to include in the handoff
                 instruction (e.g., additional notes for the successor).
         """
+        with advisory_lock(LockNamespace.AGENT, agent_id):
+            return self._trigger_handoff_locked(agent_id, reason, context)
+
+    def _trigger_handoff_locked(
+        self, agent_id: int, reason: str, context: str | None = None
+    ) -> HandoffResult:
+        """Inner handoff trigger, called while holding the advisory lock."""
         # Validate preconditions
         validation = self.validate_preconditions(agent_id)
         if not validation.success:
@@ -237,7 +248,7 @@ class HandoffExecutor:
             )
 
         # Set handoff-in-progress flag
-        with _handoff_lock:
+        with _handoff_in_progress_lock:
             _handoff_in_progress[agent_id] = {
                 "file_path": file_path,
                 "reason": reason,
@@ -449,12 +460,12 @@ class HandoffExecutor:
 
     def is_handoff_in_progress(self, agent_id: int) -> bool:
         """Check if a handoff is in progress for the given agent."""
-        with _handoff_lock:
+        with _handoff_in_progress_lock:
             return agent_id in _handoff_in_progress
 
     def get_handoff_metadata(self, agent_id: int) -> dict | None:
         """Get handoff metadata for an agent, or None if no handoff in progress."""
-        with _handoff_lock:
+        with _handoff_in_progress_lock:
             return _handoff_in_progress.get(agent_id)
 
     def continue_after_stop(self, agent: Agent) -> HandoffResult:
@@ -597,7 +608,7 @@ class HandoffExecutor:
 
     def _clear_handoff_flag(self, agent_id: int) -> None:
         """Remove the handoff-in-progress flag for an agent."""
-        with _handoff_lock:
+        with _handoff_in_progress_lock:
             _handoff_in_progress.pop(agent_id, None)
 
     def _broadcast_error(self, agent: Agent, message: str) -> None:
@@ -703,5 +714,5 @@ class HandoffExecutor:
 
 def reset_handoff_state() -> None:
     """Clear all handoff-in-progress flags (for testing)."""
-    with _handoff_lock:
+    with _handoff_in_progress_lock:
         _handoff_in_progress.clear()
