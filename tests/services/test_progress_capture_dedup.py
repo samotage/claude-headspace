@@ -103,50 +103,14 @@ def _make_jsonl_entry(role="assistant", content="Test content", ts=None):
 
 
 # ---------------------------------------------------------------------------
-# Test: per-agent progress capture lock
+# Test: per-agent progress capture lock (REMOVED)
 # ---------------------------------------------------------------------------
-
-
-class TestProgressCaptureLock:
-    """Verify per-agent lock infrastructure in AgentHookState."""
-
-    def test_same_agent_returns_same_lock(self):
-        state = AgentHookState()
-        lock1 = state.get_progress_capture_lock(42)
-        lock2 = state.get_progress_capture_lock(42)
-        assert lock1 is lock2
-
-    def test_different_agents_get_different_locks(self):
-        state = AgentHookState()
-        lock1 = state.get_progress_capture_lock(1)
-        lock2 = state.get_progress_capture_lock(2)
-        assert lock1 is not lock2
-
-    def test_session_end_cleans_up_lock(self):
-        state = AgentHookState()
-        lock1 = state.get_progress_capture_lock(42)
-        state.on_session_end(42)
-        lock2 = state.get_progress_capture_lock(42)
-        # New lock created after cleanup
-        assert lock1 is not lock2
-
-    def test_reset_clears_all_locks(self):
-        state = AgentHookState()
-        lock1 = state.get_progress_capture_lock(1)
-        lock2 = state.get_progress_capture_lock(2)
-        state.reset()
-        lock3 = state.get_progress_capture_lock(1)
-        assert lock1 is not lock3
-
-    def test_lock_is_reentrant_safe(self):
-        """Lock can be acquired and released without deadlock."""
-        state = AgentHookState()
-        lock = state.get_progress_capture_lock(42)
-        assert lock.acquire(timeout=1.0)
-        lock.release()
-        # Can acquire again
-        assert lock.acquire(timeout=1.0)
-        lock.release()
+# The in-memory per-agent progress capture lock (get_progress_capture_lock)
+# was removed as part of the advisory locking change. Serialisation is now
+# provided by PostgreSQL advisory locks (advisory_lock(AGENT, agent.id))
+# acquired at the hook route level. See advisory_lock.py and
+# tests/services/test_advisory_lock.py for the replacement tests.
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

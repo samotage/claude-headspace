@@ -1,5 +1,6 @@
 """Tests for the hooks API routes."""
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,22 @@ from src.claude_headspace.services.hook_receiver import (
     HookReceiverState,
 )
 from src.claude_headspace.services.session_correlator import CorrelationResult
+
+
+@contextmanager
+def _noop_advisory_lock(*args, **kwargs):
+    """No-op context manager replacing advisory_lock for route-level tests."""
+    yield
+
+
+@pytest.fixture(autouse=True)
+def mock_advisory_lock():
+    """Mock advisory_lock so route tests don't need a real database."""
+    with patch(
+        "src.claude_headspace.routes.hooks.advisory_lock",
+        side_effect=_noop_advisory_lock,
+    ):
+        yield
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 """Config editor service for validation and persistence."""
 
+import fcntl
 import logging
 import os
 import tempfile
@@ -553,7 +554,11 @@ def save_config_file(
     config_path: str | Path = "config.yaml",
 ) -> tuple[bool, str | None]:
     """
-    Save configuration to YAML file atomically.
+    Save configuration to YAML file atomically with file-level locking.
+
+    Uses fcntl.flock() to prevent TOCTOU races between concurrent config
+    saves (e.g. two dashboard tabs saving at the same time). The lock file
+    is co-located with the config file.
 
     Writes to a temp file first, then renames to prevent corruption.
     Password values are never logged in error messages.
@@ -570,42 +575,55 @@ def save_config_file(
     # Resolve symlinks so we write to the actual file, not replace the symlink
     resolved_path = path.resolve()
 
+    # Use a lock file co-located with the config file
+    lock_path = resolved_path.parent / f".{resolved_path.name}.lock"
+
     try:
-        # Write to temporary file first (in the resolved file's directory)
-        fd, temp_path = tempfile.mkstemp(
-            suffix=".yaml",
-            prefix="config_",
-            dir=resolved_path.parent,
-        )
-
+        # Open (or create) the lock file and acquire an exclusive lock
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            with os.fdopen(fd, "w") as f:
-                yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-            # Atomic rename to the resolved path (preserves symlinks)
-            os.replace(temp_path, resolved_path)
+            # Write to temporary file first (in the resolved file's directory)
+            fd, temp_path = tempfile.mkstemp(
+                suffix=".yaml",
+                prefix="config_",
+                dir=resolved_path.parent,
+            )
 
-            # Restrict file permissions (config may contain passwords)
-            os.chmod(resolved_path, 0o600)
+            try:
+                with os.fdopen(fd, "w") as f:
+                    yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
 
-            # Log success without sensitive data
-            logger.info(f"Configuration saved to {resolved_path}")
-            return True, None
+                # Atomic rename to the resolved path (preserves symlinks)
+                os.replace(temp_path, resolved_path)
 
-        except Exception as e:
-            # Clean up temp file on error
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-            raise
+                # Restrict file permissions (config may contain passwords)
+                os.chmod(resolved_path, 0o600)
+
+                # Log success without sensitive data
+                logger.info(f"Configuration saved to {resolved_path}")
+                return True, None
+
+            except Exception:
+                # Clean up temp file on error
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                raise
+
+        finally:
+            # Release the lock and close the lock file descriptor
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
 
     except PermissionError:
         error_msg = f"Permission denied writing to {path}"
         logger.error(error_msg)
         return False, error_msg
 
-    except Exception as e:
+    except Exception:
         # Never log config values (may contain password)
-        error_msg = f"Failed to save configuration: {type(e).__name__}"
+        error_msg = f"Failed to save configuration: {type(Exception).__name__}"
         logger.error(error_msg)
         return False, error_msg
 

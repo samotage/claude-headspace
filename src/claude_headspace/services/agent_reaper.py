@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask
 
 from ..config import get_value
+from .advisory_lock import LockNamespace, advisory_lock_or_skip
 
 logger = logging.getLogger(__name__)
 
@@ -291,39 +292,54 @@ class AgentReaper:
                         result.skipped_alive += 1
                         continue
 
-                # Reap the agent
-                self._reap_agent(agent, reap_reason, now)
-                result.reaped += 1
-                result.details.append(ReapDetail(
-                    agent_id=agent.id,
-                    session_uuid=str(agent.session_uuid),
-                    reason=reap_reason,
-                ))
+                # Reap the agent inside its own advisory lock + commit scope.
+                # advisory_lock_or_skip ensures the reaper skips agents
+                # currently being processed by hook routes.
+                with advisory_lock_or_skip(LockNamespace.AGENT, agent.id) as acquired:
+                    if not acquired:
+                        result.skipped_alive += 1
+                        logger.debug(
+                            f"REAPER_SKIP agent_id={agent.id}: advisory lock held — skipping"
+                        )
+                        continue
 
-            if result.reaped > 0:
-                db.session.commit()
-                # Broadcast card_refresh for each reaped agent (after commit)
-                try:
-                    from .card_state import broadcast_card_refresh
+                    # Re-check after lock acquisition — another hook may have
+                    # already ended this agent while we waited.
+                    db.session.refresh(agent)
+                    if agent.ended_at is not None:
+                        result.skipped_alive += 1
+                        continue
 
-                    for detail in result.details:
-                        agent_obj = db.session.get(Agent, detail.agent_id)
-                        if agent_obj:
-                            broadcast_card_refresh(agent_obj, f"reaper_{detail.reason}")
-                except Exception as e:
-                    logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
+                    self._reap_agent(agent, reap_reason, now)
+                    result.reaped += 1
+                    result.details.append(ReapDetail(
+                        agent_id=agent.id,
+                        session_uuid=str(agent.session_uuid),
+                        reason=reap_reason,
+                    ))
 
-                # Execute pending summarisations (after commit)
-                if self._pending_summarisations:
+                    # Commit inside lock scope so the state change is
+                    # visible before the lock is released.
+                    db.session.commit()
+
+                    # Broadcast card_refresh (after commit, still inside lock)
                     try:
-                        summarisation_svc = self._app.extensions.get("summarisation_service")
-                        if summarisation_svc:
-                            from ..database import db as _db
-                            summarisation_svc.execute_pending(self._pending_summarisations, _db.session)
+                        from .card_state import broadcast_card_refresh
+                        broadcast_card_refresh(agent, f"reaper_{reap_reason}")
                     except Exception as e:
-                        logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
-                    finally:
-                        self._pending_summarisations = []
+                        logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
+
+                    # Execute pending summarisations (after commit)
+                    if self._pending_summarisations:
+                        try:
+                            summarisation_svc = self._app.extensions.get("summarisation_service")
+                            if summarisation_svc:
+                                from ..database import db as _db
+                                summarisation_svc.execute_pending(self._pending_summarisations, _db.session)
+                        except Exception as e:
+                            logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
+                        finally:
+                            self._pending_summarisations = []
 
         return result
 

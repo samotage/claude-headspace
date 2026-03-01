@@ -588,23 +588,14 @@ def reset_receiver_state() -> None:
 # This wrapper provides the default AgentHookState for callers within this module.
 
 def _capture_progress_text(agent: Agent, current_command) -> None:
-    """Wrapper that serialises progress capture per agent.
+    """Capture progress text from the agent's transcript.
 
-    Acquires a per-agent lock so concurrent hooks (e.g. post_tool_use +
-    pre_tool_use firing within ms) cannot both create PROGRESS turns from
-    the same JSONL entries (TOCTOU race).
+    Previously used a per-agent in-memory lock for serialisation.
+    Now relies on the advisory lock held by the hook route caller
+    (all 8 hook routes acquire advisory_lock(AGENT, agent.id)).
     """
     state = get_agent_hook_state()
-    lock = state.get_progress_capture_lock(agent.id)
-    if not lock.acquire(timeout=5.0):
-        logger.warning(
-            f"progress_capture: agent_id={agent.id}, lock timeout — skipping"
-        )
-        return
-    try:
-        _capture_progress_text_impl(agent, current_command, state)
-    finally:
-        lock.release()
+    _capture_progress_text_impl(agent, current_command, state)
 
 
 # --- Deferred stop handler (INT-H1: non-blocking transcript retry) ---

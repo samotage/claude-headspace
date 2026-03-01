@@ -1,5 +1,6 @@
 """Tests for ContextPoller service."""
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,22 @@ from src.claude_headspace.services.context_poller import (
     _compute_tier,
     DEBOUNCE_SECONDS,
 )
+
+
+@contextmanager
+def _noop_advisory_lock_or_skip(*args, **kwargs):
+    """No-op context manager replacing advisory_lock_or_skip for unit tests."""
+    yield True
+
+
+@pytest.fixture(autouse=True)
+def mock_advisory_lock():
+    """Mock advisory_lock_or_skip so context poller tests don't need a real database."""
+    with patch(
+        "src.claude_headspace.services.context_poller.advisory_lock_or_skip",
+        side_effect=_noop_advisory_lock_or_skip,
+    ):
+        yield
 
 
 # ── Tier computation tests ──────────────────────────────────────────

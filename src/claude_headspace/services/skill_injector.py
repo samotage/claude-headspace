@@ -118,6 +118,15 @@ def inject_persona_skills(agent) -> bool:
         )
         return False
 
+    # Defence in depth: refresh agent from DB to get the latest
+    # prompt_injected_at value, guarding against stale ORM reads
+    # when concurrent hooks race to inject.
+    try:
+        from ..database import db
+        db.session.refresh(agent)
+    except Exception:
+        pass  # Proceed with existing state if refresh fails
+
     # DB-level idempotency: skip if already injected
     if getattr(agent, "prompt_injected_at", None) is not None:
         logger.debug(

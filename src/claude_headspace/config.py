@@ -28,7 +28,8 @@ DEFAULTS = {
         "name": "claude_headspace",
         "user": "postgres",
         "password": "",
-        "pool_size": 10,
+        "pool_size": 15,
+        "max_overflow": 10,
         "pool_timeout": 30,
     },
     "claude": {

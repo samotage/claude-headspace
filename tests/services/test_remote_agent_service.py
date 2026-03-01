@@ -1,5 +1,6 @@
 """Tests for the remote agent service."""
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,22 @@ from claude_headspace.services.remote_agent_service import (
     RemoteAgentResult,
 )
 from claude_headspace.services.session_token import SessionTokenService
+
+
+@contextmanager
+def _noop_advisory_lock(*args, **kwargs):
+    """No-op context manager replacing advisory_lock for unit tests."""
+    yield
+
+
+@pytest.fixture(autouse=True)
+def mock_advisory_lock():
+    """Mock advisory_lock so remote agent tests don't need a real database."""
+    with patch(
+        "claude_headspace.services.remote_agent_service.advisory_lock",
+        side_effect=_noop_advisory_lock,
+    ):
+        yield
 
 
 @pytest.fixture

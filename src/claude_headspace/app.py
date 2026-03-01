@@ -600,6 +600,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
+    from .routes.debug import debug_bp
     from .routes.focus import focus_bp
     from .routes.headspace import headspace_bp
     from .routes.health import health_bp
@@ -627,6 +628,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(brain_reboot_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(debug_bp)
     app.register_blueprint(focus_bp)
     app.register_blueprint(headspace_bp)
     app.register_blueprint(health_bp)

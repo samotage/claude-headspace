@@ -32,7 +32,7 @@ class TestDatabaseConfigDefaults:
         assert db_defaults["name"] == "claude_headspace"
         assert db_defaults["user"] == "postgres"
         assert db_defaults["password"] == ""
-        assert db_defaults["pool_size"] == 10
+        assert db_defaults["pool_size"] == 15
         assert db_defaults["pool_timeout"] == 30
 
     def test_load_config_has_database_defaults(self):
