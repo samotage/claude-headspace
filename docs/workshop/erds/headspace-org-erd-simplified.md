@@ -1,8 +1,8 @@
 # Claude Headspace — Organisational Model ERD (Simplified)
 
-**Date:** 16 February 2026
+**Date:** 16 February 2026 (updated 1 March 2026 — Organisation Workshop decisions)
 **Status:** Simplified view — entities and relationships only, no field details
-**Note:** Agent, Task, and Turn are existing Headspace 3.1 entities. SkillFile and ExperienceLog are version-managed files in the repo, not database tables. See headspace-org-erd-full.md for field-level detail.
+**Note:** Agent, Task, and Turn are existing Headspace 3.1 entities. SkillFile, ExperienceLog, and IntentFile are version-managed files, not database tables. See headspace-org-erd-full.md for field-level detail.
 
 ---
 
@@ -11,8 +11,9 @@ erDiagram
     Persona ||--o{ SkillFile : "has (file ref)"
     Persona ||--o{ ExperienceLog : "has (file ref)"
     Persona ||--o{ PositionAssignment : "fills"
+    Persona }o--|| Role : "has"
 
-    Organisation ||--o{ Role : "defines"
+    Organisation ||--o| IntentFile : "has (file ref)"
     Organisation ||--o{ Position : "contains"
 
     Position }o--|| Role : "has"
@@ -35,14 +36,15 @@ erDiagram
 
 | Entity | Type | New or Existing |
 |--------|------|-----------------|
-| Persona | DB table | New |
-| Organisation | DB table | New |
-| Role | DB table | New |
+| Persona | DB table | New (has slug: `{role}-{name}-{id}`) |
+| Organisation | DB table | New (has purpose + slug: `{purpose}-{name}-{id}`) |
+| Role | DB table | New (global, not org-scoped) |
 | Position | DB table | New (self-referential hierarchy) |
 | PositionAssignment | DB join table | New (lifecycle via timestamps, availability derived from Agent) |
 | Handoff | DB table | New (content container, belongs to outgoing agent) |
 | Agent | DB table | Existing — extended with persona_id, position_id, previous_agent_id (self-ref chain) |
 | Task | DB table | Existing — unchanged |
 | Turn | DB table | Existing — unchanged |
-| SkillFile | File reference | Version-managed file in repo |
-| ExperienceLog | File reference | Version-managed file in repo |
+| SkillFile | File reference | Version-managed file at `data/personas/{slug}/skill.md` |
+| ExperienceLog | File reference | Version-managed file at `data/personas/{slug}/experience.md` |
+| IntentFile | File reference | Version-managed file at `data/organisations/{slug}/intent.md` |

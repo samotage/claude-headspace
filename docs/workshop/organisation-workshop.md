@@ -1,7 +1,7 @@
 # Organisation — Design Workshop
 
 **Date:** 1 March 2026
-**Status:** Section 0 RESOLVED (codebase audit complete). Sections 1-9 pending workshop.
+**Status:** Sections 0–1 RESOLVED. Sections 2–9 pending workshop.
 **Inputs:**
 - `docs/conceptual/headspace-agent-teams-functional-outline.md` — Agent Teams vision and architecture layers
 - `docs/roadmap/claude_headspace_v3.1_epic8_detailed_roadmap.md` — Epic 8 sprint breakdown (18 sprints)
@@ -218,7 +218,7 @@ The code is complete and has 60+ passing unit/integration tests. What hasn't bee
 ---
 
 ### 1.1 Canonical Serialization Format
-- [ ] **Decision: What format do we use to represent an organisation structure — YAML, Markdown, or a hybrid?**
+- [x] **Decision: What format do we use to represent an organisation structure — YAML, Markdown, or a hybrid?**
 
 **Depends on:** None
 
@@ -246,12 +246,37 @@ The representation must support:
 - Kent's economy org needs the same format — it must be general enough for non-dev organisations
 - Over-engineering risk: do we really need two formats, or can one format serve both purposes?
 
-**Resolution:** _(Pending)_
+**Resolution:**
+
+**YAML as the canonical format.** Resolved 1 March 2026.
+
+**Format:** YAML is the sole serialization format for organisation structure. No Markdown view, no hybrid.
+
+**Rationale:**
+- YAML handles recursive/relational structures naturally (positions with `reports_to`, `escalates_to` self-references)
+- Round-trip fidelity is deterministic — YAML parses and emits without ambiguity
+- Agents interact via bash tools (CLI commands) which is their strongest interface
+- Markdown remains the format for *content* (skill files, experience logs, handoff docs) — each format used where it's strongest
+- Kent's economy org needs the same format, so it must be general enough for non-dev organisations — YAML's structured nature supports this
+
+**Delivery model:** On-demand generation. Agents run `flask org export` to get current state as YAML from the database. No persistent file on disk, no cache invalidation complexity. The database is the source of truth; YAML is the agent-facing window into it.
+
+**Agent workflow:**
+1. Agent runs CLI export → receives YAML snapshot of current org
+2. Agent reads YAML → understands structure, reporting, escalation, intent
+3. Agent proposes changes by generating modified YAML
+4. Agent feeds YAML to CLI import → DB updated (subject to AR Director governance — see 1.3)
+
+**Governance:** Org changes are managed by a dedicated AR Director persona (Paula). Other agents do not modify the org directly — they propose changes to Paula, who evaluates and applies them. This solves the guardrails problem organisationally rather than via technical access controls.
+
+**CLI scope:** The `flask org` CLI is the unified entry point for all organisation and persona operations. Existing `flask persona` commands will be migrated under `flask org persona` (one path, no ambiguity for agents). Worth a dedicated sprint.
+
+**Intent engineering:** The YAML includes per-organisation intent fields — what the org optimises for, what trade-offs are acceptable, what values must be protected. Different orgs have different intents (dev org: quality/robustness; economy org: revenue maximisation). Agents inherit intent context from their org definition. Inspired by Nate B. Jones's intent engineering framework (prompt engineering → context engineering → intent engineering).
 
 ---
 
 ### 1.2 Organisation Document Structure
-- [ ] **Decision: What sections and fields does the organisation document contain?**
+- [x] **Decision: What sections and fields does the organisation document contain?**
 
 **Depends on:** 1.1
 
@@ -270,12 +295,154 @@ But also needs to be readable as a "briefing document" for an agent — "here's 
 - How do we represent the hierarchy — nested YAML, flat with parent references, visual ASCII tree?
 - What's optional vs required?
 
-**Resolution:** _(Pending)_
+**Resolution:**
+
+**YAML document with four sections, composite sourcing.** Resolved 1 March 2026.
+
+The YAML export is a composite document assembled by the CLI from two sources:
+- **Database:** Organisation, Position, Role, PositionAssignment, Persona records
+- **Filesystem:** Intent document (Markdown, slugged to org), persona skill/experience file paths
+
+**Data source split:**
+- Structure (org, positions, roles, assignments) → DB (persistence, queryable, relational)
+- Intent (what to optimise for, trade-offs, constraints) → Filesystem as Markdown (prose-heavy, version-controlled, human-editable)
+- Persona content (skills, experience) → Referenced by file path, not inlined
+
+**Organisation identity:** Every organisation has a `purpose` field (domain/category: software-development, marketing, content, economy, etc.) and an auto-generated `slug` following the pattern `{purpose}-{name}-{id}` — identical mechanism to Persona's `{role}-{name}-{id}`. The slug is the filesystem path key for the org's asset directory and the unambiguous identifier used across CLI commands and YAML documents.
+
+**ID convention:** All IDs are prefixed with their entity type (`organisation_id`, `role_id`, `position_id`, `persona_id`, `persona_assignment_id`) for unambiguous self-documentation. These map directly to DB primary keys for bidirectional CLI operations.
+
+**Position assignments:** One persona per position at a time. If more capacity is needed, create more positions. A persona CAN hold multiple positions simultaneously (including across organisations) — they're software, not humans. The many-to-many lifecycle (history, reassignment, status) is managed internally by the PositionAssignment table and the AR Director (Paula). The YAML shows current state only. Historical assignments available via separate CLI command.
+
+**Reference structure:**
+
+```yaml
+# Organisation Definition
+# Generated by: flask org export --org development
+# Source: PostgreSQL + filesystem (merged)
+
+organisation:
+  organisation_id: 1
+  name: "Development"
+  purpose: software-development        # domain/category of the org
+  slug: software-development-development-1  # auto-generated: {purpose}-{name}-{id}
+  description: "Software development team for Claude Headspace"
+  status: active                       # active|dormant|archived
+
+  # Intent Engineering (sourced from: data/organisations/software-development-development-1/intent.md)
+  # What this org optimises for. Injected into agent context alongside persona skills.
+  # Different orgs have different intents (dev: quality; economy: revenue).
+  intent:
+    optimise_for:
+      - "Code quality and robustness"
+      - "Incremental, testable delivery"
+    protect:
+      - "Operator mental workload — reduce, don't increase"
+      - "Existing working functionality — don't break what works"
+    never_sacrifice:
+      - "Quality for speed"
+      - "Security for convenience"
+    constraints:
+      - "All changes must be independently testable against the running app"
+      - "Unit tests alone do not constitute verification"
+
+# Roles — global specialisation vocabulary (not org-scoped)
+roles:
+  - role_id: 1
+    name: architect
+    description: "System architecture, specification, post-implementation review"
+  - role_id: 2
+    name: pm
+    description: "Task decomposition, assignment, progress monitoring"
+  - role_id: 3
+    name: developer
+    description: "Implementation, code quality, testing"
+  - role_id: 4
+    name: qa
+    description: "Quality assurance, test design, acceptance validation"
+  - role_id: 5
+    name: ar-director
+    description: "Agentic resource management — personas, org structure, team composition"
+
+# Positions — org chart hierarchy
+# reports_to/escalates_to reference position titles within this org.
+# Null = reports/escalates directly to operator.
+positions:
+  - position_id: 1
+    title: "Principal Architect"
+    role: architect
+    level: 1
+    reports_to: null
+    escalates_to: null
+    is_cross_cutting: false
+    assignment:
+      persona_assignment_id: 1
+      persona_id: 3
+      persona_slug: architect-robbo-3
+      persona_name: Robbo
+      assigned_at: "2026-02-15T10:00:00Z"
+      skill_file: data/personas/architect-robbo-3/skill.md
+      experience_file: data/personas/architect-robbo-3/experience.md
+
+  - position_id: 2
+    title: "AR Director"
+    role: ar-director
+    level: 1
+    reports_to: null
+    escalates_to: "Principal Architect"
+    is_cross_cutting: true
+    assignment: null                   # Paula — to be created
+
+  - position_id: 3
+    title: "Project Manager"
+    role: pm
+    level: 2
+    reports_to: "Principal Architect"
+    escalates_to: "Principal Architect"
+    is_cross_cutting: false
+    assignment: null                   # Gavin — future
+
+  - position_id: 4
+    title: "Senior Developer"
+    role: developer
+    level: 3
+    reports_to: "Project Manager"
+    escalates_to: "Principal Architect"
+    is_cross_cutting: false
+    assignment: null
+
+  - position_id: 5
+    title: "Developer"
+    role: developer
+    level: 3
+    reports_to: "Project Manager"
+    escalates_to: "Project Manager"
+    is_cross_cutting: false
+    assignment: null
+
+  - position_id: 6
+    title: "QA Lead"
+    role: qa
+    level: 3
+    reports_to: "Project Manager"
+    escalates_to: "Principal Architect"
+    is_cross_cutting: false
+    assignment: null
+```
+
+**ERD alignment notes and model additions:**
+- **Organisation.purpose** — new field (not in ERD). Domain/category of the org (software-development, marketing, economy, etc.). Required on create.
+- **Organisation.slug** — new field (not in ERD). Auto-generated as `{purpose}-{name}-{id}`, same mechanism as Persona. Filesystem path key for `data/organisations/{slug}/`.
+- **PositionAssignment** table must be built (exists in ERD, not yet implemented). Required for persona-to-position binding with lifecycle tracking.
+- Role remains global (no org_id FK). ERD designed org-scoped roles but global is sufficient — same role vocabulary across orgs.
+- Persona.slug (implementation addition, not in ERD) serves as the filesystem path key and agent-readable identifier.
+- Agent.position_id CASCADE→SET NULL migration confirmed for Phase 2 activation.
+- Role.role_type and Role.can_use_tools from ERD not yet needed — defer until a use case demands them.
 
 ---
 
 ### 1.3 CLI Interface Design
-- [ ] **Decision: What CLI commands do we provide for organisation management, and what's the interaction model?**
+- [x] **Decision: What CLI commands do we provide for organisation management, and what's the interaction model?**
 
 **Depends on:** 1.1, 1.2
 
@@ -294,12 +461,91 @@ The CLI also serves the operator for initial org design and ongoing management.
 - Query commands: `flask org show`, `flask org tree`, `flask org position <title>`?
 - How does this integrate with the existing `flask persona` CLI?
 
-**Resolution:** _(Pending)_
+**Resolution:**
+
+**`flask org` as unified CLI entry point with six subgroups.** Resolved 1 March 2026.
+
+**Architecture:** `flask org` is the single entry point for all organisation, position, role, persona, and assignment operations. The existing `flask persona` commands are deprecated and migrated under `flask org persona` (one path, no ambiguity — worth a dedicated migration sprint). The AR Director persona (Paula) is the primary agent user of org-modifying commands; all agents use read/query commands.
+
+**Output format:** YAML to stdout by default for structural queries. Commands that produce YAML write to stdout; commands that consume YAML accept `--file` or stdin. Unix pipe support is a design principle.
+
+**Command group structure:**
+
+```
+flask org
+├── create / list / update / archive / status / export / import / validate / tree / whoami
+├── role
+│   └── create / list / update
+├── position
+│   └── create / list / show / update / remove
+├── persona
+│   └── create / list / show / update / archive / skill / experience
+├── assign / unassign / assignments / vacancies / available-personas / assess-fit
+└── intent
+    └── read / write
+```
+
+**v1 Core commands:**
+
+| Command | Purpose | Notes |
+|---|---|---|
+| `flask org create` | Create new organisation | `--name`, `--purpose`, `--description`. Creates DB record + org directory with intent.md |
+| `flask org list` | List all organisations | Summary view |
+| `flask org update` | Update org metadata | `--org`, `--description`, `--status` |
+| `flask org archive` | Archive an organisation | Reversible via update |
+| `flask org status` | Org health summary | Positions total/filled/vacant, active agents |
+| `flask org export` | On-demand YAML generation | `--org` accepts name or slug (slug is unambiguous, e.g. `software-development-development-1`). Merges DB structure + filesystem intent (from org slug directory) + persona file paths |
+| `flask org import` | Create/update from YAML | `--file` or stdin. `--preview` shows diff. `--atomic` for all-or-nothing (default) |
+| `flask org validate` | Check YAML before import | Structural correctness: circular refs, missing roles, orphaned positions |
+| `flask org tree` | ASCII hierarchy view | `--org` required. Shows reporting lines, assignees, vacancies |
+| `flask org whoami` | Agent's quick-reference card | `--persona-slug` required. Returns: position, reporting line, escalation path, org intent, peers |
+| `flask org role create` | Create a role | `--name`, `--description`. Roles are global (not org-scoped) |
+| `flask org role list` | List all roles | Global list |
+| `flask org role update` | Update role metadata | `--name`, `--description` |
+| `flask org position create` | Create position in org | `--org`, `--title`, `--role`, `--level`, `--reports-to`, `--escalates-to`, `--is-cross-cutting` |
+| `flask org position list` | List positions in org | `--org` required |
+| `flask org position show` | Position detail | `--org`, `--title` or `--position-id`. Returns assignee, reporting line, direct reports |
+| `flask org position update` | Update position | `--position-id`, fields to change |
+| `flask org position remove` | Remove position | `--position-id`. `--preview` shows blast radius. `--reparent` reassigns direct reports to parent. Error if has reports and no `--reparent` |
+| `flask org persona create` | Create persona | `--name`, `--role`. Creates DB record + filesystem assets (skill.md, experience.md) |
+| `flask org persona list` | List personas | `--active`, `--role` filters |
+| `flask org persona show` | Persona dossier | `--slug`. Returns: name, role, positions across all orgs, active agents, file paths |
+| `flask org persona update` | Update persona | `--slug`, fields to change. `--status active` reactivates archived personas |
+| `flask org persona archive` | Archive persona | `--slug`. Error if assigned to positions (use `--unassign` to force) |
+| `flask org persona skill` | Read skill file | `--slug`. Outputs skill.md content. `--write` accepts stdin/`--file` for updates |
+| `flask org persona experience` | Read/append experience | `--slug`. Outputs experience.md. `--append` adds content |
+| `flask org assign` | Assign persona to position | `--position-id`, `--persona-slug`. Error if position filled (use `--reassign` to displace) |
+| `flask org unassign` | Remove persona from position | `--position-id` |
+| `flask org assignments` | Current assignments | `--org`. `--include-history` for lifecycle records. `--persona-slug` filters by persona |
+| `flask org vacancies` | Unfilled positions | `--org` |
+| `flask org available-personas` | Unassigned personas | Personas not holding any position |
+| `flask org assess-fit` | Fitness assessment evidence | `--position-id`, `--persona-slug`. Outputs position role + org intent + persona skills side-by-side for Paula's evaluation |
+| `flask org intent read` | Output intent document | `--org` |
+| `flask org intent write` | Write intent document | `--org`. Accepts `--file` or stdin |
+
+**Design principles:**
+
+1. **Discoverable.** Every command group supports `--help`. Top-level `flask org --help` shows the full command tree. Subgroups show their commands. Individual commands show their flags. An agent running `flask org --help` can discover the entire CLI surface.
+2. **Explicit over implicit.** Destructive operations require explicit flags (`--reassign`, `--unassign`, `--reparent`). No silent cascading. Default is to error and explain what flag to use.
+3. **Preview before apply.** Import and destructive operations support `--preview` to show impact before execution.
+4. **Atomic imports.** `flask org import` is atomic by default (all-or-nothing rollback on failure).
+5. **Unix pipes.** Commands that produce YAML write to stdout. Commands that consume YAML accept stdin. `flask org export | flask org validate` works.
+6. **Self-documenting IDs.** Output uses prefixed IDs (`position_id: 3`, `persona_id: 7`) consistent with the YAML document structure (Decision 1.2).
+7. **`--org` accepts name or slug.** Slug (e.g., `software-development-development-1`) is unambiguous. Name (e.g., `Development`) is convenient but errors if multiple orgs share the same name. Slug is the recommended form for scripts and agent automation.
+
+**Migration plan:** Existing `flask persona register` and `flask persona list` commands are deprecated. A dedicated sprint migrates all functionality under `flask org persona`. Old commands are removed (not aliased) to prevent agents from using outdated paths.
+
+**Deferred to future sprints:**
+- Export filtering (`--positions-only`, `--role developer`)
+- Output format flag (`--format yaml|json|markdown`)
+- Cross-org queries (`flask org compare`)
+- Point-in-time export (`--at "2026-02-15"`)
+- Mermaid/diagram output from `flask org tree`
 
 ---
 
 ### 1.4 Database ↔ File Round-Trip Mechanics
-- [ ] **Decision: How does the import/export cycle work, and how do we handle conflicts and updates?**
+- [x] **Decision: How does the import/export cycle work, and how do we handle conflicts and updates?**
 
 **Depends on:** 1.1, 1.2, 1.3
 
@@ -317,12 +563,58 @@ This is non-trivial. Consider: operator exports org, modifies YAML, re-imports. 
 - Do we need a diff/preview before applying an import? (probably yes)
 - What happens to DB records that exist but aren't in the import file? (orphan handling)
 
-**Resolution:** _(Pending)_
+**Resolution:**
+
+**DB is source of truth. Export is on-demand composite. Import is atomic with preview.** Resolved 1 March 2026.
+
+**Source of truth split:**
+
+| Data Category | Source of Truth | Examples |
+|---|---|---|
+| **Structure** | Database | Organisation, Position, Role, PositionAssignment records |
+| **Content** | Filesystem | Intent documents (Markdown), persona skill/experience files |
+| **Runtime** | Database (derived) | Active agents, current sessions, agent state — NOT in YAML, NOT importable |
+
+**Export flow:**
+1. CLI queries DB for org structure (Organisation → Positions → Roles → PositionAssignments → Personas)
+2. CLI reads filesystem for content (intent.md from org directory, skill/experience file paths from persona directories)
+3. CLI merges into single YAML document → stdout
+4. No persistent file. Always fresh. No cache invalidation.
+
+**Import flow:**
+1. CLI reads YAML from `--file` or stdin
+2. **Preview** (`--preview` flag, recommended before every import): shows diff against current DB state — what will be created, updated, deleted
+3. **Validate** (automatic, runs before apply): structural checks — circular reporting chains, missing role references, orphaned positions, invalid escalation paths
+4. **Apply** (atomic by default): all-or-nothing DB transaction. If any record fails, entire import rolls back. No partial org charts.
+5. **Filesystem side-effects**: if import creates a new organisation, CLI creates the org directory (`data/organisations/{slug}/`). If import creates a new persona, CLI creates persona directory and asset files.
+
+**Structural vs runtime distinction:**
+
+| Structural (importable) | Runtime (not importable) |
+|---|---|
+| Organisation name, purpose, slug, description, status | Active agents on positions |
+| Position title, role, level, reports_to, escalates_to | Agent session state (IDLE, PROCESSING, etc.) |
+| Role name, description | Current command in progress |
+| PositionAssignment (persona ↔ position binding) | Agent context usage |
+| Persona name, role, status | Priority scores |
+
+**Conflict resolution:**
+- **YAML has an entity with a matching ID** → update the DB record with YAML values (structural fields only)
+- **YAML has an entity with no matching ID** → create new DB record
+- **DB has an entity not in the YAML** → no action (preserve). Importing a YAML does not delete unmentioned records. Deletion is explicit via CLI commands (`flask org position remove`). This prevents accidental data loss from partial exports.
+- **Assignment conflicts** → if YAML assigns a persona to a position that's currently held by a different persona, the import preview shows this as a conflict. Apply requires `--force` to proceed, which unassigns the current holder first.
+
+**What import does NOT touch:**
+- Runtime agent state
+- Inference/summarisation data
+- Event audit trail
+- Handoff records
+- Activity metrics
 
 ---
 
 ### 1.5 Filesystem Location & Conventions
-- [ ] **Decision: Where do organisation definition files live on disk, and what's the naming convention?**
+- [x] **Decision: Where do organisation definition files live on disk, and what's the naming convention?**
 
 **Depends on:** 1.1
 
@@ -336,7 +628,63 @@ The operator mentioned these are application-specific data, gitignored, symlinke
 - What's the slug format for organisations?
 - Does the org directory contain references/links to its persona directories?
 
-**Resolution:** _(Pending)_
+**Resolution:**
+
+**Slug-based directories following the persona pattern.** Resolved 1 March 2026.
+
+**Organisation model additions:**
+- `purpose` field — the domain/category of the org (e.g., `software-development`, `marketing`, `content`, `economy`). Required on create.
+- `slug` field — auto-generated as `{purpose}-{name}-{id}`, same pattern as Persona's `{role}-{name}-{id}`. Uses the same after-insert event mechanism: temp slug on create, real slug generated once the DB provides the ID.
+
+**Filesystem layout:**
+
+```
+data/
+├── organisations/
+│   ├── software-development-development-1/
+│   │   ├── intent.md              # Intent engineering document
+│   │   └── (future org assets)
+│   └── economy-kent-ventures-2/
+│       ├── intent.md
+│       └── (future org assets)
+├── personas/
+│   ├── architect-robbo-3/
+│   │   ├── skill.md
+│   │   ├── experience.md
+│   │   └── handoffs/
+│   │       └── 20260228T231204-00001053.md
+│   ├── ar-director-paula-7/
+│   │   ├── skill.md
+│   │   └── experience.md
+│   └── ...
+```
+
+**Conventions:**
+- Each organisation gets its own directory under `data/organisations/`
+- Directory name = organisation slug (`{purpose}-{name}-{id}`)
+- `intent.md` is the primary content file — parsed by the CLI during export and merged into the YAML `intent:` block
+- Directory is auto-created by CLI when an organisation is created (`flask org create`)
+- Persona directories remain at `data/personas/{slug}/` — they are not nested under organisations because personas are org-independent (a persona can hold positions in multiple orgs)
+- These directories are application-specific data, gitignored in the main repo, managed via symlink to `otl_support` under separate version control — matching the existing persona data pattern
+
+**Slug generation:** Identical mechanism to Persona. SQLAlchemy after-insert event replaces temp slug `_pending_{uuid}` with real `{purpose}-{name}-{id}` (sanitized, lowercase, hyphens). Slug is immutable after generation — renaming an org creates a new slug (and a new directory).
+
+---
+
+### Section 1: Database Migration Checklist
+
+All model changes required by Section 1 decisions, consolidated for implementation:
+
+| Migration | Model | Change | Priority |
+|---|---|---|---|
+| Add `purpose` column | Organisation | `String(64)`, NOT NULL. Domain/category of the org. | Required before org CLI |
+| Add `slug` column | Organisation | `String(128)`, NOT NULL, UNIQUE. Auto-generated `{purpose}-{name}-{id}`. After-insert event (same pattern as Persona). | Required before org CLI |
+| Create `PositionAssignment` table | New table | `id` (PK), `position_id` (FK), `persona_id` (FK), `assigned_at`, `unassigned_at` (nullable). Join table for persona ↔ position binding with lifecycle tracking. | Required for org assignments |
+| Fix `Agent.position_id` ondelete | Agent | Change from CASCADE to SET NULL. Nullable FK should not cascade-delete the agent when a position is removed. | Required before Position activation |
+| Backfill existing Organisation | Organisation | Update the seeded "Development" record with `purpose='software-development'` and generate its slug. | Data migration |
+| Migrate `flask persona` to `flask org persona` | CLI | Deprecate and remove old `flask persona` commands. | Dedicated sprint |
+
+**Note:** Role does NOT need `org_id` (workshop decision: roles are global). Role does NOT need `role_type` or `can_use_tools` (deferred — no current use case). These fields from the original ERD are intentionally excluded.
 
 ---
 
@@ -1035,7 +1383,14 @@ The operator's stated goal is to "reduce my mental workload in coordinating the 
 
 | Date | Decision | Resolution | Rationale |
 |------|----------|------------|-----------|
-| _(Workshop not yet started)_ | | | |
+| 1 Mar 2026 | 0.1 Schema Audit | RESOLVED (by predecessor Agent #1054) | Two clean categories: ACTIVE (Persona, Role, Handoff, Agent extensions) and SCAFFOLDING (Organisation, Position, Agent.position_id). Clean scaffolding, no dead code. |
+| 1 Mar 2026 | 0.2 Persona Audit | RESOLVED (by predecessor Agent #1054) | All persona features working end-to-end. No gaps found. |
+| 1 Mar 2026 | 0.3 Handoff Status | RESOLVED (by predecessor Agent #1054) | Code-complete, demonstrated once in production (this handoff chain). Not yet hardened. position_id CASCADE→SET NULL fix confirmed. |
+| 1 Mar 2026 | 1.1 Serialization Format | YAML as canonical format | YAML handles recursive structures, round-trips deterministically. On-demand export (no persistent file). Markdown for content (skills, experience, intent). |
+| 1 Mar 2026 | 1.2 Document Structure | Four-section YAML, composite sourcing | DB for structure, filesystem for content (intent.md). Prefixed IDs. Inline assignments. Organisation gets `purpose` + `slug` (`{purpose}-{name}-{id}`). |
+| 1 Mar 2026 | 1.3 CLI Design | `flask org` unified entry point, 6 subgroups, 30+ commands | Migrates `flask persona` under `flask org persona`. Discoverable, explicit-over-implicit, atomic imports, Unix pipes. AR Director (Paula) manages org changes. |
+| 1 Mar 2026 | 1.4 Round-Trip Mechanics | DB = structure truth, filesystem = content truth | Atomic imports with preview. No runtime data in YAML. Unmentioned DB records preserved on import (no accidental deletion). |
+| 1 Mar 2026 | 1.5 Filesystem Conventions | `data/organisations/{slug}/` with intent.md | Slug pattern `{purpose}-{name}-{id}` matches Persona convention. Org-independent personas at `data/personas/{slug}/`. Gitignored, symlinked to otl_support. |
 
 ---
 
