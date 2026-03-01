@@ -23,6 +23,17 @@ Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessio
 - Voice bridge: voice-first API with semantic picker matching and response formatting
 - Context monitoring: background polling of agent context window usage
 
+## CRITICAL: PostgreSQL Only — No SQLite
+
+**This is a PostgreSQL project. There is no SQLite anywhere in this codebase.**
+
+- The database is PostgreSQL, configured via `config.yaml` (`database` section) or `DATABASE_URL` env var
+- **NEVER** use SQLite connection strings, `sqlite:///` URIs, or in-memory SQLite databases
+- **NEVER** create or reference `.db` files — if you see one, it is an accident (Flask-SQLAlchemy unwanted default)
+- **NEVER** set `SQLALCHEMY_DATABASE_URI` to anything other than a `postgresql://` URL
+- All migrations (`flask db upgrade`) target PostgreSQL. All SQL must be PostgreSQL-compatible
+- Tests use `claude_headspace_test` (PostgreSQL) — see the `_force_test_database` fixture in `tests/conftest.py`
+
 ## CRITICAL: Server & URL Rules
 
 **These rules are non-negotiable. Violations cause server instability, zombie processes, and socket errors.**
