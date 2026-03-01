@@ -458,19 +458,15 @@
          * Delete a persona with confirmation.
          */
         deletePersona: async function(slug, name, agentCount) {
+            var message = 'Are you sure you want to permanently delete "' + name + '"?';
             if (agentCount > 0) {
-                if (window.Toast) {
-                    window.Toast.error(
-                        'Cannot delete',
-                        '"' + name + '" has ' + agentCount + ' linked agent(s). Remove agent links first.'
-                    );
-                }
-                return;
+                message += ' ' + agentCount + ' linked agent(s) will be unlinked but preserved.';
             }
+            message += ' Filesystem assets (skill & experience files) will be retained. This action cannot be undone.';
 
             var ok = await ConfirmDialog.show(
                 'Delete Persona',
-                'Are you sure you want to permanently delete "' + name + '"? This action cannot be undone.',
+                message,
                 {
                     confirmText: 'Delete',
                     confirmClass: 'bg-red hover:bg-red/90'
@@ -485,9 +481,14 @@
                 });
 
                 if (response.ok) {
+                    var data = await response.json();
+                    var toast = '"' + name + '" has been permanently deleted.';
+                    if (data.agents_unlinked > 0) {
+                        toast += ' ' + data.agents_unlinked + ' agent(s) unlinked.';
+                    }
                     this.loadPersonas();
                     if (window.Toast) {
-                        window.Toast.success('Persona deleted', '"' + name + '" has been permanently deleted.');
+                        window.Toast.success('Persona deleted', toast);
                     }
                 } else {
                     var data = await response.json();

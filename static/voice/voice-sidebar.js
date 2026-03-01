@@ -439,35 +439,15 @@ window.VoiceSidebar = (function () {
       });
     }
 
-    // Touch fix: on touch devices the absolutely-positioned dropdown extends
-    // below .agent-header-actions.  The browser retargets the synthesised
-    // click to that parent, so the item's click handler never fires.  Handle
-    // the action on touchend instead and preventDefault to suppress the bad
-    // synthesised click.
+    // Click/touch fix: the absolutely-positioned dropdown extends below
+    // .agent-header-actions.  Browsers may retarget the click/tap to that
+    // parent, so the individual item's click handler never fires.  Use a
+    // delegated handler on the menu container for BOTH click and touchend
+    // so it works on desktop Chrome AND touch devices.
     var agentMenus = list.querySelectorAll('.agent-kebab-menu');
     for (var am = 0; am < agentMenus.length; am++) {
-      agentMenus[am].addEventListener('touchend', function (e) {
-        var item = e.target.closest('.kebab-menu-item');
-        if (!item) return;
-        e.preventDefault();
-        var agentId = parseInt(item.getAttribute('data-agent-id'), 10);
-        closeAllKebabMenus();
-        if (item.classList.contains('agent-ctx-action')) {
-          checkAgentContext(agentId);
-        } else if (item.classList.contains('agent-kill-action')) {
-          shutdownAgent(agentId);
-        } else if (item.classList.contains('agent-handoff-action')) {
-          handoffAgent(agentId);
-        } else if (item.classList.contains('agent-revive-action')) {
-          CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              if (data.error) { showToast('Revival failed: ' + data.error); }
-              else { showToast('Revival initiated'); refreshAgents(); }
-            })
-            .catch(function () { showToast('Revival failed'); });
-        }
-      });
+      agentMenus[am].addEventListener('click', _handleKebabAction);
+      agentMenus[am].addEventListener('touchend', _handleKebabAction);
     }
     // Bind project kebab menu buttons
     var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
@@ -497,8 +477,15 @@ window.VoiceSidebar = (function () {
 
   function closeAllKebabMenus() {
     var menus = document.querySelectorAll('.agent-kebab-menu.open, .project-kebab-menu.open');
+    var hadOpen = menus.length > 0;
     for (var i = 0; i < menus.length; i++) {
       menus[i].classList.remove('open');
+    }
+    // Trigger any SSE reload that was deferred while menu was open
+    if (hadOpen && window._sseReloadDeferred) {
+      var deferred = window._sseReloadDeferred;
+      window._sseReloadDeferred = null;
+      deferred();
     }
   }
 
@@ -546,6 +533,35 @@ window.VoiceSidebar = (function () {
       VoiceState.targetAgentId = null;
       VoiceState.chatAgentEnded = false;
       VoiceLayout.showScreen('agents');
+    }
+  }
+
+  // --- Delegated kebab menu action handler (click + touchend) ---
+  // Handles both click (desktop Chrome) and touchend (iOS/iPad).
+  // The absolutely-positioned dropdown extends below .agent-header-actions,
+  // so browsers may retarget direct clicks — this delegated handler catches them.
+
+  function _handleKebabAction(e) {
+    var item = e.target.closest('.kebab-menu-item');
+    if (!item) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var agentId = parseInt(item.getAttribute('data-agent-id'), 10);
+    closeAllKebabMenus();
+    if (item.classList.contains('agent-ctx-action')) {
+      checkAgentContext(agentId);
+    } else if (item.classList.contains('agent-kill-action')) {
+      shutdownAgent(agentId);
+    } else if (item.classList.contains('agent-handoff-action')) {
+      handoffAgent(agentId);
+    } else if (item.classList.contains('agent-revive-action')) {
+      CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) { showToast('Revival failed: ' + data.error); }
+          else { showToast('Revival initiated'); refreshAgents(); }
+        })
+        .catch(function () { showToast('Revival failed'); });
     }
   }
 

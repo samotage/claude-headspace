@@ -490,18 +490,24 @@ def get_context_usage(agent_id: int) -> ContextResult:
     # Capture the last few lines of the pane (statusline is at the bottom)
     pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
 
-    if not pane_text:
-        return ContextResult(available=False, reason="capture_failed")
+    ctx = None
+    if pane_text:
+        ctx = parse_context_usage(pane_text)
 
-    ctx = parse_context_usage(pane_text)
+    # Fallback: read sidecar file written by statusline-command.sh
     if not ctx:
-        return ContextResult(available=False, reason="statusline_not_found")
+        from .context_poller import _read_sidecar
+        ctx = _read_sidecar(agent.tmux_pane_id)
+
+    if not ctx:
+        reason = "capture_failed" if not pane_text else "statusline_not_found"
+        return ContextResult(available=False, reason=reason)
 
     return ContextResult(
         available=True,
         percent_used=ctx["percent_used"],
         remaining_tokens=ctx["remaining_tokens"],
-        raw=ctx["raw"],
+        raw=ctx.get("raw", ""),
     )
 
 

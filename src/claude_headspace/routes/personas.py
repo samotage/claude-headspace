@@ -1,7 +1,6 @@
 """REST API endpoints for persona management."""
 
 import logging
-import shutil
 
 from flask import Blueprint, jsonify, render_template, request
 from sqlalchemy import case, func
@@ -16,7 +15,6 @@ from ..models.turn import Turn
 from ..services.persona_assets import (
     check_assets,
     get_experience_mtime,
-    get_persona_dir,
     read_experience_file,
     read_skill_file,
     write_skill_file,
@@ -314,12 +312,14 @@ def api_update_persona(slug: str):
 def api_delete_persona(slug: str):
     """Delete a persona permanently.
 
-    Deletion is blocked if the persona has linked agents (returns 409).
+    Linked agents are preserved — their persona_id FK is set to NULL
+    (the DB column has ondelete=SET NULL, but we also null explicitly
+    to keep the SQLAlchemy session consistent). Filesystem assets
+    (skill.md, experience.md) are intentionally retained.
 
     Returns:
-        200: Deleted
+        200: Deleted (includes count of unlinked agents)
         404: Not found
-        409: Has linked agents (cannot delete)
     """
     try:
         persona = (
@@ -332,44 +332,27 @@ def api_delete_persona(slug: str):
         if not persona:
             return jsonify({"error": f"Persona '{slug}' not found"}), 404
 
-        # Block deletion if agents are linked
-        if persona.agents:
-            agent_info = [
-                {
-                    "id": a.id,
-                    "session_uuid": str(a.session_uuid) if a.session_uuid else None,
-                }
-                for a in persona.agents
-            ]
-            return jsonify({
-                "error": f"Cannot delete persona '{persona.name}': "
-                f"{len(persona.agents)} agent(s) are linked.",
-                "agents": agent_info,
-            }), 409
-
         persona_name = persona.name
         persona_id = persona.id
-        persona_slug = persona.slug
+        agent_count = len(persona.agents)
+
+        # Unlink agents (null their persona FK) rather than deleting them
+        for agent in list(persona.agents):
+            agent.persona_id = None
 
         db.session.delete(persona)
         db.session.commit()
 
-        # Clean up filesystem assets (best-effort, don't fail the request)
-        try:
-            persona_dir = get_persona_dir(persona_slug)
-            if persona_dir.is_dir():
-                shutil.rmtree(persona_dir)
-                logger.info("Removed persona assets directory: %s", persona_dir)
-        except Exception:
-            logger.warning(
-                "Failed to remove persona assets directory for %s", persona_slug,
-                exc_info=True,
-            )
+        logger.info(
+            "Deleted persona %s (id=%d), unlinked %d agent(s)",
+            persona_name, persona_id, agent_count,
+        )
 
         return jsonify({
             "deleted": True,
             "id": persona_id,
             "name": persona_name,
+            "agents_unlinked": agent_count,
         }), 200
 
     except Exception:

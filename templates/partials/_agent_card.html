@@ -175,7 +175,8 @@
         </button>
         {% endif %}
         <div class="kebab-divider"></div>
-        <button class="card-kebab-item card-kill-action" data-agent-id="{{ agent.id }}" data-hero-chars="{{ agent.hero_chars }}" data-hero-trail="{{ agent.hero_trail }}">
+        <button class="card-kebab-item card-kill-action" data-agent-id="{{ agent.id }}" data-hero-chars="{{ agent.hero_chars }}" data-hero-trail="{{ agent.hero_trail }}"
+                onclick="event.stopPropagation(); AgentLifecycle._handleKill(this);">
           <svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
           <span>Dismiss agent</span>
         </button>

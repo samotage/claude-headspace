@@ -309,8 +309,10 @@ window.VoiceSSEHandler = (function () {
       }
     }
 
-    // Re-fetch agent list on any update (but defer if confirm dialog is open)
-    if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
+    // Re-fetch agent list on any update (but defer if confirm dialog or kebab menu is open)
+    var dialogOpen = typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen();
+    var kebabOpen = document.querySelector('.agent-kebab-menu.open, .project-kebab-menu.open') !== null;
+    if (dialogOpen || kebabOpen) {
       window._sseReloadDeferred = function () { VoiceSidebar.refreshAgents(); };
     } else {
       VoiceSidebar.refreshAgents();

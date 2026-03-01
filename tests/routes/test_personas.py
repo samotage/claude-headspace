@@ -397,8 +397,8 @@ class TestApiDeletePersona:
         response = client.delete("/api/personas/nonexistent-slug")
         assert response.status_code == 404
 
-    def test_delete_blocked_when_agents_linked(self, client, db_session):
-        """Returns 409 when persona has linked agents."""
+    def test_delete_unlinks_agents(self, client, db_session):
+        """Linked agents are preserved with persona_id set to NULL."""
         import uuid
 
         from claude_headspace.models.agent import Agent
@@ -419,13 +419,19 @@ class TestApiDeletePersona:
         )
         db_session.add(agent)
         db_session.commit()
+        agent_id = agent.id
 
         response = client.delete(f"/api/personas/{persona.slug}")
-        assert response.status_code == 409
+        assert response.status_code == 200
         data = response.get_json()
-        assert "error" in data
-        assert "agents" in data
-        assert len(data["agents"]) == 1
+        assert data["deleted"] is True
+        assert data["agents_unlinked"] == 1
+
+        # Verify agent still exists but persona_id is NULL
+        db_session.expire_all()
+        surviving_agent = db_session.get(Agent, agent_id)
+        assert surviving_agent is not None
+        assert surviving_agent.persona_id is None
 
 
 # ── NEW: GET /api/roles ──

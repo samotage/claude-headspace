@@ -161,8 +161,22 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Close kebab menus on click/touch outside
+    // Close kebab menus on click/touch outside.
+    // IMPORTANT: absolutely-positioned menus extend below their parent's layout
+    // box.  Browsers may retarget the click to a sibling/parent element, so
+    // e.target is wrong.  Use elementFromPoint to detect the real element.
     function _handleCloseKebabs(e) {
+      var openMenu = document.querySelector('.agent-kebab-menu.open, .project-kebab-menu.open');
+      if (openMenu && e.clientX !== undefined && e.clientY !== undefined) {
+        var actualEl = document.elementFromPoint(e.clientX, e.clientY);
+        if (actualEl && actualEl.closest('.agent-kebab-menu, .project-kebab-menu')) {
+          // Click is visually inside the menu — don't close
+          return;
+        }
+        if (actualEl && actualEl.closest('.agent-kebab-btn, .project-kebab-btn')) {
+          return;
+        }
+      }
       if (!e.target.closest('.agent-kebab-btn') && !e.target.closest('.agent-kebab-menu')
           && !e.target.closest('.project-kebab-btn') && !e.target.closest('.project-kebab-menu')) {
         VoiceSidebar.closeAllKebabMenus();
@@ -170,6 +184,29 @@ window.VoiceApp = (function () {
     }
     document.addEventListener('click', _handleCloseKebabs);
     document.addEventListener('touchstart', _handleCloseKebabs, { passive: true });
+
+    // Fix browser click retargeting on absolutely-positioned dropdown menus.
+    // When the menu extends below its parent, the browser sets event.target
+    // to a sibling/parent element.  This capture-phase handler detects the
+    // real element at click coordinates and re-dispatches to it.
+    document.addEventListener('click', function(e) {
+      if (e._retargetFixed) return;
+      var openMenu = document.querySelector('.agent-kebab-menu.open');
+      if (!openMenu) return;
+      if (e.target.closest && e.target.closest('.agent-kebab-menu')) return;
+      var actualEl = document.elementFromPoint(e.clientX, e.clientY);
+      if (!actualEl) return;
+      var menuItem = actualEl.closest('.kebab-menu-item');
+      if (!menuItem) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      var fixed = new MouseEvent('click', {
+        bubbles: true, cancelable: true,
+        clientX: e.clientX, clientY: e.clientY
+      });
+      fixed._retargetFixed = true;
+      menuItem.dispatchEvent(fixed);
+    }, true);
 
     // Persona picker close handlers
     var personaPickerClose = document.getElementById('persona-picker-close');

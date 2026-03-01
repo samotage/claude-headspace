@@ -317,6 +317,66 @@
                 showReviveButton: true,
                 emptyMessage: 'No agents linked to this persona.'
             });
+        },
+
+        // --- Delete ---
+
+        /**
+         * Delete this persona with confirmation dialog.
+         * Cascade-deletes all linked agents/commands/turns from DB.
+         * Filesystem assets (skill.md, experience.md) are retained.
+         */
+        deletePersona: async function() {
+            var name = global.PERSONA_NAME || slug;
+            var agentCount = state.activeAgentCount || 0;
+
+            var message = 'Are you sure you want to permanently delete "' + name + '"?';
+            if (agentCount > 0) {
+                message += ' ' + agentCount + ' linked agent(s) will be unlinked but preserved.';
+            }
+            message += ' Filesystem assets (skill & experience files) will be retained. This action cannot be undone.';
+
+            var ok = await ConfirmDialog.show(
+                'Delete Persona',
+                message,
+                {
+                    confirmText: 'Delete',
+                    confirmClass: 'bg-red hover:bg-red/90'
+                }
+            );
+
+            if (!ok) return;
+
+            try {
+                var response = await CHUtils.apiFetch(API_BASE, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    var data = await response.json();
+                    var toast = '"' + name + '" has been permanently deleted.';
+                    if (data.agents_unlinked > 0) {
+                        toast += ' ' + data.agents_unlinked + ' agent(s) unlinked.';
+                    }
+                    if (window.Toast) {
+                        window.Toast.success('Persona deleted', toast);
+                    }
+                    // Redirect back to personas list
+                    setTimeout(function() {
+                        window.location.href = '/personas';
+                    }, 1000);
+                } else {
+                    var errData = await response.json();
+                    if (window.Toast) {
+                        window.Toast.error('Delete failed', errData.error || 'Could not delete persona.');
+                    }
+                }
+            } catch (error) {
+                console.error('PersonaDetail: Delete failed', error);
+                if (window.Toast) {
+                    window.Toast.error('Delete failed', 'Network error.');
+                }
+            }
         }
     };
 

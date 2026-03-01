@@ -3,9 +3,17 @@
 Polls all active agents' tmux panes to read the Claude Code statusline
 (e.g. [ctx: 22% used, 155k remaining]) and persists usage data to the
 Agent model for at-a-glance display on dashboard cards.
+
+Two data sources (tried in order):
+1. Pane capture — parse the visible statusline from the tmux pane
+2. Sidecar file — read /tmp/claude_headspace_ctx/<pane_number> written
+   by the statusline-command.sh script (fallback for narrow terminals
+   where the statusline is truncated)
 """
 
+import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 
@@ -27,6 +35,39 @@ DEFAULT_HIGH_THRESHOLD = 75
 
 # Debounce: skip agents whose context was updated less than this many seconds ago
 DEBOUNCE_SECONDS = 15
+
+# Sidecar files written by statusline-command.sh
+_SIDECAR_DIR = "/tmp/claude_headspace_ctx"
+
+
+def _read_sidecar(pane_id: str) -> dict | None:
+    """Read context data from the sidecar file for a tmux pane.
+
+    The statusline-command.sh writes JSON files to /tmp/claude_headspace_ctx/<N>
+    where N is the tmux pane number (without the % prefix).
+
+    Returns:
+        Dict with keys: percent_used (int), remaining_tokens (str)
+        None if the file doesn't exist, is stale (>5 min), or is malformed.
+    """
+    # Strip % prefix from pane_id (e.g., "%56" -> "56")
+    pane_num = pane_id.lstrip("%")
+    path = os.path.join(_SIDECAR_DIR, pane_num)
+    try:
+        stat = os.stat(path)
+        # Ignore stale files (>5 minutes old)
+        age = datetime.now(timezone.utc).timestamp() - stat.st_mtime
+        if age > 300:
+            return None
+        with open(path) as f:
+            data = json.load(f)
+        pct = data.get("percent_used")
+        rem = data.get("remaining_tokens", "")
+        if pct is not None and isinstance(pct, (int, float)):
+            return {"percent_used": int(pct), "remaining_tokens": str(rem)}
+    except (OSError, json.JSONDecodeError, KeyError, ValueError):
+        pass
+    return None
 
 
 def _compute_tier(percent_used: int, warning_threshold: int, high_threshold: int) -> str:
@@ -145,12 +186,17 @@ class ContextPoller:
                     if elapsed < DEBOUNCE_SECONDS:
                         continue
 
-                # Capture pane and parse context
+                # Capture pane and parse context (with sidecar fallback)
+                ctx = None
                 pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
-                if not pane_text:
-                    continue
+                if pane_text:
+                    ctx = parse_context_usage(pane_text)
 
-                ctx = parse_context_usage(pane_text)
+                # Fallback: read sidecar file written by statusline-command.sh
+                # (handles narrow terminals where the statusline is truncated)
+                if not ctx:
+                    ctx = _read_sidecar(agent.tmux_pane_id)
+
                 if not ctx:
                     continue
 

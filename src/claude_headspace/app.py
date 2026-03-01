@@ -550,6 +550,17 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
             return jsonify({"error": "Invalid or expired CSRF token"}), 403
         return None
 
+    # Prevent browsers from caching HTML pages (stale cache_bust values
+    # cause JS/CSS to load from old cached versions → broken UI features).
+    # Static assets (JS/CSS/images) still benefit from ?v= cache busting.
+    @app.after_request
+    def set_cache_headers(response):
+        if response.content_type and "text/html" in response.content_type:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
     # Register error handlers
     register_error_handlers(app)
 

@@ -34,6 +34,10 @@
                         {% endif %}
                     </div>
                 </div>
+                <button type="button" onclick="PersonaDetail.deletePersona()"
+                        class="px-3 py-1.5 bg-red/20 border border-red/30 rounded text-red text-sm font-medium hover:bg-red/30 transition-colors self-start">
+                    Delete
+                </button>
             </div>
 
             <!-- Metadata bar -->
@@ -153,8 +157,9 @@
 
 {% block scripts %}
 <script>
-    // Pass persona slug to the detail page script
+    // Pass persona data to the detail page script
     window.PERSONA_SLUG = {{ persona.slug | tojson }};
+    window.PERSONA_NAME = {{ persona.name | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/agent-listing.js') }}?v={{ cache_bust }}"></script>
 <script src="{{ url_for('static', filename='js/persona_detail.js') }}?v={{ cache_bust }}"></script>
