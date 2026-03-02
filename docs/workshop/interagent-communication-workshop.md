@@ -261,7 +261,7 @@ Injected alongside the base primer on join. Tells participants what this specifi
 **Forward context for Section 1 (from AR Director guidance):**
 
 - **Persona-based membership (→ Section 1.4):** Membership is persona-scoped, not agent-scoped. The persona is the stable channel identity; the agent ID is the mutable delivery target. On handoff, membership persists — only the delivery target changes. Messages are attributed to the persona with agent ID as metadata. If no active agent exists for a persona, membership stays but delivery is suspended.
-- **Operator as member (→ Section 1.4):** The operator is not a persona or agent but is a channel member and potentially the chair. The membership model must accommodate human participants without forcing them into the persona/agent model. Future-proofed: there may be multiple human team members in the future.
+- **Operator as member (→ Section 1.1, 1.4):** Resolved in 1.1 — the operator IS modelled as a Persona with PersonaType `person/internal`. First-class channel identity with no Agent instances. Delivery via SSE/dashboard/voice bridge. Sits above the org hierarchy (no PositionAssignment) but participates in channels as a peer. Future-proofed: additional human team members would be additional `person/internal` Personas.
 - **Channel type on model (→ Section 1.1):** The Channel table should carry a `channel_type` field (enum) that maps to an intent template, plus an optional `intent_override` (text) for custom channels.
 
 ---
@@ -571,7 +571,7 @@ A channel is a named conversation container at the system level. Cross-project b
 | `organisation_id` | `int FK → organisations` | NULLABLE, ondelete SET NULL | Optional org scope. Most channels are cross-org (NULL). Org-scoped channels may enforce position-based membership validation in future. |
 | `project_id` | `int FK → projects` | NULLABLE, ondelete SET NULL | Optional project scope. Most channels are cross-project (NULL). Economy planning channel references the economy project; persona workshop references nothing. |
 | `created_by_persona_id` | `int FK → personas` | NULLABLE, ondelete SET NULL | Who created the channel. NULL = system-generated. Persona-based, not agent-based (stable identity). |
-| `status` | `String(16)` | NOT NULL, default `"active"` | `active` or `archived`. A channel is active from the moment of creation — no intermediate "created" state. |
+| `status` | `String(16)` | NOT NULL, default `"pending"` | 4-state lifecycle: `pending` (assembling members), `active` (first non-system message sent), `complete` (business concluded), `archived` (deep freeze). See Decision 2.1 for full lifecycle semantics. |
 | `created_at` | `DateTime(timezone=True)` | NOT NULL | Standard UTC timestamp. |
 | `archived_at` | `DateTime(timezone=True)` | NULLABLE | When the channel was archived. NULL = still active. |
 
@@ -980,16 +980,105 @@ No reactivation. Create a new channel if needed.
 
 **Context:** Following the Section 1 org workshop pattern (`flask org`), channel operations need a CLI entry point. Agents interact with channels via bash tools — the CLI is their primary interface.
 
-**Questions to resolve:**
-- Command namespace: `flask msg`? `flask channel`? `flask chat`?
-- Core commands: create, join, leave, send, list (channels), history (messages)?
-- Message sending: `flask msg send --channel <name> "content"`? Or is the channel implicit (agent's current active channel)?
-- Do agents need to explicitly "join" channels, or are they added by the creator/system?
-- **Add member command:** How does "pull Con into this conversation" work from CLI? e.g., `flask channel add-member --channel <name> --persona con`. Does adding a member also spin up an agent for that persona if one isn't running?
-- Query commands: list my channels, unread messages, channel members?
-- Output format: what does a received message look like in the agent's terminal?
+**Proposal (pending operator review):**
 
-**Resolution:** _(Pending)_
+#### Namespace
+
+**Standalone `flask channel` and `flask msg` groups.** Not nested under `flask org`.
+
+Channels are a system-level primitive — cross-org by design. A channel can have members from different orgs or no org at all. Nesting under `flask org` would misrepresent the scope. The Organisation Workshop Section 1.3 resolved `flask org` as the entry point for organisational commands (personas, positions, orgs); channels are communication infrastructure, not org structure.
+
+#### Caller Identity Resolution
+
+The CLI needs to know which agent is calling. Two-strategy cascade:
+
+1. **Primary — tmux pane detection:** `tmux display-message -p '#{pane_id}'` → look up Agent by `tmux_pane_id`. Works for all local agents in tmux sessions. Zero configuration.
+2. **Override — `HEADSPACE_AGENT_ID` env var:** Set explicitly when pane detection isn't possible (testing, non-tmux environments, remote agents using CLI). Takes precedence when set.
+
+If neither resolves to a valid active agent, the command fails with: `Error: Cannot identify calling agent. Are you running in a Headspace-managed session?`
+
+The calling agent's persona is derived from the agent record. All capability checks and membership queries use the persona, not the agent directly.
+
+#### Channel Commands — `flask channel`
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `create` | `<name> --type <type>` | Create a channel. Required: name and type (workshop/delegation/review/standup/broadcast). Optional: `--description`, `--intent` (custom intent override), `--org <slug>`, `--project <slug>`, `--members <persona-slug>,<persona-slug>,...` (batch add at creation). Creator becomes chair. Channel starts in `pending` state. |
+| `list` | _(none)_ | List channels where calling persona is an active member (default). Optional: `--all` (all visible channels), `--status <status>` (filter by lifecycle state), `--type <type>` (filter by channel type). |
+| `show` | `<slug>` | Show channel details: name, type, status, description, intent, members (with roles/status), message count, created/completed/archived timestamps. |
+| `members` | `<slug>` | List channel members with status (active/left/muted), chair designation, and whether agent is online. |
+| `add` | `<slug> --persona <persona-slug>` | Add a persona to the channel. If persona has no running agent, Headspace spins one up asynchronously (same creation + readiness polling as remote agents). System message posted to channel. Returns immediately: "Added Con, agent spinning up..." |
+| `leave` | `<slug>` | Leave a channel. Sets membership status to `left`, `left_at` timestamp. If last active member leaves, channel auto-transitions to `complete`. |
+| `complete` | `<slug>` | Complete a channel (transition to `complete` state). Chair or operator only. Sets `completed_at` timestamp. Command name matches state name — no translation layer. CLI consumers are agents (software), not humans; state consistency matters more than conversational English. |
+| `transfer-chair` | `<slug> --to <persona-slug>` | Transfer chair role to another active member. Current chair only. |
+| `mute` | `<slug>` | Mute channel — delivery paused for calling persona. Messages accumulate; catch up via history on unmute. |
+| `unmute` | `<slug>` | Unmute channel — delivery resumes from this point forward. |
+
+#### Message Commands — `flask msg`
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `send` | `<slug> <content>` | Send a message to a channel. Content is positional (quoted string). Optional: `--type delegation\|escalation` (default: `message`; `system` type not CLI-callable — service-generated only). Optional: `--attachment <path>` (single file, per Decision 1.2). |
+| `history` | `<slug>` | Show channel message history. Default format: conversational envelope (see below). Optional: `--format yaml` (machine consumption). Optional: `--limit N` (default: 50). Optional: `--since <ISO-timestamp>`. |
+
+#### Conversational Envelope Format (history default)
+
+```
+[#persona-alignment-workshop] Paula (agent:1087) — 2 Mar 2026, 10:23:
+I disagree with the approach to skill file injection. The current
+tmux-based priming has a fundamental timing problem...
+
+[#persona-alignment-workshop] Robbo (agent:1103) — 2 Mar 2026, 10:24:
+Paula raises a valid point. The timing issue is...
+```
+
+Default to conversational format because messages are content, not structure — exception to the org CLI's YAML-default rule. `--format yaml` available for machine consumption.
+
+#### One-Agent-One-Channel Enforcement
+
+When an agent tries to join a second channel (via `add` or at creation), the CLI returns an actionable error:
+
+```
+Error: Agent #1053 (Con) is already an active member of #delegation-build-auth-12.
+Leave that channel first: flask channel leave delegation-build-auth-12
+```
+
+This enforces the partial unique index from Decision 1.4 at the CLI layer with a helpful message, not just a database constraint error.
+
+#### Capability Checks
+
+- **Create:** Checks `persona.can_create_channel` (persona attribute, per Decision 2.1). Fails with: `Error: Persona 'con' does not have channel creation capability.`
+- **Complete / transfer-chair:** Checks `is_chair` on calling persona's membership. Fails with: `Error: Only the channel chair can complete this channel.`
+- **Send / history:** Checks active membership. Fails with: `Error: You are not a member of #channel-slug.`
+- **Add:** Checks caller is an active member of the channel. Fails with: `Error: You must be a member of #channel-slug to add others.`
+
+#### Actionable Error Messages
+
+All common failure cases return clear, actionable messages:
+
+| Scenario | Error |
+|----------|-------|
+| Not a channel member | `Error: You are not a member of #channel-slug.` |
+| Channel is complete/archived | `Error: Channel #channel-slug is complete. Create a new channel to continue.` |
+| No creation capability | `Error: Persona 'con' does not have channel creation capability.` |
+| Already in a channel (one-agent constraint) | `Error: Agent #N (Name) is already active in #other-channel. Leave first: flask channel leave other-channel` |
+| Persona already a member | `Error: Persona 'robbo' is already a member of #channel-slug.` |
+| Not the chair | `Error: Only the channel chair can [complete/transfer chair for] this channel.` |
+| Cannot identify caller | `Error: Cannot identify calling agent. Are you running in a Headspace-managed session?` |
+
+#### Architectural Notes (stated here, detailed in later sections)
+
+| Principle | Detail | Deferred to |
+|-----------|--------|-------------|
+| **CLI delegates to service layer** | CLI is a thin Click wrapper around `ChannelService` methods. Same service backs the 2.3 API endpoints. | 2.3 |
+| **CLI is agent-only** | Person-type personas (operator, external) use dashboard, voice bridge, or API — not CLI. | — |
+| **Send is fire-and-forget** | CLI writes Message to DB and returns. Fan-out service handles async delivery to other members. | Section 3 |
+| **Agent spin-up on add is async** | CLI returns immediately with confirmation. Agent creation + readiness polling happens in background. | Section 3 |
+| **Unread tracking** | No per-recipient delivery tracking in v1 data model. Deferred. | v2 |
+| **Voice bridge channel routing** | Semantic picker needs new channel-name matching patterns for voice commands like "send a message to the workshop channel." | 2.3 |
+| **System messages are service-generated** | `system` message type posted by ChannelService on joins, leaves, state changes. Not exposed via CLI. | Section 3 |
+
+**Resolution:** _(Pending operator review)_
 
 ---
 

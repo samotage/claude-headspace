@@ -116,8 +116,9 @@ erDiagram
         int organisation_id FK "nullable"
         int project_id FK "nullable"
         int created_by_persona_id FK "nullable"
-        string status "active|archived"
+        string status "pending|active|complete|archived"
         timestamp created_at
+        timestamp completed_at "nullable - when channel entered complete state"
         timestamp archived_at "nullable"
     }
 
