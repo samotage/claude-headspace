@@ -1,6 +1,6 @@
 # Section 2: Channel Operations & CLI
 
-**Status:** Decisions 2.1–2.2 resolved. Decision 2.3 pending.
+**Status:** Fully resolved (3 decisions: 2.1–2.3)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** [Section 1](section-1-channel-data-model.md)
 **Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
@@ -157,17 +157,122 @@ All common failure cases return clear, actionable messages:
 ---
 
 ### 2.3 API Endpoints
-- [ ] **Decision: What API endpoints serve the dashboard and remote agents?**
+- [x] **Decision: What API endpoints serve the dashboard and remote agents?**
 
 **Depends on:** 2.2
 
 **Context:** The CLI calls internal API endpoints. The dashboard and remote agents also need API access. This is the HTTP surface for channels.
 
-**Questions to resolve:**
-- REST endpoints: `/api/channels`, `/api/channels/<id>/messages`, `/api/channels/<id>/members`?
-- Does the dashboard use the same API as remote agents?
-- SSE integration: new SSE event types for channel messages? Separate SSE stream per channel?
-- Authentication: how do remote agents authenticate to channel APIs? (Existing session token system?)
-- Rate limiting considerations?
+**Resolution:**
 
-**Resolution:** _(Pending)_
+One API surface, one service layer. The CLI (Decision 2.2), dashboard, voice bridge, and remote agents all call the same `ChannelService`. The API endpoints are thin HTTP wrappers — same pattern as the existing remote agent and voice bridge routes.
+
+#### Blueprint: `channels_api` — `/api/channels`
+
+New Flask blueprint. Follows existing conventions: JSON request/response, standard HTTP status codes, error envelope `{error: {code, message, status}}`.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/api/channels` | Create a channel. Body: `{name, channel_type, description?, intent_override?, organisation_slug?, project_slug?, members?: [persona_slug, ...]}`. Creator becomes chair. Returns 201 + channel JSON. | Dashboard session / Session token |
+| `GET` | `/api/channels` | List channels for calling persona. Query params: `?status=`, `?type=`, `?all=true` (operator only — all visible channels). Returns 200 + array. | Dashboard session / Session token |
+| `GET` | `/api/channels/<slug>` | Channel details: name, type, status, description, intent, member count, message count, timestamps. Returns 200. | Dashboard session / Session token |
+| `PATCH` | `/api/channels/<slug>` | Update channel. Body: `{description?, intent_override?}`. Chair or operator only. Returns 200. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/complete` | Transition to `complete` state. Chair or operator only. Returns 200. | Dashboard session / Session token |
+
+#### Membership: `/api/channels/<slug>/members`
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/channels/<slug>/members` | List members with status, chair designation, online/offline. Returns 200 + array. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/members` | Add a persona. Body: `{persona_slug}`. If no running agent, Headspace spins one up async (same pattern as remote agent creation). Returns 201. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/leave` | Calling persona leaves. Auto-complete if last active member. Returns 200. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/mute` | Mute — delivery paused. Returns 200. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/unmute` | Unmute — delivery resumes. Returns 200. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/transfer-chair` | Transfer chair. Body: `{persona_slug}`. Chair only. Returns 200. | Dashboard session / Session token |
+
+#### Messages: `/api/channels/<slug>/messages`
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/channels/<slug>/messages` | Message history. Query params: `?limit=50`, `?since=<ISO>`, `?before=<ISO>` (cursor pagination by sent_at). Returns 200 + array. | Dashboard session / Session token |
+| `POST` | `/api/channels/<slug>/messages` | Send a message. Body: `{content, message_type?: "delegation"\|"escalation"}`. Default type: `message`. `system` type not API-callable — service-generated only. Optional: `attachment_path`. Returns 201 + message JSON. | Dashboard session / Session token |
+
+#### Authentication
+
+**Two auth mechanisms, same as existing codebase:**
+
+1. **Dashboard session** — Flask session cookie. The operator and dashboard JS use this. No changes needed.
+2. **Session token** — `Authorization: Bearer <token>` header. Remote agents and embed widgets use this. Existing `session_token.py` infrastructure, existing `require_session_token` decorator. Token is scoped to the agent; channel access is derived from the agent's persona's channel memberships.
+
+No new auth mechanism. The session token already carries agent identity → persona identity → channel membership. The `ChannelService` checks membership on every operation.
+
+#### SSE Integration
+
+**Two new SSE event types, broadcast on the existing `/api/events/stream` endpoint:**
+
+| Event Type | Trigger | Data | Who receives |
+|------------|---------|------|-------------|
+| `channel_message` | New message posted to channel | `{channel_slug, message_id, persona_slug, persona_name, content_preview, message_type, sent_at}` | All SSE clients (dashboard filters by channel membership client-side; existing `?types=` filter works for selective subscription) |
+| `channel_update` | Channel state change (member join/leave, status transition, chair transfer) | `{channel_slug, update_type, detail}` | All SSE clients |
+
+**No separate SSE stream per channel.** The existing stream with type filtering is sufficient. Dashboard JS subscribes to `channel_message` and `channel_update` types, filters by channel membership client-side. Same pattern as `card_refresh` events today.
+
+**Why not per-channel streams:** The existing broadcaster is connection-limited (100 clients). Per-channel streams would multiply connections by channel count. Type filtering on a single stream scales better and matches the existing architecture.
+
+#### Voice Bridge Channel Routing
+
+**Extend the existing semantic picker** with channel-name matching. The voice bridge already has agent matching via `VoiceFormatter`; channel matching follows the same pattern.
+
+New voice commands routed through the existing `/api/voice/command` endpoint:
+
+| Voice pattern | Routes to |
+|---------------|-----------|
+| "send to workshop channel: [content]" | `flask msg send <matched-slug> <content>` via ChannelService |
+| "what's happening in the workshop?" | `GET /api/channels/<matched-slug>/messages?limit=10` → voice-formatted summary |
+| "create a delegation channel for [task]" | `POST /api/channels` with inferred type |
+| "add Con to this channel" | `POST /api/channels/<current>/members` |
+
+Semantic matching: fuzzy match on channel name and slug, same algorithm as existing agent picker. "the workshop" matches `workshop-persona-alignment-7`. Ambiguous matches return a clarification prompt ("Which channel? persona-alignment-workshop or api-design-workshop?").
+
+#### Shared API Surface — No Separate Remote Agent Channel API
+
+Dashboard and remote agents use the **same endpoints**. The auth layer determines identity; the service layer checks permissions. No duplication.
+
+Remote agents already have session tokens. Those tokens map to agent → persona → channel membership. The channel API checks membership via `ChannelService`, not via a separate remote-agent-specific path.
+
+#### Rate Limiting
+
+No channel-specific rate limiting in v1. The existing voice bridge rate limiter (sliding window per-token) and OpenRouter inference rate limiter handle the expensive operations. Channel message writes are cheap DB inserts — rate limiting is premature until there's evidence of abuse.
+
+#### Response Format
+
+Standard JSON. No voice-formatted wrapper on the REST API — that's the voice bridge's job. The voice bridge calls `ChannelService` directly and wraps responses in its own `{voice: {status_line, results, next_action}}` envelope.
+
+```json
+// POST /api/channels/<slug>/messages — 201
+{
+  "id": 42,
+  "channel_slug": "workshop-persona-alignment-7",
+  "persona_slug": "architect-robbo-3",
+  "persona_name": "Robbo",
+  "agent_id": 1103,
+  "content": "The persona_id constraint is resolved.",
+  "message_type": "message",
+  "metadata": null,
+  "attachment_path": null,
+  "source_turn_id": 5678,
+  "source_command_id": 234,
+  "sent_at": "2026-03-03T10:23:45Z"
+}
+```
+
+#### Architectural Notes
+
+| Principle | Detail |
+|-----------|--------|
+| **One service, many frontends** | CLI, API, voice bridge, dashboard all call `ChannelService`. No logic in routes. |
+| **Slug-based URLs** | Channels identified by slug in URLs, not integer IDs. Slugs are unique, human-readable, and already the CLI identifier. |
+| **No channel-scoped SSE streams** | Single stream with type filtering. Scales better with the existing 100-connection limit. |
+| **No new auth mechanism** | Dashboard session + existing session tokens cover all access patterns. |
+| **Fire-and-forget message writes** | API writes message to DB and returns. Fan-out delivery is async (Section 3). |
+| **`system` messages not API-callable** | Same as CLI — `system` type is service-generated only (joins, leaves, state changes). |

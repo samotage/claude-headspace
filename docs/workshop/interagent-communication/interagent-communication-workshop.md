@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decisions 2.1–2.2 resolved.** Decision 2.3 and Sections 3–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** Sections 3–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -39,6 +39,7 @@ This is the **index document** for the workshop. Each section lives in its own f
 | 2 Mar 2026 | Sam + Robbo | 2.1 (resolved) | Channel lifecycle: 3 creation paths (CLI, dashboard, voice bridge — voice bridge is primary operator interface). Creation capability is a persona attribute (agents delegate check to persona via OOP method delegation). 4-state lifecycle: pending → active → complete → archived. Mid-conversation member addition creates new channel as overlay on existing 1:1 sessions — existing command/turn trees untouched. Context briefing: last 10 messages injected into new agent spin-up after persona injection. Channel is a Headspace-level construct; agents don't need to know they're in one. |
 | 3 Mar 2026 | Sam + Robbo | 2.2 (resolved) | CLI Interface resolved. Standalone `flask channel` / `flask msg` namespaces (not nested under `flask org`), `flask channel complete` verb (matches state name, no translation layer). Caller identity via tmux pane detection + env var override. 10 channel commands, 2 message commands, conversational envelope format, one-agent-one-channel enforcement, capability checks, 7 actionable error messages, 7 architectural notes deferred to later sections. |
 | 3 Mar 2026 | Sam + Robbo | 1.x (correction) | **Message.persona_id NULLABLE resolution.** PostgreSQL incompatibility (NOT NULL + SET NULL ondelete) resolved: Option A chosen — make persona_id nullable. Persona deletion sets message persona_id to NULL; agent record and audit trail remain intact. System messages naturally have NULL persona. Updated: Section 1.1, 1.2, 1.3, canonical ERD, migration checklist. |
+| 3 Mar 2026 | Sam + Robbo | 2.3 (resolved) | API Endpoints resolved. Single `/api/channels` blueprint — REST endpoints for channels, members, messages. Same `ChannelService` backs CLI, API, voice bridge, and dashboard. Auth: existing dashboard session + session tokens (no new mechanism). SSE: two new event types (`channel_message`, `channel_update`) on existing stream with type filtering — no per-channel streams. Voice bridge: extend semantic picker for channel-name matching. Slug-based URLs. No channel-specific rate limiting in v1. **Section 2 (Channel Operations & CLI) fully resolved.** |
 
 ---
 
@@ -82,9 +83,9 @@ Independent of Sections 1–5. Designs startup handoff detection, scannable file
 The structural foundation. 3 new tables (Channel, ChannelMembership, Message) plus PersonaType parent table (2×2: agent/person × internal/external). Persona-based membership with mutable agent delivery target. Messages are immutable with bidirectional Turn/Command traceability. One agent instance per active channel (partial unique index). Messages enter existing IntentDetector → CommandLifecycleManager pipeline with no special-case logic.
 
 ### [Section 2: Channel Operations & CLI](sections/section-2-channel-operations.md)
-**Status:** Decisions 2.1–2.2 resolved, 2.3 pending
+**Status:** Fully resolved (3 decisions: 2.1–2.3)
 
-Channel lifecycle (4-state: pending → active → complete → archived), creation paths, mid-conversation member addition. CLI interface: standalone `flask channel` / `flask msg` namespaces, caller identity via tmux pane detection, 10 channel commands, 2 message commands, conversational envelope format. API endpoints (2.3) pending.
+Channel lifecycle (4-state: pending → active → complete → archived), creation paths, mid-conversation member addition. CLI interface: standalone `flask channel` / `flask msg` namespaces, caller identity via tmux pane detection, 10 channel commands, 2 message commands, conversational envelope format. API endpoints: single `/api/channels` blueprint, REST CRUD + members + messages. Auth via existing dashboard session + session tokens. SSE: two new event types on existing stream. Voice bridge: semantic picker extended for channel-name matching.
 
 ### [Section 3: Message Delivery & Fan-Out](sections/section-3-message-delivery.md)
 **Status:** Pending (4 decisions: 3.1–3.4)

@@ -27,14 +27,16 @@
 
 | Service | Purpose | Dependencies |
 |---|---|---|
-| _(populated as decisions resolve)_ | | |
+| `ChannelService` | Core service layer for all channel operations (create, join, leave, complete, send message, etc.). CLI, API, voice bridge, and dashboard all delegate to this. Registered as `app.extensions["channel_service"]`. | DB models (Channel, ChannelMembership, Message), PersonaRegistration (capability checks), Broadcaster (SSE events) |
+| `channels_api` blueprint | REST endpoints at `/api/channels`. Thin HTTP wrapper around ChannelService. | ChannelService, session token auth (existing), Flask session auth (existing) |
 
 ### Integration Points
 
-| Existing System | Integration | Notes |
-|---|---|---|
-| Tmux Bridge | Message delivery to local agents | Reuse existing `send_text()` |
-| Hook Receiver | Agent response capture for channel relay | New processing path |
-| SSE Broadcaster | Operator delivery + dashboard updates | New event types |
-| Remote Agent API | Message delivery to remote agents | Extend existing infrastructure |
-| Voice Bridge | Operator input via voice | Route to channel instead of single agent |
+| Existing System | Integration | Notes | Source |
+|---|---|---|---|
+| Tmux Bridge | Message delivery to local agents | Reuse existing `send_text()` | Pending (Section 3) |
+| Hook Receiver | Agent response capture for channel relay | New processing path | Pending (Section 3) |
+| SSE Broadcaster | Two new event types: `channel_message`, `channel_update` | Broadcast on existing stream, type-filtered | [2.3](section-2-channel-operations.md#23-api-endpoints) |
+| Remote Agent API | Channel access via existing session tokens | Token → agent → persona → membership. No new auth. | [2.3](section-2-channel-operations.md#23-api-endpoints) |
+| Voice Bridge | Semantic picker extended for channel-name matching | Fuzzy match on name/slug, same algorithm as agent picker | [2.3](section-2-channel-operations.md#23-api-endpoints) |
+| Dashboard | Channel cards above project sections, management tab | Uses same `/api/channels` endpoints as remote agents | [2.3](section-2-channel-operations.md#23-api-endpoints) |

@@ -317,3 +317,11 @@ The following changes were decided during the Inter-Agent Communication Workshop
 - **Channel lifecycle resolved (Decision 2.1).** 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members; Active = first non-system message sent; Complete = last active member left or chair/operator explicitly completed (muted members do not count as "active" for the auto-complete trigger); Archived = deep freeze.
 - **`completed_at` column added to Channel (Decision 2.1).** Nullable timestamp, set when channel enters `complete` state. Already reflected in Channel entity above.
 - **Creation capability is a persona attribute (Decision 2.1).** `can_create_channel` — service-layer check delegated from Agent to Persona. Not a DB column; implemented as a method on the Persona model that checks persona type and/or role. Operator always has creation capability inherently.
+
+### Epic 9 Workshop Updates — Decision 2.3 (3 March 2026)
+
+- **API surface resolved (Decision 2.3).** Single `/api/channels` blueprint with REST endpoints for channels, members, and messages. Slug-based URLs. Same `ChannelService` backs CLI, API, voice bridge, and dashboard — no logic in routes.
+- **Auth: no new mechanism.** Dashboard session (Flask cookie) for operator/dashboard. Existing session tokens (`Authorization: Bearer <token>`) for remote agents and embed widgets. Token → agent → persona → channel membership.
+- **SSE: two new event types.** `channel_message` (new message posted) and `channel_update` (member join/leave, status transition, chair transfer). Broadcast on existing `/api/events/stream` — no per-channel streams. Type filtering via `?types=` query param.
+- **Voice bridge: semantic picker extended.** Channel-name matching for voice commands ("send to workshop channel"). Same fuzzy-match algorithm as agent picker. Ambiguous matches return clarification prompt.
+- **No channel-specific rate limiting in v1.** Existing voice bridge and inference rate limiters cover the expensive operations. Message writes are cheap DB inserts.
