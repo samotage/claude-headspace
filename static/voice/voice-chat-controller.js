@@ -39,6 +39,16 @@ window.VoiceChatController = (function () {
     var previousAgentId = VoiceState.targetAgentId;
     if (previousAgentId && previousAgentId !== agentId) {
       saveScrollState(previousAgentId);
+      // Save draft for the agent we're leaving
+      var input = document.getElementById('chat-text-input');
+      if (input) {
+        var draft = input.value;
+        if (draft) {
+          VoiceState.agentDrafts[previousAgentId] = draft;
+        } else {
+          delete VoiceState.agentDrafts[previousAgentId];
+        }
+      }
     }
     dismissNewMessagesPill();
     VoiceState.targetAgentId = agentId;
@@ -162,6 +172,15 @@ window.VoiceChatController = (function () {
 
     VoiceLayout.showScreen('chat');
     VoiceSidebar.highlightSelectedAgent();
+
+    // Restore draft for the agent we're switching to
+    var chatInput = document.getElementById('chat-text-input');
+    if (chatInput) {
+      chatInput.value = VoiceState.agentDrafts[agentId] || '';
+      chatInput.style.height = 'auto';
+      var limit = parseInt(getComputedStyle(chatInput).maxHeight, 10) || 240;
+      chatInput.style.height = Math.min(chatInput.scrollHeight, limit) + 'px';
+    }
   }
 
   function loadOlderMessages() {
@@ -443,6 +462,7 @@ window.VoiceChatController = (function () {
       input.value = '';
       input.style.height = 'auto';
     }
+    delete VoiceState.agentDrafts[VoiceState.targetAgentId];
 
     // Show typing indicator (agent will be processing)
     VoiceState.chatAgentState = 'processing';
@@ -557,6 +577,7 @@ window.VoiceChatController = (function () {
       input.value = '';
       input.style.height = 'auto';
     }
+    delete VoiceState.agentDrafts[VoiceState.targetAgentId];
     VoiceFileUpload.clearPendingAttachment();
 
     // Show progress

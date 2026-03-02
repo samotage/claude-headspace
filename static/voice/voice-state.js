@@ -47,6 +47,7 @@ window.VoiceState = (function () {
   var _fabCloseTimer = null;
 
   // ---- Chat Session ----
+  var _agentDrafts = {};
   var _lastSeenTurnId = 0;
   var _chatPendingUserSends = [];
   var PENDING_SEND_TTL_MS = 10000;
@@ -177,6 +178,8 @@ window.VoiceState = (function () {
     set fabCloseTimer(v) { _fabCloseTimer = v; },
 
     // Chat Session
+    get agentDrafts() { return _agentDrafts; },
+    set agentDrafts(v) { _agentDrafts = v; },
     get lastSeenTurnId() { return _lastSeenTurnId; },
     set lastSeenTurnId(v) { _lastSeenTurnId = v; },
     get chatPendingUserSends() { return _chatPendingUserSends; },
