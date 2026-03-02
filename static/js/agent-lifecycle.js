@@ -165,6 +165,11 @@
         for (var m = 0; m < unclipped.length; m++) {
             unclipped[m].classList.remove('kebab-child-open');
         }
+        // Process any cards deferred for removal while their kebab was open
+        var deferredRemoves = document.querySelectorAll('article[data-deferred-remove]');
+        for (var r = 0; r < deferredRemoves.length; r++) {
+            deferredRemoves[r].remove();
+        }
         // Execute any deferred SSE reload now that menus are closed.
         // setTimeout(0) runs AFTER the current event handler stack,
         // so if a kebab action (dismiss, etc.) opens a ConfirmDialog,
@@ -606,23 +611,42 @@
                         { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
                     ).then(function(confirmed) {
                         if (confirmed) {
+                            // Guard against SSE page reloads while the
+                            // shutdown request is in flight (2-8s blocking).
+                            // Without this, the dismiss fallback can be
+                            // lost to a reload between confirm and response.
+                            global._agentOperationInProgress = true;
                             shutdownAgent(agentId).then(function(data) {
                                 if (data && data.error) {
-                                    // Shutdown failed (no pane, etc.) — fall back to dismiss
-                                    window.FocusAPI.dismissAgent(agentId);
+                                    return window.FocusAPI.dismissAgent(agentId);
                                 }
                             }).catch(function() {
-                                window.FocusAPI.dismissAgent(agentId);
+                                return window.FocusAPI.dismissAgent(agentId);
+                            }).finally(function() {
+                                global._agentOperationInProgress = false;
+                                if (global._sseReloadDeferred) {
+                                    var deferred = global._sseReloadDeferred;
+                                    global._sseReloadDeferred = null;
+                                    deferred();
+                                }
                             });
                         }
                     });
                 } else if (confirm('Shut down agent ' + heroLabel + '?')) {
+                    global._agentOperationInProgress = true;
                     shutdownAgent(agentId).then(function(data) {
                         if (data && data.error) {
-                            window.FocusAPI.dismissAgent(agentId);
+                            return window.FocusAPI.dismissAgent(agentId);
                         }
                     }).catch(function() {
-                        window.FocusAPI.dismissAgent(agentId);
+                        return window.FocusAPI.dismissAgent(agentId);
+                    }).finally(function() {
+                        global._agentOperationInProgress = false;
+                        if (global._sseReloadDeferred) {
+                            var deferred = global._sseReloadDeferred;
+                            global._sseReloadDeferred = null;
+                            deferred();
+                        }
                     });
                 }
                 return;

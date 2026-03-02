@@ -72,6 +72,15 @@
      * or losing typed responses.
      */
     function safeDashboardReload() {
+        // Defer if a shutdown/dismiss operation is in flight — reloading now
+        // would abort the fetch and prevent the dismiss fallback from firing
+        if (window._agentOperationInProgress) {
+            console.log('SSE reload deferred — agent operation in progress');
+            window._sseReloadDeferred = function() {
+                window.location.reload();
+            };
+            return;
+        }
         if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) {
             console.log('SSE reload deferred — ConfirmDialog is open');
             window._sseReloadDeferred = function() {
@@ -559,6 +568,13 @@
         if (isKanbanView()) {
             var card = findAgentCard(agentId);
             if (card) {
+                // Defer removal if kebab is open — don't yank the card
+                // while user is mid-click on a menu item
+                if (cardHasOpenKebab(card)) {
+                    card.setAttribute('data-deferred-remove', '1');
+                    return;
+                }
+
                 var column = card.closest('[data-kanban-state]');
                 var body = column ? column.querySelector('.kanban-column-body') : null;
 
@@ -836,6 +852,14 @@
     }
 
     /**
+     * Check if a card has an open kebab menu.
+     * Used to skip DOM mutations that would shift click targets mid-interaction.
+     */
+    function cardHasOpenKebab(card) {
+        return card && card.querySelector('.card-kebab-menu.open') !== null;
+    }
+
+    /**
      * Handle card_refresh events — authoritative full card state from server.
      * Updates all visible fields on the agent card in one shot.
      */
@@ -857,6 +881,7 @@
         }
 
         var card = findAgentCard(agentId);
+        var kebabOpen = cardHasOpenKebab(card);
 
         // If card not found, a new agent may have appeared — reload to render it
         if (!card) {
@@ -1250,29 +1275,35 @@
             handoffBtn.remove();
         }
 
-        // Attach button: show/hide based on tmux_session
-        var attachBtn = card.querySelector('.card-attach-action');
-        if (data.tmux_session) {
-            if (!attachBtn) {
-                // Inject attach button before the context action in kebab menu
-                var ctxAction = card.querySelector('.card-ctx-action');
-                if (ctxAction) {
-                    var btn = document.createElement('button');
-                    btn.className = 'card-kebab-item card-attach-action';
-                    btn.setAttribute('data-agent-id', String(data.id));
-                    btn.innerHTML = '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg><span>Attach</span>';
-                    ctxAction.parentElement.insertBefore(btn, ctxAction);
+        // Attach button: show/hide based on tmux_session.
+        // Skip when kebab is open — inserting/removing items inside the open
+        // menu shifts click targets and causes missed clicks (dismiss bug).
+        // The next card_refresh after the kebab closes will apply this.
+        if (!kebabOpen) {
+            var attachBtn = card.querySelector('.card-attach-action');
+            if (data.tmux_session) {
+                if (!attachBtn) {
+                    var ctxAction = card.querySelector('.card-ctx-action');
+                    if (ctxAction) {
+                        var btn = document.createElement('button');
+                        btn.className = 'card-kebab-item card-attach-action';
+                        btn.setAttribute('data-agent-id', String(data.id));
+                        btn.innerHTML = '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg><span>Attach</span>';
+                        ctxAction.parentElement.insertBefore(btn, ctxAction);
+                    }
                 }
+            } else if (attachBtn) {
+                attachBtn.remove();
             }
-        } else if (attachBtn) {
-            attachBtn.remove();
         }
 
-        // Update tracked state and move card if state changed
+        // Update tracked state and move card if state changed.
+        // Skip column move when kebab is open — moving the card while user
+        // is mid-click on a menu item causes the browser to lose the target.
         var oldState = agentStates.get(agentId);
         agentStates.set(agentId, state);
 
-        if (oldState !== state) {
+        if (oldState !== state && !kebabOpen) {
             moveCardToColumn(agentId, state, data.project_id);
         }
 

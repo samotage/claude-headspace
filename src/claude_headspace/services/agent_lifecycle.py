@@ -468,6 +468,50 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
     )
 
 
+def dismiss_agent(agent_id: int) -> bool:
+    """Mark an agent as ended (dismiss) and broadcast removal.
+
+    Used when graceful shutdown is not possible (no tmux pane, pane already
+    dead, etc.) or as a server-side fallback when shutdown_agent() fails.
+
+    Args:
+        agent_id: ID of the agent to dismiss
+
+    Returns:
+        True if the agent was dismissed, False if not found or already ended
+    """
+    agent = db.session.get(Agent, agent_id)
+    if not agent or agent.ended_at is not None:
+        return False
+
+    now = datetime.now(timezone.utc)
+    agent.ended_at = now
+    agent.last_seen_at = now
+    db.session.commit()
+
+    logger.warning(
+        f"DISMISS_KILL: agent_id={agent_id} uuid={agent.session_uuid} "
+        f"tmux_pane={agent.tmux_pane_id} "
+        f"project={agent.project.name if agent.project else 'N/A'}"
+    )
+
+    try:
+        from .broadcaster import get_broadcaster
+
+        get_broadcaster().broadcast(
+            "session_ended",
+            {
+                "agent_id": agent_id,
+                "reason": "dismissed",
+                "timestamp": now.isoformat(),
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Dismiss broadcast failed: {e}")
+
+    return True
+
+
 def get_context_usage(agent_id: int) -> ContextResult:
     """Get context window usage for an agent by reading its tmux pane.
 

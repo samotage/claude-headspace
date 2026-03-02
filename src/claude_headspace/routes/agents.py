@@ -9,6 +9,7 @@ from ..database import db
 from ..models.agent import Agent
 from ..services.agent_lifecycle import (
     create_agent,
+    dismiss_agent,
     get_agent_info,
     get_context_usage,
     shutdown_agent,
@@ -70,6 +71,17 @@ def shutdown_agent_endpoint(agent_id: int):
     result = shutdown_agent(agent_id)
 
     if not result.success:
+        # Graceful shutdown failed — auto-dismiss if the agent is alive.
+        # The user clicked "Dismiss" so their intent is clear: remove the agent.
+        # Without this, the client-side fallback can be lost to SSE page reloads.
+        agent = db.session.get(Agent, agent_id)
+        if agent and agent.ended_at is None:
+            if dismiss_agent(agent_id):
+                return jsonify({
+                    "message": "Graceful shutdown failed; agent dismissed.",
+                    "auto_dismissed": True,
+                }), 200
+
         status = 404 if "not found" in result.message.lower() else 422
         return jsonify({"error": result.message}), status
 

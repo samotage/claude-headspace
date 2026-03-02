@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). Section 1.1–1.4 resolved. Section 0A seeded (7 decisions, pending workshop). Section 1.5 and Sections 2–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). Sections 2–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -35,6 +35,7 @@ Sections are designed to be completable in a single workshop session. Start each
 | 2 Mar 2026 | Sam + Robbo | 0 (resolved) | Infrastructure audit: 7 communication paths mapped, per-pane parallel fan-out confirmed, completion-only relay rule, envelope format with persona+agent ID, channel behavioral primer as injectable asset, chair role in channels. Incorporated Paula's AR Director guidance: two-layer primer (base + intent), persona-based membership, chair capabilities (delivery priority deferred to v2). |
 | 2 Mar 2026 | Sam + Robbo | 1.1 (resolved) | Channel model: 3 new tables (Channel, ChannelMembership, Message). PersonaType parent table introduced (2×2 matrix: agent/person × internal/external). Channels cross-project and optionally org-scoped. Membership persona-based with explicit PositionAssignment FK for org capacity. Operator participates as internal-person Persona. External persons/agents modelled for future cross-system collaboration (dragons acknowledged, scope held). |
 | 2 Mar 2026 | Sam + Robbo | 1.2–1.4 (resolved) | Message model: 10-column table with metadata JSONB, attachment_path, bidirectional Turn/Command links (source_turn_id, source_command_id on Message; source_message_id on Turn). Messages immutable. Message types: 4-type enum (message, system, delegation, escalation). Membership model: explicit join/leave for all persona types, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type personas. |
+| 2 Mar 2026 | Sam + Robbo | 1.5 (resolved) | Relationship to existing models: channel messages enter the existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. Delegation type biases toward COMMAND intent but detector decides. No new Event types — Messages are their own audit trail. **Section 1 (Channel Data Model) fully resolved.** |
 
 ---
 
@@ -761,7 +762,7 @@ erDiagram
 - **1.2 (Message Model):** ✅ Resolved. 10-column table with metadata JSONB, single attachment_path, bidirectional Turn/Command links. Messages immutable. Turn model extended with source_message_id FK.
 - **1.3 (Message Types):** ✅ Resolved. 4-type enum: message, system, delegation, escalation. Structural classification, not content/intent.
 - **1.4 (Membership Model):** ✅ Resolved. Explicit join/leave for all, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type.
-- **1.5 (Relationship to Existing Models):** Pending. Key remaining question: does a delegation message auto-create a Command on the receiving agent? How do Events relate to Messages?
+- **1.5 (Relationship to Existing Models):** ✅ Resolved. Channel messages enter existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. No new Event types — Messages are their own audit trail.
 - **Section 5 (Migration Checklist):** New tables: `persona_types`, `channels`, `channel_memberships`, `messages`. New column: `personas.persona_type_id` (FK, NOT NULL — requires backfill migration for existing personas as `agent/internal`).
 
 ---
@@ -888,20 +889,40 @@ The one-agent-one-channel constraint has implications for how channel messages c
 ---
 
 ### 1.5 Relationship to Existing Models
-- [ ] **Decision: How do channels and messages integrate with existing Headspace models?**
+- [x] **Decision: How do channels and messages integrate with existing Headspace models?**
 
 **Depends on:** 1.1, 1.2, 1.4
 
 **Context:** Channels don't exist in isolation — they interact with Agents, Commands, Turns, Projects, and potentially Organisations. The integration points need to be clean.
 
-**Questions to resolve:**
-- Does a received channel message create a Turn on the receiving agent's current Command?
-- Does a channel message that instructs work create a new Command on the receiving agent?
-- Can a channel be scoped to a Project?
-- Does the channel model connect to the Organisation model (org-scoped channels)?
-- How do Events (audit trail) relate to channel messages? (Are messages their own audit trail, or do they also generate Events?)
+**Resolution:**
 
-**Resolution:** _(Pending)_
+#### Channel messages enter the existing pipeline — no special-case logic
+
+When a channel message is delivered to an agent (via tmux or other delivery mechanism), it enters the **same processing pipeline as any other input.** The IntentDetector classifies the content, and the CommandLifecycleManager handles state transitions accordingly.
+
+- **IntentDetector decides.** The delivered message content is processed by the IntentDetector, which determines the intent (COMMAND, ANSWER, QUESTION, etc.). If the detector classifies it as COMMAND intent, the CommandLifecycleManager creates a new Command. If it classifies as ANSWER, PROGRESS, or other intent, it becomes a Turn on the agent's current Command.
+- **`delegation` message type biases but doesn't override.** A `delegation` message type is a hint that biases the IntentDetector toward COMMAND intent, but the detector still makes the final classification. Same pipeline, same rules — channel messages just enter through a different door.
+- **The Turn created by delivery carries `source_message_id`** (resolved in 1.2), linking it back to the channel Message that caused it. This is the only channel-specific addition to the pipeline.
+
+#### No new Event types
+
+Messages are their own audit trail. The Message table captures: who said what, in which channel, when, linked to which Turn and Command via bidirectional FKs. Writing a `MESSAGE_SENT` Event for every Message would duplicate data into a second table for no reason.
+
+The existing Event pipeline continues to fire for state transitions, hook events, and session lifecycle — the things it already tracks. Channel messages have their own table and their own query surface.
+
+#### Channel scoping — already resolved
+
+Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organisation_id` FK, nullable) was resolved structurally in Decision 1.1. No additional integration points are needed. Channels are cross-project by default; optional FKs provide light scoping without enforcement.
+
+#### Summary
+
+| Question | Answer |
+|----------|--------|
+| Does a received message create a Turn? | Yes — through the normal pipeline. IntentDetector classifies, CommandLifecycleManager acts. |
+| Does a delegation message create a Command? | Only if the IntentDetector classifies the content as COMMAND intent. The `delegation` type biases but doesn't override. |
+| Do Messages generate Events? | No. Messages are their own audit trail. No duplication. |
+| Channel scoping? | Resolved in 1.1. Nullable FKs to Project and Organisation. |
 
 ---
 

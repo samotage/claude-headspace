@@ -207,7 +207,7 @@ def focus_agent(agent_id: int):
 
 
 @focus_bp.route("/api/agents/<int:agent_id>/dismiss", methods=["POST"])
-def dismiss_agent(agent_id: int):
+def dismiss_agent_endpoint(agent_id: int):
     """
     Dismiss an agent by marking it as ended.
 
@@ -222,6 +222,8 @@ def dismiss_agent(agent_id: int):
         404: Agent not found
         409: Agent already ended
     """
+    from ..services.agent_lifecycle import dismiss_agent
+
     agent = db.session.get(Agent, agent_id)
 
     if agent is None:
@@ -235,35 +237,17 @@ def dismiss_agent(agent_id: int):
         }), 409
 
     try:
-        now = datetime.now(timezone.utc)
-        agent.ended_at = now
-        agent.last_seen_at = now
-        db.session.commit()
+        if dismiss_agent(agent_id):
+            return jsonify({
+                "status": "ok",
+                "agent_id": agent_id,
+            }), 200
+        else:
+            return jsonify({"error": "Failed to dismiss agent"}), 500
     except Exception:
         db.session.rollback()
         logger.exception("Failed to dismiss agent %s", agent_id)
         return jsonify({"error": "Failed to dismiss agent"}), 500
-
-    logger.warning(
-        f"DISMISS_KILL: agent_id={agent_id} uuid={agent.session_uuid} "
-        f"tmux_pane={agent.tmux_pane_id} project={agent.project.name if agent.project else 'N/A'}"
-    )
-
-    # Broadcast so other dashboard clients also remove the card
-    try:
-        from ..services.broadcaster import get_broadcaster
-        get_broadcaster().broadcast("session_ended", {
-            "agent_id": agent_id,
-            "reason": "dismissed",
-            "timestamp": now.isoformat(),
-        })
-    except Exception as e:
-        logger.warning(f"Dismiss broadcast failed: {e}")
-
-    return jsonify({
-        "status": "ok",
-        "agent_id": agent_id,
-    }), 200
 
 
 def _log_attach_event(
