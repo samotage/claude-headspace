@@ -233,8 +233,10 @@ def dismiss_agent_endpoint(agent_id: int):
 
     if agent.ended_at is not None:
         return jsonify({
-            "error": "Agent already ended",
-        }), 409
+            "status": "ok",
+            "agent_id": agent_id,
+            "already_ended": True,
+        }), 200
 
     try:
         if dismiss_agent(agent_id):

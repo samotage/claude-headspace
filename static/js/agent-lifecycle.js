@@ -144,6 +144,19 @@
     }
 
     /**
+     * Dismiss an agent via the API without touching the DOM.
+     * Used as a fallback when shutdownAgent fails — the card is already gone.
+     */
+    function _silentDismiss(agentId) {
+        return CHUtils.apiFetch('/api/agents/' + agentId + '/dismiss', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }).catch(function(err) {
+            console.error('Silent dismiss failed for agent ' + agentId, err);
+        });
+    }
+
+    /**
      * Close all open card footer kebab menus.
      */
     function closeCardKebabs() {
@@ -189,11 +202,46 @@
     }
 
     /**
+     * Keyboard-aware positioning for the mobile bottom sheet.
+     * iOS keeps the keyboard visible even after blurring if the timing
+     * is tight. This watches visualViewport and pushes the sheet up.
+     */
+    var _keyboardWatchHandler = null;
+
+    function _startKeyboardWatch(menuEl) {
+        if (window.innerWidth > 640 || !window.visualViewport) return;
+        _stopKeyboardWatch(menuEl);
+        _keyboardWatchHandler = function() {
+            var vv = window.visualViewport;
+            var keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+            if (keyboardHeight > 50) {
+                menuEl.style.bottom = keyboardHeight + 'px';
+            } else {
+                menuEl.style.bottom = '';
+            }
+        };
+        window.visualViewport.addEventListener('resize', _keyboardWatchHandler);
+        window.visualViewport.addEventListener('scroll', _keyboardWatchHandler);
+        // Apply immediately in case keyboard is already visible
+        _keyboardWatchHandler();
+    }
+
+    function _stopKeyboardWatch(menuEl) {
+        if (_keyboardWatchHandler && window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', _keyboardWatchHandler);
+            window.visualViewport.removeEventListener('scroll', _keyboardWatchHandler);
+            _keyboardWatchHandler = null;
+        }
+        if (menuEl) menuEl.style.bottom = '';
+    }
+
+    /**
      * Close the new-agent popover menu and reset to project step.
      */
     function closeNewAgentMenu() {
         var menu = document.getElementById('new-agent-menu');
         var btn = document.getElementById('new-agent-btn');
+        _stopKeyboardWatch(menu);
         if (menu) menu.classList.remove('open');
         if (btn) btn.setAttribute('aria-expanded', 'false');
         // Reset to project step for next open
@@ -342,11 +390,18 @@
                 if (isOpen) {
                     closeNewAgentMenu();
                 } else {
+                    // Dismiss iOS keyboard before opening the bottom sheet —
+                    // a focused respond-widget input keeps the keyboard visible
+                    // and it covers the persona selector on iPhone.
+                    if (document.activeElement && document.activeElement !== document.body) {
+                        document.activeElement.blur();
+                    }
                     // Always reset to project step when opening
                     showProjectStep();
                     showMobileBackdrop();
                     menu.classList.add('open');
                     createBtn.setAttribute('aria-expanded', 'true');
+                    _startKeyboardWatch(menu);
                 }
             });
 
@@ -432,25 +487,23 @@
                 e.stopPropagation();
                 var agentId = kebabBtn.getAttribute('data-agent-id');
                 var menu = document.querySelector('.card-kebab-menu[data-agent-id="' + agentId + '"]');
-                // Close all other open card kebabs first
+                // Capture open state BEFORE closing all menus
+                var wasOpen = menu && menu.classList.contains('open');
                 closeCardKebabs();
-                if (menu) {
-                    var isOpen = !menu.classList.contains('open');
-                    menu.classList.toggle('open');
-                    kebabBtn.setAttribute('aria-expanded', isOpen);
-                    if (isOpen) {
-                        // Elevate the parent card above siblings
-                        var card = kebabBtn.closest('article');
-                        if (card) card.classList.add('kebab-open');
-                        // Disable overflow clipping on all ancestor containers
-                        var el = kebabBtn.parentElement;
-                        while (el && el !== document.body) {
-                            var style = window.getComputedStyle(el);
-                            if (style.overflow !== 'visible' || style.overflowY !== 'visible' || style.overflowX !== 'visible') {
-                                el.classList.add('kebab-child-open');
-                            }
-                            el = el.parentElement;
+                if (menu && !wasOpen) {
+                    menu.classList.add('open');
+                    kebabBtn.setAttribute('aria-expanded', 'true');
+                    // Elevate the parent card above siblings
+                    var card = kebabBtn.closest('article');
+                    if (card) card.classList.add('kebab-open');
+                    // Disable overflow clipping on all ancestor containers
+                    var el = kebabBtn.parentElement;
+                    while (el && el !== document.body) {
+                        var style = window.getComputedStyle(el);
+                        if (style.overflow !== 'visible' || style.overflowY !== 'visible' || style.overflowX !== 'visible') {
+                            el.classList.add('kebab-child-open');
                         }
+                        el = el.parentElement;
                     }
                 }
                 return;
@@ -601,6 +654,38 @@
                 var heroChars = killAction.getAttribute('data-hero-chars') || '';
                 var heroTrail = killAction.getAttribute('data-hero-trail') || '';
                 var heroLabel = heroChars + heroTrail || ('#' + agentId);
+
+                function _immediateRemoveAndShutdown(aid, label) {
+                    // 1. Immediately remove card from DOM (instant feedback)
+                    var card = document.querySelector('article[data-agent-id="' + aid + '"]');
+                    if (card) {
+                        card.style.transition = 'opacity 0.3s, transform 0.3s';
+                        card.style.opacity = '0';
+                        card.style.transform = 'scale(0.95)';
+                        setTimeout(function() { card.remove(); }, 300);
+                    }
+                    if (global.Toast) {
+                        global.Toast.success('Shutting down', 'Agent ' + label + ' dismissed');
+                    }
+
+                    // 2. Fire shutdown in background — card is already gone
+                    global._agentOperationInProgress = true;
+                    shutdownAgent(aid).then(function(data) {
+                        if (data && data.error) {
+                            return _silentDismiss(aid);
+                        }
+                    }).catch(function() {
+                        return _silentDismiss(aid);
+                    }).finally(function() {
+                        global._agentOperationInProgress = false;
+                        if (global._sseReloadDeferred) {
+                            var deferred = global._sseReloadDeferred;
+                            global._sseReloadDeferred = null;
+                            deferred();
+                        }
+                    });
+                }
+
                 if (typeof ConfirmDialog !== 'undefined') {
                     var styledTitle = heroChars
                         ? 'Shut down agent ' + CHUtils.heroHTML(heroChars, heroTrail) + '?'
@@ -611,43 +696,11 @@
                         { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
                     ).then(function(confirmed) {
                         if (confirmed) {
-                            // Guard against SSE page reloads while the
-                            // shutdown request is in flight (2-8s blocking).
-                            // Without this, the dismiss fallback can be
-                            // lost to a reload between confirm and response.
-                            global._agentOperationInProgress = true;
-                            shutdownAgent(agentId).then(function(data) {
-                                if (data && data.error) {
-                                    return window.FocusAPI.dismissAgent(agentId);
-                                }
-                            }).catch(function() {
-                                return window.FocusAPI.dismissAgent(agentId);
-                            }).finally(function() {
-                                global._agentOperationInProgress = false;
-                                if (global._sseReloadDeferred) {
-                                    var deferred = global._sseReloadDeferred;
-                                    global._sseReloadDeferred = null;
-                                    deferred();
-                                }
-                            });
+                            _immediateRemoveAndShutdown(agentId, heroLabel);
                         }
                     });
                 } else if (confirm('Shut down agent ' + heroLabel + '?')) {
-                    global._agentOperationInProgress = true;
-                    shutdownAgent(agentId).then(function(data) {
-                        if (data && data.error) {
-                            return window.FocusAPI.dismissAgent(agentId);
-                        }
-                    }).catch(function() {
-                        return window.FocusAPI.dismissAgent(agentId);
-                    }).finally(function() {
-                        global._agentOperationInProgress = false;
-                        if (global._sseReloadDeferred) {
-                            var deferred = global._sseReloadDeferred;
-                            global._sseReloadDeferred = null;
-                            deferred();
-                        }
-                    });
+                    _immediateRemoveAndShutdown(agentId, heroLabel);
                 }
                 return;
             }

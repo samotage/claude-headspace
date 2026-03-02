@@ -561,6 +561,14 @@
 
         console.log('Session ended:', agentId);
 
+        // If the card was already removed (e.g. by kill action), skip DOM ops
+        var existingCard = findAgentCard(agentId);
+        if (!existingCard && isKanbanView()) {
+            agentStates.delete(agentId);
+            updateStatusCounts();
+            return;
+        }
+
         // Remove from tracked states
         agentStates.delete(agentId);
 
