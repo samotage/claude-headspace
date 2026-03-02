@@ -15,6 +15,8 @@ from claude_headspace.services.intent_detector import (
     END_OF_COMMAND_HANDOFF_PATTERNS,
     END_OF_COMMAND_SOFT_CLOSE_PATTERNS,
     END_OF_COMMAND_SUMMARY_PATTERNS,
+    HANDOFF_NEGATIVE_PATTERNS,
+    HANDOFF_PATTERNS,
     PLAN_APPROVAL_PATTERN,
     QUESTION_PATTERNS,
     IntentResult,
@@ -24,8 +26,10 @@ from claude_headspace.services.intent_detector import (
     _extract_tail,
     _infer_completion_classification,
     _is_confirmation,
+    _match_patterns,
     _strip_code_blocks,
     detect_agent_intent,
+    detect_handoff_intent,
     detect_intent,
     detect_user_intent,
 )
@@ -1984,3 +1988,212 @@ class TestCommandCompleteMarkerInFullResponse:
             f"Expected COMPLETION but got {result.intent.value} "
             f"(pattern={result.matched_pattern})"
         )
+
+
+class TestHandoffPatterns:
+    """Tests for HANDOFF_PATTERNS regex matching."""
+
+    # ── Positive matches ──────────────────────────────────────────────
+
+    def test_bare_handoff(self):
+        assert _match_patterns("handoff", HANDOFF_PATTERNS)
+
+    def test_bare_hand_off_space(self):
+        assert _match_patterns("hand off", HANDOFF_PATTERNS)
+
+    def test_prepare_handoff(self):
+        """The exact phrase from the bug report."""
+        assert _match_patterns("Prepare handoff for the next Section in a new agent.", HANDOFF_PATTERNS)
+
+    def test_do_a_handoff(self):
+        assert _match_patterns("do a handoff", HANDOFF_PATTERNS)
+
+    def test_please_handoff(self):
+        assert _match_patterns("please handoff", HANDOFF_PATTERNS)
+
+    def test_start_handoff(self):
+        assert _match_patterns("start handoff", HANDOFF_PATTERNS)
+
+    def test_initiate_handoff(self):
+        assert _match_patterns("initiate handoff", HANDOFF_PATTERNS)
+
+    def test_begin_a_handoff(self):
+        assert _match_patterns("begin a handoff", HANDOFF_PATTERNS)
+
+    def test_trigger_handoff(self):
+        assert _match_patterns("trigger handoff", HANDOFF_PATTERNS)
+
+    def test_run_handoff(self):
+        assert _match_patterns("run handoff", HANDOFF_PATTERNS)
+
+    def test_kick_off_handoff(self):
+        assert _match_patterns("kick off handoff", HANDOFF_PATTERNS)
+
+    def test_please_start_a_handoff(self):
+        assert _match_patterns("please start a handoff", HANDOFF_PATTERNS)
+
+    def test_hand_off_to_successor(self):
+        assert _match_patterns("hand off to the next agent", HANDOFF_PATTERNS)
+
+    def test_handoff_for_next_section(self):
+        assert _match_patterns("handoff for the next section", HANDOFF_PATTERNS)
+
+    def test_case_insensitive(self):
+        assert _match_patterns("HANDOFF", HANDOFF_PATTERNS)
+        assert _match_patterns("Handoff", HANDOFF_PATTERNS)
+        assert _match_patterns("PREPARE HANDOFF", HANDOFF_PATTERNS)
+
+    # ── Negative: should NOT match ────────────────────────────────────
+
+    def test_no_match_normal_command(self):
+        assert not _match_patterns("fix the login bug", HANDOFF_PATTERNS)
+
+    def test_no_match_question_about_code(self):
+        assert not _match_patterns("what does this function do?", HANDOFF_PATTERNS)
+
+
+class TestHandoffNegativePatterns:
+    """Tests for HANDOFF_NEGATIVE_PATTERNS — vetoes false positives."""
+
+    def test_check_handoff_code(self):
+        assert _match_patterns("check the handoff executor code", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_review_handoff_service(self):
+        assert _match_patterns("review the handoff service", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_fix_handoff_bug(self):
+        assert _match_patterns("fix handoff bug", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_debug_handoff_executor(self):
+        assert _match_patterns("debug the handoff executor", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_handoff_test(self):
+        assert _match_patterns("run the handoff test", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_look_at_handoff_log(self):
+        assert _match_patterns("look at the handoff log", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_does_not_veto_real_handoff(self):
+        """A real handoff request should NOT match negative patterns."""
+        assert not _match_patterns("prepare handoff for the next section", HANDOFF_NEGATIVE_PATTERNS)
+
+    def test_does_not_veto_bare_handoff(self):
+        assert not _match_patterns("handoff", HANDOFF_NEGATIVE_PATTERNS)
+
+
+class TestDetectHandoffIntent:
+    """Tests for the detect_handoff_intent function."""
+
+    # ── Bug report reproduction ───────────────────────────────────────
+
+    def test_exact_bug_report_message(self):
+        """The exact message from the bug report that was missed."""
+        is_handoff, context = detect_handoff_intent(
+            "Prepare handoff for the next Section in a new agent."
+        )
+        assert is_handoff is True
+        assert context == "for the next Section in a new agent"
+
+    # ── Positive detections ───────────────────────────────────────────
+
+    def test_bare_handoff(self):
+        is_handoff, context = detect_handoff_intent("handoff")
+        assert is_handoff is True
+        assert context is None
+
+    def test_do_a_handoff(self):
+        is_handoff, context = detect_handoff_intent("do a handoff")
+        assert is_handoff is True
+
+    def test_please_handoff(self):
+        is_handoff, context = detect_handoff_intent("please handoff")
+        assert is_handoff is True
+
+    def test_handoff_with_context(self):
+        is_handoff, context = detect_handoff_intent("handoff to continue the workshop")
+        assert is_handoff is True
+        assert context == "to continue the workshop"
+
+    def test_start_handoff_with_context(self):
+        is_handoff, context = detect_handoff_intent("start handoff for the next epic")
+        assert is_handoff is True
+        assert context == "for the next epic"
+
+    def test_prepare_a_handoff(self):
+        is_handoff, context = detect_handoff_intent("prepare a handoff")
+        assert is_handoff is True
+
+    # ── Negative detections (not handoff) ─────────────────────────────
+
+    def test_normal_command(self):
+        is_handoff, context = detect_handoff_intent("fix the login bug")
+        assert is_handoff is False
+        assert context is None
+
+    def test_empty_text(self):
+        is_handoff, context = detect_handoff_intent("")
+        assert is_handoff is False
+
+    def test_none_text(self):
+        is_handoff, context = detect_handoff_intent(None)
+        assert is_handoff is False
+
+    def test_short_text(self):
+        is_handoff, context = detect_handoff_intent("hi")
+        assert is_handoff is False
+
+    def test_check_handoff_code_vetoed(self):
+        """Negative guard should veto: user is discussing handoff, not requesting."""
+        is_handoff, context = detect_handoff_intent("check the handoff executor code")
+        assert is_handoff is False
+
+    def test_fix_handoff_bug_vetoed(self):
+        is_handoff, context = detect_handoff_intent("fix the handoff bug in hook_receiver.py")
+        assert is_handoff is False
+
+    def test_review_handoff_service_vetoed(self):
+        is_handoff, context = detect_handoff_intent("review the handoff service")
+        assert is_handoff is False
+
+    def test_investigate_handoff_error_vetoed(self):
+        is_handoff, context = detect_handoff_intent("investigate the handoff error")
+        assert is_handoff is False
+
+    # ── LLM fallback ─────────────────────────────────────────────────
+
+    def test_llm_fallback_when_regex_misses(self):
+        """When regex doesn't match but message contains 'handoff' and
+        LLM classifies as handoff, should return True."""
+        mock_inference = MagicMock()
+        mock_inference.is_available = True
+        mock_inference.infer.return_value = MagicMock(text="A")
+
+        is_handoff, context = detect_handoff_intent(
+            "I think we should handoff this work now",
+            inference_service=mock_inference,
+        )
+        assert is_handoff is True
+
+    def test_llm_fallback_rejects_non_handoff(self):
+        """LLM classifies as COMMAND (B) — not a handoff."""
+        mock_inference = MagicMock()
+        mock_inference.is_available = True
+        mock_inference.infer.return_value = MagicMock(text="B")
+
+        is_handoff, context = detect_handoff_intent(
+            "the handoff process worked well last time",
+            inference_service=mock_inference,
+        )
+        assert is_handoff is False
+
+    def test_no_llm_without_handoff_keyword(self):
+        """LLM should not be called if message doesn't contain 'handoff'."""
+        mock_inference = MagicMock()
+        mock_inference.is_available = True
+
+        is_handoff, context = detect_handoff_intent(
+            "fix the login bug",
+            inference_service=mock_inference,
+        )
+        assert is_handoff is False
+        mock_inference.infer.assert_not_called()

@@ -195,6 +195,18 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Respond with only the letter."
     ),
 
+    # --- Classification: handoff ---
+    "handoff_classification": (
+        "Classify this user message. Is the user:\n"
+        "A) HANDOFF - requesting that the current agent hand off work to a successor agent\n"
+        "B) COMMAND - giving a normal instruction or discussing handoff as a topic\n"
+        "\n"
+        "Reply with only the letter.\n"
+        "\n"
+        "User message:\n"
+        "{text}"
+    ),
+
     # --- Classification: question ---
     "question_classification": (
         "You are classifying Claude Code agent output. "

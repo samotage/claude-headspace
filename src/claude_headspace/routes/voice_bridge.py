@@ -370,32 +370,12 @@ def voice_command():
         agent = awaiting[0]
 
     # ── Handoff intent detection ─────────────────────────────────────
-    # If the user's message expresses handoff intent, route to the handoff
-    # flow instead of sending the text to the agent via tmux. Everything
-    # after the handoff trigger phrase becomes operator context.
-    #
-    # Matches (all case-insensitive):
-    #   handoff ...             hand off ...
-    #   please handoff ...      please hand off ...
-    #   do a handoff ...        do a hand off ...
-    #   initiate handoff ...    initiate a hand off ...
-    #   start handoff ...       start a handoff ...
-    #   begin handoff ...       begin a hand off ...
-    #   trigger handoff ...     trigger a handoff ...
-    #   run handoff ...         run a hand off ...
-    #   kick off handoff ...    kick off a handoff ...
-    #   please initiate handoff ...
-    #   please start a handoff ...
-    import re
-    handoff_match = re.match(
-        r"^(?:please\s+)?"
-        r"(?:(?:do|initiate|start|begin|trigger|run|kick\s+off)\s+(?:a\s+)?)?"
-        r"hand\s*off\b[.!]?\s*(.*)",
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if handoff_match:
-        handoff_context = handoff_match.group(1).strip() or None
+    # Uses the shared detect_handoff_intent from the intent detector
+    # (regex patterns + LLM fallback). If the user's message is a handoff
+    # request, route to HandoffExecutor instead of sending via tmux.
+    from ..services.intent_detector import detect_handoff_intent
+    is_handoff, handoff_context = detect_handoff_intent(text)
+    if is_handoff:
         handoff_executor = current_app.extensions.get("handoff_executor")
         if not handoff_executor:
             return _voice_error(

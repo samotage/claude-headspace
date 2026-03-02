@@ -160,6 +160,27 @@ CONTINUATION_PATTERNS = [
     r"(?i)(?:working on|starting|beginning|in progress)",
 ]
 
+# Handoff request patterns — detect when a USER message is requesting agent handoff.
+# These only apply to USER turns (not AGENT output).
+HANDOFF_PATTERNS = [
+    # Direct: "handoff" / "hand off" at start (optionally preceded by verb/please)
+    # Verbs: prepare, do, initiate, start, begin, trigger, run, kick off
+    r"(?i)^(?:please\s+)?(?:(?:prepare|do|initiate|start|begin|trigger|run|kick\s+off)\s+(?:a\s+)?)?hand\s*off\b",
+    # "hand off to" / "handoff to" / "hand off for" anywhere
+    r"(?i)\bhand\s*off\s+(?:to|for)\b",
+    # "do a handoff" / "prepare a handoff" etc. anywhere (not just start-anchored)
+    r"(?i)\b(?:prepare|do|initiate|start|begin|trigger|run)\s+(?:a\s+)?hand\s*off\b",
+]
+
+# Negative guard: user is discussing handoff, not requesting one.
+# If any of these match, handoff detection is vetoed.
+HANDOFF_NEGATIVE_PATTERNS = [
+    # Imperative verbs that indicate investigation/development, not a handoff request
+    r"(?i)^(?:check|review|test|fix|debug|read|look at|inspect|examine|trace|investigate)\b.*\bhand\s*off\b",
+    # "handoff executor/service/code/file/test/bug" — referring to the handoff system itself
+    r"(?i)\bhand\s*off\s*(?:executor|service|code|file|test|bug|issue|error|log|class|function|method)\b",
+]
+
 # Bare affirmative words/phrases that indicate user confirmation, not a new command
 BARE_AFFIRMATIVES = {
     "yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure",
@@ -182,6 +203,105 @@ def _is_confirmation(text: str) -> bool:
     if PLAN_APPROVAL_PATTERN.search(text.strip()):
         return True
     return False
+
+
+# Regex that captures everything after the handoff trigger phrase.
+# Used by detect_handoff_intent to extract operator context.
+_HANDOFF_CONTEXT_RE = re.compile(
+    r"(?i)^(?:please\s+)?"
+    r"(?:(?:prepare|do|initiate|start|begin|trigger|run|kick\s+off)\s+(?:a\s+)?)?"
+    r"hand\s*off\b[.!,;:]?\s*(.*)",
+    re.DOTALL,
+)
+
+
+def detect_handoff_intent(
+    text: Optional[str],
+    inference_service: Any = None,
+    project_id: int | None = None,
+    agent_id: int | None = None,
+) -> tuple[bool, Optional[str]]:
+    """Detect whether a USER message is requesting an agent handoff.
+
+    Uses regex pattern matching with negative guards, followed by optional
+    LLM fallback for ambiguous cases. Same architecture as agent intent
+    detection (questions, completions, etc.).
+
+    Returns:
+        (is_handoff, context) where context is the portion of the message
+        after the handoff trigger phrase (passed to HandoffExecutor as
+        operator context). Returns (False, None) if not a handoff request.
+    """
+    if not text or len(text.strip()) < 4:
+        return False, None
+
+    stripped = text.strip()
+
+    # Phase 1: Negative guard — user is discussing handoff, not requesting it
+    if _match_patterns(stripped, HANDOFF_NEGATIVE_PATTERNS):
+        logger.debug("Handoff negative guard matched — not a handoff request")
+        return False, None
+
+    # Phase 2: Regex pattern matching
+    if _match_patterns(stripped, HANDOFF_PATTERNS):
+        # Extract context (everything after the trigger phrase)
+        context = None
+        ctx_match = _HANDOFF_CONTEXT_RE.match(stripped)
+        if ctx_match:
+            remainder = ctx_match.group(1).strip().rstrip(".")
+            if remainder:
+                context = remainder
+        logger.info(
+            f"Handoff intent detected (regex): text={repr(stripped[:80])}, "
+            f"context={repr(context)}"
+        )
+        return True, context
+
+    # Phase 3: LLM fallback for ambiguous cases.
+    # Only attempt if the message mentions "handoff" / "hand off" at all
+    # (avoids burning inference on messages with no handoff signal).
+    if (
+        inference_service
+        and getattr(inference_service, "is_available", False)
+        and re.search(r"(?i)\bhand\s*off\b", stripped)
+    ):
+        is_handoff = _infer_handoff_classification(
+            stripped, inference_service, project_id=project_id, agent_id=agent_id
+        )
+        if is_handoff:
+            # For LLM-detected handoffs, pass the full text as context
+            # (no trigger phrase to strip)
+            logger.info(
+                f"Handoff intent detected (LLM): text={repr(stripped[:80])}"
+            )
+            return True, stripped
+        return False, None
+
+    return False, None
+
+
+def _infer_handoff_classification(
+    text: str,
+    inference_service: Any,
+    project_id: int | None = None,
+    agent_id: int | None = None,
+) -> bool:
+    """LLM fallback for ambiguous handoff classification."""
+    prompt = build_prompt("handoff_classification", text=text)
+
+    try:
+        result = inference_service.infer(
+            level="turn",
+            purpose="handoff_classification",
+            input_text=prompt,
+            project_id=project_id,
+            agent_id=agent_id,
+        )
+        letter = result.text.strip().upper()[:1]
+        return letter == "A"
+    except Exception as e:
+        logger.warning(f"LLM handoff classification failed: {e}")
+        return False
 
 
 @dataclass

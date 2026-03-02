@@ -1046,6 +1046,13 @@ def process_user_prompt_submit(
         _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
         _progress_texts_for_agent.pop(agent.id, None)  # New response cycle
 
+        # Handoff intent detection: check the raw prompt text (before
+        # filter_skill_expansion or persona-injection label replacement)
+        # to decide whether HandoffExecutor should be triggered after
+        # the turn is committed.
+        from .intent_detector import detect_handoff_intent
+        is_handoff, handoff_context = detect_handoff_intent(prompt_text)
+
         # Initialize transcript position for incremental PROGRESS capture.
         # Set to current file size so post_tool_use only reads NEW content.
         if agent.transcript_path:
@@ -1128,6 +1135,31 @@ def process_user_prompt_submit(
                     f"[HOOK_RECEIVER] process_user_prompt_submit state transition failed: "
                     f"error={e} — turn(s) preserved"
                 )
+
+        # Handoff trigger: if the user's message was a handoff request,
+        # kick off the HandoffExecutor flow now that the turn is committed.
+        # The turn was still processed as a normal COMMAND — handoff is an
+        # additional routing action, not a replacement.
+        if is_handoff and result.success:
+            try:
+                from flask import current_app as _app
+                handoff_executor = _app.extensions.get("handoff_executor")
+                if handoff_executor:
+                    handoff_result = handoff_executor.trigger_handoff(
+                        agent.id, reason="intent_detected", context=handoff_context
+                    )
+                    if handoff_result.success:
+                        logger.info(
+                            f"hook_event: handoff triggered — agent_id={agent.id}, "
+                            f"context={repr(handoff_context)}"
+                        )
+                    else:
+                        logger.warning(
+                            f"hook_event: handoff trigger failed — agent_id={agent.id}, "
+                            f"error={handoff_result.message}, code={handoff_result.error_code}"
+                        )
+            except Exception as e:
+                logger.warning(f"hook_event: handoff trigger error — {e}")
 
         # Broadcast user turn for voice chat IMMEDIATELY after commit —
         # before summarisation and card_refresh so the chat updates first.
