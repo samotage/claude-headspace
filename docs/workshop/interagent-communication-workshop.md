@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decision 2.1 resolved. Decision 2.2 proposed (pending operator review).** Decision 2.3 and Sections 3–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decisions 2.1–2.2 resolved.** Decision 2.3 and Sections 3–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -37,7 +37,7 @@ Sections are designed to be completable in a single workshop session. Start each
 | 2 Mar 2026 | Sam + Robbo | 1.2–1.4 (resolved) | Message model: 10-column table with metadata JSONB, attachment_path, bidirectional Turn/Command links (source_turn_id, source_command_id on Message; source_message_id on Turn). Messages immutable. Message types: 4-type enum (message, system, delegation, escalation). Membership model: explicit join/leave for all persona types, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type personas. |
 | 2 Mar 2026 | Sam + Robbo | 1.5 (resolved) | Relationship to existing models: channel messages enter the existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. Delegation type biases toward COMMAND intent but detector decides. No new Event types — Messages are their own audit trail. **Section 1 (Channel Data Model) fully resolved.** |
 | 2 Mar 2026 | Sam + Robbo | 2.1 (resolved) | Channel lifecycle: 3 creation paths (CLI, dashboard, voice bridge — voice bridge is primary operator interface). Creation capability is a persona attribute (agents delegate check to persona via OOP method delegation). 4-state lifecycle: pending → active → complete → archived. Mid-conversation member addition creates new channel as overlay on existing 1:1 sessions — existing command/turn trees untouched. Context briefing: last 10 messages injected into new agent spin-up after persona injection. Channel is a Headspace-level construct; agents don't need to know they're in one. |
-| 2 Mar 2026 | Sam + Robbo | 2.2 (proposed) | CLI Interface proposal drafted. Operator resolved two blocking decisions: standalone `flask channel` / `flask msg` namespaces (not nested under `flask org`), and `flask channel complete` verb (matches state name, no translation layer). Full proposal covers: caller identity (tmux pane detection + env var override), 10 channel commands, 2 message commands, conversational envelope format, one-agent-one-channel enforcement, capability checks, 7 actionable error messages, 7 architectural notes deferred to later sections. Pending operator review for formal resolution. |
+| 3 Mar 2026 | Sam + Robbo | 2.2 (resolved) | CLI Interface resolved. Standalone `flask channel` / `flask msg` namespaces (not nested under `flask org`), `flask channel complete` verb (matches state name, no translation layer). Caller identity via tmux pane detection + env var override. 10 channel commands, 2 message commands, conversational envelope format, one-agent-one-channel enforcement, capability checks, 7 actionable error messages, 7 architectural notes deferred to later sections. |
 
 ---
 
@@ -261,7 +261,7 @@ Injected alongside the base primer on join. Tells participants what this specifi
 
 **Forward context for Section 1 (from AR Director guidance):**
 
-- **Persona-based membership (→ Section 1.4):** Membership is persona-scoped, not agent-scoped. The persona is the stable channel identity; the agent ID is the mutable delivery target. On handoff, membership persists — only the delivery target changes. Messages are attributed to the persona with agent ID as metadata. If no active agent exists for a persona, membership stays but delivery is suspended.
+- **Persona-based membership (→ Section 1.1, 1.4):** Membership is persona-scoped, not agent-scoped. The persona is the stable channel identity; the agent ID is the mutable delivery target. On handoff, membership persists — only the delivery target changes. Messages are attributed to the persona with agent ID as metadata. If no active agent exists for a persona, membership stays but delivery is suspended.
 - **Operator as member (→ Section 1.1, 1.4):** Resolved in 1.1 — the operator IS modelled as a Persona with PersonaType `person/internal`. First-class channel identity with no Agent instances. Delivery via SSE/dashboard/voice bridge. Sits above the org hierarchy (no PositionAssignment) but participates in channels as a peer. Future-proofed: additional human team members would be additional `person/internal` Personas.
 - **Channel type on model (→ Section 1.1):** The Channel table should carry a `channel_type` field (enum) that maps to an intent template, plus an optional `intent_override` (text) for custom channels.
 
@@ -679,6 +679,8 @@ erDiagram
         enum channel_type
         string status
         text intent_override
+        timestamp completed_at "nullable (Decision 2.1)"
+        timestamp archived_at "nullable"
     }
 
     ChannelMembership {
@@ -762,7 +764,7 @@ erDiagram
 - **1.2 (Message Model):** ✅ Resolved. 10-column table with metadata JSONB, single attachment_path, bidirectional Turn/Command links. Messages immutable. Turn model extended with source_message_id FK.
 - **1.3 (Message Types):** ✅ Resolved. 4-type enum: message, system, delegation, escalation. Structural classification, not content/intent.
 - **1.4 (Membership Model):** ✅ Resolved. Explicit join/leave for all, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type.
-- **1.5 (Relationship to Existing Models):** ✅ Resolved. Channel messages enter existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. No new Event types — Messages are their own audit trail.
+- **1.5 (Relationship to Existing Models):** ✅ Resolved. Channel messages enter existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. No new Event types — Messages are their own audit trail. Channel scoping to Project and Organisation confirmed as structurally resolved by Decision 1.1 — no additional integration points needed.
 - **Section 5 (Migration Checklist):** New tables: `persona_types`, `channels`, `channel_memberships`, `messages`. New column: `personas.persona_type_id` (FK, NOT NULL — requires backfill migration for existing personas as `agent/internal`).
 
 ---
@@ -973,13 +975,13 @@ No reactivation. Create a new channel if needed.
 ---
 
 ### 2.2 CLI Interface
-- [ ] **Decision: What CLI commands do agents use to interact with channels?**
+- [x] **Decision: What CLI commands do agents use to interact with channels?**
 
 **Depends on:** 2.1, Section 1 (data model)
 
 **Context:** Following the Section 1 org workshop pattern (`flask org`), channel operations need a CLI entry point. Agents interact with channels via bash tools — the CLI is their primary interface.
 
-**Proposal (pending operator review):**
+**Resolution:**
 
 #### Namespace
 

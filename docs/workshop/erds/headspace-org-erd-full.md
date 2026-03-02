@@ -310,6 +310,6 @@ The following changes were decided during the Inter-Agent Communication Workshop
 
 ### Epic 9 Workshop Updates — Decision 2.1 (2 March 2026)
 
-- **Channel lifecycle resolved (Decision 2.1).** 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members; Active = first non-system message sent; Complete = last active member left or chair/operator explicitly completed; Archived = deep freeze.
+- **Channel lifecycle resolved (Decision 2.1).** 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members; Active = first non-system message sent; Complete = last active member left or chair/operator explicitly completed (muted members do not count as "active" for the auto-complete trigger); Archived = deep freeze.
 - **`completed_at` column added to Channel (Decision 2.1).** Nullable timestamp, set when channel enters `complete` state. Already reflected in Channel entity above.
 - **Creation capability is a persona attribute (Decision 2.1).** `can_create_channel` — service-layer check delegated from Agent to Persona. Not a DB column; implemented as a method on the Persona model that checks persona type and/or role. Operator always has creation capability inherently.
