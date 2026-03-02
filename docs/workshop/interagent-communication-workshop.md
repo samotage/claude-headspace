@@ -939,12 +939,15 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 
 **Context:** Channels need to be created, populated with members, and eventually archived. The question is who creates them and when.
 
+**Operator use case (2 March 2026):** During a workshop session with Robbo, Sam needed to pull Con into the conversation to brief him on a bug. Today this requires: spinning up a new agent, writing a prompt, sending a document link — "a pain in the fucking ass." The channel should support **mid-conversation member addition** — any participant (or at minimum the chair/operator) can add another persona to the channel, and the new member receives enough context to participate immediately. This is the "pull someone into the meeting" pattern.
+
 **Questions to resolve:**
 - Who can create channels? (Operator, any agent, specific roles like PM?)
 - Are channels created explicitly ("create a workshop channel") or implicitly ("delegate this task to Con" → system creates a channel)?
 - Channel lifecycle: created → active → archived? Can channels be reactivated?
 - Do channels have a TTL or auto-archive policy?
 - Are there default/standing channels (e.g., an org-wide channel that always exists)?
+- **How does mid-conversation member addition work?** When a new persona is added to an active channel: do they get channel history? How much? Is there a context briefing injected? Who can add members — chair only, any member, operator always?
 
 **Resolution:** _(Pending)_
 
@@ -962,6 +965,7 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 - Core commands: create, join, leave, send, list (channels), history (messages)?
 - Message sending: `flask msg send --channel <name> "content"`? Or is the channel implicit (agent's current active channel)?
 - Do agents need to explicitly "join" channels, or are they added by the creator/system?
+- **Add member command:** How does "pull Con into this conversation" work from CLI? e.g., `flask channel add-member --channel <name> --persona con`. Does adding a member also spin up an agent for that persona if one isn't running?
 - Query commands: list my channels, unread messages, channel members?
 - Output format: what does a received message look like in the agent's terminal?
 
