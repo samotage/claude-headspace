@@ -60,8 +60,10 @@
         e.stopPropagation();
         var actionId = item.getAttribute('data-action');
         if (actionId && _onAction && _agentId != null) {
+            var callback = _onAction;
+            var agentId = _agentId;
             close();
-            _onAction(actionId, _agentId);
+            callback(actionId, agentId);
         }
     }
 
