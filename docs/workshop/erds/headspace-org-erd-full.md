@@ -325,3 +325,10 @@ The following changes were decided during the Inter-Agent Communication Workshop
 - **SSE: two new event types.** `channel_message` (new message posted) and `channel_update` (member join/leave, status transition, chair transfer). Broadcast on existing `/api/events/stream` — no per-channel streams. Type filtering via `?types=` query param.
 - **Voice bridge: semantic picker extended.** Channel-name matching for voice commands ("send to workshop channel"). Same fuzzy-match algorithm as agent picker. Ambiguous matches return clarification prompt.
 - **No channel-specific rate limiting in v1.** Existing voice bridge and inference rate limiters cover the expensive operations. Message writes are cheap DB inserts.
+
+### Epic 9 Workshop Updates — Decisions 3.1–3.4 (3 March 2026)
+
+- **Fan-out architecture resolved (Decision 3.1).** Async per-member delivery as post-commit side effect. Best-effort, no delivery tracking. Tmux for local agents (per-pane locks, no global lock), SSE for operator/remote, deferred for offline agents. No retry, no delivery confirmation.
+- **Response capture resolved (Decision 3.2).** Completion-only relay via existing hook pipeline. One-agent-one-channel means no attribution ambiguity. Agent responses implicitly posted to their channel — agents don't know they're in a channel. Feedback loop prevention: completion-only rule + IntentDetector gating + CommandLifecycleManager backpressure.
+- **Delivery timing resolved (Decision 3.3).** Safe states: AWAITING_INPUT and IDLE only. In-memory queue (agent_id → deque of Message IDs) for agents in other states; delivered on state transition. Envelope format from Decision 0.3. CommanderAvailability integration for pane health checks.
+- **Operator delivery resolved (Decision 3.4).** SSE `channel_message`/`channel_update` events on existing stream. Dashboard: channel cards above project sections + click-to-open chat panel. Three send paths: dashboard chat panel, voice bridge, voice PWA. Per-channel notification rate limiting (30s window). Operator messages: persona_id set, agent_id/source_turn_id/source_command_id all NULL.

@@ -29,6 +29,7 @@
 |---|---|---|
 | `ChannelService` | Core service layer for all channel operations (create, join, leave, complete, send message, etc.). CLI, API, voice bridge, and dashboard all delegate to this. Registered as `app.extensions["channel_service"]`. | DB models (Channel, ChannelMembership, Message), PersonaRegistration (capability checks), Broadcaster (SSE events) |
 | `channels_api` blueprint | REST endpoints at `/api/channels`. Thin HTTP wrapper around ChannelService. | ChannelService, session token auth (existing), Flask session auth (existing) |
+| `ChannelDeliveryService` | Fan-out delivery engine. Iterates channel members, dispatches per member type (tmux/SSE/deferred). In-memory delivery queue for agents not in safe state. Integrates with CommanderAvailability for pane health. | ChannelService, TmuxBridge (existing), Broadcaster (existing), CommanderAvailability (existing), CommandLifecycleManager (state transition hooks) |
 
 ### Integration Points
 

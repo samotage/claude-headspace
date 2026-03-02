@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** Sections 3–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** **Section 3 fully resolved (4 decisions).** Sections 4–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -40,6 +40,7 @@ This is the **index document** for the workshop. Each section lives in its own f
 | 3 Mar 2026 | Sam + Robbo | 2.2 (resolved) | CLI Interface resolved. Standalone `flask channel` / `flask msg` namespaces (not nested under `flask org`), `flask channel complete` verb (matches state name, no translation layer). Caller identity via tmux pane detection + env var override. 10 channel commands, 2 message commands, conversational envelope format, one-agent-one-channel enforcement, capability checks, 7 actionable error messages, 7 architectural notes deferred to later sections. |
 | 3 Mar 2026 | Sam + Robbo | 1.x (correction) | **Message.persona_id NULLABLE resolution.** PostgreSQL incompatibility (NOT NULL + SET NULL ondelete) resolved: Option A chosen — make persona_id nullable. Persona deletion sets message persona_id to NULL; agent record and audit trail remain intact. System messages naturally have NULL persona. Updated: Section 1.1, 1.2, 1.3, canonical ERD, migration checklist. |
 | 3 Mar 2026 | Sam + Robbo | 2.3 (resolved) | API Endpoints resolved. Single `/api/channels` blueprint — REST endpoints for channels, members, messages. Same `ChannelService` backs CLI, API, voice bridge, and dashboard. Auth: existing dashboard session + session tokens (no new mechanism). SSE: two new event types (`channel_message`, `channel_update`) on existing stream with type filtering — no per-channel streams. Voice bridge: extend semantic picker for channel-name matching. Slug-based URLs. No channel-specific rate limiting in v1. **Section 2 (Channel Operations & CLI) fully resolved.** |
+| 3 Mar 2026 | Sam + Robbo | 3.1–3.4 (resolved) | Message delivery & fan-out fully resolved. Async per-member fan-out, best-effort, no delivery tracking. Agent responses captured via completion-only relay (existing hook pipeline), implicit relay (one-agent-one-channel = no ambiguity). Feedback loop prevention via completion-only rule + IntentDetector gating. Delivery only in AWAITING_INPUT/IDLE states, in-memory queue for others. Envelope format from Decision 0.3. Operator receives via SSE, sends via dashboard chat panel / voice bridge / voice PWA. Channel cards above project sections on dashboard. **Section 3 fully resolved.** |
 
 ---
 
@@ -88,9 +89,9 @@ The structural foundation. 3 new tables (Channel, ChannelMembership, Message) pl
 Channel lifecycle (4-state: pending → active → complete → archived), creation paths, mid-conversation member addition. CLI interface: standalone `flask channel` / `flask msg` namespaces, caller identity via tmux pane detection, 10 channel commands, 2 message commands, conversational envelope format. API endpoints: single `/api/channels` blueprint, REST CRUD + members + messages. Auth via existing dashboard session + session tokens. SSE: two new event types on existing stream. Voice bridge: semantic picker extended for channel-name matching.
 
 ### [Section 3: Message Delivery & Fan-Out](sections/section-3-message-delivery.md)
-**Status:** Pending (4 decisions: 3.1–3.4)
+**Status:** Fully resolved (4 decisions: 3.1–3.4)
 
-The delivery engine. Fan-out architecture, agent response capture & relay, delivery timing & agent state safety, operator delivery via SSE/dashboard.
+The delivery engine. Async per-member fan-out (tmux for local agents, SSE for operator/remote, deferred for offline). Completion-only relay via existing hook pipeline — agents don't know they're in a channel. AWAITING_INPUT/IDLE delivery with in-memory queue for other states. Operator receives via SSE channel cards + chat panel, sends via dashboard/voice bridge/voice PWA.
 
 ### [Section 4: The Group Workshop Use Case](sections/section-4-group-workshop-use-case.md)
 **Status:** Pending (3 decisions: 4.1–4.3)
