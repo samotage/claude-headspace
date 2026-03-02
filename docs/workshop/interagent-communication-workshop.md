@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). Section 1.1 resolved. Section 0A seeded (7 decisions, pending workshop). Sections 1.2–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). Section 1.1–1.4 resolved. Section 0A seeded (7 decisions, pending workshop). Section 1.5 and Sections 2–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -34,6 +34,7 @@ Sections are designed to be completable in a single workshop session. Start each
 | 2 Mar 2026 | Sam + Robbo | 0A (seeded) | Handoff continuity: filesystem-driven detection, summary-in-filename, synthetic injection primitive, operator-gated rehydration. 7 decisions seeded, pending formal workshop. |
 | 2 Mar 2026 | Sam + Robbo | 0 (resolved) | Infrastructure audit: 7 communication paths mapped, per-pane parallel fan-out confirmed, completion-only relay rule, envelope format with persona+agent ID, channel behavioral primer as injectable asset, chair role in channels. Incorporated Paula's AR Director guidance: two-layer primer (base + intent), persona-based membership, chair capabilities (delivery priority deferred to v2). |
 | 2 Mar 2026 | Sam + Robbo | 1.1 (resolved) | Channel model: 3 new tables (Channel, ChannelMembership, Message). PersonaType parent table introduced (2×2 matrix: agent/person × internal/external). Channels cross-project and optionally org-scoped. Membership persona-based with explicit PositionAssignment FK for org capacity. Operator participates as internal-person Persona. External persons/agents modelled for future cross-system collaboration (dragons acknowledged, scope held). |
+| 2 Mar 2026 | Sam + Robbo | 1.2–1.4 (resolved) | Message model: 10-column table with metadata JSONB, attachment_path, bidirectional Turn/Command links (source_turn_id, source_command_id on Message; source_message_id on Turn). Messages immutable. Message types: 4-type enum (message, system, delegation, escalation). Membership model: explicit join/leave for all persona types, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type personas. |
 
 ---
 
@@ -688,8 +689,23 @@ erDiagram
     Message {
         int id PK
         text content
-        enum message_type
+        enum message_type "message|system|delegation|escalation"
+        jsonb metadata "nullable"
+        string attachment_path "nullable"
+        int source_turn_id FK "nullable"
+        int source_command_id FK "nullable"
         timestamp sent_at
+    }
+
+    Turn {
+        int id PK
+        string _note "EXISTING - extended"
+        int source_message_id FK "nullable"
+    }
+
+    Command {
+        int id PK
+        string _note "EXISTING"
     }
 
     %% === Persona type hierarchy ===
@@ -716,10 +732,13 @@ erDiagram
     ChannelMembership }o--o| Agent : "delivery target (mutable)"
     ChannelMembership }o--o| PositionAssignment : "in capacity of"
 
-    %% === Messages (attributed to persona, traced to agent) ===
+    %% === Messages (attributed to persona, linked to Turn/Command) ===
     Channel ||--o{ Message : "contains"
     Message }o--|| Persona : "sent by (identity)"
     Message }o--o| Agent : "sent by (instance)"
+    Message }o--o| Turn : "spawned by (source turn)"
+    Message }o--o| Command : "sent during (source command)"
+    Turn }o--o| Message : "caused by (channel delivery)"
 ```
 
 #### Design Decisions & Rationale
@@ -739,68 +758,132 @@ erDiagram
 
 #### Forward Context for Subsequent Decisions
 
-- **1.2 (Message Model):** Message entity defined here at the structural level. Full column design (metadata JSONB, references to Task/Command, immutability, edit/delete policy) to be resolved.
-- **1.3 (Message Types):** `message_type` enum deferred. Channel types may influence message type semantics.
-- **1.4 (Membership Model):** Structurally resolved here. Remaining questions: operator walk-in/walk-out UX flow, mute semantics, membership change events (system messages like "Sam joined the channel").
-- **1.5 (Relationship to Existing Models):** Key question remains — does a received channel message create a Turn on the receiving agent? Robbo's lean: separate entities, linked by FK on Message.
+- **1.2 (Message Model):** ✅ Resolved. 10-column table with metadata JSONB, single attachment_path, bidirectional Turn/Command links. Messages immutable. Turn model extended with source_message_id FK.
+- **1.3 (Message Types):** ✅ Resolved. 4-type enum: message, system, delegation, escalation. Structural classification, not content/intent.
+- **1.4 (Membership Model):** ✅ Resolved. Explicit join/leave for all, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type.
+- **1.5 (Relationship to Existing Models):** Pending. Key remaining question: does a delegation message auto-create a Command on the receiving agent? How do Events relate to Messages?
 - **Section 5 (Migration Checklist):** New tables: `persona_types`, `channels`, `channel_memberships`, `messages`. New column: `personas.persona_type_id` (FK, NOT NULL — requires backfill migration for existing personas as `agent/internal`).
 
 ---
 
 ### 1.2 Message Model
-- [ ] **Decision: What is a Message, and what does the table look like?**
+- [x] **Decision: What is a Message, and what does the table look like?**
 
 **Depends on:** 1.1
 
 **Context:** A message belongs to a channel, from a sender. It's the atomic unit of communication. Messages may need to support different content types and carry metadata about their purpose.
 
-**Questions to resolve:**
-- Message fields: channel_id (FK), sender_agent_id (FK, nullable for operator), content, message_type (see 1.3), timestamp, metadata (JSONB)?
-- Does a message reference existing models? (e.g., a task delegation message might reference a Task)
-- Do we need message editing or deletion, or are messages immutable (audit trail)?
-- How does Message relate to the existing Turn model? (Does a received message become a Turn?)
-- Do we need message status per recipient (sent/delivered/read) or is that over-engineering for v1?
+**Resolution:**
 
-**Resolution:** _(Pending)_
+Messages are the atomic unit of channel communication. They are **immutable** — no edits, no deletes. An agent conversation is an operational record; if Robbo told Con to build something and Con acted on it, you can't retroactively unsay it.
+
+Messages are **bidirectionally linked to the existing Turn and Command models.** Agents interacting in channels still have their own Command/Turn history in the usual system. The channel Message ties these up at a higher level:
+
+- **Outbound:** When Paula's agent produces a Turn that gets posted to a channel, the Message carries `source_turn_id` (which Turn spawned it) and `source_command_id` (which Command the sender was working on).
+- **Inbound:** When a Message is delivered to Robbo's agent, the hook pipeline creates a Turn on Robbo's Command as normal. That Turn carries `source_message_id` (which Message caused it).
+
+This gives full traceability: from a Message you can trace back to the sender's Turn and Command. From a Turn you can tell whether it came from a channel message or normal terminal input.
+
+#### Message Table (Full)
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | `int` | PK | Standard integer PK |
+| `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
+| `persona_id` | `int FK → personas` | NOT NULL, ondelete SET NULL | Sender identity (stable — survives agent handoff) |
+| `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Sender agent instance. NULL for person-type personas (operator, external persons). |
+| `content` | `Text` | NOT NULL | Message content (markdown) |
+| `message_type` | `Enum` | NOT NULL | Type of message (see Decision 1.3) |
+| `metadata` | `JSONB` | NULLABLE | Extensible structured data. Forward-compatible escape hatch for future references (file context, tool output, structured payloads). When a pattern proves common, promote to a column. |
+| `attachment_path` | `String(1024)` | NULLABLE | Filesystem path to single uploaded file in `/uploads`. One attachment per message for v1. Scoped to single attachment for MVP; column can be promoted to JSONB array for multiples in future without migration friction. |
+| `source_turn_id` | `int FK → turns` | NULLABLE, ondelete SET NULL | The Turn that spawned this message (sender's outgoing turn). NULL for person-type personas and system messages. |
+| `source_command_id` | `int FK → commands` | NULLABLE, ondelete SET NULL | The Command the sender was working on when they sent this message. Not redundant with source_turn_id — system messages about a Command have no source Turn but do relate to a Command. Saves a join for common queries. NULL for person-type personas. |
+| `sent_at` | `DateTime(timezone=True)` | NOT NULL | When the message was sent |
+
+**Modification to existing Turn model:**
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `source_message_id` | `int FK → messages` | NULLABLE, ondelete SET NULL | If this Turn was created by delivery of a channel Message. NULL for Turns from normal terminal input. Enables tracing a Turn back to the channel message that caused it. |
+
+#### What's deliberately absent
+
+| Omission | Rationale |
+|----------|-----------|
+| `edited_at` / `deleted_at` | Messages are immutable. Simpler, correct, consistent with Event audit trail philosophy. |
+| `parent_message_id` (threading) | Channels are already scoped conversations. Agent conversations tend to be sequential. V2 concern. |
+| Per-recipient delivery tracking | Fire-and-forget in v1. If needed later, it's a separate `MessageDelivery` table, not columns on Message. |
+
+#### NULL cases
+
+| Scenario | source_turn_id | source_command_id | agent_id |
+|----------|----------------|-------------------|----------|
+| Agent sends message | Set (sender's Turn) | Set (sender's Command) | Set (sender's agent instance) |
+| Operator sends message | NULL (no Agent) | NULL (no Command) | NULL (person-type) |
+| System message ("Sam joined") | NULL | NULL (unless about a Command) | NULL |
 
 ---
 
 ### 1.3 Message Types
-- [ ] **Decision: What types of messages exist, and do they have different semantics?**
+- [x] **Decision: What types of messages exist, and do they have different semantics?**
 
 **Depends on:** 1.2
 
-**Context:** From the Organisation Workshop, the interaction spectrum includes: command, report, question, interrupt, escalation. These were originally framed as point-to-point message types, but in a channel model they might be:
-- Just metadata on a message (a `type` field)
-- Different delivery urgency (interrupt bypasses queue, report can wait)
-- Routing hints (escalation creates or modifies channel membership)
+**Resolution:**
 
-**Questions to resolve:**
-- Is message type an enum on the Message model?
-- Do different types trigger different delivery behaviour?
-- Which types are essential for v1 vs deferrable?
-- Does the operator's message have a type? (It's always a command/question in practice)
-- Are system messages a type? (e.g., "Paula has joined the channel")
+Message type is a **structural** classification, not a content/intent classification. It answers "what kind of thing is this?" not "what is the sender trying to say?" Content intent (question, answer, report) is a service-layer concern handled by intent detection, same as TurnIntent works today for Turns.
 
-**Resolution:** _(Pending)_
+#### MessageType Enum
+
+| Type | Purpose | Who sends it |
+|------|---------|-------------|
+| `message` | Standard persona-to-channel communication. The default type. | Any persona (agent or person) |
+| `system` | System-generated events. Membership changes ("Sam joined the channel"), channel state changes ("Channel archived"), automated notifications. | System (no sender persona in practice, though persona_id is NOT NULL — use a system persona or the channel creator) |
+| `delegation` | Task assignment. Chair assigns work to a member. Structurally identical to `message` but semantically distinct — delivery and UI may treat it differently (e.g., highlight, require acknowledgement). | Typically the chair, but any member can delegate. |
+| `escalation` | Flagging something up the organisational hierarchy. Signals that the content needs attention from someone with more authority or a different domain. | Any member |
+
+**What's NOT a message type:** `question`, `answer`, `report`, `command`, `progress` — these are content semantics detectable by the intelligence layer. A `message` that asks a question is still type `message`. A `delegation` that asks a question is still type `delegation`. Intent detection is orthogonal to message type.
+
+**Delivery behaviour:** In v1, all types are delivered identically. Type-specific delivery behaviour (e.g., escalation triggers membership changes, delegation requires acknowledgement) is deferred to Section 3 (fan-out design) and beyond.
 
 ---
 
 ### 1.4 Membership Model
-- [ ] **Decision: What is channel membership, and what does the table look like?**
+- [x] **Decision: What are the remaining membership semantics beyond the structural design in 1.1?**
 
 **Depends on:** 1.1
 
-**Context:** Membership determines who receives messages in a channel. Members can be agents (local or remote) or the operator. Membership has a lifecycle (joined, left, possibly muted).
+**Context:** The ChannelMembership table was structurally resolved in 1.1 (columns, constraints, handoff continuity). Three remaining questions: operator participation model, mute semantics, and agent-channel concurrency.
 
-**Questions to resolve:**
-- Membership fields: channel_id (FK), agent_id (FK, nullable for operator), role_in_channel (owner/member/observer), joined_at, left_at, delivery_method (tmux/sse/api)?
-- How is the operator represented? (Not an Agent in the DB — special case or do we model operator as a participant type?)
-- Can membership be persona-based (any agent running as Con) rather than agent-instance-based?
-- Does membership survive agent handoff? (If Con's agent #1053 hands off to #1054, does #1054 inherit channel membership?)
-- Can a member be muted/paused without leaving?
+**Resolution:**
 
-**Resolution:** _(Pending)_
+#### Explicit join/leave for all persona types
+
+All personas — agent-type and person-type — use explicit join and leave actions. No god-mode auto-membership. The operator joins a channel to participate, leaves when done. Same flow as any agent persona. This keeps the model uniform and works cleanly for both internal and external persona types.
+
+#### Mute semantics
+
+Muted = **delivery paused**. The member remains in the channel. Messages continue to accumulate in the channel (they're channel records, not per-recipient). When unmuted, the member can catch up via channel history. Delivery resumes from that point forward. Mute is a member-side delivery control, not a channel-side content filter.
+
+#### One agent instance, one active channel
+
+**Constraint: an agent_id can only appear on ONE active ChannelMembership at a time.** Enforced via partial unique index in PostgreSQL:
+
+```sql
+CREATE UNIQUE INDEX uq_active_agent_one_channel
+ON channel_memberships (agent_id)
+WHERE status = 'active' AND agent_id IS NOT NULL;
+```
+
+**Rationale:** A single agent instance in multiple channels simultaneously will get context-confused — channel messages from different conversations interleave in its terminal, and the agent has no way to disambiguate which channel it's responding to. One agent, one channel prevents context pollution.
+
+**This constraint applies to agent-type personas only.** Person-type personas (the operator, external collaborators) can hold active membership in multiple channels simultaneously. Humans can context-switch between conversations; agents can't.
+
+**Multiple agents for the same persona is fine.** Con (the persona) can have agent #1053 in channel A and agent #1054 in channel B. The persona is in multiple channels; each agent instance is in exactly one. This models reality — Con is software, you can run multiple instances.
+
+#### Forward context for 1.5
+
+The one-agent-one-channel constraint has implications for how channel messages create Commands and Turns on receiving agents (Decision 1.5). Because an agent is in exactly one channel, there's no ambiguity about which channel an agent's output relates to — it's always the one channel they're a member of.
 
 ---
 
@@ -1043,7 +1126,9 @@ This closes the loop — messages flow in both directions through the channel.
 | Add `persona_type_id` to `personas` | Persona | New FK to `persona_types`, NOT NULL. Backfill existing personas as agent/internal (type_key='agent', subtype='internal'). | High — blocks channel membership | 1.1 |
 | Create `channels` table | Channel | New table: name, slug, channel_type enum, description, intent_override, organisation_id (FK nullable), project_id (FK nullable), created_by_persona_id (FK nullable), status, created_at, archived_at. Slug auto-generated via after_insert event. | High | 1.1 |
 | Create `channel_memberships` table | ChannelMembership | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), position_assignment_id (FK nullable), is_chair, status, joined_at, left_at. Unique constraint on `(channel_id, persona_id)`. | High | 1.1 |
-| Create `messages` table | Message | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), content, message_type enum, sent_at. Full column design in 1.2. | High | 1.1/1.2 |
+| Create `messages` table | Message | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), content, message_type enum (message/system/delegation/escalation), metadata (JSONB nullable), attachment_path (String(1024) nullable), source_turn_id (FK nullable), source_command_id (FK nullable), sent_at. | High | 1.1/1.2/1.3 |
+| Add `source_message_id` to `turns` | Turn | New FK to `messages`, NULLABLE, ondelete SET NULL. Enables tracing a Turn back to the channel message that caused it. NULL for Turns from normal terminal input. | High | 1.2 |
+| Create partial unique index on `channel_memberships` | ChannelMembership | `CREATE UNIQUE INDEX uq_active_agent_one_channel ON channel_memberships (agent_id) WHERE status = 'active' AND agent_id IS NOT NULL;` — one agent instance per active channel. | High | 1.4 |
 | Create operator Persona | Persona (data) | Insert person/internal Persona for operator (Sam). Role: "operator" (create Role if needed). No Agent instances, no PositionAssignment. | Medium — needed for channel participation | 1.1 |
 
 ### New Services

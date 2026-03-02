@@ -1,6 +1,6 @@
 # Claude Headspace — Organisational Model ERD (Full)
 
-**Date:** 16 February 2026 (updated 2 March 2026 — Epic 9 Workshop Decision 1.1)
+**Date:** 16 February 2026 (updated 2 March 2026 — Epic 9 Workshop Decisions 1.1–1.4)
 **Status:** Data model design — organisational model + channel communication layer
 **Note:** Agent, Task, and Turn are existing Headspace 3.1 entities shown here as references only. Do not recreate them. SkillFile and ExperienceLog are version-managed files in the repo, not database tables — they appear here as file references only.
 
@@ -102,7 +102,8 @@ erDiagram
     }
 
     Turn {
-        string _note "EXISTING - no changes"
+        string _note "EXISTING - extended"
+        int source_message_id FK "nullable - channel Message that caused this Turn"
     }
 
     Channel {
@@ -138,7 +139,11 @@ erDiagram
         int persona_id FK "sender identity"
         int agent_id FK "nullable - sender instance"
         text content
-        string message_type "TBD in Decision 1.3"
+        string message_type "message|system|delegation|escalation"
+        jsonb metadata "nullable - extensible structured data"
+        string attachment_path "nullable - single file path in uploads"
+        int source_turn_id FK "nullable - Turn that spawned this message"
+        int source_command_id FK "nullable - sender's active Command"
         timestamp sent_at
     }
 
@@ -180,10 +185,13 @@ erDiagram
     ChannelMembership }o--o| Agent : "delivery target (mutable)"
     ChannelMembership }o--o| PositionAssignment : "in capacity of"
 
-    %% Channel messages (attributed to persona, traced to agent)
+    %% Channel messages (attributed to persona, traced to agent, linked to Turn/Command)
     Channel ||--o{ Message : "contains"
     Message }o--|| Persona : "sent by (identity)"
     Message }o--o| Agent : "sent by (instance)"
+    Message }o--o| Turn : "spawned by (source turn)"
+    Message }o--o| Command : "sent during (source command)"
+    Turn }o--o| Message : "caused by (channel delivery)"
 ```
 
 ---
@@ -208,7 +216,7 @@ erDiagram
 | **PersonaType** | Lookup table classifying personas into quadrants: `type_key` (agent/person) × `subtype` (internal/external). 4 rows, both fields NOT NULL. Determines delivery mechanism, trust boundaries, and visibility scope at the service layer. |
 | **Channel** | Named conversation container at system level. Cross-project by default, optionally scoped to Organisation and/or Project. Has `channel_type` enum (workshop/delegation/review/standup/broadcast) mapping to Paula's intent templates. |
 | **ChannelMembership** | Persona-based channel participation. Links persona (stable identity), agent (mutable delivery target), and position assignment (organisational capacity). Chair designation via `is_chair` boolean. |
-| **Message** | Atomic unit of channel communication. Attributed to persona (identity) with agent instance traceability. Full column design in Decision 1.2. |
+| **Message** | Atomic unit of channel communication. Attributed to persona (identity) with agent instance traceability. Bidirectional links to Turn (source_turn_id) and Command (source_command_id). Single attachment support (attachment_path). Extensible metadata (JSONB). Messages are immutable — no edits, no deletes. 4-type enum: message, system, delegation, escalation. One agent instance per active channel (partial unique index on ChannelMembership). |
 
 ## Existing Tables (Extended)
 
@@ -217,7 +225,7 @@ erDiagram
 | **Persona** | Add `persona_type_id` (FK to PersonaType, NOT NULL). Existing personas backfilled as agent/internal. |
 | **Agent** | Add `persona_id` (FK), `position_id` (FK), `previous_agent_id` (FK, self-ref, nullable), `context_usage` (int) |
 | **Task** | No changes |
-| **Turn** | No changes |
+| **Turn** | Add `source_message_id` (FK to Message, nullable, SET NULL). Links Turns created by channel message delivery back to the source Message. |
 
 ## File References (Not DB Tables)
 
@@ -262,3 +270,12 @@ The following changes were decided during the Inter-Agent Communication Workshop
 - **Message table added.** Structural definition — full column design deferred to Decision 1.2. Attribution is persona-based (stable identity) with agent instance traceability.
 - **Operator modelled as Persona.** Supersedes previous design note. Operator is a person/internal PersonaType with no Agent instances, no PositionAssignment, SSE/dashboard delivery. Enables uniform channel participation model.
 - **External quadrants modelled.** agent/external and person/external PersonaTypes exist in schema for future cross-system collaboration. Not exercised in v1.
+
+### Epic 9 Workshop Updates — Decisions 1.2–1.4 (2 March 2026)
+
+- **Message table fully designed (Decision 1.2).** 10-column table: channel_id, persona_id, agent_id, content, message_type, metadata (JSONB), attachment_path (String(1024)), source_turn_id (FK), source_command_id (FK), sent_at. Messages are immutable — no edits, no deletes.
+- **Bidirectional Turn/Command links (Decision 1.2).** Message.source_turn_id links to the Turn that spawned the message. Message.source_command_id links to the sender's active Command. Turn.source_message_id (new FK) links Turns created by channel message delivery back to the source Message. Full traceability in both directions.
+- **Turn model extended.** New nullable FK `source_message_id` to messages table (ondelete SET NULL). Enables tracing whether a Turn came from channel delivery or normal terminal input.
+- **MessageType enum resolved (Decision 1.3).** 4 structural types: message (default), system (joins/leaves/state changes), delegation (task assignment), escalation (hierarchy flagging). Content intent (question/answer/report) is service-layer concern, not message type.
+- **Membership semantics resolved (Decision 1.4).** Explicit join/leave for all persona types (no god-mode). Muted = delivery paused (messages accumulate, delivery resumes on unmute). One agent instance per active channel enforced via partial unique index. Person-type personas can be in multiple channels simultaneously.
+- **Attachment support (Decision 1.2).** Single attachment per message via `attachment_path` column (filesystem path to `/uploads`). Scoped to one per message for MVP. Column can be promoted to JSONB array for multiples in future.
