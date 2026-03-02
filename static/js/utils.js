@@ -116,6 +116,34 @@
             return '<' + tag + startAttr + '>\n' + body + '</' + tag + '>\n';
         };
 
+        renderer.table = function(token) {
+            var header = '';
+            if (token.header && token.header.length) {
+                header = '<thead><tr>';
+                for (var h = 0; h < token.header.length; h++) {
+                    var hCell = token.header[h];
+                    var hAlign = hCell.align ? ' style="text-align:' + hCell.align + '"' : '';
+                    header += '<th' + hAlign + '>' + this.parser.parseInline(hCell.tokens) + '</th>';
+                }
+                header += '</tr></thead>';
+            }
+            var body = '';
+            if (token.rows && token.rows.length) {
+                body = '<tbody>';
+                for (var r = 0; r < token.rows.length; r++) {
+                    body += '<tr>';
+                    for (var c = 0; c < token.rows[r].length; c++) {
+                        var cell = token.rows[r][c];
+                        var align = cell.align ? ' style="text-align:' + cell.align + '"' : '';
+                        body += '<td' + align + '>' + this.parser.parseInline(cell.tokens) + '</td>';
+                    }
+                    body += '</tr>';
+                }
+                body += '</tbody>';
+            }
+            return '<div class="table-scroll-wrapper"><table>' + header + body + '</table></div>';
+        };
+
         var rawHtml = marked.parse(text, { renderer: renderer, breaks: true, gfm: true });
 
         // Merge consecutive <ol> fragments that marked creates from loose list items
@@ -123,7 +151,7 @@
 
         return DOMPurify.sanitize(rawHtml, {
             ADD_TAGS: ['details', 'summary'],
-            ADD_ATTR: ['target', 'rel', 'id', 'onclick', 'aria-label']
+            ADD_ATTR: ['target', 'rel', 'id', 'onclick', 'aria-label', 'style']
         });
     }
 

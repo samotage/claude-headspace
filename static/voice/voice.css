@@ -1515,6 +1515,50 @@ body.layout-split .agent-card.selected:hover {
   font-weight: 600;
 }
 
+/* Markdown tables in agent bubbles */
+.chat-bubble.agent .table-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.5em 0;
+}
+.chat-bubble.agent table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+  line-height: 1.35;
+  width: max-content;
+  min-width: 100%;
+}
+.chat-bubble.agent th,
+.chat-bubble.agent td {
+  padding: 6px 10px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  text-align: left;
+  white-space: nowrap;
+}
+.chat-bubble.agent th {
+  font-weight: 600;
+  background: rgba(255,255,255,0.06);
+  position: sticky;
+  top: 0;
+}
+/* Allow wrapping on cells with longer prose content */
+.chat-bubble.agent td:not(:first-child) {
+  white-space: normal;
+  min-width: 120px;
+}
+/* First column (often a label/phase) stays tight */
+.chat-bubble.agent td:first-child {
+  white-space: nowrap;
+  font-weight: 500;
+}
+/* Zebra striping for readability */
+.chat-bubble.agent tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.03);
+}
+.chat-bubble.agent tbody tr:hover {
+  background: rgba(255,255,255,0.06);
+}
+
 /* Copy button on agent bubbles */
 .bubble-copy-btn {
   position: absolute;
