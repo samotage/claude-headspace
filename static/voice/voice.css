@@ -3179,7 +3179,7 @@ body.layout-split .hamburger-btn { display: none; }
 }
 
 .persona-picker-name {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
   color: var(--text);
   white-space: nowrap;
@@ -3207,7 +3207,7 @@ body.layout-split .hamburger-btn { display: none; }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s;
@@ -3220,7 +3220,7 @@ body.layout-split .hamburger-btn { display: none; }
 }
 
 .persona-picker-cell-role {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -3229,7 +3229,7 @@ body.layout-split .hamburger-btn { display: none; }
 }
 
 .persona-picker-cell-name {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
   color: var(--text);
 }
