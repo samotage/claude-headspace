@@ -134,7 +134,7 @@ Full column design resolved in Decision 1.2. Shown here in full for completeness
 |--------|------|-------------|---------|
 | `id` | `int` | PK | Standard integer PK |
 | `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
-| `persona_id` | `int FK → personas` | NOT NULL, ondelete SET NULL | Who sent it (stable identity) |
+| `persona_id` | `int FK → personas` | NULLABLE, ondelete SET NULL | Who sent it (stable identity). NULL when persona is deleted — agent record and message audit trail remain intact. |
 | `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Which agent instance sent it (traceability). NULL for person-type personas. |
 | `content` | `Text` | NOT NULL | Message content (markdown) |
 | `message_type` | `Enum(MessageType)` | NOT NULL | Structural type: message, system, delegation, escalation (Decision 1.3) |
@@ -262,7 +262,7 @@ erDiagram
 
     %% === Messages (attributed to persona, linked to Turn/Command) ===
     Channel ||--o{ Message : "contains"
-    Message }o--|| Persona : "sent by (identity)"
+    Message }o--o| Persona : "sent by (identity, nullable)"
     Message }o--o| Agent : "sent by (instance)"
     Message }o--o| Turn : "spawned by (source turn)"
     Message }o--o| Command : "sent during (source command)"
@@ -318,7 +318,7 @@ This gives full traceability: from a Message you can trace back to the sender's 
 |--------|------|-------------|---------|
 | `id` | `int` | PK | Standard integer PK |
 | `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
-| `persona_id` | `int FK → personas` | NOT NULL, ondelete SET NULL | Sender identity (stable — survives agent handoff) |
+| `persona_id` | `int FK → personas` | NULLABLE, ondelete SET NULL | Sender identity (stable — survives agent handoff). NULL when persona is deleted — agent record and audit trail remain. |
 | `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Sender agent instance. NULL for person-type personas (operator, external persons). |
 | `content` | `Text` | NOT NULL | Message content (markdown) |
 | `message_type` | `Enum` | NOT NULL | Type of message (see Decision 1.3) |
@@ -349,6 +349,7 @@ This gives full traceability: from a Message you can trace back to the sender's 
 | Agent sends message | Set (sender's Turn) | Set (sender's Command) | Set (sender's agent instance) |
 | Operator sends message | NULL (no Agent) | NULL (no Command) | NULL (person-type) |
 | System message ("Sam joined") | NULL | NULL (unless about a Command) | NULL |
+| Persona deleted (audit trail) | NULL (SET NULL) | Unchanged | Unchanged |
 
 ---
 
@@ -366,7 +367,7 @@ Message type is a **structural** classification, not a content/intent classifica
 | Type | Purpose | Who sends it |
 |------|---------|-------------|
 | `message` | Standard persona-to-channel communication. The default type. | Any persona (agent or person) |
-| `system` | System-generated events. Membership changes ("Sam joined the channel"), channel state changes ("Channel archived"), automated notifications. | System (no sender persona in practice, though persona_id is NOT NULL — use a system persona or the channel creator) |
+| `system` | System-generated events. Membership changes ("Sam joined the channel"), channel state changes ("Channel archived"), automated notifications. | System (persona_id is NULL — no sender persona) |
 | `delegation` | Task assignment. Chair assigns work to a member. Structurally identical to `message` but semantically distinct — delivery and UI may treat it differently (e.g., highlight, require acknowledgement). | Typically the chair, but any member can delegate. |
 | `escalation` | Flagging something up the organisational hierarchy. Signals that the content needs attention from someone with more authority or a different domain. | Any member |
 

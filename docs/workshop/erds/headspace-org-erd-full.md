@@ -1,6 +1,6 @@
 # Claude Headspace — Organisational Model ERD (Full)
 
-**Date:** 16 February 2026 (updated 3 March 2026 — Epic 9 Workshop Decisions 1.1–1.4, 2.1)
+**Date:** 16 February 2026 (updated 3 March 2026 — Epic 9 Workshop Decisions 1.1–1.4, 2.1; Message.persona_id NULLABLE resolution)
 **Status:** Data model design — organisational model + channel communication layer
 **Note:** Agent, Task, and Turn are existing Headspace 3.1 entities shown here as references only. Do not recreate them. SkillFile and ExperienceLog are version-managed files in the repo, not database tables — they appear here as file references only.
 
@@ -138,7 +138,7 @@ erDiagram
     Message {
         int id PK
         int channel_id FK
-        int persona_id FK "sender identity"
+        int persona_id FK "nullable - sender identity (SET NULL on persona delete)"
         int agent_id FK "nullable - sender instance"
         text content
         string message_type "message|system|delegation|escalation"
@@ -189,7 +189,7 @@ erDiagram
 
     %% Channel messages (attributed to persona, traced to agent, linked to Turn/Command)
     Channel ||--o{ Message : "contains"
-    Message }o--|| Persona : "sent by (identity)"
+    Message }o--o| Persona : "sent by (identity, nullable)"
     Message }o--o| Agent : "sent by (instance)"
     Message }o--o| Turn : "spawned by (source turn)"
     Message }o--o| Command : "sent during (source command)"
@@ -275,12 +275,16 @@ The following changes were decided during the Inter-Agent Communication Workshop
 
 ### Epic 9 Workshop Updates — Decisions 1.2–1.4 (2 March 2026)
 
-- **Message table fully designed (Decision 1.2).** 10-column table: channel_id, persona_id, agent_id, content, message_type, metadata (JSONB), attachment_path (String(1024)), source_turn_id (FK), source_command_id (FK), sent_at. Messages are immutable — no edits, no deletes.
+- **Message table fully designed (Decision 1.2).** 10-column table: channel_id, persona_id (FK nullable, SET NULL), agent_id (FK nullable), content, message_type, metadata (JSONB), attachment_path (String(1024)), source_turn_id (FK), source_command_id (FK), sent_at. Messages are immutable — no edits, no deletes.
 - **Bidirectional Turn/Command links (Decision 1.2).** Message.source_turn_id links to the Turn that spawned the message. Message.source_command_id links to the sender's active Command. Turn.source_message_id (new FK) links Turns created by channel message delivery back to the source Message. Full traceability in both directions.
 - **Turn model extended.** New nullable FK `source_message_id` to messages table (ondelete SET NULL). Enables tracing whether a Turn came from channel delivery or normal terminal input.
 - **MessageType enum resolved (Decision 1.3).** 4 structural types: message (default), system (joins/leaves/state changes), delegation (task assignment), escalation (hierarchy flagging). Content intent (question/answer/report) is service-layer concern, not message type.
 - **Membership semantics resolved (Decision 1.4).** Explicit join/leave for all persona types (no god-mode). Muted = delivery paused (messages accumulate, delivery resumes on unmute). One agent instance per active channel enforced via partial unique index. Person-type personas can be in multiple channels simultaneously.
 - **Attachment support (Decision 1.2).** Single attachment per message via `attachment_path` column (`String(1024)`, filesystem path to `/uploads`). Scoped to one per message for MVP. Column can be promoted to JSONB array for multiples in future.
+
+### Message.persona_id NULLABLE Resolution (3 March 2026)
+
+- **Message.persona_id changed from NOT NULL to NULLABLE.** The original design had `persona_id NOT NULL` with `ondelete SET NULL` — a PostgreSQL incompatibility (cannot SET NULL on a NOT NULL column). Three options evaluated: (A) make nullable, (B) RESTRICT ondelete, (C) seed a system persona. **Operator chose A.** Rationale: deleting a persona doesn't destroy the audit trail — the agent record, message content, and all other message fields remain intact. System messages naturally have no sender persona (NULL). The persona decoration is lost but the operational record is preserved.
 
 ### FK ondelete Behavior (Decisions 1.1–1.4)
 
@@ -294,7 +298,7 @@ The following changes were decided during the Inter-Agent Communication Workshop
 | **ChannelMembership** | `agent_id` | SET NULL | Agent end sets delivery target to NULL (persona "offline") |
 | **ChannelMembership** | `position_assignment_id` | SET NULL | Assignment removal doesn't affect membership |
 | **Message** | `channel_id` | CASCADE | Channel deletion removes all messages |
-| **Message** | `persona_id` | SET NULL | Persona deletion preserves message history |
+| **Message** | `persona_id` | SET NULL | NULLABLE. Persona deletion preserves message history — agent record and audit trail remain intact |
 | **Message** | `agent_id` | SET NULL | Agent end preserves message history |
 | **Message** | `source_turn_id` | SET NULL | Turn deletion preserves message |
 | **Message** | `source_command_id` | SET NULL | Command deletion preserves message |
