@@ -78,6 +78,19 @@
         },
 
         /**
+         * Format a date string to short time (e.g. "6:30am", "2:15pm").
+         */
+        formatShortTime: function(dateString) {
+            var d = new Date(dateString);
+            var h = d.getHours();
+            var m = d.getMinutes();
+            var suffix = h >= 12 ? 'pm' : 'am';
+            h = h % 12 || 12;
+            var mStr = m < 10 ? '0' + m : '' + m;
+            return h + ':' + mStr + suffix;
+        },
+
+        /**
          * Render a single agent row HTML.
          *
          * Options:
@@ -107,8 +120,8 @@
                 html += '<div class="accordion-agent-row">';
             }
 
-            // Row div
-            var rowClass = 'agent-metric-row';
+            // Grid container
+            var rowClass = 'agent-listing-row';
             if (options.onRowClick) {
                 rowClass += ' cursor-pointer hover:border-border-bright transition-colors';
             }
@@ -117,83 +130,118 @@
                 : '';
             html += '<div class="' + rowClass + '"' + onclickAttr + '>';
 
+            // === LINE 1: Identity + Status ===
+            html += '<div class="agent-listing-top">';
+            html += '<div class="agent-listing-top-left">';
+
             // Accordion arrow
             if (options.showAccordionArrow) {
-                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="agent-arrow-' + agentId + '" style="flex-shrink:0">&#9654;</span>';
+                html += '<span class="accordion-arrow text-muted transition-transform duration-150" id="agent-arrow-' + agentId + '">&#9654;</span>';
             }
 
             // ALIVE pill for active agents
             if (!isEnded) {
-                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-700/50" style="flex-shrink:0">ALIVE</span>';
+                html += '<span class="agent-listing-pill-alive">ALIVE</span>';
             }
 
             // State badge
-            html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '" style="flex-shrink:0">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
-
-            // DB ID
-            html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0">#' + agentId + '</span>';
+            html += '<span class="agent-listing-badge ' + stateClass + '">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
 
             // Hero identity
             if (options.showPersonaHero) {
-                var agentHeroHtml;
                 if (agent.persona_name) {
-                    agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(agent.persona_name) + '</span>' +
-                        (agent.persona_role ? '<span class="agent-hero-trail"> \u2014 ' + CHUtils.escapeHtml(agent.persona_role) + '</span>' : '');
+                    html += '<span class="agent-listing-hero">' + CHUtils.escapeHtml(agent.persona_name) + '</span>';
+                    if (agent.persona_role) {
+                        html += '<span class="agent-listing-hero-trail"> \u2014 ' + CHUtils.escapeHtml(agent.persona_role) + '</span>';
+                    }
                 } else if (uuid8) {
-                    agentHeroHtml = '<span class="agent-hero">' + CHUtils.escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-hero-trail">' + CHUtils.escapeHtml(uuid8.substring(2)) + '</span>';
+                    html += '<span class="agent-listing-hero">' + CHUtils.escapeHtml(uuid8.substring(0, 2)) + '</span><span class="agent-listing-hero-trail">' + CHUtils.escapeHtml(uuid8.substring(2)) + '</span>';
                 } else {
-                    agentHeroHtml = 'Agent ' + agent.id;
+                    html += '<span class="agent-listing-hero">Agent ' + agent.id + '</span>';
                 }
-                html += '<span class="agent-metric-tag">' + agentHeroHtml + '</span>';
             } else {
                 if (uuid8) {
-                    html += '<span class="agent-metric-tag"><span class="font-mono text-xs text-secondary">' + CHUtils.escapeHtml(uuid8) + '</span></span>';
+                    html += '<span class="agent-listing-uuid">' + CHUtils.escapeHtml(uuid8) + '</span>';
                 }
             }
+
+            html += '</div>'; // close top-left
+
+            html += '<div class="agent-listing-top-right">';
+
+            // DB ID
+            html += '<span class="agent-listing-id">#' + agentId + '</span>';
 
             // Claude session ID
             if (options.showClaudeSessionId && agent.claude_session_id) {
-                html += '<span class="text-xs text-muted font-mono" style="flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + CHUtils.escapeHtml(agent.claude_session_id) + '">' + CHUtils.escapeHtml(agent.claude_session_id.substring(0, 12)) + '</span>';
+                html += '<span class="agent-listing-session" title="' + CHUtils.escapeHtml(agent.claude_session_id) + '">' + CHUtils.escapeHtml(agent.claude_session_id.substring(0, 12)) + '</span>';
             }
 
-            // Project name
+            // Project name (persona detail page)
             if (options.showProjectName && agent.project_name) {
-                html += '<span class="text-xs text-secondary" style="flex-shrink:0">' + CHUtils.escapeHtml(agent.project_name) + '</span>';
+                html += '<span class="agent-listing-project">' + CHUtils.escapeHtml(agent.project_name) + '</span>';
             }
-
-            // Metric stats
-            html += '<div class="agent-metric-stats">';
-            html += '<span><span class="stat-value">' + (agent.turn_count || 0) + '</span><span class="stat-label">turns</span></span>';
-            if (agent.avg_turn_time != null) {
-                html += '<span><span class="stat-value">' + agent.avg_turn_time.toFixed(1) + 's</span><span class="stat-label">avg</span></span>';
-            }
-            if (agent.frustration_avg != null) {
-                var frustLevel = agent.frustration_avg >= thresholds.red ? 'text-red' : (agent.frustration_avg >= thresholds.yellow ? 'text-amber' : 'text-green');
-                html += '<span><span class="stat-value ' + frustLevel + '">' + agent.frustration_avg.toFixed(1) + '</span><span class="stat-label">frust</span></span>';
-            }
-            html += '</div>';
 
             // Chat link
             if (options.showChatLink) {
-                html += '<a href="/voice?agent_id=' + agentId + '" class="text-xs text-cyan hover:underline" style="flex-shrink:0" title="Chat" onclick="event.stopPropagation()">Chat</a>';
+                html += '<a href="/voice?agent_id=' + agentId + '" class="agent-listing-chat" title="Chat" onclick="event.stopPropagation()">Chat</a>';
             }
 
-            // Last seen / ended badge
-            if (isEnded) {
-                html += '<span class="text-xs px-1.5 py-0.5 rounded bg-surface border border-border text-muted" style="flex-shrink:0">Ended</span>';
-                if (agent.started_at && agent.ended_at) {
-                    html += '<span class="text-xs text-muted" style="flex-shrink:0">' + AgentListing.formatDuration(agent.started_at, agent.ended_at) + '</span>';
+            html += '</div>'; // close top-right
+            html += '</div>'; // close agent-listing-top
+
+            // === LINE 2: Temporal + Metrics ===
+            html += '<div class="agent-listing-bottom">';
+            html += '<div class="agent-listing-bottom-left">';
+
+            // Started at
+            if (agent.started_at) {
+                html += '<span class="agent-listing-time">Started ' + AgentListing.formatShortTime(agent.started_at) + '</span>';
+                html += '<span class="agent-listing-sep">\u00b7</span>';
+                if (isEnded && agent.ended_at) {
+                    html += '<span class="agent-listing-time">' + AgentListing.formatDuration(agent.started_at, agent.ended_at) + '</span>';
+                } else {
+                    html += '<span class="agent-listing-time">' + AgentListing.timeAgo(agent.started_at) + '</span>';
                 }
-            } else if (agent.last_seen_at) {
-                html += '<span class="text-xs text-muted" style="flex-shrink:0">' + AgentListing.timeAgo(agent.last_seen_at) + '</span>';
+            }
+
+            // Ended badge
+            if (isEnded) {
+                html += '<span class="agent-listing-sep">\u00b7</span>';
+                html += '<span class="agent-listing-ended">Ended</span>';
+                if (agent.ended_at) {
+                    html += '<span class="agent-listing-sep">\u00b7</span>';
+                    html += '<span class="agent-listing-time">' + AgentListing.timeAgo(agent.ended_at) + '</span>';
+                }
+            }
+
+            html += '</div>'; // close bottom-left
+
+            html += '<div class="agent-listing-bottom-right">';
+
+            // Turn count
+            html += '<span class="agent-listing-stat"><span class="agent-listing-stat-value">' + (agent.turn_count || 0) + '</span><span class="agent-listing-stat-label"> turns</span></span>';
+
+            // Avg turn time
+            if (agent.avg_turn_time != null) {
+                html += '<span class="agent-listing-stat"><span class="agent-listing-stat-value">' + agent.avg_turn_time.toFixed(1) + 's</span><span class="agent-listing-stat-label"> avg</span></span>';
+            }
+
+            // Frustration
+            if (agent.frustration_avg != null) {
+                var frustLevel = agent.frustration_avg >= thresholds.red ? 'text-red' : (agent.frustration_avg >= thresholds.yellow ? 'text-amber' : 'text-green');
+                html += '<span class="agent-listing-stat"><span class="agent-listing-stat-value ' + frustLevel + '">' + agent.frustration_avg.toFixed(1) + '</span><span class="agent-listing-stat-label"> frust</span></span>';
             }
 
             // Revive button (dead agents only)
             if (options.showReviveButton && isEnded) {
-                html += '<button type="button" class="agent-revive-btn text-xs text-cyan hover:underline" style="flex-shrink:0" data-agent-id="' + agentId + '" onclick="event.stopPropagation(); AgentListing.reviveAgent(' + agentId + ')">Revive</button>';
+                html += '<button type="button" class="agent-listing-revive" data-agent-id="' + agentId + '" onclick="event.stopPropagation(); AgentListing.reviveAgent(' + agentId + ')">Revive</button>';
             }
 
-            html += '</div>'; // close agent-metric-row
+            html += '</div>'; // close bottom-right
+            html += '</div>'; // close agent-listing-bottom
+
+            html += '</div>'; // close agent-listing-row
 
             // Accordion body for commands
             if (options.showAccordionArrow) {

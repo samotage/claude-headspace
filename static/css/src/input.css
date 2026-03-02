@@ -1085,6 +1085,209 @@ body::after {
     font-size: 0.6875rem;
 }
 
+/* Agent listing — two-line grid layout (project_show, persona_detail) */
+.agent-listing-row {
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 2px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+}
+
+.agent-listing-row:hover {
+    border-color: var(--border-bright);
+}
+
+.agent-listing-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 1.5rem;
+}
+
+.agent-listing-top-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.agent-listing-top-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.agent-listing-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-left: 0;
+    min-height: 1.25rem;
+}
+
+/* Indent line 2 to align with content after accordion arrow */
+.accordion-agent-row .agent-listing-bottom {
+    padding-left: 1.375rem;
+}
+
+.agent-listing-bottom-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.agent-listing-bottom-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+}
+
+/* Badges & pills */
+.agent-listing-pill-alive {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.agent-listing-badge {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+/* Hero identity — scoped to listing (smaller than dashboard .agent-hero) */
+.agent-listing-hero {
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--cyan);
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+.agent-listing-hero-trail {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+/* UUID fallback */
+.agent-listing-uuid {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* Top-right metadata */
+.agent-listing-id {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.agent-listing-session {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-listing-project {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.agent-listing-chat {
+    font-size: 0.6875rem;
+    color: var(--cyan);
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+.agent-listing-chat:hover {
+    text-decoration: underline;
+}
+
+/* Bottom-left temporal info */
+.agent-listing-time {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.agent-listing-sep {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.agent-listing-ended {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* Bottom-right stats */
+.agent-listing-stat {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.agent-listing-stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.agent-listing-stat-label {
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+}
+
+.agent-listing-revive {
+    font-size: 0.6875rem;
+    color: var(--cyan);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: var(--font-mono);
+}
+
+.agent-listing-revive:hover {
+    text-decoration: underline;
+}
+
 /* Frustration state widget */
 .frustration-indicator {
     background: var(--bg-deep);
