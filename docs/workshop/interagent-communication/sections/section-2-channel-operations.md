@@ -3,7 +3,7 @@
 **Status:** Decisions 2.1–2.2 resolved. Decision 2.3 pending.
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** [Section 1](section-1-channel-data-model.md)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
 
 **Purpose:** Design how channels are created, managed, and interacted with. The CLI is the primary agent interface; the API serves the dashboard and remote agents.
 

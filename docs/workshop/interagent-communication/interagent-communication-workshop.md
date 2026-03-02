@@ -23,7 +23,7 @@
 
 This is the **index document** for the workshop. Each section lives in its own file under `sections/` for context-efficient agent loading. Work through sections in order — each contains numbered decisions that may depend on earlier decisions. Dependency chains are explicit.
 
-**Data model:** The canonical ERD is [`erds/headspace-org-erd-full.md`](erds/headspace-org-erd-full.md). Embedded ERDs in section files are workshop working documents showing the design conversation at the time of resolution — not the source of truth.
+**Data model:** The canonical ERD is [`erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md). Embedded ERDs in section files are workshop working documents showing the design conversation at the time of resolution — not the source of truth.
 
 ---
 
@@ -104,11 +104,11 @@ Database migrations, new services, integration points with existing systems (tmu
 
 ## Reference Documents
 
-- **Canonical data model:** [`erds/headspace-org-erd-full.md`](erds/headspace-org-erd-full.md)
+- **Canonical data model:** [`erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md)
 - **AR Director guidance:** [`paula-channel-intent-guidance.md`](paula-channel-intent-guidance.md)
-- **Organisation workshop (on hold):** [`organisation-workshop.md`](organisation-workshop.md)
-- **Agent Teams vision:** [`../conceptual/headspace-agent-teams-functional-outline.md`](../conceptual/headspace-agent-teams-functional-outline.md)
-- **Phase 1 design:** [`agent-teams-workshop.md`](agent-teams-workshop.md)
+- **Organisation workshop (on hold):** [`organisation-workshop.md`](../organisation-workshop.md)
+- **Agent Teams vision:** [`../conceptual/headspace-agent-teams-functional-outline.md`](../../conceptual/headspace-agent-teams-functional-outline.md)
+- **Phase 1 design:** [`agent-teams-workshop.md`](../agent-teams-workshop.md)
 
 ---
 

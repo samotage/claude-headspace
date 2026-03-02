@@ -2,7 +2,7 @@
 
 **Status:** Living document — populated as decisions resolve
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md)
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md)
 
 **Purpose:** Consolidate all model changes, new tables, and integration points required by this epic. Populated as decisions are resolved.
 

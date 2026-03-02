@@ -3,7 +3,7 @@
 **Status:** Pending (3 decisions)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** [Section 1](section-1-channel-data-model.md), [Section 2](section-2-channel-operations.md), [Section 3](section-3-message-delivery.md)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md)
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md)
 
 **Purpose:** Validate the design by walking through the primary use case end-to-end. If the model can support Sam + Robbo + Paula workshopping persona alignment, it can support everything else.
 

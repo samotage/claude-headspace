@@ -3,7 +3,7 @@
 **Status:** Fully resolved (5 decisions)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** [Section 0](section-0-infrastructure-audit.md)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md) — resolved outcomes are stored there. Embedded ERDs below are workshop working documents showing the design conversation at the time of resolution.
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md) — resolved outcomes are stored there. Embedded ERDs below are workshop working documents showing the design conversation at the time of resolution.
 
 **Purpose:** Design the data model for channels, messages, and membership. This is the structural foundation — get the model right and the behaviour follows.
 
@@ -148,7 +148,7 @@ Messages are **immutable** — no edits, no deletes (Decision 1.2). See Decision
 
 #### High-Level ERD (Workshop Working Document)
 
-> **Note:** This is the workshop-time ERD showing the design conversation at the point of Decision 1.1. The canonical data model with all resolved decisions is in [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md).
+> **Note:** This is the workshop-time ERD showing the design conversation at the point of Decision 1.1. The canonical data model with all resolved decisions is in [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md).
 
 ```mermaid
 erDiagram

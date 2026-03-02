@@ -3,7 +3,7 @@
 **Status:** Resolved (4 decisions)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** None
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
 
 **Purpose:** Ground the workshop in what already exists. Understand the current communication paths, what can be reused, and what gaps need filling.
 
@@ -138,7 +138,7 @@ tmux-based priming has a fundamental timing problem...
 
 **Resolution:**
 
-**Two-layer primer architecture** (incorporating AR Director guidance from `docs/workshop/paula-channel-intent-guidance.md`):
+**Two-layer primer architecture** (incorporating AR Director guidance from `docs/workshop/interagent-communication/paula-channel-intent-guidance.md`):
 
 **Layer 1 — Base Primer (universal, platform asset):**
 

@@ -3,7 +3,7 @@
 **Status:** Pending (4 decisions)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** [Section 1](section-1-channel-data-model.md), [Section 2](section-2-channel-operations.md), [Section 0](section-0-infrastructure-audit.md)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md)
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md)
 
 **Purpose:** Design how messages get from sender to all channel members. This is the delivery engine — the part that makes group chat actually work.
 

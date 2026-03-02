@@ -3,7 +3,7 @@
 **Status:** Seeded (7 decisions, pending workshop)
 **Workshop:** [Epic 9 — Inter-Agent Communication](../interagent-communication-workshop.md)
 **Depends on:** None (independent of Sections 1–5)
-**Canonical data model:** [`../erds/headspace-org-erd-full.md`](../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
+**Canonical data model:** [`../../erds/headspace-org-erd-full.md`](../../erds/headspace-org-erd-full.md) — resolved outcomes are stored there, not in embedded ERDs below.
 
 **Purpose:** Design the agent lifecycle continuity system — startup detection of prior handoffs, operator-gated rehydration, and on-demand handoff history. Introduces the "synthetic injection" delivery primitive: a software-generated precursor turn injected into the agent's conversation by the application, distinct from both hook responses and tmux send-keys.
 

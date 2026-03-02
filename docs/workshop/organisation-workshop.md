@@ -704,7 +704,7 @@ All model changes required by Section 1 decisions, consolidated for implementati
 
 The channel infrastructure is the nervous system. The organisation mechanics are the brain that decides which nerves to fire. Building the org without the nervous system is backwards.
 
-**Decision:** Inter-agent communication via channels is extracted into **Epic 9** with its own dedicated workshop (`docs/workshop/interagent-communication-workshop.md`). This workshop (Organisation) resumes after Epic 9 delivers working channel infrastructure.
+**Decision:** Inter-agent communication via channels is extracted into **Epic 9** with its own dedicated workshop (`docs/workshop/interagent-communication/interagent-communication-workshop.md`). This workshop (Organisation) resumes after Epic 9 delivers working channel infrastructure.
 
 **What remains valid:** Sections 0–1 (codebase audit, organisation serialization) are fully resolved and do not depend on channels. Their decisions stand. The migration checklist at the end of Section 1 can be implemented independently.
 
@@ -714,7 +714,7 @@ The channel infrastructure is the nervous system. The organisation mechanics are
 
 ## Section 2: Inter-Agent Communication
 
-> **STATUS: SUPERSEDED** — This section's decisions (2.1–2.6) are replaced by the Epic 9 Inter-Agent Communication Workshop. The questions below are preserved for reference but will not be resolved here. See `docs/workshop/interagent-communication-workshop.md`.
+> **STATUS: SUPERSEDED** — This section's decisions (2.1–2.6) are replaced by the Epic 9 Inter-Agent Communication Workshop. The questions below are preserved for reference but will not be resolved here. See `docs/workshop/interagent-communication/interagent-communication-workshop.md`.
 
 **Purpose:** Design the communication channel that allows agents to send messages to each other through Headspace. This is the nervous system of the organisation — every delegation, report, question, and escalation flows through it.
 
