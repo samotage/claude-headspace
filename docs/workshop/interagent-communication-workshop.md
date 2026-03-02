@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). Sections 2–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decision 2.1 resolved.** Decisions 2.2–2.3 and Sections 3–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -36,6 +36,7 @@ Sections are designed to be completable in a single workshop session. Start each
 | 2 Mar 2026 | Sam + Robbo | 1.1 (resolved) | Channel model: 3 new tables (Channel, ChannelMembership, Message). PersonaType parent table introduced (2×2 matrix: agent/person × internal/external). Channels cross-project and optionally org-scoped. Membership persona-based with explicit PositionAssignment FK for org capacity. Operator participates as internal-person Persona. External persons/agents modelled for future cross-system collaboration (dragons acknowledged, scope held). |
 | 2 Mar 2026 | Sam + Robbo | 1.2–1.4 (resolved) | Message model: 10-column table with metadata JSONB, attachment_path, bidirectional Turn/Command links (source_turn_id, source_command_id on Message; source_message_id on Turn). Messages immutable. Message types: 4-type enum (message, system, delegation, escalation). Membership model: explicit join/leave for all persona types, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type personas. |
 | 2 Mar 2026 | Sam + Robbo | 1.5 (resolved) | Relationship to existing models: channel messages enter the existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. Delegation type biases toward COMMAND intent but detector decides. No new Event types — Messages are their own audit trail. **Section 1 (Channel Data Model) fully resolved.** |
+| 2 Mar 2026 | Sam + Robbo | 2.1 (resolved) | Channel lifecycle: 3 creation paths (CLI, dashboard, voice bridge — voice bridge is primary operator interface). Creation capability is a persona attribute (agents delegate check to persona via OOP method delegation). 4-state lifecycle: pending → active → complete → archived. Mid-conversation member addition creates new channel as overlay on existing 1:1 sessions — existing command/turn trees untouched. Context briefing: last 10 messages injected into new agent spin-up after persona injection. Channel is a Headspace-level construct; agents don't need to know they're in one. |
 
 ---
 
@@ -933,7 +934,7 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 ---
 
 ### 2.1 Channel Lifecycle
-- [ ] **Decision: How are channels created, and what's their lifecycle?**
+- [x] **Decision: How are channels created, and what's their lifecycle?**
 
 **Depends on:** 1.1
 
@@ -941,15 +942,34 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 
 **Operator use case (2 March 2026):** During a workshop session with Robbo, Sam needed to pull Con into the conversation to brief him on a bug. Today this requires: spinning up a new agent, writing a prompt, sending a document link — "a pain in the fucking ass." The channel should support **mid-conversation member addition** — any participant (or at minimum the chair/operator) can add another persona to the channel, and the new member receives enough context to participate immediately. This is the "pull someone into the meeting" pattern.
 
-**Questions to resolve:**
-- Who can create channels? (Operator, any agent, specific roles like PM?)
-- Are channels created explicitly ("create a workshop channel") or implicitly ("delegate this task to Con" → system creates a channel)?
-- Channel lifecycle: created → active → archived? Can channels be reactivated?
-- Do channels have a TTL or auto-archive policy?
-- Are there default/standing channels (e.g., an org-wide channel that always exists)?
-- **How does mid-conversation member addition work?** When a new persona is added to an active channel: do they get channel history? How much? Is there a context briefing injected? Who can add members — chair only, any member, operator always?
+**Resolution:**
 
-**Resolution:** _(Pending)_
+**1. Creation paths:** CLI (`flask channel create`), dashboard, and voice bridge. Voice bridge is the primary operator interface for this feature.
+
+**2. Who can create:** Capability is a **persona attribute**. Agents delegate capability checks to their persona (OOP method delegation — `agent.can_create_channel?` delegates to `persona.can_create_channel?`). Operator always has creation capability inherently.
+
+**3. Creation mode:** Explicit only for v1. No implicit channel creation from delegation messages.
+
+**4. Lifecycle states:**
+
+| State | Meaning | Transition trigger |
+|---|---|---|
+| `pending` | Channel created, members being assembled. System messages (joins) permitted, no conversation yet. | Channel created |
+| `active` | Conversation in progress. | First non-system message sent |
+| `complete` | Business concluded. | Either last member leaves (auto-complete) OR chair/operator explicitly closes |
+| `archived` | Deep freeze. Excluded from general lists. | Explicit action, sometime after complete |
+
+No reactivation. Create a new channel if needed.
+
+**5. Mid-conversation member addition:** Any channel participant or operator can add a persona. If the persona has no running agent, Headspace spins one up (same creation + readiness polling pattern as remote agents). New agent receives persona injection, then a context briefing of the last 10 messages injected into spin-up context. System message posted to channel ("Paula joined the channel").
+
+**6. 1:1 to group channel promotion:** Adding a third party to a 1:1 conversation creates a **new channel**. Existing agent sessions continue untouched — their command/turn trees, tmux bridges, and all existing machinery keep running. The channel is an **overlay** that connects existing sessions, not a replacement for them. Agents don't need to know they're "in a channel" in any architectural sense — they receive messages via tmux, they respond, the hook receiver captures the response, and the channel handles fan-out to other members. The 1:1 sessions ARE the agents; the channel is the shared room they're all listening in.
+
+**7. Context briefing:** Last 10 messages from the channel (or from the preceding 1:1 conversation in the promotion case), injected into new agent's spin-up context after persona injection. Delivered as a single synthesised context block, not replayed as individual messages.
+
+**8. Standing/default channels:** None for v1.
+
+**Key architectural insight:** The channel is a Headspace-level construct, not an agent-level one. Nothing changes for existing agent sessions when a channel is created — the IntentDetector classifies inputs, the command/turn tree records them, the tmux bridge delivers them. The channel adds the fan-out layer on top of machinery that already works.
 
 ---
 
@@ -1155,6 +1175,8 @@ This closes the loop — messages flow in both directions through the channel.
 | Add `source_message_id` to `turns` | Turn | New FK to `messages`, NULLABLE, ondelete SET NULL. Enables tracing a Turn back to the channel message that caused it. NULL for Turns from normal terminal input. | High | 1.2 |
 | Create partial unique index on `channel_memberships` | ChannelMembership | `CREATE UNIQUE INDEX uq_active_agent_one_channel ON channel_memberships (agent_id) WHERE status = 'active' AND agent_id IS NOT NULL;` — one agent instance per active channel. | High | 1.4 |
 | Create operator Persona | Persona (data) | Insert person/internal Persona for operator (Sam). Role: "operator" (create Role if needed). No Agent instances, no PositionAssignment. | Medium — needed for channel participation | 1.1 |
+| Update `channels.status` enum | Channel | 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members, Active = first non-system message sent, Complete = last member left or chair/operator closed, Archived = deep freeze (excluded from general lists). No reactivation. | High | 2.1 |
+| Add `completed_at` to `channels` | Channel | Timestamp for when channel entered `complete` state. Nullable. | Medium | 2.1 |
 
 ### New Services
 
