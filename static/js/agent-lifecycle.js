@@ -157,48 +157,150 @@
     }
 
     /**
-     * Close all open card footer kebab menus.
+     * Build the action list for a dashboard agent card kebab menu.
+     * Reads data attributes from the trigger button to determine available actions.
      */
-    function closeCardKebabs() {
-        var openMenus = document.querySelectorAll('.card-kebab-menu.open');
-        for (var i = 0; i < openMenus.length; i++) {
-            openMenus[i].classList.remove('open');
+    function buildDashboardActions(btn) {
+        var I = (typeof PortalKebabMenu !== 'undefined') ? PortalKebabMenu.ICONS : {};
+        var actions = [
+            { id: 'chat', label: 'Chat', icon: I.chat || '' },
+            { id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' },
+            'divider',
+        ];
+        if (btn.getAttribute('data-tmux-session')) {
+            actions.push({ id: 'attach', label: 'Attach', icon: I.attach || '' });
         }
-        var expandedBtns = document.querySelectorAll('.card-kebab-btn[aria-expanded="true"]');
-        for (var j = 0; j < expandedBtns.length; j++) {
-            expandedBtns[j].setAttribute('aria-expanded', 'false');
+        actions.push({ id: 'context', label: 'Fetch context', icon: I.context || '' });
+        actions.push({ id: 'info', label: 'Agent info', icon: I.info || '' });
+        actions.push({ id: 'reconcile', label: 'Reconcile', icon: I.reconcile || '' });
+        if (btn.getAttribute('data-persona-name')) {
+            actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
         }
-        // Lower all elevated cards
-        var elevatedCards = document.querySelectorAll('article.kebab-open');
-        for (var k = 0; k < elevatedCards.length; k++) {
-            elevatedCards[k].classList.remove('kebab-open');
+        return actions;
+    }
+
+    /**
+     * Handle a dashboard kebab menu action.
+     */
+    function handleDashboardAction(actionId, agentId) {
+        switch (actionId) {
+            case 'chat':
+                window.location.href = '/voice?agent_id=' + agentId;
+                break;
+            case 'dismiss':
+                _confirmAndDismiss(agentId);
+                break;
+            case 'attach':
+                if (window.FocusAPI) window.FocusAPI.attachAgent(agentId);
+                break;
+            case 'context':
+                checkContext(agentId);
+                break;
+            case 'info':
+                if (window.AgentInfo) AgentInfo.open(agentId);
+                break;
+            case 'reconcile':
+                _doReconcile(agentId);
+                break;
+            case 'handoff':
+                _confirmAndHandoff(agentId);
+                break;
         }
-        // Restore overflow on all ancestor containers
-        var unclipped = document.querySelectorAll('.kebab-child-open');
-        for (var m = 0; m < unclipped.length; m++) {
-            unclipped[m].classList.remove('kebab-child-open');
+    }
+
+    /**
+     * Confirm and dismiss (shutdown) an agent from the kebab menu.
+     */
+    function _confirmAndDismiss(agentId) {
+        // Read hero from the card's kebab button data attributes
+        var btn = document.querySelector('.card-kebab-btn[data-agent-id="' + agentId + '"]');
+        var heroChars = btn ? btn.getAttribute('data-hero-chars') || '' : '';
+        var heroTrail = btn ? btn.getAttribute('data-hero-trail') || '' : '';
+        var heroLabel = heroChars + heroTrail || ('#' + agentId);
+
+        function _immediateRemoveAndShutdown(aid, label) {
+            var card = document.querySelector('article[data-agent-id="' + aid + '"]');
+            if (card) {
+                card.style.transition = 'opacity 0.3s, transform 0.3s';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.95)';
+                setTimeout(function() { card.remove(); }, 300);
+            }
+            if (global.Toast) {
+                global.Toast.success('Shutting down', 'Agent ' + label + ' dismissed');
+            }
+            global._agentOperationInProgress = true;
+            shutdownAgent(aid).then(function(data) {
+                if (data && data.error) {
+                    return _silentDismiss(aid);
+                }
+            }).catch(function() {
+                return _silentDismiss(aid);
+            }).finally(function() {
+                global._agentOperationInProgress = false;
+                if (global._sseReloadDeferred) {
+                    var deferred = global._sseReloadDeferred;
+                    global._sseReloadDeferred = null;
+                    deferred();
+                }
+            });
         }
-        // Process any cards deferred for removal while their kebab was open
-        var deferredRemoves = document.querySelectorAll('article[data-deferred-remove]');
-        for (var r = 0; r < deferredRemoves.length; r++) {
-            deferredRemoves[r].remove();
+
+        if (typeof ConfirmDialog !== 'undefined') {
+            var styledTitle = heroChars
+                ? 'Shut down agent ' + CHUtils.heroHTML(heroChars, heroTrail) + '?'
+                : 'Shut down agent #' + agentId + '?';
+            ConfirmDialog.show(
+                'Shut down agent ' + heroLabel + '?',
+                'This will send /exit to the agent. It will clean up and fire shutdown hooks.',
+                { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
+            ).then(function(confirmed) {
+                if (confirmed) {
+                    _immediateRemoveAndShutdown(agentId, heroLabel);
+                }
+            });
+        } else if (confirm('Shut down agent ' + heroLabel + '?')) {
+            _immediateRemoveAndShutdown(agentId, heroLabel);
         }
-        // Execute any deferred SSE reload now that menus are closed.
-        // setTimeout(0) runs AFTER the current event handler stack,
-        // so if a kebab action (dismiss, etc.) opens a ConfirmDialog,
-        // the deferred reload won't fire prematurely.
-        if (global._sseReloadDeferred) {
-            setTimeout(function() {
-                if (!global._sseReloadDeferred) return;
-                if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) return;
-                if (document.querySelector('.card-kebab-menu.open')) return;
-                var active = document.activeElement;
-                if (active && active.closest && active.closest('.respond-widget')) return;
-                var deferred = global._sseReloadDeferred;
-                global._sseReloadDeferred = null;
-                deferred();
-            }, 0);
+    }
+
+    /**
+     * Confirm and trigger a handoff from the kebab menu.
+     */
+    function _confirmAndHandoff(agentId) {
+        if (typeof ConfirmDialog !== 'undefined') {
+            ConfirmDialog.show(
+                'Handoff this agent?',
+                'The agent will write a handoff document and a successor agent will be created with the same persona. The current agent will remain alive.',
+                { confirmText: 'Handoff', cancelText: 'Cancel' }
+            ).then(function(confirmed) {
+                if (confirmed) _doHandoff(agentId);
+            });
+        } else if (confirm('Handoff this agent? A successor will be created.')) {
+            _doHandoff(agentId);
         }
+    }
+
+    /**
+     * Trigger reconcile for an agent.
+     */
+    function _doReconcile(agentId) {
+        fetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
+            .then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status }; }); })
+            .then(function(res) {
+                if (global.Toast) {
+                    if (res.status === 409) {
+                        global.Toast.info('Reconcile', 'Already in progress');
+                    } else if (res.data.created > 0) {
+                        global.Toast.success('Reconciled', res.data.created + ' turn(s) recovered');
+                    } else {
+                        global.Toast.info('Reconcile', 'No missing turns found');
+                    }
+                }
+            })
+            .catch(function() {
+                if (global.Toast) global.Toast.error('Reconcile failed', 'Could not reach server');
+            });
     }
 
     /**
@@ -386,7 +488,7 @@
                 e.stopPropagation();
                 var isOpen = menu.classList.contains('open');
                 // Close card kebabs if any are open
-                closeCardKebabs();
+                if (typeof PortalKebabMenu !== 'undefined') PortalKebabMenu.close();
                 if (isOpen) {
                     closeNewAgentMenu();
                 } else {
@@ -478,110 +580,29 @@
             });
         }
 
-        // Dashboard card footer kebab menu
+        // Dashboard card footer kebab menu (portal-based)
         document.addEventListener('click', function(e) {
-            // Kebab toggle
+            // Kebab toggle via portal
             var kebabBtn = e.target.closest('.card-kebab-btn');
             if (kebabBtn) {
                 e.preventDefault();
                 e.stopPropagation();
-                var agentId = kebabBtn.getAttribute('data-agent-id');
-                var menu = document.querySelector('.card-kebab-menu[data-agent-id="' + agentId + '"]');
-                // Capture open state BEFORE closing all menus
-                var wasOpen = menu && menu.classList.contains('open');
-                closeCardKebabs();
-                if (menu && !wasOpen) {
-                    menu.classList.add('open');
-                    kebabBtn.setAttribute('aria-expanded', 'true');
-                    // Elevate the parent card above siblings
-                    var card = kebabBtn.closest('article');
-                    if (card) card.classList.add('kebab-open');
-                    // Disable overflow clipping on all ancestor containers
-                    var el = kebabBtn.parentElement;
-                    while (el && el !== document.body) {
-                        var style = window.getComputedStyle(el);
-                        if (style.overflow !== 'visible' || style.overflowY !== 'visible' || style.overflowX !== 'visible') {
-                            el.classList.add('kebab-child-open');
-                        }
-                        el = el.parentElement;
-                    }
+                var agentId = parseInt(kebabBtn.getAttribute('data-agent-id'), 10);
+                if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) {
+                    PortalKebabMenu.close();
+                    return;
+                }
+                if (typeof PortalKebabMenu !== 'undefined') {
+                    PortalKebabMenu.open(kebabBtn, {
+                        agentId: agentId,
+                        actions: buildDashboardActions(kebabBtn),
+                        onAction: handleDashboardAction
+                    });
                 }
                 return;
             }
 
-            // Context check (kebab menu item)
-            var ctxAction = e.target.closest('.card-ctx-action');
-            if (ctxAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(ctxAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId) checkContext(agentId);
-                return;
-            }
-
-            // Chat (kebab menu item)
-            var chatAction = e.target.closest('.card-chat-action');
-            if (chatAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(chatAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId) window.location.href = '/voice?agent_id=' + agentId;
-                return;
-            }
-
-            // Attach (kebab menu item)
-            var attachAction = e.target.closest('.card-attach-action');
-            if (attachAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(attachAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId && window.FocusAPI) window.FocusAPI.attachAgent(agentId);
-                return;
-            }
-
-            // Agent info (kebab menu item)
-            var infoAction = e.target.closest('.card-info-action');
-            if (infoAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(infoAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId && window.AgentInfo) AgentInfo.open(agentId);
-                return;
-            }
-
-            // Reconcile (kebab menu item)
-            var reconcileAction = e.target.closest('.card-reconcile-action');
-            if (reconcileAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(reconcileAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId) {
-                    fetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
-                        .then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status }; }); })
-                        .then(function(res) {
-                            if (global.Toast) {
-                                if (res.status === 409) {
-                                    global.Toast.info('Reconcile', 'Already in progress');
-                                } else if (res.data.created > 0) {
-                                    global.Toast.success('Reconciled', res.data.created + ' turn(s) recovered');
-                                } else {
-                                    global.Toast.info('Reconcile', 'No missing turns found');
-                                }
-                            }
-                        })
-                        .catch(function() {
-                            if (global.Toast) global.Toast.error('Reconcile failed', 'Could not reach server');
-                        });
-                }
-                return;
-            }
-
-            // Handoff button (card footer)
+            // Handoff button (card footer — not in kebab menu)
             var handoffAction = e.target.closest('.handoff-btn');
             if (handoffAction) {
                 e.preventDefault();
@@ -617,153 +638,15 @@
                 return;
             }
 
-            // Handoff (kebab menu item)
-            var handoffKebabAction = e.target.closest('.card-handoff-action');
-            if (handoffKebabAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(handoffKebabAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (agentId) {
-                    if (typeof ConfirmDialog !== 'undefined') {
-                        ConfirmDialog.show(
-                            'Handoff this agent?',
-                            'The agent will write a handoff document and a successor agent will be created with the same persona. The current agent will remain alive.',
-                            { confirmText: 'Handoff', cancelText: 'Cancel' }
-                        ).then(function(confirmed) {
-                            if (confirmed) {
-                                _doHandoff(agentId);
-                            }
-                        });
-                    } else if (confirm('Handoff this agent? A successor will be created.')) {
-                        _doHandoff(agentId);
-                    }
-                }
-                return;
-            }
-
-            // Kill (kebab menu item)
-            var killAction = e.target.closest('.card-kill-action');
-            if (killAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                var agentId = parseInt(killAction.getAttribute('data-agent-id'), 10);
-                closeCardKebabs();
-                if (!agentId) return;
-
-                var heroChars = killAction.getAttribute('data-hero-chars') || '';
-                var heroTrail = killAction.getAttribute('data-hero-trail') || '';
-                var heroLabel = heroChars + heroTrail || ('#' + agentId);
-
-                function _immediateRemoveAndShutdown(aid, label) {
-                    // 1. Immediately remove card from DOM (instant feedback)
-                    var card = document.querySelector('article[data-agent-id="' + aid + '"]');
-                    if (card) {
-                        card.style.transition = 'opacity 0.3s, transform 0.3s';
-                        card.style.opacity = '0';
-                        card.style.transform = 'scale(0.95)';
-                        setTimeout(function() { card.remove(); }, 300);
-                    }
-                    if (global.Toast) {
-                        global.Toast.success('Shutting down', 'Agent ' + label + ' dismissed');
-                    }
-
-                    // 2. Fire shutdown in background — card is already gone
-                    global._agentOperationInProgress = true;
-                    shutdownAgent(aid).then(function(data) {
-                        if (data && data.error) {
-                            return _silentDismiss(aid);
-                        }
-                    }).catch(function() {
-                        return _silentDismiss(aid);
-                    }).finally(function() {
-                        global._agentOperationInProgress = false;
-                        if (global._sseReloadDeferred) {
-                            var deferred = global._sseReloadDeferred;
-                            global._sseReloadDeferred = null;
-                            deferred();
-                        }
-                    });
-                }
-
-                if (typeof ConfirmDialog !== 'undefined') {
-                    var styledTitle = heroChars
-                        ? 'Shut down agent ' + CHUtils.heroHTML(heroChars, heroTrail) + '?'
-                        : 'Shut down agent #' + agentId + '?';
-                    ConfirmDialog.show(
-                        'Shut down agent ' + heroLabel + '?',
-                        'This will send /exit to the agent. It will clean up and fire shutdown hooks.',
-                        { titleHTML: styledTitle, confirmText: 'Shut down', cancelText: 'Cancel' }
-                    ).then(function(confirmed) {
-                        if (confirmed) {
-                            _immediateRemoveAndShutdown(agentId, heroLabel);
-                        }
-                    });
-                } else if (confirm('Shut down agent ' + heroLabel + '?')) {
-                    _immediateRemoveAndShutdown(agentId, heroLabel);
-                }
-                return;
-            }
-
-            // Close card kebabs on click outside
-            if (!e.target.closest('.card-kebab-wrapper')) {
-                closeCardKebabs();
+            // Close portal menu on click outside
+            if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) {
+                PortalKebabMenu.close();
             }
             // Close new-agent menu on click outside
             if (!e.target.closest('.new-agent-wrapper')) {
                 closeNewAgentMenu();
             }
         });
-
-        // iOS tap-in-scroll fix: cards sit inside overflow-y:auto columns,
-        // so iOS often treats taps as scroll-start and never fires the click.
-        // Track touch position and synthesize clicks for short, stationary taps.
-        var _touchStartPos = null;
-        var _lastTouchClick = 0;
-
-        document.addEventListener('touchstart', function(e) {
-            _touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-            // Close menus on tap outside
-            if (!e.target.closest('.card-kebab-wrapper')) {
-                closeCardKebabs();
-            }
-            if (!e.target.closest('.new-agent-wrapper')) {
-                closeNewAgentMenu();
-            }
-        }, { passive: true });
-
-        document.addEventListener('touchend', function(e) {
-            if (!_touchStartPos) return;
-            var touch = e.changedTouches[0];
-            var dx = touch.clientX - _touchStartPos.x;
-            var dy = touch.clientY - _touchStartPos.y;
-            _touchStartPos = null;
-            // If finger moved more than 10px, it was a scroll — bail
-            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
-
-            var kebabBtn = e.target.closest('.card-kebab-btn');
-            var kebabItem = e.target.closest('.card-kebab-item');
-            if (kebabBtn || kebabItem) {
-                e.preventDefault();
-                _lastTouchClick = Date.now();
-                (kebabBtn || kebabItem).click();
-            }
-        });
-
-        // Guard: suppress native click that iOS may fire after our touchend-triggered click
-        document.addEventListener('click', function(e) {
-            if (_lastTouchClick && Date.now() - _lastTouchClick < 500) {
-                var kebab = e.target.closest('.card-kebab-btn') || e.target.closest('.card-kebab-item');
-                if (kebab && !e.isTrusted) return; // skip programmatic duplicates
-                if (kebab && e.isTrusted) {
-                    // Native click arrived after our touchend click — suppress it
-                    e.stopImmediatePropagation();
-                    e.preventDefault();
-                    _lastTouchClick = 0;
-                    return;
-                }
-            }
-        }, true); // capture phase — runs before the main click handler
     }
 
     // Export

@@ -59,6 +59,7 @@
     }
 
     function showTooltip(el) {
+        if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) return;
         if (!isTruncated(el)) return;
 
         ensureTooltip();
@@ -118,6 +119,7 @@
 
     document.addEventListener('mouseover', function(e) {
         if (isTouch) return;
+        if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) return;
         var el = e.target.closest('.command-instruction, .command-summary');
         if (el) {
             if (activeEl === el) return; // already showing for this element

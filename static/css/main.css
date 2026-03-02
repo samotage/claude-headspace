@@ -1985,6 +1985,11 @@ select.form-well {
   --tw-ring-opacity: 0.75;
 }
 
+.blur {
+  --tw-blur: blur(8px);
+  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+}
+
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
@@ -2312,13 +2317,6 @@ body::after {
   }
 }
 
-/* Elevate card when kebab menu is open so dropdown renders above sibling cards */
-
-article.kebab-open {
-  position: relative;
-  z-index: 100;
-}
-
 /* Dashboard card footer kebab menu */
 
 .card-kebab-wrapper {
@@ -2365,30 +2363,6 @@ article.kebab-open {
   background: rgba(86, 212, 221, 0.06);
 }
 
-.card-kebab-menu {
-  display: none;
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 6px;
-  background: var(--bg-deep);
-  border: 1px solid var(--border-bright);
-  border-radius: 8px;
-  min-width: 190px;
-  z-index: 30;
-  overflow: hidden;
-  box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.4),
-        0 8px 24px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  padding: 4px 0;
-}
-
-.card-kebab-menu.open {
-  display: block;
-  animation: kebab-enter 0.12s ease-out;
-}
-
 @keyframes kebab-enter {
   from {
     opacity: 0;
@@ -2401,7 +2375,30 @@ article.kebab-open {
   }
 }
 
-.card-kebab-item {
+/* Portal Kebab Menu — shared component rendered on document.body */
+
+#portal-kebab-menu {
+  position: fixed;
+  display: none;
+  z-index: 150;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  min-width: 190px;
+  overflow: hidden;
+  box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.4),
+        0 8px 24px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  padding: 4px 0;
+}
+
+#portal-kebab-menu.open {
+  display: block;
+  animation: kebab-enter 0.12s ease-out;
+}
+
+.portal-kebab-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2421,13 +2418,13 @@ article.kebab-open {
   transition: color 0.12s, background 0.12s, padding-left 0.15s;
 }
 
-.card-kebab-item:hover {
+.portal-kebab-item:hover {
   color: var(--text-primary);
   background: rgba(86, 212, 221, 0.06);
   padding-left: 16px;
 }
 
-.card-kebab-item:active {
+.portal-kebab-item:active {
   background: rgba(86, 212, 221, 0.1);
 }
 
@@ -2439,37 +2436,37 @@ article.kebab-open {
   transition: opacity 0.12s;
 }
 
-.card-kebab-item:hover .kebab-icon {
+.portal-kebab-item:hover .kebab-icon {
   opacity: 0.9;
 }
 
-.kebab-divider {
+.portal-kebab-divider {
   height: 1px;
   margin: 4px 12px;
   background: var(--border);
 }
 
-.card-kebab-item.card-handoff-action:hover {
+.portal-kebab-item.handoff-action:hover {
   color: var(--magenta);
   background: rgba(208, 115, 224, 0.08);
   padding-left: 16px;
 }
 
-.card-kebab-item.card-handoff-action:hover .kebab-icon {
+.portal-kebab-item.handoff-action:hover .kebab-icon {
   opacity: 1;
 }
 
-.card-kebab-item.card-kill-action {
+.portal-kebab-item.kill-action {
   color: var(--text-muted);
 }
 
-.card-kebab-item.card-kill-action:hover {
+.portal-kebab-item.kill-action:hover {
   color: var(--red);
   background: rgba(224, 115, 115, 0.08);
   padding-left: 16px;
 }
 
-.card-kebab-item.card-kill-action:hover .kebab-icon {
+.portal-kebab-item.kill-action:hover .kebab-icon {
   opacity: 1;
 }
 
@@ -3518,12 +3515,6 @@ article.kebab-open {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-}
-
-/* When a kebab is open inside a column, disable ALL overflow clipping up the tree */
-
-.kebab-child-open {
-  overflow: visible !important;
 }
 
 .kanban-completed-command {

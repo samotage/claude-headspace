@@ -244,36 +244,10 @@ window.VoiceSidebar = (function () {
       var selectedClass = (VoiceState.layoutMode === 'split' && a.agent_id === VoiceState.targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
-      // Kebab menu: ended agents get "Fetch context" + "Revive"
-      var kebabMenuHtml;
-      if (isEnded) {
-        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
-          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
-          + '<span>Fetch context</span></button>'
-          + '<div class="kebab-divider"></div>'
-          + '<button class="kebab-menu-item agent-revive-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v6M5 4l3-3 3 3"/><path d="M2 8a6 6 0 1 0 12 0"/></svg>'
-          + '<span>Revive</span></button>'
-          + '</div>';
-      } else {
-        var handoffHtml = '';
-        if (a.persona_name) {
-          handoffHtml = '<button class="kebab-menu-item agent-handoff-action" data-agent-id="' + a.agent_id + '">'
-            + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2v12M11 2v12"/><path d="M5 8h6"/><path d="M1 5l4 3-4 3"/><path d="M15 5l-4 3 4 3"/></svg>'
-            + '<span>Handoff</span></button>';
-        }
-        kebabMenuHtml = '<div class="agent-kebab-menu" data-agent-id="' + a.agent_id + '">'
-          + '<button class="kebab-menu-item agent-ctx-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5L10.5 10"/></svg>'
-          + '<span>Fetch context</span></button>'
-          + handoffHtml
-          + '<div class="kebab-divider"></div>'
-          + '<button class="kebab-menu-item agent-kill-action" data-agent-id="' + a.agent_id + '">'
-          + '<svg class="kebab-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l10 10M13 3L3 13"/></svg>'
-          + '<span>Dismiss agent</span></button>'
-          + '</div>';
-      }
+      // Kebab button only — menu rendered via portal
+      var kebabBtnDataAttrs = ' data-agent-id="' + a.agent_id + '"'
+        + ' data-persona-name="' + VoiceChatRenderer.esc(a.persona_name || '') + '"'
+        + ' data-is-ended="' + (isEnded ? 'true' : 'false') + '"';
 
       // Persona name replaces hero chars when available
       var heroHtml;
@@ -294,8 +268,7 @@ window.VoiceSidebar = (function () {
         + '</a>'
         + '<div class="agent-header-actions">'
         + '<span class="agent-state ' + stateClass + '">' + VoiceChatRenderer.esc(stateLabel) + '</span>'
-        + '<button class="agent-kebab-btn" data-agent-id="' + a.agent_id + '" title="Actions">&#8942;</button>'
-        + kebabMenuHtml
+        + '<button class="agent-kebab-btn"' + kebabBtnDataAttrs + ' title="Actions">&#8942;</button>'
         + '</div>'
         + '</div>'
         + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
@@ -375,79 +348,25 @@ window.VoiceSidebar = (function () {
       });
     }
 
-    // Bind kebab menu buttons
+    // Bind kebab menu buttons — open portal menu
     var kebabBtns = list.querySelectorAll('.agent-kebab-btn');
     for (var c = 0; c < kebabBtns.length; c++) {
       kebabBtns[c].addEventListener('click', function (e) {
         e.stopPropagation();
-        var agentId = this.getAttribute('data-agent-id');
-        var menu = list.querySelector('.agent-kebab-menu[data-agent-id="' + agentId + '"]');
-        // Close any other open menus
-        var allMenus = list.querySelectorAll('.agent-kebab-menu.open');
-        for (var m = 0; m < allMenus.length; m++) {
-          if (allMenus[m] !== menu) allMenus[m].classList.remove('open');
+        if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) {
+          PortalKebabMenu.close();
+          return;
         }
-        if (menu) menu.classList.toggle('open');
+        var btn = this;
+        var agentId = parseInt(btn.getAttribute('data-agent-id'), 10);
+        if (typeof PortalKebabMenu !== 'undefined') {
+          PortalKebabMenu.open(btn, {
+            agentId: agentId,
+            actions: _buildVoiceActions(btn),
+            onAction: _handleVoiceAction
+          });
+        }
       });
-    }
-
-    // Bind kebab menu actions (click for desktop, touchend for touch devices)
-    var ctxActions = list.querySelectorAll('.agent-ctx-action');
-    for (var ca = 0; ca < ctxActions.length; ca++) {
-      ctxActions[ca].addEventListener('click', function (e) {
-        e.stopPropagation();
-        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
-        closeAllKebabMenus();
-        checkAgentContext(agentId);
-      });
-    }
-    var killActions = list.querySelectorAll('.agent-kill-action');
-    for (var ka = 0; ka < killActions.length; ka++) {
-      killActions[ka].addEventListener('click', function (e) {
-        e.stopPropagation();
-        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
-        closeAllKebabMenus();
-        shutdownAgent(agentId);
-      });
-    }
-    var reviveActions = list.querySelectorAll('.agent-revive-action');
-    for (var ra = 0; ra < reviveActions.length; ra++) {
-      reviveActions[ra].addEventListener('click', function (e) {
-        e.stopPropagation();
-        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
-        closeAllKebabMenus();
-        CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data.error) {
-              showToast('Revival failed: ' + data.error);
-            } else {
-              showToast('Revival initiated');
-              refreshAgents();
-            }
-          })
-          .catch(function () { showToast('Revival failed'); });
-      });
-    }
-    var handoffActions = list.querySelectorAll('.agent-handoff-action');
-    for (var ha = 0; ha < handoffActions.length; ha++) {
-      handoffActions[ha].addEventListener('click', function (e) {
-        e.stopPropagation();
-        var agentId = parseInt(this.getAttribute('data-agent-id'), 10);
-        closeAllKebabMenus();
-        handoffAgent(agentId);
-      });
-    }
-
-    // Click/touch fix: the absolutely-positioned dropdown extends below
-    // .agent-header-actions.  Browsers may retarget the click/tap to that
-    // parent, so the individual item's click handler never fires.  Use a
-    // delegated handler on the menu container for BOTH click and touchend
-    // so it works on desktop Chrome AND touch devices.
-    var agentMenus = list.querySelectorAll('.agent-kebab-menu');
-    for (var am = 0; am < agentMenus.length; am++) {
-      agentMenus[am].addEventListener('click', _handleKebabAction);
-      agentMenus[am].addEventListener('touchend', _handleKebabAction);
     }
     // Bind project kebab menu buttons
     var projKebabBtns = list.querySelectorAll('.project-kebab-btn');
@@ -476,16 +395,12 @@ window.VoiceSidebar = (function () {
   // --- Kebab menus ---
 
   function closeAllKebabMenus() {
-    var menus = document.querySelectorAll('.agent-kebab-menu.open, .project-kebab-menu.open');
-    var hadOpen = menus.length > 0;
-    for (var i = 0; i < menus.length; i++) {
-      menus[i].classList.remove('open');
-    }
-    // Trigger any SSE reload that was deferred while menu was open
-    if (hadOpen && window._sseReloadDeferred) {
-      var deferred = window._sseReloadDeferred;
-      window._sseReloadDeferred = null;
-      deferred();
+    // Close portal menu (agent kebabs)
+    if (typeof PortalKebabMenu !== 'undefined') PortalKebabMenu.close();
+    // Close project kebabs (still inline — no SSE mutation problem)
+    var projMenus = document.querySelectorAll('.project-kebab-menu.open');
+    for (var i = 0; i < projMenus.length; i++) {
+      projMenus[i].classList.remove('open');
     }
   }
 
@@ -495,7 +410,7 @@ window.VoiceSidebar = (function () {
     // Guard: on touch devices the browser retargets the synthesised click
     // to .agent-header-actions when the dropdown extends beyond its layout
     // box, so we must also block clicks originating from that wrapper.
-    if (e.target.closest('.agent-kebab-menu') || e.target.closest('.agent-kebab-btn')
+    if (e.target.closest('.agent-kebab-btn')
         || e.target.closest('.agent-header-actions')) {
       return;
     }
@@ -536,32 +451,51 @@ window.VoiceSidebar = (function () {
     }
   }
 
-  // --- Delegated kebab menu action handler (click + touchend) ---
-  // Handles both click (desktop Chrome) and touchend (iOS/iPad).
-  // The absolutely-positioned dropdown extends below .agent-header-actions,
-  // so browsers may retarget direct clicks — this delegated handler catches them.
+  // --- Portal kebab menu action builders ---
 
-  function _handleKebabAction(e) {
-    var item = e.target.closest('.kebab-menu-item');
-    if (!item) return;
-    e.preventDefault();
-    e.stopPropagation();
-    var agentId = parseInt(item.getAttribute('data-agent-id'), 10);
-    closeAllKebabMenus();
-    if (item.classList.contains('agent-ctx-action')) {
-      checkAgentContext(agentId);
-    } else if (item.classList.contains('agent-kill-action')) {
-      shutdownAgent(agentId);
-    } else if (item.classList.contains('agent-handoff-action')) {
-      handoffAgent(agentId);
-    } else if (item.classList.contains('agent-revive-action')) {
-      CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error) { showToast('Revival failed: ' + data.error); }
-          else { showToast('Revival initiated'); refreshAgents(); }
-        })
-        .catch(function () { showToast('Revival failed'); });
+  function _buildVoiceActions(btn) {
+    var I = (typeof PortalKebabMenu !== 'undefined') ? PortalKebabMenu.ICONS : {};
+    var isEnded = btn.getAttribute('data-is-ended') === 'true';
+
+    if (isEnded) {
+      return [
+        { id: 'context', label: 'Fetch context', icon: I.context || '' },
+        'divider',
+        { id: 'revive', label: 'Revive', icon: I.revive || '' }
+      ];
+    }
+
+    var actions = [
+      { id: 'context', label: 'Fetch context', icon: I.context || '' }
+    ];
+    if (btn.getAttribute('data-persona-name')) {
+      actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
+    }
+    actions.push('divider');
+    actions.push({ id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' });
+    return actions;
+  }
+
+  function _handleVoiceAction(actionId, agentId) {
+    switch (actionId) {
+      case 'context':
+        checkAgentContext(agentId);
+        break;
+      case 'dismiss':
+        shutdownAgent(agentId);
+        break;
+      case 'handoff':
+        handoffAgent(agentId);
+        break;
+      case 'revive':
+        CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) { showToast('Revival failed: ' + data.error); }
+            else { showToast('Revival initiated'); refreshAgents(); }
+          })
+          .catch(function () { showToast('Revival failed'); });
+        break;
     }
   }
 
