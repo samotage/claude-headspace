@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decision 2.1 resolved.** Decisions 2.2–2.3 and Sections 3–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2: Decision 2.1 resolved. Decision 2.2 proposed (pending operator review).** Decision 2.3 and Sections 3–5 pending.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -37,6 +37,7 @@ Sections are designed to be completable in a single workshop session. Start each
 | 2 Mar 2026 | Sam + Robbo | 1.2–1.4 (resolved) | Message model: 10-column table with metadata JSONB, attachment_path, bidirectional Turn/Command links (source_turn_id, source_command_id on Message; source_message_id on Turn). Messages immutable. Message types: 4-type enum (message, system, delegation, escalation). Membership model: explicit join/leave for all persona types, muted = delivery paused, one agent instance per active channel (partial unique index), no constraint on person-type personas. |
 | 2 Mar 2026 | Sam + Robbo | 1.5 (resolved) | Relationship to existing models: channel messages enter the existing IntentDetector → CommandLifecycleManager pipeline. No special-case logic. Delegation type biases toward COMMAND intent but detector decides. No new Event types — Messages are their own audit trail. **Section 1 (Channel Data Model) fully resolved.** |
 | 2 Mar 2026 | Sam + Robbo | 2.1 (resolved) | Channel lifecycle: 3 creation paths (CLI, dashboard, voice bridge — voice bridge is primary operator interface). Creation capability is a persona attribute (agents delegate check to persona via OOP method delegation). 4-state lifecycle: pending → active → complete → archived. Mid-conversation member addition creates new channel as overlay on existing 1:1 sessions — existing command/turn trees untouched. Context briefing: last 10 messages injected into new agent spin-up after persona injection. Channel is a Headspace-level construct; agents don't need to know they're in one. |
+| 2 Mar 2026 | Sam + Robbo | 2.2 (proposed) | CLI Interface proposal drafted. Operator resolved two blocking decisions: standalone `flask channel` / `flask msg` namespaces (not nested under `flask org`), and `flask channel complete` verb (matches state name, no translation layer). Full proposal covers: caller identity (tmux pane detection + env var override), 10 channel commands, 2 message commands, conversational envelope format, one-agent-one-channel enforcement, capability checks, 7 actionable error messages, 7 architectural notes deferred to later sections. Pending operator review for formal resolution. |
 
 ---
 
@@ -122,7 +123,7 @@ Seven communication paths exist today. Audit findings:
 
 **Critical design decision — completion-only relay:**
 
-Only **COMPLETION turns** (the agent's finished, composed response from the stop hook) are relayed to channel members. PROGRESS turns, intermediate tool use output, and internal thinking stay on the agent's individual card/voice chat for operator monitoring but **never fan out to the channel.**
+Only the agent's **finished, composed response** (captured when the stop hook fires and the transcript is extracted) is relayed to channel members. The relay trigger is the stop hook event, not the Turn intent classification — the resulting Turn may have intent COMPLETION, END_OF_COMMAND, or other values as determined by the IntentDetector. PROGRESS turns, intermediate tool use output, and internal thinking stay on the agent's individual card/voice chat for operator monitoring but **never fan out to the channel.**
 
 **Rationale:** PROGRESS turns are the agent's internal notes — useful for monitoring what an individual agent is doing, but noise in a group conversation. Relaying them would pollute groupthink and potentially derail the discussion's direction. Agents in a group channel should present composed, self-evaluated responses — not stream of consciousness.
 
@@ -242,10 +243,10 @@ Injected alongside the base primer on join. Tells participants what this specifi
 |--------|----------|-----------|
 | **Injection timing** | Once on channel join | Repeating per-message wastes tokens and annoys agents. This is context, not content. |
 | **Two-layer split** | Base primer (universal) + channel intent (per-type) | Separates "how to behave in any group" from "what this group is optimising for." Different governance: base is platform-level, intent is per-channel. |
-| **Asset type** | Organisation-level injectable markdown | Consistent with persona skill/experience pattern |
+| **Asset type** | Platform-level injectable markdown | Consistent with persona skill/experience pattern. Lives at `data/templates/channel-base-primer.md` alongside `platform-guardrails.md`. |
 | **Channel types** | Enum on Channel model with intent templates | Feeds into Section 1.1. Each type has a default intent; creators can override with custom intent text. |
 | **Chair role** | Every channel has a chair | Someone must set direction. Operator when present; designated agent (e.g., Gavin as PM) for autonomous group chats. Any persona can chair — it's per-channel authority, not a persona trait. |
-| **Chair capabilities** | Membership management, intent setting, channel closure | Chair manages the channel. Delivery priority deferred to v2 — group chat is a pipeline (chronological), not a priority queue. Priority delivery suits a different interaction pattern (all-hands). |
+| **Chair capabilities** | Channel creation (creator = initial chair), membership management, intent setting, channel completion, chair transfer | Chair manages the channel. Creator becomes initial chair (per Paula's guidance). Delivery priority explicitly deferred to v2 — Paula recommended soft priority mechanics (Section 3 of AR Director guidance), but the workshop decided group chat is a pipeline (chronological) for v1. Priority delivery suits a different interaction pattern (all-hands). |
 | **Channel purpose** | Set at channel creation via type template or explicit override | Feeds directly into the primer. Gives agents a relevance filter for their responses. |
 
 **Behavioural shift from solo to group mode:**
@@ -506,13 +507,6 @@ The primary interaction interface for channels is the **Voice Chat PWA** (`/voic
 - Org-wide announcements (broadcast)
 - Possibly ephemeral channels (created for a task, archived on completion)
 
-**Questions to resolve:**
-- Channel fields: name, purpose/description, channel_type (group/direct/broadcast), org scope, created_by, status (active/archived)?
-- Does a channel have a lifecycle? (created → active → archived)
-- Can channels be org-scoped (only members of a specific org) or are they cross-org?
-- Do we need channel topics/subjects (like Slack)?
-- How does the channel relate to existing models (Project, Organisation)?
-
 **Resolution:** Resolved 2 March 2026.
 
 **Three new tables (Channel, ChannelMembership, Message) plus one new parent table (PersonaType).** The channel data model introduces a communication layer that sits above projects and optionally scopes to organisations. All participants — agents, operator, and future external collaborators — are unified under the Persona identity model via a type hierarchy.
@@ -573,7 +567,8 @@ A channel is a named conversation container at the system level. Cross-project b
 | `created_by_persona_id` | `int FK → personas` | NULLABLE, ondelete SET NULL | Who created the channel. NULL = system-generated. Persona-based, not agent-based (stable identity). |
 | `status` | `String(16)` | NOT NULL, default `"pending"` | 4-state lifecycle: `pending` (assembling members), `active` (first non-system message sent), `complete` (business concluded), `archived` (deep freeze). See Decision 2.1 for full lifecycle semantics. |
 | `created_at` | `DateTime(timezone=True)` | NOT NULL | Standard UTC timestamp. |
-| `archived_at` | `DateTime(timezone=True)` | NULLABLE | When the channel was archived. NULL = still active. |
+| `completed_at` | `DateTime(timezone=True)` | NULLABLE | When the channel entered `complete` state. NULL = not yet complete. Set by `flask channel complete` or auto-complete (last active member leaves). Added by Decision 2.1. |
+| `archived_at` | `DateTime(timezone=True)` | NULLABLE | When the channel was archived. NULL = not yet archived. |
 
 **ChannelType enum:**
 
@@ -610,7 +605,7 @@ Membership is persona-based with explicit organisational capacity. The persona i
 
 #### Message Table
 
-Defined here at the entity level for the ERD. Full column design is Decision 1.2. Key structural relationships:
+Full column design resolved in Decision 1.2. Shown here in full for completeness (canonical definition is in 1.2):
 
 | Column | Type | Constraints | Purpose |
 |--------|------|-------------|---------|
@@ -618,11 +613,15 @@ Defined here at the entity level for the ERD. Full column design is Decision 1.2
 | `channel_id` | `int FK → channels` | NOT NULL, ondelete CASCADE | Which channel |
 | `persona_id` | `int FK → personas` | NOT NULL, ondelete SET NULL | Who sent it (stable identity) |
 | `agent_id` | `int FK → agents` | NULLABLE, ondelete SET NULL | Which agent instance sent it (traceability). NULL for person-type personas. |
-| `content` | `Text` | NOT NULL | Message content |
-| `message_type` | `Enum` | NOT NULL | Deferred to Decision 1.3 |
+| `content` | `Text` | NOT NULL | Message content (markdown) |
+| `message_type` | `Enum(MessageType)` | NOT NULL | Structural type: message, system, delegation, escalation (Decision 1.3) |
+| `metadata` | `JSONB` | NULLABLE | Extensible structured data. Forward-compatible escape hatch. (Decision 1.2) |
+| `attachment_path` | `String(1024)` | NULLABLE | Filesystem path to single uploaded file in `/uploads`. (Decision 1.2) |
+| `source_turn_id` | `int FK → turns` | NULLABLE, ondelete SET NULL | The Turn that spawned this message (sender's outgoing turn). (Decision 1.2) |
+| `source_command_id` | `int FK → commands` | NULLABLE, ondelete SET NULL | The Command the sender was working on. (Decision 1.2) |
 | `sent_at` | `DateTime(timezone=True)` | NOT NULL | When the message was sent |
 
-**Note:** Full Message column design (metadata, references to Task/Command, immutability) resolved in 1.2. This table is included here to complete the ERD relationships.
+Messages are **immutable** — no edits, no deletes (Decision 1.2). See Decision 1.2 for full rationale, NULL cases, and bidirectional Turn/Command link design.
 
 #### High-Level ERD
 
@@ -946,7 +945,7 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 
 **1. Creation paths:** CLI (`flask channel create`), dashboard, and voice bridge. Voice bridge is the primary operator interface for this feature.
 
-**2. Who can create:** Capability is a **persona attribute**. Agents delegate capability checks to their persona (OOP method delegation — `agent.can_create_channel?` delegates to `persona.can_create_channel?`). Operator always has creation capability inherently.
+**2. Who can create:** Capability is a **persona attribute**, implemented as a service-layer check (not a DB column). `agent.can_create_channel?` delegates to `persona.can_create_channel?` which checks persona type and/or role. This is OOP method delegation — the check logic lives on the Persona model, not as a boolean column. Operator always has creation capability inherently (person/internal PersonaType).
 
 **3. Creation mode:** Explicit only for v1. No implicit channel creation from delegation messages.
 
@@ -956,7 +955,7 @@ Channel scoping to Project (`project_id` FK, nullable) and Organisation (`organi
 |---|---|---|
 | `pending` | Channel created, members being assembled. System messages (joins) permitted, no conversation yet. | Channel created |
 | `active` | Conversation in progress. | First non-system message sent |
-| `complete` | Business concluded. | Either last member leaves (auto-complete) OR chair/operator explicitly closes |
+| `complete` | Business concluded. | Either last active member leaves (auto-complete — muted members do not count as active for this trigger) OR chair/operator explicitly completes |
 | `archived` | Deep freeze. Excluded from general lists. | Explicit action, sometime after complete |
 
 No reactivation. Create a new channel if needed.
@@ -1047,7 +1046,7 @@ This enforces the partial unique index from Decision 1.4 at the CLI layer with a
 
 #### Capability Checks
 
-- **Create:** Checks `persona.can_create_channel` (persona attribute, per Decision 2.1). Fails with: `Error: Persona 'con' does not have channel creation capability.`
+- **Create:** Checks `persona.can_create_channel` (service-layer method on Persona model, per Decision 2.1 — not a DB column). Fails with: `Error: Persona 'con' does not have channel creation capability.`
 - **Complete / transfer-chair:** Checks `is_chair` on calling persona's membership. Fails with: `Error: Only the channel chair can complete this channel.`
 - **Send / history:** Checks active membership. Fails with: `Error: You are not a member of #channel-slug.`
 - **Add:** Checks caller is an active member of the channel. Fails with: `Error: You must be a member of #channel-slug to add others.`
@@ -1258,14 +1257,14 @@ This closes the loop — messages flow in both directions through the channel.
 |---|---|---|---|---|
 | Create `persona_types` table | PersonaType | New lookup table: 4 rows (agent/person × internal/external). `type_key` and `subtype` both NOT NULL. Unique constraint on `(type_key, subtype)`. | High — blocks all other channel migrations | 1.1 |
 | Add `persona_type_id` to `personas` | Persona | New FK to `persona_types`, NOT NULL. Backfill existing personas as agent/internal (type_key='agent', subtype='internal'). | High — blocks channel membership | 1.1 |
-| Create `channels` table | Channel | New table: name, slug, channel_type enum, description, intent_override, organisation_id (FK nullable), project_id (FK nullable), created_by_persona_id (FK nullable), status, created_at, archived_at. Slug auto-generated via after_insert event. | High | 1.1 |
+| Create `channels` table | Channel | New table: name, slug, channel_type enum, description, intent_override, organisation_id (FK nullable, SET NULL), project_id (FK nullable, SET NULL), created_by_persona_id (FK nullable, SET NULL), status (default 'pending'), created_at, completed_at (nullable), archived_at (nullable). Slug auto-generated via after_insert event. | High | 1.1, 2.1 |
 | Create `channel_memberships` table | ChannelMembership | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), position_assignment_id (FK nullable), is_chair, status, joined_at, left_at. Unique constraint on `(channel_id, persona_id)`. | High | 1.1 |
 | Create `messages` table | Message | New table: channel_id (FK), persona_id (FK), agent_id (FK nullable), content, message_type enum (message/system/delegation/escalation), metadata (JSONB nullable), attachment_path (String(1024) nullable), source_turn_id (FK nullable), source_command_id (FK nullable), sent_at. | High | 1.1/1.2/1.3 |
 | Add `source_message_id` to `turns` | Turn | New FK to `messages`, NULLABLE, ondelete SET NULL. Enables tracing a Turn back to the channel message that caused it. NULL for Turns from normal terminal input. | High | 1.2 |
 | Create partial unique index on `channel_memberships` | ChannelMembership | `CREATE UNIQUE INDEX uq_active_agent_one_channel ON channel_memberships (agent_id) WHERE status = 'active' AND agent_id IS NOT NULL;` — one agent instance per active channel. | High | 1.4 |
 | Create operator Persona | Persona (data) | Insert person/internal Persona for operator (Sam). Role: "operator" (create Role if needed). No Agent instances, no PositionAssignment. | Medium — needed for channel participation | 1.1 |
-| Update `channels.status` enum | Channel | 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members, Active = first non-system message sent, Complete = last member left or chair/operator closed, Archived = deep freeze (excluded from general lists). No reactivation. | High | 2.1 |
-| Add `completed_at` to `channels` | Channel | Timestamp for when channel entered `complete` state. Nullable. | Medium | 2.1 |
+| ~~Update `channels.status` enum~~ | ~~Channel~~ | ~~Folded into Create `channels` table migration above. Status column with 4-state lifecycle (pending/active/complete/archived) and default 'pending' is part of initial table creation, not a separate update.~~ | ~~N/A~~ | ~~2.1~~ |
+| ~~Add `completed_at` to `channels`~~ | ~~Channel~~ | ~~Folded into Create `channels` table migration above. `completed_at` (nullable) is part of initial table creation.~~ | ~~N/A~~ | ~~2.1~~ |
 
 ### New Services
 

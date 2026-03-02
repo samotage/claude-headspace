@@ -1,6 +1,6 @@
 # Claude Headspace — Organisational Model ERD (Full)
 
-**Date:** 16 February 2026 (updated 2 March 2026 — Epic 9 Workshop Decisions 1.1–1.4)
+**Date:** 16 February 2026 (updated 3 March 2026 — Epic 9 Workshop Decisions 1.1–1.4, 2.1)
 **Status:** Data model design — organisational model + channel communication layer
 **Note:** Agent, Task, and Turn are existing Headspace 3.1 entities shown here as references only. Do not recreate them. SkillFile and ExperienceLog are version-managed files in the repo, not database tables — they appear here as file references only.
 
@@ -84,7 +84,8 @@ erDiagram
     Handoff {
         int id PK
         int agent_id FK "the agent that produced this handoff"
-        text handoff_content "structured handoff document"
+        string file_path "path to handoff document on disk"
+        text injection_prompt "prompt sent to departing agent"
         string reason "context_limit|shift_end"
         timestamp created_at
     }
@@ -216,8 +217,8 @@ erDiagram
 |-------|---------|
 | **PersonaType** | Lookup table classifying personas into quadrants: `type_key` (agent/person) × `subtype` (internal/external). 4 rows, both fields NOT NULL. Determines delivery mechanism, trust boundaries, and visibility scope at the service layer. |
 | **Channel** | Named conversation container at system level. Cross-project by default, optionally scoped to Organisation and/or Project. Has `channel_type` enum (workshop/delegation/review/standup/broadcast) mapping to Paula's intent templates. |
-| **ChannelMembership** | Persona-based channel participation. Links persona (stable identity), agent (mutable delivery target), and position assignment (organisational capacity). Chair designation via `is_chair` boolean. |
-| **Message** | Atomic unit of channel communication. Attributed to persona (identity) with agent instance traceability. Bidirectional links to Turn (source_turn_id) and Command (source_command_id). Single attachment support (attachment_path). Extensible metadata (JSONB). Messages are immutable — no edits, no deletes. 4-type enum: message, system, delegation, escalation. One agent instance per active channel (partial unique index on ChannelMembership). |
+| **ChannelMembership** | Persona-based channel participation. Links persona (stable identity), agent (mutable delivery target), and position assignment (organisational capacity). Chair designation via `is_chair` boolean. Unique constraint on `(channel_id, persona_id)`. One agent instance per active channel enforced via partial unique index `uq_active_agent_one_channel` (Decision 1.4). |
+| **Message** | Atomic unit of channel communication. Attributed to persona (identity) with agent instance traceability. Bidirectional links to Turn (source_turn_id) and Command (source_command_id). Single attachment support (`attachment_path`, String(1024)). Extensible metadata (JSONB). Messages are immutable — no edits, no deletes. 4-type enum: message, system, delegation, escalation. |
 
 ## Existing Tables (Extended)
 
@@ -243,7 +244,7 @@ erDiagram
 - **Position hierarchy is self-referential.** `reports_to_id` and `escalates_to_id` both point back to Position. This builds the org chart as a tree. Escalation path can differ from reporting path (e.g. Verner reports to Gavin but escalates architectural issues to Robbo).
 - **PositionAssignment has no status field.** Assignment lifecycle is tracked via `assigned_at` / `unassigned_at` timestamps. Runtime availability (is the persona busy?) is derived from whether an active Agent record exists with that persona_id.
 - **Personas are org-independent.** A persona can hold positions in multiple organisations simultaneously via separate PositionAssignment records.
-- **Handoff content is stored in DB**, not as an external file. It is structured data (status, what was done, what remains, blockers, next steps) persisted for the next agent session to consume.
+- **Handoff content is stored as filesystem files**, not in the DB. The `Handoff` model in the codebase carries `file_path` (path to the handoff document) and `injection_prompt` (the prompt used to instruct the departing agent). Handoff documents live at `data/personas/{slug}/handoffs/`. The DB record tracks metadata; the content lives on disk. _(Note: this corrects a previous erroneous note that stated DB-only storage.)_
 - **The operator IS modelled as a Persona** (Epic 9, Decision 1.1). The operator is a `person/internal` PersonaType — a first-class identity in channels with no Agent instances. Delivery is via SSE/dashboard/voice bridge. The operator sits above the org hierarchy (no PositionAssignment) but participates in channels as a peer. This supersedes the earlier note that "the operator is not modelled as a Persona."
 
 ## Organisation Workshop Updates (1 March 2026)
@@ -279,4 +280,36 @@ The following changes were decided during the Inter-Agent Communication Workshop
 - **Turn model extended.** New nullable FK `source_message_id` to messages table (ondelete SET NULL). Enables tracing whether a Turn came from channel delivery or normal terminal input.
 - **MessageType enum resolved (Decision 1.3).** 4 structural types: message (default), system (joins/leaves/state changes), delegation (task assignment), escalation (hierarchy flagging). Content intent (question/answer/report) is service-layer concern, not message type.
 - **Membership semantics resolved (Decision 1.4).** Explicit join/leave for all persona types (no god-mode). Muted = delivery paused (messages accumulate, delivery resumes on unmute). One agent instance per active channel enforced via partial unique index. Person-type personas can be in multiple channels simultaneously.
-- **Attachment support (Decision 1.2).** Single attachment per message via `attachment_path` column (filesystem path to `/uploads`). Scoped to one per message for MVP. Column can be promoted to JSONB array for multiples in future.
+- **Attachment support (Decision 1.2).** Single attachment per message via `attachment_path` column (`String(1024)`, filesystem path to `/uploads`). Scoped to one per message for MVP. Column can be promoted to JSONB array for multiples in future.
+
+### FK ondelete Behavior (Decisions 1.1–1.4)
+
+| Table | Column | ondelete | Rationale |
+|-------|--------|----------|-----------|
+| **Channel** | `organisation_id` | SET NULL | Org deletion shouldn't destroy channels |
+| **Channel** | `project_id` | SET NULL | Project deletion shouldn't destroy channels |
+| **Channel** | `created_by_persona_id` | SET NULL | Creator persona deletion shouldn't destroy channels |
+| **ChannelMembership** | `channel_id` | CASCADE | Channel deletion removes all memberships |
+| **ChannelMembership** | `persona_id` | CASCADE | Persona deletion removes their memberships |
+| **ChannelMembership** | `agent_id` | SET NULL | Agent end sets delivery target to NULL (persona "offline") |
+| **ChannelMembership** | `position_assignment_id` | SET NULL | Assignment removal doesn't affect membership |
+| **Message** | `channel_id` | CASCADE | Channel deletion removes all messages |
+| **Message** | `persona_id` | SET NULL | Persona deletion preserves message history |
+| **Message** | `agent_id` | SET NULL | Agent end preserves message history |
+| **Message** | `source_turn_id` | SET NULL | Turn deletion preserves message |
+| **Message** | `source_command_id` | SET NULL | Command deletion preserves message |
+| **Turn** | `source_message_id` | SET NULL | Message deletion preserves Turn |
+
+### Constraints & Indexes (Decisions 1.1, 1.4)
+
+| Constraint | Table | Type | SQL | Source |
+|-----------|-------|------|-----|--------|
+| One persona per channel | `channel_memberships` | UNIQUE | `UNIQUE (channel_id, persona_id)` | Decision 1.1 |
+| One agent per active channel | `channel_memberships` | PARTIAL UNIQUE INDEX | `CREATE UNIQUE INDEX uq_active_agent_one_channel ON channel_memberships (agent_id) WHERE status = 'active' AND agent_id IS NOT NULL;` | Decision 1.4 |
+| One PersonaType per quadrant | `persona_types` | UNIQUE | `UNIQUE (type_key, subtype)` | Decision 1.1 |
+
+### Epic 9 Workshop Updates — Decision 2.1 (2 March 2026)
+
+- **Channel lifecycle resolved (Decision 2.1).** 4-state lifecycle: `pending` → `active` → `complete` → `archived`. Pending = assembling members; Active = first non-system message sent; Complete = last active member left or chair/operator explicitly completed; Archived = deep freeze.
+- **`completed_at` column added to Channel (Decision 2.1).** Nullable timestamp, set when channel enters `complete` state. Already reflected in Channel entity above.
+- **Creation capability is a persona attribute (Decision 2.1).** `can_create_channel` — service-layer check delegated from Agent to Persona. Not a DB column; implemented as a method on the Persona model that checks persona type and/or role. Operator always has creation capability inherently.
