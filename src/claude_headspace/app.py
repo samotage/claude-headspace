@@ -381,6 +381,16 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         app.extensions["channel_service"] = None
         logger.debug("Channel service disabled (no database connection)")
 
+    # Initialize channel delivery service (requires database + channel service)
+    if db_connected:
+        from .services.channel_delivery import ChannelDeliveryService
+        channel_delivery_service = ChannelDeliveryService(app=app)
+        app.extensions["channel_delivery_service"] = channel_delivery_service
+        logger.info("Channel delivery service initialized")
+    else:
+        app.extensions["channel_delivery_service"] = None
+        logger.debug("Channel delivery service disabled (no database connection)")
+
     # Initialize handoff detection service (lightweight, no background threads)
     from .services.handoff_detection import HandoffDetectionService
     handoff_detection_service = HandoffDetectionService(app=app)
