@@ -1680,10 +1680,6 @@ body.layout-split .channel-card:hover {
   z-index: 2;
   -webkit-tap-highlight-color: transparent;
 }
-.chat-bubble.user .bubble-copy-btn {
-  right: auto;
-  left: 6px;
-}
 .chat-bubble.agent:hover .bubble-copy-btn,
 .chat-bubble.agent:focus-within .bubble-copy-btn,
 .chat-bubble.user:hover .bubble-copy-btn,
