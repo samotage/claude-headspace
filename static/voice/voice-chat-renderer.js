@@ -20,6 +20,11 @@ window.VoiceChatRenderer = (function () {
   // --- Markdown renderer for agent bubbles (delegates to marked.js via CHUtils) ---
 
   function renderMd(text) {
+    // Make only "COMMAND COMPLETE" bold, leaving the summary in normal weight
+    text = text.replace(
+      /^(COMMAND COMPLETE\s*[—–-])\s*(.*)$/m,
+      '**$1** $2'
+    );
     return CHUtils.renderMarkdown(text);
   }
 
