@@ -1,24 +1,18 @@
 """Persona model."""
 
-import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
+from ._slug import slugify, temp_slug
 
 if TYPE_CHECKING:
     from .agent import Agent
     from .persona_type import PersonaType
     from .role import Role
-
-
-def _temp_slug() -> str:
-    """Generate a temporary slug for initial insert (replaced by after_insert event)."""
-    return f"_pending_{uuid4().hex[:12]}"
 
 
 class Persona(db.Model):
@@ -34,7 +28,7 @@ class Persona(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     slug: Mapped[str] = mapped_column(
-        String(128), nullable=False, unique=True, default=_temp_slug
+        String(128), nullable=False, unique=True, default=temp_slug
     )
     name: Mapped[str] = mapped_column(
         String(64), nullable=False
@@ -60,21 +54,13 @@ class Persona(db.Model):
     )
     agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="persona")
 
-    @staticmethod
-    def _slugify(text: str) -> str:
-        """Sanitize text for use in a slug: lowercase, replace spaces/special chars with hyphens."""
-        s = text.lower().strip()
-        s = re.sub(r"[^a-z0-9]+", "-", s)  # Replace non-alphanumeric with hyphens
-        s = re.sub(r"-+", "-", s)            # Collapse consecutive hyphens
-        return s.strip("-")                   # Remove leading/trailing hyphens
-
     def generate_slug(self) -> str:
         """Generate slug from role name, persona name, and id.
 
         Format: {role_name}-{persona_name}-{id}, all lowercase, sanitized.
         """
-        role_part = self._slugify(self.role.name)
-        name_part = self._slugify(self.name)
+        role_part = slugify(self.role.name)
+        name_part = slugify(self.name)
         return f"{role_part}-{name_part}-{self.id}"
 
     @property

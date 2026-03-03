@@ -2,12 +2,16 @@
 
 import enum
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
+
+if TYPE_CHECKING:
+    from .message import Message
 
 
 class TurnActor(enum.Enum):
@@ -83,10 +87,18 @@ class Turn(db.Model):
         ForeignKey("turns.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Channel message traceability
+    source_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Relationships
     command: Mapped["Command"] = relationship("Command", back_populates="turns")
     answered_by: Mapped["Turn | None"] = relationship(
         "Turn", remote_side="Turn.id", foreign_keys=[answered_by_turn_id],
+    )
+    source_message: Mapped["Message | None"] = relationship(
+        "Message", foreign_keys=[source_message_id]
     )
 
     def __repr__(self) -> str:

@@ -19,6 +19,9 @@ Models:
     - PersonaType: Persona classification lookup (agent/person x internal/external)
     - Persona: Named agent identity with role and slug
     - Handoff: Agent context handoff metadata
+    - Channel: Named conversation container for inter-agent communication
+    - ChannelMembership: Persona membership in a channel with mutable agent delivery
+    - Message: Immutable message record in a channel
 
 Enums:
     - CommandState: idle, commanded, processing, awaiting_input, complete
@@ -26,15 +29,21 @@ Enums:
     - TurnIntent: command, answer, question, completion, progress
     - InferenceLevel: turn, command, project, objective
     - AuthStatus: authenticated, failed, unauthenticated, bypassed
+    - ChannelType: workshop, delegation, review, standup, broadcast
+    - MessageType: message, system, delegation, escalation
 """
 
 from .activity_metric import ActivityMetric
 from .agent import Agent
 from .api_call_log import ApiCallLog, AuthStatus
-from .headspace_snapshot import HeadspaceSnapshot
+from .channel import Channel, ChannelType
+from .channel_membership import ChannelMembership
+from .command import Command, CommandState
 from .event import Event, EventType
 from .handoff import Handoff
+from .headspace_snapshot import HeadspaceSnapshot
 from .inference_call import InferenceCall, InferenceLevel
+from .message import Message, MessageType
 from .objective import Objective, ObjectiveHistory
 from .organisation import Organisation
 from .persona import Persona
@@ -42,34 +51,38 @@ from .persona_type import PersonaType
 from .position import Position
 from .project import Project
 from .role import Role
-from .command import Command, CommandState
 from .turn import Turn, TurnActor, TurnIntent
 
 __all__ = [
     # Models
     "ActivityMetric",
+    "Agent",
     "ApiCallLog",
+    "Channel",
+    "ChannelMembership",
+    "Command",
+    "Event",
+    "Handoff",
     "HeadspaceSnapshot",
+    "InferenceCall",
+    "Message",
     "Objective",
     "ObjectiveHistory",
-    "Project",
-    "Agent",
-    "Command",
-    "Turn",
-    "Event",
-    "InferenceCall",
     "Organisation",
-    "Position",
-    "Role",
     "Persona",
     "PersonaType",
-    "Handoff",
+    "Position",
+    "Project",
+    "Role",
+    "Turn",
     # Enums
     "AuthStatus",
+    "ChannelType",
     "CommandState",
+    "InferenceLevel",
+    "MessageType",
     "TurnActor",
     "TurnIntent",
-    "InferenceLevel",
     # Constants
     "EventType",
 ]
