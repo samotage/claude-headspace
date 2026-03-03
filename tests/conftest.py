@@ -74,6 +74,36 @@ def app():
 
 
 @pytest.fixture(autouse=True)
+def _seed_persona_types(app):
+    """Ensure PersonaType lookup rows exist before each test.
+
+    PersonaType is a lookup table seeded by migration. Since tests use
+    db.create_all() (not migrations), the table exists but is empty.
+    This fixture idempotently seeds the 4 required rows so that the
+    Persona.persona_type_id default=1 FK reference is valid.
+
+    Uses ON CONFLICT DO NOTHING to avoid a separate pre-check query.
+    """
+    from sqlalchemy import text
+
+    from claude_headspace.database import db
+
+    with app.app_context():
+        try:
+            db.session.execute(text("""
+                INSERT INTO persona_types (id, type_key, subtype) VALUES
+                (1, 'agent', 'internal'),
+                (2, 'agent', 'external'),
+                (3, 'person', 'internal'),
+                (4, 'person', 'external')
+                ON CONFLICT DO NOTHING
+            """))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+@pytest.fixture(autouse=True)
 def _persona_data_isolation(app, tmp_path):
     """Redirect persona filesystem writes to a temp directory."""
     app.config["PERSONA_DATA_ROOT"] = str(tmp_path / "data" / "personas")

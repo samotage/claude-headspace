@@ -16,6 +16,7 @@ Models:
     - Organisation: Organisational grouping (active, dormant, archived)
     - Position: Org chart seat with self-referential hierarchy
     - Role: Agent specialisation lookup (developer, tester, pm, architect)
+    - PersonaType: Persona classification lookup (agent/person x internal/external)
     - Persona: Named agent identity with role and slug
     - Handoff: Agent context handoff metadata
 
@@ -37,6 +38,7 @@ from .inference_call import InferenceCall, InferenceLevel
 from .objective import Objective, ObjectiveHistory
 from .organisation import Organisation
 from .persona import Persona
+from .persona_type import PersonaType
 from .position import Position
 from .project import Project
 from .role import Role
@@ -60,6 +62,7 @@ __all__ = [
     "Position",
     "Role",
     "Persona",
+    "PersonaType",
     "Handoff",
     # Enums
     "AuthStatus",

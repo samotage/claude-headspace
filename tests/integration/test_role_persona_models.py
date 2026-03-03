@@ -254,16 +254,16 @@ class TestConstraints:
 
         # Insert first row with a specific slug via raw SQL (bypasses after_insert event)
         db_session.execute(text(
-            "INSERT INTO personas (slug, name, status, role_id, created_at) "
-            "VALUES ('duplicate-slug', 'First', 'active', :role_id, NOW())"
+            "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
+            "VALUES ('duplicate-slug', 'First', 'active', :role_id, 1, NOW())"
         ), {"role_id": role.id})
         db_session.flush()
 
         # Attempt to insert second row with the same slug — should raise IntegrityError
         with pytest.raises(IntegrityError):
             db_session.execute(text(
-                "INSERT INTO personas (slug, name, status, role_id, created_at) "
-                "VALUES ('duplicate-slug', 'Second', 'active', :role_id, NOW())"
+                "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
+                "VALUES ('duplicate-slug', 'Second', 'active', :role_id, 1, NOW())"
             ), {"role_id": role.id})
             db_session.flush()
 

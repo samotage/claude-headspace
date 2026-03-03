@@ -12,6 +12,7 @@ from ..database import db
 
 if TYPE_CHECKING:
     from .agent import Agent
+    from .persona_type import PersonaType
     from .role import Role
 
 
@@ -45,12 +46,18 @@ class Persona(db.Model):
     role_id: Mapped[int] = mapped_column(
         ForeignKey("roles.id"), nullable=False
     )
+    persona_type_id: Mapped[int] = mapped_column(
+        ForeignKey("persona_types.id", ondelete="RESTRICT"), nullable=False, default=1
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
     role: Mapped["Role"] = relationship("Role", back_populates="personas")
+    persona_type: Mapped["PersonaType"] = relationship(
+        "PersonaType", back_populates="personas"
+    )
     agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="persona")
 
     @staticmethod
@@ -69,6 +76,25 @@ class Persona(db.Model):
         role_part = self._slugify(self.role.name)
         name_part = self._slugify(self.name)
         return f"{role_part}-{name_part}-{self.id}"
+
+    @property
+    def can_create_channel(self) -> bool:
+        """Whether this persona can create channels.
+
+        Internal subtypes (agent/internal, person/internal) can create channels.
+        External subtypes and unloaded persona_type cannot.
+        """
+        return bool(self.persona_type and self.persona_type.subtype != "external")
+
+    @classmethod
+    def get_operator(cls) -> "Persona | None":
+        """Return the operator's Persona (person/internal type), or None."""
+        from .persona_type import PersonaType
+
+        return cls.query.join(PersonaType).filter(
+            PersonaType.type_key == "person",
+            PersonaType.subtype == "internal",
+        ).first()
 
     def __repr__(self) -> str:
         return f"<Persona id={self.id} slug={self.slug} name={self.name}>"
