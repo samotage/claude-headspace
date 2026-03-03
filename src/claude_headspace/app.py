@@ -545,7 +545,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         }
 
     # CSRF exempt paths (hooks, SSE, voice bridge API, and remote agents API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/", "/api/remote_agents/", "/embed/")
+    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/", "/api/remote_agents/", "/api/channels", "/embed/")
 
     @app.before_request
     def verify_csrf_token():
@@ -634,6 +634,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
+    from .routes.channels_api import channels_api_bp
     from .routes.remote_agents import remote_agents_bp
     from .routes.voice_bridge import voice_bridge_bp
     from .routes.waypoint import waypoint_bp
@@ -662,6 +663,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)
+    app.register_blueprint(channels_api_bp)
     app.register_blueprint(remote_agents_bp)
     app.register_blueprint(voice_bridge_bp)
     app.register_blueprint(waypoint_bp)
