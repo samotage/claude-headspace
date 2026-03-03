@@ -28,10 +28,15 @@ class NotificationPreferences:
 class NotificationService:
     """macOS system notifications via terminal-notifier with rate limiting."""
 
+    # Per-channel rate limit window in seconds
+    CHANNEL_RATE_LIMIT_SECONDS = 30
+
     def __init__(self, preferences: NotificationPreferences | None = None):
         self.preferences = preferences or NotificationPreferences()
         self._rate_limit_tracker: dict[str, float] = {}
         self._rate_limit_lock = threading.Lock()
+        self._channel_rate_limit_tracker: dict[str, float] = {}
+        self._channel_rate_limit_lock = threading.Lock()
         self._availability_checked = False
         self._is_available = False
         self._first_failure_logged = False
@@ -146,6 +151,84 @@ class NotificationService:
             return False
         except Exception as e:
             logger.warning(f"Failed to send notification: {e}")
+            return False
+
+    def _is_channel_rate_limited(self, channel_slug: str) -> bool:
+        """Check if a channel notification is rate-limited (30s window).
+
+        Args:
+            channel_slug: The channel slug to check.
+
+        Returns:
+            True if a notification was sent for this channel within the
+            rate limit window.
+        """
+        with self._channel_rate_limit_lock:
+            now = time.time()
+            # Prune stale entries
+            if len(self._channel_rate_limit_tracker) > 20:
+                cutoff = now - (self.CHANNEL_RATE_LIMIT_SECONDS * 2)
+                self._channel_rate_limit_tracker = {
+                    k: v for k, v in self._channel_rate_limit_tracker.items()
+                    if v > cutoff
+                }
+            last = self._channel_rate_limit_tracker.get(channel_slug, 0)
+            return (now - last) < self.CHANNEL_RATE_LIMIT_SECONDS
+
+    def _update_channel_rate_limit(self, channel_slug: str) -> None:
+        """Update the channel rate limit tracker."""
+        with self._channel_rate_limit_lock:
+            self._channel_rate_limit_tracker[channel_slug] = time.time()
+
+    def send_channel_notification(
+        self,
+        channel_slug: str,
+        sender_name: str,
+        content_preview: str,
+    ) -> bool:
+        """Send a macOS notification for a channel message.
+
+        Per-channel rate-limited to 30s to avoid notification spam
+        during active channel conversations.
+
+        Args:
+            channel_slug: The channel slug.
+            sender_name: The name of the message sender.
+            content_preview: A preview of the message content.
+
+        Returns:
+            True if sent or rate-limited (suppressed), False on failure.
+        """
+        if not self.preferences.enabled:
+            return True
+        if not self.is_available():
+            return False
+        if self._is_channel_rate_limited(channel_slug):
+            return True  # Suppressed, not failed
+
+        title = "Channel Message"
+        subtitle = f"#{channel_slug}"
+        message = f"{sender_name}: {content_preview}"
+        cmd = self._build_notification_command(title, subtitle, message)
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                logger.warning(
+                    f"Channel notification failed: terminal-notifier "
+                    f"returned {result.returncode}"
+                )
+                return False
+            self._update_channel_rate_limit(channel_slug)
+            logger.info(
+                f"Channel notification sent: #{channel_slug} from {sender_name}"
+            )
+            return True
+        except subprocess.TimeoutExpired:
+            logger.warning("Channel notification timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"Channel notification failed: {e}")
             return False
 
     def notify_command_complete(self, **kwargs) -> bool:

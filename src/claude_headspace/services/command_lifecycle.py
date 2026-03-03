@@ -370,6 +370,19 @@ class CommandLifecycleManager:
                 confidence=confidence,
             )
 
+        # Queue drain: deliver oldest queued channel message when agent
+        # transitions to a safe state (AWAITING_INPUT) — FR13.
+        if to_state == CommandState.AWAITING_INPUT:
+            try:
+                from flask import current_app
+                ch_delivery = current_app.extensions.get("channel_delivery_service")
+                if ch_delivery:
+                    ch_delivery.drain_queue(command.agent)
+            except Exception as qd_err:
+                logger.warning(
+                    f"Channel queue drain failed (non-fatal): {qd_err}"
+                )
+
         return True
 
     def complete_command(
