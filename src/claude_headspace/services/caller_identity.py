@@ -42,7 +42,7 @@ def resolve_caller_persona():
         agent = resolve_caller()
     except CallerResolutionError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     if not agent.persona:
         click.echo(

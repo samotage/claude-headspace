@@ -277,7 +277,9 @@ class TmuxWatchdog:
 
                 # Extract representative lines from pane content
                 lines = [
-                    l.strip() for l in pane_content.strip().splitlines() if l.strip()
+                    line.strip()
+                    for line in pane_content.strip().splitlines()
+                    if line.strip()
                 ]
                 if not lines:
                     return False

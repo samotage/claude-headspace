@@ -443,7 +443,7 @@ def _get_dashboard_activity_metrics() -> dict | None:
         today_metrics = (
             db.session.query(ActivityMetric)
             .filter(
-                ActivityMetric.is_overall == True,
+                ActivityMetric.is_overall.is_(True),
                 ActivityMetric.bucket_start >= today_start,
             )
             .order_by(ActivityMetric.bucket_start.asc())

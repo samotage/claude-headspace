@@ -186,14 +186,14 @@ class GitAnalyzer:
                 stderr = result.stderr.strip()
                 raise GitAnalyzerError(f"Git command failed: {stderr}")
             return result.stdout
-        except subprocess.TimeoutExpired:
-            raise GitAnalyzerError("Git command timed out after 30 seconds")
-        except FileNotFoundError:
-            raise GitAnalyzerError("Git is not installed or not in PATH")
-        except PermissionError:
-            raise GitAnalyzerError(f"Permission denied accessing: {repo_path}")
+        except subprocess.TimeoutExpired as e:
+            raise GitAnalyzerError("Git command timed out after 30 seconds") from e
+        except FileNotFoundError as e:
+            raise GitAnalyzerError("Git is not installed or not in PATH") from e
+        except PermissionError as e:
+            raise GitAnalyzerError(f"Permission denied accessing: {repo_path}") from e
         except OSError as e:
-            raise GitAnalyzerError(f"OS error running git: {e}")
+            raise GitAnalyzerError(f"OS error running git: {e}") from e
 
     def _parse_git_log(self, raw_output: str) -> list[CommitInfo]:
         """Parse structured git log output into CommitInfo objects.

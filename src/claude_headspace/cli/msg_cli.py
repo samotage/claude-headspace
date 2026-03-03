@@ -46,7 +46,7 @@ def send_command(slug, content, message_type, attachment):
         )
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Message sent to #{slug} (id={message.id}).")
 
@@ -78,7 +78,7 @@ def history_command(slug, output_format, limit, since):
         )
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     if not messages:
         click.echo(f"No messages in #{slug}.")

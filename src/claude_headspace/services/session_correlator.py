@@ -496,7 +496,7 @@ def _create_agent_for_session(
             index_elements=["claude_session_id"],
             set_={"last_seen_at": now},
         )
-        result = db.session.execute(stmt)
+        db.session.execute(stmt)
         db.session.commit()
 
         # Fetch the agent (either newly created or existing from race)

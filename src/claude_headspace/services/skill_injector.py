@@ -147,7 +147,7 @@ def inject_persona_skills(agent) -> bool:
         # Relationship not loaded — query directly
         from ..models.persona import Persona
 
-        persona = Persona.query.get(agent.persona_id)
+        persona = db.session.get(Persona, agent.persona_id)
     if persona is None:
         logger.warning(
             f"skill_injection: skipped — agent_id={agent_id}, "

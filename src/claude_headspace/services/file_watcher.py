@@ -169,7 +169,7 @@ class FileWatcher:
 
         # Cancel all pending inference timers
         with self._timer_lock:
-            for agent_id, timer in self._pending_inference_timers.items():
+            for _agent_id, timer in self._pending_inference_timers.items():
                 timer.cancel()
             self._pending_inference_timers.clear()
 

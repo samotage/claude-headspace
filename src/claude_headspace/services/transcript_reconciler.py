@@ -260,7 +260,7 @@ def broadcast_reconciliation(agent, reconciliation_result):
         return
 
     # Broadcast timestamp corrections for existing turns
-    for turn_id, old_ts, new_ts in reconciliation_result["updated"]:
+    for turn_id, _old_ts, new_ts in reconciliation_result["updated"]:
         try:
             broadcaster.broadcast(
                 "turn_updated",

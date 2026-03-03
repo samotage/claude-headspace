@@ -143,7 +143,7 @@ class OpenRouterClient:
                 last_error = OpenRouterClientError(
                     f"Unexpected error: {e}", retryable=False
                 )
-                raise last_error
+                raise last_error from e
 
             # Wait before retry with exponential backoff
             if attempt < self.max_attempts - 1:

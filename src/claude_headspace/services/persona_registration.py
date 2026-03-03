@@ -89,7 +89,7 @@ def register_persona(
 
     # 4. Create filesystem assets
     try:
-        asset_dir = create_persona_assets(
+        create_persona_assets(
             persona.slug, persona.name, role.name, project_root=project_root
         )
     except Exception as e:

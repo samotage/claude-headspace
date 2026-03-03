@@ -60,7 +60,7 @@ def create_command(
         )
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Channel created: #{channel.slug}")
     click.echo(f"  Name: {channel.name}")
@@ -101,7 +101,7 @@ def list_command(all_visible, status, channel_type):
         )
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     if not channels:
         click.echo("No channels found.")
@@ -133,7 +133,7 @@ def show_command(slug):
         channel = svc.get_channel(slug)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Channel: #{channel.slug}")
     click.echo(f"  Name: {channel.name}")
@@ -171,7 +171,7 @@ def members_command(slug):
         members = svc.list_members(slug)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     if not members:
         click.echo("No members found.")
@@ -212,7 +212,7 @@ def add_command(slug, persona):
         membership = svc.add_member(slug, persona, caller_persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     target_name = membership.persona.name if membership.persona else persona
     if membership.agent_id:
@@ -232,7 +232,7 @@ def leave_command(slug):
         svc.leave_channel(slug, persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Left #{slug}.")
 
@@ -248,7 +248,7 @@ def complete_command(slug):
         svc.complete_channel(slug, persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Channel #{slug} completed.")
 
@@ -267,7 +267,7 @@ def transfer_chair_command(slug, target_slug):
         svc.transfer_chair(slug, target_slug, persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Chair transferred to {target_slug} in #{slug}.")
 
@@ -283,7 +283,7 @@ def mute_command(slug):
         svc.mute_channel(slug, persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Muted #{slug}.")
 
@@ -299,6 +299,6 @@ def unmute_command(slug):
         svc.unmute_channel(slug, persona)
     except ChannelError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo(f"Unmuted #{slug}.")

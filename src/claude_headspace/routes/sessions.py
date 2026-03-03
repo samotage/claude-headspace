@@ -71,7 +71,6 @@ def create_session():
         return jsonify({"error": "Invalid session_uuid format"}), 400
 
     project_path = data["project_path"]
-    working_directory = data.get("working_directory", project_path)
     iterm_pane_id = data.get("iterm_pane_id")
     tmux_pane_id = data.get("tmux_pane_id")
     project_name = data.get("project_name")

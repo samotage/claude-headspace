@@ -34,7 +34,7 @@ def register_command(name: str, role: str, description: str | None) -> None:
         result = register_persona(name=name, role_name=role, description=description)
     except RegistrationError as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     click.echo("Persona registered successfully:")
     click.echo(f"  Slug: {result.slug}")

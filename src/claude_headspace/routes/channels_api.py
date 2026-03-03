@@ -14,6 +14,7 @@ from functools import wraps
 
 from flask import Blueprint, current_app, jsonify, request
 
+from ..database import db
 from ..services.channel_service import (
     AgentChannelConflictError,
     AlreadyMemberError,
@@ -120,7 +121,7 @@ def _resolve_caller():
         if token_service:
             token_info = token_service.validate(token)
             if token_info:
-                agent = Agent.query.get(token_info.agent_id)
+                agent = db.session.get(Agent, token_info.agent_id)
                 if agent and agent.persona:
                     return agent.persona, agent
         raise AuthError("invalid_session_token", "Invalid or expired session token")

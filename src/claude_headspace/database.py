@@ -38,7 +38,6 @@ def init_database(app: Flask, config: dict) -> bool:
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     # Configure connection pooling
-    db_config = config.get("database", {})
     pool_size = get_value(config, "database", "pool_size", default=10)
     pool_timeout = get_value(config, "database", "pool_timeout", default=30)
 

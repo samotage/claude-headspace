@@ -185,7 +185,7 @@ def overall_metrics():
         window, cutoff, cutoff_end = _get_window()
 
         query = db.session.query(ActivityMetric).filter(
-            ActivityMetric.is_overall == True,
+            ActivityMetric.is_overall.is_(True),
             ActivityMetric.bucket_start >= cutoff,
         )
         if cutoff_end:

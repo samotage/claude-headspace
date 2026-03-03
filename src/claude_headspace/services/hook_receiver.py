@@ -1593,7 +1593,9 @@ def process_stop(
             f"pattern={intent_result.matched_pattern!r}"
         )
         if full_agent_text:
-            tail_lines = [l for l in full_agent_text.splitlines() if l.strip()][-5:]
+            tail_lines = [
+                line for line in full_agent_text.splitlines() if line.strip()
+            ][-5:]
             logger.debug(
                 f"hook_event: type=stop, agent_id={agent.id}, "
                 f"tail_5_lines={tail_lines!r}"
