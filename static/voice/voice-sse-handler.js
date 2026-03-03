@@ -505,13 +505,8 @@ window.VoiceSSEHandler = (function () {
 
       // Render handoff listing from transcript API response
       if (resp.handoff_files && resp.handoff_files.length > 0) {
-        if (messagesContainer && !messagesContainer.querySelector('.synthetic-handoff-container')) {
-          var syntheticTurns = [{
-            type: 'handoff_listing',
-            filenames: resp.handoff_files.map(function(f) { return f.filename; }),
-            file_paths: resp.handoff_files.map(function(f) { return f.path; })
-          }];
-          var handoffEl = VoiceChatRenderer.createHandoffListingEl(syntheticTurns);
+        if (messagesContainer && !messagesContainer.querySelector('[data-turn-id="handoff-listing"]')) {
+          var handoffEl = VoiceChatRenderer.createHandoffListingEl(resp.handoff_files);
           if (handoffEl) messagesContainer.insertBefore(handoffEl, messagesContainer.firstChild);
         }
       }
@@ -609,9 +604,23 @@ window.VoiceSSEHandler = (function () {
     var messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
     // Avoid duplicates
-    if (messagesEl.querySelector('.synthetic-handoff-container')) return;
+    if (messagesEl.querySelector('[data-turn-id="handoff-listing"]')) return;
 
-    var el = VoiceChatRenderer.createHandoffListingEl(turns);
+    // Convert SSE turns format to handoffFiles format
+    var handoffFiles = [];
+    for (var i = 0; i < turns.length; i++) {
+      var turn = turns[i];
+      if (turn.type !== 'handoff_listing') continue;
+      if (!turn.filenames || !turn.filenames.length) continue;
+      for (var j = 0; j < turn.filenames.length; j++) {
+        handoffFiles.push({
+          filename: turn.filenames[j],
+          path: turn.file_paths[j]
+        });
+      }
+    }
+
+    var el = VoiceChatRenderer.createHandoffListingEl(handoffFiles);
     if (el) {
       messagesEl.insertBefore(el, messagesEl.firstChild);
       _scrollIfNear();

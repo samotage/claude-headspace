@@ -813,50 +813,56 @@ window.VoiceChatRenderer = (function () {
 
   // --- Handoff listing rendering ---
 
-  function createHandoffListingEl(turns) {
-    var container = document.createElement('div');
-    container.className = 'synthetic-handoff-container synthetic-turn-container';
+  /**
+   * Render handoff files as an agent-style chat bubble.
+   * Accepts an array of {filename, path} objects (from transcript API)
+   * or synthetic_turn data with turns[].filenames/file_paths arrays.
+   * Returns a bubble element or null if no files to show.
+   */
+  function createHandoffListingEl(handoffFiles) {
+    if (!handoffFiles || !handoffFiles.length) return null;
 
-    for (var i = 0; i < turns.length; i++) {
-      var turn = turns[i];
-      if (turn.type !== 'handoff_listing') continue;
-      if (!turn.filenames || !turn.filenames.length) continue;
+    // Build markdown-style content with full paths
+    var lines = ['**Recent handoff documents:**\n'];
+    var paths = [];
+    for (var i = 0; i < handoffFiles.length; i++) {
+      var f = handoffFiles[i];
+      var fullPath = f.path || f.file_paths && f.file_paths[i] || '';
+      var displayName = f.filename || (fullPath ? fullPath.split('/').pop() : 'unknown');
+      lines.push('`' + fullPath + '`');
+      paths.push(fullPath);
+    }
+    var mdText = lines.join('\n\n');
 
-      var bubble = document.createElement('div');
-      bubble.className = 'synthetic-turn-bubble';
+    // Create a standard agent-style bubble
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-bubble agent';
+    bubble.setAttribute('data-turn-id', 'handoff-listing');
+    bubble.setAttribute('data-timestamp', new Date().toISOString());
 
-      var label = document.createElement('span');
-      label.className = 'synthetic-turn-label';
-      label.textContent = 'SYSTEM';
-      bubble.appendChild(label);
+    var html = '<div class="bubble-intent progress-intent">Handoff</div>';
+    html += '<div class="bubble-text">' + renderMd(mdText) + '</div>';
+    bubble.innerHTML = html;
 
-      var heading = document.createElement('div');
-      heading.className = 'synthetic-turn-heading';
-      heading.textContent = 'Recent handoffs (' + turn.filenames.length + ')';
-      bubble.appendChild(heading);
-
-      var list = document.createElement('ul');
-      list.className = 'synthetic-turn-list';
-      for (var j = 0; j < turn.filenames.length; j++) {
-        var li = document.createElement('li');
-        li.className = 'synthetic-turn-file';
-        li.setAttribute('title', 'Click to copy path');
-        li.setAttribute('data-path', turn.file_paths[j]);
-        li.textContent = turn.filenames[j];
-        li.addEventListener('click', (function(path) {
-          return function() {
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(path);
-            }
-          };
-        })(turn.file_paths[j]));
-        list.appendChild(li);
-      }
-      bubble.appendChild(list);
-      container.appendChild(bubble);
+    // Bind click-to-copy on each code element containing a path
+    var codeEls = bubble.querySelectorAll('code');
+    for (var j = 0; j < codeEls.length; j++) {
+      (function(codeEl, path) {
+        codeEl.style.cursor = 'pointer';
+        codeEl.title = 'Click to copy path';
+        codeEl.addEventListener('click', function() {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(path).then(function() {
+              var original = codeEl.textContent;
+              codeEl.textContent = 'Copied!';
+              setTimeout(function() { codeEl.textContent = original; }, 1200);
+            });
+          }
+        });
+      })(codeEls[j], paths[j]);
     }
 
-    return container.children.length ? container : null;
+    return bubble;
   }
 
   // --- Public API ---
