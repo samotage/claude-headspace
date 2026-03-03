@@ -73,6 +73,7 @@ exclude = [
 select = ["E", "F", "I", "W", "UP", "B"]
 # E = pycodestyle errors, F = pyflakes, I = isort, W = pycodestyle warnings
 # UP = pyupgrade (3.10+ syntax), B = flake8-bugbear (common bugs)
+ignore = ["E501"]  # Line length — too noisy for existing codebase; revisit later
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501"]  # Allow long lines in tests (assertion messages, etc.)
