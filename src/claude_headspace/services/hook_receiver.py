@@ -1607,30 +1607,35 @@ def process_stop(
         # (complete_command or QUESTION handling below) in separate commit scopes.
         _trigger_priority_scoring()
 
+        # Channel delivery: relay agent responses and drain queued messages.
+        # Single lookup for the delivery service used by both relay and drain.
+        try:
+            from flask import current_app as _cd_app
+            ch_delivery = _cd_app.extensions.get("channel_delivery_service")
+        except Exception:
+            ch_delivery = None
+
         # Channel relay: if this agent is in an active channel and the turn
         # is a COMPLETION or END_OF_COMMAND, relay the response as a channel
         # Message to fan out to other members (FR7-FR10).
-        if intent_result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+        if ch_delivery and intent_result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
             try:
-                from flask import current_app as _ch_app
-                ch_delivery = _ch_app.extensions.get("channel_delivery_service")
-                if ch_delivery:
-                    # Find the turn that was just committed for source tracking
-                    relay_turn_id = None
-                    if current_command.turns:
-                        for t in reversed(current_command.turns):
-                            if t.actor == TurnActor.AGENT and t.intent in (
-                                TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
-                            ):
-                                relay_turn_id = t.id
-                                break
-                    ch_delivery.relay_agent_response(
-                        agent=agent,
-                        turn_text=completion_text or full_agent_text or "",
-                        turn_intent=intent_result.intent,
-                        turn_id=relay_turn_id,
-                        command_id=current_command.id,
-                    )
+                # Find the turn that was just committed for source tracking
+                relay_turn_id = None
+                if current_command.turns:
+                    for t in reversed(current_command.turns):
+                        if t.actor == TurnActor.AGENT and t.intent in (
+                            TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
+                        ):
+                            relay_turn_id = t.id
+                            break
+                ch_delivery.relay_agent_response(
+                    agent=agent,
+                    turn_text=completion_text or full_agent_text or "",
+                    turn_intent=intent_result.intent,
+                    turn_id=relay_turn_id,
+                    command_id=current_command.id,
+                )
             except Exception as ch_err:
                 logger.warning(
                     f"Channel relay failed (non-fatal): {ch_err}"
@@ -1638,12 +1643,9 @@ def process_stop(
 
         # Queue drain: deliver oldest queued channel message if agent
         # is now in a safe state after completion (FR13).
-        if current_command.state == CommandState.COMPLETE:
+        if ch_delivery and current_command.state == CommandState.COMPLETE:
             try:
-                from flask import current_app as _qd_app
-                ch_delivery = _qd_app.extensions.get("channel_delivery_service")
-                if ch_delivery:
-                    ch_delivery.drain_queue(agent)
+                ch_delivery.drain_queue(agent)
             except Exception as qd_err:
                 logger.warning(
                     f"Channel queue drain failed (non-fatal): {qd_err}"
