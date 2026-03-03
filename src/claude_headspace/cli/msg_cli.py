@@ -8,7 +8,7 @@ import click
 from flask import current_app
 from flask.cli import AppGroup
 
-from ..services.caller_identity import CallerResolutionError, resolve_caller
+from ..services.caller_identity import resolve_caller_persona
 from ..services.channel_service import ChannelError
 
 msg_cli = AppGroup("msg", help="Channel messaging commands.")
@@ -17,29 +17,6 @@ msg_cli = AppGroup("msg", help="Channel messaging commands.")
 def _get_channel_service():
     """Get the ChannelService from app extensions."""
     return current_app.extensions["channel_service"]
-
-
-def _resolve_caller_persona():
-    """Resolve the calling agent and return (agent, persona).
-
-    Raises:
-        SystemExit: If caller cannot be resolved or has no persona.
-    """
-    try:
-        agent = resolve_caller()
-    except CallerResolutionError as e:
-        click.echo(str(e), err=True)
-        raise SystemExit(1)
-
-    if not agent.persona:
-        click.echo(
-            "Error: Your agent has no persona assigned. "
-            "Cannot perform messaging operations.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    return agent, agent.persona
 
 
 @msg_cli.command("send")
@@ -53,7 +30,7 @@ def _resolve_caller_persona():
 @click.option("--attachment", default=None, help="File path to attach.")
 def send_command(slug, content, message_type, attachment):
     """Send a message to a channel."""
-    agent, persona = _resolve_caller_persona()
+    agent, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -83,7 +60,7 @@ def send_command(slug, content, message_type, attachment):
 @click.option("--since", default=None, help="ISO timestamp — show messages after this time.")
 def history_command(slug, output_format, limit, since):
     """Show message history for a channel."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:

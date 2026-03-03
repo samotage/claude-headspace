@@ -284,7 +284,7 @@ class TestCallerIdentityErrors:
         """Error when agent cannot be resolved."""
         os.environ.pop("HEADSPACE_AGENT_ID", None)
         with patch(
-            "claude_headspace.cli.channel_cli.resolve_caller"
+            "claude_headspace.services.caller_identity.resolve_caller"
         ) as mock_resolve:
             from claude_headspace.services.caller_identity import CallerResolutionError
             mock_resolve.side_effect = CallerResolutionError(

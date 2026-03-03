@@ -13,6 +13,8 @@ import logging
 import os
 import subprocess
 
+import click
+
 from ..database import db
 from ..models.agent import Agent
 
@@ -21,6 +23,36 @@ logger = logging.getLogger(__name__)
 
 class CallerResolutionError(Exception):
     """Cannot identify calling agent."""
+
+
+def resolve_caller_persona():
+    """Resolve the calling agent and return (agent, persona).
+
+    Convenience wrapper for CLI commands that need both the agent and
+    its persona. Prints errors to stderr and raises SystemExit(1) on
+    failure.
+
+    Returns:
+        tuple: (agent, persona)
+
+    Raises:
+        SystemExit: If caller cannot be resolved or has no persona.
+    """
+    try:
+        agent = resolve_caller()
+    except CallerResolutionError as e:
+        click.echo(str(e), err=True)
+        raise SystemExit(1)
+
+    if not agent.persona:
+        click.echo(
+            "Error: Your agent has no persona assigned. "
+            "Cannot perform this operation.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    return agent, agent.persona
 
 
 def resolve_caller() -> Agent:

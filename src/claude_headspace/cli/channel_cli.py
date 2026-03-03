@@ -10,8 +10,9 @@ import click
 from flask import current_app
 from flask.cli import AppGroup
 
-from ..services.caller_identity import CallerResolutionError, resolve_caller
+from ..services.caller_identity import resolve_caller_persona
 from ..services.channel_service import ChannelError
+from .cli_utils import print_table
 
 channel_cli = AppGroup("channel", help="Channel management commands.")
 
@@ -19,32 +20,6 @@ channel_cli = AppGroup("channel", help="Channel management commands.")
 def _get_channel_service():
     """Get the ChannelService from app extensions."""
     return current_app.extensions["channel_service"]
-
-
-def _resolve_caller_persona():
-    """Resolve the calling agent and return its persona.
-
-    Returns:
-        tuple: (agent, persona)
-
-    Raises:
-        SystemExit: If caller cannot be resolved or has no persona.
-    """
-    try:
-        agent = resolve_caller()
-    except CallerResolutionError as e:
-        click.echo(str(e), err=True)
-        raise SystemExit(1)
-
-    if not agent.persona:
-        click.echo(
-            "Error: Your agent has no persona assigned. "
-            "Cannot perform channel operations.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    return agent, agent.persona
 
 
 @channel_cli.command("create")
@@ -61,7 +36,7 @@ def _resolve_caller_persona():
 @click.option("--members", default=None, help="Comma-separated persona slugs to add.")
 def create_command(name, channel_type, description, intent, org_id, project_id, members):
     """Create a new channel."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     member_slugs = None
     if members:
@@ -105,7 +80,7 @@ def create_command(name, channel_type, description, intent, org_id, project_id, 
 )
 def list_command(all_visible, status, channel_type):
     """List channels."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -134,7 +109,7 @@ def list_command(all_visible, status, channel_type):
             "status": ch.status,
         })
 
-    _print_table(headers, rows)
+    print_table(headers, rows)
     click.echo(f"\n{len(channels)} channel{'s' if len(channels) != 1 else ''}")
 
 
@@ -169,8 +144,9 @@ def show_command(slug):
         name = m.persona.name if m.persona else "Unknown"
         click.echo(f"    - {name} [{m.status}]{chair_marker}")
 
-    # Message count
-    msg_count = len(channel.messages)
+    # Message count (use count query instead of loading all messages)
+    from ..models.message import Message
+    msg_count = Message.query.filter_by(channel_id=channel.id).count()
     click.echo(f"  Messages: {msg_count}")
 
 
@@ -207,7 +183,7 @@ def members_command(slug):
             "joined": m.joined_at.strftime("%d %b %Y, %H:%M"),
         })
 
-    _print_table(headers, rows)
+    print_table(headers, rows)
 
 
 @channel_cli.command("add")
@@ -215,7 +191,7 @@ def members_command(slug):
 @click.option("--persona", required=True, help="Persona slug to add.")
 def add_command(slug, persona):
     """Add a persona to a channel."""
-    _, caller_persona = _resolve_caller_persona()
+    _, caller_persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -235,7 +211,7 @@ def add_command(slug, persona):
 @click.argument("slug")
 def leave_command(slug):
     """Leave a channel."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -251,7 +227,7 @@ def leave_command(slug):
 @click.argument("slug")
 def complete_command(slug):
     """Complete a channel (chair only)."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -268,7 +244,7 @@ def complete_command(slug):
 @click.option("--to", "target_slug", required=True, help="Persona slug of the new chair.")
 def transfer_chair_command(slug, target_slug):
     """Transfer chair role to another member."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -284,7 +260,7 @@ def transfer_chair_command(slug, target_slug):
 @click.argument("slug")
 def mute_command(slug):
     """Mute a channel."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -300,7 +276,7 @@ def mute_command(slug):
 @click.argument("slug")
 def unmute_command(slug):
     """Unmute a channel."""
-    _, persona = _resolve_caller_persona()
+    _, persona = resolve_caller_persona()
 
     svc = _get_channel_service()
     try:
@@ -310,24 +286,3 @@ def unmute_command(slug):
         raise SystemExit(1)
 
     click.echo(f"Unmuted #{slug}.")
-
-
-# ── Table formatting utility ──────────────────────────────────────────
-
-
-def _print_table(headers: dict[str, str], rows: list[dict[str, str]]) -> None:
-    """Print a formatted columnar table via click.echo."""
-    if not rows:
-        return
-
-    widths = {}
-    for key, header in headers.items():
-        widths[key] = max(len(header), max((len(r.get(key, "")) for r in rows), default=0))
-
-    header_line = "  ".join(h.ljust(widths[k]) for k, h in headers.items())
-    click.echo(header_line)
-    click.echo("  ".join("-" * widths[k] for k in headers))
-
-    for row in rows:
-        line = "  ".join(row.get(k, "").ljust(widths[k]) for k in headers)
-        click.echo(line)

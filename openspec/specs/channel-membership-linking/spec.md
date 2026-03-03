@@ -1,5 +1,8 @@
-## MODIFIED Requirements
+# channel-membership-linking Specification
 
+## Purpose
+TBD - created by archiving change e9-s4-channel-service-cli. Update Purpose after archive.
+## Requirements
 ### Requirement: Agent-to-Membership Linking on Registration (FR14)
 When the session correlator / hook receiver links a new agent to a persona (during `process_session_start()`), the system SHALL check for any ChannelMembership where `persona_id = agent.persona_id AND agent_id IS NULL AND status = 'active'` and update `agent_id` to the new agent's ID.
 
@@ -35,3 +38,4 @@ The agent-to-membership linking logic SHALL be added to `process_session_start()
 - **THEN** persona assignment occurs first
 - **AND** channel membership linking occurs after persona assignment
 - **AND** context briefing delivery occurs after membership linking
+

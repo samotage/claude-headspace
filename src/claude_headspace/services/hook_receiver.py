@@ -718,9 +718,9 @@ def process_session_start(
         _linked_channel_memberships = []
         if agent.persona_id:
             try:
-                from ..models.channel_membership import ChannelMembership as _CM
+                from ..models.channel_membership import ChannelMembership
 
-                pending_memberships = _CM.query.filter_by(
+                pending_memberships = ChannelMembership.query.filter_by(
                     persona_id=agent.persona_id,
                     agent_id=None,
                     status="active",
