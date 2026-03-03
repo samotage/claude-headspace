@@ -371,6 +371,16 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     app.extensions["handoff_executor"] = handoff_executor
     logger.info("Handoff executor initialized")
 
+    # Initialize channel service (requires database)
+    if db_connected:
+        from .services.channel_service import ChannelService
+        channel_service = ChannelService(app=app)
+        app.extensions["channel_service"] = channel_service
+        logger.info("Channel service initialized")
+    else:
+        app.extensions["channel_service"] = None
+        logger.debug("Channel service disabled (no database connection)")
+
     # Initialize handoff detection service (lightweight, no background threads)
     from .services.handoff_detection import HandoffDetectionService
     handoff_detection_service = HandoffDetectionService(app=app)
@@ -659,8 +669,12 @@ def register_blueprints(app: Flask) -> None:
 
 def register_cli_commands(app: Flask) -> None:
     """Register Flask CLI command groups."""
+    from .cli.channel_cli import channel_cli
+    from .cli.msg_cli import msg_cli
     from .cli.persona_cli import persona_cli
     from .cli.transcript_cli import transcript_cli
 
+    app.cli.add_command(channel_cli)
+    app.cli.add_command(msg_cli)
     app.cli.add_command(persona_cli)
     app.cli.add_command(transcript_cli)

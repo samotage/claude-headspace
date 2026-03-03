@@ -17,28 +17,9 @@ from ..models.persona import Persona
 from ..models.role import Role
 from ..services.persona_assets import get_persona_dir
 from ..services.persona_registration import RegistrationError, register_persona
+from .cli_utils import print_table
 
 persona_cli = AppGroup("persona", help="Persona management commands.")
-
-
-def _print_table(headers: dict[str, str], rows: list[dict[str, str]]) -> None:
-    """Print a formatted columnar table via click.echo.
-
-    Args:
-        headers: OrderedDict-style mapping of key -> display header.
-        rows: List of dicts with the same keys as headers.
-    """
-    widths = {}
-    for key, header in headers.items():
-        widths[key] = max(len(header), max(len(r[key]) for r in rows))
-
-    header_line = "  ".join(h.ljust(widths[k]) for k, h in headers.items())
-    click.echo(header_line)
-    click.echo("  ".join("-" * widths[k] for k in headers))
-
-    for row in rows:
-        line = "  ".join(row[k].ljust(widths[k]) for k in headers)
-        click.echo(line)
 
 
 @persona_cli.command("register")
@@ -103,7 +84,7 @@ def list_command(active: bool, role: str | None) -> None:
 
     # Print table
     headers = {"name": "Name", "role": "Role", "slug": "Slug", "status": "Status", "agents": "Agents"}
-    _print_table(headers, rows)
+    print_table(headers, rows)
 
     # Summary line
     total = len(rows)
@@ -227,7 +208,7 @@ def handoffs_command(slug: str, limit: int | None, paths: bool) -> None:
     headers = {"timestamp": "Timestamp", "summary": "Summary", "agent_id": "Agent"}
     if paths:
         headers["path"] = "Path"
-    _print_table(headers, rows)
+    print_table(headers, rows)
 
     # Summary
     click.echo(f"\n{len(rows)} handoff{'s' if len(rows) != 1 else ''}")

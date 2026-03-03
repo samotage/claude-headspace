@@ -711,6 +711,36 @@ def process_session_start(
                     f"session_start: handoff detection failed for agent_id={agent.id}: {e}"
                 )
 
+        # Link agent to pending ChannelMembership records (FR14).
+        # When add_member() spins up an agent asynchronously, the membership
+        # is created with agent_id=NULL. Here we link the agent once it
+        # registers via session-start, and deliver context briefing (FR14a).
+        _linked_channel_memberships = []
+        if agent.persona_id:
+            try:
+                from ..models.channel_membership import ChannelMembership
+
+                pending_memberships = ChannelMembership.query.filter_by(
+                    persona_id=agent.persona_id,
+                    agent_id=None,
+                    status="active",
+                ).all()
+                for membership in pending_memberships:
+                    membership.agent_id = agent.id
+                    _linked_channel_memberships.append(membership)
+                    logger.info(
+                        f"session_start: linked agent_id={agent.id} to "
+                        f"channel_membership_id={membership.id} "
+                        f"(channel_id={membership.channel_id})"
+                    )
+                if _linked_channel_memberships:
+                    db.session.commit()
+            except Exception as e:
+                logger.debug(
+                    f"session_start: channel membership linking failed "
+                    f"for agent_id={agent.id}: {e}"
+                )
+
         # Inject persona skill files for persona-backed agents with a tmux pane
         if agent.persona_id and agent.tmux_pane_id:
             try:
@@ -780,6 +810,24 @@ def process_session_start(
             except Exception as e:
                 logger.error(
                     f"session_start: handoff/revival injection error for agent_id={agent.id}: {e}"
+                )
+
+        # Deliver context briefing for channel memberships linked earlier (FR14a).
+        # This runs AFTER skill injection so the agent is primed before
+        # receiving the channel context.
+        if _linked_channel_memberships and agent.tmux_pane_id:
+            try:
+                from flask import current_app as _app
+                channel_svc = _app.extensions.get("channel_service")
+                if channel_svc:
+                    for membership in _linked_channel_memberships:
+                        channel_svc._deliver_context_briefing(
+                            membership.channel, agent
+                        )
+            except Exception as e:
+                logger.debug(
+                    f"session_start: channel context briefing failed "
+                    f"for agent_id={agent.id}: {e}"
                 )
 
         # Commit post-injection state (prompt_injected_at) so the
