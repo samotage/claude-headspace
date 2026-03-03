@@ -23,6 +23,7 @@ from ..services.channel_service import (
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
+    PersonaNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ _ERROR_MAP = {
     AlreadyMemberError: (409, "already_a_member"),
     NoCreationCapabilityError: (403, "no_creation_capability"),
     AgentChannelConflictError: (409, "agent_already_in_channel"),
+    PersonaNotFoundError: (404, "persona_not_found"),
 }
 
 

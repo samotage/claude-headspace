@@ -147,12 +147,12 @@
             return response.json();
         })
         .then(function(data) {
-            // Remove optimistic message (SSE will bring the real one, or
-            // if SSE is slow, the optimistic one stays in place)
+            // Mark optimistic message as confirmed but keep it in the map
+            // so the SSE handler can find and dedup it. If we deleted from
+            // the map here, the SSE event would render a duplicate message.
             var optimisticEl = _pendingOptimistic.get(tempId);
             if (optimisticEl) {
-                optimisticEl.classList.remove('channel-chat-msg-optimistic');
-                _pendingOptimistic.delete(tempId);
+                optimisticEl.classList.add('channel-chat-msg-confirmed');
             }
         })
         .catch(function(err) {

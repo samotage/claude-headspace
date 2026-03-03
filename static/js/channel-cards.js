@@ -205,6 +205,7 @@
                 break;
 
             case 'channel_completed':
+            case 'channel_auto_completed':
                 _updateCardStatus(slug, 'completed');
                 break;
 

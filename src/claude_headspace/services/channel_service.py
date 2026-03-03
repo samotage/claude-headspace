@@ -54,6 +54,10 @@ class NoCreationCapabilityError(ChannelError):
     """Persona does not have channel creation capability."""
 
 
+class PersonaNotFoundError(ChannelError):
+    """Persona with the given slug does not exist."""
+
+
 class AgentChannelConflictError(ChannelError):
     """Agent is already active in another channel."""
 
@@ -150,10 +154,20 @@ class ChannelService:
                         f"create_channel: failed to add member '{slug}': {e}"
                     )
 
+        # Build member name list for the JS card
+        members = self._get_member_names(channel)
         self._broadcast_update(channel, "channel_created", {
             "slug": channel.slug,
             "name": channel.name,
             "channel_type": channel.channel_type.value,
+            # Nested channel object for channel-cards.js _addCard()
+            "channel": {
+                "slug": channel.slug,
+                "name": channel.name,
+                "channel_type": channel.channel_type.value,
+                "status": channel.status,
+                "members": members,
+            },
         })
 
         return channel
@@ -372,7 +386,7 @@ class ChannelService:
         # Resolve target persona
         target_persona = Persona.query.filter_by(slug=persona_slug).first()
         if not target_persona:
-            raise ChannelError(
+            raise PersonaNotFoundError(
                 f"Error: Persona '{persona_slug}' not found."
             )
 
@@ -412,10 +426,12 @@ class ChannelService:
         if active_agent and active_agent.tmux_pane_id:
             self._deliver_context_briefing(channel, active_agent)
 
+        members = self._get_member_names(channel)
         self._broadcast_update(channel, "member_added", {
             "slug": channel.slug,
             "persona_slug": persona_slug,
             "persona_name": target_persona.name,
+            "members": members,
         })
         return membership
 
@@ -446,9 +462,11 @@ class ChannelService:
         # Check if this was the last active member
         self._auto_complete_if_empty(channel)
 
+        members = self._get_member_names(channel)
         self._broadcast_update(channel, "member_left", {
             "slug": channel.slug,
             "persona_name": persona.name,
+            "members": members,
         })
 
     def transfer_chair(
@@ -478,7 +496,7 @@ class ChannelService:
             slug=target_persona_slug
         ).first()
         if not target_persona:
-            raise ChannelError(
+            raise PersonaNotFoundError(
                 f"Error: Persona '{target_persona_slug}' not found."
             )
 
@@ -684,6 +702,26 @@ class ChannelService:
 
     # ── Internal helpers ─────────────────────────────────────────────
 
+    def _get_member_names(self, channel: Channel) -> list[str]:
+        """Get display names of active/muted members for SSE payloads.
+
+        Used by _broadcast_update to include the current member list so
+        channel-cards.js can update the card's member display in real time.
+
+        Args:
+            channel: The channel to query.
+
+        Returns:
+            List of persona names for active and muted members.
+        """
+        memberships = (
+            ChannelMembership.query
+            .filter_by(channel_id=channel.id)
+            .filter(ChannelMembership.status.in_(["active", "muted"]))
+            .all()
+        )
+        return [m.persona.name for m in memberships if m.persona]
+
     def _post_system_message(self, channel: Channel, content: str) -> Message:
         """Create a system message in a channel.
 
@@ -851,12 +889,8 @@ class ChannelService:
         """
         from .advisory_lock import LockNamespace, advisory_lock
 
-        # Use a channel-specific lock key — channel IDs + offset to avoid
-        # collisions with agent IDs in LockNamespace.AGENT
-        lock_id = channel.id + 1_000_000  # Offset to avoid agent ID collisions
-
         try:
-            with advisory_lock(LockNamespace.AGENT, lock_id, timeout=5.0):
+            with advisory_lock(LockNamespace.CHANNEL, channel.id, timeout=5.0):
                 active_count = ChannelMembership.query.filter_by(
                     channel_id=channel.id, status="active"
                 ).count()

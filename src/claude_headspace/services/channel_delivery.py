@@ -269,6 +269,15 @@ class ChannelDeliveryService:
                     f"(persona_id={membership.persona_id}): {e}"
                 )
 
+            # Operator notification — independent of agent delivery path.
+            # The operator may not have an agent (dashboard-only), so
+            # _notify_operator_if_applicable must run for every recipient
+            # membership, not just those with tmux delivery.
+            try:
+                self._notify_operator_if_applicable(membership, message)
+            except Exception as e:
+                logger.debug(f"Operator notification check failed: {e}")
+
     def _deliver_to_member(
         self,
         membership: ChannelMembership,
@@ -318,9 +327,6 @@ class ChannelDeliveryService:
         if not delivered:
             # Delivery failed — queue for retry on next state transition
             self._enqueue(agent.id, message.id)
-
-        # Send notification for operator members
-        self._notify_operator_if_applicable(membership, message)
 
     def _notify_operator_if_applicable(
         self,
@@ -486,6 +492,14 @@ class ChannelDeliveryService:
         if not channel:
             logger.warning(
                 f"Message {message_id} has no channel — skipping drain"
+            )
+            return False
+
+        # Don't deliver to completed/archived channels
+        if channel.status not in ("active", "pending"):
+            logger.debug(
+                f"Channel #{channel.slug} is {channel.status} — "
+                f"dropping queued message {message_id} for agent {agent.id}"
             )
             return False
 

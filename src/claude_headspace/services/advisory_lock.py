@@ -38,6 +38,7 @@ class LockNamespace(IntEnum):
     namespace, the second is the entity ID.
     """
     AGENT = 1
+    CHANNEL = 2
 
 
 class AdvisoryLockError(Exception):
