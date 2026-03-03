@@ -35,7 +35,6 @@ def _collect_dom_turns(page):
     return [t for t in dom_turns if t["id"] > 0]
 
 
-
 def verify_cross_layer_consistency(page, agent_id, e2e_server, e2e_app):
     """Verify DOM, API transcript, and DB are consistent.
 
@@ -92,12 +91,20 @@ def verify_cross_layer_consistency(page, agent_id, e2e_server, e2e_app):
 
         # Filter out empty PROGRESS turns (matches API behavior)
         db_turns = [
-            t for t in db_turns
-            if not (t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip()))
+            t
+            for t in db_turns
+            if not (
+                t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip())
+            )
         ]
 
         db_turn_data = [
-            {"id": t.id, "actor": t.actor.value, "intent": t.intent.value, "timestamp": t.timestamp}
+            {
+                "id": t.id,
+                "actor": t.actor.value,
+                "intent": t.intent.value,
+                "timestamp": t.timestamp,
+            }
             for t in db_turns
         ]
 

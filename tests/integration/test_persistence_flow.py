@@ -4,21 +4,18 @@ Verifies the complete entity chain: Project -> Agent -> Command -> Turn -> Event
 can be created, persisted, retrieved, and all relationships are intact.
 """
 
-import uuid
-from datetime import datetime, timezone
-
 import pytest
 from sqlalchemy import select
 
 from claude_headspace.models import (
     Agent,
+    Command,
+    CommandState,
     Event,
     EventType,
     Objective,
     ObjectiveHistory,
     Project,
-    Command,
-    CommandState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -26,11 +23,11 @@ from claude_headspace.models import (
 
 from .factories import (
     AgentFactory,
+    CommandFactory,
     EventFactory,
     ObjectiveFactory,
     ObjectiveHistoryFactory,
     ProjectFactory,
-    CommandFactory,
     TurnFactory,
 )
 
@@ -143,15 +140,32 @@ class TestFullEntityChain:
         db_session.flush()
 
         turns = [
-            TurnFactory(command=command, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="Do X"),
-            TurnFactory(command=command, actor=TurnActor.AGENT, intent=TurnIntent.PROGRESS, text="Working on X"),
-            TurnFactory(command=command, actor=TurnActor.AGENT, intent=TurnIntent.COMPLETION, text="Done with X"),
+            TurnFactory(
+                command=command,
+                actor=TurnActor.USER,
+                intent=TurnIntent.COMMAND,
+                text="Do X",
+            ),
+            TurnFactory(
+                command=command,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.PROGRESS,
+                text="Working on X",
+            ),
+            TurnFactory(
+                command=command,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.COMPLETION,
+                text="Done with X",
+            ),
         ]
         db_session.flush()
 
-        results = db_session.execute(
-            select(Turn).where(Turn.command_id == command.id)
-        ).scalars().all()
+        results = (
+            db_session.execute(select(Turn).where(Turn.command_id == command.id))
+            .scalars()
+            .all()
+        )
 
         assert len(results) == 3
         actors = {t.actor for t in results}
@@ -169,9 +183,11 @@ class TestFullEntityChain:
         ]
         db_session.flush()
 
-        results = db_session.execute(
-            select(Command).where(Command.agent_id == agent.id)
-        ).scalars().all()
+        results = (
+            db_session.execute(select(Command).where(Command.agent_id == agent.id))
+            .scalars()
+            .all()
+        )
 
         assert len(results) == 2
 
@@ -186,9 +202,11 @@ class TestFullEntityChain:
         ]
         db_session.flush()
 
-        results = db_session.execute(
-            select(Agent).where(Agent.project_id == project.id)
-        ).scalars().all()
+        results = (
+            db_session.execute(select(Agent).where(Agent.project_id == project.id))
+            .scalars()
+            .all()
+        )
 
         assert len(results) == 2
         assert results[0].session_uuid != results[1].session_uuid
@@ -224,9 +242,15 @@ class TestObjectiveChain:
         assert retrieved.current_text == "Current goal"
         assert retrieved.constraints == "Must be fast"
 
-        histories = db_session.execute(
-            select(ObjectiveHistory).where(ObjectiveHistory.objective_id == objective.id)
-        ).scalars().all()
+        histories = (
+            db_session.execute(
+                select(ObjectiveHistory).where(
+                    ObjectiveHistory.objective_id == objective.id
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         assert len(histories) == 2
         texts = {h.text for h in histories}

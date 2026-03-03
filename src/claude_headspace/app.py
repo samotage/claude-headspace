@@ -8,11 +8,11 @@ import threading
 import time
 from pathlib import Path
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, jsonify, render_template, request
 
 from . import __version__
-from .config import load_config, get_value, get_database_url, get_notifications_config
-from .database import db, init_database
+from .config import get_database_url, get_notifications_config, get_value, load_config
+from .database import init_database
 
 
 def setup_logging(config: dict, app_root: Path) -> None:
@@ -118,6 +118,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize exception reporter — must happen before background threads start
     # so threading.excepthook catches any early thread crashes.
     from .services.exception_reporter import ExceptionReporter
+
     exception_reporter = ExceptionReporter(config=config)
     app.extensions["exception_reporter"] = exception_reporter
 
@@ -178,6 +179,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize event writer for audit logging (only if database connected)
     if db_connected:
         from .services.event_writer import create_event_writer
+
         try:
             db_url = get_database_url(config)
             event_writer = create_event_writer(db_url, config)
@@ -192,18 +194,21 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize broadcaster for SSE
     from .services.broadcaster import init_broadcaster, shutdown_broadcaster
+
     broadcaster = init_broadcaster(config)
     app.extensions["broadcaster"] = broadcaster
     logger.info("SSE broadcaster initialized")
 
     # Initialize git metadata service
     from .services.git_metadata import GitMetadata
+
     git_metadata = GitMetadata()
     app.extensions["git_metadata"] = git_metadata
     logger.info("Git metadata service initialized")
 
     # Initialize inference service
     from .services.inference_service import InferenceService
+
     inference_service = InferenceService(
         config=config,
         database_url=get_database_url(config) if db_connected else None,
@@ -216,6 +221,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize summarisation service
     from .services.summarisation_service import SummarisationService
+
     summarisation_service = SummarisationService(
         inference_service=inference_service,
         config=config,
@@ -226,9 +232,12 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize headspace monitor (requires database for snapshot persistence)
     if db_connected:
         from .services.headspace_monitor import HeadspaceMonitor
+
         headspace_monitor = HeadspaceMonitor(app=app, config=config)
         app.extensions["headspace_monitor"] = headspace_monitor
-        logger.info("Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled)
+        logger.info(
+            "Headspace monitor initialized (enabled=%s)", headspace_monitor.enabled
+        )
     else:
         app.extensions["headspace_monitor"] = None
         logger.debug("Headspace monitor disabled (no database connection)")
@@ -236,6 +245,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize priority scoring service (requires database for agent queries)
     if db_connected:
         from .services.priority_scoring import PriorityScoringService
+
         priority_scoring_service = PriorityScoringService(
             inference_service=inference_service,
             app=app,
@@ -249,8 +259,11 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize notification service from config
     from .services.notification_service import (
-        NotificationPreferences, configure_notification_service, get_notification_service,
+        NotificationPreferences,
+        configure_notification_service,
+        get_notification_service,
     )
+
     notif_config = get_notifications_config(config)
     # Derive dashboard_url: prefer application_url (Tailscale hostname for browsers/notifications),
     # then fall back to notifications config, then construct from server host/port
@@ -262,13 +275,17 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         or notif_config.get("dashboard_url")
         or f"https://{browser_host}:{server_port}"
     )
-    configure_notification_service(NotificationPreferences(
-        enabled=notif_config.get("enabled", True),
-        sound=notif_config.get("sound", True),
-        events=notif_config.get("events", {"command_complete": True, "awaiting_input": True}),
-        rate_limit_seconds=notif_config.get("rate_limit_seconds", 5),
-        dashboard_url=dashboard_url,
-    ))
+    configure_notification_service(
+        NotificationPreferences(
+            enabled=notif_config.get("enabled", True),
+            sound=notif_config.get("sound", True),
+            events=notif_config.get(
+                "events", {"command_complete": True, "awaiting_input": True}
+            ),
+            rate_limit_seconds=notif_config.get("rate_limit_seconds", 5),
+            dashboard_url=dashboard_url,
+        )
+    )
     notification_service = get_notification_service()
     app.extensions["notification_service"] = notification_service
     # Eagerly check terminal-notifier availability for startup diagnostics
@@ -277,12 +294,14 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize archive service
     from .services.archive_service import ArchiveService
+
     archive_service = ArchiveService(config=config)
     app.extensions["archive_service"] = archive_service
     logger.info("Archive service initialized")
 
     # Initialize progress summary service
     from .services.progress_summary import ProgressSummaryService
+
     progress_summary_service = ProgressSummaryService(
         inference_service=inference_service,
         app=app,
@@ -293,6 +312,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize brain reboot service
     from .services.brain_reboot import BrainRebootService
+
     brain_reboot_service = BrainRebootService(
         app=app,
         archive_service=archive_service,
@@ -303,6 +323,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize staleness service (requires database for command queries)
     if db_connected:
         from .services.staleness import StalenessService
+
         staleness_service = StalenessService(app=app)
         app.extensions["staleness_service"] = staleness_service
         logger.info("Staleness service initialized")
@@ -317,6 +338,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     fw_enabled = get_value(config, "file_watcher", "enabled", default=False)
     if not app.config.get("TESTING") and fw_enabled:
         from .services.file_watcher import init_file_watcher
+
         init_file_watcher(app, config)
         logger.info("File watcher initialized (fallback monitoring enabled)")
     elif not app.config.get("TESTING"):
@@ -331,10 +353,13 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     if not app.config.get("TESTING") and db_connected and not is_reloader_restart:
         try:
             from .services.agent_lifecycle import cleanup_orphaned_sessions
+
             with app.app_context():
                 killed = cleanup_orphaned_sessions()
                 if killed:
-                    logger.info(f"Startup: cleaned up {killed} orphaned tmux session(s)")
+                    logger.info(
+                        f"Startup: cleaned up {killed} orphaned tmux session(s)"
+                    )
         except Exception as e:
             logger.warning(f"Startup orphan cleanup failed (non-fatal): {e}")
     elif is_reloader_restart:
@@ -343,6 +368,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize agent reaper (only in non-testing environments, requires database)
     if not app.config.get("TESTING") and db_connected:
         from .services.agent_reaper import AgentReaper
+
         reaper = AgentReaper(app=app, config=config)
         reaper.start()
         app.extensions["agent_reaper"] = reaper
@@ -350,6 +376,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize context poller (only in non-testing environments, requires database)
     if not app.config.get("TESTING") and db_connected:
         from .services.context_poller import ContextPoller
+
         context_poller = ContextPoller(app=app, config=config)
         context_poller.start()
         app.extensions["context_poller"] = context_poller
@@ -357,16 +384,19 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize activity aggregator (only in non-testing environments, requires database)
     if not app.config.get("TESTING") and db_connected:
         from .services.activity_aggregator import ActivityAggregator
+
         aggregator = ActivityAggregator(app=app, config=config)
         aggregator.start()
         app.extensions["activity_aggregator"] = aggregator
 
     # Register tmux bridge module (stateless, no init needed)
     from .services import tmux_bridge
+
     app.extensions["tmux_bridge"] = tmux_bridge
 
     # Initialize handoff executor (requires tmux bridge and database)
     from .services.handoff_executor import HandoffExecutor
+
     handoff_executor = HandoffExecutor(app=app)
     app.extensions["handoff_executor"] = handoff_executor
     logger.info("Handoff executor initialized")
@@ -374,6 +404,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize channel service (requires database)
     if db_connected:
         from .services.channel_service import ChannelService
+
         channel_service = ChannelService(app=app)
         app.extensions["channel_service"] = channel_service
         logger.info("Channel service initialized")
@@ -384,6 +415,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize channel delivery service (requires database + channel service)
     if db_connected:
         from .services.channel_delivery import ChannelDeliveryService
+
         channel_delivery_service = ChannelDeliveryService(app=app)
         app.extensions["channel_delivery_service"] = channel_delivery_service
         logger.info("Channel delivery service initialized")
@@ -393,27 +425,33 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize handoff detection service (lightweight, no background threads)
     from .services.handoff_detection import HandoffDetectionService
+
     handoff_detection_service = HandoffDetectionService(app=app)
     app.extensions["handoff_detection_service"] = handoff_detection_service
     logger.info("Handoff detection service initialized")
 
     # Initialize file upload service
     from .services.file_upload import FileUploadService
+
     file_upload_service = FileUploadService(config=config, app_root=str(app_root))
     app.extensions["file_upload"] = file_upload_service
     if not app.config.get("TESTING"):
         file_upload_service.startup_sweep()
-    logger.info("File upload service initialized (dir=%s)", file_upload_service.upload_dir)
+    logger.info(
+        "File upload service initialized (dir=%s)", file_upload_service.upload_dir
+    )
 
     # Initialize voice bridge services
     vb_enabled = get_value(config, "voice_bridge", "enabled", default=False)
     if vb_enabled:
         from .services.voice_auth import VoiceAuth
+
         voice_auth = VoiceAuth(config=config)
         app.extensions["voice_auth"] = voice_auth
         logger.info("Voice auth service initialized")
 
         from .services.voice_formatter import VoiceFormatter
+
         voice_formatter = VoiceFormatter(
             config=config,
             inference_service=inference_service,
@@ -427,8 +465,8 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize remote agent services (session token + remote agent service)
     ra_enabled = get_value(config, "remote_agents", "enabled", default=True)
     if ra_enabled:
-        from .services.session_token import SessionTokenService
         from .services.remote_agent_service import RemoteAgentService
+        from .services.session_token import SessionTokenService
 
         session_token_service = SessionTokenService()
         app.extensions["session_token_service"] = session_token_service
@@ -446,12 +484,14 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize API call logger middleware (captures external API traffic)
     from .services.api_call_logger import ApiCallLogger
+
     api_call_logger = ApiCallLogger(app=app)
     app.extensions["api_call_logger"] = api_call_logger
     logger.info("API call logger initialized")
 
     # Initialize commander availability tracker (uses tmux_bridge internally)
     from .services.commander_availability import CommanderAvailability
+
     commander_availability = CommanderAvailability(app=app, config=config)
     app.extensions["commander_availability"] = commander_availability
     if not app.config.get("TESTING"):
@@ -460,6 +500,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # Initialize tmux watchdog (near-real-time turn gap detection)
     from .services.tmux_watchdog import TmuxWatchdog
+
     tmux_watchdog = TmuxWatchdog(app=app, config=config)
     app.extensions["tmux_watchdog"] = tmux_watchdog
     if not app.config.get("TESTING"):
@@ -472,7 +513,14 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     def _get_background_thread_status():
         """Get the alive status of all background threads."""
         status = {}
-        for name in ("agent_reaper", "activity_aggregator", "file_watcher", "commander_availability", "context_poller", "tmux_watchdog"):
+        for name in (
+            "agent_reaper",
+            "activity_aggregator",
+            "file_watcher",
+            "commander_availability",
+            "context_poller",
+            "tmux_watchdog",
+        ):
             svc = app.extensions.get(name)
             if svc is None:
                 status[name] = "disabled"
@@ -480,7 +528,9 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
                 status[name] = "alive" if svc._thread.is_alive() else "dead"
             elif hasattr(svc, "thread") and isinstance(svc.thread, threading.Thread):
                 status[name] = "alive" if svc.thread.is_alive() else "dead"
-            elif hasattr(svc, "_observer") and isinstance(svc._observer, threading.Thread):
+            elif hasattr(svc, "_observer") and isinstance(
+                svc._observer, threading.Thread
+            ):
                 status[name] = "alive" if svc._observer.is_alive() else "dead"
             else:
                 status[name] = "unknown"
@@ -496,7 +546,9 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
                 logger.warning(f"Background threads dead: {', '.join(dead)}")
 
     if not app.config.get("TESTING"):
-        health_thread = threading.Thread(target=_thread_health_loop, daemon=True, name="thread-health")
+        health_thread = threading.Thread(
+            target=_thread_health_loop, daemon=True, name="thread-health"
+        )
         health_thread.start()
 
     # Register shutdown cleanup
@@ -536,13 +588,16 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
     # CSRF protection — use a secure secret key in non-debug mode
     from itsdangerous import URLSafeTimedSerializer
+
     secret_key = app.config.get("SECRET_KEY")
     if not secret_key:
         if app.config["DEBUG"]:
             secret_key = "dev-secret-key"
         else:
             secret_key = os.urandom(32).hex()
-            logger.warning("No SECRET_KEY configured — using a generated key (will not persist across restarts)")
+            logger.warning(
+                "No SECRET_KEY configured — using a generated key (will not persist across restarts)"
+            )
     app.config["SECRET_KEY"] = secret_key
     csrf_serializer = URLSafeTimedSerializer(secret_key)
 
@@ -555,7 +610,19 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         }
 
     # CSRF exempt paths (hooks, SSE, voice bridge API, and remote agents API)
-    _CSRF_EXEMPT_PREFIXES = ("/hook/", "/api/events/stream", "/api/sessions", "/api/voice/", "/api/agents", "/api/focus/", "/api/respond/", "/api/personas/", "/api/remote_agents/", "/api/channels", "/embed/")
+    _CSRF_EXEMPT_PREFIXES = (
+        "/hook/",
+        "/api/events/stream",
+        "/api/sessions",
+        "/api/voice/",
+        "/api/agents",
+        "/api/focus/",
+        "/api/respond/",
+        "/api/personas/",
+        "/api/remote_agents/",
+        "/api/channels",
+        "/embed/",
+    )
 
     @app.before_request
     def verify_csrf_token():
@@ -624,6 +691,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.agents import agents_bp
     from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
+    from .routes.channels_api import channels_api_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
     from .routes.debug import debug_bp
@@ -640,12 +708,11 @@ def register_blueprints(app: Flask) -> None:
     from .routes.priority import priority_bp
     from .routes.progress_summary import progress_summary_bp
     from .routes.projects import projects_bp
+    from .routes.remote_agents import remote_agents_bp
     from .routes.respond import respond_bp
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
-    from .routes.channels_api import channels_api_bp
-    from .routes.remote_agents import remote_agents_bp
     from .routes.voice_bridge import voice_bridge_bp
     from .routes.waypoint import waypoint_bp
 

@@ -2,13 +2,11 @@
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
 
 logger = logging.getLogger(__name__)
 
-brain_reboot_bp = Blueprint(
-    "brain_reboot", __name__, url_prefix="/api/projects"
-)
+brain_reboot_bp = Blueprint("brain_reboot", __name__, url_prefix="/api/projects")
 
 
 def _get_project(project_id: int):
@@ -75,17 +73,17 @@ def get_brain_reboot(project_id: int):
 
     result = service.get_last_generated(project_id)
     if result is None:
-        return jsonify({
-            "status": "not_found",
-            "message": "No brain reboot has been generated yet for this project.",
-        }), 404
+        return jsonify(
+            {
+                "status": "not_found",
+                "message": "No brain reboot has been generated yet for this project.",
+            }
+        ), 404
 
     return jsonify(result), 200
 
 
-@brain_reboot_bp.route(
-    "/<int:project_id>/brain-reboot/export", methods=["POST"]
-)
+@brain_reboot_bp.route("/<int:project_id>/brain-reboot/export", methods=["POST"])
 def export_brain_reboot(project_id: int):
     """
     Export a brain reboot to the target project's filesystem.
@@ -103,18 +101,24 @@ def export_brain_reboot(project_id: int):
 
     cached = service.get_last_generated(project_id)
     if cached is None:
-        return jsonify({
-            "error": "No brain reboot has been generated yet. Generate one first.",
-        }), 404
+        return jsonify(
+            {
+                "error": "No brain reboot has been generated yet. Generate one first.",
+            }
+        ), 404
 
     result = service.export(project, cached["content"])
 
     if result["success"]:
-        return jsonify({
-            "status": "exported",
-            "path": result["path"],
-        }), 200
+        return jsonify(
+            {
+                "status": "exported",
+                "path": result["path"],
+            }
+        ), 200
     else:
-        return jsonify({
-            "error": result["error"],
-        }), 500
+        return jsonify(
+            {
+                "error": result["error"],
+            }
+        ), 500

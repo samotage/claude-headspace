@@ -16,12 +16,12 @@ from sqlalchemy.exc import IntegrityError
 
 from claude_headspace.models import (
     Agent,
+    Command,
+    CommandState,
     Event,
     Objective,
     ObjectiveHistory,
     Project,
-    Command,
-    CommandState,
     Turn,
     TurnActor,
     TurnIntent,
@@ -29,11 +29,11 @@ from claude_headspace.models import (
 
 from .factories import (
     AgentFactory,
+    CommandFactory,
     EventFactory,
     ObjectiveFactory,
     ObjectiveHistoryFactory,
     ProjectFactory,
-    CommandFactory,
     TurnFactory,
 )
 
@@ -99,7 +99,11 @@ class TestNotNullConstraints:
     def test_command_agent_id_not_null(self, db_session):
         """Command.agent_id cannot be null."""
         with pytest.raises(IntegrityError):
-            command = Command(agent_id=None, state=CommandState.IDLE, started_at=datetime.now(timezone.utc))
+            command = Command(
+                agent_id=None,
+                state=CommandState.IDLE,
+                started_at=datetime.now(timezone.utc),
+            )
             db_session.add(command)
             db_session.flush()
 

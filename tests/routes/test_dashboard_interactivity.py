@@ -1,17 +1,14 @@
 """Tests for dashboard interactivity features (Sprint 8b)."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
-
-import pytest
 
 from src.claude_headspace.models import CommandState
 from src.claude_headspace.routes.dashboard import (
     get_recommended_next,
     sort_agents_by_priority,
 )
-
 
 # --- Helper Functions for Mock Data ---
 
@@ -30,7 +27,9 @@ def create_mock_agent(
     agent.id = agent_id
     agent.session_uuid = uuid4()
     agent.state = state
-    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
+    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(
+        minutes=last_seen_minutes_ago
+    )
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
     agent.ended_at = None
     agent.priority_score = priority_score
@@ -91,7 +90,9 @@ class TestGetRecommendedNext:
     def test_awaiting_input_has_priority(self):
         """Test that AWAITING_INPUT agent is recommended over others."""
         # Create agents
-        agent_idle = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1)
+        agent_idle = create_mock_agent(
+            agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1
+        )
         agent_awaiting = create_mock_agent(
             agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=5
         )
@@ -138,14 +139,22 @@ class TestGetRecommendedNext:
 
     def test_most_recently_active_when_no_awaiting_input(self):
         """Test that most recently active agent is recommended when none awaiting input."""
-        agent_old = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4)
-        agent_recent = create_mock_agent(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1)
+        agent_old = create_mock_agent(
+            agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4
+        )
+        agent_recent = create_mock_agent(
+            agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1
+        )
 
         all_agents = [agent_old, agent_recent]
 
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4),
-            2: create_agent_data(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1),
+            1: create_agent_data(
+                agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=4
+            ),
+            2: create_agent_data(
+                agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=1
+            ),
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -156,11 +165,15 @@ class TestGetRecommendedNext:
 
     def test_no_recommendation_when_all_inactive(self):
         """Test that None returned when no active agents."""
-        agent = create_mock_agent(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10)
+        agent = create_mock_agent(
+            agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10
+        )
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10)
+            1: create_agent_data(
+                agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10
+            )
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -175,7 +188,9 @@ class TestGetRecommendedNext:
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=15)
+            1: create_agent_data(
+                agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=15
+            )
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -186,12 +201,16 @@ class TestGetRecommendedNext:
     def test_rationale_format_hours_and_minutes(self):
         """Test that rationale correctly formats hours and minutes."""
         agent = create_mock_agent(
-            agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=75  # 1h 15m
+            agent_id=1,
+            state=CommandState.AWAITING_INPUT,
+            last_seen_minutes_ago=75,  # 1h 15m
         )
 
         all_agents = [agent]
         agent_data_map = {
-            1: create_agent_data(agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=75)
+            1: create_agent_data(
+                agent_id=1, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=75
+            )
         }
 
         result = get_recommended_next(all_agents, agent_data_map)
@@ -247,9 +266,15 @@ class TestSortAgentsByPriority:
     def test_within_group_sorted_by_recency(self):
         """Test that within same priority group, most recent comes first."""
         agents = [
-            create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10),
-            create_agent_data(agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=2),
-            create_agent_data(agent_id=3, state=CommandState.IDLE, last_seen_minutes_ago=5),
+            create_agent_data(
+                agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=10
+            ),
+            create_agent_data(
+                agent_id=2, state=CommandState.IDLE, last_seen_minutes_ago=2
+            ),
+            create_agent_data(
+                agent_id=3, state=CommandState.IDLE, last_seen_minutes_ago=5
+            ),
         ]
 
         result = sort_agents_by_priority(agents)
@@ -260,12 +285,24 @@ class TestSortAgentsByPriority:
     def test_full_priority_ordering(self):
         """Test complete ordering: AWAITING_INPUT → WORKING → IDLE."""
         agents = [
-            create_agent_data(agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1),
-            create_agent_data(agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=5),
-            create_agent_data(agent_id=3, state=CommandState.PROCESSING, last_seen_minutes_ago=2),
-            create_agent_data(agent_id=4, state=CommandState.COMPLETE, last_seen_minutes_ago=0),
-            create_agent_data(agent_id=5, state=CommandState.COMMANDED, last_seen_minutes_ago=3),
-            create_agent_data(agent_id=6, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=1),
+            create_agent_data(
+                agent_id=1, state=CommandState.IDLE, last_seen_minutes_ago=1
+            ),
+            create_agent_data(
+                agent_id=2, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=5
+            ),
+            create_agent_data(
+                agent_id=3, state=CommandState.PROCESSING, last_seen_minutes_ago=2
+            ),
+            create_agent_data(
+                agent_id=4, state=CommandState.COMPLETE, last_seen_minutes_ago=0
+            ),
+            create_agent_data(
+                agent_id=5, state=CommandState.COMMANDED, last_seen_minutes_ago=3
+            ),
+            create_agent_data(
+                agent_id=6, state=CommandState.AWAITING_INPUT, last_seen_minutes_ago=1
+            ),
         ]
 
         result = sort_agents_by_priority(agents)
@@ -289,7 +326,10 @@ class TestSortAgentsByPriority:
         """Test that sorting preserves all agent data."""
         agents = [
             create_agent_data(
-                agent_id=1, state=CommandState.IDLE, project_name="Project A", project_id=10
+                agent_id=1,
+                state=CommandState.IDLE,
+                project_name="Project A",
+                project_id=10,
             ),
         ]
 
@@ -377,7 +417,11 @@ class TestDataAttributes:
         html = response.data.decode("utf-8")
         # Template uses data-agent-id for targeting
         # Even with no agents, the template structure should be present
-        assert "data-agent-id" in html or "No agents found" in html or "No projects found" in html
+        assert (
+            "data-agent-id" in html
+            or "No agents found" in html
+            or "No projects found" in html
+        )
 
     def test_project_groups_have_data_attributes(self, client):
         """Test that project groups have data-project-id attributes."""

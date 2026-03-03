@@ -45,15 +45,15 @@ def list_archives(project_id: int):
 
     archives = service.list_archives(project.path)
 
-    return jsonify({
-        "project_id": project.id,
-        "archives": archives,
-    }), 200
+    return jsonify(
+        {
+            "project_id": project.id,
+            "archives": archives,
+        }
+    ), 200
 
 
-@archive_bp.route(
-    "/<int:project_id>/archives/<artifact>/<timestamp>", methods=["GET"]
-)
+@archive_bp.route("/<int:project_id>/archives/<artifact>/<timestamp>", methods=["GET"])
 def get_archive(project_id: int, artifact: str, timestamp: str):
     """Retrieve a specific archived version's content."""
     service, err = _get_service()
@@ -65,22 +65,28 @@ def get_archive(project_id: int, artifact: str, timestamp: str):
         return err
 
     if artifact not in VALID_ARTIFACT_TYPES:
-        return jsonify({
-            "error": "invalid_artifact",
-            "message": f"Invalid artifact type: {artifact}. Must be one of: {', '.join(VALID_ARTIFACT_TYPES)}",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_artifact",
+                "message": f"Invalid artifact type: {artifact}. Must be one of: {', '.join(VALID_ARTIFACT_TYPES)}",
+            }
+        ), 400
 
     if not TIMESTAMP_RE.match(timestamp):
-        return jsonify({
-            "error": "invalid_timestamp",
-            "message": f"Invalid timestamp format: {timestamp}. Expected YYYY-MM-DD_HH-MM-SS",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_timestamp",
+                "message": f"Invalid timestamp format: {timestamp}. Expected YYYY-MM-DD_HH-MM-SS",
+            }
+        ), 400
 
     result = service.get_archive(project.path, artifact, timestamp)
     if result is None:
-        return jsonify({
-            "error": "not_found",
-            "message": f"Archive not found: {artifact}/{timestamp}",
-        }), 404
+        return jsonify(
+            {
+                "error": "not_found",
+                "message": f"Archive not found: {artifact}/{timestamp}",
+            }
+        ), 404
 
     return jsonify(result), 200

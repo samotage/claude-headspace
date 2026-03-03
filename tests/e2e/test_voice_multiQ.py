@@ -12,6 +12,7 @@ import json
 import sys
 import time
 from pathlib import Path
+
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://smac.griffin-blenny.ts.net:5055"
@@ -37,7 +38,13 @@ class Colors:
 
 
 def log(level, msg):
-    colors = {"info": Colors.INFO, "warn": Colors.WARN, "err": Colors.ERR, "ok": Colors.OK, "dbg": Colors.DBG}
+    colors = {
+        "info": Colors.INFO,
+        "warn": Colors.WARN,
+        "err": Colors.ERR,
+        "ok": Colors.OK,
+        "dbg": Colors.DBG,
+    }
     c = colors.get(level, "")
     tag = level.upper().center(4)
     print(f"{c}[{tag}]{Colors.RESET} {msg}", flush=True)
@@ -133,9 +140,9 @@ and then output the time in the selected format with the chosen descriptive form
 
 
 def run_test(attempt: int = 1):
-    log("info", f"{'='*60}")
+    log("info", f"{'=' * 60}")
     log("info", f"  ATTEMPT {attempt}: Multi-Question Voice Chat Test")
-    log("info", f"{'='*60}")
+    log("info", f"{'=' * 60}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
@@ -147,6 +154,7 @@ def run_test(attempt: int = 1):
 
         # Capture console logs
         console_messages = []
+
         def on_console(msg):
             text = msg.text
             console_messages.append(text)
@@ -160,7 +168,9 @@ def run_test(attempt: int = 1):
             return _execute_test(page, attempt, console_messages)
         except Exception as e:
             log("err", f"Test failed with exception: {e}")
-            page.screenshot(path=str(SCREENSHOTS / f"mq_attempt{attempt}_exception.png"))
+            page.screenshot(
+                path=str(SCREENSHOTS / f"mq_attempt{attempt}_exception.png")
+            )
             return False, str(e)
         finally:
             browser.close()
@@ -250,7 +260,9 @@ def _execute_test(page, attempt, console_messages):
         # Fallback: try text-based match
         log("warn", "Exact attribute match failed, trying text search...")
         try:
-            text_el = page.locator(".project-picker-row").filter(has_text=PROJECT_NAME).first
+            text_el = (
+                page.locator(".project-picker-row").filter(has_text=PROJECT_NAME).first
+            )
             if text_el.is_visible(timeout=3000):
                 text_el.click()
                 log("ok", "Selected project via text filter")
@@ -269,7 +281,8 @@ def _execute_test(page, attempt, console_messages):
         except Exception:
             pass
 
-        resp = page.evaluate("""
+        resp = page.evaluate(
+            """
             async (pName) => {
                 const r = await fetch('/api/voice/agents/create', {
                     method: 'POST',
@@ -278,7 +291,9 @@ def _execute_test(page, attempt, console_messages):
                 });
                 return { status: r.status, body: await r.json() };
             }
-        """, PROJECT_NAME)
+        """,
+            PROJECT_NAME,
+        )
         log("info", f"API create response: {json.dumps(resp, indent=2)}")
 
     # Ensure project picker is closed before proceeding
@@ -303,7 +318,9 @@ def _execute_test(page, attempt, console_messages):
     chat_ready = False
     try:
         # Wait for the chat input to become visible (means agent was auto-selected)
-        page.locator("#chat-text-input").wait_for(state="visible", timeout=AGENT_APPEAR_TIMEOUT)
+        page.locator("#chat-text-input").wait_for(
+            state="visible", timeout=AGENT_APPEAR_TIMEOUT
+        )
         chat_ready = True
         log("ok", "Chat view is active (agent was auto-selected)")
     except Exception:
@@ -350,7 +367,9 @@ def _execute_test(page, attempt, console_messages):
     except Exception:
         # Maybe the chat view isn't showing - need to navigate to it
         log("warn", "Chat input not visible, checking screen state...")
-        screen_state = page.evaluate("document.querySelector('.screen.active')?.id || 'unknown'")
+        screen_state = page.evaluate(
+            "document.querySelector('.screen.active')?.id || 'unknown'"
+        )
         log("dbg", f"Active screen: {screen_state}")
         page.screenshot(path=str(SCREENSHOTS / f"{prefix}_06_no_chat_input.png"))
 
@@ -376,7 +395,10 @@ def _execute_test(page, attempt, console_messages):
     page.screenshot(path=str(SCREENSHOTS / f"{prefix}_06_prompt_sent.png"))
 
     # ──── Step 7: Wait for the question bubble ────
-    log("info", f"Waiting up to {QUESTION_RENDER_TIMEOUT // 1000}s for question bubble...")
+    log(
+        "info",
+        f"Waiting up to {QUESTION_RENDER_TIMEOUT // 1000}s for question bubble...",
+    )
 
     multi_q_sel = ".bubble-multi-question"
     single_q_sel = ".bubble-options"
@@ -507,14 +529,20 @@ def main():
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
         success, detail = run_test(attempt)
-        log("info", f"Attempt {attempt} result: {'PASS' if success else 'FAIL'} — {detail}")
+        log(
+            "info",
+            f"Attempt {attempt} result: {'PASS' if success else 'FAIL'} — {detail}",
+        )
 
         if success:
             log("ok", f"Test passed on attempt {attempt}!")
             return 0
 
         if attempt < max_attempts:
-            log("warn", f"Retrying in 5 seconds (attempt {attempt + 1}/{max_attempts})...")
+            log(
+                "warn",
+                f"Retrying in 5 seconds (attempt {attempt + 1}/{max_attempts})...",
+            )
             time.sleep(5)
 
     log("err", f"All {max_attempts} attempts failed.")

@@ -20,14 +20,13 @@ from src.claude_headspace.services.card_state import (
     TIMED_OUT,
     _get_completed_command_summary,
     format_uptime,
-    get_effective_state,
-    get_state_info,
     get_command_completion_summary,
     get_command_instruction,
     get_command_summary,
+    get_effective_state,
+    get_state_info,
     is_agent_active,
 )
-
 
 # --- Helper Functions for Mock Data ---
 
@@ -43,7 +42,9 @@ def create_mock_agent(
     agent.id = 1
     agent.session_uuid = uuid4()
     agent.state = state
-    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
+    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(
+        minutes=last_seen_minutes_ago
+    )
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
     agent.ended_at = None
     agent.priority_score = None
@@ -108,7 +109,10 @@ class TestCalculateStatusCounts:
     @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_working_states(self, mock_config):
         """Test agents in working states (COMMANDED and PROCESSING)."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agents = [
             create_mock_agent(state=CommandState.COMMANDED),
             create_mock_agent(state=CommandState.PROCESSING),
@@ -128,7 +132,10 @@ class TestCalculateStatusCounts:
     @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_mixed_states(self, mock_config):
         """Test with all different states."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agents = [
             create_mock_agent(state=CommandState.IDLE),
             create_mock_agent(state=CommandState.COMMANDED),
@@ -167,7 +174,10 @@ class TestGetProjectStateFlags:
     @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_working_flag(self, mock_config):
         """Test that working agents set has_working."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agents = [
             create_mock_agent(state=CommandState.PROCESSING),
             create_mock_agent(state=CommandState.COMMANDED),
@@ -200,7 +210,10 @@ class TestGetProjectStateFlags:
     @patch("src.claude_headspace.services.card_state._get_dashboard_config")
     def test_mixed_states(self, mock_config):
         """Test that mixed states set multiple flags."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agents = [
             create_mock_agent(state=CommandState.AWAITING_INPUT),
             create_mock_agent(state=CommandState.PROCESSING),
@@ -721,6 +734,7 @@ class TestDashboardWithData:
         rendering (navigation links use url_for to other blueprints).
         """
         from pathlib import Path
+
         from src.claude_headspace.routes.activity import activity_bp
         from src.claude_headspace.routes.config import config_bp
         from src.claude_headspace.routes.help import help_bp
@@ -776,6 +790,7 @@ class TestDashboardWithData:
 
     def _setup_mock_queries(self, mock_db_session, projects):
         """Configure mock DB to return projects and None for Objective."""
+
         def side_effect(model):
             query = MagicMock()
             query.options.return_value = query
@@ -783,10 +798,16 @@ class TestDashboardWithData:
             query.all.return_value = projects
             query.first.return_value = None  # No Objective
             return query
+
         mock_db_session.session.query.side_effect = side_effect
 
-    @patch("src.claude_headspace.routes.dashboard.get_channel_data_for_operator", return_value=[])
-    def test_projects_displayed(self, mock_channels, standalone_client, mock_db_session):
+    @patch(
+        "src.claude_headspace.routes.dashboard.get_channel_data_for_operator",
+        return_value=[],
+    )
+    def test_projects_displayed(
+        self, mock_channels, standalone_client, mock_db_session
+    ):
         """Test that projects are displayed when data exists."""
         mock_agent = create_mock_agent(
             state=CommandState.PROCESSING,
@@ -798,8 +819,13 @@ class TestDashboardWithData:
         response = standalone_client.get("/")
         assert response.status_code == 200
 
-    @patch("src.claude_headspace.routes.dashboard.get_channel_data_for_operator", return_value=[])
-    def test_state_dots_displayed(self, mock_channels, standalone_client, mock_db_session):
+    @patch(
+        "src.claude_headspace.routes.dashboard.get_channel_data_for_operator",
+        return_value=[],
+    )
+    def test_state_dots_displayed(
+        self, mock_channels, standalone_client, mock_db_session
+    ):
         """Test that state indicator dots are shown."""
         mock_agent = create_mock_agent(state=CommandState.AWAITING_INPUT)
         mock_project = self._make_mock_project("Needs Input Project", [mock_agent])

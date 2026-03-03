@@ -50,8 +50,22 @@ class TestFormatSessions:
 
     def test_agents_awaiting_input(self, formatter):
         agents = [
-            {"name": "a1", "project": "proj-a", "state": "awaiting_input", "awaiting_input": True, "summary": "Q1", "last_activity_ago": "1m ago"},
-            {"name": "a2", "project": "proj-b", "state": "processing", "awaiting_input": False, "summary": "Working", "last_activity_ago": "3m ago"},
+            {
+                "name": "a1",
+                "project": "proj-a",
+                "state": "awaiting_input",
+                "awaiting_input": True,
+                "summary": "Q1",
+                "last_activity_ago": "1m ago",
+            },
+            {
+                "name": "a2",
+                "project": "proj-b",
+                "state": "processing",
+                "awaiting_input": False,
+                "summary": "Working",
+                "last_activity_ago": "3m ago",
+            },
         ]
         result = formatter.format_sessions(agents)
         assert "2 agents running" in result["status_line"]
@@ -60,8 +74,22 @@ class TestFormatSessions:
 
     def test_multiple_awaiting(self, formatter):
         agents = [
-            {"name": "a1", "project": "proj-a", "state": "awaiting_input", "awaiting_input": True, "summary": None, "last_activity_ago": "1m ago"},
-            {"name": "a2", "project": "proj-b", "state": "awaiting_input", "awaiting_input": True, "summary": None, "last_activity_ago": "2m ago"},
+            {
+                "name": "a1",
+                "project": "proj-a",
+                "state": "awaiting_input",
+                "awaiting_input": True,
+                "summary": None,
+                "last_activity_ago": "1m ago",
+            },
+            {
+                "name": "a2",
+                "project": "proj-b",
+                "state": "awaiting_input",
+                "awaiting_input": True,
+                "summary": None,
+                "last_activity_ago": "2m ago",
+            },
         ]
         result = formatter.format_sessions(agents)
         assert "2 need your input" in result["status_line"]
@@ -70,21 +98,42 @@ class TestFormatSessions:
 
     def test_concise_hides_timestamp(self, formatter):
         agents = [
-            {"name": "a1", "project": "proj-a", "state": "processing", "awaiting_input": False, "summary": "Working", "last_activity_ago": "5m ago"},
+            {
+                "name": "a1",
+                "project": "proj-a",
+                "state": "processing",
+                "awaiting_input": False,
+                "summary": "Working",
+                "last_activity_ago": "5m ago",
+            },
         ]
         result = formatter.format_sessions(agents, verbosity="concise")
         assert "5m ago" not in result["results"][0]
 
     def test_normal_shows_timestamp(self, formatter):
         agents = [
-            {"name": "a1", "project": "proj-a", "state": "processing", "awaiting_input": False, "summary": "Working", "last_activity_ago": "5m ago"},
+            {
+                "name": "a1",
+                "project": "proj-a",
+                "state": "processing",
+                "awaiting_input": False,
+                "summary": "Working",
+                "last_activity_ago": "5m ago",
+            },
         ]
         result = formatter.format_sessions(agents, verbosity="normal")
         assert "5m ago" in result["results"][0]
 
     def test_summary_included_in_results(self, formatter):
         agents = [
-            {"name": "a1", "project": "proj-a", "state": "processing", "awaiting_input": False, "summary": "Deploying to staging", "last_activity_ago": "1m ago"},
+            {
+                "name": "a1",
+                "project": "proj-a",
+                "state": "processing",
+                "awaiting_input": False,
+                "summary": "Deploying to staging",
+                "last_activity_ago": "1m ago",
+            },
         ]
         result = formatter.format_sessions(agents)
         assert "Deploying to staging" in result["results"][0]
@@ -160,7 +209,13 @@ class TestFormatOutput:
 
     def test_concise_verbosity(self, formatter):
         commands = [
-            {"instruction": "Fix login bug", "completion_summary": "Fixed auth validation", "state": "complete", "full_command": None, "full_output": None},
+            {
+                "instruction": "Fix login bug",
+                "completion_summary": "Fixed auth validation",
+                "state": "complete",
+                "full_command": None,
+                "full_output": None,
+            },
         ]
         result = formatter.format_output("agent-1", commands, verbosity="concise")
         assert len(result["results"]) == 1
@@ -168,14 +223,26 @@ class TestFormatOutput:
 
     def test_concise_falls_back_to_instruction(self, formatter):
         commands = [
-            {"instruction": "Fix login bug", "completion_summary": None, "state": "processing", "full_command": None, "full_output": None},
+            {
+                "instruction": "Fix login bug",
+                "completion_summary": None,
+                "state": "processing",
+                "full_command": None,
+                "full_output": None,
+            },
         ]
         result = formatter.format_output("agent-1", commands, verbosity="concise")
         assert result["results"][0] == "Fix login bug"
 
     def test_normal_verbosity(self, formatter):
         commands = [
-            {"instruction": "Fix login bug", "completion_summary": "Fixed it", "state": "complete", "full_command": None, "full_output": None},
+            {
+                "instruction": "Fix login bug",
+                "completion_summary": "Fixed it",
+                "state": "complete",
+                "full_command": None,
+                "full_output": None,
+            },
         ]
         result = formatter.format_output("agent-1", commands, verbosity="normal")
         assert "Fix login bug: Fixed it" in result["results"][0]
@@ -197,8 +264,20 @@ class TestFormatOutput:
 
     def test_status_line_includes_count(self, formatter):
         commands = [
-            {"instruction": "t1", "completion_summary": "done", "state": "complete", "full_command": None, "full_output": None},
-            {"instruction": "t2", "completion_summary": "done", "state": "complete", "full_command": None, "full_output": None},
+            {
+                "instruction": "t1",
+                "completion_summary": "done",
+                "state": "complete",
+                "full_command": None,
+                "full_output": None,
+            },
+            {
+                "instruction": "t2",
+                "completion_summary": "done",
+                "state": "complete",
+                "full_command": None,
+                "full_output": None,
+            },
         ]
         result = formatter.format_output("agent-1", commands)
         assert "2 commands" in result["status_line"]
@@ -207,7 +286,13 @@ class TestFormatOutput:
         config = {"voice_bridge": {"default_verbosity": "normal"}}
         formatter = VoiceFormatter(config=config)
         commands = [
-            {"instruction": "Fix bug", "completion_summary": "Fixed", "state": "complete", "full_command": None, "full_output": None},
+            {
+                "instruction": "Fix bug",
+                "completion_summary": "Fixed",
+                "state": "complete",
+                "full_command": None,
+                "full_output": None,
+            },
         ]
         result = formatter.format_output("agent-1", commands)
         # normal includes both instruction and summary

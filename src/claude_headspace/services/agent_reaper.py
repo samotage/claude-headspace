@@ -80,9 +80,7 @@ class AgentReaper:
         self._app = app
         reaper_config = config.get("reaper", {})
         self._enabled = get_value(config, "reaper", "enabled", default=True)
-        self._interval = reaper_config.get(
-            "interval_seconds", DEFAULT_INTERVAL_SECONDS
-        )
+        self._interval = reaper_config.get("interval_seconds", DEFAULT_INTERVAL_SECONDS)
         self._inactivity_timeout = reaper_config.get(
             "inactivity_timeout_seconds", DEFAULT_INACTIVITY_TIMEOUT_SECONDS
         )
@@ -137,10 +135,7 @@ class AgentReaper:
                         f"details={[d.reason for d in result.details]}"
                     )
                 else:
-                    logger.debug(
-                        f"Reaper pass: checked={result.checked}, "
-                        f"reaped=0"
-                    )
+                    logger.debug(f"Reaper pass: checked={result.checked}, reaped=0")
             except Exception:
                 consecutive_failures += 1
                 if consecutive_failures <= 3:
@@ -148,7 +143,11 @@ class AgentReaper:
                 else:
                     logger.error("Reaper pass failed (repeated, suppressing traceback)")
 
-            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            backoff = (
+                min(self._interval * (2**consecutive_failures), max_backoff)
+                if consecutive_failures
+                else self._interval
+            )
             self._stop_event.wait(timeout=backoff)
 
     def reap_once(self) -> ReapResult:
@@ -171,11 +170,7 @@ class AgentReaper:
             from ..database import db
             from ..models.agent import Agent
 
-            agents = (
-                db.session.query(Agent)
-                .filter(Agent.ended_at.is_(None))
-                .all()
-            )
+            agents = db.session.query(Agent).filter(Agent.ended_at.is_(None)).all()
 
             # Build pane ownership: pane_key → newest agent.id (highest id = most recent).
             # Design: When multiple agents share a pane, only the newest (highest ID) is
@@ -192,8 +187,16 @@ class AgentReaper:
 
             for agent in agents:
                 result.checked += 1
-                age_seconds = (now - agent.started_at).total_seconds() if agent.started_at else None
-                last_seen_ago = (now - agent.last_seen_at).total_seconds() if agent.last_seen_at else None
+                age_seconds = (
+                    (now - agent.started_at).total_seconds()
+                    if agent.started_at
+                    else None
+                )
+                last_seen_ago = (
+                    (now - agent.last_seen_at).total_seconds()
+                    if agent.last_seen_at
+                    else None
+                )
 
                 # Grace period: skip recently created agents
                 if agent.started_at > grace_cutoff:
@@ -265,7 +268,10 @@ class AgentReaper:
                         )
                     elif status == PaneStatus.ITERM_NOT_RUNNING:
                         # Can't verify via iTerm — fall through to inactivity
-                        if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
+                        if (
+                            agent.last_seen_at is None
+                            or agent.last_seen_at < inactivity_cutoff
+                        ):
                             reap_reason = "inactivity_timeout"
                             logger.warning(
                                 f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
@@ -281,7 +287,10 @@ class AgentReaper:
 
                 # --- No pane info at all: inactivity only ---
                 if reap_reason is None:
-                    if agent.last_seen_at is None or agent.last_seen_at < inactivity_cutoff:
+                    if (
+                        agent.last_seen_at is None
+                        or agent.last_seen_at < inactivity_cutoff
+                    ):
                         reap_reason = "inactivity_timeout"
                         logger.warning(
                             f"REAPER_KILL agent_id={agent.id} uuid={agent.session_uuid} "
@@ -312,11 +321,13 @@ class AgentReaper:
 
                     self._reap_agent(agent, reap_reason, now)
                     result.reaped += 1
-                    result.details.append(ReapDetail(
-                        agent_id=agent.id,
-                        session_uuid=str(agent.session_uuid),
-                        reason=reap_reason,
-                    ))
+                    result.details.append(
+                        ReapDetail(
+                            agent_id=agent.id,
+                            session_uuid=str(agent.session_uuid),
+                            reason=reap_reason,
+                        )
+                    )
 
                     # Commit inside lock scope so the state change is
                     # visible before the lock is released.
@@ -325,19 +336,29 @@ class AgentReaper:
                     # Broadcast card_refresh (after commit, still inside lock)
                     try:
                         from .card_state import broadcast_card_refresh
+
                         broadcast_card_refresh(agent, f"reaper_{reap_reason}")
                     except Exception as e:
-                        logger.debug(f"Reaper card_refresh broadcast failed (non-fatal): {e}")
+                        logger.debug(
+                            f"Reaper card_refresh broadcast failed (non-fatal): {e}"
+                        )
 
                     # Execute pending summarisations (after commit)
                     if self._pending_summarisations:
                         try:
-                            summarisation_svc = self._app.extensions.get("summarisation_service")
+                            summarisation_svc = self._app.extensions.get(
+                                "summarisation_service"
+                            )
                             if summarisation_svc:
                                 from ..database import db as _db
-                                summarisation_svc.execute_pending(self._pending_summarisations, _db.session)
+
+                                summarisation_svc.execute_pending(
+                                    self._pending_summarisations, _db.session
+                                )
                         except Exception as e:
-                            logger.debug(f"Reaper summarisation failed (non-fatal): {e}")
+                            logger.debug(
+                                f"Reaper summarisation failed (non-fatal): {e}"
+                            )
                         finally:
                             self._pending_summarisations = []
 
@@ -345,12 +366,13 @@ class AgentReaper:
 
     def _reap_agent(self, agent, reason: str, now: datetime) -> None:
         """Mark an agent as ended, complete orphaned commands, and broadcast."""
-        from ..database import db
 
         agent.ended_at = now
         agent.last_seen_at = now
 
-        age_seconds = (now - agent.started_at).total_seconds() if agent.started_at else None
+        age_seconds = (
+            (now - agent.started_at).total_seconds() if agent.started_at else None
+        )
         logger.warning(
             f"REAPER_EXECUTING_KILL: agent_id={agent.id} uuid={agent.session_uuid} "
             f"reason={reason} tmux_pane={agent.tmux_pane_id} iterm_pane={agent.iterm_pane_id} "
@@ -361,9 +383,12 @@ class AgentReaper:
         # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)
         try:
             from .session_correlator import invalidate_agent_caches
+
             invalidate_agent_caches(
                 agent.id,
-                session_id=agent.claude_session_id if hasattr(agent, 'claude_session_id') else None,
+                session_id=agent.claude_session_id
+                if hasattr(agent, "claude_session_id")
+                else None,
             )
         except Exception as e:
             logger.debug(f"Reaper cache cleanup failed (non-fatal): {e}")
@@ -382,13 +407,16 @@ class AgentReaper:
             from .broadcaster import get_broadcaster
 
             broadcaster = get_broadcaster()
-            broadcaster.broadcast("session_ended", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "session_uuid": str(agent.session_uuid),
-                "reason": f"reaper:{reason}",
-                "timestamp": now.isoformat(),
-            })
+            broadcaster.broadcast(
+                "session_ended",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "session_uuid": str(agent.session_uuid),
+                    "reason": f"reaper:{reason}",
+                    "timestamp": now.isoformat(),
+                },
+            )
         except Exception as e:
             logger.debug(f"Reaper broadcast failed (non-fatal): {e}")
 
@@ -442,25 +470,33 @@ class AgentReaper:
             if agent.transcript_path:
                 try:
                     from .transcript_reader import read_transcript_file
+
                     result = read_transcript_file(agent.transcript_path)
                     if result.success and result.text:
                         transcript_text = result.text
                 except Exception as e:
-                    logger.warning(f"Transcript extraction failed for agent {agent.id}: {e}")
+                    logger.warning(
+                        f"Transcript extraction failed for agent {agent.id}: {e}"
+                    )
 
             # Detect intent from transcript
             intent = TurnIntent.COMPLETION
             if transcript_text:
                 try:
                     from .intent_detector import detect_agent_intent
+
                     result = detect_agent_intent(transcript_text)
-                    if result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+                    if result.intent in (
+                        TurnIntent.COMPLETION,
+                        TurnIntent.END_OF_COMMAND,
+                    ):
                         intent = result.intent
                 except Exception as e:
                     logger.debug(f"Intent detection failed for agent {agent.id}: {e}")
 
             # Complete commands via lifecycle manager
             from .command_lifecycle import CommandLifecycleManager
+
             try:
                 event_writer = self._app.extensions.get("event_writer")
                 lifecycle = CommandLifecycleManager(
@@ -485,9 +521,7 @@ class AgentReaper:
                         f"Reaper completed command {cmd.id} (state was {cmd.state.value})"
                     )
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to complete orphaned command {cmd.id}: {e}"
-                    )
+                    logger.warning(f"Failed to complete orphaned command {cmd.id}: {e}")
 
             # Collect pending summarisations for post-commit execution
             pending = lifecycle.get_pending_summarisations()
@@ -495,4 +529,6 @@ class AgentReaper:
                 self._pending_summarisations.extend(pending)
 
         except Exception as e:
-            logger.warning(f"Orphaned command completion failed for agent {agent.id}: {e}")
+            logger.warning(
+                f"Orphaned command completion failed for agent {agent.id}: {e}"
+            )

@@ -44,7 +44,9 @@ def generate_summary(project_id):
 
     # Check for concurrent generation
     if service.is_generating(project_id):
-        return jsonify({"error": "Generation already in progress for this project"}), 409
+        return jsonify(
+            {"error": "Generation already in progress for this project"}
+        ), 409
 
     # Get optional scope override
     scope = None

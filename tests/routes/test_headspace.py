@@ -43,7 +43,6 @@ def mock_monitor():
 
 
 class TestHeadspaceCurrent:
-
     def test_returns_current_state(self, app, client, mock_monitor):
         app.extensions = {"headspace_monitor": mock_monitor}
         resp = client.get("/api/headspace/current")
@@ -72,7 +71,6 @@ class TestHeadspaceCurrent:
 
 
 class TestHeadspaceHistory:
-
     @patch("src.claude_headspace.routes.headspace.db")
     def test_returns_history(self, mock_db, app, client, mock_monitor):
         app.extensions = {"headspace_monitor": mock_monitor}
@@ -88,7 +86,9 @@ class TestHeadspaceHistory:
         mock_snapshot.flow_duration_minutes = None
         mock_snapshot.alert_count_today = 0
 
-        mock_db.session.query.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_snapshot]
+        mock_db.session.query.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            mock_snapshot
+        ]
 
         resp = client.get("/api/headspace/history")
         assert resp.status_code == 200
@@ -142,7 +142,6 @@ class TestHeadspaceHistory:
 
 
 class TestHeadspaceSuppress:
-
     def test_suppress_alerts(self, app, client, mock_monitor):
         app.extensions = {"headspace_monitor": mock_monitor}
         resp = client.post("/api/headspace/suppress", json={"hours": 2})
@@ -154,7 +153,9 @@ class TestHeadspaceSuppress:
 
     def test_suppress_default_1_hour(self, app, client, mock_monitor):
         app.extensions = {"headspace_monitor": mock_monitor}
-        resp = client.post("/api/headspace/suppress", content_type="application/json", data="{}")
+        resp = client.post(
+            "/api/headspace/suppress", content_type="application/json", data="{}"
+        )
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["suppressed_hours"] == 1

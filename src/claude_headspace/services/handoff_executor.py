@@ -25,8 +25,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from flask import current_app
-
 from ..database import db
 from ..models.agent import Agent
 from ..models.handoff import Handoff
@@ -37,7 +35,9 @@ logger = logging.getLogger(__name__)
 # In-memory tracking of agents with handoff in progress.
 # Maps agent_id -> handoff metadata dict.
 _handoff_in_progress: dict[int, dict] = {}
-_handoff_in_progress_lock = threading.Lock()  # Protects the dict only, not business logic
+_handoff_in_progress_lock = (
+    threading.Lock()
+)  # Protects the dict only, not business logic
 
 # Polling configuration
 POLL_INTERVAL_SECONDS = 3
@@ -122,7 +122,11 @@ class HandoffExecutor:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         agent_tag = f"agent-id:{agent.id}"
         return str(
-            project_root / "data" / "personas" / slug / "handoffs"
+            project_root
+            / "data"
+            / "personas"
+            / slug
+            / "handoffs"
             / f"{timestamp}_<insert-summary>_{agent_tag}.md"
         )
 
@@ -162,16 +166,12 @@ class HandoffExecutor:
             f"once the document is written."
         ]
         if context:
-            parts.append(
-                f"\n\nADDITIONAL CONTEXT FROM OPERATOR:\n{context}"
-            )
+            parts.append(f"\n\nADDITIONAL CONTEXT FROM OPERATOR:\n{context}")
         return "".join(parts)
 
     # ── Injection prompt composition ─────────────────────────────────
 
-    def compose_injection_prompt(
-        self, predecessor_agent: Agent, file_path: str
-    ) -> str:
+    def compose_injection_prompt(self, predecessor_agent: Agent, file_path: str) -> str:
         """Compose the injection prompt sent to the successor agent.
 
         References the predecessor and points to the handoff file.
@@ -320,8 +320,10 @@ class HandoffExecutor:
             timestamp_part = parts[0]
             # Extract agent tag from the end (after the last underscore)
             last_underscore = filename.rfind("_")
-            agent_tag_part = filename[last_underscore + 1:]  # e.g. "agent-id:1137.md"
-            glob_pattern = os.path.join(file_dir, f"{timestamp_part}_*_{agent_tag_part}")
+            agent_tag_part = filename[last_underscore + 1 :]  # e.g. "agent-id:1137.md"
+            glob_pattern = os.path.join(
+                file_dir, f"{timestamp_part}_*_{agent_tag_part}"
+            )
         else:
             glob_pattern = None
 
@@ -729,17 +731,20 @@ class HandoffExecutor:
 
             from .broadcaster import get_broadcaster
 
-            get_broadcaster().broadcast("turn_created", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "text": text,
-                "actor": "agent",
-                "intent": "progress",
-                "command_id": current_command.id,
-                "command_instruction": current_command.instruction,
-                "turn_id": turn.id,
-                "timestamp": turn.timestamp.isoformat(),
-            })
+            get_broadcaster().broadcast(
+                "turn_created",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "text": text,
+                    "actor": "agent",
+                    "intent": "progress",
+                    "command_id": current_command.id,
+                    "command_instruction": current_command.instruction,
+                    "turn_id": turn.id,
+                    "timestamp": turn.timestamp.isoformat(),
+                },
+            )
 
             logger.info(
                 f"handoff_status_turn: posted — agent_id={agent.id}, "

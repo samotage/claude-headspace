@@ -16,7 +16,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.agent_driven.helpers.cross_layer import verify_cross_layer_consistency
-from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
+from tests.agent_driven.helpers.output import scenario_footer, scenario_header, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -26,6 +26,7 @@ RESPONSE_TIMEOUT = 60_000  # ms -- generous timeout for real LLM processing
 # ---------------------------------------------------------------------------
 # Test: Question/Answer Flow (FR9)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.agent_driven
 def test_question_answer_flow(claude_session, page, e2e_server, e2e_app):
@@ -85,9 +86,9 @@ def test_question_answer_flow(claude_session, page, e2e_server, e2e_app):
     # --- 5. Verify option text in the question bubble ---
     with step("Verify option text in question bubble", num=5, total=10):
         question_text = agent_bubbles.first.inner_text()
-        assert "12-hour" in question_text.lower() or "24-hour" in question_text.lower(), (
-            f"Expected AskUserQuestion with time format options: {question_text!r}"
-        )
+        assert (
+            "12-hour" in question_text.lower() or "24-hour" in question_text.lower()
+        ), f"Expected AskUserQuestion with time format options: {question_text!r}"
 
     # --- 6. Verify AWAITING_INPUT state reached in database ---
     with step("Verify AWAITING_INPUT state in database", num=6, total=10):
@@ -112,7 +113,8 @@ def test_question_answer_flow(claude_session, page, e2e_server, e2e_app):
         time.sleep(1)  # Let terminal UI settle
         subprocess.run(
             ["tmux", "send-keys", "-t", session_name, "Enter"],
-            check=True, timeout=5,
+            check=True,
+            timeout=5,
         )
         va.capture("qa_07_option_selected")
 

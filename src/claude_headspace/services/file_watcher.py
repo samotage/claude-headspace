@@ -18,8 +18,9 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any
 from uuid import UUID
 
 from watchdog.events import FileModifiedEvent, FileSystemEventHandler
@@ -27,7 +28,7 @@ from watchdog.observers import Observer
 
 from .git_metadata import GitMetadata
 from .jsonl_parser import JSONLParser
-from .project_decoder import encode_project_path, locate_jsonl_file
+from .project_decoder import locate_jsonl_file
 from .prompt_registry import build_prompt
 from .session_registry import RegisteredSession, SessionRegistry
 
@@ -76,15 +77,15 @@ class FileWatcher:
         self._git_metadata = GitMetadata()
         self._parsers: dict[UUID, JSONLParser] = {}
 
-        self._observer: Optional[Observer] = None
-        self._polling_thread: Optional[threading.Thread] = None
+        self._observer: Observer | None = None
+        self._polling_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._running = False
 
         # Event callbacks
-        self._on_turn_detected: Optional[Callable[[dict], None]] = None
-        self._on_session_ended: Optional[Callable[[dict], None]] = None
-        self._on_question_detected: Optional[Callable[[dict], None]] = None
+        self._on_turn_detected: Callable[[dict], None] | None = None
+        self._on_session_ended: Callable[[dict], None] | None = None
+        self._on_question_detected: Callable[[dict], None] | None = None
 
         # Debouncing state
         self._pending_files: dict[str, float] = {}
@@ -94,8 +95,12 @@ class FileWatcher:
         self._watches: dict[UUID, object] = {}  # session_uuid -> ObservedWatch
 
         # Content pipeline: transcript monitoring
-        self._transcript_positions: dict[int, int] = {}  # agent_id -> file byte position
-        self._pending_inference_timers: dict[int, threading.Timer] = {}  # agent_id -> timer
+        self._transcript_positions: dict[
+            int, int
+        ] = {}  # agent_id -> file byte position
+        self._pending_inference_timers: dict[
+            int, threading.Timer
+        ] = {}  # agent_id -> timer
         self._timer_lock = threading.Lock()
 
     @property
@@ -176,7 +181,7 @@ class FileWatcher:
         session_uuid: UUID,
         project_path: str,
         working_directory: str,
-        iterm_pane_id: Optional[str] = None,
+        iterm_pane_id: str | None = None,
     ) -> RegisteredSession:
         """
         Register a session and start watching its jsonl file.
@@ -412,10 +417,7 @@ class FileWatcher:
             return False
 
         # Look for new assistant content
-        agent_entries = [
-            e for e in entries
-            if e.role == "assistant" and e.content
-        ]
+        agent_entries = [e for e in entries if e.role == "assistant" and e.content]
 
         if not agent_entries:
             return False
@@ -425,8 +427,8 @@ class FileWatcher:
         if not latest_content:
             return False
 
-        from .intent_detector import detect_agent_intent
         from ..models.turn import TurnIntent
+        from .intent_detector import detect_agent_intent
 
         intent_result = detect_agent_intent(latest_content)
         if intent_result.intent == TurnIntent.QUESTION:
@@ -493,7 +495,9 @@ class FileWatcher:
             with self._app.app_context():
                 inference_service = self._app.extensions.get("inference_service")
             if not inference_service:
-                logger.debug("No inference service available for question classification")
+                logger.debug(
+                    "No inference service available for question classification"
+                )
                 return
 
             is_question = self._classify_question_via_inference(
@@ -508,7 +512,9 @@ class FileWatcher:
         except RuntimeError:
             logger.debug("No Flask app context for inference classification")
         except Exception as e:
-            logger.warning(f"Inference classification failed for agent_id={agent_id}: {e}")
+            logger.warning(
+                f"Inference classification failed for agent_id={agent_id}: {e}"
+            )
 
     @staticmethod
     def _classify_question_via_inference(inference_service: Any, content: str) -> bool:
@@ -538,9 +544,7 @@ class FileWatcher:
 
         return False
 
-    def _emit_question_detected(
-        self, agent_id: int, content: str, source: str
-    ) -> None:
+    def _emit_question_detected(self, agent_id: int, content: str, source: str) -> None:
         """Emit a question_detected event from the content pipeline."""
         event = {
             "event_type": "question_detected",
@@ -576,9 +580,7 @@ class FileWatcher:
             except Exception as e:
                 logger.error(f"Error in turn_detected callback: {e}")
 
-    def _emit_session_ended(
-        self, session: RegisteredSession, reason: str
-    ) -> None:
+    def _emit_session_ended(self, session: RegisteredSession, reason: str) -> None:
         """Emit a session_ended event."""
         event = {
             "event_type": "session_ended",
@@ -657,6 +659,7 @@ def init_file_watcher(app: Any, config: dict) -> FileWatcher:
         pass  # Watcher stops on app shutdown via atexit
 
     import atexit
+
     atexit.register(watcher.stop)
 
     return watcher

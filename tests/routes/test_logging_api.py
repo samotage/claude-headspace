@@ -4,8 +4,6 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestApiLogPage:
     """Tests for the API log page route."""
@@ -117,7 +115,9 @@ class TestGetApiCallsAPI:
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_call]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_call
+            ]
             mock_db.session.query.return_value = mock_query
 
             response = client.get("/api/logging/api-calls")
@@ -146,7 +146,9 @@ class TestGetApiCallsAPI:
             mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
             mock_db.session.query.return_value = mock_query
 
-            response = client.get("/api/logging/api-calls?endpoint_path=/api/remote_agents/create")
+            response = client.get(
+                "/api/logging/api-calls?endpoint_path=/api/remote_agents/create"
+            )
             assert response.status_code == 200
             mock_query.filter.assert_called()
 
@@ -318,7 +320,9 @@ class TestGetApiCallFiltersAPI:
             mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = [
                 ("/api/remote_agents/create",)
             ]
-            mock_db.session.query.return_value.filter.return_value.first.return_value = MagicMock(id=1)
+            mock_db.session.query.return_value.filter.return_value.first.return_value = MagicMock(
+                id=1
+            )
 
             response = client.get("/api/logging/api-calls/filters")
             assert response.status_code == 200

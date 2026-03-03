@@ -1,6 +1,6 @@
 """Unit tests for priority scoring hook integration."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from flask import Flask
@@ -17,7 +17,6 @@ def app():
 
 
 class TestTriggerPriorityScoring:
-
     def test_graceful_no_app(self, app):
         """_trigger_priority_scoring handles missing Flask app context."""
         with app.app_context():

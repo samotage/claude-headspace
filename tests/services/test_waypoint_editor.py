@@ -1,16 +1,12 @@
 """Tests for waypoint editor service."""
 
-import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.waypoint_editor import (
     DEFAULT_TEMPLATE,
-    SaveResult,
     WaypointResult,
     get_waypoint_path,
     load_waypoint,
@@ -113,9 +109,13 @@ class TestSaveWaypoint:
             waypoint_file.write_text("# Old Content")
 
             mock_archive = MagicMock()
-            mock_archive.archive_artifact.return_value = "archive/waypoint_2026-01-29_14-30-00.md"
+            mock_archive.archive_artifact.return_value = (
+                "archive/waypoint_2026-01-29_14-30-00.md"
+            )
 
-            result = save_waypoint(tmpdir, "# New Content", archive_service=mock_archive)
+            result = save_waypoint(
+                tmpdir, "# New Content", archive_service=mock_archive
+            )
 
             assert result.success is True
             assert result.archived is True
@@ -152,7 +152,9 @@ class TestSaveWaypoint:
             mock_archive = MagicMock()
             mock_archive.archive_artifact.side_effect = OSError("disk full")
 
-            result = save_waypoint(tmpdir, "# New Content", archive_service=mock_archive)
+            result = save_waypoint(
+                tmpdir, "# New Content", archive_service=mock_archive
+            )
 
             assert result.success is True
             assert result.archived is False
@@ -216,7 +218,9 @@ class TestSaveWaypoint:
                 waypoint_file.stat().st_mtime, tz=timezone.utc
             )
 
-            result = save_waypoint(tmpdir, "# New Content", expected_mtime=current_mtime)
+            result = save_waypoint(
+                tmpdir, "# New Content", expected_mtime=current_mtime
+            )
 
             assert result.success is True
             assert waypoint_file.read_text() == "# New Content"
@@ -289,8 +293,12 @@ class TestAtomicWrite:
             waypoint_file.write_text("# Original")
 
             # Patch os.replace to verify it's called
-            with patch("claude_headspace.services.waypoint_editor.os.replace") as mock_replace:
-                mock_replace.side_effect = lambda src, dst: Path(dst).write_text(Path(src).read_text())
+            with patch(
+                "claude_headspace.services.waypoint_editor.os.replace"
+            ) as mock_replace:
+                mock_replace.side_effect = lambda src, dst: Path(dst).write_text(
+                    Path(src).read_text()
+                )
 
                 save_waypoint(tmpdir, "# New Content")
 

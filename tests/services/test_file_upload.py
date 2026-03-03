@@ -4,12 +4,10 @@ import io
 import os
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from src.claude_headspace.services.file_upload import FileUploadService
-
 
 # ──────────────────────────────────────────────────────────────
 # Fixtures

@@ -1,9 +1,6 @@
 """Tests for waypoint API routes."""
 
-import json
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -44,7 +41,10 @@ class TestListProjects:
         mock_project2.path = "/path/to/beta"
 
         mock_query = MagicMock()
-        mock_query.order_by.return_value.all.return_value = [mock_project1, mock_project2]
+        mock_query.order_by.return_value.all.return_value = [
+            mock_project1,
+            mock_project2,
+        ]
         mock_db.session.query.return_value = mock_query
 
         response = client.get("/api/waypoint/projects")
@@ -113,6 +113,7 @@ class TestGetWaypoint:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import WaypointResult
+
         mock_load.return_value = WaypointResult(
             content="# My Waypoint",
             exists=True,
@@ -134,7 +135,9 @@ class TestGetWaypoint:
     @patch("src.claude_headspace.routes.waypoint.load_waypoint")
     @patch("src.claude_headspace.routes.waypoint.validate_project_path")
     @patch("src.claude_headspace.routes.waypoint.db")
-    def test_returns_template_when_missing(self, mock_db, mock_validate, mock_load, client):
+    def test_returns_template_when_missing(
+        self, mock_db, mock_validate, mock_load, client
+    ):
         """Should return template when waypoint doesn't exist."""
         mock_project = MagicMock()
         mock_project.id = 1
@@ -143,7 +146,11 @@ class TestGetWaypoint:
         mock_db.session.get.return_value = mock_project
         mock_validate.return_value = (True, None)
 
-        from claude_headspace.services.waypoint_editor import WaypointResult, DEFAULT_TEMPLATE
+        from claude_headspace.services.waypoint_editor import (
+            DEFAULT_TEMPLATE,
+            WaypointResult,
+        )
+
         mock_load.return_value = WaypointResult(
             content=DEFAULT_TEMPLATE,
             exists=False,
@@ -183,7 +190,9 @@ class TestPostWaypoint:
             mock_project.path = "/path"
             mock_db.session.get.return_value = mock_project
 
-            with patch("src.claude_headspace.routes.waypoint.validate_project_path") as mock_validate:
+            with patch(
+                "src.claude_headspace.routes.waypoint.validate_project_path"
+            ) as mock_validate:
                 mock_validate.return_value = (True, None)
 
                 response = client.post(
@@ -203,7 +212,9 @@ class TestPostWaypoint:
             mock_project.path = "/path"
             mock_db.session.get.return_value = mock_project
 
-            with patch("src.claude_headspace.routes.waypoint.validate_project_path") as mock_validate:
+            with patch(
+                "src.claude_headspace.routes.waypoint.validate_project_path"
+            ) as mock_validate:
                 mock_validate.return_value = (True, None)
 
                 response = client.post(
@@ -218,7 +229,9 @@ class TestPostWaypoint:
     @patch("src.claude_headspace.routes.waypoint.save_waypoint")
     @patch("src.claude_headspace.routes.waypoint.validate_project_path")
     @patch("src.claude_headspace.routes.waypoint.db")
-    def test_saves_waypoint_successfully(self, mock_db, mock_validate, mock_save, client):
+    def test_saves_waypoint_successfully(
+        self, mock_db, mock_validate, mock_save, client
+    ):
         """Should save waypoint and return success."""
         mock_project = MagicMock()
         mock_project.id = 1
@@ -227,6 +240,7 @@ class TestPostWaypoint:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import SaveResult
+
         mock_save.return_value = SaveResult(
             success=True,
             archived=True,
@@ -258,6 +272,7 @@ class TestPostWaypoint:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import SaveResult
+
         mock_save.return_value = SaveResult(
             success=False,
             archived=False,
@@ -281,7 +296,9 @@ class TestPostWaypoint:
     @patch("src.claude_headspace.routes.waypoint.save_waypoint")
     @patch("src.claude_headspace.routes.waypoint.validate_project_path")
     @patch("src.claude_headspace.routes.waypoint.db")
-    def test_returns_403_on_permission_denied(self, mock_db, mock_validate, mock_save, client):
+    def test_returns_403_on_permission_denied(
+        self, mock_db, mock_validate, mock_save, client
+    ):
         """Should return 403 on permission denied."""
         mock_project = MagicMock()
         mock_project.id = 1
@@ -290,6 +307,7 @@ class TestPostWaypoint:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import SaveResult
+
         mock_save.return_value = SaveResult(
             success=False,
             archived=False,
@@ -323,9 +341,12 @@ class TestExpectedMtimeParsing:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import SaveResult
+
         mock_save.return_value = SaveResult(
-            success=True, archived=False, archive_path=None,
-            last_modified=datetime.now(timezone.utc)
+            success=True,
+            archived=False,
+            archive_path=None,
+            last_modified=datetime.now(timezone.utc),
         )
 
         response = client.post(
@@ -344,7 +365,9 @@ class TestExpectedMtimeParsing:
     @patch("src.claude_headspace.routes.waypoint.save_waypoint")
     @patch("src.claude_headspace.routes.waypoint.validate_project_path")
     @patch("src.claude_headspace.routes.waypoint.db")
-    def test_parses_iso_format_with_offset(self, mock_db, mock_validate, mock_save, client):
+    def test_parses_iso_format_with_offset(
+        self, mock_db, mock_validate, mock_save, client
+    ):
         """Should parse ISO format with timezone offset."""
         mock_project = MagicMock()
         mock_project.id = 1
@@ -353,9 +376,12 @@ class TestExpectedMtimeParsing:
         mock_validate.return_value = (True, None)
 
         from claude_headspace.services.waypoint_editor import SaveResult
+
         mock_save.return_value = SaveResult(
-            success=True, archived=False, archive_path=None,
-            last_modified=datetime.now(timezone.utc)
+            success=True,
+            archived=False,
+            archive_path=None,
+            last_modified=datetime.now(timezone.utc),
         )
 
         response = client.post(

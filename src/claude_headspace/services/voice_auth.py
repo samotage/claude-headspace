@@ -3,9 +3,8 @@
 import logging
 import time
 from collections import defaultdict
-from functools import wraps
 
-from flask import current_app, jsonify, request
+from flask import jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -71,38 +70,44 @@ class VoiceAuth:
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self._log_access(auth_status="missing_token")
-            return jsonify({
-                "voice": {
-                    "status_line": "Authentication required.",
-                    "results": [],
-                    "next_action": "Include a valid Bearer token in the Authorization header.",
-                },
-                "error": "missing_token",
-            }), 401
+            return jsonify(
+                {
+                    "voice": {
+                        "status_line": "Authentication required.",
+                        "results": [],
+                        "next_action": "Include a valid Bearer token in the Authorization header.",
+                    },
+                    "error": "missing_token",
+                }
+            ), 401
 
         provided_token = auth_header[7:]  # Strip "Bearer "
         if provided_token != self.token:
             self._log_access(auth_status="invalid_token")
-            return jsonify({
-                "voice": {
-                    "status_line": "Invalid authentication token.",
-                    "results": [],
-                    "next_action": "Check your token and try again.",
-                },
-                "error": "invalid_token",
-            }), 401
+            return jsonify(
+                {
+                    "voice": {
+                        "status_line": "Invalid authentication token.",
+                        "results": [],
+                        "next_action": "Check your token and try again.",
+                    },
+                    "error": "invalid_token",
+                }
+            ), 401
 
         # Rate limiting
         if not self._check_rate_limit(provided_token):
             self._log_access(auth_status="rate_limited")
-            return jsonify({
-                "voice": {
-                    "status_line": "Too many requests. Please wait a moment.",
-                    "results": [],
-                    "next_action": "Try again in a few seconds.",
-                },
-                "error": "rate_limited",
-            }), 429
+            return jsonify(
+                {
+                    "voice": {
+                        "status_line": "Too many requests. Please wait a moment.",
+                        "results": [],
+                        "next_action": "Try again in a few seconds.",
+                    },
+                    "error": "rate_limited",
+                }
+            ), 429
 
         latency_ms = (time.time() - start_time) * 1000
         self._log_access(auth_status="authenticated", latency_ms=latency_ms)

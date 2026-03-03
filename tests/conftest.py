@@ -8,7 +8,6 @@ import pytest
 from claude_headspace.app import create_app
 from claude_headspace.config import load_config
 
-
 # ---------------------------------------------------------------------------
 # Production database safety guard (session-scoped, autouse)
 # ---------------------------------------------------------------------------
@@ -90,18 +89,18 @@ def _seed_persona_types(app):
 
     with app.app_context():
         try:
-            db.session.execute(text("""
+            db.session.execute(
+                text("""
                 INSERT INTO persona_types (id, type_key, subtype) VALUES
                 (1, 'agent', 'internal'),
                 (2, 'agent', 'external'),
                 (3, 'person', 'internal'),
                 (4, 'person', 'external')
                 ON CONFLICT DO NOTHING
-            """))
+            """)
+            )
             # Reset sequence so auto-generated ids start after seeded rows
-            db.session.execute(text(
-                "SELECT setval('persona_types_id_seq', 4, true)"
-            ))
+            db.session.execute(text("SELECT setval('persona_types_id_seq', 4, true)"))
             db.session.commit()
         except Exception:
             db.session.rollback()

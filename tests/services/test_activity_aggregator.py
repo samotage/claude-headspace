@@ -9,7 +9,6 @@ import pytest
 from src.claude_headspace.models.turn import TurnActor
 from src.claude_headspace.services.activity_aggregator import (
     ActivityAggregator,
-    DEFAULT_RETENTION_DAYS,
 )
 
 
@@ -40,7 +39,9 @@ class TestAggregatorInit:
         assert agg._retention_days == 30
 
     def test_custom_config(self, mock_app):
-        config = {"activity": {"interval_seconds": 60, "retention_days": 7, "enabled": False}}
+        config = {
+            "activity": {"interval_seconds": 60, "retention_days": 7, "enabled": False}
+        }
         agg = ActivityAggregator(app=mock_app, config=config)
         assert agg._enabled is False
         assert agg._interval == 60
@@ -166,7 +167,8 @@ class TestAggregateOnce:
         )
         turns_query = MagicMock()
         turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            (mock_turn1, 1), (mock_turn2, 1),
+            (mock_turn1, 1),
+            (mock_turn2, 1),
         ]
 
         call_count = [0]
@@ -186,7 +188,9 @@ class TestAggregateOnce:
         assert stats["overall"] == 1
 
     @patch("src.claude_headspace.services.activity_aggregator.db")
-    def test_aggregate_once_includes_frustration_from_user_turns(self, mock_db, aggregator):
+    def test_aggregate_once_includes_frustration_from_user_turns(
+        self, mock_db, aggregator
+    ):
         """Frustration scores on USER turns are correctly aggregated using TurnActor enum."""
         now = datetime.now(timezone.utc)
         bucket_start = now.replace(minute=0, second=0, microsecond=0)
@@ -216,7 +220,9 @@ class TestAggregateOnce:
         )
         turns_query = MagicMock()
         turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            (mock_turn1, 1), (mock_turn2, 1), (mock_turn3, 1),
+            (mock_turn1, 1),
+            (mock_turn2, 1),
+            (mock_turn3, 1),
         ]
 
         call_count = [0]
@@ -239,7 +245,9 @@ class TestAggregateOnce:
         assert len(execute_calls) >= 1  # At least agent-level metric written
 
     @patch("src.claude_headspace.services.activity_aggregator.db")
-    def test_aggregate_once_excludes_agent_ended_before_bucket(self, mock_db, aggregator):
+    def test_aggregate_once_excludes_agent_ended_before_bucket(
+        self, mock_db, aggregator
+    ):
         """An agent that ended before the current bucket should be excluded."""
         now = datetime.now(timezone.utc)
         bucket_start = now.replace(minute=0, second=0, microsecond=0)

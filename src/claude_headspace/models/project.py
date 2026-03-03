@@ -3,7 +3,7 @@
 import re
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Index, Text
+from sqlalchemy import Boolean, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
@@ -39,13 +39,17 @@ class Project(db.Model):
     github_repo: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_branch: Mapped[str | None] = mapped_column(nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    inference_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    inference_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     inference_paused_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     inference_paused_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships

@@ -1,37 +1,37 @@
 """Tests for transcript_reader service."""
 
 import json
-import os
-
-import pytest
 
 from claude_headspace.services.transcript_reader import (
     MAX_CONTENT_LENGTH,
-    TranscriptReadResult,
     read_transcript_file,
 )
 
 
 def _assistant_line(text: str) -> str:
     """Create a JSONL line for an assistant message."""
-    return json.dumps({
-        "type": "assistant",
-        "message": {
-            "role": "assistant",
-            "content": [{"type": "text", "text": text}],
-        },
-    })
+    return json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+            },
+        }
+    )
 
 
 def _user_line(text: str) -> str:
     """Create a JSONL line for a user message."""
-    return json.dumps({
-        "type": "user",
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": text}],
-        },
-    })
+    return json.dumps(
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": text}],
+            },
+        }
+    )
 
 
 def _progress_line() -> str:
@@ -144,13 +144,15 @@ class TestReadTranscriptFile:
 
     def test_assistant_with_empty_content(self, tmp_path):
         """Assistant message with no text blocks should be skipped."""
-        empty_assistant = json.dumps({
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [{"type": "tool_use", "name": "Read"}],
-            },
-        })
+        empty_assistant = json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Read"}],
+                },
+            }
+        )
         lines = [
             _user_line("Go"),
             empty_assistant,

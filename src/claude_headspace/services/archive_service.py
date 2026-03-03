@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -173,7 +172,7 @@ class ArchiveService:
 
         if self._retention_policy == "keep_last_n":
             if len(archives) > self._keep_last_n:
-                to_delete = archives[self._keep_last_n:]
+                to_delete = archives[self._keep_last_n :]
 
         elif self._retention_policy == "time_based":
             cutoff = datetime.now(timezone.utc) - timedelta(days=self._retention_days)

@@ -6,24 +6,24 @@ import pytest
 
 from src.claude_headspace.services.inference_rate_limiter import (
     InferenceRateLimiter,
-    RateLimitResult,
 )
 
 
 @pytest.fixture
 def limiter():
-    return InferenceRateLimiter({
-        "openrouter": {
-            "rate_limits": {
-                "calls_per_minute": 5,
-                "tokens_per_minute": 1000,
+    return InferenceRateLimiter(
+        {
+            "openrouter": {
+                "rate_limits": {
+                    "calls_per_minute": 5,
+                    "tokens_per_minute": 1000,
+                },
             },
-        },
-    })
+        }
+    )
 
 
 class TestRateLimitCheck:
-
     def test_first_request_allowed(self, limiter):
         result = limiter.check()
         assert result.allowed is True
@@ -62,7 +62,6 @@ class TestRateLimitCheck:
 
 
 class TestRateLimitRecord:
-
     def test_record_increments_call_count(self, limiter):
         limiter.record(100)
         usage = limiter.current_usage
@@ -75,7 +74,6 @@ class TestRateLimitRecord:
 
 
 class TestCurrentUsage:
-
     def test_initial_usage(self, limiter):
         usage = limiter.current_usage
         assert usage["calls_per_minute"]["current"] == 0
@@ -92,7 +90,6 @@ class TestCurrentUsage:
 
 
 class TestThreadSafety:
-
     def test_concurrent_records(self, limiter):
         """Test that concurrent record calls don't lose data."""
         errors = []

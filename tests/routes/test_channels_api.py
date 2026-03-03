@@ -17,10 +17,10 @@ from claude_headspace.services.channel_service import (
 )
 from claude_headspace.services.session_token import SessionTokenService
 
-
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def token_service():
@@ -85,6 +85,7 @@ def client(app):
 # ──────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────
+
 
 def _make_mock_channel(
     slug="workshop-test-1",
@@ -159,6 +160,7 @@ def _patch_resolve_caller(persona, agent=None):
 # Auth Tests (Section 3.2)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestAuth:
     """Test dual authentication: Bearer token and session cookie."""
 
@@ -182,7 +184,12 @@ class TestAuth:
             assert data["error"]["code"] == "invalid_session_token"
 
     def test_valid_token_resolves_to_persona(
-        self, client, token_service, mock_channel_service, mock_agent, mock_agent_persona,
+        self,
+        client,
+        token_service,
+        mock_channel_service,
+        mock_agent,
+        mock_agent_persona,
     ):
         """Valid Bearer token resolves agent -> persona."""
         mock_channel_service.list_channels.return_value = []
@@ -195,7 +202,10 @@ class TestAuth:
             assert call_kwargs.kwargs["persona"] == mock_agent_persona
 
     def test_session_cookie_resolves_to_operator(
-        self, client, mock_channel_service, mock_operator,
+        self,
+        client,
+        mock_channel_service,
+        mock_operator,
     ):
         """No token, session cookie -> operator persona."""
         mock_channel_service.list_channels.return_value = []
@@ -219,6 +229,7 @@ class TestAuth:
 # ──────────────────────────────────────────────────────────────
 # Create Channel Tests (Section 3.1.1)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestCreateChannel:
     """Tests for POST /api/channels (FR1)."""
@@ -259,7 +270,10 @@ class TestCreateChannel:
             assert data["member_count"] == 1
 
     def test_no_creation_capability_returns_403(
-        self, client, mock_operator, mock_channel_service,
+        self,
+        client,
+        mock_operator,
+        mock_channel_service,
     ):
         mock_channel_service.create_channel.side_effect = NoCreationCapabilityError(
             "Error: Persona 'Sam' does not have channel creation capability."
@@ -277,6 +291,7 @@ class TestCreateChannel:
 # ──────────────────────────────────────────────────────────────
 # List Channels Tests (Section 3.1.2)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestListChannels:
     """Tests for GET /api/channels (FR2)."""
@@ -300,13 +315,21 @@ class TestListChannels:
             assert call_kwargs["all_visible"] is True
 
     def test_non_operator_all_true_fallback(
-        self, client, token_service, mock_channel_service,
-        mock_agent, mock_agent_persona, mock_operator,
+        self,
+        client,
+        token_service,
+        mock_channel_service,
+        mock_agent,
+        mock_agent_persona,
+        mock_operator,
     ):
         """Non-operator passing ?all=true gets silent fallback to member-scoped."""
         mock_channel_service.list_channels.return_value = []
 
-        with _patch_resolve_caller(mock_agent_persona, mock_agent), _patch_operator(mock_operator):
+        with (
+            _patch_resolve_caller(mock_agent_persona, mock_agent),
+            _patch_operator(mock_operator),
+        ):
             resp = client.get("/api/channels?all=true")
             assert resp.status_code == 200
             call_kwargs = mock_channel_service.list_channels.call_args.kwargs
@@ -317,6 +340,7 @@ class TestListChannels:
 # ──────────────────────────────────────────────────────────────
 # Get Channel Tests (Section 3.1.3)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestGetChannel:
     """Tests for GET /api/channels/<slug> (FR3)."""
@@ -347,6 +371,7 @@ class TestGetChannel:
 # ──────────────────────────────────────────────────────────────
 # Update Channel Tests (Section 3.1.4)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestUpdateChannel:
     """Tests for PATCH /api/channels/<slug> (FR4)."""
@@ -382,6 +407,7 @@ class TestUpdateChannel:
 # Complete Channel Tests (Section 3.1.5)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestCompleteChannel:
     """Tests for POST /api/channels/<slug>/complete (FR5)."""
 
@@ -413,10 +439,13 @@ class TestCompleteChannel:
 # Archive Channel Tests (Section 3.1.6)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestArchiveChannel:
     """Tests for POST /api/channels/<slug>/archive (FR5a)."""
 
-    def test_not_complete_returns_409(self, client, mock_operator, mock_channel_service):
+    def test_not_complete_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
         mock_channel_service.archive_channel.side_effect = ChannelClosedError(
             "Error: Channel #test-slug must be in 'complete' state to archive."
         )
@@ -446,6 +475,7 @@ class TestArchiveChannel:
 # List Members Tests (Section 3.1.7)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestListMembers:
     """Tests for GET /api/channels/<slug>/members (FR6)."""
 
@@ -473,6 +503,7 @@ class TestListMembers:
 # ──────────────────────────────────────────────────────────────
 # Add Member Tests (Section 3.1.8)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestAddMember:
     """Tests for POST /api/channels/<slug>/members (FR7)."""
@@ -506,7 +537,9 @@ class TestAddMember:
             assert data["persona_slug"] == "engineer-con-3"
             assert data["is_chair"] is False
 
-    def test_already_member_returns_409(self, client, mock_operator, mock_channel_service):
+    def test_already_member_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
         mock_channel_service.add_member.side_effect = AlreadyMemberError(
             "Error: Persona 'Con' is already a member of #test-slug."
         )
@@ -524,6 +557,7 @@ class TestAddMember:
 # Leave Channel Tests (Section 3.1.9)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestLeaveChannel:
     """Tests for POST /api/channels/<slug>/leave (FR8)."""
 
@@ -539,6 +573,7 @@ class TestLeaveChannel:
 # ──────────────────────────────────────────────────────────────
 # Mute Channel Tests (Section 3.1.10)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestMuteChannel:
     """Tests for POST /api/channels/<slug>/mute (FR9)."""
@@ -556,6 +591,7 @@ class TestMuteChannel:
 # Unmute Channel Tests (Section 3.1.11)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestUnmuteChannel:
     """Tests for POST /api/channels/<slug>/unmute (FR10)."""
 
@@ -571,6 +607,7 @@ class TestUnmuteChannel:
 # ──────────────────────────────────────────────────────────────
 # Transfer Chair Tests (Section 3.1.12)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestTransferChair:
     """Tests for POST /api/channels/<slug>/transfer-chair (FR11)."""
@@ -611,6 +648,7 @@ class TestTransferChair:
 # ──────────────────────────────────────────────────────────────
 # Get Messages Tests (Section 3.1.13)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestGetMessages:
     """Tests for GET /api/channels/<slug>/messages (FR12)."""
@@ -658,6 +696,7 @@ class TestGetMessages:
 # ──────────────────────────────────────────────────────────────
 # Send Message Tests (Section 3.1.14)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestSendMessage:
     """Tests for POST /api/channels/<slug>/messages (FR13)."""
@@ -720,7 +759,9 @@ class TestSendMessage:
             assert data["channel_slug"] == "test-slug"
             assert data["message_type"] == "message"
 
-    def test_channel_closed_returns_409(self, client, mock_operator, mock_channel_service):
+    def test_channel_closed_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
         mock_channel_service.send_message.side_effect = ChannelClosedError(
             "Error: Channel #test-slug is complete. Create a new channel to continue."
         )
@@ -737,6 +778,7 @@ class TestSendMessage:
 # ──────────────────────────────────────────────────────────────
 # Error Envelope Tests (Section 3.3)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestErrorEnvelope:
     """Test that all errors follow the {error: {code, message, status}} format."""

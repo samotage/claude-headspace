@@ -2,7 +2,6 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
@@ -26,7 +25,7 @@ class TransitionResult:
     from_state: CommandState
     to_state: CommandState
     reason: str
-    trigger: Optional[str] = None
+    trigger: str | None = None
 
 
 # Valid transitions mapping
@@ -47,34 +46,106 @@ VALID_TRANSITIONS: dict[tuple[CommandState, TurnActor, TurnIntent], CommandState
     (CommandState.IDLE, TurnActor.USER, TurnIntent.COMMAND): CommandState.COMMANDED,
     # From IDLE: Agent output before user command processed (race condition, session resumption)
     (CommandState.IDLE, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
-    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
+    (
+        CommandState.IDLE,
+        TurnActor.AGENT,
+        TurnIntent.QUESTION,
+    ): CommandState.AWAITING_INPUT,
     (CommandState.IDLE, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
-    (CommandState.IDLE, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    (
+        CommandState.IDLE,
+        TurnActor.AGENT,
+        TurnIntent.END_OF_COMMAND,
+    ): CommandState.COMPLETE,
     # From COMMANDED: Agent responds
-    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
-    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
-    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
-    (CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    (
+        CommandState.COMMANDED,
+        TurnActor.AGENT,
+        TurnIntent.PROGRESS,
+    ): CommandState.PROCESSING,
+    (
+        CommandState.COMMANDED,
+        TurnActor.AGENT,
+        TurnIntent.QUESTION,
+    ): CommandState.AWAITING_INPUT,
+    (
+        CommandState.COMMANDED,
+        TurnActor.AGENT,
+        TurnIntent.COMPLETION,
+    ): CommandState.COMPLETE,
+    (
+        CommandState.COMMANDED,
+        TurnActor.AGENT,
+        TurnIntent.END_OF_COMMAND,
+    ): CommandState.COMPLETE,
     # From COMMANDED: User sends follow-up command before agent responds
-    (CommandState.COMMANDED, TurnActor.USER, TurnIntent.COMMAND): CommandState.COMMANDED,
+    (
+        CommandState.COMMANDED,
+        TurnActor.USER,
+        TurnIntent.COMMAND,
+    ): CommandState.COMMANDED,
     # From PROCESSING: Agent continues or asks/completes
-    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.PROCESSING,
-    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
-    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
-    (CommandState.PROCESSING, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    (
+        CommandState.PROCESSING,
+        TurnActor.AGENT,
+        TurnIntent.PROGRESS,
+    ): CommandState.PROCESSING,
+    (
+        CommandState.PROCESSING,
+        TurnActor.AGENT,
+        TurnIntent.QUESTION,
+    ): CommandState.AWAITING_INPUT,
+    (
+        CommandState.PROCESSING,
+        TurnActor.AGENT,
+        TurnIntent.COMPLETION,
+    ): CommandState.COMPLETE,
+    (
+        CommandState.PROCESSING,
+        TurnActor.AGENT,
+        TurnIntent.END_OF_COMMAND,
+    ): CommandState.COMPLETE,
     # From PROCESSING: User confirms/approves (continues same command)
-    (CommandState.PROCESSING, TurnActor.USER, TurnIntent.ANSWER): CommandState.PROCESSING,
+    (
+        CommandState.PROCESSING,
+        TurnActor.USER,
+        TurnIntent.ANSWER,
+    ): CommandState.PROCESSING,
     # From PROCESSING: User sends new command while processing
-    (CommandState.PROCESSING, TurnActor.USER, TurnIntent.COMMAND): CommandState.PROCESSING,
+    (
+        CommandState.PROCESSING,
+        TurnActor.USER,
+        TurnIntent.COMMAND,
+    ): CommandState.PROCESSING,
     # From AWAITING_INPUT: User answers and agent resumes
-    (CommandState.AWAITING_INPUT, TurnActor.USER, TurnIntent.ANSWER): CommandState.PROCESSING,
+    (
+        CommandState.AWAITING_INPUT,
+        TurnActor.USER,
+        TurnIntent.ANSWER,
+    ): CommandState.PROCESSING,
     # From AWAITING_INPUT: Agent asks follow-up question or provides progress
     # (e.g., background agent completes, main agent outputs additional text)
-    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.QUESTION): CommandState.AWAITING_INPUT,
-    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.PROGRESS): CommandState.AWAITING_INPUT,
+    (
+        CommandState.AWAITING_INPUT,
+        TurnActor.AGENT,
+        TurnIntent.QUESTION,
+    ): CommandState.AWAITING_INPUT,
+    (
+        CommandState.AWAITING_INPUT,
+        TurnActor.AGENT,
+        TurnIntent.PROGRESS,
+    ): CommandState.AWAITING_INPUT,
     # From AWAITING_INPUT: Agent completes while awaiting (session_end forced completion)
-    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.COMPLETION): CommandState.COMPLETE,
-    (CommandState.AWAITING_INPUT, TurnActor.AGENT, TurnIntent.END_OF_COMMAND): CommandState.COMPLETE,
+    (
+        CommandState.AWAITING_INPUT,
+        TurnActor.AGENT,
+        TurnIntent.COMPLETION,
+    ): CommandState.COMPLETE,
+    (
+        CommandState.AWAITING_INPUT,
+        TurnActor.AGENT,
+        TurnIntent.END_OF_COMMAND,
+    ): CommandState.COMPLETE,
     # Special case: User command while awaiting input starts NEW command
     # This is handled specially in validate_transition()
 }
@@ -138,7 +209,9 @@ def validate_transition(
     )
 
 
-def get_valid_transitions_from(state: CommandState) -> list[tuple[TurnActor, TurnIntent, CommandState]]:
+def get_valid_transitions_from(
+    state: CommandState,
+) -> list[tuple[TurnActor, TurnIntent, CommandState]]:
     """
     Get all valid transitions from a given state.
 

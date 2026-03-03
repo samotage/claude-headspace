@@ -85,11 +85,13 @@ def api_register_persona():
         logger.exception("Unexpected error during persona registration")
         return jsonify({"error": f"Server error: {e}"}), 500
 
-    return jsonify({
-        "slug": result.slug,
-        "id": result.id,
-        "path": result.path,
-    }), 201
+    return jsonify(
+        {
+            "slug": result.slug,
+            "id": result.id,
+            "path": result.path,
+        }
+    ), 201
 
 
 @personas_bp.route("/api/personas/<slug>/validate", methods=["GET"])
@@ -102,18 +104,22 @@ def api_validate_persona(slug: str):
     """
     persona = Persona.query.filter_by(slug=slug, status="active").first()
     if not persona:
-        return jsonify({
-            "valid": False,
-            "error": f"Persona '{slug}' not found or not active. "
-            "Register the persona first with: flask persona register --name <name> --role <role>",
-        }), 404
+        return jsonify(
+            {
+                "valid": False,
+                "error": f"Persona '{slug}' not found or not active. "
+                "Register the persona first with: flask persona register --name <name> --role <role>",
+            }
+        ), 404
 
-    return jsonify({
-        "valid": True,
-        "slug": persona.slug,
-        "id": persona.id,
-        "name": persona.name,
-    }), 200
+    return jsonify(
+        {
+            "valid": True,
+            "slug": persona.slug,
+            "id": persona.id,
+            "name": persona.name,
+        }
+    ), 200
 
 
 @personas_bp.route("/api/personas/active", methods=["GET"])
@@ -138,13 +144,15 @@ def api_list_active_personas():
 
         result = []
         for p in personas:
-            result.append({
-                "id": p.id,
-                "slug": p.slug,
-                "name": p.name,
-                "role": p.role.name if p.role else None,
-                "description": p.description,
-            })
+            result.append(
+                {
+                    "id": p.id,
+                    "slug": p.slug,
+                    "name": p.name,
+                    "role": p.role.name if p.role else None,
+                    "description": p.description,
+                }
+            )
 
         return jsonify(result), 200
 
@@ -177,16 +185,18 @@ def api_list_personas():
 
         result = []
         for p, agent_count in rows:
-            result.append({
-                "id": p.id,
-                "slug": p.slug,
-                "name": p.name,
-                "role": p.role.name if p.role else None,
-                "description": p.description,
-                "status": p.status,
-                "agent_count": agent_count or 0,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            })
+            result.append(
+                {
+                    "id": p.id,
+                    "slug": p.slug,
+                    "name": p.name,
+                    "role": p.role.name if p.role else None,
+                    "description": p.description,
+                    "status": p.status,
+                    "agent_count": agent_count or 0,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                }
+            )
 
         return jsonify(result), 200
 
@@ -220,16 +230,20 @@ def api_get_persona(slug: str):
             .scalar()
         ) or 0
 
-        return jsonify({
-            "id": persona.id,
-            "slug": persona.slug,
-            "name": persona.name,
-            "role": persona.role.name if persona.role else None,
-            "description": persona.description,
-            "status": persona.status,
-            "agent_count": agent_count,
-            "created_at": persona.created_at.isoformat() if persona.created_at else None,
-        }), 200
+        return jsonify(
+            {
+                "id": persona.id,
+                "slug": persona.slug,
+                "name": persona.name,
+                "role": persona.role.name if persona.role else None,
+                "description": persona.description,
+                "status": persona.status,
+                "agent_count": agent_count,
+                "created_at": persona.created_at.isoformat()
+                if persona.created_at
+                else None,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get persona %s", slug)
@@ -291,16 +305,20 @@ def api_update_persona(slug: str):
             .scalar()
         ) or 0
 
-        return jsonify({
-            "id": persona.id,
-            "slug": persona.slug,
-            "name": persona.name,
-            "role": persona.role.name if persona.role else None,
-            "description": persona.description,
-            "status": persona.status,
-            "agent_count": agent_count,
-            "created_at": persona.created_at.isoformat() if persona.created_at else None,
-        }), 200
+        return jsonify(
+            {
+                "id": persona.id,
+                "slug": persona.slug,
+                "name": persona.name,
+                "role": persona.role.name if persona.role else None,
+                "description": persona.description,
+                "status": persona.status,
+                "agent_count": agent_count,
+                "created_at": persona.created_at.isoformat()
+                if persona.created_at
+                else None,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to update persona %s", slug)
@@ -345,15 +363,19 @@ def api_delete_persona(slug: str):
 
         logger.info(
             "Deleted persona %s (id=%d), unlinked %d agent(s)",
-            persona_name, persona_id, agent_count,
+            persona_name,
+            persona_id,
+            agent_count,
         )
 
-        return jsonify({
-            "deleted": True,
-            "id": persona_id,
-            "name": persona_name,
-            "agents_unlinked": agent_count,
-        }), 200
+        return jsonify(
+            {
+                "deleted": True,
+                "id": persona_id,
+                "name": persona_name,
+                "agents_unlinked": agent_count,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to delete persona %s", slug)
@@ -377,10 +399,12 @@ def api_persona_skill_read(slug: str):
         return jsonify({"error": f"Persona '{slug}' not found"}), 404
 
     content = read_skill_file(slug)
-    return jsonify({
-        "content": content or "",
-        "exists": content is not None,
-    }), 200
+    return jsonify(
+        {
+            "content": content or "",
+            "exists": content is not None,
+        }
+    ), 200
 
 
 @personas_bp.route("/api/personas/<slug>/skill", methods=["PUT"])
@@ -425,11 +449,13 @@ def api_persona_experience_read(slug: str):
 
     content = read_experience_file(slug)
     mtime = get_experience_mtime(slug)
-    return jsonify({
-        "content": content or "",
-        "exists": content is not None,
-        "last_modified": mtime,
-    }), 200
+    return jsonify(
+        {
+            "content": content or "",
+            "exists": content is not None,
+            "last_modified": mtime,
+        }
+    ), 200
 
 
 @personas_bp.route("/api/personas/<slug>/assets", methods=["GET"])
@@ -445,11 +471,13 @@ def api_persona_assets(slug: str):
         return jsonify({"error": f"Persona '{slug}' not found"}), 404
 
     status = check_assets(slug)
-    return jsonify({
-        "skill_exists": status.skill_exists,
-        "experience_exists": status.experience_exists,
-        "directory_exists": status.directory_exists,
-    }), 200
+    return jsonify(
+        {
+            "skill_exists": status.skill_exists,
+            "experience_exists": status.experience_exists,
+            "directory_exists": status.directory_exists,
+        }
+    ), 200
 
 
 @personas_bp.route("/api/personas/<slug>/agents", methods=["GET"])
@@ -464,11 +492,7 @@ def api_persona_linked_agents(slug: str):
         200: ``{ agents: [...], active_agent_count: int }``
         404: Persona not found in DB
     """
-    persona = (
-        db.session.query(Persona)
-        .filter_by(slug=slug)
-        .first()
-    )
+    persona = db.session.query(Persona).filter_by(slug=slug).first()
 
     if not persona:
         return jsonify({"error": f"Persona '{slug}' not found"}), 404
@@ -561,23 +585,27 @@ def api_persona_linked_agents(slug: str):
         state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
         if a.ended_at is not None:
             state_value = "ended"
-        agents_data.append({
-            "id": a.id,
-            "session_uuid": str(a.session_uuid) if a.session_uuid else None,
-            "project_name": a.project.name if a.project else None,
-            "state": state_value,
-            "started_at": a.started_at.isoformat() if a.started_at else None,
-            "ended_at": a.ended_at.isoformat() if a.ended_at else None,
-            "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
-            "turn_count": metrics.get("turn_count", 0),
-            "frustration_avg": metrics.get("frustration_avg"),
-            "avg_turn_time": metrics.get("avg_turn_time"),
-        })
+        agents_data.append(
+            {
+                "id": a.id,
+                "session_uuid": str(a.session_uuid) if a.session_uuid else None,
+                "project_name": a.project.name if a.project else None,
+                "state": state_value,
+                "started_at": a.started_at.isoformat() if a.started_at else None,
+                "ended_at": a.ended_at.isoformat() if a.ended_at else None,
+                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+                "turn_count": metrics.get("turn_count", 0),
+                "frustration_avg": metrics.get("frustration_avg"),
+                "avg_turn_time": metrics.get("avg_turn_time"),
+            }
+        )
 
-    return jsonify({
-        "agents": agents_data,
-        "active_agent_count": active_agent_count,
-    }), 200
+    return jsonify(
+        {
+            "agents": agents_data,
+            "active_agent_count": active_agent_count,
+        }
+    ), 200
 
 
 @personas_bp.route("/api/roles", methods=["GET"])
@@ -587,20 +615,18 @@ def api_list_roles():
     Returns JSON array of roles with id, name, description, created_at.
     """
     try:
-        roles = (
-            db.session.query(Role)
-            .order_by(Role.name.asc())
-            .all()
-        )
+        roles = db.session.query(Role).order_by(Role.name.asc()).all()
 
         result = []
         for r in roles:
-            result.append({
-                "id": r.id,
-                "name": r.name,
-                "description": r.description,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            })
+            result.append(
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "description": r.description,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+            )
 
         return jsonify(result), 200
 

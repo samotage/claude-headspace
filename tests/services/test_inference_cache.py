@@ -26,18 +26,19 @@ def cache(cache_config):
 
 @pytest.fixture
 def disabled_cache():
-    return InferenceCache({
-        "openrouter": {
-            "cache": {
-                "enabled": False,
-                "ttl_seconds": 300,
+    return InferenceCache(
+        {
+            "openrouter": {
+                "cache": {
+                    "enabled": False,
+                    "ttl_seconds": 300,
+                },
             },
-        },
-    })
+        }
+    )
 
 
 class TestCacheHitMiss:
-
     def test_cache_miss_on_empty(self, cache):
         result = cache.get("nonexistent_hash")
         assert result is None
@@ -65,7 +66,6 @@ class TestCacheHitMiss:
 
 
 class TestCacheExpiry:
-
     def test_expired_entry_returns_none(self, cache):
         cache.put("hash1", "result", 100, 50, "model-a")
         time.sleep(1.1)  # TTL is 1 second
@@ -88,7 +88,6 @@ class TestCacheExpiry:
 
 
 class TestCacheDisabled:
-
     def test_disabled_cache_always_misses(self, disabled_cache):
         disabled_cache.put("hash1", "result", 100, 50, "model-a")
         result = disabled_cache.get("hash1")
@@ -99,7 +98,6 @@ class TestCacheDisabled:
 
 
 class TestCacheStats:
-
     def test_initial_stats(self, cache):
         stats = cache.stats
         assert stats["hits"] == 0
@@ -121,7 +119,6 @@ class TestCacheStats:
 
 
 class TestCacheClear:
-
     def test_clear_removes_all(self, cache):
         cache.put("hash1", "a", 10, 5, "m")
         cache.put("hash2", "b", 10, 5, "m")

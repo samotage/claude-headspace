@@ -7,7 +7,6 @@ with file system side effects.
 Every layer is real. Nothing is mocked.
 """
 
-import re
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -51,8 +50,7 @@ def test_multi_turn_context_retention(claude_session, page, e2e_server, e2e_app)
 
     # --- Round 1: Tell Claude a favorite color ---
     va.send_chat_message(
-        "My favorite color is chartreuse. "
-        "Just confirm you've noted it, nothing else."
+        "My favorite color is chartreuse. Just confirm you've noted it, nothing else."
     )
     va.capture("context_02_round1_sent")
 
@@ -149,11 +147,20 @@ def test_error_recovery_file_ops(claude_session, page, e2e_server, e2e_app):
 
     # Verify Claude reports the file doesn't exist
     error_text = agent_bubbles.first.inner_text().lower()
-    assert any(kw in error_text for kw in [
-        "not found", "doesn't exist", "does not exist",
-        "no such file", "not exist", "couldn't find", "could not find",
-        "error", "failed",
-    ]), f"Expected file-not-found message: {error_text!r}"
+    assert any(
+        kw in error_text
+        for kw in [
+            "not found",
+            "doesn't exist",
+            "does not exist",
+            "no such file",
+            "not exist",
+            "couldn't find",
+            "could not find",
+            "error",
+            "failed",
+        ]
+    ), f"Expected file-not-found message: {error_text!r}"
 
     round1_count = agent_bubbles.count()
     time.sleep(2)

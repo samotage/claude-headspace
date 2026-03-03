@@ -9,7 +9,6 @@ Uses osascript subprocess with timeout to prevent blocking.
 import logging
 import subprocess
 import time
-from dataclasses import dataclass
 from enum import Enum
 from typing import NamedTuple
 
@@ -112,7 +111,9 @@ end tell
 '''
 
 
-def _parse_applescript_error(stderr: str, returncode: int) -> tuple[FocusErrorType, str]:
+def _parse_applescript_error(
+    stderr: str, returncode: int
+) -> tuple[FocusErrorType, str]:
     """
     Parse AppleScript error output to determine error type.
 
@@ -134,7 +135,10 @@ def _parse_applescript_error(stderr: str, returncode: int) -> tuple[FocusErrorTy
         )
 
     # Check for iTerm2 not running
-    if "application isn't running" in stderr_lower or "can't get application" in stderr_lower:
+    if (
+        "application isn't running" in stderr_lower
+        or "can't get application" in stderr_lower
+    ):
         return (
             FocusErrorType.ITERM_NOT_RUNNING,
             "iTerm2 is not running. Please start iTerm2 and try again.",
@@ -476,7 +480,10 @@ def check_pane_exists(pane_id: str) -> PaneStatus:
 
         # Parse error output
         stderr_lower = result.stderr.lower()
-        if "application isn't running" in stderr_lower or "can't get application" in stderr_lower:
+        if (
+            "application isn't running" in stderr_lower
+            or "can't get application" in stderr_lower
+        ):
             status = PaneStatus.ITERM_NOT_RUNNING
             _pane_cache[pane_id] = (status, time.time())
             return status
@@ -548,7 +555,11 @@ def _get_tmux_client_ttys(session_name: str) -> list[str]:
             timeout=2,
         )
         if result.returncode == 0 and result.stdout.strip():
-            return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+            return [
+                line.strip()
+                for line in result.stdout.strip().split("\n")
+                if line.strip()
+            ]
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         pass
     return []
@@ -564,7 +575,7 @@ def _build_attach_applescript(session_name: str) -> str:
         AppleScript code as string
     """
     safe_name = _sanitize_pane_id(session_name)
-    return f'''
+    return f"""
 tell application "iTerm"
     activate
     tell current window
@@ -574,7 +585,7 @@ tell application "iTerm"
         end tell
     end tell
 end tell
-'''
+"""
 
 
 def attach_tmux_session(session_name: str) -> AttachResult:

@@ -158,7 +158,9 @@ def get_project_info() -> ProjectInfo:
     Returns:
         ProjectInfo with name, path, and optional branch
     """
-    cwd = Path(os.getcwd())  # os.getcwd() preserves symlinks; Path.cwd().absolute() resolves them
+    cwd = Path(
+        os.getcwd()
+    )  # os.getcwd() preserves symlinks; Path.cwd().absolute() resolves them
     project_path = str(cwd)
     project_name = cwd.name
     branch = None
@@ -243,7 +245,9 @@ def get_tmux_pane_id() -> str | None:
     return pane_id if pane_id else None
 
 
-def resolve_persona_slug(server_url: str, short_name: str) -> tuple[str | None, str | None]:
+def resolve_persona_slug(
+    server_url: str, short_name: str
+) -> tuple[str | None, str | None]:
     """
     Resolve a short persona name to a full slug via the server API.
 
@@ -283,7 +287,8 @@ def resolve_persona_slug(server_url: str, short_name: str) -> tuple[str | None, 
     # Filter to active personas matching the short name (case-insensitive substring)
     needle = short_name.lower()
     matches = [
-        p for p in personas
+        p
+        for p in personas
         if p.get("status") == "active" and needle in p.get("name", "").lower()
     ]
 
@@ -370,7 +375,9 @@ def validate_prerequisites(server_url: str) -> tuple[bool, str | None]:
     """
     # Check Flask server is reachable
     try:
-        response = requests.get(f"{server_url}/health", timeout=HTTP_TIMEOUT, verify=False)
+        response = requests.get(
+            f"{server_url}/health", timeout=HTTP_TIMEOUT, verify=False
+        )
         if response.status_code != 200:
             return False, f"Server returned status {response.status_code}"
     except requests.exceptions.ConnectionError:
@@ -612,10 +619,14 @@ def _wrap_in_tmux(args: argparse.Namespace) -> int:
         os.execvp(
             "tmux",
             [
-                "tmux", "new-session",
-                "-s", session_name,
-                "-c", project_info.path,
-                "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
+                "tmux",
+                "new-session",
+                "-s",
+                session_name,
+                "-c",
+                project_info.path,
+                "-e",
+                f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
                 "--",
             ]
             + [cli_path]
@@ -679,7 +690,9 @@ def cmd_start(args: argparse.Namespace) -> int:
         valid, error = validate_persona(server_url, persona_slug)
         if not valid:
             # Try short-name resolution before giving up
-            resolved_slug, resolve_error = resolve_persona_slug(server_url, persona_slug)
+            resolved_slug, resolve_error = resolve_persona_slug(
+                server_url, persona_slug
+            )
             if resolved_slug:
                 persona_slug = resolved_slug
             else:
@@ -703,7 +716,9 @@ def cmd_start(args: argparse.Namespace) -> int:
         if tmux_pane_id:
             tmux_session_name = os.environ.get("CLAUDE_HEADSPACE_TMUX_SESSION", "")
             if tmux_session_name:
-                print(f"Voice Bridge: enabled (tmux pane {tmux_pane_id}, session {tmux_session_name})")
+                print(
+                    f"Voice Bridge: enabled (tmux pane {tmux_pane_id}, session {tmux_session_name})"
+                )
             else:
                 print(f"Voice Bridge: enabled (tmux pane {tmux_pane_id})")
         else:
@@ -721,7 +736,10 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     # Register session
     success, response_data, error = register_session(
-        server_url, session_uuid, project_info, iterm_pane_id,
+        server_url,
+        session_uuid,
+        project_info,
+        iterm_pane_id,
         tmux_pane_id=tmux_pane_id,
         persona_slug=persona_slug,
     )
@@ -815,9 +833,9 @@ def cmd_transcript(args: argparse.Namespace) -> int:
     """
     try:
         from ..app import create_app
-        from .transcript_cli import format_transcript
         from ..database import db
         from ..models.agent import Agent
+        from .transcript_cli import format_transcript
 
         app = create_app()
         with app.app_context():

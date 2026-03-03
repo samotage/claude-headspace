@@ -71,7 +71,9 @@ def _read_sidecar(pane_id: str) -> dict | None:
     return None
 
 
-def _compute_tier(percent_used: int, warning_threshold: int, high_threshold: int) -> str:
+def _compute_tier(
+    percent_used: int, warning_threshold: int, high_threshold: int
+) -> str:
     """Compute the context usage tier from a percentage.
 
     Args:
@@ -144,9 +146,15 @@ class ContextPoller:
                 if consecutive_failures <= 3:
                     logger.exception("Context poller pass failed")
                 else:
-                    logger.error("Context poller pass failed (repeated, suppressing traceback)")
+                    logger.error(
+                        "Context poller pass failed (repeated, suppressing traceback)"
+                    )
 
-            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            backoff = (
+                min(self._interval * (2**consecutive_failures), max_backoff)
+                if consecutive_failures
+                else self._interval
+            )
             self._stop_event.wait(timeout=backoff)
 
     def poll_once(self) -> int:
@@ -163,7 +171,9 @@ class ContextPoller:
             ctx_config = config.get("context_monitor", {})
             if not ctx_config.get("enabled", True):
                 return 0
-            warning_threshold = ctx_config.get("warning_threshold", DEFAULT_WARNING_THRESHOLD)
+            warning_threshold = ctx_config.get(
+                "warning_threshold", DEFAULT_WARNING_THRESHOLD
+            )
             high_threshold = ctx_config.get("high_threshold", DEFAULT_HIGH_THRESHOLD)
 
             agents = (

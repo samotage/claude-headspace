@@ -8,7 +8,6 @@ reentrancy -- all against a real PostgreSQL database.
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 from sqlalchemy import text
@@ -16,9 +15,9 @@ from sqlalchemy import text
 from claude_headspace.services.advisory_lock import (
     AdvisoryLockError,
     LockNamespace,
+    _get_held_locks,
     advisory_lock,
     advisory_lock_or_skip,
-    _get_held_locks,
 )
 
 
@@ -37,10 +36,7 @@ class TestSerialisation:
                     time.sleep(0.2)
                     results.append(f"exit-{worker_id}")
 
-        threads = [
-            threading.Thread(target=worker, args=(i,))
-            for i in range(2)
-        ]
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(2)]
         for t in threads:
             t.start()
         for t in threads:
@@ -90,7 +86,9 @@ class TestSerialisation:
         t1.join(timeout=10)
         t2.join(timeout=10)
 
-        assert enter_count == 2, "Both threads should enter concurrently with different agent IDs"
+        assert enter_count == 2, (
+            "Both threads should enter concurrently with different agent IDs"
+        )
         assert len(order) == 4
 
 

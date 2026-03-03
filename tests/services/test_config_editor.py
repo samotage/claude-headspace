@@ -5,15 +5,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 from claude_headspace.services.config_editor import (
     CONFIG_SCHEMA,
-    FieldSchema,
-    SectionSchema,
-    ValidationError,
-    ValidationResult,
     flatten_nested_sections,
     get_config_schema,
     load_config_file,
@@ -30,7 +25,27 @@ class TestConfigSchema:
     def test_schema_has_all_sections(self):
         """Schema should have all expected sections."""
         section_names = [s.name for s in CONFIG_SCHEMA]
-        expected = ["server", "logging", "database", "claude", "file_watcher", "event_system", "reaper", "sse", "hooks", "voice_bridge", "tmux_bridge", "dashboard", "archive", "commander", "context_monitor", "notifications", "activity", "headspace", "openrouter"]
+        expected = [
+            "server",
+            "logging",
+            "database",
+            "claude",
+            "file_watcher",
+            "event_system",
+            "reaper",
+            "sse",
+            "hooks",
+            "voice_bridge",
+            "tmux_bridge",
+            "dashboard",
+            "archive",
+            "commander",
+            "context_monitor",
+            "notifications",
+            "activity",
+            "headspace",
+            "openrouter",
+        ]
         assert section_names == expected
 
     def test_each_section_has_title(self):
@@ -123,7 +138,15 @@ class TestValidateConfig:
         config = {
             "server": {"host": "localhost", "port": 5050, "debug": False},
             "logging": {"level": "INFO", "file": "logs/app.log"},
-            "database": {"host": "localhost", "port": 5432, "name": "db", "user": "user", "password": "", "pool_size": 10, "pool_timeout": 30},
+            "database": {
+                "host": "localhost",
+                "port": 5432,
+                "name": "db",
+                "user": "user",
+                "password": "",
+                "pool_size": 10,
+                "pool_timeout": 30,
+            },
         }
         result = validate_config(config)
         assert result.valid
@@ -284,7 +307,20 @@ class TestMergeWithDefaults:
         config = {}
         result = merge_with_defaults(config)
 
-        expected_sections = ["server", "logging", "database", "claude", "file_watcher", "event_system", "sse", "hooks", "tmux_bridge", "dashboard", "archive", "commander"]
+        expected_sections = [
+            "server",
+            "logging",
+            "database",
+            "claude",
+            "file_watcher",
+            "event_system",
+            "sse",
+            "hooks",
+            "tmux_bridge",
+            "dashboard",
+            "archive",
+            "commander",
+        ]
         for section in expected_sections:
             assert section in result
 
@@ -392,6 +428,7 @@ class TestFlattenUnflatten:
             }
         }
         import copy
+
         expected = copy.deepcopy(original)
 
         flatten_nested_sections(original)
@@ -488,6 +525,7 @@ class TestNewSchemaSections:
     def test_archive_in_nested_sections(self):
         """archive should be in NESTED_SECTIONS for flatten/unflatten."""
         from claude_headspace.services.config_editor import NESTED_SECTIONS
+
         assert "archive" in NESTED_SECTIONS
 
 
@@ -497,13 +535,17 @@ class TestHelpMetadata:
     def test_all_sections_have_section_description(self):
         """Every section should have a non-empty section_description."""
         for section in CONFIG_SCHEMA:
-            assert section.section_description, f"Section '{section.name}' missing section_description"
+            assert section.section_description, (
+                f"Section '{section.name}' missing section_description"
+            )
 
     def test_all_fields_have_help_text(self):
         """Every field should have a non-empty help_text."""
         for section in CONFIG_SCHEMA:
             for field in section.fields:
-                assert field.help_text, f"Field '{section.name}.{field.name}' missing help_text"
+                assert field.help_text, (
+                    f"Field '{section.name}.{field.name}' missing help_text"
+                )
 
     def test_get_config_schema_includes_help_text(self):
         """get_config_schema should include help_text in field dicts."""
@@ -547,7 +589,11 @@ class TestOpenrouterValidation:
         config = {"openrouter": {"timeout": "fast"}}
         result = validate_config(config)
         assert not result.valid
-        error = next(e for e in result.errors if e.field == "timeout" and e.section == "openrouter")
+        error = next(
+            e
+            for e in result.errors
+            if e.field == "timeout" and e.section == "openrouter"
+        )
         assert "integer" in error.message
 
     def test_calls_per_minute_below_minimum(self):
@@ -555,5 +601,7 @@ class TestOpenrouterValidation:
         config = {"openrouter": {"rate_limits.calls_per_minute": 0}}
         result = validate_config(config)
         assert not result.valid
-        error = next(e for e in result.errors if e.field == "rate_limits.calls_per_minute")
+        error = next(
+            e for e in result.errors if e.field == "rate_limits.calls_per_minute"
+        )
         assert "at least 1" in error.message

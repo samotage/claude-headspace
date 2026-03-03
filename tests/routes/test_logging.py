@@ -5,8 +5,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
-import pytest
-
 
 class TestLoggingPage:
     """Tests for the logging page route."""
@@ -102,11 +100,15 @@ class TestGetEventsAPI:
             # Main query
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_event]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_event
+            ]
             mock_db.session.query.return_value = mock_query
 
             # Project query
-            mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_project]
+            mock_db.session.query.return_value.filter.return_value.all.return_value = [
+                mock_project
+            ]
 
             response = client.get("/api/events")
             assert response.status_code == 200
@@ -134,7 +136,9 @@ class TestGetEventsAPI:
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_event]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_event
+            ]
             mock_db.session.query.return_value = mock_query
 
             response = client.get("/api/events")
@@ -171,7 +175,9 @@ class TestGetEventsAPI:
             # Main event query
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_event]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_event
+            ]
 
             # Turn query - need to chain filter().all()
             mock_turn_query = MagicMock()
@@ -182,13 +188,15 @@ class TestGetEventsAPI:
             def query_side_effect(*args):
                 nonlocal call_count
                 call_count += 1
-                if args and hasattr(args[0], 'key') and str(args[0]) == 'Turn.id':
+                if args and hasattr(args[0], "key") and str(args[0]) == "Turn.id":
                     return mock_turn_query
                 return mock_query
 
             mock_db.session.query.side_effect = None
             mock_db.session.query.return_value = mock_query
-            mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_turn]
+            mock_db.session.query.return_value.filter.return_value.all.return_value = [
+                mock_turn
+            ]
 
             response = client.get("/api/events")
             assert response.status_code == 200
@@ -212,7 +220,9 @@ class TestGetEventsAPI:
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_event]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_event
+            ]
             mock_db.session.query.return_value = mock_query
 
             response = client.get("/api/events")
@@ -275,7 +285,9 @@ class TestGetEventsAPI:
             mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
             mock_db.session.query.return_value = mock_query
 
-            response = client.get("/api/events?project_id=1&agent_id=2&event_type=state_transition")
+            response = client.get(
+                "/api/events?project_id=1&agent_id=2&event_type=state_transition"
+            )
             assert response.status_code == 200
 
             # Filter should be called multiple times for combined filters
@@ -404,10 +416,15 @@ class TestGetEventFiltersAPI:
 
         with patch("claude_headspace.routes.logging.db") as mock_db:
             # Both projects and agents queries use join().distinct().order_by().all()
-            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [mock_item]
+            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+                mock_item
+            ]
 
             # Event types query uses distinct().order_by().all() (no join)
-            mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = [("state_transition",), ("session_discovered",)]
+            mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+                ("state_transition",),
+                ("session_discovered",),
+            ]
 
             response = client.get("/api/events/filters")
             assert response.status_code == 200
@@ -445,7 +462,9 @@ class TestGetEventFiltersAPI:
 
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [
-                mock_active_agent, mock_inactive_agent, mock_ended_agent
+                mock_active_agent,
+                mock_inactive_agent,
+                mock_ended_agent,
             ]
             mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = []
 
@@ -473,7 +492,9 @@ class TestGetEventFiltersAPI:
         mock_active.last_seen_at = now
 
         with patch("claude_headspace.routes.logging.db") as mock_db:
-            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [mock_active]
+            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+                mock_active
+            ]
             mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = []
 
             response = client.get("/api/events/filters")
@@ -644,7 +665,9 @@ class TestInferenceLogPage:
         """Test that the inference log page renders successfully."""
         response = client.get("/logging/inference")
         assert response.status_code == 200
-        assert b"Inference Calls" in response.data or b"inference-heading" in response.data
+        assert (
+            b"Inference Calls" in response.data or b"inference-heading" in response.data
+        )
 
     def test_inference_log_page_has_filter_controls(self, client):
         """Test that the page has filter dropdown controls."""
@@ -723,11 +746,14 @@ class TestGetInferenceCallsAPI:
         with patch("claude_headspace.routes.logging.db") as mock_db:
             mock_query = MagicMock()
             mock_query.count.return_value = 1
-            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_call]
+            mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                mock_call
+            ]
             mock_db.session.query.return_value = mock_query
             # filter().all() is called twice: once for projects, once for agents
             mock_db.session.query.return_value.filter.return_value.all.side_effect = [
-                [mock_project], [mock_agent]
+                [mock_project],
+                [mock_agent],
             ]
 
             response = client.get("/api/inference/calls")
@@ -874,8 +900,12 @@ class TestGetInferenceCallFiltersAPI:
         mock_project.name = "test-project"
 
         with patch("claude_headspace.routes.logging.db") as mock_db:
-            mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = [("turn",)]
-            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [mock_project]
+            mock_db.session.query.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+                ("turn",)
+            ]
+            mock_db.session.query.return_value.join.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+                mock_project
+            ]
 
             response = client.get("/api/inference/calls/filters")
             assert response.status_code == 200
@@ -1016,4 +1046,7 @@ class TestLoggingSubTabs:
         response = client.get("/logging/inference")
         assert response.status_code == 200
         # The main header nav should have the logging tab marked as active
-        assert b'class="tab-link active"' in response.data or b"tab-link active" in response.data
+        assert (
+            b'class="tab-link active"' in response.data
+            or b"tab-link active" in response.data
+        )

@@ -256,14 +256,18 @@ class AgentHookState:
         if not text:
             return False
 
-        prompt_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
+        prompt_hash = hashlib.sha256(
+            text.encode("utf-8", errors="replace")
+        ).hexdigest()[:16]
         now = time.time()
 
         with self._lock:
             history = self._recent_prompt_hashes.get(agent_id, [])
 
             # Prune expired entries
-            history = [(h, ts) for h, ts in history if (now - ts) < self._DEDUP_WINDOW_SECONDS]
+            history = [
+                (h, ts) for h, ts in history if (now - ts) < self._DEDUP_WINDOW_SECONDS
+            ]
 
             # Check for duplicate
             for h, _ts in history:
@@ -274,7 +278,7 @@ class AgentHookState:
             history.append((prompt_hash, now))
             # Keep only the most recent entries
             if len(history) > self._DEDUP_MAX_HISTORY:
-                history = history[-self._DEDUP_MAX_HISTORY:]
+                history = history[-self._DEDUP_MAX_HISTORY :]
 
             self._recent_prompt_hashes[agent_id] = history
             return False

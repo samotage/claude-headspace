@@ -15,15 +15,20 @@ def _broadcast_session_event(agent: Agent, event_type: str) -> None:
     """Broadcast session lifecycle event to SSE clients."""
     try:
         from ..services.broadcaster import get_broadcaster
+
         broadcaster = get_broadcaster()
-        broadcaster.broadcast(event_type, {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "session_uuid": str(agent.session_uuid),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        broadcaster.broadcast(
+            event_type,
+            {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "session_uuid": str(agent.session_uuid),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     except Exception as e:
         logger.debug(f"Broadcast failed (non-fatal): {e}")
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,7 @@ def create_session():
         if project is None:
             # Auto-create project from session info
             from ..models.project import generate_slug
+
             slug = generate_slug(project_name)
             # Ensure slug uniqueness by appending a suffix if needed
             base_slug = slug
@@ -98,7 +104,9 @@ def create_session():
             )
             db.session.add(project)
             db.session.flush()  # Get the ID before creating the agent
-            logger.info(f"Auto-created project: {project.name} (id={project.id}, path={project_path})")
+            logger.info(
+                f"Auto-created project: {project.name} (id={project.id}, path={project_path})"
+            )
         else:
             # Update branch if provided
             if current_branch:
@@ -108,20 +116,27 @@ def create_session():
         # Check if agent with this session_uuid already exists
         existing_agent = Agent.query.filter_by(session_uuid=session_uuid).first()
         if existing_agent:
-            return jsonify({
-                "error": f"Session {session_uuid} already exists",
-            }), 409
+            return jsonify(
+                {
+                    "error": f"Session {session_uuid} already exists",
+                }
+            ), 409
 
         # Look up persona if slug provided
         persona_id = None
         if persona_slug:
             from ..models.persona import Persona
+
             persona = Persona.query.filter_by(slug=persona_slug).first()
             if persona:
                 persona_id = persona.id
-                logger.info(f"Persona resolved at registration: slug={persona_slug}, id={persona_id}")
+                logger.info(
+                    f"Persona resolved at registration: slug={persona_slug}, id={persona_id}"
+                )
             else:
-                logger.warning(f"Persona slug not found at registration: {persona_slug}")
+                logger.warning(
+                    f"Persona slug not found at registration: {persona_slug}"
+                )
 
         # Create agent
         agent = Agent(
@@ -144,20 +159,24 @@ def create_session():
 
         # Register with availability tracker if tmux pane is provided
         if tmux_pane_id:
-            commander_availability = current_app.extensions.get("commander_availability")
+            commander_availability = current_app.extensions.get(
+                "commander_availability"
+            )
             if commander_availability:
                 commander_availability.register_agent(agent.id, tmux_pane_id)
 
         # Broadcast to SSE clients so dashboard updates in real-time
         _broadcast_session_event(agent, "session_created")
 
-        return jsonify({
-            "status": "created",
-            "agent_id": agent.id,
-            "session_uuid": str(session_uuid),
-            "project_id": project.id,
-            "project_name": project.name,
-        }), 201
+        return jsonify(
+            {
+                "status": "created",
+                "agent_id": agent.id,
+                "session_uuid": str(session_uuid),
+                "project_id": project.id,
+                "project_name": project.name,
+            }
+        ), 201
 
     except Exception:
         db.session.rollback()
@@ -182,9 +201,11 @@ def delete_session(session_uuid: UUID):
         agent = Agent.query.filter_by(session_uuid=session_uuid).first()
 
         if agent is None:
-            return jsonify({
-                "error": f"Session {session_uuid} not found",
-            }), 404
+            return jsonify(
+                {
+                    "error": f"Session {session_uuid} not found",
+                }
+            ), 404
 
         # Mark agent as ended
         # The agent remains in database for historical tracking
@@ -201,11 +222,13 @@ def delete_session(session_uuid: UUID):
         # Broadcast to SSE clients so dashboard removes the card
         _broadcast_session_event(agent, "session_ended")
 
-        return jsonify({
-            "status": "ended",
-            "session_uuid": str(session_uuid),
-            "agent_id": agent.id,
-        }), 200
+        return jsonify(
+            {
+                "status": "ended",
+                "session_uuid": str(session_uuid),
+                "agent_id": agent.id,
+            }
+        ), 200
 
     except Exception:
         db.session.rollback()
@@ -228,17 +251,21 @@ def get_session(session_uuid: UUID):
     agent = Agent.query.filter_by(session_uuid=session_uuid).first()
 
     if agent is None:
-        return jsonify({
-            "error": f"Session {session_uuid} not found",
-        }), 404
+        return jsonify(
+            {
+                "error": f"Session {session_uuid} not found",
+            }
+        ), 404
 
-    return jsonify({
-        "session_uuid": str(agent.session_uuid),
-        "agent_id": agent.id,
-        "project_id": agent.project_id,
-        "project_name": agent.project.name,
-        "iterm_pane_id": agent.iterm_pane_id,
-        "started_at": agent.started_at.isoformat(),
-        "last_seen_at": agent.last_seen_at.isoformat(),
-        "state": agent.state.value,
-    }), 200
+    return jsonify(
+        {
+            "session_uuid": str(agent.session_uuid),
+            "agent_id": agent.id,
+            "project_id": agent.project_id,
+            "project_name": agent.project.name,
+            "iterm_pane_id": agent.iterm_pane_id,
+            "started_at": agent.started_at.isoformat(),
+            "last_seen_at": agent.last_seen_at.isoformat(),
+            "state": agent.state.value,
+        }
+    ), 200

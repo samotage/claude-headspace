@@ -10,17 +10,17 @@ import pytest
 from claude_headspace.app import create_app
 from claude_headspace.database import db
 from claude_headspace.models import (
+    Agent,
+    Command,
+    CommandState,
+    Event,
+    EventType,
     Objective,
     ObjectiveHistory,
     Project,
-    Agent,
-    Command,
     Turn,
-    Event,
-    CommandState,
     TurnActor,
     TurnIntent,
-    EventType,
 )
 
 
@@ -126,8 +126,7 @@ class TestModelInstantiation:
     def test_objective_with_constraints(self, db_session):
         """Test Objective with constraints."""
         obj = Objective(
-            current_text="Build feature X",
-            constraints="Must use existing API"
+            current_text="Build feature X", constraints="Must use existing API"
         )
         assert obj.constraints == "Must use existing API"
 
@@ -136,17 +135,14 @@ class TestModelInstantiation:
         history = ObjectiveHistory(
             objective_id=1,
             text="Previous objective",
-            started_at=datetime.now(timezone.utc)
+            started_at=datetime.now(timezone.utc),
         )
         assert history.text == "Previous objective"
         assert history.ended_at is None
 
     def test_project_instantiation(self, db_session):
         """Test Project model can be instantiated."""
-        project = Project(
-            name="Test Project",
-            path="/path/to/project"
-        )
+        project = Project(name="Test Project", path="/path/to/project")
         assert project.name == "Test Project"
         assert project.path == "/path/to/project"
         assert project.github_repo is None
@@ -159,7 +155,7 @@ class TestModelInstantiation:
             name="Test Project",
             path="/path/to/project",
             github_repo="https://github.com/user/repo",
-            current_branch="main"
+            current_branch="main",
         )
         assert project.github_repo == "https://github.com/user/repo"
         assert project.current_branch == "main"
@@ -167,10 +163,7 @@ class TestModelInstantiation:
     def test_agent_instantiation(self, db_session):
         """Test Agent model can be instantiated."""
         session_uuid = uuid4()
-        agent = Agent(
-            session_uuid=session_uuid,
-            project_id=1
-        )
+        agent = Agent(session_uuid=session_uuid, project_id=1)
         assert agent.session_uuid == session_uuid
         assert agent.project_id == 1
         assert agent.iterm_pane_id is None
@@ -194,7 +187,7 @@ class TestModelInstantiation:
             command_id=1,
             actor=TurnActor.USER,
             intent=TurnIntent.COMMAND,
-            text="Do something"
+            text="Do something",
         )
         assert turn.command_id == 1
         assert turn.actor == TurnActor.USER
@@ -205,8 +198,7 @@ class TestModelInstantiation:
     def test_event_instantiation(self, db_session):
         """Test Event model can be instantiated."""
         event = Event(
-            event_type=EventType.SESSION_REGISTERED,
-            payload={"session_id": "abc123"}
+            event_type=EventType.SESSION_REGISTERED, payload={"session_id": "abc123"}
         )
         assert event.event_type == EventType.SESSION_REGISTERED
         assert event.payload == {"session_id": "abc123"}
@@ -217,11 +209,7 @@ class TestModelInstantiation:
 
     def test_event_with_partial_fks(self, db_session):
         """Test Event with some FKs set."""
-        event = Event(
-            event_type=EventType.STATE_TRANSITION,
-            project_id=1,
-            agent_id=2
-        )
+        event = Event(event_type=EventType.STATE_TRANSITION, project_id=1, agent_id=2)
         assert event.project_id == 1
         assert event.agent_id == 2
         assert event.command_id is None
@@ -234,42 +222,46 @@ class TestModelRelationships:
     def test_project_has_agents_relationship(self):
         """Test Project has agents relationship."""
         project = Project(name="Test", path="/test")
-        assert hasattr(project, 'agents')
+        assert hasattr(project, "agents")
 
     def test_agent_has_project_relationship(self):
         """Test Agent has project relationship."""
         agent = Agent(session_uuid=uuid4(), project_id=1)
-        assert hasattr(agent, 'project')
+        assert hasattr(agent, "project")
 
     def test_agent_has_commands_relationship(self):
         """Test Agent has commands relationship."""
         agent = Agent(session_uuid=uuid4(), project_id=1)
-        assert hasattr(agent, 'commands')
+        assert hasattr(agent, "commands")
 
     def test_command_has_agent_relationship(self):
         """Test Command has agent relationship."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'agent')
+        assert hasattr(command, "agent")
 
     def test_command_has_turns_relationship(self):
         """Test Command has turns relationship."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'turns')
+        assert hasattr(command, "turns")
 
     def test_turn_has_command_relationship(self):
         """Test Turn has command relationship."""
-        turn = Turn(command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
-        assert hasattr(turn, 'command')
+        turn = Turn(
+            command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test"
+        )
+        assert hasattr(turn, "command")
 
     def test_objective_has_history_relationship(self):
         """Test Objective has history relationship."""
         obj = Objective(current_text="Test")
-        assert hasattr(obj, 'history')
+        assert hasattr(obj, "history")
 
     def test_objective_history_has_objective_relationship(self):
         """Test ObjectiveHistory has objective relationship."""
-        history = ObjectiveHistory(objective_id=1, text="Test", started_at=datetime.now(timezone.utc))
-        assert hasattr(history, 'objective')
+        history = ObjectiveHistory(
+            objective_id=1, text="Test", started_at=datetime.now(timezone.utc)
+        )
+        assert hasattr(history, "objective")
 
 
 class TestAgentStateDerivedProperty:
@@ -278,12 +270,12 @@ class TestAgentStateDerivedProperty:
     def test_agent_has_state_property(self):
         """Test Agent has state property defined."""
         # Check that state is a property on the Agent class
-        assert isinstance(Agent.__dict__.get('state'), property)
+        assert isinstance(Agent.__dict__.get("state"), property)
 
     def test_agent_has_get_current_command_method(self):
         """Test Agent has get_current_command method."""
         agent = Agent(session_uuid=uuid4(), project_id=1)
-        assert hasattr(agent, 'get_current_command')
+        assert hasattr(agent, "get_current_command")
         assert callable(agent.get_current_command)
 
 
@@ -294,25 +286,25 @@ class TestCommandInstructionAndCompletionFields:
     def test_command_has_instruction_field(self):
         """Test Command has instruction field defaulting to None."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'instruction')
+        assert hasattr(command, "instruction")
         assert command.instruction is None
 
     def test_command_has_instruction_generated_at_field(self):
         """Test Command has instruction_generated_at field defaulting to None."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'instruction_generated_at')
+        assert hasattr(command, "instruction_generated_at")
         assert command.instruction_generated_at is None
 
     def test_command_has_completion_summary_field(self):
         """Test Command has completion_summary field defaulting to None."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'completion_summary')
+        assert hasattr(command, "completion_summary")
         assert command.completion_summary is None
 
     def test_command_has_completion_summary_generated_at_field(self):
         """Test Command has completion_summary_generated_at field defaulting to None."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'completion_summary_generated_at')
+        assert hasattr(command, "completion_summary_generated_at")
         assert command.completion_summary_generated_at is None
 
     def test_command_instruction_accepts_text(self):
@@ -322,7 +314,9 @@ class TestCommandInstructionAndCompletionFields:
 
     def test_command_completion_summary_accepts_text(self):
         """Test Command completion_summary field can store text."""
-        command = Command(agent_id=1, completion_summary="Auth module refactored successfully")
+        command = Command(
+            agent_id=1, completion_summary="Auth module refactored successfully"
+        )
         assert command.completion_summary == "Auth module refactored successfully"
 
 
@@ -332,7 +326,7 @@ class TestCommandQueryMethods:
     def test_command_has_get_recent_turns_method(self):
         """Test Command has get_recent_turns method."""
         command = Command(agent_id=1)
-        assert hasattr(command, 'get_recent_turns')
+        assert hasattr(command, "get_recent_turns")
         assert callable(command.get_recent_turns)
 
 
@@ -368,7 +362,9 @@ class TestModelRepr:
 
     def test_turn_repr(self):
         """Test Turn __repr__."""
-        turn = Turn(command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test")
+        turn = Turn(
+            command_id=1, actor=TurnActor.USER, intent=TurnIntent.COMMAND, text="test"
+        )
         repr_str = repr(turn)
         assert "Turn" in repr_str
         assert "user" in repr_str
@@ -383,6 +379,8 @@ class TestModelRepr:
 
     def test_objective_history_repr(self):
         """Test ObjectiveHistory __repr__."""
-        history = ObjectiveHistory(objective_id=1, text="Test", started_at=datetime.now(timezone.utc))
+        history = ObjectiveHistory(
+            objective_id=1, text="Test", started_at=datetime.now(timezone.utc)
+        )
         repr_str = repr(history)
         assert "ObjectiveHistory" in repr_str

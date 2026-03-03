@@ -4,22 +4,11 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from claude_headspace.models.command import CommandState
 from claude_headspace.services.card_state import (
-    TIMED_OUT,
     broadcast_card_refresh,
     build_card_state,
-    format_last_seen,
-    format_uptime,
-    get_effective_state,
     get_question_options,
-    get_state_info,
-    get_command_completion_summary,
-    get_command_instruction,
-    get_command_summary,
-    is_agent_active,
 )
 
 
@@ -36,7 +25,9 @@ def _make_agent(
     agent.id = 42
     agent.session_uuid = uuid4()
     agent.state = state
-    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=last_seen_minutes_ago)
+    agent.last_seen_at = datetime.now(timezone.utc) - timedelta(
+        minutes=last_seen_minutes_ago
+    )
     agent.started_at = datetime.now(timezone.utc) - timedelta(hours=started_hours_ago)
     agent.ended_at = datetime.now(timezone.utc) if ended else None
     agent.priority_score = priority_score
@@ -59,26 +50,49 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_returns_all_expected_keys(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent()
 
         result = build_card_state(agent)
 
         expected_keys = {
-            "id", "session_uuid", "hero_chars", "hero_trail",
-            "is_active", "uptime", "last_seen",
-            "state", "state_info", "command_summary", "command_instruction",
-            "command_completion_summary", "priority", "priority_reason",
-            "turn_count", "elapsed", "current_command_id", "is_bridge_connected",
-            "project_name", "project_slug", "project_id",
-            "has_plan", "tmux_session", "context",
+            "id",
+            "session_uuid",
+            "hero_chars",
+            "hero_trail",
+            "is_active",
+            "uptime",
+            "last_seen",
+            "state",
+            "state_info",
+            "command_summary",
+            "command_instruction",
+            "command_completion_summary",
+            "priority",
+            "priority_reason",
+            "turn_count",
+            "elapsed",
+            "current_command_id",
+            "is_bridge_connected",
+            "project_name",
+            "project_slug",
+            "project_id",
+            "has_plan",
+            "tmux_session",
+            "context",
             "previous_agent_id",
         }
         assert set(result.keys()) == expected_keys
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_idle_agent_no_command(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent(state=CommandState.IDLE)
 
         result = build_card_state(agent)
@@ -92,7 +106,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_tmux_session_included(self, mock_config):
         """Test that tmux_session is included in card state."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent()
         agent.tmux_session = "hs-test-123"
 
@@ -103,7 +120,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_tmux_session_none_when_not_set(self, mock_config):
         """Test that tmux_session is None when agent has no tmux session."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent()
         agent.tmux_session = None
 
@@ -114,7 +134,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_persona_name_and_role_included_when_agent_has_persona(self, mock_config):
         """Card state includes persona_name and persona_role when agent has a persona."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent()
         persona = MagicMock()
         persona.name = "Con"
@@ -134,7 +157,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_no_persona_fields_when_agent_has_no_persona(self, mock_config):
         """Card state has no persona fields when agent has no persona."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         agent = _make_agent()
         agent.persona = None
 
@@ -145,7 +171,10 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_with_command_and_turns(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         mock_turn = MagicMock()
         mock_turn.text = "Working on auth"
@@ -174,7 +203,10 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_timed_out_detection(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         agent = _make_agent(state=CommandState.PROCESSING, last_seen_minutes_ago=15)
 
@@ -185,7 +217,10 @@ class TestBuildCardState:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_priority_score_included(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         agent = _make_agent(priority_score=85, priority_reason="High alignment")
 
@@ -197,13 +232,18 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_complete_state_includes_turn_count_and_elapsed(self, mock_config):
         """COMPLETE state includes turn_count and elapsed for condensed card."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         mock_command = MagicMock()
         mock_command.state = CommandState.COMPLETE
         mock_command.instruction = "Fix the bug"
         mock_command.completion_summary = "Bug fixed"
-        mock_command.started_at = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
+        mock_command.started_at = datetime.now(timezone.utc) - timedelta(
+            hours=1, minutes=30
+        )
         mock_command.completed_at = datetime.now(timezone.utc) - timedelta(minutes=5)
         mock_command.turns = [MagicMock(), MagicMock(), MagicMock()]
 
@@ -221,7 +261,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_idle_state_includes_turn_count_and_elapsed(self, mock_config):
         """All states include turn_count and elapsed (0/None for IDLE with no command)."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         agent = _make_agent(state=CommandState.IDLE)
 
@@ -235,7 +278,10 @@ class TestBuildCardState:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_state_serialised_as_string(self, mock_config):
         """State is always a string (not a CommandState enum) for JSON serialisation."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         agent = _make_agent(state=CommandState.AWAITING_INPUT)
 
@@ -251,7 +297,10 @@ class TestBroadcastCardRefresh:
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_calls_broadcaster(self, mock_config, mock_get_broadcaster):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         mock_broadcaster = MagicMock()
         mock_get_broadcaster.return_value = mock_broadcaster
 
@@ -265,7 +314,10 @@ class TestBroadcastCardRefresh:
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_includes_agent_id_and_reason(self, mock_config, mock_get_broadcaster):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         mock_broadcaster = MagicMock()
         mock_get_broadcaster.return_value = mock_broadcaster
 
@@ -284,7 +336,10 @@ class TestBroadcastCardRefresh:
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_noop_when_broadcaster_raises(self, mock_config, mock_get_broadcaster):
         """broadcast_card_refresh should not raise even if broadcaster fails."""
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         mock_get_broadcaster.side_effect = RuntimeError("No broadcaster")
 
         agent = _make_agent()
@@ -305,13 +360,15 @@ class TestGetQuestionOptions:
         from claude_headspace.models.turn import TurnActor, TurnIntent
 
         tool_input = {
-            "questions": [{
-                "question": "Which database?",
-                "options": [
-                    {"label": "PostgreSQL", "description": "Relational"},
-                    {"label": "MongoDB", "description": "Document"},
-                ],
-            }]
+            "questions": [
+                {
+                    "question": "Which database?",
+                    "options": [
+                        {"label": "PostgreSQL", "description": "Relational"},
+                        {"label": "MongoDB", "description": "Document"},
+                    ],
+                }
+            ]
         }
 
         mock_turn = MagicMock()
@@ -367,13 +424,18 @@ class TestGetQuestionOptions:
     def test_build_card_state_includes_question_options(self, mock_config):
         from claude_headspace.models.turn import TurnActor, TurnIntent
 
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         tool_input = {
-            "questions": [{
-                "question": "Which?",
-                "options": [{"label": "A", "description": "Option A"}],
-            }]
+            "questions": [
+                {
+                    "question": "Which?",
+                    "options": [{"label": "A", "description": "Option A"}],
+                }
+            ]
         }
 
         mock_turn = MagicMock()
@@ -399,7 +461,10 @@ class TestGetQuestionOptions:
 
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_build_card_state_omits_question_options_when_none(self, mock_config):
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         agent = _make_agent(state=CommandState.IDLE)
         result = build_card_state(agent)
@@ -412,8 +477,15 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_persona_agent_above_threshold_is_eligible(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
+        mock_ctx.return_value = {
+            "warning_threshold": 65,
+            "high_threshold": 75,
+            "handoff_threshold": 80,
+        }
         agent = _make_agent()
         agent.persona_id = 1
         agent.persona = MagicMock()
@@ -429,8 +501,15 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_persona_agent_below_threshold_not_eligible(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
+        mock_ctx.return_value = {
+            "warning_threshold": 65,
+            "high_threshold": 75,
+            "handoff_threshold": 80,
+        }
         agent = _make_agent()
         agent.persona_id = 1
         agent.persona = MagicMock()
@@ -446,8 +525,15 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_anonymous_agent_above_threshold_not_eligible(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
+        mock_ctx.return_value = {
+            "warning_threshold": 65,
+            "high_threshold": 75,
+            "handoff_threshold": 80,
+        }
         agent = _make_agent()
         # persona_id is None by default
         agent.context_percent_used = 90
@@ -459,7 +545,10 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_no_context_data_not_eligible(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         mock_ctx.return_value = {"handoff_threshold": 80}
         agent = _make_agent()
         agent.persona_id = 1
@@ -471,8 +560,15 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_exact_threshold_is_eligible(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 80}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
+        mock_ctx.return_value = {
+            "warning_threshold": 65,
+            "high_threshold": 75,
+            "handoff_threshold": 80,
+        }
         agent = _make_agent()
         agent.persona_id = 1
         agent.persona = MagicMock()
@@ -487,8 +583,15 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_low_threshold_for_testing(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
-        mock_ctx.return_value = {"warning_threshold": 65, "high_threshold": 75, "handoff_threshold": 10}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
+        mock_ctx.return_value = {
+            "warning_threshold": 65,
+            "high_threshold": 75,
+            "handoff_threshold": 10,
+        }
         agent = _make_agent()
         agent.persona_id = 1
         agent.persona = MagicMock()
@@ -504,7 +607,10 @@ class TestHandoffEligibility:
     @patch("claude_headspace.services.card_state._get_context_config")
     @patch("claude_headspace.services.card_state._get_dashboard_config")
     def test_default_threshold_when_not_configured(self, mock_dash, mock_ctx):
-        mock_dash.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_dash.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
         mock_ctx.return_value = {}  # No handoff_threshold set
         agent = _make_agent()
         agent.persona_id = 1

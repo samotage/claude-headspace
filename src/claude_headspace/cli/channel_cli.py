@@ -25,7 +25,9 @@ def _get_channel_service():
 @channel_cli.command("create")
 @click.argument("name")
 @click.option(
-    "--type", "channel_type", required=True,
+    "--type",
+    "channel_type",
+    required=True,
     type=click.Choice(["workshop", "delegation", "review", "standup", "broadcast"]),
     help="Channel type.",
 )
@@ -34,7 +36,9 @@ def _get_channel_service():
 @click.option("--org", "org_id", default=None, type=int, help="Organisation ID.")
 @click.option("--project", "project_id", default=None, type=int, help="Project ID.")
 @click.option("--members", default=None, help="Comma-separated persona slugs to add.")
-def create_command(name, channel_type, description, intent, org_id, project_id, members):
+def create_command(
+    name, channel_type, description, intent, org_id, project_id, members
+):
     """Create a new channel."""
     _, persona = resolve_caller_persona()
 
@@ -67,14 +71,19 @@ def create_command(name, channel_type, description, intent, org_id, project_id, 
 
 
 @channel_cli.command("list")
-@click.option("--all", "all_visible", is_flag=True, help="Show all non-archived channels.")
 @click.option(
-    "--status", default=None,
+    "--all", "all_visible", is_flag=True, help="Show all non-archived channels."
+)
+@click.option(
+    "--status",
+    default=None,
     type=click.Choice(["pending", "active", "complete", "archived"]),
     help="Filter by status.",
 )
 @click.option(
-    "--type", "channel_type", default=None,
+    "--type",
+    "channel_type",
+    default=None,
     type=click.Choice(["workshop", "delegation", "review", "standup", "broadcast"]),
     help="Filter by type.",
 )
@@ -102,12 +111,14 @@ def list_command(all_visible, status, channel_type):
     headers = {"slug": "Slug", "name": "Name", "type": "Type", "status": "Status"}
     rows = []
     for ch in channels:
-        rows.append({
-            "slug": ch.slug,
-            "name": ch.name,
-            "type": ch.channel_type.value,
-            "status": ch.status,
-        })
+        rows.append(
+            {
+                "slug": ch.slug,
+                "name": ch.name,
+                "type": ch.channel_type.value,
+                "status": ch.status,
+            }
+        )
 
     print_table(headers, rows)
     click.echo(f"\n{len(channels)} channel{'s' if len(channels) != 1 else ''}")
@@ -146,6 +157,7 @@ def show_command(slug):
 
     # Message count (use count query instead of loading all messages)
     from ..models.message import Message
+
     msg_count = Message.query.filter_by(channel_id=channel.id).count()
     click.echo(f"  Messages: {msg_count}")
 
@@ -175,13 +187,15 @@ def members_command(slug):
     rows = []
     for m in members:
         name = m.persona.name if m.persona else "Unknown"
-        rows.append({
-            "name": name,
-            "status": m.status,
-            "chair": "yes" if m.is_chair else "",
-            "agent": f"#{m.agent_id}" if m.agent_id else "-",
-            "joined": m.joined_at.strftime("%d %b %Y, %H:%M"),
-        })
+        rows.append(
+            {
+                "name": name,
+                "status": m.status,
+                "chair": "yes" if m.is_chair else "",
+                "agent": f"#{m.agent_id}" if m.agent_id else "-",
+                "joined": m.joined_at.strftime("%d %b %Y, %H:%M"),
+            }
+        )
 
     print_table(headers, rows)
 
@@ -241,7 +255,9 @@ def complete_command(slug):
 
 @channel_cli.command("transfer-chair")
 @click.argument("slug")
-@click.option("--to", "target_slug", required=True, help="Persona slug of the new chair.")
+@click.option(
+    "--to", "target_slug", required=True, help="Persona slug of the new chair."
+)
 def transfer_chair_command(slug, target_slug):
     """Transfer chair role to another member."""
     _, persona = resolve_caller_persona()

@@ -14,10 +14,10 @@ import pytest
 
 # Re-export session-scoped E2E fixtures so pytest discovers them.
 from tests.e2e.conftest import (  # noqa: F401
-    e2e_test_db,
+    browser_context_args,
     e2e_app,
     e2e_server,
-    browser_context_args,
+    e2e_test_db,
 )
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -30,6 +30,7 @@ RESPONSE_TIMEOUT = 60000  # ms — Playwright timeout for agent response
 # ---------------------------------------------------------------------------
 # Session-scoped: cleanup stale test tmux sessions from previous runs
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_stale_test_sessions():
@@ -58,6 +59,7 @@ def cleanup_stale_test_sessions():
 # pytest hook: capture test outcome for conditional teardown
 # ---------------------------------------------------------------------------
 
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
@@ -68,6 +70,7 @@ def pytest_runtest_makereport(item, call):
 # ---------------------------------------------------------------------------
 # claude_session fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def claude_session(e2e_app, e2e_server, request):
@@ -94,12 +97,21 @@ def claude_session(e2e_app, e2e_server, request):
     # Create tmux session with hooks pointing to the test server
     subprocess.run(
         [
-            "tmux", "new-session", "-d",
-            "-s", session_name,
-            "-c", str(PROJECT_ROOT),
-            "-x", "200", "-y", "50",
-            "-e", f"CLAUDE_HEADSPACE_URL={e2e_server}",
-            "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            session_name,
+            "-c",
+            str(PROJECT_ROOT),
+            "-x",
+            "200",
+            "-y",
+            "50",
+            "-e",
+            f"CLAUDE_HEADSPACE_URL={e2e_server}",
+            "-e",
+            f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
         ],
         check=True,
         timeout=10,
@@ -115,7 +127,10 @@ def claude_session(e2e_app, e2e_server, request):
     # - --model haiku: cost control
     subprocess.run(
         [
-            "tmux", "send-keys", "-t", session_name,
+            "tmux",
+            "send-keys",
+            "-t",
+            session_name,
             "unset CLAUDECODE && claude --model haiku",
             "Enter",
         ],
@@ -148,7 +163,9 @@ def claude_session(e2e_app, e2e_server, request):
             capture_output=True,
             text=True,
         )
-        pane_content = pane_capture.stdout if pane_capture.returncode == 0 else "(capture failed)"
+        pane_content = (
+            pane_capture.stdout if pane_capture.returncode == 0 else "(capture failed)"
+        )
 
         # Kill the tmux session — ready gate failed
         subprocess.run(
@@ -164,10 +181,7 @@ def claude_session(e2e_app, e2e_server, request):
     yield {"agent_id": agent_id, "session_name": session_name}
 
     # --- Conditional teardown ---
-    failed = (
-        hasattr(request.node, "rep_call")
-        and request.node.rep_call.failed
-    )
+    failed = hasattr(request.node, "rep_call") and request.node.rep_call.failed
 
     if failed:
         print(f"\n⚠️  Test FAILED — preserving tmux session: {session_name}")

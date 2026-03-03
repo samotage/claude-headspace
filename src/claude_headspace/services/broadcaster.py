@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from queue import Empty, Full, Queue
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class SSEClient:
 
     client_id: str
     connected_at: datetime
-    last_event_at: Optional[datetime] = None
+    last_event_at: datetime | None = None
     event_queue: Queue = field(default_factory=lambda: Queue(maxsize=1000))
     filters: dict = field(default_factory=dict)
     failed_writes: int = 0
@@ -92,7 +92,7 @@ class Broadcaster:
         )
 
         self._running = False
-        self._cleanup_thread: Optional[threading.Thread] = None
+        self._cleanup_thread: threading.Thread | None = None
         self._shutdown_event = threading.Event()
 
         logger.info(
@@ -122,7 +122,9 @@ class Broadcaster:
         self._running = True
         self._shutdown_event.clear()
         self._cleanup_thread = threading.Thread(
-            target=self._cleanup_loop, daemon=True, name="sse-cleanup",
+            target=self._cleanup_loop,
+            daemon=True,
+            name="sse-cleanup",
         )
         self._cleanup_thread.start()
         logger.info("Broadcaster started")
@@ -148,10 +150,10 @@ class Broadcaster:
 
     def register_client(
         self,
-        types: Optional[list[str]] = None,
-        project_id: Optional[int] = None,
-        agent_id: Optional[int] = None,
-    ) -> Optional[str]:
+        types: list[str] | None = None,
+        project_id: int | None = None,
+        agent_id: int | None = None,
+    ) -> str | None:
         """Register a new SSE client. Returns client_id or None if at limit."""
         if not self.can_accept_connection():
             logger.warning(f"Connection limit reached ({self._max_connections})")
@@ -185,7 +187,7 @@ class Broadcaster:
                 return True
         return False
 
-    def get_client(self, client_id: str) -> Optional[SSEClient]:
+    def get_client(self, client_id: str) -> SSEClient | None:
         with self._lock:
             return self._clients.get(client_id)
 
@@ -221,10 +223,14 @@ class Broadcaster:
                         f"(total dropped: {client.dropped_events})"
                     )
 
-        logger.debug(f"Broadcast: type={event_type}, id={event_id}, sent_to={sent_count}")
+        logger.debug(
+            f"Broadcast: type={event_type}, id={event_id}, sent_to={sent_count}"
+        )
         return sent_count
 
-    def get_replay_events(self, after_event_id: int, filters: Optional[dict] = None) -> list[SSEEvent]:
+    def get_replay_events(
+        self, after_event_id: int, filters: dict | None = None
+    ) -> list[SSEEvent]:
         """Get events from the replay buffer after a given event ID.
 
         Used for reconnecting clients that send Last-Event-ID.
@@ -254,7 +260,7 @@ class Broadcaster:
                 return False
         return True
 
-    def get_next_event(self, client_id: str, timeout: float = 30.0) -> Optional[SSEEvent]:
+    def get_next_event(self, client_id: str, timeout: float = 30.0) -> SSEEvent | None:
         """Get the next event for a client, blocking with timeout.
 
         If the client has a gap (events were dropped), injects a gap
@@ -272,7 +278,10 @@ class Broadcaster:
                 gap_id = self._event_id_counter
             return SSEEvent(
                 event_type="gap",
-                data={"_eid": gap_id, "message": "Events were dropped, refresh recommended"},
+                data={
+                    "_eid": gap_id,
+                    "message": "Events were dropped, refresh recommended",
+                },
                 event_id=gap_id,
             )
 
@@ -286,7 +295,9 @@ class Broadcaster:
         client = self.get_client(client_id)
         if client:
             client.failed_writes += 1
-            logger.warning(f"Client {client_id} failed write count: {client.failed_writes}")
+            logger.warning(
+                f"Client {client_id} failed write count: {client.failed_writes}"
+            )
 
     def _cleanup_loop(self) -> None:
         while not self._shutdown_event.is_set():
@@ -324,7 +335,7 @@ class Broadcaster:
 
 
 # Global broadcaster instance
-_broadcaster: Optional[Broadcaster] = None
+_broadcaster: Broadcaster | None = None
 _broadcaster_lock = threading.Lock()
 
 
@@ -333,11 +344,13 @@ def get_broadcaster() -> Broadcaster:
     global _broadcaster
     with _broadcaster_lock:
         if _broadcaster is None:
-            raise RuntimeError("Broadcaster not initialized. Call init_broadcaster first.")
+            raise RuntimeError(
+                "Broadcaster not initialized. Call init_broadcaster first."
+            )
         return _broadcaster
 
 
-def init_broadcaster(config: Optional[dict] = None) -> Broadcaster:
+def init_broadcaster(config: dict | None = None) -> Broadcaster:
     """Initialize the global broadcaster instance."""
     global _broadcaster
     with _broadcaster_lock:

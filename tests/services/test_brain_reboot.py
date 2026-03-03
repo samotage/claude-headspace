@@ -1,7 +1,6 @@
 """Tests for the brain reboot service."""
 
 import os
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -134,25 +133,19 @@ class TestFormatDocument:
         assert "restore context" in result
 
     def test_waypoint_before_summary(self, service):
-        result = service._format_document(
-            "My Project", "WP", "SUM"
-        )
+        result = service._format_document("My Project", "WP", "SUM")
         sum_pos = result.index("## Progress Summary")
         wp_pos = result.index("## Waypoint (Path Ahead)")
         assert wp_pos < sum_pos
 
     def test_waypoint_only(self, service):
-        result = service._format_document(
-            "My Project", "Waypoint content", None
-        )
+        result = service._format_document("My Project", "Waypoint content", None)
         assert "## Progress Summary" in result
         assert "not yet available" in result
         assert "Waypoint content" in result
 
     def test_summary_only(self, service):
-        result = service._format_document(
-            "My Project", None, "Summary content"
-        )
+        result = service._format_document("My Project", None, "Summary content")
         assert "Summary content" in result
         assert "## Waypoint (Path Ahead)" in result
         assert "not yet available" in result

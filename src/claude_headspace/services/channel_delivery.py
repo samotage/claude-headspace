@@ -185,9 +185,7 @@ class ChannelDeliveryService:
             True if delivered successfully, False if queued or failed.
         """
         if not agent.tmux_pane_id:
-            logger.warning(
-                f"Cannot deliver to agent {agent.id}: no tmux_pane_id"
-            )
+            logger.warning(f"Cannot deliver to agent {agent.id}: no tmux_pane_id")
             return False
 
         # Check pane health via CommanderAvailability
@@ -208,18 +206,12 @@ class ChannelDeliveryService:
         try:
             result = tmux_bridge.send_text(agent.tmux_pane_id, envelope_text)
             if hasattr(result, "success") and not result.success:
-                logger.warning(
-                    f"tmux delivery failed for agent {agent.id}: {result}"
-                )
+                logger.warning(f"tmux delivery failed for agent {agent.id}: {result}")
                 return False
-            logger.info(
-                f"Channel message delivered to agent {agent.id} via tmux"
-            )
+            logger.info(f"Channel message delivered to agent {agent.id} via tmux")
             return True
         except Exception as e:
-            logger.warning(
-                f"tmux delivery exception for agent {agent.id}: {e}"
-            )
+            logger.warning(f"tmux delivery exception for agent {agent.id}: {e}")
             return False
 
     # ── Fan-out engine ───────────────────────────────────────────────
@@ -249,11 +241,9 @@ class ChannelDeliveryService:
         )
 
         # Get all active memberships, excluding sender
-        memberships = (
-            ChannelMembership.query
-            .filter_by(channel_id=channel.id, status="active")
-            .all()
-        )
+        memberships = ChannelMembership.query.filter_by(
+            channel_id=channel.id, status="active"
+        ).all()
 
         for membership in memberships:
             # Skip the sender
@@ -317,8 +307,7 @@ class ChannelDeliveryService:
             # Queue for later delivery
             self._enqueue(agent.id, message.id)
             logger.info(
-                f"Queued message {message.id} for agent {agent.id} "
-                f"(unsafe state)"
+                f"Queued message {message.id} for agent {agent.id} (unsafe state)"
             )
             return
 
@@ -396,17 +385,13 @@ class ChannelDeliveryService:
             return False
 
         if not agent.persona_id:
-            logger.debug(
-                f"Agent {agent.id} has no persona — skipping channel relay"
-            )
+            logger.debug(f"Agent {agent.id} has no persona — skipping channel relay")
             return False
 
         # Look up the agent's active channel membership
-        membership = (
-            ChannelMembership.query
-            .filter_by(agent_id=agent.id, status="active")
-            .first()
-        )
+        membership = ChannelMembership.query.filter_by(
+            agent_id=agent.id, status="active"
+        ).first()
         if not membership:
             return False
 
@@ -422,8 +407,7 @@ class ChannelDeliveryService:
         cleaned_text = self._strip_command_complete(turn_text)
         if not cleaned_text.strip():
             logger.debug(
-                f"Agent {agent.id} response is empty after stripping — "
-                f"skipping relay"
+                f"Agent {agent.id} response is empty after stripping — skipping relay"
             )
             return False
 
@@ -449,9 +433,7 @@ class ChannelDeliveryService:
             )
             return True
         except Exception as e:
-            logger.warning(
-                f"Channel relay failed for agent {agent.id}: {e}"
-            )
+            logger.warning(f"Channel relay failed for agent {agent.id}: {e}")
             return False
 
     # ── Delivery queue drain ─────────────────────────────────────────
@@ -483,16 +465,13 @@ class ChannelDeliveryService:
 
         if not message:
             logger.warning(
-                f"Queued message {message_id} not found for agent "
-                f"{agent.id} — skipping"
+                f"Queued message {message_id} not found for agent {agent.id} — skipping"
             )
             return False
 
         channel = message.channel
         if not channel:
-            logger.warning(
-                f"Message {message_id} has no channel — skipping drain"
-            )
+            logger.warning(f"Message {message_id} has no channel — skipping drain")
             return False
 
         # Don't deliver to completed/archived channels

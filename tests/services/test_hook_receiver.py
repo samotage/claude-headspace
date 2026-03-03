@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,6 @@ from claude_headspace.services.hook_receiver import (
     HookEventResult,
     HookEventType,
     HookMode,
-    HookReceiverState,
     _awaiting_tool_for_agent,
     _deferred_stop_pending,
     _extract_question_text,
@@ -24,12 +23,12 @@ from claude_headspace.services.hook_receiver import (
     get_receiver_state,
     process_notification,
     process_permission_request,
+    process_post_tool_use,
     process_pre_tool_use,
     process_session_end,
     process_session_start,
     process_stop,
     process_user_prompt_submit,
-    process_post_tool_use,
     reset_receiver_state,
 )
 
@@ -156,14 +155,14 @@ class TestProcessSessionStart:
         assert mock_agent.ended_at is None
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_assigns_persona_from_slug(self, mock_db, mock_agent, fresh_state):
+    def test_session_start_assigns_persona_from_slug(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """session_start with valid persona_slug sets agent.persona_id."""
         mock_persona = MagicMock()
         mock_persona.id = 5
         mock_persona.name = "Developer Con"
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as MockPersona:
+        with patch("claude_headspace.models.persona.Persona") as MockPersona:
             MockPersona.query.filter_by.return_value.first.return_value = mock_persona
             result = process_session_start(
                 mock_agent, "session-123", persona_slug="developer-con-1"
@@ -172,8 +171,11 @@ class TestProcessSessionStart:
         assert mock_agent.persona_id == 5
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_unknown_persona_slug_logs_warning(self, mock_db, fresh_state, caplog):
+    def test_session_start_unknown_persona_slug_logs_warning(
+        self, mock_db, fresh_state, caplog
+    ):
         """session_start with unrecognised persona_slug logs warning, agent has no persona."""
+
         # Use a simple object to verify persona_id is NOT set
         class SimpleAgent:
             id = 1
@@ -186,12 +188,12 @@ class TestProcessSessionStart:
             tmux_session = None
             persona_id = None
             previous_agent_id = None
+
         agent = SimpleAgent()
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as MockPersona:
+        with patch("claude_headspace.models.persona.Persona") as MockPersona:
             MockPersona.query.filter_by.return_value.first.return_value = None
             import logging
+
             with caplog.at_level(logging.WARNING):
                 result = process_session_start(
                     agent, "session-123", persona_slug="nonexistent"
@@ -201,23 +203,24 @@ class TestProcessSessionStart:
         assert "unrecognised persona_slug=nonexistent" in caplog.text
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_no_persona_slug_skips_lookup(self, mock_db, mock_agent, fresh_state):
+    def test_session_start_no_persona_slug_skips_lookup(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """session_start without persona_slug does not query Persona table."""
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as MockPersona:
+        with patch("claude_headspace.models.persona.Persona") as MockPersona:
             result = process_session_start(mock_agent, "session-123")
         assert result.success is True
         MockPersona.query.filter_by.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_persona_db_error_graceful(self, mock_db, mock_agent, fresh_state, caplog):
+    def test_session_start_persona_db_error_graceful(
+        self, mock_db, mock_agent, fresh_state, caplog
+    ):
         """DB error during Persona lookup does not block agent registration."""
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as MockPersona:
+        with patch("claude_headspace.models.persona.Persona") as MockPersona:
             MockPersona.query.filter_by.side_effect = Exception("DB connection lost")
             import logging
+
             with caplog.at_level(logging.ERROR):
                 result = process_session_start(
                     mock_agent, "session-123", persona_slug="developer-con-1"
@@ -226,7 +229,9 @@ class TestProcessSessionStart:
         assert "DB error during Persona lookup" in caplog.text
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_previous_agent_id_converted_to_int(self, mock_db, mock_agent, fresh_state):
+    def test_session_start_previous_agent_id_converted_to_int(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """session_start converts previous_agent_id string to int and sets on agent."""
         result = process_session_start(
             mock_agent, "session-123", previous_agent_id="42"
@@ -235,9 +240,12 @@ class TestProcessSessionStart:
         assert mock_agent.previous_agent_id == 42
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_invalid_previous_agent_id_logs_warning(self, mock_db, mock_agent, fresh_state, caplog):
+    def test_session_start_invalid_previous_agent_id_logs_warning(
+        self, mock_db, mock_agent, fresh_state, caplog
+    ):
         """session_start with non-numeric previous_agent_id logs warning."""
         import logging
+
         with caplog.at_level(logging.WARNING):
             result = process_session_start(
                 mock_agent, "session-123", previous_agent_id="not-a-number"
@@ -246,8 +254,11 @@ class TestProcessSessionStart:
         assert "invalid previous_agent_id" in caplog.text
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_session_start_without_persona_or_previous_agent(self, mock_db, mock_agent, fresh_state):
+    def test_session_start_without_persona_or_previous_agent(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """session_start without persona or previous_agent_id fields preserves backward compatibility."""
+
         # Use a simple namespace instead of MagicMock to detect attribute assignment
         class SimpleAgent:
             id = 1
@@ -260,13 +271,13 @@ class TestProcessSessionStart:
             tmux_session = None
             persona_id = None
             previous_agent_id = None
+
         agent = SimpleAgent()
         result = process_session_start(agent, "session-123")
         assert result.success is True
         # persona_id and previous_agent_id should remain None
         assert agent.persona_id is None
         assert agent.previous_agent_id is None
-
 
     @patch("claude_headspace.services.skill_injector.inject_persona_skills")
     @patch("claude_headspace.services.hook_receiver.db")
@@ -292,7 +303,10 @@ class TestProcessSessionStart:
         assert result.success is True
         mock_inject.assert_not_called()
 
-    @patch("claude_headspace.services.skill_injector.inject_persona_skills", side_effect=RuntimeError("tmux crashed"))
+    @patch(
+        "claude_headspace.services.skill_injector.inject_persona_skills",
+        side_effect=RuntimeError("tmux crashed"),
+    )
     @patch("claude_headspace.services.hook_receiver.db")
     def test_session_start_skill_injection_failure_does_not_block(
         self, mock_db, mock_inject, mock_agent, fresh_state, caplog
@@ -309,7 +323,9 @@ class TestProcessSessionStart:
 class TestProcessSessionEnd:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_session_end(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_successful_session_end(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
         mock_lifecycle.get_current_command.return_value = None
@@ -324,7 +340,9 @@ class TestProcessSessionEnd:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_completes_active_command(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_completes_active_command(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         mock_command = MagicMock()
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
@@ -334,13 +352,17 @@ class TestProcessSessionEnd:
         result = process_session_end(mock_agent, "session-123")
 
         assert result.success is True
-        mock_lifecycle.complete_command.assert_called_once_with(mock_command, trigger="hook:session_end")
+        mock_lifecycle.complete_command.assert_called_once_with(
+            mock_command, trigger="hook:session_end"
+        )
 
 
 class TestProcessUserPromptSubmit:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_command_when_none_exists(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_creates_command_when_none_exists(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.services.command_lifecycle import TurnProcessingResult
 
@@ -351,7 +373,9 @@ class TestProcessUserPromptSubmit:
         mock_command.state = CommandState.PROCESSING
 
         mock_lifecycle.process_turn.return_value = TurnProcessingResult(
-            success=True, command=mock_command, new_command_created=True,
+            success=True,
+            command=mock_command,
+            new_command_created=True,
         )
         mock_lifecycle.get_pending_summarisations.return_value = []
 
@@ -362,7 +386,9 @@ class TestProcessUserPromptSubmit:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_transitions_to_processing(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_transitions_to_processing(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.services.command_lifecycle import TurnProcessingResult
 
@@ -373,7 +399,8 @@ class TestProcessUserPromptSubmit:
         mock_command.state = CommandState.COMMANDED
 
         mock_lifecycle.process_turn.return_value = TurnProcessingResult(
-            success=True, command=mock_command,
+            success=True,
+            command=mock_command,
         )
         mock_lifecycle.get_pending_summarisations.return_value = []
 
@@ -405,7 +432,9 @@ class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_successful_stop(self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state):
+    def test_successful_stop(
+        self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnIntent
 
@@ -419,12 +448,15 @@ class TestProcessStop:
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         mock_extract.return_value = "Done. Changes applied."
-        mock_detect.return_value = MagicMock(intent=TurnIntent.COMPLETION, confidence=0.9)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.COMPLETION, confidence=0.9
+        )
 
         # complete_command sets state to COMPLETE
         def set_complete(command, **kwargs):
             command.state = CommandState.COMPLETE
             return True
+
         mock_lifecycle.complete_command.side_effect = set_complete
 
         result = process_stop(mock_agent, "session-123")
@@ -438,7 +470,9 @@ class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_stop_with_question_detected(self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state):
+    def test_stop_with_question_detected(
+        self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnIntent
 
@@ -452,12 +486,15 @@ class TestProcessStop:
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         mock_extract.return_value = "Would you like me to proceed?"
-        mock_detect.return_value = MagicMock(intent=TurnIntent.QUESTION, confidence=0.95)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.QUESTION, confidence=0.95
+        )
 
         # update_command_state sets to AWAITING_INPUT
         def set_awaiting(command, **kwargs):
             command.state = CommandState.AWAITING_INPUT
             return True
+
         mock_lifecycle.update_command_state.side_effect = set_awaiting
 
         result = process_stop(mock_agent, "session-123")
@@ -467,11 +504,15 @@ class TestProcessStop:
         assert result.new_state == "awaiting_input"
         mock_lifecycle.complete_command.assert_not_called()
         mock_lifecycle.update_command_state.assert_called_once()
-        assert mock_db.session.add.call_count >= 1  # QUESTION turn added (+ possibly Event)
+        assert (
+            mock_db.session.add.call_count >= 1
+        )  # QUESTION turn added (+ possibly Event)
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_stop_with_no_command_is_noop(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_stop_with_no_command_is_noop(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
         mock_lifecycle.get_current_command.return_value = None
@@ -486,7 +527,9 @@ class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_end_of_command_detected(self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state):
+    def test_end_of_command_detected(
+        self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnIntent
 
@@ -500,25 +543,32 @@ class TestProcessStop:
 
         eot_text = "Here's a summary of changes."
         mock_extract.return_value = eot_text
-        mock_detect.return_value = MagicMock(intent=TurnIntent.END_OF_COMMAND, confidence=1.0)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.END_OF_COMMAND, confidence=1.0
+        )
 
         def set_complete(command, **kwargs):
             command.state = CommandState.COMPLETE
             return True
+
         mock_lifecycle.complete_command.side_effect = set_complete
 
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
         mock_lifecycle.complete_command.assert_called_once_with(
-            command=mock_command, trigger="hook:stop:end_of_command",
-            agent_text=eot_text, intent=TurnIntent.END_OF_COMMAND,
+            command=mock_command,
+            trigger="hook:stop:end_of_command",
+            agent_text=eot_text,
+            intent=TurnIntent.END_OF_COMMAND,
         )
 
 
 class TestProcessNotification:
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_with_processing_command_transitions(self, mock_db, mock_agent, fresh_state):
+    def test_notification_with_processing_command_transitions(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -533,7 +583,9 @@ class TestProcessNotification:
         assert mock_command.state == CommandState.AWAITING_INPUT
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_without_active_command_does_not_broadcast(self, mock_db, mock_agent, fresh_state):
+    def test_notification_without_active_command_does_not_broadcast(
+        self, mock_db, mock_agent, fresh_state
+    ):
         mock_agent.get_current_command.return_value = None
 
         result = process_notification(mock_agent, "session-123")
@@ -543,7 +595,9 @@ class TestProcessNotification:
         assert result.new_state is None
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_after_command_complete_does_not_override(self, mock_db, mock_agent, fresh_state):
+    def test_notification_after_command_complete_does_not_override(
+        self, mock_db, mock_agent, fresh_state
+    ):
         mock_agent.get_current_command.return_value = None
 
         result = process_notification(mock_agent, "session-123")
@@ -553,7 +607,9 @@ class TestProcessNotification:
         assert result.new_state is None
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_with_awaiting_input_command_is_noop(self, mock_db, mock_agent, fresh_state):
+    def test_notification_with_awaiting_input_command_is_noop(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -567,7 +623,9 @@ class TestProcessNotification:
         assert mock_command.state == CommandState.AWAITING_INPUT
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_updates_timestamp_and_commits(self, mock_db, mock_agent, fresh_state):
+    def test_notification_updates_timestamp_and_commits(
+        self, mock_db, mock_agent, fresh_state
+    ):
         process_notification(mock_agent, "session-123")
         mock_db.session.commit.assert_called_once()
 
@@ -591,14 +649,18 @@ class TestProcessNotification:
         mock_get_lifecycle.return_value = mock_lifecycle
 
         result = process_notification(
-            mock_agent, "session-123",
-            message="Need your input", title="Question",
+            mock_agent,
+            "session-123",
+            message="Need your input",
+            title="Question",
         )
 
         assert result.state_changed is True
         mock_lifecycle.update_command_state.assert_called_once_with(
-            mock_command, CommandState.AWAITING_INPUT,
-            trigger="notification", confidence=1.0,
+            mock_command,
+            CommandState.AWAITING_INPUT,
+            trigger="notification",
+            confidence=1.0,
         )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
@@ -614,10 +676,13 @@ class TestProcessNotification:
         mock_send_notif.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_notification_skips_interruption_artifact(self, mock_db, mock_agent, fresh_state):
+    def test_notification_skips_interruption_artifact(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """Interruption artifact notifications from tmux key injection are silently skipped."""
         result = process_notification(
-            mock_agent, "session-123",
+            mock_agent,
+            "session-123",
             message="Interruption detected",
         )
 
@@ -630,7 +695,9 @@ class TestProcessNotification:
 
 class TestHookEventResult:
     def test_success_result(self):
-        result = HookEventResult(success=True, agent_id=1, state_changed=True, new_state="processing")
+        result = HookEventResult(
+            success=True, agent_id=1, state_changed=True, new_state="processing"
+        )
         assert result.success is True
         assert result.agent_id == 1
         assert result.state_changed is True
@@ -644,14 +711,18 @@ class TestHookEventResult:
 
 class TestProcessPreToolUse:
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_processing_command_transitions_to_awaiting_input(self, mock_db, mock_agent, fresh_state):
+    def test_processing_command_transitions_to_awaiting_input(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
         mock_command.state = CommandState.PROCESSING
         mock_agent.get_current_command.return_value = mock_command
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.success is True
         assert result.state_changed is True
@@ -662,7 +733,9 @@ class TestProcessPreToolUse:
     def test_no_active_command_is_noop(self, mock_db, mock_agent, fresh_state):
         mock_agent.get_current_command.return_value = None
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.success is True
         assert result.state_changed is False
@@ -676,7 +749,9 @@ class TestProcessPreToolUse:
         mock_command.state = CommandState.AWAITING_INPUT
         mock_agent.get_current_command.return_value = mock_command
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.success is True
         assert result.state_changed is False
@@ -695,7 +770,9 @@ class TestProcessPreToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_sends_os_notification_on_transition(self, mock_db, mock_get_lifecycle, mock_agent, fresh_state):
+    def test_sends_os_notification_on_transition(
+        self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -711,25 +788,40 @@ class TestProcessPreToolUse:
         mock_get_lifecycle.return_value = mock_lifecycle
 
         tool_input = {
-            "questions": [{"question": "Which approach do you prefer?", "header": "Approach", "options": [], "multiSelect": False}]
+            "questions": [
+                {
+                    "question": "Which approach do you prefer?",
+                    "header": "Approach",
+                    "options": [],
+                    "multiSelect": False,
+                }
+            ]
         }
         result = process_pre_tool_use(
-            mock_agent, "session-123",
-            tool_name="AskUserQuestion", tool_input=tool_input,
+            mock_agent,
+            "session-123",
+            tool_name="AskUserQuestion",
+            tool_input=tool_input,
         )
 
         assert result.state_changed is True
         mock_lifecycle.update_command_state.assert_called_once_with(
-            mock_command, CommandState.AWAITING_INPUT,
-            trigger="pre_tool_use", confidence=1.0,
+            mock_command,
+            CommandState.AWAITING_INPUT,
+            trigger="pre_tool_use",
+            confidence=1.0,
         )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_does_not_send_os_notification_without_transition(self, mock_db, mock_send_notif, mock_agent, fresh_state):
+    def test_does_not_send_os_notification_without_transition(
+        self, mock_db, mock_send_notif, mock_agent, fresh_state
+    ):
         mock_agent.get_current_command.return_value = None
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.state_changed is False
         mock_send_notif.assert_not_called()
@@ -737,7 +829,9 @@ class TestProcessPreToolUse:
 
 class TestProcessPermissionRequest:
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_processing_command_transitions_to_awaiting_input(self, mock_db, mock_agent, fresh_state):
+    def test_processing_command_transitions_to_awaiting_input(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -788,7 +882,9 @@ class TestProcessPermissionRequest:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_sends_os_notification_on_transition(self, mock_db, mock_get_lifecycle, mock_agent, fresh_state):
+    def test_sends_os_notification_on_transition(
+        self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -804,19 +900,25 @@ class TestProcessPermissionRequest:
         mock_get_lifecycle.return_value = mock_lifecycle
 
         result = process_permission_request(
-            mock_agent, "session-123",
-            tool_name="Bash", tool_input={"command": "npm install"},
+            mock_agent,
+            "session-123",
+            tool_name="Bash",
+            tool_input={"command": "npm install"},
         )
 
         assert result.state_changed is True
         mock_lifecycle.update_command_state.assert_called_once_with(
-            mock_command, CommandState.AWAITING_INPUT,
-            trigger="permission_request", confidence=1.0,
+            mock_command,
+            CommandState.AWAITING_INPUT,
+            trigger="permission_request",
+            confidence=1.0,
         )
 
     @patch("claude_headspace.services.hook_receiver._send_notification")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_does_not_send_os_notification_without_transition(self, mock_db, mock_send_notif, mock_agent, fresh_state):
+    def test_does_not_send_os_notification_without_transition(
+        self, mock_db, mock_send_notif, mock_agent, fresh_state
+    ):
         mock_agent.get_current_command.return_value = None
 
         result = process_permission_request(mock_agent, "session-123")
@@ -825,7 +927,9 @@ class TestProcessPermissionRequest:
         mock_send_notif.assert_not_called()
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_agent_question_turn_with_tool_input(self, mock_db, mock_agent, fresh_state):
+    def test_creates_agent_question_turn_with_tool_input(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -834,8 +938,10 @@ class TestProcessPermissionRequest:
         mock_agent.get_current_command.return_value = mock_command
 
         result = process_permission_request(
-            mock_agent, "session-123",
-            tool_name="Bash", tool_input={"command": "rm -rf /tmp/test"},
+            mock_agent,
+            "session-123",
+            tool_name="Bash",
+            tool_input={"command": "rm -rf /tmp/test"},
         )
 
         assert result.success is True
@@ -848,7 +954,9 @@ class TestProcessPermissionRequest:
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_broadcasts_turn_created_on_transition(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_broadcasts_turn_created_on_transition(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -871,7 +979,12 @@ class TestExtractQuestionText:
     def test_ask_user_question_structure(self):
         tool_input = {
             "questions": [
-                {"question": "Which database should we use?", "header": "Database", "options": [], "multiSelect": False}
+                {
+                    "question": "Which database should we use?",
+                    "header": "Database",
+                    "options": [],
+                    "multiSelect": False,
+                }
             ]
         }
         result = _extract_question_text("AskUserQuestion", tool_input)
@@ -901,15 +1014,17 @@ class TestExtractQuestionText:
 class TestExtractStructuredOptions:
     def test_returns_tool_input_for_ask_user_question_with_options(self):
         tool_input = {
-            "questions": [{
-                "question": "Which database?",
-                "header": "Database",
-                "options": [
-                    {"label": "PostgreSQL", "description": "Relational DB"},
-                    {"label": "MongoDB", "description": "Document DB"},
-                ],
-                "multiSelect": False,
-            }]
+            "questions": [
+                {
+                    "question": "Which database?",
+                    "header": "Database",
+                    "options": [
+                        {"label": "PostgreSQL", "description": "Relational DB"},
+                        {"label": "MongoDB", "description": "Document DB"},
+                    ],
+                    "multiSelect": False,
+                }
+            ]
         }
         result = _extract_structured_options("AskUserQuestion", tool_input)
         assert result == tool_input
@@ -928,10 +1043,12 @@ class TestExtractStructuredOptions:
 
     def test_returns_none_for_no_options(self):
         tool_input = {
-            "questions": [{
-                "question": "Which?",
-                "options": [],
-            }]
+            "questions": [
+                {
+                    "question": "Which?",
+                    "options": [],
+                }
+            ]
         }
         result = _extract_structured_options("AskUserQuestion", tool_input)
         assert result is None
@@ -958,20 +1075,24 @@ class TestPreToolUseTurnToolInput:
         mock_agent.get_current_command.return_value = mock_command
 
         tool_input = {
-            "questions": [{
-                "question": "Which approach?",
-                "header": "Approach",
-                "options": [
-                    {"label": "Option A", "description": "Desc A"},
-                    {"label": "Option B", "description": "Desc B"},
-                ],
-                "multiSelect": False,
-            }]
+            "questions": [
+                {
+                    "question": "Which approach?",
+                    "header": "Approach",
+                    "options": [
+                        {"label": "Option A", "description": "Desc A"},
+                        {"label": "Option B", "description": "Desc B"},
+                    ],
+                    "multiSelect": False,
+                }
+            ]
         }
 
         result = process_pre_tool_use(
-            mock_agent, "session-123",
-            tool_name="AskUserQuestion", tool_input=tool_input,
+            mock_agent,
+            "session-123",
+            tool_name="AskUserQuestion",
+            tool_input=tool_input,
         )
 
         assert result.success is True
@@ -981,7 +1102,9 @@ class TestPreToolUseTurnToolInput:
         assert added_turn.tool_input == tool_input
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_tool_input_has_default_options_for_non_ask_user_question(self, mock_db, mock_agent, fresh_state):
+    def test_tool_input_has_default_options_for_non_ask_user_question(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """Permission requests always get options — defaults when tmux capture fails."""
         from claude_headspace.models.command import CommandState
 
@@ -991,8 +1114,10 @@ class TestPreToolUseTurnToolInput:
         mock_agent.get_current_command.return_value = mock_command
 
         result = process_permission_request(
-            mock_agent, "session-123",
-            tool_name="Bash", tool_input={"command": "ls"},
+            mock_agent,
+            "session-123",
+            tool_name="Bash",
+            tool_input={"command": "ls"},
         )
 
         assert result.success is True
@@ -1010,7 +1135,9 @@ class TestPreToolUseTurnToolInput:
 
 class TestPreToolUseTurnCreation:
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_agent_question_turn_with_ask_user_question(self, mock_db, mock_agent, fresh_state):
+    def test_creates_agent_question_turn_with_ask_user_question(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -1019,12 +1146,21 @@ class TestPreToolUseTurnCreation:
         mock_agent.get_current_command.return_value = mock_command
 
         tool_input = {
-            "questions": [{"question": "Which approach do you prefer?", "header": "Approach", "options": [], "multiSelect": False}]
+            "questions": [
+                {
+                    "question": "Which approach do you prefer?",
+                    "header": "Approach",
+                    "options": [],
+                    "multiSelect": False,
+                }
+            ]
         }
 
         result = process_pre_tool_use(
-            mock_agent, "session-123",
-            tool_name="AskUserQuestion", tool_input=tool_input,
+            mock_agent,
+            "session-123",
+            tool_name="AskUserQuestion",
+            tool_input=tool_input,
         )
 
         assert result.success is True
@@ -1035,7 +1171,9 @@ class TestPreToolUseTurnCreation:
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_broadcasts_turn_created(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_broadcasts_turn_created(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -1043,7 +1181,9 @@ class TestPreToolUseTurnCreation:
         mock_command.id = 10
         mock_agent.get_current_command.return_value = mock_command
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.state_changed is True
         mock_broadcast_turn.assert_called_once()
@@ -1054,10 +1194,14 @@ class TestPreToolUseTurnCreation:
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_no_broadcast_without_transition(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_no_broadcast_without_transition(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
         mock_agent.get_current_command.return_value = None
 
-        result = process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
+        result = process_pre_tool_use(
+            mock_agent, "session-123", tool_name="AskUserQuestion"
+        )
 
         assert result.state_changed is False
         mock_broadcast_turn.assert_not_called()
@@ -1065,7 +1209,9 @@ class TestPreToolUseTurnCreation:
 
 class TestNotificationTurnDedup:
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_skips_turn_creation_when_recent_question_exists(self, mock_db, mock_agent, fresh_state):
+    def test_skips_turn_creation_when_recent_question_exists(
+        self, mock_db, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnActor, TurnIntent
 
@@ -1083,19 +1229,26 @@ class TestNotificationTurnDedup:
         mock_agent.get_current_command.return_value = mock_command
 
         result = process_notification(
-            mock_agent, "session-123",
-            message="Input needed", title="Question",
+            mock_agent,
+            "session-123",
+            message="Input needed",
+            title="Question",
         )
 
         assert result.success is True
         assert result.state_changed is True
         # Should NOT have added a new Turn (dedup) — only state_transition Event is allowed
         from claude_headspace.models.turn import Turn as _Turn
-        turn_adds = [c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)]
+
+        turn_adds = [
+            c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)
+        ]
         assert len(turn_adds) == 0
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_skips_turn_creation_for_notification_events(self, mock_db, mock_agent, fresh_state):
+    def test_skips_turn_creation_for_notification_events(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """Notification hooks carry generic text — the stop hook creates the real turn."""
         from claude_headspace.models.command import CommandState
 
@@ -1106,8 +1259,10 @@ class TestNotificationTurnDedup:
         mock_agent.get_current_command.return_value = mock_command
 
         result = process_notification(
-            mock_agent, "session-123",
-            message="Need your input", title="Question",
+            mock_agent,
+            "session-123",
+            message="Need your input",
+            title="Question",
         )
 
         assert result.success is True
@@ -1115,12 +1270,17 @@ class TestNotificationTurnDedup:
         # Notification events should NOT create turns (phantom turn fix)
         # Only state_transition Event may be added, no Turn
         from claude_headspace.models.turn import Turn as _Turn
-        turn_adds = [c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)]
+
+        turn_adds = [
+            c for c in mock_db.session.add.call_args_list if isinstance(c[0][0], _Turn)
+        ]
         assert len(turn_adds) == 0
 
     @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_no_turn_broadcast_for_notification(self, mock_db, mock_broadcast_turn, mock_agent, fresh_state):
+    def test_no_turn_broadcast_for_notification(
+        self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
+    ):
         """Notification hooks should not broadcast turn_created (no turn is created)."""
         from claude_headspace.models.command import CommandState
 
@@ -1131,7 +1291,8 @@ class TestNotificationTurnDedup:
         mock_agent.get_current_command.return_value = mock_command
 
         result = process_notification(
-            mock_agent, "session-123",
+            mock_agent,
+            "session-123",
             message="Need your input",
         )
 
@@ -1147,7 +1308,14 @@ class TestStopTurnBroadcast:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
     def test_broadcasts_turn_when_awaiting_input(
-        self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_broadcast_turn, mock_agent, fresh_state
+        self,
+        mock_db,
+        mock_get_lm,
+        mock_extract,
+        mock_detect,
+        mock_broadcast_turn,
+        mock_agent,
+        fresh_state,
     ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnActor, TurnIntent
@@ -1168,19 +1336,26 @@ class TestStopTurnBroadcast:
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         mock_extract.return_value = "Do you want to proceed?"
-        mock_detect.return_value = MagicMock(intent=TurnIntent.QUESTION, confidence=0.95)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.QUESTION, confidence=0.95
+        )
 
         def set_awaiting(command, **kwargs):
             command.state = CommandState.AWAITING_INPUT
             return True
+
         mock_lifecycle.update_command_state.side_effect = set_awaiting
 
         result = process_stop(mock_agent, "session-123")
 
         assert result.success is True
         mock_broadcast_turn.assert_called_once_with(
-            mock_agent, "Do you want to proceed?", mock_command, tool_input=None, turn_id=mock_turn.id,
-            intent='question',
+            mock_agent,
+            "Do you want to proceed?",
+            mock_command,
+            tool_input=None,
+            turn_id=mock_turn.id,
+            intent="question",
             question_source_type=mock_turn.question_source_type,
         )
 
@@ -1190,7 +1365,14 @@ class TestStopTurnBroadcast:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
     def test_no_turn_broadcast_when_complete(
-        self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_broadcast_turn, mock_agent, fresh_state
+        self,
+        mock_db,
+        mock_get_lm,
+        mock_extract,
+        mock_detect,
+        mock_broadcast_turn,
+        mock_agent,
+        fresh_state,
     ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnIntent
@@ -1205,11 +1387,14 @@ class TestStopTurnBroadcast:
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         mock_extract.return_value = "Done."
-        mock_detect.return_value = MagicMock(intent=TurnIntent.COMPLETION, confidence=0.9)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.COMPLETION, confidence=0.9
+        )
 
         def set_complete(command, **kwargs):
             command.state = CommandState.COMPLETE
             return True
+
         mock_lifecycle.complete_command.side_effect = set_complete
 
         result = process_stop(mock_agent, "session-123")
@@ -1221,7 +1406,9 @@ class TestStopTurnBroadcast:
 class TestProcessPostToolUse:
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_creates_command_when_no_active_command(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_creates_command_when_no_active_command(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_lifecycle = MagicMock()
@@ -1245,14 +1432,17 @@ class TestProcessPostToolUse:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_lifecycle.create_command.assert_called_once_with(mock_agent, CommandState.COMMANDED)
+        mock_lifecycle.create_command.assert_called_once_with(
+            mock_agent, CommandState.COMMANDED
+        )
         mock_lifecycle.update_command_state.assert_called_once()
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_skips_inferred_when_recent_command_completed(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_skips_inferred_when_recent_command_completed(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use should NOT create inferred command if previous command completed < 30s ago."""
-        from claude_headspace.models.command import CommandState
 
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
@@ -1277,7 +1467,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_creates_inferred_when_old_command_completed(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_creates_inferred_when_old_command_completed(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use should create inferred command if previous command completed > 30s ago."""
         from claude_headspace.models.command import CommandState
 
@@ -1306,11 +1498,15 @@ class TestProcessPostToolUse:
 
         assert result.success is True
         assert result.state_changed is True
-        mock_lifecycle.create_command.assert_called_once_with(mock_agent, CommandState.COMMANDED)
+        mock_lifecycle.create_command.assert_called_once_with(
+            mock_agent, CommandState.COMMANDED
+        )
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_noop_when_already_processing(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_noop_when_already_processing(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -1328,7 +1524,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_resumes_from_awaiting_input(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_resumes_from_awaiting_input(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         from claude_headspace.models.command import CommandState
         from claude_headspace.services.command_lifecycle import TurnProcessingResult
 
@@ -1342,7 +1540,8 @@ class TestProcessPostToolUse:
         result_cmd = MagicMock()
         result_cmd.state = CommandState.PROCESSING
         mock_lifecycle.process_turn.return_value = TurnProcessingResult(
-            success=True, command=result_cmd,
+            success=True,
+            command=result_cmd,
         )
         mock_lifecycle.get_pending_summarisations.return_value = []
 
@@ -1353,7 +1552,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_preserves_awaiting_for_exit_plan_mode(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_preserves_awaiting_for_exit_plan_mode(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use(ExitPlanMode) should NOT resume from AWAITING_INPUT."""
         from claude_headspace.models.command import CommandState
 
@@ -1364,7 +1565,9 @@ class TestProcessPostToolUse:
         mock_get_lm.return_value = mock_lifecycle
         mock_lifecycle.get_current_command.return_value = mock_command
 
-        result = process_post_tool_use(mock_agent, "session-123", tool_name="ExitPlanMode")
+        result = process_post_tool_use(
+            mock_agent, "session-123", tool_name="ExitPlanMode"
+        )
 
         assert result.success is True
         assert result.new_state == CommandState.AWAITING_INPUT.value
@@ -1373,7 +1576,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_resumes_for_normal_tools(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_resumes_for_normal_tools(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use for normal tools should resume from AWAITING_INPUT."""
         from claude_headspace.models.command import CommandState
         from claude_headspace.services.command_lifecycle import TurnProcessingResult
@@ -1388,7 +1593,8 @@ class TestProcessPostToolUse:
         result_cmd = MagicMock()
         result_cmd.state = CommandState.PROCESSING
         mock_lifecycle.process_turn.return_value = TurnProcessingResult(
-            success=True, command=result_cmd,
+            success=True,
+            command=result_cmd,
         )
         mock_lifecycle.get_pending_summarisations.return_value = []
 
@@ -1400,7 +1606,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_preserves_awaiting_when_different_tool(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_preserves_awaiting_when_different_tool(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use for a different tool than the one that triggered AWAITING_INPUT
         should preserve AWAITING_INPUT (e.g. Task completing while Bash awaits permission)."""
         from claude_headspace.models.command import CommandState
@@ -1424,7 +1632,9 @@ class TestProcessPostToolUse:
 
     @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_post_tool_use_resumes_when_matching_tool(self, mock_db, mock_get_lm, mock_agent, fresh_state):
+    def test_post_tool_use_resumes_when_matching_tool(
+        self, mock_db, mock_get_lm, mock_agent, fresh_state
+    ):
         """post_tool_use for the same tool that triggered AWAITING_INPUT should resume."""
         from claude_headspace.models.command import CommandState
         from claude_headspace.services.command_lifecycle import TurnProcessingResult
@@ -1439,7 +1649,8 @@ class TestProcessPostToolUse:
         result_cmd = MagicMock()
         result_cmd.state = CommandState.PROCESSING
         mock_lifecycle.process_turn.return_value = TurnProcessingResult(
-            success=True, command=result_cmd,
+            success=True,
+            command=result_cmd,
         )
         mock_lifecycle.get_pending_summarisations.return_value = []
 
@@ -1455,7 +1666,9 @@ class TestProcessPostToolUse:
         assert mock_agent.id not in _awaiting_tool_for_agent
 
     @patch("claude_headspace.services.hook_receiver.db")
-    def test_pre_tool_use_non_interactive_no_state_change(self, mock_db, mock_agent, fresh_state):
+    def test_pre_tool_use_non_interactive_no_state_change(
+        self, mock_db, mock_agent, fresh_state
+    ):
         """pre_tool_use for non-interactive tools (Read, Grep, etc.) should NOT change state."""
         from claude_headspace.models.command import CommandState
 
@@ -1475,7 +1688,9 @@ class TestSynthesizePermissionOptions:
     """Tests for _synthesize_permission_options function."""
 
     @patch("claude_headspace.services.tmux_bridge.capture_permission_context")
-    def test_returns_options_with_summary_when_pane_available(self, mock_capture, mock_agent):
+    def test_returns_options_with_summary_when_pane_available(
+        self, mock_capture, mock_agent
+    ):
         mock_agent.tmux_pane_id = "%5"
         mock_capture.return_value = {
             "tool_type": "Bash command",
@@ -1484,7 +1699,9 @@ class TestSynthesizePermissionOptions:
             "options": [{"label": "Yes"}, {"label": "No"}],
         }
 
-        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "ls -la"})
+        result = _synthesize_permission_options(
+            mock_agent, "Bash", {"command": "ls -la"}
+        )
 
         assert result is not None
         assert result["source"] == "permission_pane_capture"
@@ -1556,7 +1773,9 @@ class TestSynthesizePermissionOptions:
             "options": [{"label": "Yes"}, {"label": "No"}],
         }
 
-        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "rm -rf /tmp/test"})
+        result = _synthesize_permission_options(
+            mock_agent, "Bash", {"command": "rm -rf /tmp/test"}
+        )
 
         assert result is not None
         assert result["safety"] == "destructive"
@@ -1571,7 +1790,9 @@ class TestSynthesizePermissionOptions:
             "options": [{"label": "Yes"}, {"label": "No"}],
         }
 
-        result = _synthesize_permission_options(mock_agent, "Bash", {"command": "curl http://localhost:5055"})
+        result = _synthesize_permission_options(
+            mock_agent, "Bash", {"command": "curl http://localhost:5055"}
+        )
 
         assert result is not None
         assert "command_context" in result
@@ -1596,18 +1817,22 @@ class TestPermissionPaneCapture:
         mock_agent.get_current_command.return_value = mock_command
 
         synthesized = {
-            "questions": [{
-                "question": "Bash: npm install",
-                "options": [{"label": "Yes"}, {"label": "No"}],
-            }],
+            "questions": [
+                {
+                    "question": "Bash: npm install",
+                    "options": [{"label": "Yes"}, {"label": "No"}],
+                }
+            ],
             "source": "permission_pane_capture",
             "safety": "safe_write",
         }
         mock_synthesize.return_value = synthesized
 
         result = process_permission_request(
-            mock_agent, "session-123",
-            tool_name="Bash", tool_input={"command": "npm install"},
+            mock_agent,
+            "session-123",
+            tool_name="Bash",
+            tool_input={"command": "npm install"},
         )
 
         assert result.success is True
@@ -1633,8 +1858,10 @@ class TestPermissionPaneCapture:
         mock_synthesize.return_value = None
 
         result = process_permission_request(
-            mock_agent, "session-123",
-            tool_name="Bash", tool_input={"command": "ls"},
+            mock_agent,
+            "session-123",
+            tool_name="Bash",
+            tool_input={"command": "ls"},
         )
 
         assert result.success is True
@@ -1656,15 +1883,18 @@ class TestPermissionPaneCapture:
         mock_agent.get_current_command.return_value = mock_command
 
         process_pre_tool_use(
-            mock_agent, "session-123",
+            mock_agent,
+            "session-123",
             tool_name="AskUserQuestion",
             tool_input={
-                "questions": [{
-                    "question": "Which?",
-                    "options": [{"label": "A"}, {"label": "B"}],
-                    "header": "Choice",
-                    "multiSelect": False,
-                }]
+                "questions": [
+                    {
+                        "question": "Which?",
+                        "options": [{"label": "A"}, {"label": "B"}],
+                        "header": "Choice",
+                        "multiSelect": False,
+                    }
+                ]
             },
         )
 
@@ -1676,7 +1906,9 @@ class TestDeferredStopPolling:
     """Tests for the polling loop in _schedule_deferred_stop."""
 
     @patch("claude_headspace.services.hook_deferred_stop._send_completion_notification")
-    @patch("claude_headspace.services.hook_deferred_stop._execute_pending_summarisations")
+    @patch(
+        "claude_headspace.services.hook_deferred_stop._execute_pending_summarisations"
+    )
     @patch("claude_headspace.services.card_state.broadcast_card_refresh")
     @patch("claude_headspace.services.hook_deferred_stop._trigger_priority_scoring")
     @patch("claude_headspace.services.intent_detector.detect_agent_intent")
@@ -1684,23 +1916,36 @@ class TestDeferredStopPolling:
     @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
     @patch("claude_headspace.database.db")
     def test_polling_finds_transcript_on_second_attempt(
-        self, mock_db, mock_get_lm, mock_extract, mock_detect,
-        mock_trigger, mock_broadcast, mock_exec_summ, mock_notif, fresh_state,
+        self,
+        mock_db,
+        mock_get_lm,
+        mock_extract,
+        mock_detect,
+        mock_trigger,
+        mock_broadcast,
+        mock_exec_summ,
+        mock_notif,
+        fresh_state,
     ):
         """Deferred stop should retry and find transcript on a subsequent poll."""
         from flask import Flask
+
         from claude_headspace.models.command import CommandState
         from claude_headspace.models.turn import TurnIntent
 
         # Simulate: first call returns empty, second returns text
         mock_extract.side_effect = ["", "Done. All changes applied."]
-        mock_detect.return_value = MagicMock(intent=TurnIntent.COMPLETION, confidence=0.9)
+        mock_detect.return_value = MagicMock(
+            intent=TurnIntent.COMPLETION, confidence=0.9
+        )
 
         mock_command = MagicMock()
         mock_command.id = 100
         mock_command.state = CommandState.PROCESSING
         mock_command.turns = []
-        mock_db.session.get.side_effect = lambda model, id: mock_command if id == 100 else MagicMock()
+        mock_db.session.get.side_effect = lambda model, id: (
+            mock_command if id == 100 else MagicMock()
+        )
 
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
@@ -1709,6 +1954,7 @@ class TestDeferredStopPolling:
         def set_complete(command, **kwargs):
             command.state = CommandState.COMPLETE
             return True
+
         mock_lifecycle.complete_command.side_effect = set_complete
 
         _deferred_stop_pending.clear()
@@ -1720,7 +1966,9 @@ class TestDeferredStopPolling:
         app = Flask(__name__)
         with app.app_context():
             # Capture the thread target so we can run it synchronously
-            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread_cls:
+            with patch(
+                "claude_headspace.services.hook_deferred_stop.threading.Thread"
+            ) as mock_thread_cls:
                 mock_thread_instance = MagicMock()
                 mock_thread_cls.return_value = mock_thread_instance
 
@@ -1754,16 +2002,22 @@ class TestDeferredStopPolling:
 
         # Verify agent was cleaned up from pending set (via AgentHookState)
         from claude_headspace.services.hook_agent_state import get_agent_hook_state
+
         assert not get_agent_hook_state().is_deferred_stop_pending(42)
 
     @patch("claude_headspace.services.hook_deferred_stop._extract_transcript_content")
     @patch("claude_headspace.services.hook_deferred_stop._get_lifecycle_manager")
     @patch("claude_headspace.database.db")
     def test_deferred_stop_exits_early_if_command_completed(
-        self, mock_db, mock_get_lm, mock_extract, fresh_state,
+        self,
+        mock_db,
+        mock_get_lm,
+        mock_extract,
+        fresh_state,
     ):
         """Deferred stop should exit early if command state becomes COMPLETE between polls."""
         from flask import Flask
+
         from claude_headspace.models.command import CommandState
 
         mock_command = MagicMock()
@@ -1784,7 +2038,9 @@ class TestDeferredStopPolling:
 
         app = Flask(__name__)
         with app.app_context():
-            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread:
+            with patch(
+                "claude_headspace.services.hook_deferred_stop.threading.Thread"
+            ) as mock_thread:
                 mock_thread_instance = MagicMock()
                 mock_thread.return_value = mock_thread_instance
 
@@ -1816,6 +2072,7 @@ class TestResetReceiverState:
     def test_deferred_stop_deduplication(self):
         """_schedule_deferred_stop should not spawn duplicate threads for the same agent."""
         from flask import Flask
+
         from claude_headspace.services.hook_agent_state import get_agent_hook_state
 
         mock_agent = MagicMock()
@@ -1829,7 +2086,9 @@ class TestResetReceiverState:
 
         app = Flask(__name__)
         with app.app_context():
-            with patch("claude_headspace.services.hook_deferred_stop.threading.Thread") as mock_thread:
+            with patch(
+                "claude_headspace.services.hook_deferred_stop.threading.Thread"
+            ) as mock_thread:
                 mock_thread_instance = MagicMock()
                 mock_thread.return_value = mock_thread_instance
 
@@ -1861,8 +2120,16 @@ class TestStopHookProgressDedup:
     @patch("claude_headspace.services.hook_receiver._send_completion_notification")
     @patch("claude_headspace.services.hook_receiver.db")
     def test_all_captured_upgrades_progress(
-        self, mock_db, mock_notif, mock_state_bc, mock_priority,
-        mock_turn_bc, mock_card_bc, mock_extract, mock_detect, fresh_state,
+        self,
+        mock_db,
+        mock_notif,
+        mock_state_bc,
+        mock_priority,
+        mock_turn_bc,
+        mock_card_bc,
+        mock_extract,
+        mock_detect,
+        fresh_state,
     ):
         """When all text captured by PROGRESS, stop hook upgrades last PROGRESS turn.
 
@@ -1882,7 +2149,9 @@ class TestStopHookProgressDedup:
 
         # Intent detector returns COMPLETION (realistic — stop hook means agent finished)
         mock_detect.return_value = IntentResult(
-            intent=TurnIntent.COMPLETION, confidence=0.9, matched_pattern="test",
+            intent=TurnIntent.COMPLETION,
+            confidence=0.9,
+            matched_pattern="test",
         )
 
         # Mock agent
@@ -1933,19 +2202,25 @@ class TestStopHookProgressDedup:
             _progress_texts_for_agent,
             _transcript_positions,
         )
+
         _progress_texts_for_agent[42] = [
-            progress_turn1.text, progress_turn2.text, progress_turn3.text,
+            progress_turn1.text,
+            progress_turn2.text,
+            progress_turn3.text,
         ]
         _transcript_positions[42] = 999  # Position past all entries
 
         # Mock read_new_entries to return empty (all captured)
         # Also mock is_content_duplicate to return False (fragments don't match full text)
-        with patch(
-            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
-            return_value=([], 999),
-        ), patch(
-            "claude_headspace.services.transcript_reconciler.is_content_duplicate",
-            return_value=False,
+        with (
+            patch(
+                "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+                return_value=([], 999),
+            ),
+            patch(
+                "claude_headspace.services.transcript_reconciler.is_content_duplicate",
+                return_value=False,
+            ),
         ):
             # Mock lifecycle — ensure it returns OUR command object
             with patch(
@@ -1971,8 +2246,15 @@ class TestStopHookProgressDedup:
     @patch("claude_headspace.services.hook_receiver._send_completion_notification")
     @patch("claude_headspace.services.hook_receiver.db")
     def test_new_text_creates_completion(
-        self, mock_db, mock_notif, mock_state_bc, mock_priority,
-        mock_turn_bc, mock_card_bc, mock_extract, fresh_state,
+        self,
+        mock_db,
+        mock_notif,
+        mock_state_bc,
+        mock_priority,
+        mock_turn_bc,
+        mock_card_bc,
+        mock_extract,
+        fresh_state,
     ):
         """When new text exists beyond PROGRESS, a COMPLETION turn IS created."""
         from claude_headspace.services.hook_receiver import process_stop
@@ -1999,6 +2281,7 @@ class TestStopHookProgressDedup:
             _progress_texts_for_agent,
             _transcript_positions,
         )
+
         _progress_texts_for_agent.pop(43, None)
         _transcript_positions.pop(43, None)
 

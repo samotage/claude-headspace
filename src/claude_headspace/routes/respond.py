@@ -93,12 +93,14 @@ def _tmux_error_response(result, agent_id):
         f"message={result.error_message}, latency_ms={result.latency_ms}"
     )
 
-    return jsonify({
-        "status": "error",
-        "error_type": result.error_type.value if result.error_type else "unknown",
-        "message": result.error_message,
-        "latency_ms": result.latency_ms,
-    }), status_code
+    return jsonify(
+        {
+            "status": "error",
+            "error_type": result.error_type.value if result.error_type else "unknown",
+            "message": result.error_message,
+            "latency_ms": result.latency_ms,
+        }
+    ), status_code
 
 
 @respond_bp.route("/api/respond/<int:agent_id>", methods=["POST"])
@@ -132,77 +134,107 @@ def respond_to_agent(agent_id: int):
     mode = data.get("mode", "text")
 
     if mode not in ("text", "select", "other", "multi_select"):
-        return jsonify({
-            "status": "error",
-            "error_type": "invalid_mode",
-            "message": f"Invalid mode '{mode}'. Must be 'text', 'select', 'other', or 'multi_select'.",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "invalid_mode",
+                "message": f"Invalid mode '{mode}'. Must be 'text', 'select', 'other', or 'multi_select'.",
+            }
+        ), 400
 
     # Validate mode-specific parameters
     if mode == "text":
         text = data.get("text", "").strip()
         if not text:
-            return jsonify({
-                "status": "error",
-                "error_type": "missing_text",
-                "message": "Response text is required.",
-            }), 400
+            return jsonify(
+                {
+                    "status": "error",
+                    "error_type": "missing_text",
+                    "message": "Response text is required.",
+                }
+            ), 400
     elif mode == "select":
         option_index = data.get("option_index")
-        if option_index is None or not isinstance(option_index, int) or option_index < 0:
-            return jsonify({
-                "status": "error",
-                "error_type": "invalid_option_index",
-                "message": "option_index must be a non-negative integer.",
-            }), 400
+        if (
+            option_index is None
+            or not isinstance(option_index, int)
+            or option_index < 0
+        ):
+            return jsonify(
+                {
+                    "status": "error",
+                    "error_type": "invalid_option_index",
+                    "message": "option_index must be a non-negative integer.",
+                }
+            ), 400
     elif mode == "other":
         text = data.get("text", "").strip()
         if not text:
-            return jsonify({
-                "status": "error",
-                "error_type": "missing_text",
-                "message": "Text is required for 'other' mode.",
-            }), 400
+            return jsonify(
+                {
+                    "status": "error",
+                    "error_type": "missing_text",
+                    "message": "Text is required for 'other' mode.",
+                }
+            ), 400
     elif mode == "multi_select":
         answers = data.get("answers")
         if not answers or not isinstance(answers, list) or len(answers) == 0:
-            return jsonify({
-                "status": "error",
-                "error_type": "invalid_answers",
-                "message": "answers must be a non-empty array for 'multi_select' mode.",
-            }), 400
+            return jsonify(
+                {
+                    "status": "error",
+                    "error_type": "invalid_answers",
+                    "message": "answers must be a non-empty array for 'multi_select' mode.",
+                }
+            ), 400
         for idx, ans in enumerate(answers):
             if not isinstance(ans, dict):
-                return jsonify({
-                    "status": "error",
-                    "error_type": "invalid_answers",
-                    "message": f"answers[{idx}] must be an object.",
-                }), 400
-            has_single = "option_index" in ans and isinstance(ans["option_index"], int) and ans["option_index"] >= 0
-            has_multi = "option_indices" in ans and isinstance(ans["option_indices"], list) and len(ans["option_indices"]) > 0
+                return jsonify(
+                    {
+                        "status": "error",
+                        "error_type": "invalid_answers",
+                        "message": f"answers[{idx}] must be an object.",
+                    }
+                ), 400
+            has_single = (
+                "option_index" in ans
+                and isinstance(ans["option_index"], int)
+                and ans["option_index"] >= 0
+            )
+            has_multi = (
+                "option_indices" in ans
+                and isinstance(ans["option_indices"], list)
+                and len(ans["option_indices"]) > 0
+            )
             if not has_single and not has_multi:
-                return jsonify({
-                    "status": "error",
-                    "error_type": "invalid_answers",
-                    "message": f"answers[{idx}] must have option_index (int >= 0) or option_indices (non-empty list).",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "error_type": "invalid_answers",
+                        "message": f"answers[{idx}] must have option_index (int >= 0) or option_indices (non-empty list).",
+                    }
+                ), 400
 
     # Lookup agent with row lock to prevent concurrent state mutations (SRV-C1)
     agent = db.session.get(Agent, agent_id, with_for_update=True)
     if agent is None:
-        return jsonify({
-            "status": "error",
-            "error_type": "agent_not_found",
-            "message": f"Agent with ID {agent_id} not found.",
-        }), 404
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "agent_not_found",
+                "message": f"Agent with ID {agent_id} not found.",
+            }
+        ), 404
 
     # Check agent has a tmux pane ID
     if not agent.tmux_pane_id:
-        return jsonify({
-            "status": "error",
-            "error_type": "no_pane_id",
-            "message": "Agent has no tmux pane ID — cannot send input.",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "no_pane_id",
+                "message": "Agent has no tmux pane ID — cannot send input.",
+            }
+        ), 400
 
     # Check agent is in AWAITING_INPUT state
     current_command = agent.get_current_command()
@@ -213,11 +245,13 @@ def respond_to_agent(agent_id: int):
             f"respond_rejected: agent_id={agent_id}, reason=wrong_state, "
             f"actual_state={actual_state}, text_length={len(text) if text else 0}"
         )
-        return jsonify({
-            "status": "error",
-            "error_type": "wrong_state",
-            "message": f"Agent is not awaiting input (current state: {actual_state}).",
-        }), 409
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "wrong_state",
+                "message": f"Agent is not awaiting input (current state: {actual_state}).",
+            }
+        ), 409
 
     # Get tmux bridge config
     config = current_app.config.get("APP_CONFIG", {})
@@ -249,7 +283,9 @@ def respond_to_agent(agent_id: int):
             verify_enter=True,
         )
         option_label = data.get("option_label", "").strip()
-        record_text = option_label if option_label else f"[selected option {option_index}]"
+        record_text = (
+            option_label if option_label else f"[selected option {option_index}]"
+        )
 
     elif mode == "other":
         # Navigate to "Other" (last item) then type custom text
@@ -289,9 +325,9 @@ def respond_to_agent(agent_id: int):
         parts = []
         for i, ans in enumerate(answers):
             if "option_indices" in ans and isinstance(ans["option_indices"], list):
-                parts.append(f"Q{i+1}: options {ans['option_indices']}")
+                parts.append(f"Q{i + 1}: options {ans['option_indices']}")
             else:
-                parts.append(f"Q{i+1}: option {ans.get('option_index', 0)}")
+                parts.append(f"Q{i + 1}: option {ans.get('option_index', 0)}")
         record_text = "[multi-select: " + ", ".join(parts) + "]"
 
     if not result.success:
@@ -300,6 +336,7 @@ def respond_to_agent(agent_id: int):
     # Success: create Turn record and transition state
     try:
         from ..services.command_lifecycle import complete_answer
+
         result = complete_answer(current_command, agent, record_text, source="respond")
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -308,24 +345,29 @@ def respond_to_agent(agent_id: int):
             f"text_length={len(record_text)}, latency_ms={latency_ms}"
         )
 
-        return jsonify({
-            "status": "ok",
-            "agent_id": agent_id,
-            "mode": mode,
-            "new_state": result.new_state.value,
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "agent_id": agent_id,
+                "mode": mode,
+                "new_state": result.new_state.value,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     except Exception as e:
         db.session.rollback()
         from ..services.hook_agent_state import get_agent_hook_state
+
         get_agent_hook_state().clear_respond_inflight(agent.id)
         logger.exception(f"Error recording response for agent {agent_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "error_type": "internal_error",
-            "message": "Response was sent but recording failed. State will self-correct.",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "internal_error",
+                "message": "Response was sent but recording failed. State will self-correct.",
+            }
+        ), 500
 
 
 @respond_bp.route("/api/respond/<int:agent_id>/availability", methods=["GET"])
@@ -341,11 +383,13 @@ def check_availability(agent_id: int):
     """
     agent = db.session.get(Agent, agent_id)
     if agent is None:
-        return jsonify({
-            "status": "error",
-            "error_type": "agent_not_found",
-            "message": f"Agent with ID {agent_id} not found.",
-        }), 404
+        return jsonify(
+            {
+                "status": "error",
+                "error_type": "agent_not_found",
+                "message": f"Agent with ID {agent_id} not found.",
+            }
+        ), 404
 
     availability = _get_commander_availability()
     if availability and agent.tmux_pane_id:
@@ -353,9 +397,10 @@ def check_availability(agent_id: int):
     else:
         available = False
 
-    return jsonify({
-        "status": "ok",
-        "agent_id": agent_id,
-        "commander_available": available,
-    }), 200
-
+    return jsonify(
+        {
+            "status": "ok",
+            "agent_id": agent_id,
+            "commander_available": available,
+        }
+    ), 200

@@ -103,7 +103,11 @@ class TestCreateSession:
             with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
                 # First filter_by(path=...) returns None (not registered)
                 # Second filter_by(slug=...) returns None (slug available)
-                MockProject.query.filter_by.return_value.first.side_effect = [None, None, None]
+                MockProject.query.filter_by.return_value.first.side_effect = [
+                    None,
+                    None,
+                    None,
+                ]
 
                 mock_project = MagicMock()
                 mock_project.id = 42
@@ -115,7 +119,10 @@ class TestCreateSession:
                 MockAgent.return_value = mock_agent
                 MockAgent.query.filter_by.return_value.first.return_value = None
 
-                with patch("src.claude_headspace.models.project.generate_slug", return_value="unregistered-project"):
+                with patch(
+                    "src.claude_headspace.models.project.generate_slug",
+                    return_value="unregistered-project",
+                ):
                     response = client.post(
                         "/api/sessions",
                         json={
@@ -142,7 +149,9 @@ class TestCreateSession:
 
         with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
             with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
-                MockProject.query.filter_by.return_value.first.return_value = mock_project
+                MockProject.query.filter_by.return_value.first.return_value = (
+                    mock_project
+                )
 
                 mock_agent = MagicMock()
                 mock_agent.id = 1
@@ -163,7 +172,9 @@ class TestCreateSession:
                 assert data["status"] == "created"
                 assert data["project_id"] == mock_project.id
 
-    def test_creates_session_with_tmux_pane_id(self, app, client, mock_db, mock_project):
+    def test_creates_session_with_tmux_pane_id(
+        self, app, client, mock_db, mock_project
+    ):
         """Test creating session with tmux_pane_id stores it on Agent."""
         session_uuid = str(uuid.uuid4())
 
@@ -172,7 +183,9 @@ class TestCreateSession:
 
         with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
             with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
-                MockProject.query.filter_by.return_value.first.return_value = mock_project
+                MockProject.query.filter_by.return_value.first.return_value = (
+                    mock_project
+                )
 
                 mock_agent = MagicMock()
                 mock_agent.id = 1
@@ -204,7 +217,9 @@ class TestCreateSession:
 
         with patch("src.claude_headspace.routes.sessions.Project") as MockProject:
             with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
-                MockProject.query.filter_by.return_value.first.return_value = mock_project
+                MockProject.query.filter_by.return_value.first.return_value = (
+                    mock_project
+                )
 
                 mock_agent = MagicMock()
                 mock_agent.id = 1
@@ -233,7 +248,9 @@ class TestCreateSession:
             with patch("src.claude_headspace.routes.sessions.Agent") as MockAgent:
                 mock_project = MagicMock()
                 mock_project.id = 1
-                MockProject.query.filter_by.return_value.first.return_value = mock_project
+                MockProject.query.filter_by.return_value.first.return_value = (
+                    mock_project
+                )
                 MockAgent.query.filter_by.return_value.first.return_value = mock_agent
 
                 response = client.post(

@@ -150,41 +150,51 @@ def get_topic(slug: str):
     """
     # Validate slug to prevent path traversal
     if not re.match(r"^[a-z0-9-]+$", slug):
-        return jsonify({
-            "error": "invalid_slug",
-            "message": "Invalid topic slug",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_slug",
+                "message": "Invalid topic slug",
+            }
+        ), 400
 
     help_dir = get_help_dir()
     file_path = help_dir / f"{slug}.md"
 
     if not file_path.exists():
-        return jsonify({
-            "error": "not_found",
-            "message": f"Topic '{slug}' not found",
-        }), 404
+        return jsonify(
+            {
+                "error": "not_found",
+                "message": f"Topic '{slug}' not found",
+            }
+        ), 404
 
     try:
         content = file_path.read_text(encoding="utf-8")
         title = extract_title(content, slug.replace("-", " ").title())
 
-        return jsonify({
-            "slug": slug,
-            "title": title,
-            "content": content,
-        }), 200
+        return jsonify(
+            {
+                "slug": slug,
+                "title": title,
+                "content": content,
+            }
+        ), 200
 
     except PermissionError:
-        return jsonify({
-            "error": "permission_denied",
-            "message": f"Cannot read topic '{slug}'",
-        }), 403
+        return jsonify(
+            {
+                "error": "permission_denied",
+                "message": f"Cannot read topic '{slug}'",
+            }
+        ), 403
     except Exception as e:
         logger.exception(f"Error reading help topic {slug}")
-        return jsonify({
-            "error": "read_error",
-            "message": f"Failed to read topic: {type(e).__name__}",
-        }), 500
+        return jsonify(
+            {
+                "error": "read_error",
+                "message": f"Failed to read topic: {type(e).__name__}",
+            }
+        ), 500
 
 
 @help_bp.route("/api/help/setup-prompt", methods=["GET"])
@@ -205,31 +215,39 @@ def get_setup_prompt():
     file_path = root / APPLICATION_DIR / "claude_code_setup_prompt.md"
 
     if not file_path.exists():
-        return jsonify({
-            "error": "not_found",
-            "message": "Setup prompt document not found",
-        }), 404
+        return jsonify(
+            {
+                "error": "not_found",
+                "message": "Setup prompt document not found",
+            }
+        ), 404
 
     try:
         content = file_path.read_text(encoding="utf-8")
         title = extract_title(content, "Claude Code Setup Prompt")
 
-        return jsonify({
-            "title": title,
-            "content": content,
-        }), 200
+        return jsonify(
+            {
+                "title": title,
+                "content": content,
+            }
+        ), 200
 
     except PermissionError:
-        return jsonify({
-            "error": "permission_denied",
-            "message": "Cannot read setup prompt document",
-        }), 403
+        return jsonify(
+            {
+                "error": "permission_denied",
+                "message": "Cannot read setup prompt document",
+            }
+        ), 403
     except Exception as e:
         logger.exception("Error reading setup prompt document")
-        return jsonify({
-            "error": "read_error",
-            "message": f"Failed to read document: {type(e).__name__}",
-        }), 500
+        return jsonify(
+            {
+                "error": "read_error",
+                "message": f"Failed to read document: {type(e).__name__}",
+            }
+        ), 500
 
 
 @help_bp.route("/api/help/search", methods=["GET"])
@@ -251,12 +269,16 @@ def get_search_index():
                 content = file_path.read_text(encoding="utf-8")
                 title = extract_title(content, topic["title"])
 
-                index_data.append({
-                    "slug": topic["slug"],
-                    "title": title,
-                    "content": content,
-                })
+                index_data.append(
+                    {
+                        "slug": topic["slug"],
+                        "title": title,
+                        "content": content,
+                    }
+                )
             except Exception as e:
-                logger.warning(f"Error reading help topic for index {topic['slug']}: {e}")
+                logger.warning(
+                    f"Error reading help topic for index {topic['slug']}: {e}"
+                )
 
     return jsonify({"topics": index_data}), 200

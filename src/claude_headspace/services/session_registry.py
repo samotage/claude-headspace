@@ -3,7 +3,6 @@
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
 
@@ -14,10 +13,12 @@ class RegisteredSession:
     session_uuid: UUID
     project_path: str
     working_directory: str
-    iterm_pane_id: Optional[str] = None
+    iterm_pane_id: str | None = None
     registered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_activity_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    jsonl_file_path: Optional[str] = None
+    last_activity_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    jsonl_file_path: str | None = None
 
 
 class SessionRegistry:
@@ -36,7 +37,7 @@ class SessionRegistry:
         session_uuid: UUID,
         project_path: str,
         working_directory: str,
-        iterm_pane_id: Optional[str] = None,
+        iterm_pane_id: str | None = None,
     ) -> RegisteredSession:
         """
         Register a new session for monitoring.
@@ -99,7 +100,7 @@ class SessionRegistry:
         with self._lock:
             return session_uuid in self._sessions
 
-    def get_session(self, session_uuid: UUID) -> Optional[RegisteredSession]:
+    def get_session(self, session_uuid: UUID) -> RegisteredSession | None:
         """
         Get a specific registered session.
 

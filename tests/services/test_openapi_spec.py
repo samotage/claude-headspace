@@ -13,12 +13,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────
 
-SPEC_PATH = Path(__file__).resolve().parents[2] / "static" / "api" / "remote-agents.yaml"
+SPEC_PATH = (
+    Path(__file__).resolve().parents[2] / "static" / "api" / "remote-agents.yaml"
+)
 HELP_PATH = Path(__file__).resolve().parents[2] / "docs" / "help" / "external-api.md"
 
 
@@ -46,6 +47,7 @@ def help_content():
 # ──────────────────────────────────────────────────────────────
 # Spec structure tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestSpecStructure:
     """Verify basic OpenAPI 3.1 structural requirements."""
@@ -97,7 +99,11 @@ class TestSpecStructure:
             if stripped.startswith("description:"):
                 in_description = True
                 continue
-            if in_description and not stripped.startswith("-") and not stripped.startswith("|"):
+            if (
+                in_description
+                and not stripped.startswith("-")
+                and not stripped.startswith("|")
+            ):
                 if not stripped.startswith(" ") or stripped == "":
                     in_description = False
 
@@ -115,6 +121,7 @@ class TestSpecStructure:
 # ──────────────────────────────────────────────────────────────
 # Endpoint coverage tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestEndpointCoverage:
     """Verify all remote agent endpoints are documented in the spec."""
@@ -181,6 +188,7 @@ class TestEndpointCoverage:
 # Schema accuracy tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestSchemaAccuracy:
     """Verify schema fields match actual request/response shapes from route code."""
 
@@ -209,8 +217,13 @@ class TestSchemaAccuracy:
 
         # These match the jsonify() call in create_remote_agent()
         expected_fields = [
-            "agent_id", "embed_url", "session_token",
-            "project_slug", "persona_slug", "tmux_session_name", "status",
+            "agent_id",
+            "embed_url",
+            "session_token",
+            "project_slug",
+            "persona_slug",
+            "tmux_session_name",
+            "status",
         ]
         for field in expected_fields:
             assert field in props, f"Missing field in CreateResponse: {field}"
@@ -283,7 +296,13 @@ class TestSchemaAccuracy:
         state_enum = schema["properties"]["state"]["enum"]
 
         # These are the command states from the state machine (lowercased)
-        expected_states = ["idle", "commanded", "processing", "awaiting_input", "complete"]
+        expected_states = [
+            "idle",
+            "commanded",
+            "processing",
+            "awaiting_input",
+            "complete",
+        ]
         assert sorted(state_enum) == sorted(expected_states)
 
     def test_security_schemes_defined(self, spec):
@@ -336,6 +355,7 @@ class TestSchemaAccuracy:
 # Cross-link verification tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestCrossLinks:
     """Verify cross-references between spec and help topic."""
 
@@ -346,7 +366,10 @@ class TestCrossLinks:
 
     def test_help_references_spec_url(self, help_content):
         """Help topic must reference the spec URL."""
-        assert "/api/remote_agents/openapi.yaml" in help_content or "/static/api/remote-agents.yaml" in help_content
+        assert (
+            "/api/remote_agents/openapi.yaml" in help_content
+            or "/static/api/remote-agents.yaml" in help_content
+        )
 
     def test_help_documents_directory_convention(self, help_content):
         """Help topic must document the directory convention."""
@@ -376,6 +399,7 @@ class TestCrossLinks:
 # ──────────────────────────────────────────────────────────────
 # OpenAPI 3.1 validation (requires openapi-spec-validator)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestOpenAPIValidation:
     """Validate the spec against the OpenAPI 3.1 standard.

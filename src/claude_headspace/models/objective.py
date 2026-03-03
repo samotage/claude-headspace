@@ -21,9 +21,13 @@ class Objective(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     current_text: Mapped[str] = mapped_column(Text, nullable=False)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
-    priority_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     set_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -55,9 +59,13 @@ class ObjectiveHistory(db.Model):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     objective: Mapped["Objective"] = relationship("Objective", back_populates="history")

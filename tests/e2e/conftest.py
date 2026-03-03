@@ -18,7 +18,6 @@ from .helpers.dashboard_assertions import DashboardAssertions
 from .helpers.hook_simulator import HookSimulator
 from .helpers.voice_assertions import VoiceAssertions
 
-
 # ---------------------------------------------------------------------------
 # Database URL helpers (reuses integration test pattern)
 # ---------------------------------------------------------------------------
@@ -33,6 +32,7 @@ def _get_test_database_url() -> str:
         return test_url
 
     from claude_headspace.config import load_config
+
     config = load_config(str(PROJECT_ROOT / "config.yaml"))
     db_config = config.get("database", {})
     host = db_config.get("host", "localhost")
@@ -59,6 +59,7 @@ def _get_test_db_name() -> str:
 # Session-scoped: test database creation
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def e2e_test_db():
     """Create and drop the E2E test database for the session."""
@@ -80,12 +81,14 @@ def e2e_test_db():
     admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as conn:
-            conn.execute(text(
-                f"SELECT pg_terminate_backend(pg_stat_activity.pid) "
-                f"FROM pg_stat_activity "
-                f"WHERE pg_stat_activity.datname = '{db_name}' "
-                f"AND pid <> pg_backend_pid()"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT pg_terminate_backend(pg_stat_activity.pid) "
+                    f"FROM pg_stat_activity "
+                    f"WHERE pg_stat_activity.datname = '{db_name}' "
+                    f"AND pid <> pg_backend_pid()"
+                )
+            )
             conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
     finally:
         admin_engine.dispose()
@@ -94,6 +97,7 @@ def e2e_test_db():
 # ---------------------------------------------------------------------------
 # Session-scoped: Flask app + server
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def e2e_app(e2e_test_db):
@@ -113,6 +117,7 @@ def e2e_app(e2e_test_db):
     with app.app_context():
         from claude_headspace import models  # noqa: F401
         from claude_headspace.models.project import Project, generate_slug
+
         db.create_all()
 
         # Seed a project matching the working_directory used by hook_client
@@ -149,6 +154,7 @@ def e2e_server(e2e_app):
 
     # Wait for server to be ready
     import requests
+
     for _ in range(50):
         try:
             resp = requests.get(f"{base_url}/health", timeout=1)
@@ -168,6 +174,7 @@ def e2e_server(e2e_app):
 # Session-scoped: browser configuration (pytest-playwright)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def browser_context_args():
     return {
@@ -179,6 +186,7 @@ def browser_context_args():
 # ---------------------------------------------------------------------------
 # Function-scoped: per-test cleanup
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def clean_db(e2e_app):
@@ -195,6 +203,7 @@ def clean_db(e2e_app):
 
         # Re-seed the test project (hook_client needs a registered project)
         from claude_headspace.models.project import Project, generate_slug
+
         project_path = str(PROJECT_ROOT)
         project_name = PROJECT_ROOT.name
         project = Project(
@@ -206,8 +215,8 @@ def clean_db(e2e_app):
         db.session.commit()
 
     # Reset global state
-    from claude_headspace.services.session_correlator import clear_session_cache
     from claude_headspace.services.hook_receiver import reset_receiver_state
+    from claude_headspace.services.session_correlator import clear_session_cache
 
     reset_receiver_state()
     clear_session_cache()
@@ -216,6 +225,7 @@ def clean_db(e2e_app):
 # ---------------------------------------------------------------------------
 # Function-scoped: hook client
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def hook_client(e2e_server):
@@ -236,14 +246,17 @@ def _make_hook_client(base_url: str, working_directory: str | None = None):
 @pytest.fixture
 def make_hook_client(e2e_server):
     """Factory fixture for creating additional hook clients."""
+
     def factory(working_directory: str | None = None):
         return _make_hook_client(e2e_server, working_directory)
+
     return factory
 
 
 # ---------------------------------------------------------------------------
 # Function-scoped: dashboard page with SSE
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def dashboard(page, e2e_server):
@@ -269,6 +282,7 @@ def dashboard_page(page, e2e_server):
 # ---------------------------------------------------------------------------
 # Function-scoped: voice app page with credentials
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def voice_page(page, e2e_server):

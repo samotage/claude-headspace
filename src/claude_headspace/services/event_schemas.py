@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,9 @@ def validate_event_type(event_type: str) -> bool:
     return event_type in EventType.ALL_TYPES
 
 
-def validate_payload(event_type: str, payload: dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_payload(
+    event_type: str, payload: dict[str, Any]
+) -> tuple[bool, str | None]:
     """
     Validate that a payload conforms to the schema for its event type.
 
@@ -169,21 +171,21 @@ class ValidatedEvent:
     event_type: str
     payload: dict[str, Any]
     timestamp: datetime
-    project_id: Optional[int] = None
-    agent_id: Optional[int] = None
-    command_id: Optional[int] = None
-    turn_id: Optional[int] = None
+    project_id: int | None = None
+    agent_id: int | None = None
+    command_id: int | None = None
+    turn_id: int | None = None
 
 
 def create_validated_event(
     event_type: str,
     payload: dict[str, Any],
-    timestamp: Optional[datetime] = None,
-    project_id: Optional[int] = None,
-    agent_id: Optional[int] = None,
-    command_id: Optional[int] = None,
-    turn_id: Optional[int] = None,
-) -> tuple[Optional[ValidatedEvent], Optional[str]]:
+    timestamp: datetime | None = None,
+    project_id: int | None = None,
+    agent_id: int | None = None,
+    command_id: int | None = None,
+    turn_id: int | None = None,
+) -> tuple[ValidatedEvent | None, str | None]:
     """
     Create a validated event ready for writing.
 

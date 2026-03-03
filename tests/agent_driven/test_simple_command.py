@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
-from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
+from tests.agent_driven.helpers.output import scenario_footer, scenario_header, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -77,10 +77,10 @@ def test_simple_command_roundtrip(claude_session, page, e2e_server, e2e_app):
                 .first()
             )
             assert command is not None, "No Command record found in database"
-            assert command.state in (CommandState.COMPLETE, CommandState.AWAITING_INPUT), (
-                f"Expected command state COMPLETE or AWAITING_INPUT, "
-                f"got {command.state}"
-            )
+            assert command.state in (
+                CommandState.COMPLETE,
+                CommandState.AWAITING_INPUT,
+            ), f"Expected command state COMPLETE or AWAITING_INPUT, got {command.state}"
 
     va.capture("06_test_complete")
     scenario_footer("Simple Command Round-Trip", start)

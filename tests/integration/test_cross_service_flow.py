@@ -5,15 +5,13 @@ pipeline end-to-end with real service instances and a real database.
 Only external APIs (OpenRouter) are mocked.
 """
 
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from claude_headspace.models import Agent, Project, Command
+from claude_headspace.models import Agent, Command, Project
 
 from .factories import ProjectFactory
 
@@ -61,6 +59,7 @@ def _setup_project(flask_db, name_suffix):
 # End-to-end hook flow tests
 # ===========================================================================
 
+
 class TestHookToStateFlow:
     """Test that hook events flow correctly through the service pipeline.
 
@@ -75,6 +74,7 @@ class TestHookToStateFlow:
         """Create a fresh project for each test to avoid path uniqueness issues."""
         with cross_app.app_context():
             from claude_headspace.database import db as flask_db
+
             # Delete any leftover projects with this path
             flask_db.session.query(Project).filter_by(path=_PROJECT_ROOT).delete()
             flask_db.session.commit()
@@ -86,17 +86,22 @@ class TestHookToStateFlow:
 
             project = _setup_project(flask_db, "session-start")
 
-            response = cross_client.post("/hook/session-start", json={
-                "session_id": f"sess-start-{uuid.uuid4().hex[:8]}",
-                "working_directory": _PROJECT_ROOT,
-            })
+            response = cross_client.post(
+                "/hook/session-start",
+                json={
+                    "session_id": f"sess-start-{uuid.uuid4().hex[:8]}",
+                    "working_directory": _PROJECT_ROOT,
+                },
+            )
 
             assert response.status_code == 200
             data = response.get_json()
             assert data["status"] == "ok"
             assert data["agent_id"] is not None
 
-    def test_user_prompt_creates_turn_and_transitions_state(self, cross_client, cross_app):
+    def test_user_prompt_creates_turn_and_transitions_state(
+        self, cross_client, cross_app
+    ):
         """user-prompt-submit hook creates a USER turn and transitions state."""
         with cross_app.app_context():
             from claude_headspace.database import db as flask_db
@@ -105,27 +110,37 @@ class TestHookToStateFlow:
             session_id = f"sess-prompt-{uuid.uuid4().hex[:8]}"
 
             # Start session
-            start_resp = cross_client.post("/hook/session-start", json={
-                "session_id": session_id,
-                "working_directory": _PROJECT_ROOT,
-            })
+            start_resp = cross_client.post(
+                "/hook/session-start",
+                json={
+                    "session_id": session_id,
+                    "working_directory": _PROJECT_ROOT,
+                },
+            )
             assert start_resp.status_code == 200
 
             # User prompt
-            prompt_resp = cross_client.post("/hook/user-prompt-submit", json={
-                "session_id": session_id,
-                "prompt": "Implement the login feature",
-            })
+            prompt_resp = cross_client.post(
+                "/hook/user-prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Implement the login feature",
+                },
+            )
 
             assert prompt_resp.status_code == 200
             assert prompt_resp.get_json()["status"] == "ok"
 
             # Verify a command exists
-            agent = flask_db.session.query(Agent).filter_by(
-                claude_session_id=session_id
-            ).first()
+            agent = (
+                flask_db.session.query(Agent)
+                .filter_by(claude_session_id=session_id)
+                .first()
+            )
             assert agent is not None
-            commands = flask_db.session.query(Command).filter_by(agent_id=agent.id).all()
+            commands = (
+                flask_db.session.query(Command).filter_by(agent_id=agent.id).all()
+            )
             assert len(commands) >= 1
 
     def test_stop_hook_transitions_agent_state(self, cross_client, cross_app):
@@ -136,18 +151,27 @@ class TestHookToStateFlow:
             _setup_project(flask_db, "stop")
             session_id = f"sess-stop-{uuid.uuid4().hex[:8]}"
 
-            cross_client.post("/hook/session-start", json={
-                "session_id": session_id,
-                "working_directory": _PROJECT_ROOT,
-            })
-            cross_client.post("/hook/user-prompt-submit", json={
-                "session_id": session_id,
-                "prompt": "Do something",
-            })
+            cross_client.post(
+                "/hook/session-start",
+                json={
+                    "session_id": session_id,
+                    "working_directory": _PROJECT_ROOT,
+                },
+            )
+            cross_client.post(
+                "/hook/user-prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Do something",
+                },
+            )
 
-            stop_resp = cross_client.post("/hook/stop", json={
-                "session_id": session_id,
-            })
+            stop_resp = cross_client.post(
+                "/hook/stop",
+                json={
+                    "session_id": session_id,
+                },
+            )
 
             assert stop_resp.status_code == 200
             assert stop_resp.get_json()["status"] == "ok"
@@ -160,15 +184,21 @@ class TestHookToStateFlow:
             _setup_project(flask_db, "end")
             session_id = f"sess-end-{uuid.uuid4().hex[:8]}"
 
-            start_resp = cross_client.post("/hook/session-start", json={
-                "session_id": session_id,
-                "working_directory": _PROJECT_ROOT,
-            })
+            start_resp = cross_client.post(
+                "/hook/session-start",
+                json={
+                    "session_id": session_id,
+                    "working_directory": _PROJECT_ROOT,
+                },
+            )
             agent_id = start_resp.get_json()["agent_id"]
 
-            end_resp = cross_client.post("/hook/session-end", json={
-                "session_id": session_id,
-            })
+            end_resp = cross_client.post(
+                "/hook/session-end",
+                json={
+                    "session_id": session_id,
+                },
+            )
 
             assert end_resp.status_code == 200
             assert end_resp.get_json()["status"] == "ok"
@@ -202,6 +232,7 @@ class TestPreToolUseFlow:
         """Create a fresh project for each test."""
         with cross_app.app_context():
             from claude_headspace.database import db as flask_db
+
             flask_db.session.query(Project).filter_by(path=_PROJECT_ROOT).delete()
             flask_db.session.commit()
 
@@ -213,19 +244,28 @@ class TestPreToolUseFlow:
             _setup_project(flask_db, "pretool")
             session_id = f"sess-pretool-{uuid.uuid4().hex[:8]}"
 
-            cross_client.post("/hook/session-start", json={
-                "session_id": session_id,
-                "working_directory": _PROJECT_ROOT,
-            })
-            cross_client.post("/hook/user-prompt-submit", json={
-                "session_id": session_id,
-                "prompt": "Help me",
-            })
+            cross_client.post(
+                "/hook/session-start",
+                json={
+                    "session_id": session_id,
+                    "working_directory": _PROJECT_ROOT,
+                },
+            )
+            cross_client.post(
+                "/hook/user-prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Help me",
+                },
+            )
 
-            resp = cross_client.post("/hook/pre-tool-use", json={
-                "session_id": session_id,
-                "tool_name": "AskUserQuestion",
-            })
+            resp = cross_client.post(
+                "/hook/pre-tool-use",
+                json={
+                    "session_id": session_id,
+                    "tool_name": "AskUserQuestion",
+                },
+            )
 
             assert resp.status_code == 200
             assert resp.get_json()["status"] == "ok"

@@ -61,9 +61,7 @@ class HandoffDetectionService:
         )
 
         if not md_files:
-            logger.debug(
-                f"handoff_detection: empty handoff dir for persona {slug}"
-            )
+            logger.debug(f"handoff_detection: empty handoff dir for persona {slug}")
             return False
 
         # Take the most recent N files

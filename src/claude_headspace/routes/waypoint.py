@@ -31,19 +31,23 @@ def get_waypoint(project_id: int):
     # Get project from database
     project = db.session.get(Project, project_id)
     if not project:
-        return jsonify({
-            "error": "not_found",
-            "message": f"Project {project_id} not found",
-        }), 404
+        return jsonify(
+            {
+                "error": "not_found",
+                "message": f"Project {project_id} not found",
+            }
+        ), 404
 
     # Validate project path
     valid, error = validate_project_path(project.path)
     if not valid:
-        return jsonify({
-            "error": "path_error",
-            "message": error,
-            "path": project.path,
-        }), 500
+        return jsonify(
+            {
+                "error": "path_error",
+                "message": error,
+                "path": project.path,
+            }
+        ), 500
 
     try:
         result = load_waypoint(project.path)
@@ -64,17 +68,21 @@ def get_waypoint(project_id: int):
         return jsonify(response), 200
 
     except PermissionError:
-        return jsonify({
-            "error": "permission_denied",
-            "message": f"Permission denied reading waypoint. Check permissions for: {project.path}",
-            "path": project.path,
-        }), 403
+        return jsonify(
+            {
+                "error": "permission_denied",
+                "message": f"Permission denied reading waypoint. Check permissions for: {project.path}",
+                "path": project.path,
+            }
+        ), 403
     except Exception as e:
         logger.exception(f"Error loading waypoint for project {project_id}")
-        return jsonify({
-            "error": "read_error",
-            "message": f"Failed to load waypoint: {type(e).__name__}",
-        }), 500
+        return jsonify(
+            {
+                "error": "read_error",
+                "message": f"Failed to load waypoint: {type(e).__name__}",
+            }
+        ), 500
 
 
 @waypoint_bp.route("/api/projects/<int:project_id>/waypoint", methods=["POST"])
@@ -99,40 +107,50 @@ def post_waypoint(project_id: int):
     # Get project from database
     project = db.session.get(Project, project_id)
     if not project:
-        return jsonify({
-            "error": "not_found",
-            "message": f"Project {project_id} not found",
-        }), 404
+        return jsonify(
+            {
+                "error": "not_found",
+                "message": f"Project {project_id} not found",
+            }
+        ), 404
 
     # Validate project path
     valid, error = validate_project_path(project.path)
     if not valid:
-        return jsonify({
-            "error": "path_error",
-            "message": error,
-            "path": project.path,
-        }), 500
+        return jsonify(
+            {
+                "error": "path_error",
+                "message": error,
+                "path": project.path,
+            }
+        ), 500
 
     # Parse request
     if not request.is_json:
-        return jsonify({
-            "error": "invalid_request",
-            "message": "Content-Type must be application/json",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_request",
+                "message": "Content-Type must be application/json",
+            }
+        ), 400
 
     data = request.get_json(silent=True)
     if data is None:
-        return jsonify({
-            "error": "invalid_request",
-            "message": "Invalid JSON payload",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_request",
+                "message": "Invalid JSON payload",
+            }
+        ), 400
 
     content = data.get("content")
     if content is None:
-        return jsonify({
-            "error": "invalid_request",
-            "message": "Missing required field: content",
-        }), 400
+        return jsonify(
+            {
+                "error": "invalid_request",
+                "message": "Missing required field: content",
+            }
+        ), 400
 
     # Parse expected_mtime if provided
     expected_mtime = None
@@ -146,35 +164,49 @@ def post_waypoint(project_id: int):
             if expected_mtime.tzinfo is None:
                 expected_mtime = expected_mtime.replace(tzinfo=timezone.utc)
         except ValueError:
-            return jsonify({
-                "error": "invalid_request",
-                "message": "Invalid expected_mtime format. Use ISO 8601.",
-            }), 400
+            return jsonify(
+                {
+                    "error": "invalid_request",
+                    "message": "Invalid expected_mtime format. Use ISO 8601.",
+                }
+            ), 400
 
     try:
         archive_service = current_app.extensions.get("archive_service")
-        result = save_waypoint(project.path, content, expected_mtime, archive_service=archive_service)
+        result = save_waypoint(
+            project.path, content, expected_mtime, archive_service=archive_service
+        )
 
         if not result.success:
             if result.error == "conflict":
-                return jsonify({
-                    "error": "conflict",
-                    "message": "File was modified externally",
-                    "current_mtime": result.last_modified.isoformat() if result.last_modified else None,
-                    "expected_mtime": expected_mtime.isoformat() if expected_mtime else None,
-                }), 409
+                return jsonify(
+                    {
+                        "error": "conflict",
+                        "message": "File was modified externally",
+                        "current_mtime": result.last_modified.isoformat()
+                        if result.last_modified
+                        else None,
+                        "expected_mtime": expected_mtime.isoformat()
+                        if expected_mtime
+                        else None,
+                    }
+                ), 409
 
             if "Permission denied" in (result.error or ""):
-                return jsonify({
-                    "error": "permission_denied",
-                    "message": f"Save failed: {result.error}. Check directory permissions.",
-                    "path": project.path,
-                }), 403
+                return jsonify(
+                    {
+                        "error": "permission_denied",
+                        "message": f"Save failed: {result.error}. Check directory permissions.",
+                        "path": project.path,
+                    }
+                ), 403
 
-            return jsonify({
-                "error": "save_error",
-                "message": result.error or "Failed to save waypoint",
-            }), 500
+            return jsonify(
+                {
+                    "error": "save_error",
+                    "message": result.error or "Failed to save waypoint",
+                }
+            ), 500
 
         response = {
             "success": True,
@@ -190,10 +222,12 @@ def post_waypoint(project_id: int):
 
     except Exception as e:
         logger.exception(f"Error saving waypoint for project {project_id}")
-        return jsonify({
-            "error": "save_error",
-            "message": f"Failed to save waypoint: {type(e).__name__}",
-        }), 500
+        return jsonify(
+            {
+                "error": "save_error",
+                "message": f"Failed to save waypoint: {type(e).__name__}",
+            }
+        ), 500
 
 
 @waypoint_bp.route("/api/waypoint/projects", methods=["GET"])
@@ -206,13 +240,15 @@ def list_projects_for_waypoint():
     """
     projects = db.session.query(Project).order_by(Project.name).all()
 
-    return jsonify({
-        "projects": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "path": p.path,
-            }
-            for p in projects
-        ]
-    }), 200
+    return jsonify(
+        {
+            "projects": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "path": p.path,
+                }
+                for p in projects
+            ]
+        }
+    ), 200

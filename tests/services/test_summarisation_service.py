@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.claude_headspace.services.summarisation_service import SummarisationService
 from src.claude_headspace.services.openrouter_client import InferenceResult
+from src.claude_headspace.services.summarisation_service import SummarisationService
 
 
 @pytest.fixture
@@ -61,7 +61,6 @@ def mock_command():
 
 
 class TestTurnSummarisation:
-
     def test_successful_turn_summarisation(self, service, mock_inference, mock_turn):
         mock_inference.infer.return_value = InferenceResult(
             text="Agent refactored authentication middleware.",
@@ -85,7 +84,9 @@ class TestTurnSummarisation:
         assert call_kwargs["agent_id"] == 5
         assert call_kwargs["project_id"] == 3
 
-    def test_existing_summary_returned_without_inference(self, service, mock_inference, mock_turn):
+    def test_existing_summary_returned_without_inference(
+        self, service, mock_inference, mock_turn
+    ):
         mock_turn.summary = "Existing summary"
 
         result = service.summarise_turn(mock_turn)
@@ -110,7 +111,9 @@ class TestTurnSummarisation:
         assert result is None
         assert mock_turn.summary is None
 
-    def test_summary_persisted_with_db_session(self, service, mock_inference, mock_turn):
+    def test_summary_persisted_with_db_session(
+        self, service, mock_inference, mock_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="Summary text",
             input_tokens=50,
@@ -136,8 +139,9 @@ class TestTurnSummarisation:
 
 
 class TestCommandSummarisation:
-
-    def test_successful_command_summarisation(self, service, mock_inference, mock_command):
+    def test_successful_command_summarisation(
+        self, service, mock_inference, mock_command
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="Completed auth refactoring with 12 tests passing.",
             input_tokens=80,
@@ -149,7 +153,10 @@ class TestCommandSummarisation:
         result = service.summarise_command(mock_command)
 
         assert result == "Completed auth refactoring with 12 tests passing."
-        assert mock_command.completion_summary == "Completed auth refactoring with 12 tests passing."
+        assert (
+            mock_command.completion_summary
+            == "Completed auth refactoring with 12 tests passing."
+        )
         assert mock_command.completion_summary_generated_at is not None
         call_kwargs = mock_inference.infer.call_args[1]
         assert call_kwargs["level"] == "command"
@@ -158,7 +165,9 @@ class TestCommandSummarisation:
         assert call_kwargs["agent_id"] == 5
         assert call_kwargs["project_id"] == 3
 
-    def test_existing_command_summary_returned(self, service, mock_inference, mock_command):
+    def test_existing_command_summary_returned(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.completion_summary = "Already summarised"
 
         result = service.summarise_command(mock_command)
@@ -174,7 +183,9 @@ class TestCommandSummarisation:
 
         assert result is None
 
-    def test_command_inference_error_returns_none(self, service, mock_inference, mock_command):
+    def test_command_inference_error_returns_none(
+        self, service, mock_inference, mock_command
+    ):
         mock_inference.infer.side_effect = Exception("API failure")
 
         result = service.summarise_command(mock_command)
@@ -190,7 +201,9 @@ class TestCommandSummarisation:
         assert "Refactor the authentication middleware" in prompt
         assert "Command:" in prompt
 
-    def test_command_summary_persisted_with_db_session(self, service, mock_inference, mock_command):
+    def test_command_summary_persisted_with_db_session(
+        self, service, mock_inference, mock_command
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="Task summary",
             input_tokens=80,
@@ -210,7 +223,9 @@ class TestCommandSummarisation:
 class TestInstructionSummarisation:
     """Tests for summarise_instruction() — prompt building, persistence, empty text guard."""
 
-    def test_successful_instruction_summarisation(self, service, mock_inference, mock_command):
+    def test_successful_instruction_summarisation(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
         mock_inference.infer.return_value = InferenceResult(
             text="Refactor authentication middleware and verify tests.",
@@ -220,10 +235,16 @@ class TestInstructionSummarisation:
             latency_ms=150,
         )
 
-        result = service.summarise_instruction(mock_command, "Please refactor the auth middleware and make sure all tests pass")
+        result = service.summarise_instruction(
+            mock_command,
+            "Please refactor the auth middleware and make sure all tests pass",
+        )
 
         assert result == "Refactor authentication middleware and verify tests."
-        assert mock_command.instruction == "Refactor authentication middleware and verify tests."
+        assert (
+            mock_command.instruction
+            == "Refactor authentication middleware and verify tests."
+        )
         assert mock_command.instruction_generated_at is not None
         call_kwargs = mock_inference.infer.call_args[1]
         assert call_kwargs["level"] == "turn"
@@ -238,7 +259,9 @@ class TestInstructionSummarisation:
         assert result == "Already set instruction"
         mock_inference.infer.assert_not_called()
 
-    def test_empty_command_text_returns_none(self, service, mock_inference, mock_command):
+    def test_empty_command_text_returns_none(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
 
         result = service.summarise_instruction(mock_command, "")
@@ -246,7 +269,9 @@ class TestInstructionSummarisation:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_whitespace_only_command_text_returns_none(self, service, mock_inference, mock_command):
+    def test_whitespace_only_command_text_returns_none(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
 
         result = service.summarise_instruction(mock_command, "   \n  ")
@@ -254,7 +279,9 @@ class TestInstructionSummarisation:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_none_command_text_returns_none(self, service, mock_inference, mock_command):
+    def test_none_command_text_returns_none(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
 
         result = service.summarise_instruction(mock_command, None)
@@ -280,7 +307,9 @@ class TestInstructionSummarisation:
         assert result is None
         assert mock_command.instruction is None
 
-    def test_instruction_persisted_with_db_session(self, service, mock_inference, mock_command):
+    def test_instruction_persisted_with_db_session(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
         mock_inference.infer.return_value = InferenceResult(
             text="Instruction summary",
@@ -291,13 +320,17 @@ class TestInstructionSummarisation:
         )
         mock_session = MagicMock()
 
-        result = service.summarise_instruction(mock_command, "Some command", db_session=mock_session)
+        result = service.summarise_instruction(
+            mock_command, "Some command", db_session=mock_session
+        )
 
         assert result == "Instruction summary"
         mock_session.add.assert_called_once_with(mock_command)
         mock_session.commit.assert_called_once()
 
-    def test_instruction_prompt_includes_command_text(self, service, mock_inference, mock_command):
+    def test_instruction_prompt_includes_command_text(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
         mock_inference.infer.return_value = InferenceResult(
             text="Summary",
@@ -330,8 +363,11 @@ class TestExecutePending:
         mock_turn.command.agent.project_id = 3
 
         mock_inference.infer.return_value = InferenceResult(
-            text="Turn summary", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Turn summary",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         mock_session = MagicMock()
@@ -357,12 +393,19 @@ class TestExecutePending:
         mock_command.agent.project_id = 3
 
         mock_inference.infer.return_value = InferenceResult(
-            text="Instruction summary", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Instruction summary",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         mock_session = MagicMock()
-        requests = [SummarisationRequest(type="instruction", command=mock_command, command_text="Fix the bug")]
+        requests = [
+            SummarisationRequest(
+                type="instruction", command=mock_command, command_text="Fix the bug"
+            )
+        ]
 
         with patch.object(service, "_broadcast_summary_update") as mock_broadcast:
             service.execute_pending(requests, mock_session)
@@ -388,12 +431,17 @@ class TestExecutePending:
         mock_command.turns = [mock_turn]
 
         mock_inference.infer.return_value = InferenceResult(
-            text="Task completion summary", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Task completion summary",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         mock_session = MagicMock()
-        requests = [SummarisationRequest(type="command_completion", command=mock_command)]
+        requests = [
+            SummarisationRequest(type="command_completion", command=mock_command)
+        ]
 
         with patch.object(service, "_broadcast_summary_update") as mock_broadcast:
             service.execute_pending(requests, mock_session)
@@ -427,7 +475,13 @@ class TestExecutePending:
         # First call fails, second succeeds
         mock_inference.infer.side_effect = [
             Exception("API error"),
-            InferenceResult(text="Summary 2", input_tokens=10, output_tokens=5, model="model", latency_ms=100),
+            InferenceResult(
+                text="Summary 2",
+                input_tokens=10,
+                output_tokens=5,
+                model="model",
+                latency_ms=100,
+            ),
         ]
 
         mock_session = MagicMock()
@@ -452,7 +506,9 @@ class TestExecutePending:
 class TestResolveCommandPrompt:
     """Tests for _resolve_command_prompt() — correct inputs, no timestamps/turn counts."""
 
-    def test_command_prompt_uses_instruction_and_final_turn(self, service, mock_command):
+    def test_command_prompt_uses_instruction_and_final_turn(
+        self, service, mock_command
+    ):
         prompt = service._resolve_command_prompt(mock_command)
 
         assert "Refactor the authentication middleware" in prompt
@@ -478,7 +534,9 @@ class TestResolveCommandPrompt:
 
         assert "No instruction recorded" in prompt
 
-    def test_command_prompt_with_no_turns_uses_instruction_fallback(self, service, mock_command):
+    def test_command_prompt_with_no_turns_uses_instruction_fallback(
+        self, service, mock_command
+    ):
         mock_command.turns = []
 
         prompt = service._resolve_command_prompt(mock_command)
@@ -636,13 +694,18 @@ class TestTurnEmptyTextGuard:
 class TestCommandEmptyFinalTurnFallback:
     """Tests for fallback when final turn text is empty — uses turn activity or instruction-only."""
 
-    def test_empty_final_turn_falls_back_to_activity(self, service, mock_inference, mock_command):
+    def test_empty_final_turn_falls_back_to_activity(
+        self, service, mock_inference, mock_command
+    ):
         """When final turn text is empty but earlier turns have text, use activity fallback."""
         mock_command.completion_summary = None
         mock_command.turns[-1].text = ""
         mock_inference.infer.return_value = InferenceResult(
-            text="Task completed successfully.", input_tokens=50,
-            output_tokens=10, model="model", latency_ms=200,
+            text="Task completed successfully.",
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service.summarise_command(mock_command)
@@ -652,13 +715,18 @@ class TestCommandEmptyFinalTurnFallback:
         call_kwargs = mock_inference.infer.call_args[1]
         assert call_kwargs["purpose"] == "summarise_command"
 
-    def test_none_final_turn_falls_back_to_activity(self, service, mock_inference, mock_command):
+    def test_none_final_turn_falls_back_to_activity(
+        self, service, mock_inference, mock_command
+    ):
         """When final turn text is None but earlier turns have text, use activity fallback."""
         mock_command.completion_summary = None
         mock_command.turns[-1].text = None
         mock_inference.infer.return_value = InferenceResult(
-            text="Task completed successfully.", input_tokens=50,
-            output_tokens=10, model="model", latency_ms=200,
+            text="Task completed successfully.",
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service.summarise_command(mock_command)
@@ -666,13 +734,18 @@ class TestCommandEmptyFinalTurnFallback:
         assert result == "Task completed successfully."
         mock_inference.infer.assert_called_once()
 
-    def test_whitespace_final_turn_falls_back_to_activity(self, service, mock_inference, mock_command):
+    def test_whitespace_final_turn_falls_back_to_activity(
+        self, service, mock_inference, mock_command
+    ):
         """When final turn text is whitespace-only, use activity fallback."""
         mock_command.completion_summary = None
         mock_command.turns[-1].text = "   "
         mock_inference.infer.return_value = InferenceResult(
-            text="Task completed successfully.", input_tokens=50,
-            output_tokens=10, model="model", latency_ms=200,
+            text="Task completed successfully.",
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service.summarise_command(mock_command)
@@ -680,7 +753,9 @@ class TestCommandEmptyFinalTurnFallback:
         assert result == "Task completed successfully."
         mock_inference.infer.assert_called_once()
 
-    def test_all_turns_empty_uses_instruction_fallback(self, service, mock_inference, mock_command):
+    def test_all_turns_empty_uses_instruction_fallback(
+        self, service, mock_inference, mock_command
+    ):
         """When all turns have empty text, falls back to instruction-only prompt."""
         mock_command.completion_summary = None
         for t in mock_command.turns:
@@ -696,9 +771,10 @@ class TestCommandEmptyFinalTurnFallback:
 
 
 class TestSSEBroadcast:
-
     def test_broadcast_summary_update(self, service):
-        with patch("src.claude_headspace.services.broadcaster.get_broadcaster") as mock_get:
+        with patch(
+            "src.claude_headspace.services.broadcaster.get_broadcaster"
+        ) as mock_get:
             mock_broadcaster = MagicMock()
             mock_get.return_value = mock_broadcaster
 
@@ -718,7 +794,9 @@ class TestSSEBroadcast:
             assert call_args[0][1]["project_id"] == 3
 
     def test_broadcast_failure_non_fatal(self, service):
-        with patch("src.claude_headspace.services.broadcaster.get_broadcaster") as mock_get:
+        with patch(
+            "src.claude_headspace.services.broadcaster.get_broadcaster"
+        ) as mock_get:
             mock_get.side_effect = RuntimeError("No broadcaster")
 
             # Should not raise
@@ -875,7 +953,9 @@ class TestTrivialInputBypassIntegration:
 class TestSlashCommandInstructionBypass:
     """Tests that slash commands bypass LLM in summarise_instruction()."""
 
-    def test_slash_command_sets_instruction_directly(self, service, mock_inference, mock_command):
+    def test_slash_command_sets_instruction_directly(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
 
         result = service.summarise_instruction(mock_command, "/start-queue")
@@ -894,11 +974,15 @@ class TestSlashCommandInstructionBypass:
         assert mock_command.instruction == "/opsx:apply"
         mock_inference.infer.assert_not_called()
 
-    def test_slash_command_persisted_with_db_session(self, service, mock_inference, mock_command):
+    def test_slash_command_persisted_with_db_session(
+        self, service, mock_inference, mock_command
+    ):
         mock_command.instruction = None
         mock_session = MagicMock()
 
-        result = service.summarise_instruction(mock_command, "/commit-push", db_session=mock_session)
+        result = service.summarise_instruction(
+            mock_command, "/commit-push", db_session=mock_session
+        )
 
         assert result == "/commit-push"
         mock_session.add.assert_called_once_with(mock_command)
@@ -908,8 +992,10 @@ class TestSlashCommandInstructionBypass:
         mock_command.instruction = None
         mock_inference.infer.return_value = InferenceResult(
             text="Fix login page styling",
-            input_tokens=40, output_tokens=10,
-            model="model", latency_ms=150,
+            input_tokens=40,
+            output_tokens=10,
+            model="model",
+            latency_ms=150,
         )
 
         service.summarise_instruction(mock_command, "Fix the login page CSS")
@@ -955,12 +1041,17 @@ class TestInternalTurnSkip:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_summarise_turn_processes_non_internal(self, service, mock_inference, mock_turn):
+    def test_summarise_turn_processes_non_internal(
+        self, service, mock_inference, mock_turn
+    ):
         """summarise_turn() should process turns with is_internal=False."""
         mock_turn.is_internal = False
         mock_inference.infer.return_value = InferenceResult(
-            text="Summary", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Summary",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         result = service.summarise_turn(mock_turn)
@@ -968,21 +1059,28 @@ class TestInternalTurnSkip:
         assert result == "Summary"
         mock_inference.infer.assert_called_once()
 
-    def test_summarise_turn_processes_missing_is_internal(self, service, mock_inference, mock_turn):
+    def test_summarise_turn_processes_missing_is_internal(
+        self, service, mock_inference, mock_turn
+    ):
         """summarise_turn() should process turns without is_internal attribute."""
         # MagicMock will return a truthy MagicMock for any attribute by default,
         # so we need to explicitly delete it to test getattr fallback
         del mock_turn.is_internal
         mock_inference.infer.return_value = InferenceResult(
-            text="Summary", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Summary",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         result = service.summarise_turn(mock_turn)
 
         assert result == "Summary"
 
-    def test_summarise_command_skips_all_internal_user_turns(self, service, mock_inference):
+    def test_summarise_command_skips_all_internal_user_turns(
+        self, service, mock_inference
+    ):
         """summarise_command() should skip when all user turns are internal."""
         mock_command = MagicMock()
         mock_command.id = 10
@@ -1028,8 +1126,11 @@ class TestInternalTurnSkip:
         mock_command.turns = [internal_turn, real_turn, agent_turn]
 
         mock_inference.infer.return_value = InferenceResult(
-            text="Fixed the bug", input_tokens=50, output_tokens=10,
-            model="model", latency_ms=200,
+            text="Fixed the bug",
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service.summarise_command(mock_command)
@@ -1037,7 +1138,9 @@ class TestInternalTurnSkip:
         assert result == "Fixed the bug"
         mock_inference.infer.assert_called_once()
 
-    def test_summarise_instruction_skips_all_internal_user_turns(self, service, mock_inference):
+    def test_summarise_instruction_skips_all_internal_user_turns(
+        self, service, mock_inference
+    ):
         """summarise_instruction() should skip when all user turns are internal."""
         mock_command = MagicMock()
         mock_command.id = 10
@@ -1053,7 +1156,9 @@ class TestInternalTurnSkip:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_summarise_instruction_processes_non_internal(self, service, mock_inference):
+    def test_summarise_instruction_processes_non_internal(
+        self, service, mock_inference
+    ):
         """summarise_instruction() should process when user turns are not internal."""
         mock_command = MagicMock()
         mock_command.id = 10
@@ -1067,8 +1172,11 @@ class TestInternalTurnSkip:
         mock_command.turns = [user_turn]
 
         mock_inference.infer.return_value = InferenceResult(
-            text="Fix the login bug", input_tokens=10, output_tokens=5,
-            model="model", latency_ms=100,
+            text="Fix the login bug",
+            input_tokens=10,
+            output_tokens=5,
+            model="model",
+            latency_ms=100,
         )
 
         result = service.summarise_instruction(mock_command, "Fix the login bug")

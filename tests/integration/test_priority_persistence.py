@@ -2,14 +2,11 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from claude_headspace.models.agent import Agent
 from claude_headspace.models.project import Project
 
 
 class TestAgentPriorityPersistence:
-
     def test_agent_created_without_priority(self, db_session):
         """Agent can be created with null priority fields."""
         project = Project(name="test-project", slug="test-project", path="/test/path")
@@ -32,7 +29,9 @@ class TestAgentPriorityPersistence:
 
     def test_agent_priority_persisted(self, db_session):
         """Agent priority score, reason, and timestamp can be set and persisted."""
-        project = Project(name="test-project-2", slug="test-project-2", path="/test/path-2")
+        project = Project(
+            name="test-project-2", slug="test-project-2", path="/test/path-2"
+        )
         db_session.add(project)
         db_session.flush()
 
@@ -58,7 +57,9 @@ class TestAgentPriorityPersistence:
 
     def test_agent_priority_can_be_updated(self, db_session):
         """Agent priority can be overwritten."""
-        project = Project(name="test-project-3", slug="test-project-3", path="/test/path-3")
+        project = Project(
+            name="test-project-3", slug="test-project-3", path="/test/path-3"
+        )
         db_session.add(project)
         db_session.flush()
 
@@ -84,7 +85,9 @@ class TestAgentPriorityPersistence:
 
     def test_agent_priority_score_range(self, db_session):
         """Agent priority score stores boundary values correctly."""
-        project = Project(name="test-project-4", slug="test-project-4", path="/test/path-4")
+        project = Project(
+            name="test-project-4", slug="test-project-4", path="/test/path-4"
+        )
         db_session.add(project)
         db_session.flush()
 

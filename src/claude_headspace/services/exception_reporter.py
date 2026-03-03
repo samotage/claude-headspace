@@ -27,10 +27,9 @@ class ExceptionReporter:
     def __init__(self, config: dict) -> None:
         otagemon_config = config.get("otagemon", {})
         self._webhook_url = otagemon_config.get("webhook_url", "")
-        self._webhook_secret = (
-            os.environ.get("OTAGEMON_WEBHOOK_SECRET")
-            or otagemon_config.get("webhook_secret", "")
-        )
+        self._webhook_secret = os.environ.get(
+            "OTAGEMON_WEBHOOK_SECRET"
+        ) or otagemon_config.get("webhook_secret", "")
         self._timeout = otagemon_config.get("timeout", 5)
         self._enabled = otagemon_config.get("enabled", True)
 

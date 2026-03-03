@@ -9,7 +9,6 @@ import pytest
 from src.claude_headspace.services.context_poller import (
     ContextPoller,
     _compute_tier,
-    DEBOUNCE_SECONDS,
 )
 
 
@@ -115,17 +114,23 @@ class TestContextPollerPollOnce:
     @patch("src.claude_headspace.services.context_poller.parse_context_usage")
     def test_no_active_agents(self, mock_parse, mock_tmux, poller, mock_app):
         """poll_once with no active agents returns 0."""
-        with patch.dict("sys.modules", {
-            "src.claude_headspace.database": MagicMock(),
-            "src.claude_headspace.models.agent": MagicMock(),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "src.claude_headspace.database": MagicMock(),
+                "src.claude_headspace.models.agent": MagicMock(),
+            },
+        ):
             # Mock the database query to return empty list
             mock_db = MagicMock()
             mock_agent_class = MagicMock()
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
 
             with patch("src.claude_headspace.services.context_poller.db", mock_db):
-                with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
+                with patch(
+                    "src.claude_headspace.services.context_poller.Agent",
+                    mock_agent_class,
+                ):
                     result = poller.poll_once()
 
             assert result == 0
@@ -141,14 +146,22 @@ class TestContextPollerPollOnce:
         mock_agent.context_updated_at = None
 
         mock_tmux.capture_pane.return_value = "[ctx: 42% used, 155k remaining]"
-        mock_parse.return_value = {"percent_used": 42, "remaining_tokens": "155k", "raw": "[ctx: 42% used, 155k remaining]"}
+        mock_parse.return_value = {
+            "percent_used": 42,
+            "remaining_tokens": "155k",
+            "raw": "[ctx: 42% used, 155k remaining]",
+        }
 
         mock_db = MagicMock()
         mock_agent_class = MagicMock()
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
 
         with patch("src.claude_headspace.services.context_poller.db", mock_db):
-            with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
+            with patch(
+                "src.claude_headspace.services.context_poller.Agent", mock_agent_class
+            ):
                 result = poller.poll_once()
 
         assert result == 1
@@ -165,14 +178,20 @@ class TestContextPollerPollOnce:
         mock_agent.id = 1
         mock_agent.tmux_pane_id = "%0"
         mock_agent.ended_at = None
-        mock_agent.context_updated_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+        mock_agent.context_updated_at = datetime.now(timezone.utc) - timedelta(
+            seconds=5
+        )
 
         mock_db = MagicMock()
         mock_agent_class = MagicMock()
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
 
         with patch("src.claude_headspace.services.context_poller.db", mock_db):
-            with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
+            with patch(
+                "src.claude_headspace.services.context_poller.Agent", mock_agent_class
+            ):
                 result = poller.poll_once()
 
         assert result == 1
@@ -181,7 +200,9 @@ class TestContextPollerPollOnce:
 
     @patch("src.claude_headspace.services.context_poller.tmux_bridge")
     @patch("src.claude_headspace.services.context_poller.parse_context_usage")
-    def test_tier_change_triggers_broadcast(self, mock_parse, mock_tmux, poller, mock_app):
+    def test_tier_change_triggers_broadcast(
+        self, mock_parse, mock_tmux, poller, mock_app
+    ):
         """Tier change from normal to warning triggers card_refresh broadcast."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -193,15 +214,25 @@ class TestContextPollerPollOnce:
         poller._last_tiers[1] = "normal"
 
         mock_tmux.capture_pane.return_value = "[ctx: 70% used, 80k remaining]"
-        mock_parse.return_value = {"percent_used": 70, "remaining_tokens": "80k", "raw": "..."}
+        mock_parse.return_value = {
+            "percent_used": 70,
+            "remaining_tokens": "80k",
+            "raw": "...",
+        }
 
         mock_db = MagicMock()
         mock_agent_class = MagicMock()
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
 
         with patch("src.claude_headspace.services.context_poller.db", mock_db):
-            with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
-                with patch("src.claude_headspace.services.context_poller.broadcast_card_refresh") as mock_broadcast:
+            with patch(
+                "src.claude_headspace.services.context_poller.Agent", mock_agent_class
+            ):
+                with patch(
+                    "src.claude_headspace.services.context_poller.broadcast_card_refresh"
+                ) as mock_broadcast:
                     result = poller.poll_once()
 
         assert result == 1
@@ -221,22 +252,34 @@ class TestContextPollerPollOnce:
         poller._last_tiers[1] = "warning"
 
         mock_tmux.capture_pane.return_value = "[ctx: 70% used, 80k remaining]"
-        mock_parse.return_value = {"percent_used": 70, "remaining_tokens": "80k", "raw": "..."}
+        mock_parse.return_value = {
+            "percent_used": 70,
+            "remaining_tokens": "80k",
+            "raw": "...",
+        }
 
         mock_db = MagicMock()
         mock_agent_class = MagicMock()
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
 
         with patch("src.claude_headspace.services.context_poller.db", mock_db):
-            with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
-                with patch("src.claude_headspace.services.context_poller.broadcast_card_refresh") as mock_broadcast:
+            with patch(
+                "src.claude_headspace.services.context_poller.Agent", mock_agent_class
+            ):
+                with patch(
+                    "src.claude_headspace.services.context_poller.broadcast_card_refresh"
+                ) as mock_broadcast:
                     poller.poll_once()
 
         mock_broadcast.assert_not_called()
 
     @patch("src.claude_headspace.services.context_poller.tmux_bridge")
     @patch("src.claude_headspace.services.context_poller.parse_context_usage")
-    def test_config_disabled_skips_polling(self, mock_parse, mock_tmux, poller, mock_app):
+    def test_config_disabled_skips_polling(
+        self, mock_parse, mock_tmux, poller, mock_app
+    ):
         """poll_once returns 0 when config is disabled at runtime."""
         mock_app.config["APP_CONFIG"]["context_monitor"]["enabled"] = False
 
@@ -244,7 +287,9 @@ class TestContextPollerPollOnce:
         mock_agent_class = MagicMock()
 
         with patch("src.claude_headspace.services.context_poller.db", mock_db):
-            with patch("src.claude_headspace.services.context_poller.Agent", mock_agent_class):
+            with patch(
+                "src.claude_headspace.services.context_poller.Agent", mock_agent_class
+            ):
                 result = poller.poll_once()
 
         assert result == 0

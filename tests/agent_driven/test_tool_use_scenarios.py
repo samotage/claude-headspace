@@ -48,8 +48,7 @@ def test_tool_use_bash_echo(claude_session, page, e2e_server, e2e_app):
 
     # --- Send command that requires Bash tool use ---
     va.send_chat_message(
-        f"Please run this exact bash command and tell me what it outputs: "
-        f"echo {marker}"
+        f"Please run this exact bash command and tell me what it outputs: echo {marker}"
     )
     va.capture("tool_02_command_sent")
 

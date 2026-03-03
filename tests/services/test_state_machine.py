@@ -1,12 +1,10 @@
 """Tests for state machine service."""
 
-import pytest
-
 from claude_headspace.models.command import CommandState
 from claude_headspace.models.turn import TurnActor, TurnIntent
 from claude_headspace.services.state_machine import (
-    TransitionResult,
     VALID_TRANSITIONS,
+    TransitionResult,
     get_valid_transitions_from,
     is_terminal_state,
     validate_transition,
@@ -112,7 +110,9 @@ class TestValidateTransition:
         }
         for intent, expected_state in expected.items():
             result = validate_transition(CommandState.IDLE, TurnActor.AGENT, intent)
-            assert result.valid is True, f"Expected valid for IDLE + AGENT:{intent.value}"
+            assert result.valid is True, (
+                f"Expected valid for IDLE + AGENT:{intent.value}"
+            )
             assert result.to_state == expected_state
 
     def test_complete_state_is_terminal(self):
@@ -120,7 +120,9 @@ class TestValidateTransition:
         for actor in [TurnActor.USER, TurnActor.AGENT]:
             for intent in TurnIntent:
                 result = validate_transition(CommandState.COMPLETE, actor, intent)
-                assert result.valid is False, f"Unexpected valid transition from COMPLETE: {actor.value}:{intent.value}"
+                assert result.valid is False, (
+                    f"Unexpected valid transition from COMPLETE: {actor.value}:{intent.value}"
+                )
 
 
 class TestGetValidTransitionsFrom:
@@ -151,7 +153,9 @@ class TestGetValidTransitionsFrom:
     def test_get_from_awaiting_input(self):
         """Get valid transitions from AWAITING_INPUT state."""
         transitions = get_valid_transitions_from(CommandState.AWAITING_INPUT)
-        assert len(transitions) == 5  # USER ANSWER, AGENT QUESTION, AGENT PROGRESS, AGENT COMPLETION, AGENT END_OF_COMMAND
+        assert (
+            len(transitions) == 5
+        )  # USER ANSWER, AGENT QUESTION, AGENT PROGRESS, AGENT COMPLETION, AGENT END_OF_COMMAND
         intents = {(a.value, i.value) for a, i, _ in transitions}
         assert ("user", "answer") in intents
         assert ("agent", "question") in intents
@@ -225,7 +229,9 @@ class TestValidateTransitionPure:
         """validate_transition should be a pure function."""
         # Call multiple times with same inputs
         results = [
-            validate_transition(CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS)
+            validate_transition(
+                CommandState.COMMANDED, TurnActor.AGENT, TurnIntent.PROGRESS
+            )
             for _ in range(5)
         ]
 

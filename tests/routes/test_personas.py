@@ -34,7 +34,9 @@ def _create_persona(session, name="Con", role=None, description=None, status="ac
     """Helper to create a persona with a role."""
     if role is None:
         role = _create_role(session)
-    persona = Persona(name=name, role_id=role.id, role=role, description=description, status=status)
+    persona = Persona(
+        name=name, role_id=role.id, role=role, description=description, status=status
+    )
     session.add(persona)
     session.flush()  # Triggers after_insert for slug
     return persona
@@ -252,7 +254,9 @@ class TestApiGetPersona:
     def test_returns_persona_detail(self, client, db_session):
         """Returns persona detail by slug."""
         role = _create_role(db_session, "developer")
-        persona = _create_persona(db_session, name="Con", role=role, description="Backend dev")
+        persona = _create_persona(
+            db_session, name="Con", role=role, description="Backend dev"
+        )
         db_session.commit()
 
         response = client.get(f"/api/personas/{persona.slug}")

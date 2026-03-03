@@ -67,7 +67,8 @@ def _cleanup_stale_cache_entries() -> None:
     """Remove cache entries older than TTL. Must be called with _session_cache_lock held."""
     now = time.time()
     stale_keys = [
-        key for key, entry in _session_cache.items()
+        key
+        for key, entry in _session_cache.items()
         if now - entry.cached_at > CACHE_TTL_SECONDS
     ]
     for key in stale_keys:
@@ -118,6 +119,7 @@ def _reactivate_if_ended(agent: Agent) -> bool:
     # Notify clients that the agent is active again (lazy import to avoid circular deps)
     try:
         from .card_state import broadcast_card_refresh
+
         broadcast_card_refresh(agent, "reactivated")
     except Exception:
         pass  # Best-effort; hook processor will broadcast again shortly
@@ -171,9 +173,7 @@ def _resolve_project_root(path: str) -> str:
         for marker in _PROJECT_ROOT_MARKERS:
             if os.path.exists(os.path.join(current, marker)):
                 if current != normalized:
-                    logger.debug(
-                        f"Resolved project root: {normalized} -> {current}"
-                    )
+                    logger.debug(f"Resolved project root: {normalized} -> {current}")
                 return current
 
         parent = os.path.dirname(current)
@@ -197,18 +197,14 @@ def _resolve_working_directory(working_directory: str | None) -> str | None:
         return None
 
     if _is_rejected_directory(working_directory):
-        logger.info(
-            f"Rejected non-project working directory: {working_directory}"
-        )
+        logger.info(f"Rejected non-project working directory: {working_directory}")
         return None
 
     resolved = _resolve_project_root(working_directory)
 
     # After resolution, check again — the resolved path might also be rejected
     if _is_rejected_directory(resolved):
-        logger.info(
-            f"Rejected resolved directory: {working_directory} -> {resolved}"
-        )
+        logger.info(f"Rejected resolved directory: {working_directory} -> {resolved}")
         return None
 
     return resolved
@@ -308,9 +304,7 @@ def correlate_session(
         try:
             target_uuid = UUID(headspace_session_id)
         except ValueError:
-            logger.warning(
-                f"Invalid headspace_session_id UUID: {headspace_session_id}"
-            )
+            logger.warning(f"Invalid headspace_session_id UUID: {headspace_session_id}")
         else:
             agent = (
                 db.session.query(Agent)
@@ -399,9 +393,7 @@ def correlate_session(
     # that have already finished.
     if resolved_directory:
         project = (
-            db.session.query(Project)
-            .filter(Project.path == resolved_directory)
-            .first()
+            db.session.query(Project).filter(Project.path == resolved_directory).first()
         )
         if project:
             # Find most recent active, unclaimed agent for this project
@@ -442,9 +434,7 @@ def correlate_session(
             f"project directory are dropped."
         )
 
-    agent, project = _create_agent_for_session(
-        claude_session_id, resolved_directory
-    )
+    agent, project = _create_agent_for_session(claude_session_id, resolved_directory)
 
     # Cache the new mapping
     _cache_set(claude_session_id, agent.id)
@@ -476,9 +466,7 @@ def _create_agent_for_session(
     """
     # Find registered project — auto-creation is disabled
     project = (
-        db.session.query(Project)
-        .filter(Project.path == working_directory)
-        .first()
+        db.session.query(Project).filter(Project.path == working_directory).first()
     )
     if not project:
         raise ValueError(
@@ -518,9 +506,11 @@ def _create_agent_for_session(
             .first()
         )
         if not agent:
-            raise RuntimeError(f"Agent not found after upsert for session {claude_session_id}")
+            raise RuntimeError(
+                f"Agent not found after upsert for session {claude_session_id}"
+            )
 
-    except Exception as e:
+    except Exception:
         # Graceful fallback: if ON CONFLICT fails (e.g. no unique constraint
         # on claude_session_id yet — Agent D creates it separately), fall
         # back to the original insert-and-retry pattern.
@@ -533,7 +523,9 @@ def _create_agent_for_session(
             .first()
         )
         if agent:
-            logger.info(f"Agent already created by concurrent request for session {claude_session_id}")
+            logger.info(
+                f"Agent already created by concurrent request for session {claude_session_id}"
+            )
             return agent, project
 
         # No race — create normally
@@ -602,6 +594,7 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
     # 2. Hook agent state (awaiting_tool, transcript positions, progress texts)
     try:
         from .hook_agent_state import get_agent_hook_state
+
         get_agent_hook_state().on_session_end(agent_id)
     except Exception as e:
         logger.debug(f"Hook agent state cleanup failed for agent {agent_id}: {e}")
@@ -609,6 +602,7 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
     # 3. Commander availability
     try:
         from flask import current_app
+
         availability = current_app.extensions.get("commander_availability")
         if availability:
             availability.unregister_agent(agent_id)
@@ -618,6 +612,7 @@ def invalidate_agent_caches(agent_id: int, session_id: str | None = None) -> Non
     # 4. Per-agent reconciliation lock
     try:
         from .transcript_reconciler import remove_reconcile_lock
+
         remove_reconcile_lock(agent_id)
     except Exception as e:
         logger.debug(f"Reconcile lock cleanup failed for agent {agent_id}: {e}")

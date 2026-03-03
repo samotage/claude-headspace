@@ -11,9 +11,8 @@ import json
 import os
 import tempfile
 import threading
-import time
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -25,7 +24,6 @@ from claude_headspace.models.project import Project
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.hook_agent_state import AgentHookState
 from claude_headspace.services.transcript_reconciler import _content_hash
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -154,24 +152,30 @@ class TestDBConstraintPreventsDuplicates:
         content_key = _content_hash("agent", "Shared content")
 
         cmd1 = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         cmd2 = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add_all([cmd1, cmd2])
         db.session.flush()
 
         t1 = Turn(
-            command_id=cmd1.id, actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS, text="Shared content",
+            command_id=cmd1.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text="Shared content",
             jsonl_entry_hash=content_key,
         )
         t2 = Turn(
-            command_id=cmd2.id, actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS, text="Shared content",
+            command_id=cmd2.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text="Shared content",
             jsonl_entry_hash=content_key,
         )
         db.session.add_all([t1, t2])
@@ -183,13 +187,17 @@ class TestDBConstraintPreventsDuplicates:
     def test_null_hash_allows_duplicates(self, app_ctx, command):
         """Turns with NULL jsonl_entry_hash are not constrained."""
         t1 = Turn(
-            command_id=command.id, actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS, text="No hash turn",
+            command_id=command.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text="No hash turn",
             jsonl_entry_hash=None,
         )
         t2 = Turn(
-            command_id=command.id, actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS, text="No hash turn",
+            command_id=command.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text="No hash turn",
             jsonl_entry_hash=None,
         )
         db.session.add_all([t1, t2])
@@ -208,7 +216,9 @@ class TestIntegrityErrorHandling:
     """Verify _capture_progress_text_impl catches DB constraint violations."""
 
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
-    def test_duplicate_hash_caught_gracefully(self, mock_broadcaster, app_ctx, agent, command):
+    def test_duplicate_hash_caught_gracefully(
+        self, mock_broadcaster, app_ctx, agent, command
+    ):
         """Pre-existing turn with same hash does not crash progress capture."""
         from claude_headspace.services.hook_receiver import _capture_progress_text_impl
 
@@ -217,8 +227,10 @@ class TestIntegrityErrorHandling:
 
         # Pre-insert a turn with this hash
         existing = Turn(
-            command_id=command.id, actor=TurnActor.AGENT,
-            intent=TurnIntent.PROGRESS, text=content,
+            command_id=command.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.PROGRESS,
+            text=content,
             jsonl_entry_hash=content_key,
         )
         db.session.add(existing)
@@ -253,7 +265,9 @@ class TestConcurrentProgressCapture:
     """Verify the per-agent lock serialises concurrent progress capture."""
 
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
-    def test_concurrent_capture_no_duplicates(self, mock_broadcaster, app_ctx, agent, command):
+    def test_concurrent_capture_no_duplicates(
+        self, mock_broadcaster, app_ctx, agent, command
+    ):
         """Two threads calling _capture_progress_text create exactly 1 turn per entry."""
         from claude_headspace.services.hook_receiver import _capture_progress_text
 
@@ -275,7 +289,10 @@ class TestConcurrentProgressCapture:
             except Exception as e:
                 errors.append(e)
 
-        with patch("claude_headspace.services.hook_receiver.get_agent_hook_state", return_value=state):
+        with patch(
+            "claude_headspace.services.hook_receiver.get_agent_hook_state",
+            return_value=state,
+        ):
             threads = [threading.Thread(target=run_capture) for _ in range(3)]
             for t in threads:
                 t.start()
@@ -294,6 +311,4 @@ class TestConcurrentProgressCapture:
             ).all()
             hashes = [t.jsonl_entry_hash for t in turns]
             # At most 1 turn per unique hash
-            assert len(set(hashes)) == len(hashes), (
-                f"Duplicate hashes found: {hashes}"
-            )
+            assert len(set(hashes)) == len(hashes), f"Duplicate hashes found: {hashes}"

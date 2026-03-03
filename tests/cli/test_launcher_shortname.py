@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.claude_headspace.cli.launcher import resolve_persona_slug
 
 
@@ -20,10 +18,23 @@ class TestResolvePersonaSlug:
     @patch("src.claude_headspace.cli.launcher.requests.get")
     def test_single_match_returns_slug(self, mock_get):
         """Single matching persona returns its slug directly."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Con", "slug": "developer-con-1", "status": "active", "role": "developer"},
-            {"name": "Robbo", "slug": "developer-robbo-2", "status": "active", "role": "developer"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Con",
+                    "slug": "developer-con-1",
+                    "status": "active",
+                    "role": "developer",
+                },
+                {
+                    "name": "Robbo",
+                    "slug": "developer-robbo-2",
+                    "status": "active",
+                    "role": "developer",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "con")
 
@@ -33,9 +44,17 @@ class TestResolvePersonaSlug:
     @patch("src.claude_headspace.cli.launcher.requests.get")
     def test_case_insensitive_matching(self, mock_get):
         """Matching is case-insensitive."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Con", "slug": "developer-con-1", "status": "active", "role": "developer"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Con",
+                    "slug": "developer-con-1",
+                    "status": "active",
+                    "role": "developer",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "CON")
 
@@ -45,10 +64,23 @@ class TestResolvePersonaSlug:
     @patch("src.claude_headspace.cli.launcher.requests.get")
     def test_substring_matching(self, mock_get):
         """Partial name matches via substring."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Constantine", "slug": "developer-constantine-1", "status": "active", "role": "developer"},
-            {"name": "Robbo", "slug": "developer-robbo-2", "status": "active", "role": "developer"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Constantine",
+                    "slug": "developer-constantine-1",
+                    "status": "active",
+                    "role": "developer",
+                },
+                {
+                    "name": "Robbo",
+                    "slug": "developer-robbo-2",
+                    "status": "active",
+                    "role": "developer",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "const")
 
@@ -59,10 +91,23 @@ class TestResolvePersonaSlug:
     @patch("click.prompt", return_value=2)
     def test_multiple_matches_disambiguation(self, mock_prompt, mock_get):
         """Multiple matches present disambiguation prompt."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Con", "slug": "developer-con-1", "status": "active", "role": "developer"},
-            {"name": "Connie", "slug": "tester-connie-3", "status": "active", "role": "tester"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Con",
+                    "slug": "developer-con-1",
+                    "status": "active",
+                    "role": "developer",
+                },
+                {
+                    "name": "Connie",
+                    "slug": "tester-connie-3",
+                    "status": "active",
+                    "role": "tester",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "con")
 
@@ -73,9 +118,17 @@ class TestResolvePersonaSlug:
     @patch("src.claude_headspace.cli.launcher.requests.get")
     def test_no_match_returns_error(self, mock_get):
         """No matches return an error message."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Con", "slug": "developer-con-1", "status": "active", "role": "developer"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Con",
+                    "slug": "developer-con-1",
+                    "status": "active",
+                    "role": "developer",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "xyz")
 
@@ -85,10 +138,23 @@ class TestResolvePersonaSlug:
     @patch("src.claude_headspace.cli.launcher.requests.get")
     def test_only_active_personas_matched(self, mock_get):
         """Only active personas are matched (archived excluded)."""
-        mock_get.return_value = self._mock_response(200, [
-            {"name": "Con", "slug": "developer-con-1", "status": "archived", "role": "developer"},
-            {"name": "Robbo", "slug": "developer-robbo-2", "status": "active", "role": "developer"},
-        ])
+        mock_get.return_value = self._mock_response(
+            200,
+            [
+                {
+                    "name": "Con",
+                    "slug": "developer-con-1",
+                    "status": "archived",
+                    "role": "developer",
+                },
+                {
+                    "name": "Robbo",
+                    "slug": "developer-robbo-2",
+                    "status": "active",
+                    "role": "developer",
+                },
+            ],
+        )
 
         slug, error = resolve_persona_slug("https://test:5055", "con")
 
@@ -99,6 +165,7 @@ class TestResolvePersonaSlug:
     def test_connection_error(self, mock_get):
         """Connection error returns descriptive error."""
         import requests as req
+
         mock_get.side_effect = req.exceptions.ConnectionError()
 
         slug, error = resolve_persona_slug("https://test:5055", "con")

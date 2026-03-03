@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.claude_headspace.services.summarisation_service import SummarisationService
 from src.claude_headspace.services.openrouter_client import InferenceResult
+from src.claude_headspace.services.summarisation_service import SummarisationService
 
 
 @pytest.fixture
@@ -64,24 +64,35 @@ def agent_turn():
 
 
 class TestFrustrationPromptSelection:
-
-    def test_user_turn_uses_frustration_prompt(self, service_headspace_enabled, mock_inference, user_turn):
+    def test_user_turn_uses_frustration_prompt(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text='{"summary": "User frustrated", "frustration_score": 7}',
-            input_tokens=50, output_tokens=20, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=20,
+            model="model",
+            latency_ms=200,
         )
 
-        with patch.object(service_headspace_enabled, "_trigger_headspace_recalculation"):
+        with patch.object(
+            service_headspace_enabled, "_trigger_headspace_recalculation"
+        ):
             result = service_headspace_enabled.summarise_turn(user_turn)
 
         call_kwargs = mock_inference.infer.call_args[1]
         assert "frustration" in call_kwargs["input_text"].lower()
         assert "frustration_score" in call_kwargs["input_text"]
 
-    def test_agent_turn_uses_standard_prompt(self, service_headspace_enabled, mock_inference, agent_turn):
+    def test_agent_turn_uses_standard_prompt(
+        self, service_headspace_enabled, mock_inference, agent_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="Agent refactored authentication.",
-            input_tokens=50, output_tokens=10, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service_headspace_enabled.summarise_turn(agent_turn)
@@ -90,10 +101,15 @@ class TestFrustrationPromptSelection:
         # Standard prompt does not contain frustration_score
         assert "frustration_score" not in call_kwargs["input_text"]
 
-    def test_headspace_disabled_uses_standard_prompt(self, service_headspace_disabled, mock_inference, user_turn):
+    def test_headspace_disabled_uses_standard_prompt(
+        self, service_headspace_disabled, mock_inference, user_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="User requested fix.",
-            input_tokens=50, output_tokens=10, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service_headspace_disabled.summarise_turn(user_turn)
@@ -103,7 +119,6 @@ class TestFrustrationPromptSelection:
 
 
 class TestFrustrationParsing:
-
     def test_valid_json_extracts_score(self, service_headspace_enabled):
         summary, score = service_headspace_enabled._parse_frustration_response(
             '{"summary": "User is frustrated", "frustration_score": 7}'
@@ -169,14 +184,20 @@ class TestFrustrationParsing:
 
 
 class TestFrustrationIntegration:
-
-    def test_successful_extraction_sets_turn_attributes(self, service_headspace_enabled, mock_inference, user_turn):
+    def test_successful_extraction_sets_turn_attributes(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text='{"summary": "User frustrated about bug", "frustration_score": 7}',
-            input_tokens=50, output_tokens=20, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=20,
+            model="model",
+            latency_ms=200,
         )
 
-        with patch.object(service_headspace_enabled, "_trigger_headspace_recalculation"):
+        with patch.object(
+            service_headspace_enabled, "_trigger_headspace_recalculation"
+        ):
             result = service_headspace_enabled.summarise_turn(user_turn)
 
         assert result == "User frustrated about bug"
@@ -184,10 +205,15 @@ class TestFrustrationIntegration:
         assert user_turn.frustration_score == 7
         assert user_turn.summary_generated_at is not None
 
-    def test_json_parse_failure_sets_summary_only(self, service_headspace_enabled, mock_inference, user_turn):
+    def test_json_parse_failure_sets_summary_only(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="Not valid JSON response",
-            input_tokens=50, output_tokens=10, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
         )
 
         result = service_headspace_enabled.summarise_turn(user_turn)
@@ -196,34 +222,54 @@ class TestFrustrationIntegration:
         assert user_turn.summary == "Not valid JSON response"
         assert user_turn.frustration_score is None
 
-    def test_triggers_headspace_recalculation(self, service_headspace_enabled, mock_inference, user_turn):
+    def test_triggers_headspace_recalculation(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text='{"summary": "User annoyed", "frustration_score": 5}',
-            input_tokens=50, output_tokens=20, model="model", latency_ms=200,
-        )
-
-        with patch.object(service_headspace_enabled, "_trigger_headspace_recalculation") as mock_trigger:
-            service_headspace_enabled.summarise_turn(user_turn)
-            mock_trigger.assert_called_once_with(user_turn)
-
-    def test_no_recalculation_when_score_is_none(self, service_headspace_enabled, mock_inference, user_turn):
-        mock_inference.infer.return_value = InferenceResult(
-            text="Plain text response",
-            input_tokens=50, output_tokens=10, model="model", latency_ms=200,
-        )
-
-        with patch.object(service_headspace_enabled, "_trigger_headspace_recalculation") as mock_trigger:
-            service_headspace_enabled.summarise_turn(user_turn)
-            mock_trigger.assert_not_called()
-
-    def test_recalculation_failure_non_fatal(self, service_headspace_enabled, mock_inference, user_turn):
-        mock_inference.infer.return_value = InferenceResult(
-            text='{"summary": "Annoyed", "frustration_score": 6}',
-            input_tokens=50, output_tokens=20, model="model", latency_ms=200,
+            input_tokens=50,
+            output_tokens=20,
+            model="model",
+            latency_ms=200,
         )
 
         with patch.object(
-            service_headspace_enabled, "_trigger_headspace_recalculation",
+            service_headspace_enabled, "_trigger_headspace_recalculation"
+        ) as mock_trigger:
+            service_headspace_enabled.summarise_turn(user_turn)
+            mock_trigger.assert_called_once_with(user_turn)
+
+    def test_no_recalculation_when_score_is_none(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
+        mock_inference.infer.return_value = InferenceResult(
+            text="Plain text response",
+            input_tokens=50,
+            output_tokens=10,
+            model="model",
+            latency_ms=200,
+        )
+
+        with patch.object(
+            service_headspace_enabled, "_trigger_headspace_recalculation"
+        ) as mock_trigger:
+            service_headspace_enabled.summarise_turn(user_turn)
+            mock_trigger.assert_not_called()
+
+    def test_recalculation_failure_non_fatal(
+        self, service_headspace_enabled, mock_inference, user_turn
+    ):
+        mock_inference.infer.return_value = InferenceResult(
+            text='{"summary": "Annoyed", "frustration_score": 6}',
+            input_tokens=50,
+            output_tokens=20,
+            model="model",
+            latency_ms=200,
+        )
+
+        with patch.object(
+            service_headspace_enabled,
+            "_trigger_headspace_recalculation",
             side_effect=Exception("Monitor error"),
         ):
             # Should not raise

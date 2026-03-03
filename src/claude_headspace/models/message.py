@@ -52,12 +52,8 @@ class Message(db.Model):
     message_type: Mapped[MessageType] = mapped_column(
         Enum(MessageType, name="messagetype", create_constraint=True), nullable=False
     )
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True
-    )
-    attachment_path: Mapped[str | None] = mapped_column(
-        String(1024), nullable=True
-    )
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    attachment_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     source_turn_id: Mapped[int | None] = mapped_column(
         ForeignKey("turns.id", ondelete="SET NULL"), nullable=True
     )
@@ -65,7 +61,9 @@ class Message(db.Model):
         ForeignKey("commands.id", ondelete="SET NULL"), nullable=True
     )
     sent_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships

@@ -1,6 +1,6 @@
 """Headspace monitoring API routes."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -41,24 +41,24 @@ def headspace_history():
             pass
 
     snapshots = (
-        query.order_by(HeadspaceSnapshot.timestamp.desc())
-        .limit(min(limit, 1000))
-        .all()
+        query.order_by(HeadspaceSnapshot.timestamp.desc()).limit(min(limit, 1000)).all()
     )
 
     history = []
     for s in reversed(snapshots):
-        history.append({
-            "timestamp": s.timestamp.isoformat() if s.timestamp else None,
-            "state": s.state,
-            "frustration_rolling_10": s.frustration_rolling_10,
-            "frustration_rolling_30min": s.frustration_rolling_30min,
-            "frustration_rolling_3hr": s.frustration_rolling_3hr,
-            "turn_rate_per_hour": s.turn_rate_per_hour,
-            "is_flow_state": s.is_flow_state,
-            "flow_duration_minutes": s.flow_duration_minutes,
-            "alert_count_today": s.alert_count_today,
-        })
+        history.append(
+            {
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+                "state": s.state,
+                "frustration_rolling_10": s.frustration_rolling_10,
+                "frustration_rolling_30min": s.frustration_rolling_30min,
+                "frustration_rolling_3hr": s.frustration_rolling_3hr,
+                "turn_rate_per_hour": s.turn_rate_per_hour,
+                "is_flow_state": s.is_flow_state,
+                "flow_duration_minutes": s.flow_duration_minutes,
+                "alert_count_today": s.alert_count_today,
+            }
+        )
 
     return jsonify({"enabled": True, "history": history}), 200
 

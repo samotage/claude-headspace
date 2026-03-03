@@ -84,7 +84,9 @@ class TestResolveCallerTmux:
                     with patch(
                         "claude_headspace.services.caller_identity.Agent"
                     ) as MockAgent:
-                        MockAgent.query.filter_by.return_value.first.return_value = mock_agent
+                        MockAgent.query.filter_by.return_value.first.return_value = (
+                            mock_agent
+                        )
                         result = resolve_caller()
                         assert result.id == 42
 

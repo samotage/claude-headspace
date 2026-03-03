@@ -40,6 +40,7 @@ dev = [
     "pytest-cov>=4.0",
     "factory-boy>=3.3",
     "pytest-playwright>=0.4",
+    "ruff>=0.4",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -54,3 +55,27 @@ markers = [
     "e2e: End-to-end browser tests (requires Playwright, real server)",
     "agent_driven: Agent-driven integration tests (requires real Claude Code + tmux, expensive)",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+exclude = [
+    "migrations/",
+    "docs/",
+    "_bmad/",
+    ".claude/",
+    "orch/",
+    "node_modules/",
+    "static/",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+# E = pycodestyle errors, F = pyflakes, I = isort, W = pycodestyle warnings
+# UP = pyupgrade (3.10+ syntax), B = flake8-bugbear (common bugs)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]  # Allow long lines in tests (assertion messages, etc.)
+
+[tool.ruff.format]
+quote-style = "double"

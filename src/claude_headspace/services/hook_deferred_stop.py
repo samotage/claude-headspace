@@ -11,7 +11,6 @@ by AgentHookState (hook_agent_state.py).
 import logging
 import threading
 import time
-from datetime import datetime, timezone
 
 from ..database import db
 from ..models.agent import Agent
@@ -25,14 +24,13 @@ logger = logging.getLogger(__name__)
 # ── Shared helpers imported from hook_receiver ───────────────────────
 # These were formerly inlined copies. Now imported to eliminate duplication.
 from .hook_receiver import (
-    _get_lifecycle_manager,
-    _trigger_priority_scoring,
-    _execute_pending_summarisations,
     _broadcast_turn_created,
-    _send_completion_notification,
+    _execute_pending_summarisations,
     _extract_transcript_content,
+    _get_lifecycle_manager,
+    _send_completion_notification,
+    _trigger_priority_scoring,
 )
-
 
 # ── Public API ───────────────────────────────────────────────────────
 
@@ -63,6 +61,7 @@ def schedule_deferred_stop(agent: Agent, current_command) -> None:
     # (current_app is not available inside background threads)
     try:
         from flask import current_app
+
         app = current_app._get_current_object()
     except RuntimeError:
         logger.warning("Cannot schedule deferred stop: no app context available")
@@ -88,7 +87,9 @@ def schedule_deferred_stop(agent: Agent, current_command) -> None:
         finally:
             state.release_deferred_stop(agent_id)
 
-    t = threading.Thread(target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}")
+    t = threading.Thread(
+        target=_deferred_check, daemon=True, name=f"deferred-stop-{agent_id}"
+    )
     t.start()
 
 
@@ -105,9 +106,7 @@ def _run_deferred_stop(
     the appropriate state transition.
     """
     from ..models.command import Command
-    from .card_state import broadcast_card_refresh
     from .hook_agent_state import get_agent_hook_state
-    from .intent_detector import detect_agent_intent
 
     state = get_agent_hook_state()
 
@@ -208,9 +207,13 @@ def _run_deferred_stop_locked(
         pos = state.get_transcript_position(agent_id) or 0
         if pos > 0 and agent_obj.transcript_path:
             from .transcript_reader import read_new_entries_from_position
-            new_entries, _ = read_new_entries_from_position(agent_obj.transcript_path, pos)
+
+            new_entries, _ = read_new_entries_from_position(
+                agent_obj.transcript_path, pos
+            )
             new_texts = [
-                e.content.strip() for e in new_entries
+                e.content.strip()
+                for e in new_entries
                 if e.role == "assistant" and e.content and e.content.strip()
             ]
             if new_texts:
@@ -224,15 +227,17 @@ def _run_deferred_stop_locked(
     inference_service = app.extensions.get("inference_service")
 
     intent_result = detect_agent_intent(
-        full_agent_text, inference_service=inference_service,
-        project_id=project_id, agent_id=agent_id,
+        full_agent_text,
+        inference_service=inference_service,
+        project_id=project_id,
+        agent_id=agent_id,
     )
 
     # Dedup guard: the TmuxWatchdog reconciler may have already created a
     # turn from this same JSONL content while the deferred stop was sleeping.
     # Check by content hash AND fuzzy matching (same guard as process_stop).
-    from .transcript_reconciler import _content_hash, is_content_duplicate
     from ..models.turn import Turn as _Turn
+    from .transcript_reconciler import _content_hash, is_content_duplicate
 
     agent_content_key = _content_hash("agent", full_agent_text or "")
     existing_dup = None
@@ -245,8 +250,12 @@ def _run_deferred_stop_locked(
             if t.jsonl_entry_hash and t.jsonl_entry_hash == agent_content_key:
                 existing_dup = t
                 break
-            if t.intent in (TurnIntent.QUESTION, TurnIntent.COMPLETION,
-                            TurnIntent.END_OF_COMMAND, TurnIntent.PROGRESS):
+            if t.intent in (
+                TurnIntent.QUESTION,
+                TurnIntent.COMPLETION,
+                TurnIntent.END_OF_COMMAND,
+                TurnIntent.PROGRESS,
+            ):
                 if is_content_duplicate(t.text, full_agent_text, actor="agent"):
                     existing_dup = t
                     logger.info(
@@ -259,15 +268,21 @@ def _run_deferred_stop_locked(
     stale_notification_turn = None
     if cmd.turns:
         for t in reversed(cmd.turns):
-            if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
-                    and t.text == "Claude is waiting for your input"):
+            if (
+                t.actor == TurnActor.AGENT
+                and t.intent == TurnIntent.QUESTION
+                and t.text == "Claude is waiting for your input"
+            ):
                 stale_notification_turn = t
                 break
 
     lifecycle = _get_lifecycle_manager()
     if existing_dup:
         # Reconciler already created this turn — upgrade intent if needed
-        if existing_dup.intent == TurnIntent.PROGRESS and intent_result.intent != TurnIntent.PROGRESS:
+        if (
+            existing_dup.intent == TurnIntent.PROGRESS
+            and intent_result.intent != TurnIntent.PROGRESS
+        ):
             existing_dup.intent = intent_result.intent
         if intent_result.intent == TurnIntent.QUESTION:
             existing_dup.question_text = full_agent_text or ""
@@ -282,10 +297,16 @@ def _run_deferred_stop_locked(
         # Still drive lifecycle for state-relevant intents
         if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
             try:
-                trigger = "hook:stop:deferred_end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop:deferred"
+                trigger = (
+                    "hook:stop:deferred_end_of_command"
+                    if intent_result.intent == TurnIntent.END_OF_COMMAND
+                    else "hook:stop:deferred"
+                )
                 lifecycle.complete_command(
-                    command=cmd, trigger=trigger,
-                    agent_text=completion_text, intent=intent_result.intent,
+                    command=cmd,
+                    trigger=trigger,
+                    agent_text=completion_text,
+                    intent=intent_result.intent,
                 )
                 if completion_text != full_agent_text:
                     cmd.full_output = full_agent_text
@@ -302,8 +323,10 @@ def _run_deferred_stop_locked(
             stale_notification_turn.question_source_type = "free_text"
         else:
             turn = _Turn(
-                command_id=cmd.id, actor=TurnActor.AGENT,
-                intent=TurnIntent.QUESTION, text=full_agent_text,
+                command_id=cmd.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.QUESTION,
+                text=full_agent_text,
                 question_text=full_agent_text,
                 question_source_type="free_text",
                 jsonl_entry_hash=agent_content_key,
@@ -317,8 +340,10 @@ def _run_deferred_stop_locked(
             stale_notification_turn.question_source_type = None
             stale_notification_turn.jsonl_entry_hash = agent_content_key
         lifecycle.complete_command(
-            command=cmd, trigger="hook:stop:deferred_end_of_command",
-            agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
+            command=cmd,
+            trigger="hook:stop:deferred_end_of_command",
+            agent_text=completion_text,
+            intent=TurnIntent.END_OF_COMMAND,
         )
         if completion_text != full_agent_text:
             cmd.full_output = full_agent_text
@@ -329,7 +354,9 @@ def _run_deferred_stop_locked(
             stale_notification_turn.question_text = None
             stale_notification_turn.question_source_type = None
             stale_notification_turn.jsonl_entry_hash = agent_content_key
-        lifecycle.complete_command(command=cmd, trigger="hook:stop:deferred", agent_text=completion_text)
+        lifecycle.complete_command(
+            command=cmd, trigger="hook:stop:deferred", agent_text=completion_text
+        )
         if completion_text != full_agent_text:
             cmd.full_output = full_agent_text
 
@@ -343,15 +370,16 @@ def _run_deferred_stop_locked(
     if intent_result.intent == TurnIntent.QUESTION:
         try:
             lifecycle.update_command_state(
-                command=cmd, to_state=CommandState.AWAITING_INPUT,
-                trigger="hook:stop:deferred_question", confidence=intent_result.confidence,
+                command=cmd,
+                to_state=CommandState.AWAITING_INPUT,
+                trigger="hook:stop:deferred_question",
+                confidence=intent_result.confidence,
             )
             db.session.commit()
         except Exception as e:
             db.session.rollback()
             logger.warning(
-                f"[DEFERRED_STOP] state transition failed: "
-                f"error={e} — turn preserved"
+                f"[DEFERRED_STOP] state transition failed: error={e} — turn preserved"
             )
     broadcast_card_refresh(agent_obj, "stop_deferred")
     _execute_pending_summarisations(pending)
@@ -363,19 +391,28 @@ def _run_deferred_stop_locked(
         broadcast_turn = None
         for t in reversed(cmd.turns):
             if t.actor == TurnActor.AGENT and t.intent in (
-                TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
+                TurnIntent.QUESTION,
+                TurnIntent.COMPLETION,
+                TurnIntent.END_OF_COMMAND,
             ):
                 broadcast_turn = t
                 break
         if not broadcast_turn:
             for t in reversed(cmd.turns):
-                if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
+                if (
+                    t.actor == TurnActor.AGENT
+                    and t.intent == TurnIntent.PROGRESS
+                    and t.text
+                ):
                     broadcast_turn = t
                     break
         if broadcast_turn:
             _broadcast_turn_created(
-                agent_obj, broadcast_turn.text, cmd,
-                tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
+                agent_obj,
+                broadcast_turn.text,
+                cmd,
+                tool_input=broadcast_turn.tool_input,
+                turn_id=broadcast_turn.id,
                 intent=broadcast_turn.intent.value,
                 question_source_type=broadcast_turn.question_source_type,
             )

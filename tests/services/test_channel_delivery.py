@@ -1,7 +1,7 @@
 """Tests for ChannelDeliveryService — fan-out, queue, relay, notifications."""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -16,7 +16,7 @@ from claude_headspace.models.persona import Persona
 from claude_headspace.models.persona_type import PersonaType
 from claude_headspace.models.project import Project
 from claude_headspace.models.role import Role
-from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
+from claude_headspace.models.turn import TurnIntent
 from claude_headspace.services.channel_delivery import ChannelDeliveryService
 
 
@@ -48,45 +48,64 @@ def setup_data(app, db_session):
     pt_internal = db.session.get(PersonaType, 1)
 
     persona_a = Persona(
-        name="Alice", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Alice",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     persona_b = Persona(
-        name="Bob", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Bob",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     persona_c = Persona(
-        name="Charlie", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Charlie",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     db.session.add_all([persona_a, persona_b, persona_c])
     db.session.flush()
 
     project = Project(
-        name="test-project", slug="test-project", path="/tmp/test-project",
+        name="test-project",
+        slug="test-project",
+        path="/tmp/test-project",
     )
     db.session.add(project)
     db.session.flush()
 
     agent_a = Agent(
-        session_uuid=uuid4(), project_id=project.id,
-        persona_id=persona_a.id, tmux_pane_id="%1",
+        session_uuid=uuid4(),
+        project_id=project.id,
+        persona_id=persona_a.id,
+        tmux_pane_id="%1",
     )
     agent_b = Agent(
-        session_uuid=uuid4(), project_id=project.id,
-        persona_id=persona_b.id, tmux_pane_id="%2",
+        session_uuid=uuid4(),
+        project_id=project.id,
+        persona_id=persona_b.id,
+        tmux_pane_id="%2",
     )
     agent_c = Agent(
-        session_uuid=uuid4(), project_id=project.id,
-        persona_id=persona_c.id, tmux_pane_id="%3",
+        session_uuid=uuid4(),
+        project_id=project.id,
+        persona_id=persona_c.id,
+        tmux_pane_id="%3",
     )
     db.session.add_all([agent_a, agent_b, agent_c])
     db.session.flush()
 
     # Create a channel with Alice as chair
     channel = Channel(
-        name="test-channel", channel_type=ChannelType.WORKSHOP,
-        created_by_persona_id=persona_a.id, status="active",
+        name="test-channel",
+        channel_type=ChannelType.WORKSHOP,
+        created_by_persona_id=persona_a.id,
+        status="active",
     )
     db.session.add(channel)
     db.session.flush()
@@ -96,25 +115,42 @@ def setup_data(app, db_session):
 
     # Create memberships
     mem_a = ChannelMembership(
-        channel_id=channel.id, persona_id=persona_a.id,
-        agent_id=agent_a.id, is_chair=True, status="active",
+        channel_id=channel.id,
+        persona_id=persona_a.id,
+        agent_id=agent_a.id,
+        is_chair=True,
+        status="active",
     )
     mem_b = ChannelMembership(
-        channel_id=channel.id, persona_id=persona_b.id,
-        agent_id=agent_b.id, is_chair=False, status="active",
+        channel_id=channel.id,
+        persona_id=persona_b.id,
+        agent_id=agent_b.id,
+        is_chair=False,
+        status="active",
     )
     mem_c = ChannelMembership(
-        channel_id=channel.id, persona_id=persona_c.id,
-        agent_id=agent_c.id, is_chair=False, status="active",
+        channel_id=channel.id,
+        persona_id=persona_c.id,
+        agent_id=agent_c.id,
+        is_chair=False,
+        status="active",
     )
     db.session.add_all([mem_a, mem_b, mem_c])
     db.session.commit()
 
     return {
-        "persona_a": persona_a, "persona_b": persona_b, "persona_c": persona_c,
-        "agent_a": agent_a, "agent_b": agent_b, "agent_c": agent_c,
-        "channel": channel, "project": project, "role": role,
-        "mem_a": mem_a, "mem_b": mem_b, "mem_c": mem_c,
+        "persona_a": persona_a,
+        "persona_b": persona_b,
+        "persona_c": persona_c,
+        "agent_a": agent_a,
+        "agent_b": agent_b,
+        "agent_c": agent_c,
+        "channel": channel,
+        "project": project,
+        "role": role,
+        "mem_a": mem_a,
+        "mem_b": mem_b,
+        "mem_c": mem_c,
     }
 
 
@@ -223,7 +259,8 @@ class TestIsSafeState:
     def test_awaiting_input_is_safe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.AWAITING_INPUT,
+            agent_id=agent.id,
+            state=CommandState.AWAITING_INPUT,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -234,7 +271,8 @@ class TestIsSafeState:
     def test_idle_is_safe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.IDLE,
+            agent_id=agent.id,
+            state=CommandState.IDLE,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -250,7 +288,8 @@ class TestIsSafeState:
     def test_processing_is_unsafe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -261,7 +300,8 @@ class TestIsSafeState:
     def test_commanded_is_unsafe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.COMMANDED,
+            agent_id=agent.id,
+            state=CommandState.COMMANDED,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -272,7 +312,8 @@ class TestIsSafeState:
     def test_complete_is_unsafe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.COMPLETE,
+            agent_id=agent.id,
+            state=CommandState.COMPLETE,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
         )
@@ -288,7 +329,11 @@ class TestIsSafeState:
 
 class TestDeliverMessage:
     def test_fans_out_to_active_members_skips_sender(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """Message from Alice fans out to Bob and Charlie, not Alice."""
         message = Message(
@@ -314,7 +359,11 @@ class TestDeliverMessage:
             assert setup_data["persona_a"].id not in called_persona_ids
 
     def test_skips_muted_members(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """Muted members are not included in fan-out."""
         # Mute Bob
@@ -336,15 +385,23 @@ class TestDeliverMessage:
 
             # Only Charlie (Bob is muted, Alice is sender)
             assert mock_deliver.call_count == 1
-            assert mock_deliver.call_args_list[0].args[0].persona_id == setup_data["persona_c"].id
+            assert (
+                mock_deliver.call_args_list[0].args[0].persona_id
+                == setup_data["persona_c"].id
+            )
 
     def test_queues_for_agents_in_unsafe_states(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """Messages queued for agents in PROCESSING state."""
         # Put Bob's agent in PROCESSING state
         cmd = Command(
-            agent_id=setup_data["agent_b"].id, state=CommandState.PROCESSING,
+            agent_id=setup_data["agent_b"].id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -363,14 +420,22 @@ class TestDeliverMessage:
         with patch.object(delivery_service, "_deliver_to_agent") as mock_tmux:
             mock_tmux.return_value = True
             # Mock commander availability to return True for all
-            with patch.object(app.extensions.get("commander_availability", MagicMock()), "is_available", return_value=True):
+            with patch.object(
+                app.extensions.get("commander_availability", MagicMock()),
+                "is_available",
+                return_value=True,
+            ):
                 delivery_service.deliver_message(message, setup_data["channel"])
 
         # Bob should have a queued message (unsafe state)
         assert delivery_service._dequeue(setup_data["agent_b"].id) == message.id
 
     def test_failure_isolation(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """If delivery fails for one member, others still get delivered."""
         message = Message(
@@ -390,7 +455,9 @@ class TestDeliverMessage:
             if membership.persona_id == setup_data["persona_b"].id:
                 raise RuntimeError("Bob's delivery failed!")
 
-        with patch.object(delivery_service, "_deliver_to_member", side_effect=side_effect):
+        with patch.object(
+            delivery_service, "_deliver_to_member", side_effect=side_effect
+        ):
             # Should not raise — failure is isolated
             delivery_service.deliver_message(message, setup_data["channel"])
 
@@ -403,13 +470,18 @@ class TestDeliverMessage:
 
 class TestRelayAgentResponse:
     def test_relays_completion_to_channel(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """COMPLETION turn from channel member is relayed as channel Message."""
         agent = setup_data["agent_b"]
 
         with patch.object(
-            app.extensions["channel_service"], "send_message",
+            app.extensions["channel_service"],
+            "send_message",
             return_value=MagicMock(),
         ) as mock_send:
             result = delivery_service.relay_agent_response(
@@ -431,13 +503,18 @@ class TestRelayAgentResponse:
             assert call_kwargs.kwargs["source_command_id"] == 10
 
     def test_relays_end_of_command(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """END_OF_COMMAND turn is also relayed."""
         agent = setup_data["agent_b"]
 
         with patch.object(
-            app.extensions["channel_service"], "send_message",
+            app.extensions["channel_service"],
+            "send_message",
             return_value=MagicMock(),
         ) as mock_send:
             result = delivery_service.relay_agent_response(
@@ -452,7 +529,11 @@ class TestRelayAgentResponse:
             mock_send.assert_called_once()
 
     def test_no_relay_for_progress(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """PROGRESS turns are NOT relayed (FR9)."""
         agent = setup_data["agent_b"]
@@ -468,7 +549,11 @@ class TestRelayAgentResponse:
         assert result is False
 
     def test_no_relay_for_question(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """QUESTION turns are NOT relayed (FR9)."""
         agent = setup_data["agent_b"]
@@ -484,13 +569,19 @@ class TestRelayAgentResponse:
         assert result is False
 
     def test_no_relay_when_not_in_channel(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """Agent not in any channel — no relay."""
         # Create an agent with no channel membership
         agent_d = Agent(
-            session_uuid=uuid4(), project_id=setup_data["project"].id,
-            persona_id=setup_data["persona_a"].id, tmux_pane_id="%4",
+            session_uuid=uuid4(),
+            project_id=setup_data["project"].id,
+            persona_id=setup_data["persona_a"].id,
+            tmux_pane_id="%4",
         )
         db.session.add(agent_d)
         db.session.commit()
@@ -510,19 +601,21 @@ class TestRelayAgentResponse:
         assert result is False
 
     def test_strips_command_complete_before_relay(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """COMMAND COMPLETE footer is stripped from relayed content."""
         agent = setup_data["agent_b"]
         text_with_footer = (
-            "Here is the result.\n\n"
-            "---\n"
-            "COMMAND COMPLETE — Fixed the bug.\n"
-            "---"
+            "Here is the result.\n\n---\nCOMMAND COMPLETE — Fixed the bug.\n---"
         )
 
         with patch.object(
-            app.extensions["channel_service"], "send_message",
+            app.extensions["channel_service"],
+            "send_message",
             return_value=MagicMock(),
         ) as mock_send:
             delivery_service.relay_agent_response(
@@ -538,12 +631,18 @@ class TestRelayAgentResponse:
             assert call_kwargs.kwargs["content"] == "Here is the result."
 
     def test_no_relay_for_agent_without_persona(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """Agent with no persona_id cannot relay."""
         agent_no_persona = Agent(
-            session_uuid=uuid4(), project_id=setup_data["project"].id,
-            persona_id=None, tmux_pane_id="%5",
+            session_uuid=uuid4(),
+            project_id=setup_data["project"].id,
+            persona_id=None,
+            tmux_pane_id="%5",
         )
         db.session.add(agent_no_persona)
         db.session.commit()
@@ -562,7 +661,11 @@ class TestRelayAgentResponse:
 
 class TestDrainQueue:
     def test_delivers_oldest_message(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """drain_queue delivers the oldest queued message (FIFO)."""
         agent = setup_data["agent_b"]
@@ -589,7 +692,9 @@ class TestDrainQueue:
         delivery_service._enqueue(agent.id, msg1.id)
         delivery_service._enqueue(agent.id, msg2.id)
 
-        with patch.object(delivery_service, "_deliver_to_agent", return_value=True) as mock_deliver:
+        with patch.object(
+            delivery_service, "_deliver_to_agent", return_value=True
+        ) as mock_deliver:
             result = delivery_service.drain_queue(agent)
 
         assert result is True
@@ -602,7 +707,11 @@ class TestDrainQueue:
         assert delivery_service._dequeue(agent.id) == msg2.id
 
     def test_empty_queue_returns_false(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """drain_queue returns False when queue is empty."""
         agent = setup_data["agent_b"]
@@ -610,7 +719,11 @@ class TestDrainQueue:
         assert result is False
 
     def test_handles_missing_message(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """drain_queue handles message that was deleted from DB."""
         agent = setup_data["agent_b"]
@@ -620,7 +733,11 @@ class TestDrainQueue:
         assert result is False
 
     def test_handles_ended_agent(
-        self, app, delivery_service, db_session, setup_data,
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
     ):
         """drain_queue skips delivery for ended agents."""
         agent = setup_data["agent_b"]
@@ -648,7 +765,10 @@ class TestDrainQueue:
 class TestNotificationServiceChannel:
     def test_send_channel_notification(self, app):
         """send_channel_notification sends a macOS notification."""
-        from claude_headspace.services.notification_service import NotificationService, NotificationPreferences
+        from claude_headspace.services.notification_service import (
+            NotificationPreferences,
+            NotificationService,
+        )
 
         svc = NotificationService(NotificationPreferences(enabled=True))
 
@@ -670,7 +790,10 @@ class TestNotificationServiceChannel:
 
     def test_channel_rate_limiting(self, app):
         """Second call within 30s is suppressed."""
-        from claude_headspace.services.notification_service import NotificationService, NotificationPreferences
+        from claude_headspace.services.notification_service import (
+            NotificationPreferences,
+            NotificationService,
+        )
 
         svc = NotificationService(NotificationPreferences(enabled=True))
 
@@ -698,7 +821,10 @@ class TestNotificationServiceChannel:
 
     def test_different_channels_not_rate_limited(self, app):
         """Different channel slugs have separate rate limits."""
-        from claude_headspace.services.notification_service import NotificationService, NotificationPreferences
+        from claude_headspace.services.notification_service import (
+            NotificationPreferences,
+            NotificationService,
+        )
 
         svc = NotificationService(NotificationPreferences(enabled=True))
 
@@ -733,7 +859,8 @@ class TestHookReceiverIntegration:
         agent = setup_data["agent_a"]
         # Create a command for the agent
         cmd = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -741,19 +868,22 @@ class TestHookReceiverIntegration:
 
         delivery = app.extensions.get("channel_delivery_service")
 
-        with patch.object(delivery, "relay_agent_response") as mock_relay, \
-             patch.object(delivery, "drain_queue") as mock_drain, \
-             patch(
-                 "claude_headspace.services.hook_receiver._extract_transcript_content",
-                 return_value="Done with the task.\n\n---\nCOMMAND COMPLETE — Done.\n---",
-             ), \
-             patch(
-                 "claude_headspace.services.hook_receiver.detect_agent_intent",
-                 return_value=MagicMock(
-                     intent=TurnIntent.COMPLETION, confidence=0.95,
-                     matched_pattern="completion_pattern",
-                 ),
-             ):
+        with (
+            patch.object(delivery, "relay_agent_response") as mock_relay,
+            patch.object(delivery, "drain_queue") as mock_drain,
+            patch(
+                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                return_value="Done with the task.\n\n---\nCOMMAND COMPLETE — Done.\n---",
+            ),
+            patch(
+                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                return_value=MagicMock(
+                    intent=TurnIntent.COMPLETION,
+                    confidence=0.95,
+                    matched_pattern="completion_pattern",
+                ),
+            ),
+        ):
             process_stop(agent, str(agent.claude_session_id or "test-session"))
 
             mock_relay.assert_called_once()
@@ -767,7 +897,8 @@ class TestHookReceiverIntegration:
 
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -775,18 +906,21 @@ class TestHookReceiverIntegration:
 
         delivery = app.extensions.get("channel_delivery_service")
 
-        with patch.object(delivery, "relay_agent_response") as mock_relay, \
-             patch(
-                 "claude_headspace.services.hook_receiver._extract_transcript_content",
-                 return_value="Should I proceed with this approach?",
-             ), \
-             patch(
-                 "claude_headspace.services.hook_receiver.detect_agent_intent",
-                 return_value=MagicMock(
-                     intent=TurnIntent.QUESTION, confidence=0.90,
-                     matched_pattern="question_pattern",
-                 ),
-             ):
+        with (
+            patch.object(delivery, "relay_agent_response") as mock_relay,
+            patch(
+                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                return_value="Should I proceed with this approach?",
+            ),
+            patch(
+                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                return_value=MagicMock(
+                    intent=TurnIntent.QUESTION,
+                    confidence=0.90,
+                    matched_pattern="question_pattern",
+                ),
+            ),
+        ):
             process_stop(agent, "test-session")
 
             mock_relay.assert_not_called()
@@ -797,7 +931,8 @@ class TestHookReceiverIntegration:
 
         agent = setup_data["agent_a"]
         cmd = Command(
-            agent_id=agent.id, state=CommandState.PROCESSING,
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
             started_at=datetime.now(timezone.utc),
         )
         db.session.add(cmd)
@@ -805,19 +940,22 @@ class TestHookReceiverIntegration:
 
         delivery = app.extensions.get("channel_delivery_service")
 
-        with patch.object(delivery, "relay_agent_response", return_value=False), \
-             patch.object(delivery, "drain_queue") as mock_drain, \
-             patch(
-                 "claude_headspace.services.hook_receiver._extract_transcript_content",
-                 return_value="All done.",
-             ), \
-             patch(
-                 "claude_headspace.services.hook_receiver.detect_agent_intent",
-                 return_value=MagicMock(
-                     intent=TurnIntent.COMPLETION, confidence=0.95,
-                     matched_pattern="completion_pattern",
-                 ),
-             ):
+        with (
+            patch.object(delivery, "relay_agent_response", return_value=False),
+            patch.object(delivery, "drain_queue") as mock_drain,
+            patch(
+                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                return_value="All done.",
+            ),
+            patch(
+                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                return_value=MagicMock(
+                    intent=TurnIntent.COMPLETION,
+                    confidence=0.95,
+                    matched_pattern="completion_pattern",
+                ),
+            ),
+        ):
             process_stop(agent, "test-session")
 
             mock_drain.assert_called_once_with(agent)

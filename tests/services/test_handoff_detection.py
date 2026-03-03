@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.handoff_detection import HandoffDetectionService
 
 
@@ -78,9 +76,9 @@ class TestDetectAndEmit:
             (handoff_dir / "2026-01-01T10:00:00_first-task_agent-id:100.md").write_text(
                 "# Handoff 1"
             )
-            (handoff_dir / "2026-01-02T10:00:00_second-task_agent-id:101.md").write_text(
-                "# Handoff 2"
-            )
+            (
+                handoff_dir / "2026-01-02T10:00:00_second-task_agent-id:101.md"
+            ).write_text("# Handoff 2")
 
             svc = HandoffDetectionService(app=app)
             agent = _make_agent()
@@ -114,7 +112,7 @@ class TestDetectAndEmit:
 
             # Create 5 files
             for i in range(1, 6):
-                fname = f"2026-01-0{i}T10:00:00_task-{i}_agent-id:{100+i}.md"
+                fname = f"2026-01-0{i}T10:00:00_task-{i}_agent-id:{100 + i}.md"
                 (handoff_dir / fname).write_text(f"# Handoff {i}")
 
             svc = HandoffDetectionService(app=app)
@@ -163,6 +161,7 @@ class TestDetectAndEmit:
             file_paths = data["turns"][0]["file_paths"]
             assert len(file_paths) == 1
             import os
+
             assert os.path.isabs(file_paths[0])
 
     def test_broadcast_failure_returns_false(self, app, tmp_path):
@@ -191,9 +190,9 @@ class TestDetectAndEmit:
             app.config["PERSONA_DATA_ROOT"] = str(tmp_path)
             handoff_dir = tmp_path / "developer-con-1" / "handoffs"
             handoff_dir.mkdir(parents=True)
-            (handoff_dir / "2026-01-01T10:00:00_previous-work_agent-id:99.md").write_text(
-                "# Previous"
-            )
+            (
+                handoff_dir / "2026-01-01T10:00:00_previous-work_agent-id:99.md"
+            ).write_text("# Previous")
 
             svc = HandoffDetectionService(app=app)
             agent = _make_agent(agent_id=100)

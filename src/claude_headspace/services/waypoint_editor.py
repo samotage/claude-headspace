@@ -160,9 +160,7 @@ def save_waypoint(
         # Archive existing waypoint via centralized service
         if path.exists() and archive_service is not None:
             try:
-                result = archive_service.archive_artifact(
-                    project_path, "waypoint"
-                )
+                result = archive_service.archive_artifact(project_path, "waypoint")
                 if result is not None:
                     archived = True
                     archive_path = result
@@ -195,7 +193,7 @@ def save_waypoint(
             last_modified=new_mtime,
         )
 
-    except PermissionError as e:
+    except PermissionError:
         error_msg = f"Permission denied: {path}"
         logger.error(error_msg)
         return SaveResult(

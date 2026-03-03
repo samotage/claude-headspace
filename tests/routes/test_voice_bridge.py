@@ -12,10 +12,10 @@ from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 from src.claude_headspace.services.command_lifecycle import AnswerCompletionResult
 from src.claude_headspace.services.tmux_bridge import SendResult
 
-
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def app():
@@ -55,11 +55,31 @@ def app_with_auth():
     mock_auth.authenticate.return_value = None  # Allow by default
     mock_formatter = MagicMock()
     # Make formatter return JSON-serializable dicts
-    mock_formatter.format_sessions.return_value = {"status_line": "ok", "results": [], "next_action": "none"}
-    mock_formatter.format_command_result.return_value = {"status_line": "ok", "results": [], "next_action": "none"}
-    mock_formatter.format_question.return_value = {"status_line": "ok", "results": [], "next_action": "none"}
-    mock_formatter.format_output.return_value = {"status_line": "ok", "results": [], "next_action": "none"}
-    mock_formatter.format_error.return_value = {"status_line": "error", "results": [], "next_action": "fix"}
+    mock_formatter.format_sessions.return_value = {
+        "status_line": "ok",
+        "results": [],
+        "next_action": "none",
+    }
+    mock_formatter.format_command_result.return_value = {
+        "status_line": "ok",
+        "results": [],
+        "next_action": "none",
+    }
+    mock_formatter.format_question.return_value = {
+        "status_line": "ok",
+        "results": [],
+        "next_action": "none",
+    }
+    mock_formatter.format_output.return_value = {
+        "status_line": "ok",
+        "results": [],
+        "next_action": "none",
+    }
+    mock_formatter.format_error.return_value = {
+        "status_line": "error",
+        "results": [],
+        "next_action": "fix",
+    }
     app.extensions = {
         "voice_auth": mock_auth,
         "voice_formatter": mock_formatter,
@@ -203,15 +223,21 @@ def mock_agent_complete(mock_project):
 # Authentication tests (task 3.8)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestVoiceAuth:
     """Test authentication middleware on voice bridge routes."""
 
-    def test_auth_called_on_remote_request(self, client_with_auth, app_with_auth, mock_db):
+    def test_auth_called_on_remote_request(
+        self, client_with_auth, app_with_auth, mock_db
+    ):
         """Auth middleware is invoked on non-LAN requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
         # Simulate a public (non-LAN) request
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"}):
+        with app_with_auth.test_request_context(
+            "/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"}
+        ):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
+
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_called()
 
@@ -222,47 +248,78 @@ class TestVoiceAuth:
         # Test client defaults to 127.0.0.1 — auth should NOT be called
         app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
-    def test_auth_bypassed_on_lan_192_168(self, client_with_auth, app_with_auth, mock_db):
+    def test_auth_bypassed_on_lan_192_168(
+        self, client_with_auth, app_with_auth, mock_db
+    ):
         """Auth middleware is skipped for 192.168.x.x LAN requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}):
+        with app_with_auth.test_request_context(
+            "/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}
+        ):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
+
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_auth_bypassed_on_lan_10(self, client_with_auth, app_with_auth, mock_db):
         """Auth middleware is skipped for 10.x.x.x LAN requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "10.0.0.5"}):
+        with app_with_auth.test_request_context(
+            "/api/voice/sessions", environ_base={"REMOTE_ADDR": "10.0.0.5"}
+        ):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
+
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_auth_bypassed_on_lan_172(self, client_with_auth, app_with_auth, mock_db):
         """Auth middleware is skipped for 172.16-31.x.x LAN requests."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.20.0.1"}):
+        with app_with_auth.test_request_context(
+            "/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.20.0.1"}
+        ):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
+
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
-    def test_auth_not_bypassed_on_172_outside_range(self, client_with_auth, app_with_auth, mock_db):
+    def test_auth_not_bypassed_on_172_outside_range(
+        self, client_with_auth, app_with_auth, mock_db
+    ):
         """Auth middleware is NOT skipped for 172.x.x.x outside 16-31 range."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
-        with app_with_auth.test_request_context("/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.32.0.1"}):
+        with app_with_auth.test_request_context(
+            "/api/voice/sessions", environ_base={"REMOTE_ADDR": "172.32.0.1"}
+        ):
             from src.claude_headspace.routes.voice_bridge import voice_auth_check
+
             voice_auth_check()
             app_with_auth.extensions["voice_auth"].authenticate.assert_called()
 
     def test_auth_rejection_returns_error(self, app_with_auth, mock_db):
         """When auth rejects, the endpoint is not reached."""
         from flask import jsonify as flask_jsonify
+
         with app_with_auth.app_context():
-            reject_response = flask_jsonify({"error": "invalid_token", "voice": {"status_line": "Invalid.", "results": [], "next_action": "Fix token."}})
-        app_with_auth.extensions["voice_auth"].authenticate.return_value = (reject_response, 401)
+            reject_response = flask_jsonify(
+                {
+                    "error": "invalid_token",
+                    "voice": {
+                        "status_line": "Invalid.",
+                        "results": [],
+                        "next_action": "Fix token.",
+                    },
+                }
+            )
+        app_with_auth.extensions["voice_auth"].authenticate.return_value = (
+            reject_response,
+            401,
+        )
         # Use a public (non-LAN) address to trigger auth
         with app_with_auth.test_client() as client:
-            response = client.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"})
+            response = client.get(
+                "/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"}
+            )
         assert response.status_code == 401
 
     def test_no_auth_service_allows_request(self, client, mock_db):
@@ -276,6 +333,7 @@ class TestVoiceAuth:
 # Session listing tests (task 3.5)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestListSessions:
     """Tests for GET /api/voice/sessions."""
 
@@ -288,7 +346,9 @@ class TestListSessions:
         assert data["agents"] == []
 
     def test_active_agents_returned(self, client, mock_db, mock_agent):
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
         response = client.get("/api/voice/sessions")
         assert response.status_code == 200
         data = response.get_json()
@@ -304,11 +364,17 @@ class TestListSessions:
         data = response.get_json()
         assert "latency_ms" in data
 
-    def test_verbosity_param_passed(self, client_with_auth, app_with_auth, mock_db, mock_agent):
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+    def test_verbosity_param_passed(
+        self, client_with_auth, app_with_auth, mock_db, mock_agent
+    ):
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
         client_with_auth.get("/api/voice/sessions?verbosity=detailed")
         app_with_auth.extensions["voice_formatter"].format_sessions.assert_called_once()
-        call_args = app_with_auth.extensions["voice_formatter"].format_sessions.call_args
+        call_args = app_with_auth.extensions[
+            "voice_formatter"
+        ].format_sessions.call_args
         assert call_args[1]["verbosity"] == "detailed"
 
     def test_settings_includes_auto_target(self, client, mock_db):
@@ -320,13 +386,17 @@ class TestListSessions:
         assert data["settings"]["auto_target"] is False
 
     @patch("src.claude_headspace.routes.voice_bridge._agent_to_voice_dict")
-    def test_stale_agent_still_returned(self, mock_to_dict, client, mock_db, mock_project):
+    def test_stale_agent_still_returned(
+        self, mock_to_dict, client, mock_db, mock_project
+    ):
         """Active agents with old last_seen_at are still returned (no stale filtering)."""
         stale_agent = MagicMock()
         stale_agent.id = 99
 
         mock_to_dict.return_value = {"agent_id": 99, "name": "stale", "state": "IDLE"}
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [stale_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            stale_agent
+        ]
         response = client.get("/api/voice/sessions")
         data = response.get_json()
         # Voice bridge does not filter by staleness — DB query filters by ended_at only
@@ -341,7 +411,9 @@ class TestListSessions:
 
     @patch("src.claude_headspace.routes.voice_bridge._agent_to_voice_dict")
     @patch("src.claude_headspace.routes.voice_bridge._get_ended_agents")
-    def test_include_ended_returns_ended_agents(self, mock_get_ended, mock_to_dict, client, mock_db):
+    def test_include_ended_returns_ended_agents(
+        self, mock_get_ended, mock_to_dict, client, mock_db
+    ):
         """include_ended=true returns ended_agents in response."""
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
 
@@ -390,6 +462,7 @@ class TestListSessions:
 # Voice command tests (task 3.4)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestVoiceCommand:
     """Tests for POST /api/voice/command."""
 
@@ -403,17 +476,25 @@ class TestVoiceCommand:
 
     def test_agent_not_found(self, client, mock_db):
         mock_db.session.get.return_value = None
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 999})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 999}
+        )
         assert response.status_code == 404
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_processing_agent_gets_interrupt_and_send_and_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+    def test_processing_agent_gets_interrupt_and_send_and_turn(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing
+    ):
         """PROCESSING agent gets interrupt_and_send_text and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(
+            success=True, latency_ms=50
+        )
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -426,7 +507,9 @@ class TestVoiceCommand:
             mock_lc.process_turn.return_value = mock_result
             mock_lc.get_pending_summarisations.return_value = []
 
-            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
+            response = client.post(
+                "/api/voice/command", json={"text": "yes", "agent_id": 2}
+            )
             assert response.status_code == 200
             mock_bridge.interrupt_and_send_text.assert_called_once()
             mock_bridge.send_text.assert_not_called()
@@ -436,18 +519,26 @@ class TestVoiceCommand:
 
     def test_no_pane_id(self, client, mock_db, mock_agent_no_pane):
         mock_db.session.get.return_value = mock_agent_no_pane
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 3})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 3}
+        )
         assert response.status_code == 503
 
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_successful_command(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+    def test_successful_command(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent
+    ):
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
-        response = client.post("/api/voice/command", json={"text": "option 1", "agent_id": 1})
+        response = client.post(
+            "/api/voice/command", json={"text": "option 1", "agent_id": 1}
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert data["agent_id"] == 1
@@ -457,10 +548,14 @@ class TestVoiceCommand:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_creates_answer_turn(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+    def test_command_creates_answer_turn(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent
+    ):
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
         client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
 
@@ -473,14 +568,20 @@ class TestVoiceCommand:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_links_answered_by_turn_id(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+    def test_command_links_answered_by_turn_id(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent
+    ):
         """Answer turn should link to the most recent QUESTION turn (task 3.10).
         (Actual linking tested in test_command_lifecycle.py::TestCompleteAnswer)"""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 1}
+        )
         assert response.status_code == 200
         # complete_answer receives the command with question turns
         mock_ca.assert_called_once()
@@ -495,31 +596,43 @@ class TestVoiceCommand:
             error_message="Pane not found",
             latency_ms=5,
         )
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 1}
+        )
         assert response.status_code == 502
         data = response.get_json()
         assert data["error"] == "send_failed"
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_db_error_rollback(self, mock_bridge, mock_bcast, client, mock_db, mock_agent):
+    def test_db_error_rollback(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent
+    ):
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 1}
+        )
         assert response.status_code == 500
         mock_db.session.rollback.assert_called_once()
 
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_commit_failure_does_not_set_respond_pending(self, mock_bridge, client, mock_db, mock_agent):
+    def test_commit_failure_does_not_set_respond_pending(
+        self, mock_bridge, client, mock_db, mock_agent
+    ):
         """Commit failure should NOT set respond-pending flag (flag is set post-commit)."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
-            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        with patch(
+            "src.claude_headspace.services.hook_agent_state.get_agent_hook_state"
+        ) as mock_get_state:
+            response = client.post(
+                "/api/voice/command", json={"text": "yes", "agent_id": 1}
+            )
             assert response.status_code == 500
             # respond-pending should NOT be set on commit failure
             mock_get_state().set_respond_pending.assert_not_called()
@@ -527,13 +640,19 @@ class TestVoiceCommand:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_picker_detection_sets_has_picker(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+    def test_picker_detection_sets_has_picker(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent
+    ):
         """When agent has structured options (picker), response includes has_picker flag."""
         mock_db.session.get.return_value = mock_agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
-        response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 1})
+        response = client.post(
+            "/api/voice/command", json={"text": "yes", "agent_id": 1}
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert data["has_picker"] is True
@@ -541,7 +660,9 @@ class TestVoiceCommand:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_no_picker_when_free_text_question(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project):
+    def test_no_picker_when_free_text_question(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project
+    ):
         """When agent has a free-text question (no options), has_picker is not in response."""
         agent = MagicMock()
         agent.id = 11
@@ -571,9 +692,13 @@ class TestVoiceCommand:
         agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
-        response = client.post("/api/voice/command", json={"text": "my-api", "agent_id": 11})
+        response = client.post(
+            "/api/voice/command", json={"text": "my-api", "agent_id": 11}
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert "has_picker" not in data
@@ -581,7 +706,9 @@ class TestVoiceCommand:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_picker_detection_via_tool_input_fallback(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project):
+    def test_picker_detection_via_tool_input_fallback(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_project
+    ):
         """Picker detection works via tool_input fallback when question_options is None."""
         agent = MagicMock()
         agent.id = 12
@@ -606,22 +733,28 @@ class TestVoiceCommand:
         q_turn.question_options = None
         q_turn.question_source_type = "unknown"
         q_turn.tool_input = {
-            "questions": [{
-                "question": "Which DB?",
-                "options": [
-                    {"label": "Postgres", "description": "SQL"},
-                    {"label": "Mongo", "description": "NoSQL"},
-                ],
-            }]
+            "questions": [
+                {
+                    "question": "Which DB?",
+                    "options": [
+                        {"label": "Postgres", "description": "SQL"},
+                        {"label": "Mongo", "description": "NoSQL"},
+                    ],
+                }
+            ]
         }
 
         cmd.turns = [q_turn]
         agent.get_current_command.return_value = cmd
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
-        response = client.post("/api/voice/command", json={"text": "postgres", "agent_id": 12})
+        response = client.post(
+            "/api/voice/command", json={"text": "postgres", "agent_id": 12}
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert data["has_picker"] is True
@@ -636,12 +769,16 @@ class TestVoiceCommandToIdle:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_complete_agent(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+    def test_command_to_complete_agent(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete
+    ):
         """Sending a command to a COMPLETE agent creates a turn and succeeds."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -655,7 +792,9 @@ class TestVoiceCommandToIdle:
             mock_lc.process_turn.return_value = mock_result
             mock_lc.get_pending_summarisations.return_value = []
 
-            response = client.post("/api/voice/command", json={"text": "fix the bug", "agent_id": 4})
+            response = client.post(
+                "/api/voice/command", json={"text": "fix the bug", "agent_id": 4}
+            )
             assert response.status_code == 200
             data = response.get_json()
             assert data["agent_id"] == 4
@@ -663,7 +802,9 @@ class TestVoiceCommandToIdle:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_to_idle_agent_no_command(self, mock_bridge, mock_bcast, client, mock_db, mock_project):
+    def test_command_to_idle_agent_no_command(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_project
+    ):
         """Sending a command to an agent with no current command creates a turn."""
         agent = MagicMock()
         agent.id = 10
@@ -677,7 +818,9 @@ class TestVoiceCommandToIdle:
         mock_db.session.get.return_value = agent
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -691,18 +834,24 @@ class TestVoiceCommandToIdle:
             mock_lc.process_turn.return_value = mock_result
             mock_lc.get_pending_summarisations.return_value = []
 
-            response = client.post("/api/voice/command", json={"text": "hello", "agent_id": 10})
+            response = client.post(
+                "/api/voice/command", json={"text": "hello", "agent_id": 10}
+            )
             assert response.status_code == 200
             mock_lc.process_turn.assert_called_once()
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_command_creates_turn_via_lifecycle(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+    def test_idle_command_creates_turn_via_lifecycle(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete
+    ):
         """Idle path creates turn via CommandLifecycleManager."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -721,12 +870,16 @@ class TestVoiceCommandToIdle:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_command_sets_respond_pending(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+    def test_idle_command_sets_respond_pending(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete
+    ):
         """Idle path sets respond-pending to prevent duplicate turn from hooks."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -740,31 +893,47 @@ class TestVoiceCommandToIdle:
             mock_lc.process_turn.return_value = mock_result
             mock_lc.get_pending_summarisations.return_value = []
 
-            with patch("src.claude_headspace.services.hook_agent_state.get_agent_hook_state") as mock_get_state:
-                client.post("/api/voice/command", json={"text": "run tests", "agent_id": 4})
+            with patch(
+                "src.claude_headspace.services.hook_agent_state.get_agent_hook_state"
+            ) as mock_get_state:
+                client.post(
+                    "/api/voice/command", json={"text": "run tests", "agent_id": 4}
+                )
                 mock_get_state().set_respond_pending.assert_called_once_with(4)
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_idle_command_lifecycle_failure_falls_back(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete):
+    def test_idle_command_lifecycle_failure_falls_back(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_complete
+    ):
         """If lifecycle processing fails, tmux send already succeeded — returns 200."""
         mock_db.session.get.return_value = mock_agent_complete
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc_cls.side_effect = Exception("lifecycle error")
 
-            response = client.post("/api/voice/command", json={"text": "do something", "agent_id": 4})
+            response = client.post(
+                "/api/voice/command", json={"text": "do something", "agent_id": 4}
+            )
             assert response.status_code == 200
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_processing_command_interrupts_and_creates_turn(self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing):
+    def test_processing_command_interrupts_and_creates_turn(
+        self, mock_bridge, mock_bcast, client, mock_db, mock_agent_processing
+    ):
         """PROCESSING agent gets interrupt_and_send_text and a turn is created."""
         mock_db.session.get.return_value = mock_agent_processing
-        mock_bridge.interrupt_and_send_text.return_value = SendResult(success=True, latency_ms=50)
+        mock_bridge.interrupt_and_send_text.return_value = SendResult(
+            success=True, latency_ms=50
+        )
 
-        with patch("src.claude_headspace.services.command_lifecycle.CommandLifecycleManager") as mock_lc_cls:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+        ) as mock_lc_cls:
             mock_lc = MagicMock()
             mock_lc_cls.return_value = mock_lc
             mock_result = MagicMock()
@@ -777,7 +946,9 @@ class TestVoiceCommandToIdle:
             mock_lc.process_turn.return_value = mock_result
             mock_lc.get_pending_summarisations.return_value = []
 
-            response = client.post("/api/voice/command", json={"text": "yes", "agent_id": 2})
+            response = client.post(
+                "/api/voice/command", json={"text": "yes", "agent_id": 2}
+            )
             assert response.status_code == 200
             mock_bridge.interrupt_and_send_text.assert_called_once()
             mock_bridge.send_text.assert_not_called()
@@ -797,11 +968,17 @@ class TestAutoTarget:
     @patch("src.claude_headspace.services.command_lifecycle.complete_answer")
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_auto_target_single_awaiting(self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent):
+    def test_auto_target_single_awaiting(
+        self, mock_bridge, mock_bcast, mock_ca, client, mock_db, mock_agent
+    ):
         """Auto-target the single awaiting agent."""
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
         mock_bridge.send_text.return_value = SendResult(success=True, latency_ms=50)
-        mock_ca.return_value = AnswerCompletionResult(turn=MagicMock(), new_state=CommandState.PROCESSING)
+        mock_ca.return_value = AnswerCompletionResult(
+            turn=MagicMock(), new_state=CommandState.PROCESSING
+        )
 
         response = client.post("/api/voice/command", json={"text": "yes"})
         assert response.status_code == 200
@@ -810,14 +987,21 @@ class TestAutoTarget:
 
     def test_auto_target_no_awaiting(self, client, mock_db, mock_agent_processing):
         """No agents awaiting input returns 409."""
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent_processing]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent_processing
+        ]
         response = client.post("/api/voice/command", json={"text": "yes"})
         assert response.status_code == 409
 
-    def test_auto_target_multiple_awaiting(self, client, mock_db, mock_agent, mock_agent_no_pane):
+    def test_auto_target_multiple_awaiting(
+        self, client, mock_db, mock_agent, mock_agent_no_pane
+    ):
         """Multiple awaiting agents returns 409 with agent names."""
         # Both agents are awaiting input
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_no_pane]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            mock_agent,
+            mock_agent_no_pane,
+        ]
         response = client.post("/api/voice/command", json={"text": "yes"})
         assert response.status_code == 409
 
@@ -840,6 +1024,7 @@ class TestAutoTarget:
 # Output retrieval tests (task 3.6)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestAgentOutput:
     """Tests for GET /api/voice/agents/<agent_id>/output."""
 
@@ -858,7 +1043,9 @@ class TestAgentOutput:
         mock_cmd.completion_summary = "Fixed it"
         mock_cmd.full_command = "pytest tests/"
         mock_cmd.full_output = "5 passed"
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_cmd]
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            mock_cmd
+        ]
 
         response = client.get("/api/voice/agents/1/output")
         assert response.status_code == 200
@@ -881,12 +1068,15 @@ class TestAgentOutput:
         mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
         client.get("/api/voice/agents/1/output?limit=3")
         # Verify limit was passed to the query
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.assert_called_with(3)
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.assert_called_with(
+            3
+        )
 
 
 # ──────────────────────────────────────────────────────────────
 # Question detail tests (task 3.7)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestAgentQuestion:
     """Tests for GET /api/voice/agents/<agent_id>/question."""
@@ -967,13 +1157,15 @@ class TestAgentQuestion:
         q_turn.question_options = None  # Not populated
         q_turn.question_source_type = "unknown"
         q_turn.tool_input = {
-            "questions": [{
-                "question": "Which DB?",
-                "options": [
-                    {"label": "Postgres", "description": "SQL"},
-                    {"label": "Mongo", "description": "NoSQL"},
-                ],
-            }]
+            "questions": [
+                {
+                    "question": "Which DB?",
+                    "options": [
+                        {"label": "Postgres", "description": "SQL"},
+                        {"label": "Mongo", "description": "NoSQL"},
+                    ],
+                }
+            ]
         }
 
         cmd.turns = [q_turn]
@@ -1022,33 +1214,40 @@ class TestAgentQuestion:
 # Turn model column tests (task 3.1)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestTurnModelColumns:
     """Test that Turn model has the new voice bridge columns."""
 
     def test_turn_has_question_text(self):
         from src.claude_headspace.models.turn import Turn
+
         assert hasattr(Turn, "question_text")
 
     def test_turn_has_question_options(self):
         from src.claude_headspace.models.turn import Turn
+
         assert hasattr(Turn, "question_options")
 
     def test_turn_has_question_source_type(self):
         from src.claude_headspace.models.turn import Turn
+
         assert hasattr(Turn, "question_source_type")
 
     def test_turn_has_answered_by_turn_id(self):
         from src.claude_headspace.models.turn import Turn
+
         assert hasattr(Turn, "answered_by_turn_id")
 
     def test_turn_has_answered_by_relationship(self):
         from src.claude_headspace.models.turn import Turn
+
         assert hasattr(Turn, "answered_by")
 
 
 # ──────────────────────────────────────────────────────────────
 # Transcript endpoint tests (tasks 3.3, 3.4, 3.5)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestAgentTranscript:
     """Tests for GET /api/voice/agents/<agent_id>/transcript."""
@@ -1288,7 +1487,9 @@ class TestAgentTranscript:
         # Should have been capped to 201 (200+1 for has_more check)
         mock_query.limit.assert_called_with(201)
 
-    def test_includes_command_boundaries_for_empty_commands(self, client, mock_db, mock_agent):
+    def test_includes_command_boundaries_for_empty_commands(
+        self, client, mock_db, mock_agent
+    ):
         """Synthetic command_boundary entries appear for commands with no turns."""
         mock_db.session.get.return_value = mock_agent
 
@@ -1379,9 +1580,16 @@ class TestAgentTranscript:
 # Transcript PROGRESS / COMPLETION dedup tests
 # ──────────────────────────────────────────────────────────────
 
+
 def _make_mock_turn(
-    turn_id, actor, intent, text, command_id, timestamp,
-    summary=None, tool_input=None,
+    turn_id,
+    actor,
+    intent,
+    text,
+    command_id,
+    timestamp,
+    summary=None,
+    tool_input=None,
 ):
     """Helper: create a MagicMock turn with all required fields."""
     t = MagicMock()
@@ -1416,19 +1624,25 @@ class TestTranscriptProgressDedup:
     same command, the PROGRESS turn should be suppressed in the response.
     """
 
-    def test_progress_suppressed_when_subset_of_completion(self, client, mock_db, mock_agent):
+    def test_progress_suppressed_when_subset_of_completion(
+        self, client, mock_db, mock_agent
+    ):
         """PROGRESS turn whose text ⊂ COMPLETION text is filtered out."""
         mock_db.session.get.return_value = mock_agent
         cmd = _make_mock_cmd(10)
 
         progress = _make_mock_turn(
-            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            1,
+            TurnActor.AGENT,
+            TurnIntent.PROGRESS,
             "I'm working on the fix",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
         )
         completion = _make_mock_turn(
-            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            2,
+            TurnActor.AGENT,
+            TurnIntent.COMPLETION,
             "I'm working on the fix and it's now complete.",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),
@@ -1462,13 +1676,17 @@ class TestTranscriptProgressDedup:
         cmd = _make_mock_cmd(10)
 
         progress = _make_mock_turn(
-            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            1,
+            TurnActor.AGENT,
+            TurnIntent.PROGRESS,
             "Reading config files for database setup",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
         )
         completion = _make_mock_turn(
-            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            2,
+            TurnActor.AGENT,
+            TurnIntent.COMPLETION,
             "Fixed the authentication bug in login.py",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),
@@ -1500,7 +1718,9 @@ class TestTranscriptProgressDedup:
         cmd = _make_mock_cmd(10, state=CommandState.PROCESSING)
 
         progress = _make_mock_turn(
-            1, TurnActor.AGENT, TurnIntent.PROGRESS,
+            1,
+            TurnActor.AGENT,
+            TurnIntent.PROGRESS,
             "Working on the implementation",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
@@ -1533,13 +1753,17 @@ class TestTranscriptProgressDedup:
         cmd = _make_mock_cmd(10)
 
         user_turn = _make_mock_turn(
-            1, TurnActor.USER, TurnIntent.COMMAND,
+            1,
+            TurnActor.USER,
+            TurnIntent.COMMAND,
             "Fix the bug",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 0, 0, tzinfo=timezone.utc),
         )
         completion = _make_mock_turn(
-            2, TurnActor.AGENT, TurnIntent.COMPLETION,
+            2,
+            TurnActor.AGENT,
+            TurnIntent.COMPLETION,
             "Fix the bug — done!",
             command_id=10,
             timestamp=datetime(2026, 2, 10, 1, 5, 0, tzinfo=timezone.utc),

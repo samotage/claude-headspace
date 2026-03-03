@@ -24,18 +24,16 @@ class Role(db.Model):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(
-        String(64), nullable=False, unique=True
-    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
-    personas: Mapped[list["Persona"]] = relationship(
-        "Persona", back_populates="role"
-    )
+    personas: Mapped[list["Persona"]] = relationship("Persona", back_populates="role")
     positions: Mapped[list["Position"]] = relationship(
         "Position", back_populates="role"
     )

@@ -100,7 +100,12 @@ class TestHookSessionStart:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_successful_session_start(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful session start."""
         mock_correlate.return_value = mock_correlation
@@ -124,12 +129,20 @@ class TestHookSessionStart:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_passes_tmux_pane_to_process(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that tmux_pane is extracted and passed to process_session_start."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=False, new_state="idle",
+            success=True,
+            agent_id=1,
+            state_changed=False,
+            new_state="idle",
         )
 
         response = client.post(
@@ -145,12 +158,20 @@ class TestHookSessionStart:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_passes_persona_slug_to_process(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that persona_slug is extracted and passed to process_session_start."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=False, new_state="idle",
+            success=True,
+            agent_id=1,
+            state_changed=False,
+            new_state="idle",
         )
 
         response = client.post(
@@ -166,12 +187,20 @@ class TestHookSessionStart:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_passes_previous_agent_id_to_process(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that previous_agent_id is extracted and passed to process_session_start."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=False, new_state="idle",
+            success=True,
+            agent_id=1,
+            state_changed=False,
+            new_state="idle",
         )
 
         response = client.post(
@@ -187,12 +216,20 @@ class TestHookSessionStart:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_persona_fields_absent_when_not_provided(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that persona_slug and previous_agent_id are None when not in payload."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=False, new_state="idle",
+            success=True,
+            agent_id=1,
+            state_changed=False,
+            new_state="idle",
         )
 
         response = client.post(
@@ -225,7 +262,12 @@ class TestHookSessionEnd:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_end")
     def test_successful_session_end(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful session end."""
         mock_correlate.return_value = mock_correlation
@@ -252,7 +294,12 @@ class TestHookUserPromptSubmit:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_user_prompt_submit")
     def test_successful_prompt_submit(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful user prompt submit."""
         mock_correlate.return_value = mock_correlation
@@ -281,7 +328,12 @@ class TestHookStop:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_stop")
     def test_successful_stop(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful stop."""
         mock_correlate.return_value = mock_correlation
@@ -305,7 +357,12 @@ class TestHookStop:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_stop")
     def test_stop_with_question_returns_awaiting_input(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test stop returns AWAITING_INPUT when question detected."""
         mock_correlate.return_value = mock_correlation
@@ -334,7 +391,12 @@ class TestHookNotification:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_notification")
     def test_successful_notification(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful notification."""
         mock_correlate.return_value = mock_correlation
@@ -428,9 +490,7 @@ class TestErrorHandling:
     """Tests for error handling."""
 
     @patch("src.claude_headspace.routes.hooks.correlate_session")
-    def test_correlation_error(
-        self, mock_correlate, client, mock_receiver_state
-    ):
+    def test_correlation_error(self, mock_correlate, client, mock_receiver_state):
         """Test handling of correlation errors."""
         mock_correlate.side_effect = Exception("Database error")
 
@@ -445,7 +505,12 @@ class TestErrorHandling:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_session_start")
     def test_processing_error(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test handling of processing errors."""
         mock_correlate.return_value = mock_correlation
@@ -469,7 +534,12 @@ class TestHookPreToolUse:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_pre_tool_use")
     def test_successful_pre_tool_use(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful pre-tool-use hook."""
         mock_correlate.return_value = mock_correlation
@@ -504,12 +574,20 @@ class TestHookPreToolUse:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_pre_tool_use")
     def test_passes_tool_input_to_service(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that tool_input is extracted from payload and passed to service."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=True, new_state="AWAITING_INPUT",
+            success=True,
+            agent_id=1,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
         )
 
         tool_input = {"questions": [{"question": "Which one?"}]}
@@ -535,7 +613,12 @@ class TestHookPermissionRequest:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_permission_request")
     def test_successful_permission_request(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test successful permission-request hook."""
         mock_correlate.return_value = mock_correlation
@@ -570,12 +653,20 @@ class TestHookPermissionRequest:
     @patch("src.claude_headspace.routes.hooks.correlate_session")
     @patch("src.claude_headspace.routes.hooks.process_permission_request")
     def test_passes_tool_name_and_tool_input_to_service(
-        self, mock_process, mock_correlate, client, mock_receiver_state, mock_correlation
+        self,
+        mock_process,
+        mock_correlate,
+        client,
+        mock_receiver_state,
+        mock_correlation,
     ):
         """Test that tool_name and tool_input are extracted and passed to service."""
         mock_correlate.return_value = mock_correlation
         mock_process.return_value = HookEventResult(
-            success=True, agent_id=1, state_changed=True, new_state="AWAITING_INPUT",
+            success=True,
+            agent_id=1,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
         )
 
         tool_input = {"command": "npm install"}
@@ -665,7 +756,7 @@ class TestBackfillTmuxPane:
 
         mock_agent = MagicMock()
         mock_agent.tmux_pane_id = "%3"  # already set
-        mock_agent.tmux_session = None   # not set
+        mock_agent.tmux_session = None  # not set
 
         with app.app_context():
             app.extensions = {}
@@ -681,7 +772,10 @@ class TestRateLimiterCleanup:
 
     def test_stale_timestamps_pruned_and_current_recorded(self, app):
         """Stale timestamps are pruned but the current request is still recorded."""
-        from src.claude_headspace.routes.hooks import _rate_limit_counters, _check_rate_limit
+        from src.claude_headspace.routes.hooks import (
+            _check_rate_limit,
+            _rate_limit_counters,
+        )
 
         _rate_limit_counters.clear()
         # Add a stale entry (timestamp far in the past)

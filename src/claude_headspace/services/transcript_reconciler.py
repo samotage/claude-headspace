@@ -8,16 +8,19 @@ Implements Phase 2 of the three-phase event pipeline:
 
 import hashlib
 import logging
-import threading
 from datetime import datetime, timedelta, timezone
 
 from ..database import db
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
-from .advisory_lock import LockNamespace, advisory_lock_or_skip
 from .intent_detector import detect_agent_intent, detect_user_intent
 from .state_machine import InvalidTransitionError
-from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
+from .team_content_detector import (
+    filter_skill_expansion,
+    is_persona_injection,
+    is_skill_expansion,
+    is_team_internal_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +37,20 @@ def get_reconcile_lock(agent_id: int):
     and release() is a no-op, so existing callers (tmux_watchdog)
     continue to work until they are updated.
     """
+
     class _DummyLock:
         def acquire(self, blocking=True, timeout=-1):
             return True
+
         def release(self):
             pass
+
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
+
     return _DummyLock()
 
 
@@ -75,8 +83,7 @@ def reconcile_transcript_entries(agent, command, entries):
     # Get recent turns for this command within the match window
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=MATCH_WINDOW_SECONDS)
     recent_turns = (
-        Turn.query
-        .filter(Turn.command_id == command.id, Turn.timestamp >= cutoff)
+        Turn.query.filter(Turn.command_id == command.id, Turn.timestamp >= cutoff)
         .order_by(Turn.timestamp.asc())
         .all()
     )
@@ -126,7 +133,9 @@ def reconcile_transcript_entries(agent, command, entries):
 
         # Apply the same skill-expansion filter used in the hook receiver
         # so that content hashes match the truncated text stored in turns.
-        entry_text = filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        entry_text = (
+            filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        )
         content_key = _content_hash(actor, entry_text)
         legacy_key = _legacy_content_hash(actor, entry_text)
 
@@ -139,7 +148,9 @@ def reconcile_transcript_entries(agent, command, entries):
             # Remove the other key for this turn to prevent double-matching (H3).
             # Each turn has two keys (new + legacy); popping one leaves the other.
             other_new = _content_hash(matched_turn.actor.value, matched_turn.text)
-            other_old = _legacy_content_hash(matched_turn.actor.value, matched_turn.text)
+            other_old = _legacy_content_hash(
+                matched_turn.actor.value, matched_turn.text
+            )
             turn_index.pop(other_new, None)
             turn_index.pop(other_old, None)
 
@@ -165,7 +176,9 @@ def reconcile_transcript_entries(agent, command, entries):
             # where minor formatting differences cause hash mismatches.
             fuzzy_dup = None
             for existing_turn in recent_turns:
-                if existing_turn.actor.value == actor and is_content_duplicate(existing_turn.text, entry_text, actor=actor):
+                if existing_turn.actor.value == actor and is_content_duplicate(
+                    existing_turn.text, entry_text, actor=actor
+                ):
                     fuzzy_dup = existing_turn
                     break
             if fuzzy_dup:
@@ -249,13 +262,16 @@ def broadcast_reconciliation(agent, reconciliation_result):
     # Broadcast timestamp corrections for existing turns
     for turn_id, old_ts, new_ts in reconciliation_result["updated"]:
         try:
-            broadcaster.broadcast("turn_updated", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "turn_id": turn_id,
-                "timestamp": new_ts.isoformat(),
-                "update_type": "timestamp_correction",
-            })
+            broadcaster.broadcast(
+                "turn_updated",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "turn_id": turn_id,
+                    "timestamp": new_ts.isoformat(),
+                    "update_type": "timestamp_correction",
+                },
+            )
         except Exception as e:
             logger.warning(f"Reconciliation turn_updated broadcast failed: {e}")
 
@@ -267,18 +283,21 @@ def broadcast_reconciliation(agent, reconciliation_result):
                 command_instr = None
                 if turn.command:
                     command_instr = turn.command.instruction
-                broadcaster.broadcast("turn_created", {
-                    "agent_id": agent.id,
-                    "project_id": agent.project_id,
-                    "text": turn.text,
-                    "actor": turn.actor.value,
-                    "intent": turn.intent.value,
-                    "command_id": turn.command_id,
-                    "command_instruction": command_instr,
-                    "turn_id": turn.id,
-                    "question_source_type": turn.question_source_type,
-                    "timestamp": turn.timestamp.isoformat(),
-                })
+                broadcaster.broadcast(
+                    "turn_created",
+                    {
+                        "agent_id": agent.id,
+                        "project_id": agent.project_id,
+                        "text": turn.text,
+                        "actor": turn.actor.value,
+                        "intent": turn.intent.value,
+                        "command_id": turn.command_id,
+                        "command_instruction": command_instr,
+                        "turn_id": turn.id,
+                        "question_source_type": turn.question_source_type,
+                        "timestamp": turn.timestamp.isoformat(),
+                    },
+                )
         except Exception as e:
             logger.warning(f"Reconciliation turn_created broadcast failed: {e}")
 
@@ -315,12 +334,9 @@ def _extract_sentences(text):
     meaningful dedup signals.
     """
     import re
-    raw = re.split(r'(?<=[.!?])\s+', text.strip())
-    return [
-        s.strip().lower()
-        for s in raw
-        if len(s.strip()) >= 20
-    ]
+
+    raw = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [s.strip().lower() for s in raw if len(s.strip()) >= 20]
 
 
 def is_content_duplicate(existing_text, new_text, actor="agent"):
@@ -365,8 +381,8 @@ def reconcile_agent_session(agent):
             updated: list (always empty for full-session mode)
             created: list of turn_id for newly created turns
     """
-    from .transcript_reader import read_new_entries_from_position
     from ..models.command import Command
+    from .transcript_reader import read_new_entries_from_position
 
     if not agent.transcript_path:
         return {"updated": [], "created": []}
@@ -378,7 +394,9 @@ def reconcile_agent_session(agent):
 
     # Get ALL turns for this agent's commands (no time window)
     command_ids = [t.id for t in Command.query.filter_by(agent_id=agent.id).all()]
-    existing_turns = Turn.query.filter(Turn.command_id.in_(command_ids)).all() if command_ids else []
+    existing_turns = (
+        Turn.query.filter(Turn.command_id.in_(command_ids)).all() if command_ids else []
+    )
 
     # Build hash index from existing turns using both new and legacy hashes
     existing_hashes = set()
@@ -391,7 +409,9 @@ def reconcile_agent_session(agent):
             existing_hashes.add(turn.jsonl_entry_hash)
 
     # Find the most recent command for creating new turns
-    latest_command = Command.query.filter_by(agent_id=agent.id).order_by(Command.id.desc()).first()
+    latest_command = (
+        Command.query.filter_by(agent_id=agent.id).order_by(Command.id.desc()).first()
+    )
     if not latest_command:
         return {"updated": [], "created": []}
 
@@ -408,7 +428,9 @@ def reconcile_agent_session(agent):
             continue
         # Apply the same skill-expansion filter used in reconcile_transcript_entries
         # so that content hashes match the truncated text stored in turns.
-        turn_text = filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        turn_text = (
+            filter_skill_expansion(entry.content.strip()) or entry.content.strip()
+        )
         content_key = _content_hash(actor, turn_text)
         legacy_key = _legacy_content_hash(actor, turn_text)
         if content_key in existing_hashes or legacy_key in existing_hashes:
@@ -416,7 +438,9 @@ def reconcile_agent_session(agent):
         # Fuzzy fallback: check paragraph-level similarity against existing turns
         fuzzy_match = False
         for et in existing_turns:
-            if et.actor.value == actor and is_content_duplicate(et.text, turn_text, actor=actor):
+            if et.actor.value == actor and is_content_duplicate(
+                et.text, turn_text, actor=actor
+            ):
                 logger.debug(
                     f"[RECONCILER] Session reconcile fuzzy dedup: JSONL entry matches "
                     f"turn {et.id} (paragraph similarity) — skipping"
@@ -469,11 +493,16 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
     this function. This ensures a failed state transition rollback cannot
     destroy the turn (the "two-commit" pattern).
     """
-    if turn.intent not in (TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+    if turn.intent not in (
+        TurnIntent.QUESTION,
+        TurnIntent.COMPLETION,
+        TurnIntent.END_OF_COMMAND,
+    ):
         return
 
     try:
         from flask import current_app
+
         lifecycle = current_app.extensions.get("command_lifecycle")
         if not lifecycle:
             return
@@ -481,7 +510,8 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
         from_state = command.state
         if turn.intent == TurnIntent.QUESTION:
             lifecycle.update_command_state(
-                command=command, to_state=CommandState.AWAITING_INPUT,
+                command=command,
+                to_state=CommandState.AWAITING_INPUT,
                 trigger="reconciler:recovered_turn",
                 confidence=intent_result.confidence,
             )
@@ -491,8 +521,10 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
             # two-commit pattern). Passing agent_text would create a duplicate.
             command.full_output = turn.text
             lifecycle.complete_command(
-                command=command, trigger="reconciler:recovered_turn",
-                agent_text="", intent=turn.intent,
+                command=command,
+                trigger="reconciler:recovered_turn",
+                agent_text="",
+                intent=turn.intent,
             )
         # Drain pending summarisation requests to prevent leaking into next
         # hook event's batch (lifecycle manager is a shared singleton).
@@ -505,6 +537,7 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
         # Broadcast card refresh for state change
         try:
             from .card_state import broadcast_card_refresh
+
             broadcast_card_refresh(agent, "reconciler")
         except Exception:
             logger.debug("Card refresh broadcast failed during reconciliation")

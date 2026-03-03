@@ -1,16 +1,16 @@
 """Tests for event writer service."""
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from claude_headspace.services.event_schemas import EventType
 from claude_headspace.services.event_writer import (
     EventWriter,
     EventWriterMetrics,
     WriteResult,
     create_event_writer,
 )
-from claude_headspace.services.event_schemas import EventType
 
 
 class TestEventWriterMetrics:
@@ -182,7 +182,9 @@ class TestEventWriterSessionPassThrough:
         with patch("claude_headspace.services.event_writer.sessionmaker") as mock:
             yield mock
 
-    def test_write_event_with_session_adds_and_flushes(self, mock_engine, mock_sessionmaker):
+    def test_write_event_with_session_adds_and_flushes(
+        self, mock_engine, mock_sessionmaker
+    ):
         """When a session is passed, event should be added and flushed but not committed."""
         writer = EventWriter(database_url="postgresql://test@localhost/test")
         caller_session = MagicMock()
@@ -191,7 +193,7 @@ class TestEventWriterSessionPassThrough:
         def set_id_on_flush():
             for call in caller_session.add.call_args_list:
                 obj = call[0][0]
-                if hasattr(obj, 'id'):
+                if hasattr(obj, "id"):
                     obj.id = 99
 
         caller_session.flush.side_effect = set_id_on_flush
@@ -208,7 +210,9 @@ class TestEventWriterSessionPassThrough:
         caller_session.flush.assert_called_once()
         caller_session.commit.assert_not_called()
 
-    def test_write_event_with_session_records_metrics(self, mock_engine, mock_sessionmaker):
+    def test_write_event_with_session_records_metrics(
+        self, mock_engine, mock_sessionmaker
+    ):
         """Session pass-through should record success metrics."""
         writer = EventWriter(database_url="postgresql://test@localhost/test")
         caller_session = MagicMock()
@@ -223,13 +227,17 @@ class TestEventWriterSessionPassThrough:
         assert stats["successful_writes"] == 1
         assert stats["failed_writes"] == 0
 
-    def test_write_event_with_session_handles_db_error(self, mock_engine, mock_sessionmaker):
+    def test_write_event_with_session_handles_db_error(
+        self, mock_engine, mock_sessionmaker
+    ):
         """Session pass-through should handle SQLAlchemy errors gracefully."""
         from sqlalchemy.exc import IntegrityError
 
         writer = EventWriter(database_url="postgresql://test@localhost/test")
         caller_session = MagicMock()
-        caller_session.flush.side_effect = IntegrityError("", {}, Exception("FK violation"))
+        caller_session.flush.side_effect = IntegrityError(
+            "", {}, Exception("FK violation")
+        )
 
         result = writer.write_event(
             event_type="session_ended",
@@ -242,7 +250,9 @@ class TestEventWriterSessionPassThrough:
         stats = writer.metrics.get_stats()
         assert stats["failed_writes"] == 1
 
-    def test_write_event_without_session_uses_own_factory(self, mock_engine, mock_sessionmaker):
+    def test_write_event_without_session_uses_own_factory(
+        self, mock_engine, mock_sessionmaker
+    ):
         """Without a session, should use own session factory (existing behavior)."""
         own_session = MagicMock()
         mock_sessionmaker.return_value = MagicMock(return_value=own_session)
@@ -295,7 +305,9 @@ class TestEventWriterRetryLogic:
     @patch("claude_headspace.services.event_writer.create_engine")
     @patch("claude_headspace.services.event_writer.sessionmaker")
     @patch("claude_headspace.services.event_writer.time.sleep")
-    def test_retry_on_transient_error(self, mock_sleep, mock_session_maker, mock_engine):
+    def test_retry_on_transient_error(
+        self, mock_sleep, mock_session_maker, mock_engine
+    ):
         """Test that transient errors trigger retries."""
         from sqlalchemy.exc import OperationalError
 

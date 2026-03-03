@@ -126,21 +126,25 @@ class TestInferenceCallPersistence:
     def test_query_by_level(self, db_session):
         """Test querying calls by level."""
         for i in range(3):
-            db_session.add(InferenceCall(
-                timestamp=datetime.now(timezone.utc),
-                level="turn",
-                purpose=f"Turn call {i}",
-                model="haiku",
-                cached=False,
-            ))
+            db_session.add(
+                InferenceCall(
+                    timestamp=datetime.now(timezone.utc),
+                    level="turn",
+                    purpose=f"Turn call {i}",
+                    model="haiku",
+                    cached=False,
+                )
+            )
         for i in range(2):
-            db_session.add(InferenceCall(
-                timestamp=datetime.now(timezone.utc),
-                level="project",
-                purpose=f"Project call {i}",
-                model="sonnet",
-                cached=False,
-            ))
+            db_session.add(
+                InferenceCall(
+                    timestamp=datetime.now(timezone.utc),
+                    level="project",
+                    purpose=f"Project call {i}",
+                    model="sonnet",
+                    cached=False,
+                )
+            )
         db_session.commit()
 
         turn_calls = db_session.query(InferenceCall).filter_by(level="turn").all()

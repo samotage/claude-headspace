@@ -55,7 +55,10 @@ class Turn(db.Model):
     # Temporal validation (turn.timestamp >= command.started_at) is enforced at
     # application level — cross-table CHECK constraints are not supported in PostgreSQL.
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
     )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_generated_at: Mapped[datetime | None] = mapped_column(
@@ -77,7 +80,9 @@ class Turn(db.Model):
         String(20), nullable=True, default="server"
     )
     # Values: "server" (datetime.now initial), "jsonl" (reconciled from transcript), "user" (user action)
-    jsonl_entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    jsonl_entry_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
 
     # Voice bridge: structured question detail
     question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -95,14 +100,18 @@ class Turn(db.Model):
     # Relationships
     command: Mapped["Command"] = relationship("Command", back_populates="turns")
     answered_by: Mapped["Turn | None"] = relationship(
-        "Turn", remote_side="Turn.id", foreign_keys=[answered_by_turn_id],
+        "Turn",
+        remote_side="Turn.id",
+        foreign_keys=[answered_by_turn_id],
     )
     source_message: Mapped["Message | None"] = relationship(
         "Message", foreign_keys=[source_message_id]
     )
 
     def __repr__(self) -> str:
-        return f"<Turn id={self.id} actor={self.actor.value} intent={self.intent.value}>"
+        return (
+            f"<Turn id={self.id} actor={self.actor.value} intent={self.intent.value}>"
+        )
 
 
 # Additional indexes

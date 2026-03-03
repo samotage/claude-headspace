@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from claude_headspace.models import Role, Persona
+from claude_headspace.models import Persona, Role
 
 
 class TestRoleModel:
@@ -123,7 +123,9 @@ class TestPersonaModel:
         db_session.add(role)
         db_session.flush()
 
-        persona = Persona(name="Robbo", role=role, description="System architect persona")
+        persona = Persona(
+            name="Robbo", role=role, description="System architect persona"
+        )
         db_session.add(persona)
         db_session.flush()
 
@@ -253,18 +255,24 @@ class TestConstraints:
         db_session.flush()
 
         # Insert first row with a specific slug via raw SQL (bypasses after_insert event)
-        db_session.execute(text(
-            "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
-            "VALUES ('duplicate-slug', 'First', 'active', :role_id, 1, NOW())"
-        ), {"role_id": role.id})
+        db_session.execute(
+            text(
+                "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
+                "VALUES ('duplicate-slug', 'First', 'active', :role_id, 1, NOW())"
+            ),
+            {"role_id": role.id},
+        )
         db_session.flush()
 
         # Attempt to insert second row with the same slug — should raise IntegrityError
         with pytest.raises(IntegrityError):
-            db_session.execute(text(
-                "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
-                "VALUES ('duplicate-slug', 'Second', 'active', :role_id, 1, NOW())"
-            ), {"role_id": role.id})
+            db_session.execute(
+                text(
+                    "INSERT INTO personas (slug, name, status, role_id, persona_type_id, created_at) "
+                    "VALUES ('duplicate-slug', 'Second', 'active', :role_id, 1, NOW())"
+                ),
+                {"role_id": role.id},
+            )
             db_session.flush()
 
     def test_persona_role_id_not_null(self, db_session):

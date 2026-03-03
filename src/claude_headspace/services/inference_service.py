@@ -1,12 +1,11 @@
 """Inference service orchestrating model selection, caching, rate limiting, and logging."""
 
 import logging
-import time
 from datetime import datetime, timezone
 
-from ..models.inference_call import InferenceCall, InferenceLevel
+from ..models.inference_call import InferenceCall
 from .inference_cache import InferenceCache
-from .inference_rate_limiter import InferenceRateLimiter, RateLimitResult
+from .inference_rate_limiter import InferenceRateLimiter
 from .openrouter_client import InferenceResult, OpenRouterClient, OpenRouterClientError
 
 logger = logging.getLogger(__name__)
@@ -15,7 +14,9 @@ logger = logging.getLogger(__name__)
 class InferenceServiceError(Exception):
     """Error from the inference service."""
 
-    def __init__(self, message: str, rate_limited: bool = False, retry_after: float = 0.0):
+    def __init__(
+        self, message: str, rate_limited: bool = False, retry_after: float = 0.0
+    ):
         super().__init__(message)
         self.rate_limited = rate_limited
         self.retry_after = retry_after
@@ -24,7 +25,9 @@ class InferenceServiceError(Exception):
 class InferenceService:
     """Orchestrates inference calls with caching, rate limiting, and logging."""
 
-    def __init__(self, config: dict, db_session_factory=None, database_url: str | None = None):
+    def __init__(
+        self, config: dict, db_session_factory=None, database_url: str | None = None
+    ):
         """Initialize the inference service.
 
         Args:
@@ -84,12 +87,16 @@ class InferenceService:
             raise InferenceServiceError(f"No model configured for level '{level}'")
         return model
 
-    def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+    def _calculate_cost(
+        self, model: str, input_tokens: int, output_tokens: int
+    ) -> float:
         """Calculate estimated cost based on token counts and pricing config."""
         model_pricing = self.pricing.get(model, {})
         input_rate = model_pricing.get("input_per_million", 0)
         output_rate = model_pricing.get("output_per_million", 0)
-        return (input_tokens * input_rate / 1_000_000) + (output_tokens * output_rate / 1_000_000)
+        return (input_tokens * input_rate / 1_000_000) + (
+            output_tokens * output_rate / 1_000_000
+        )
 
     def _log_call(
         self,
@@ -120,7 +127,9 @@ class InferenceService:
             session = self._log_session_factory()
             cost = None
             if result and result.input_tokens and result.output_tokens:
-                cost = self._calculate_cost(model, result.input_tokens, result.output_tokens)
+                cost = self._calculate_cost(
+                    model, result.input_tokens, result.output_tokens
+                )
 
             now = datetime.now(timezone.utc)
             record = InferenceCall(
@@ -149,40 +158,50 @@ class InferenceService:
             agent_session = None
             if record.agent_id:
                 from ..models.agent import Agent
-                agent_row = session.query(Agent.session_uuid).filter(
-                    Agent.id == record.agent_id
-                ).first()
+
+                agent_row = (
+                    session.query(Agent.session_uuid)
+                    .filter(Agent.id == record.agent_id)
+                    .first()
+                )
                 if agent_row:
                     agent_session = str(agent_row.session_uuid)
 
             project_name = None
             if record.project_id:
                 from ..models.project import Project
-                project_row = session.query(Project.name).filter(
-                    Project.id == record.project_id
-                ).first()
+
+                project_row = (
+                    session.query(Project.name)
+                    .filter(Project.id == record.project_id)
+                    .first()
+                )
                 if project_row:
                     project_name = project_row.name
 
-            self._broadcast_inference_call({
-                "id": record.id,
-                "timestamp": record.timestamp.isoformat() if record.timestamp else None,
-                "level": record.level,
-                "purpose": record.purpose,
-                "model": record.model,
-                "input_tokens": record.input_tokens,
-                "output_tokens": record.output_tokens,
-                "latency_ms": record.latency_ms,
-                "cost": record.cost,
-                "error_message": record.error_message,
-                "cached": record.cached,
-                "project_id": record.project_id,
-                "project_name": project_name,
-                "agent_id": record.agent_id,
-                "agent_session": agent_session,
-                "input_text": record.input_text,
-                "result_text": record.result_text,
-            })
+            self._broadcast_inference_call(
+                {
+                    "id": record.id,
+                    "timestamp": record.timestamp.isoformat()
+                    if record.timestamp
+                    else None,
+                    "level": record.level,
+                    "purpose": record.purpose,
+                    "model": record.model,
+                    "input_tokens": record.input_tokens,
+                    "output_tokens": record.output_tokens,
+                    "latency_ms": record.latency_ms,
+                    "cost": record.cost,
+                    "error_message": record.error_message,
+                    "cached": record.cached,
+                    "project_id": record.project_id,
+                    "project_name": project_name,
+                    "agent_id": record.agent_id,
+                    "agent_session": agent_session,
+                    "input_text": record.input_text,
+                    "result_text": record.result_text,
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to log inference call: {e}")
         finally:
@@ -228,7 +247,9 @@ class InferenceService:
             OpenRouterClientError: On API errors after retry exhaustion
         """
         if not self.is_available:
-            raise InferenceServiceError("Inference service not available: API key not configured")
+            raise InferenceServiceError(
+                "Inference service not available: API key not configured"
+            )
 
         model = self.get_model_for_level(level)
         input_hash = OpenRouterClient.compute_input_hash(input_text)
@@ -262,7 +283,9 @@ class InferenceService:
                 command_id=command_id,
                 turn_id=turn_id,
             )
-            logger.debug(f"Cache hit for inference call (level={level}, purpose={purpose})")
+            logger.debug(
+                f"Cache hit for inference call (level={level}, purpose={purpose})"
+            )
             return result
 
         # Check rate limits
@@ -401,8 +424,12 @@ class InferenceService:
             )
 
             # Token totals
-            total_input_tokens = db_session.query(func.sum(InferenceCall.input_tokens)).scalar() or 0
-            total_output_tokens = db_session.query(func.sum(InferenceCall.output_tokens)).scalar() or 0
+            total_input_tokens = (
+                db_session.query(func.sum(InferenceCall.input_tokens)).scalar() or 0
+            )
+            total_output_tokens = (
+                db_session.query(func.sum(InferenceCall.output_tokens)).scalar() or 0
+            )
 
             # Cost breakdown by model
             cost_by_model = dict(
@@ -420,7 +447,9 @@ class InferenceService:
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
                 "total_cost": round(total_cost, 6),
-                "cost_by_model": {k: round(v, 6) for k, v in cost_by_model.items() if v},
+                "cost_by_model": {
+                    k: round(v, 6) for k, v in cost_by_model.items() if v
+                },
             }
         except Exception as e:
             logger.error(f"Failed to fetch usage stats: {e}")

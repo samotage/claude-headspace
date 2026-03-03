@@ -27,7 +27,9 @@ class InferenceResult:
 class OpenRouterClientError(Exception):
     """Base error for OpenRouter client."""
 
-    def __init__(self, message: str, status_code: int | None = None, retryable: bool = False):
+    def __init__(
+        self, message: str, status_code: int | None = None, retryable: bool = False
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.retryable = retryable
@@ -63,7 +65,9 @@ class OpenRouterClient:
             "X-Title": "Claude Headspace",
         }
 
-    def chat_completion(self, model: str, messages: list[dict], **kwargs) -> InferenceResult:
+    def chat_completion(
+        self, model: str, messages: list[dict], **kwargs
+    ) -> InferenceResult:
         """Send a chat completion request with retries.
 
         Args:
@@ -78,7 +82,9 @@ class OpenRouterClient:
             OpenRouterClientError: On non-retryable errors or retry exhaustion
         """
         if not self.is_configured:
-            raise OpenRouterClientError("OPENROUTER_API_KEY not configured", retryable=False)
+            raise OpenRouterClientError(
+                "OPENROUTER_API_KEY not configured", retryable=False
+            )
 
         url = f"{self.base_url}/chat/completions"
         payload = {
@@ -128,13 +134,9 @@ class OpenRouterClient:
                 )
 
             except requests.exceptions.Timeout:
-                last_error = OpenRouterClientError(
-                    "Request timed out", retryable=True
-                )
+                last_error = OpenRouterClientError("Request timed out", retryable=True)
             except requests.exceptions.ConnectionError:
-                last_error = OpenRouterClientError(
-                    "Connection failed", retryable=True
-                )
+                last_error = OpenRouterClientError("Connection failed", retryable=True)
             except OpenRouterClientError:
                 raise
             except Exception as e:
@@ -145,7 +147,7 @@ class OpenRouterClient:
 
             # Wait before retry with exponential backoff
             if attempt < self.max_attempts - 1:
-                delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                delay = min(self.base_delay * (2**attempt), self.max_delay)
                 logger.warning(
                     f"OpenRouter request failed (attempt {attempt + 1}/{self.max_attempts}): {last_error}. "
                     f"Retrying in {delay:.1f}s"

@@ -115,7 +115,8 @@ def test_time_with_format_selection(claude_session, page, e2e_server, e2e_app):
     time.sleep(1)
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, "Enter"],
-        check=True, timeout=5,
+        check=True,
+        timeout=5,
     )
     va.capture("time_04_selection_made")
 
@@ -124,7 +125,7 @@ def test_time_with_format_selection(claude_session, page, e2e_server, e2e_app):
     # PROGRESS turns may insert intermediate bubbles (e.g. "WORKING..."),
     # so we wait for ANY agent bubble matching the time pattern rather
     # than assuming a fixed bubble index.
-    time_pattern = re.compile(r'\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?')
+    time_pattern = re.compile(r"\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?")
     time_bubble = agent_bubbles.filter(has_text=time_pattern)
     expect(time_bubble.first).to_be_visible(timeout=RESPONSE_TIMEOUT)
     va.capture("time_05_response_visible")

@@ -31,19 +31,26 @@ def extract_question_text(tool_name: str | None, tool_input: dict | None) -> str
         # Use permission summarizer for a meaningful description
         if tool_name and tool_name != "AskUserQuestion" and not questions:
             from .permission_summarizer import summarize_permission_command
+
             return summarize_permission_command(tool_name, tool_input)
     if tool_name:
         return f"Permission needed: {tool_name}"
     return "Awaiting input"
 
 
-def extract_structured_options(tool_name: str | None, tool_input: dict | None) -> dict | None:
+def extract_structured_options(
+    tool_name: str | None, tool_input: dict | None
+) -> dict | None:
     """Extract structured AskUserQuestion data for storage in Turn.tool_input.
 
     Returns the full tool_input dict when the tool is AskUserQuestion and
     contains valid questions with options. Returns None otherwise.
     """
-    if tool_name != "AskUserQuestion" or not tool_input or not isinstance(tool_input, dict):
+    if (
+        tool_name != "AskUserQuestion"
+        or not tool_input
+        or not isinstance(tool_input, dict)
+    ):
         return None
     questions = tool_input.get("questions")
     if not questions or not isinstance(questions, list) or len(questions) == 0:
@@ -88,7 +95,7 @@ def synthesize_permission_options(
     a properly-structured dialog (preventing numbered agent output from being misidentified
     as permission choices).
     """
-    from .permission_summarizer import summarize_permission_command, classify_safety
+    from .permission_summarizer import classify_safety, summarize_permission_command
 
     if not agent.tmux_pane_id:
         return None
@@ -96,6 +103,7 @@ def synthesize_permission_options(
     pane_context = None
     try:
         from . import tmux_bridge
+
         pane_context = tmux_bridge.capture_permission_context(agent.tmux_pane_id)
     except Exception as e:
         logger.warning(f"Permission context capture failed for agent {agent.id}: {e}")
@@ -127,10 +135,12 @@ def synthesize_permission_options(
             command_context["description"] = pane_context["description"]
 
     result = {
-        "questions": [{
-            "question": question_text,
-            "options": options,
-        }],
+        "questions": [
+            {
+                "question": question_text,
+                "options": options,
+            }
+        ],
         "source": source,
         "safety": safety,
     }
@@ -146,7 +156,7 @@ def mark_question_answered(command) -> None:
     Called when a question is answered to prevent stale options from
     being rendered on subsequent AWAITING_INPUT transitions.
     """
-    if not command or not hasattr(command, 'turns') or not command.turns:
+    if not command or not hasattr(command, "turns") or not command.turns:
         return
     for turn in reversed(command.turns):
         if turn.actor == TurnActor.AGENT and turn.intent == TurnIntent.QUESTION:

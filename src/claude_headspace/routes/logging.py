@@ -4,12 +4,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from ..database import db
 from ..models.agent import Agent
 from ..models.api_call_log import ApiCallLog
-from ..models.event import Event, EventType
+from ..models.event import Event
 from ..models.inference_call import InferenceCall
 from ..models.project import Project
 from ..models.turn import Turn
@@ -120,7 +120,9 @@ def get_events():
             turn_data = {
                 t.id: {
                     "actor": t.actor.value,
-                    "text": t.summary if t.summary else (t.text[:200] if t.text else None),
+                    "text": t.summary
+                    if t.summary
+                    else (t.text[:200] if t.text else None),
                 }
                 for t in turns
             }
@@ -156,7 +158,7 @@ def get_events():
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch events")
         return jsonify({"error": "Failed to fetch events"}), 500
 
@@ -172,14 +174,16 @@ def clear_events():
         JSON with count of deleted events
     """
     if request.headers.get("X-Confirm-Destructive") != "true":
-        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+        return jsonify(
+            {"error": "Destructive operation requires X-Confirm-Destructive header"}
+        ), 403
 
     try:
         count = db.session.query(Event).count()
         db.session.query(Event).delete()
         db.session.commit()
         return jsonify({"deleted": count})
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to clear events")
         db.session.rollback()
         return jsonify({"error": "Failed to clear events"}), 500
@@ -251,7 +255,7 @@ def get_event_filters():
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch event filter options")
         return jsonify({"error": "Failed to fetch filter options"}), 500
 
@@ -418,7 +422,7 @@ def get_inference_calls():
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch inference calls")
         return jsonify({"error": "Failed to fetch inference calls"}), 500
 
@@ -475,21 +479,21 @@ def get_inference_call_filters():
             {
                 "levels": [lvl[0] for lvl in levels],
                 "models": [m[0] for m in models],
-                "projects": [
-                    {"id": p.id, "name": p.name} for p in projects_with_calls
-                ],
+                "projects": [{"id": p.id, "name": p.name} for p in projects_with_calls],
                 "agents": [
                     {
                         "id": a.id,
                         "session_uuid": str(a.session_uuid),
-                        "is_active": a.ended_at is None and a.last_seen_at is not None and a.last_seen_at >= cutoff,
+                        "is_active": a.ended_at is None
+                        and a.last_seen_at is not None
+                        and a.last_seen_at >= cutoff,
                     }
                     for a in agents_with_calls
                 ],
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch inference filter options")
         return jsonify({"error": "Failed to fetch filter options"}), 500
 
@@ -505,14 +509,16 @@ def clear_inference_calls():
         JSON with count of deleted records
     """
     if request.headers.get("X-Confirm-Destructive") != "true":
-        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+        return jsonify(
+            {"error": "Destructive operation requires X-Confirm-Destructive header"}
+        ), 403
 
     try:
         count = db.session.query(InferenceCall).count()
         db.session.query(InferenceCall).delete()
         db.session.commit()
         return jsonify({"deleted": count})
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to clear inference calls")
         db.session.rollback()
         return jsonify({"error": "Failed to clear inference calls"}), 500
@@ -668,7 +674,7 @@ def get_api_calls():
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch API call logs")
         return jsonify({"error": "Failed to fetch API call logs"}), 500
 
@@ -706,18 +712,33 @@ def get_api_call_filters():
 
         # Determine which status categories exist
         status_categories = []
-        has_2xx = db.session.query(ApiCallLog.id).filter(
-            ApiCallLog.response_status_code >= 200,
-            ApiCallLog.response_status_code < 300,
-        ).first() is not None
-        has_4xx = db.session.query(ApiCallLog.id).filter(
-            ApiCallLog.response_status_code >= 400,
-            ApiCallLog.response_status_code < 500,
-        ).first() is not None
-        has_5xx = db.session.query(ApiCallLog.id).filter(
-            ApiCallLog.response_status_code >= 500,
-            ApiCallLog.response_status_code < 600,
-        ).first() is not None
+        has_2xx = (
+            db.session.query(ApiCallLog.id)
+            .filter(
+                ApiCallLog.response_status_code >= 200,
+                ApiCallLog.response_status_code < 300,
+            )
+            .first()
+            is not None
+        )
+        has_4xx = (
+            db.session.query(ApiCallLog.id)
+            .filter(
+                ApiCallLog.response_status_code >= 400,
+                ApiCallLog.response_status_code < 500,
+            )
+            .first()
+            is not None
+        )
+        has_5xx = (
+            db.session.query(ApiCallLog.id)
+            .filter(
+                ApiCallLog.response_status_code >= 500,
+                ApiCallLog.response_status_code < 600,
+            )
+            .first()
+            is not None
+        )
 
         if has_2xx:
             status_categories.append("2xx")
@@ -735,7 +756,7 @@ def get_api_call_filters():
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch API call filter options")
         return jsonify({"error": "Failed to fetch filter options"}), 500
 
@@ -751,14 +772,16 @@ def clear_api_calls():
         JSON with count of deleted records
     """
     if request.headers.get("X-Confirm-Destructive") != "true":
-        return jsonify({"error": "Destructive operation requires X-Confirm-Destructive header"}), 403
+        return jsonify(
+            {"error": "Destructive operation requires X-Confirm-Destructive header"}
+        ), 403
 
     try:
         count = db.session.query(ApiCallLog).count()
         db.session.query(ApiCallLog).delete()
         db.session.commit()
         return jsonify({"deleted": count})
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to clear API call logs")
         db.session.rollback()
         return jsonify({"error": "Failed to clear API call logs"}), 500

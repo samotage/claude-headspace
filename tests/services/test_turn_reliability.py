@@ -16,19 +16,17 @@ import pytest
 
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
-from claude_headspace.models.project import Project
 from claude_headspace.models.command import Command, CommandState
+from claude_headspace.models.project import Project
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.transcript_reader import TranscriptEntry
 from claude_headspace.services.transcript_reconciler import (
     _apply_recovered_turn_lifecycle,
-    _content_hash,
     get_reconcile_lock,
     reconcile_agent_session,
     reconcile_transcript_entries,
     remove_reconcile_lock,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -134,7 +132,9 @@ class TestTurnSurvivesLifecycleFailure:
         assert turn.intent == TurnIntent.QUESTION
         assert "Would you like me to continue?" in turn.text
 
-    def test_turn_survives_generic_exception_in_lifecycle(self, app_ctx, agent, command):
+    def test_turn_survives_generic_exception_in_lifecycle(
+        self, app_ctx, agent, command
+    ):
         """Turn must persist even when lifecycle raises a generic exception."""
         entries = [
             _make_entry(
@@ -191,11 +191,14 @@ class TestNoDuplicateTurnOnCompletion:
             ),
         ]
 
-        with patch(
-            "claude_headspace.services.transcript_reconciler.detect_agent_intent"
-        ) as mock_detect, patch(
-            "claude_headspace.services.transcript_reconciler._apply_recovered_turn_lifecycle"
-        ) as mock_lifecycle:
+        with (
+            patch(
+                "claude_headspace.services.transcript_reconciler.detect_agent_intent"
+            ) as mock_detect,
+            patch(
+                "claude_headspace.services.transcript_reconciler._apply_recovered_turn_lifecycle"
+            ) as mock_lifecycle,
+        ):
             mock_result = MagicMock()
             mock_result.intent = TurnIntent.COMPLETION
             mock_result.confidence = 0.95
@@ -218,7 +221,9 @@ class TestNoDuplicateTurnOnCompletion:
             f"Expected exactly 1 agent turn, got {len(agent_turns)}."
         )
 
-    def test_apply_lifecycle_sets_full_output_without_duplicate(self, app_ctx, agent, command):
+    def test_apply_lifecycle_sets_full_output_without_duplicate(
+        self, app_ctx, agent, command
+    ):
         """_apply_recovered_turn_lifecycle must set full_output but pass agent_text='' to complete_command."""
         from flask import current_app
 
@@ -249,8 +254,9 @@ class TestNoDuplicateTurnOnCompletion:
         # complete_command should have been called with agent_text=""
         mock_lifecycle.complete_command.assert_called_once()
         call_kwargs = mock_lifecycle.complete_command.call_args
-        assert call_kwargs[1].get("agent_text") == "", \
+        assert call_kwargs[1].get("agent_text") == "", (
             f"complete_command should receive agent_text='' to prevent duplicate turn, got: {call_kwargs}"
+        )
 
         # full_output should be set directly on the command (not by complete_command)
         assert command.full_output == "Implementation complete. All tests pass."
@@ -264,7 +270,9 @@ class TestNoDuplicateTurnOnCompletion:
 class TestReconcileAgentSessionLifecycle:
     """Verify reconcile_agent_session integrates with lifecycle."""
 
-    def test_session_reconcile_calls_lifecycle_for_question(self, app_ctx, agent, command):
+    def test_session_reconcile_calls_lifecycle_for_question(
+        self, app_ctx, agent, command
+    ):
         """reconcile_agent_session should call _apply_recovered_turn_lifecycle."""
         agent.transcript_path = "/tmp/fake_transcript.jsonl"
 
@@ -277,14 +285,18 @@ class TestReconcileAgentSessionLifecycle:
         ]
 
         # Patch at the source module where the import happens inside the function
-        with patch(
-            "claude_headspace.services.transcript_reader.read_new_entries_from_position",
-            return_value=(entries, 100),
-        ), patch(
-            "claude_headspace.services.transcript_reconciler.detect_agent_intent"
-        ) as mock_detect, patch(
-            "claude_headspace.services.transcript_reconciler._apply_recovered_turn_lifecycle"
-        ) as mock_lifecycle:
+        with (
+            patch(
+                "claude_headspace.services.transcript_reader.read_new_entries_from_position",
+                return_value=(entries, 100),
+            ),
+            patch(
+                "claude_headspace.services.transcript_reconciler.detect_agent_intent"
+            ) as mock_detect,
+            patch(
+                "claude_headspace.services.transcript_reconciler._apply_recovered_turn_lifecycle"
+            ) as mock_lifecycle,
+        ):
             mock_result = MagicMock()
             mock_result.intent = TurnIntent.QUESTION
             mock_result.confidence = 0.9
@@ -296,7 +308,7 @@ class TestReconcileAgentSessionLifecycle:
         # Verify lifecycle was called
         mock_lifecycle.assert_called_once()
         call_args = mock_lifecycle.call_args
-        assert call_args[0][0] == agent    # agent
+        assert call_args[0][0] == agent  # agent
         assert call_args[0][1] == command  # latest_command
 
 

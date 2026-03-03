@@ -13,8 +13,6 @@ predecessor has a Handoff record: present = handoff, absent = revival.
 import logging
 from typing import NamedTuple
 
-from flask import current_app
-
 from ..database import db
 from ..models.agent import Agent
 from ..models.handoff import Handoff

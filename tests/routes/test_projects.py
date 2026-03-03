@@ -105,7 +105,9 @@ class TestListProjects:
 
     def test_list_includes_all_fields(self, client, mock_db, mock_project):
         """Test that list response includes required fields."""
-        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [mock_project]
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [
+            mock_project
+        ]
 
         response = client.get("/api/projects")
         data = response.get_json()[0]
@@ -125,7 +127,9 @@ class TestCreateProject:
 
     def test_missing_body(self, client):
         """Test error when request body is missing."""
-        response = client.post("/api/projects", data="", content_type="application/json")
+        response = client.post(
+            "/api/projects", data="", content_type="application/json"
+        )
         assert response.status_code == 400
         assert "Request body is required" in response.get_json()["error"]
 
@@ -156,10 +160,13 @@ class TestCreateProject:
             mock_project.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
             MockProject.return_value = mock_project
 
-            response = client.post("/api/projects", json={
-                "name": "new-project",
-                "path": "/path/to/new",
-            })
+            response = client.post(
+                "/api/projects",
+                json={
+                    "name": "new-project",
+                    "path": "/path/to/new",
+                },
+            )
 
             assert response.status_code == 201
             data = response.get_json()
@@ -171,10 +178,13 @@ class TestCreateProject:
         with patch("src.claude_headspace.routes.projects.Project") as MockProject:
             MockProject.query.filter_by.return_value.first.return_value = mock_project
 
-            response = client.post("/api/projects", json={
-                "name": "another-project",
-                "path": "/path/to/project",
-            })
+            response = client.post(
+                "/api/projects",
+                json={
+                    "name": "another-project",
+                    "path": "/path/to/project",
+                },
+            )
 
             assert response.status_code == 409
             assert "already exists" in response.get_json()["error"]
@@ -195,12 +205,15 @@ class TestCreateProject:
             mock_project.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
             MockProject.return_value = mock_project
 
-            response = client.post("/api/projects", json={
-                "name": "project",
-                "path": "/path",
-                "github_repo": "https://github.com/test/repo",
-                "description": "A description",
-            })
+            response = client.post(
+                "/api/projects",
+                json={
+                    "name": "project",
+                    "path": "/path",
+                    "github_repo": "https://github.com/test/repo",
+                    "description": "A description",
+                },
+            )
 
             assert response.status_code == 201
 
@@ -271,10 +284,10 @@ class TestGetProject:
         avg_time_outer_query.all.return_value = [avg_time_outer_row]
 
         mock_db.session.query.side_effect = [
-            agent_query,           # Agent pagination
-            active_count_query,    # Active agent count
-            turn_stats_query,      # Turn stats
-            avg_time_subquery,     # Avg turn time subquery
+            agent_query,  # Agent pagination
+            active_count_query,  # Active agent count
+            turn_stats_query,  # Turn stats
+            avg_time_subquery,  # Avg turn time subquery
             avg_time_outer_query,  # Avg turn time outer query
         ]
 
@@ -320,8 +333,8 @@ class TestGetProject:
         active_count_filter.count.return_value = 0
 
         mock_db.session.query.side_effect = [
-            agent_query,        # Agent pagination
-            active_count_query, # Active agent count
+            agent_query,  # Agent pagination
+            active_count_query,  # Active agent count
         ]
 
         response = client.get("/api/projects/1")
@@ -337,7 +350,9 @@ class TestUpdateProject:
 
     def test_missing_body(self, client, mock_db):
         """Test error when request body is missing."""
-        response = client.put("/api/projects/1", data="", content_type="application/json")
+        response = client.put(
+            "/api/projects/1", data="", content_type="application/json"
+        )
         assert response.status_code == 400
 
     def test_not_found(self, client, mock_db):
@@ -351,7 +366,10 @@ class TestUpdateProject:
         """Test successful project update."""
         mock_db.session.get.return_value = mock_project
 
-        with patch("src.claude_headspace.routes.projects._unique_slug", return_value="updated-name"):
+        with patch(
+            "src.claude_headspace.routes.projects._unique_slug",
+            return_value="updated-name",
+        ):
             response = client.put("/api/projects/1", json={"name": "updated-name"})
             assert response.status_code == 200
             assert mock_project.name == "updated-name"
@@ -373,7 +391,9 @@ class TestUpdateProject:
         """Test updating description."""
         mock_db.session.get.return_value = mock_project
 
-        response = client.put("/api/projects/1", json={"description": "New description"})
+        response = client.put(
+            "/api/projects/1", json={"description": "New description"}
+        )
         assert response.status_code == 200
         assert mock_project.description == "New description"
 
@@ -431,7 +451,9 @@ class TestUpdateProjectSettings:
 
     def test_missing_body(self, client, mock_db):
         """Test error when request body is missing."""
-        response = client.put("/api/projects/1/settings", data="", content_type="application/json")
+        response = client.put(
+            "/api/projects/1/settings", data="", content_type="application/json"
+        )
         assert response.status_code == 400
 
     def test_missing_inference_paused(self, client, mock_db):
@@ -443,17 +465,22 @@ class TestUpdateProjectSettings:
         """Test 404 when project doesn't exist."""
         mock_db.session.get.return_value = None
 
-        response = client.put("/api/projects/999/settings", json={"inference_paused": True})
+        response = client.put(
+            "/api/projects/999/settings", json={"inference_paused": True}
+        )
         assert response.status_code == 404
 
     def test_pause_sets_timestamp(self, client, mock_db, mock_project):
         """Test pausing inference sets timestamp."""
         mock_db.session.get.return_value = mock_project
 
-        response = client.put("/api/projects/1/settings", json={
-            "inference_paused": True,
-            "inference_paused_reason": "Testing pause",
-        })
+        response = client.put(
+            "/api/projects/1/settings",
+            json={
+                "inference_paused": True,
+                "inference_paused_reason": "Testing pause",
+            },
+        )
 
         assert response.status_code == 200
         assert mock_project.inference_paused is True
@@ -468,7 +495,9 @@ class TestUpdateProjectSettings:
 
         mock_db.session.get.return_value = mock_project
 
-        response = client.put("/api/projects/1/settings", json={"inference_paused": False})
+        response = client.put(
+            "/api/projects/1/settings", json={"inference_paused": False}
+        )
 
         assert response.status_code == 200
         assert mock_project.inference_paused is False
@@ -524,13 +553,24 @@ class TestDetectMetadata:
         app.extensions["inference_service"] = mock_inference
         app.extensions["git_metadata"] = MagicMock()
 
-        with patch("os.path.isfile", return_value=True), \
-             patch("builtins.open", MagicMock(
-                 return_value=MagicMock(
-                     __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value="# My Project\nSome content"))),
-                     __exit__=MagicMock(return_value=False)
-                 )
-             )):
+        with (
+            patch("os.path.isfile", return_value=True),
+            patch(
+                "builtins.open",
+                MagicMock(
+                    return_value=MagicMock(
+                        __enter__=MagicMock(
+                            return_value=MagicMock(
+                                read=MagicMock(
+                                    return_value="# My Project\nSome content"
+                                )
+                            )
+                        ),
+                        __exit__=MagicMock(return_value=False),
+                    )
+                ),
+            ),
+        ):
             response = client.post("/api/projects/1/detect-metadata")
             assert response.status_code == 200
             data = response.get_json()
@@ -541,7 +581,9 @@ class TestDetectMetadata:
             assert mock_project.description is not None
             mock_db.session.commit.assert_called()
 
-    def test_detect_broadcasts_project_changed(self, client, app, mock_db, mock_project):
+    def test_detect_broadcasts_project_changed(
+        self, client, app, mock_db, mock_project
+    ):
         """Test that detection broadcasts project_changed event when values detected."""
         mock_project.github_repo = None
         mock_project.description = "Already set"
@@ -553,13 +595,18 @@ class TestDetectMetadata:
         mock_git_metadata.get_git_info.return_value = mock_git_info
         app.extensions["git_metadata"] = mock_git_metadata
 
-        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast:
+        with patch(
+            "src.claude_headspace.routes.projects._broadcast_project_event"
+        ) as mock_broadcast:
             response = client.post("/api/projects/1/detect-metadata")
             assert response.status_code == 200
-            mock_broadcast.assert_called_once_with("project_changed", {
-                "action": "updated",
-                "project_id": 1,
-            })
+            mock_broadcast.assert_called_once_with(
+                "project_changed",
+                {
+                    "action": "updated",
+                    "project_id": 1,
+                },
+            )
 
     def test_both_already_set_returns_nulls(self, client, app, mock_db, mock_project):
         """Test that when both fields are already set, both return null and no commit."""
@@ -591,7 +638,9 @@ class TestDetectMetadata:
         data = response.get_json()
         assert data["github_repo"] is None
 
-    def test_inference_unavailable_still_returns_github(self, client, app, mock_db, mock_project):
+    def test_inference_unavailable_still_returns_github(
+        self, client, app, mock_db, mock_project
+    ):
         """Test that when inference is unavailable, github_repo is still detected and persisted."""
         mock_project.github_repo = None
         mock_project.description = None
@@ -637,40 +686,59 @@ class TestSSEBroadcasting:
             mock_project.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
             MockProject.return_value = mock_project
 
-            with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast:
-                response = client.post("/api/projects", json={
-                    "name": "test",
-                    "path": "/test",
-                })
+            with patch(
+                "src.claude_headspace.routes.projects._broadcast_project_event"
+            ) as mock_broadcast:
+                response = client.post(
+                    "/api/projects",
+                    json={
+                        "name": "test",
+                        "path": "/test",
+                    },
+                )
 
                 assert response.status_code == 201
-                mock_broadcast.assert_called_once_with("project_changed", {
-                    "action": "created",
-                    "project_id": 1,
-                })
+                mock_broadcast.assert_called_once_with(
+                    "project_changed",
+                    {
+                        "action": "created",
+                        "project_id": 1,
+                    },
+                )
 
     def test_delete_broadcasts_event(self, client, mock_db, mock_project):
         """Test that deleting a project broadcasts project_changed event."""
         mock_db.session.get.return_value = mock_project
         mock_db.session.query.return_value.filter.return_value = MagicMock()
 
-        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast, \
-             patch("src.claude_headspace.routes.projects.InferenceCall") as mock_ic:
+        with (
+            patch(
+                "src.claude_headspace.routes.projects._broadcast_project_event"
+            ) as mock_broadcast,
+            patch("src.claude_headspace.routes.projects.InferenceCall") as mock_ic,
+        ):
             mock_ic.query.filter.return_value.delete.return_value = 0
             response = client.delete("/api/projects/1")
 
             assert response.status_code == 200
-            mock_broadcast.assert_called_once_with("project_changed", {
-                "action": "deleted",
-                "project_id": 1,
-            })
+            mock_broadcast.assert_called_once_with(
+                "project_changed",
+                {
+                    "action": "deleted",
+                    "project_id": 1,
+                },
+            )
 
     def test_settings_change_broadcasts_event(self, client, mock_db, mock_project):
         """Test that settings change broadcasts project_settings_changed event."""
         mock_db.session.get.return_value = mock_project
 
-        with patch("src.claude_headspace.routes.projects._broadcast_project_event") as mock_broadcast:
-            response = client.put("/api/projects/1/settings", json={"inference_paused": True})
+        with patch(
+            "src.claude_headspace.routes.projects._broadcast_project_event"
+        ) as mock_broadcast:
+            response = client.put(
+                "/api/projects/1/settings", json={"inference_paused": True}
+            )
 
             assert response.status_code == 200
             mock_broadcast.assert_called_once()
@@ -713,13 +781,18 @@ class TestGetAgentCommands:
 
         # Mock the command query chain
         cmd_query_mock = MagicMock()
-        cmd_query_mock.filter.return_value.order_by.return_value.all.return_value = [cmd1, cmd2]
+        cmd_query_mock.filter.return_value.order_by.return_value.all.return_value = [
+            cmd1,
+            cmd2,
+        ]
 
         # Mock the batch turn count query (GROUP BY)
         turn_count_row_1 = MagicMock()
         turn_count_row_1.__getitem__ = lambda self, idx: [10, 3][idx]
         turn_count_query = MagicMock()
-        turn_count_query.filter.return_value.group_by.return_value.all.return_value = [turn_count_row_1]
+        turn_count_query.filter.return_value.group_by.return_value.all.return_value = [
+            turn_count_row_1
+        ]
 
         mock_db.session.query.side_effect = [cmd_query_mock, turn_count_query]
 
@@ -731,7 +804,9 @@ class TestGetAgentCommands:
         assert data[1]["id"] == 11  # Second (newest) command
         assert data[0]["turn_count"] == 3
 
-    def test_agent_metrics_in_get_project(self, client, mock_db, mock_project_with_agents):
+    def test_agent_metrics_in_get_project(
+        self, client, mock_db, mock_project_with_agents
+    ):
         """Test that agent metrics fields are present in get_project response."""
         mock_db.session.get.return_value = mock_project_with_agents
         agents = mock_project_with_agents.agents
@@ -773,7 +848,11 @@ class TestGetAgentCommands:
         avg_time_outer_query.all.return_value = []
 
         mock_db.session.query.side_effect = [
-            agent_query, active_count_query, turn_stats_query, avg_time_subquery, avg_time_outer_query
+            agent_query,
+            active_count_query,
+            turn_stats_query,
+            avg_time_subquery,
+            avg_time_outer_query,
         ]
 
         response = client.get("/api/projects/1")

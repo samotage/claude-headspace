@@ -82,7 +82,9 @@ class TestPositionModel:
 
     def test_level_custom(self, db_session, dev_org, dev_role):
         """Position.level accepts custom integer values."""
-        pos = Position(org_id=dev_org.id, role_id=dev_role.id, title="Deep Position", level=3)
+        pos = Position(
+            org_id=dev_org.id, role_id=dev_role.id, title="Deep Position", level=3
+        )
         db_session.add(pos)
         db_session.flush()
 
@@ -99,8 +101,10 @@ class TestPositionModel:
     def test_is_cross_cutting_true(self, db_session, dev_org, dev_role):
         """Position.is_cross_cutting can be set to True."""
         pos = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
-            title="Cross-Cutting Position", is_cross_cutting=True
+            org_id=dev_org.id,
+            role_id=dev_role.id,
+            title="Cross-Cutting Position",
+            is_cross_cutting=True,
         )
         db_session.add(pos)
         db_session.flush()
@@ -130,15 +134,22 @@ class TestPositionModel:
 class TestReportingHierarchy:
     """Task 3.2: Test self-referential reporting hierarchy."""
 
-    def test_reports_to_relationship(self, db_session, dev_org, architect_role, dev_role):
+    def test_reports_to_relationship(
+        self, db_session, dev_org, architect_role, dev_role
+    ):
         """A position can report to another position."""
-        parent = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        parent = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         db_session.add(parent)
         db_session.flush()
 
         child = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
-            title="Senior Developer", reports_to_id=parent.id, level=1
+            org_id=dev_org.id,
+            role_id=dev_role.id,
+            title="Senior Developer",
+            reports_to_id=parent.id,
+            level=1,
         )
         db_session.add(child)
         db_session.flush()
@@ -147,19 +158,29 @@ class TestReportingHierarchy:
         assert child.reports_to.id == parent.id
         assert child.reports_to.title == "Lead Architect"
 
-    def test_direct_reports_relationship(self, db_session, dev_org, architect_role, dev_role):
+    def test_direct_reports_relationship(
+        self, db_session, dev_org, architect_role, dev_role
+    ):
         """A position's direct_reports returns all positions reporting to it."""
-        parent = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        parent = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         db_session.add(parent)
         db_session.flush()
 
         child1 = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
-            title="Dev 1", reports_to_id=parent.id, level=1
+            org_id=dev_org.id,
+            role_id=dev_role.id,
+            title="Dev 1",
+            reports_to_id=parent.id,
+            level=1,
         )
         child2 = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
-            title="Dev 2", reports_to_id=parent.id, level=1
+            org_id=dev_org.id,
+            role_id=dev_role.id,
+            title="Dev 2",
+            reports_to_id=parent.id,
+            level=1,
         )
         db_session.add_all([child1, child2])
         db_session.flush()
@@ -172,19 +193,24 @@ class TestReportingHierarchy:
 class TestEscalationPath:
     """Task 3.3: Test self-referential escalation path."""
 
-    def test_escalation_differs_from_reporting(self, db_session, dev_org, architect_role, pm_role, dev_role):
+    def test_escalation_differs_from_reporting(
+        self, db_session, dev_org, architect_role, pm_role, dev_role
+    ):
         """Escalation path can differ from reporting path."""
-        architect = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        architect = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         pm = Position(org_id=dev_org.id, role_id=pm_role.id, title="PM")
         db_session.add_all([architect, pm])
         db_session.flush()
 
         dev = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
+            org_id=dev_org.id,
+            role_id=dev_role.id,
             title="Senior Developer",
             reports_to_id=pm.id,
             escalates_to_id=architect.id,
-            level=1
+            level=1,
         )
         db_session.add(dev)
         db_session.flush()
@@ -193,18 +219,23 @@ class TestEscalationPath:
         assert dev.escalates_to.title == "Lead Architect"
         assert dev.reports_to_id != dev.escalates_to_id
 
-    def test_escalation_same_as_reporting(self, db_session, dev_org, architect_role, dev_role):
+    def test_escalation_same_as_reporting(
+        self, db_session, dev_org, architect_role, dev_role
+    ):
         """Escalation can point to the same position as reporting."""
-        parent = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        parent = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         db_session.add(parent)
         db_session.flush()
 
         child = Position(
-            org_id=dev_org.id, role_id=dev_role.id,
+            org_id=dev_org.id,
+            role_id=dev_role.id,
             title="Developer",
             reports_to_id=parent.id,
             escalates_to_id=parent.id,
-            level=1
+            level=1,
         )
         db_session.add(child)
         db_session.flush()
@@ -239,10 +270,14 @@ class TestForeignKeyRelationships:
 class TestBackrefRelationships:
     """Task 3.5: Test Organisation.positions and Role.positions backref relationships."""
 
-    def test_organisation_positions(self, db_session, dev_org, dev_role, architect_role):
+    def test_organisation_positions(
+        self, db_session, dev_org, dev_role, architect_role
+    ):
         """Organisation.positions returns all positions in that org."""
         pos1 = Position(org_id=dev_org.id, role_id=dev_role.id, title="Dev 1")
-        pos2 = Position(org_id=dev_org.id, role_id=architect_role.id, title="Architect 1")
+        pos2 = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Architect 1"
+        )
         db_session.add_all([pos1, pos2])
         db_session.flush()
 
@@ -292,7 +327,9 @@ class TestTopLevelPositions:
 
     def test_top_level_reports_to_null(self, db_session, dev_org, architect_role):
         """Top-level positions have reports_to_id=NULL."""
-        pos = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        pos = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         db_session.add(pos)
         db_session.flush()
 
@@ -301,7 +338,9 @@ class TestTopLevelPositions:
 
     def test_top_level_escalates_to_null(self, db_session, dev_org, architect_role):
         """Top-level positions have escalates_to_id=NULL."""
-        pos = Position(org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect")
+        pos = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Lead Architect"
+        )
         db_session.add(pos)
         db_session.flush()
 
@@ -310,7 +349,9 @@ class TestTopLevelPositions:
 
     def test_top_level_no_direct_reports(self, db_session, dev_org, architect_role):
         """A position with no children has empty direct_reports."""
-        pos = Position(org_id=dev_org.id, role_id=architect_role.id, title="Solo Architect")
+        pos = Position(
+            org_id=dev_org.id, role_id=architect_role.id, title="Solo Architect"
+        )
         db_session.add(pos)
         db_session.flush()
 

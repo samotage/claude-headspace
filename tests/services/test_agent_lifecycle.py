@@ -6,9 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from claude_headspace.services.agent_lifecycle import (
-    ContextResult,
-    CreateResult,
-    ShutdownResult,
     cleanup_orphaned_sessions,
     create_agent,
     force_terminate_agent,
@@ -17,7 +14,9 @@ from claude_headspace.services.agent_lifecycle import (
 )
 
 
-def _make_project(id=1, name="test-project", slug="test-project", path="/tmp/test-project"):
+def _make_project(
+    id=1, name="test-project", slug="test-project", path="/tmp/test-project"
+):
     """Create a mock Project object."""
     p = MagicMock()
     p.id = id
@@ -83,7 +82,9 @@ class TestCreateAgent:
         popen_args = mock_popen.call_args[0][0]
         assert "-e" in popen_args
         e_idx = popen_args.index("-e")
-        assert popen_args[e_idx + 1].startswith("CLAUDE_HEADSPACE_TMUX_SESSION=hs-test-project-")
+        assert popen_args[e_idx + 1].startswith(
+            "CLAUDE_HEADSPACE_TMUX_SESSION=hs-test-project-"
+        )
 
     @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
     @patch("claude_headspace.services.agent_lifecycle.shutil.which")
@@ -111,10 +112,10 @@ class TestCreateAgent:
         # Mock Persona.query.filter_by().first() to return a valid persona
         mock_persona = MagicMock()
         mock_persona.slug = "developer-con-1"
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as mock_persona_cls:
-            mock_persona_cls.query.filter_by.return_value.first.return_value = mock_persona
+        with patch("claude_headspace.models.persona.Persona") as mock_persona_cls:
+            mock_persona_cls.query.filter_by.return_value.first.return_value = (
+                mock_persona
+            )
             result = create_agent(1, persona_slug="developer-con-1")
 
         assert result.success
@@ -136,20 +137,23 @@ class TestCreateAgent:
         mock_which.side_effect = lambda cmd: "/usr/bin/" + cmd
 
         # Mock Persona.query.filter_by().first() to return None (not found)
-        with patch(
-            "claude_headspace.models.persona.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.models.persona.Persona") as mock_persona_cls:
             mock_persona_cls.query.filter_by.return_value.first.return_value = None
             result = create_agent(1, persona_slug="nonexistent")
 
         assert not result.success
         assert "nonexistent" in result.message
-        assert "not found" in result.message.lower() or "not active" in result.message.lower()
+        assert (
+            "not found" in result.message.lower()
+            or "not active" in result.message.lower()
+        )
 
     @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
     @patch("claude_headspace.services.agent_lifecycle.shutil.which")
     @patch("claude_headspace.services.agent_lifecycle.db")
-    def test_no_persona_preserves_existing_behaviour(self, mock_db, mock_which, mock_popen, tmp_path):
+    def test_no_persona_preserves_existing_behaviour(
+        self, mock_db, mock_which, mock_popen, tmp_path
+    ):
         """No persona slug works identically to current behaviour."""
         project = _make_project(path=str(tmp_path))
         mock_db.session.get.return_value = project
@@ -169,7 +173,9 @@ class TestCreateAgent:
     @patch("claude_headspace.services.agent_lifecycle.subprocess.Popen")
     @patch("claude_headspace.services.agent_lifecycle.shutil.which")
     @patch("claude_headspace.services.agent_lifecycle.db")
-    def test_previous_agent_id_passed_through(self, mock_db, mock_which, mock_popen, tmp_path):
+    def test_previous_agent_id_passed_through(
+        self, mock_db, mock_which, mock_popen, tmp_path
+    ):
         """previous_agent_id is passed via environment variable."""
         project = _make_project(path=str(tmp_path))
         mock_db.session.get.return_value = project
@@ -221,7 +227,10 @@ class TestShutdownAgent:
         assert result.success
         assert "shutdown" in result.message.lower()
         mock_tmux.send_text.assert_called_once_with(
-            pane_id="%5", text="/exit", timeout=5, verify_enter=True,
+            pane_id="%5",
+            text="/exit",
+            timeout=5,
+            verify_enter=True,
         )
 
     @patch("claude_headspace.services.agent_lifecycle.time")
@@ -345,7 +354,12 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%5", session_name="main", current_command="bash", working_directory="/home"),
+            PaneInfo(
+                pane_id="%5",
+                session_name="main",
+                current_command="bash",
+                working_directory="/home",
+            ),
         ]
         assert cleanup_orphaned_sessions() == 0
 
@@ -372,11 +386,23 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo, SendResult
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
-            PaneInfo(pane_id="%20", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-abc",
+                current_command="claude",
+                working_directory="/proj",
+            ),
+            PaneInfo(
+                pane_id="%20",
+                session_name="hs-proj-def",
+                current_command="claude",
+                working_directory="/proj2",
+            ),
         ]
         # Active agent owns %20 but NOT %10 — so hs-proj-abc is the orphan
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [("%20",)]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            ("%20",)
+        ]
         mock_tmux.kill_session.return_value = SendResult(success=True)
 
         result = cleanup_orphaned_sessions()
@@ -390,10 +416,17 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-abc",
+                current_command="claude",
+                working_directory="/proj",
+            ),
         ]
         # Active agent has %10
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [("%10",)]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            ("%10",)
+        ]
 
         result = cleanup_orphaned_sessions()
         assert result == 0
@@ -406,7 +439,12 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-abc",
+                current_command="claude",
+                working_directory="/proj",
+            ),
         ]
         mock_db.session.query.side_effect = RuntimeError("DB error")
 
@@ -420,8 +458,18 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
-            PaneInfo(pane_id="%11", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-abc",
+                current_command="claude",
+                working_directory="/proj",
+            ),
+            PaneInfo(
+                pane_id="%11",
+                session_name="hs-proj-def",
+                current_command="claude",
+                working_directory="/proj2",
+            ),
         ]
         # DB returns empty — no active agents at all
         mock_db.session.query.return_value.filter.return_value.all.return_value = []
@@ -437,12 +485,29 @@ class TestCleanupOrphanedSessions:
         from claude_headspace.services.tmux_bridge import PaneInfo
 
         mock_tmux.list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-abc", current_command="claude", working_directory="/proj"),
-            PaneInfo(pane_id="%11", session_name="hs-proj-def", current_command="claude", working_directory="/proj2"),
-            PaneInfo(pane_id="%12", session_name="hs-proj-ghi", current_command="claude", working_directory="/proj3"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-abc",
+                current_command="claude",
+                working_directory="/proj",
+            ),
+            PaneInfo(
+                pane_id="%11",
+                session_name="hs-proj-def",
+                current_command="claude",
+                working_directory="/proj2",
+            ),
+            PaneInfo(
+                pane_id="%12",
+                session_name="hs-proj-ghi",
+                current_command="claude",
+                working_directory="/proj3",
+            ),
         ]
         # DB returns 1 agent with an unrelated pane ID — all 3 sessions look orphaned
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [("%99",)]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            ("%99",)
+        ]
 
         result = cleanup_orphaned_sessions()
         assert result == 0

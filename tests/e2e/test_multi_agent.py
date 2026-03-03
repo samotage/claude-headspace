@@ -8,8 +8,6 @@ import shutil
 import tempfile
 
 import pytest
-from playwright.sync_api import expect
-
 
 pytestmark = pytest.mark.e2e
 
@@ -65,12 +63,8 @@ class TestMultiAgent:
     ):
         """Two agents maintain independent state transitions."""
         # Use distinct working directories so they create separate projects
-        client_a = make_hook_client(
-            working_directory=temp_project_dirs[0]
-        )
-        client_b = make_hook_client(
-            working_directory=temp_project_dirs[1]
-        )
+        client_a = make_hook_client(working_directory=temp_project_dirs[0])
+        client_b = make_hook_client(working_directory=temp_project_dirs[1])
 
         # Start both agents
         result_a = client_a.session_start()
@@ -112,12 +106,8 @@ class TestMultiAgent:
         self, page, e2e_server, make_hook_client, dashboard, temp_project_dirs
     ):
         """Ending one agent preserves the other's state."""
-        client_a = make_hook_client(
-            working_directory=temp_project_dirs[2]
-        )
-        client_b = make_hook_client(
-            working_directory=temp_project_dirs[3]
-        )
+        client_a = make_hook_client(working_directory=temp_project_dirs[2])
+        client_b = make_hook_client(working_directory=temp_project_dirs[3])
 
         # Start both, both processing
         result_a = client_a.session_start()

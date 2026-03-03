@@ -51,10 +51,12 @@ def create_agent_endpoint():
     if not result.success:
         return jsonify({"error": result.message}), 422
 
-    return jsonify({
-        "message": result.message,
-        "tmux_session_name": result.tmux_session_name,
-    }), 201
+    return jsonify(
+        {
+            "message": result.message,
+            "tmux_session_name": result.tmux_session_name,
+        }
+    ), 201
 
 
 @agents_bp.route("/api/agents/<int:agent_id>", methods=["DELETE"])
@@ -77,10 +79,12 @@ def shutdown_agent_endpoint(agent_id: int):
         agent = db.session.get(Agent, agent_id)
         if agent and agent.ended_at is None:
             if dismiss_agent(agent_id):
-                return jsonify({
-                    "message": "Graceful shutdown failed; agent dismissed.",
-                    "auto_dismissed": True,
-                }), 200
+                return jsonify(
+                    {
+                        "message": "Graceful shutdown failed; agent dismissed.",
+                        "auto_dismissed": True,
+                    }
+                ), 200
 
         status = 404 if "not found" in result.message.lower() else 422
         return jsonify({"error": result.message}), status
@@ -130,12 +134,14 @@ def agent_context_endpoint(agent_id: int):
         db.session.commit()
         broadcast_card_refresh(agent, "context_fetched")
 
-    return jsonify({
-        "available": True,
-        "percent_used": result.percent_used,
-        "remaining_tokens": result.remaining_tokens,
-        "raw": result.raw,
-    }), 200
+    return jsonify(
+        {
+            "available": True,
+            "percent_used": result.percent_used,
+            "remaining_tokens": result.remaining_tokens,
+            "raw": result.raw,
+        }
+    ), 200
 
 
 @agents_bp.route("/api/agents/<int:agent_id>/handoff", methods=["POST"])
@@ -188,7 +194,10 @@ def reconcile_agent_endpoint(agent_id: int):
         200: Reconciliation result with created count
         404: Agent not found
     """
-    from ..services.advisory_lock import AdvisoryLockError, LockNamespace, advisory_lock_or_skip
+    from ..services.advisory_lock import (
+        LockNamespace,
+        advisory_lock_or_skip,
+    )
     from ..services.transcript_reconciler import (
         broadcast_reconciliation,
         reconcile_agent_session,
@@ -201,11 +210,13 @@ def reconcile_agent_endpoint(agent_id: int):
     # Per-agent advisory lock prevents concurrent reconciliation
     with advisory_lock_or_skip(LockNamespace.AGENT, agent.id) as acquired:
         if not acquired:
-            return jsonify({
-                "status": "busy",
-                "created": 0,
-                "message": "Reconciliation already in progress",
-            }), 409
+            return jsonify(
+                {
+                    "status": "busy",
+                    "created": 0,
+                    "message": "Reconciliation already in progress",
+                }
+            ), 409
 
         try:
             result = reconcile_agent_session(agent)
@@ -216,15 +227,19 @@ def reconcile_agent_endpoint(agent_id: int):
             db.session.commit()
         except Exception as e:
             logger.error(f"Reconciliation failed for agent {agent_id}: {e}")
-            return jsonify({
-                "status": "error",
-                "error": str(e),
-            }), 500
+            return jsonify(
+                {
+                    "status": "error",
+                    "error": str(e),
+                }
+            ), 500
 
-    return jsonify({
-        "status": "ok",
-        "created": len(result["created"]),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "created": len(result["created"]),
+        }
+    )
 
 
 @agents_bp.route("/api/agents/<int:agent_id>/revive", methods=["POST"])
@@ -253,8 +268,10 @@ def revive_agent_endpoint(agent_id: int):
         status = status_map.get(result.error_code, 400)
         return jsonify({"error": result.message}), status
 
-    return jsonify({
-        "status": "initiated",
-        "message": result.message,
-        "tmux_session_name": result.successor_agent_tmux_session,
-    }), 201
+    return jsonify(
+        {
+            "status": "initiated",
+            "message": result.message,
+            "tmux_session_name": result.successor_agent_tmux_session,
+        }
+    ), 201

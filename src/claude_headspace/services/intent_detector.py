@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
@@ -183,9 +183,24 @@ HANDOFF_NEGATIVE_PATTERNS = [
 
 # Bare affirmative words/phrases that indicate user confirmation, not a new command
 BARE_AFFIRMATIVES = {
-    "yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure",
-    "go ahead", "proceed", "continue", "do it", "go for it",
-    "sounds good", "looks good", "lgtm", "approved", "accept",
+    "yes",
+    "y",
+    "yeah",
+    "yep",
+    "yup",
+    "ok",
+    "okay",
+    "sure",
+    "go ahead",
+    "proceed",
+    "continue",
+    "do it",
+    "go for it",
+    "sounds good",
+    "looks good",
+    "lgtm",
+    "approved",
+    "accept",
 }
 
 # Plan approval dialog responses from Claude Code
@@ -216,11 +231,11 @@ _HANDOFF_CONTEXT_RE = re.compile(
 
 
 def detect_handoff_intent(
-    text: Optional[str],
+    text: str | None,
     inference_service: Any = None,
     project_id: int | None = None,
     agent_id: int | None = None,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Detect whether a USER message is requesting an agent handoff.
 
     Uses regex pattern matching with negative guards, followed by optional
@@ -271,9 +286,7 @@ def detect_handoff_intent(
         if is_handoff:
             # For LLM-detected handoffs, pass the full text as context
             # (no trigger phrase to strip)
-            logger.info(
-                f"Handoff intent detected (LLM): text={repr(stripped[:80])}"
-            )
+            logger.info(f"Handoff intent detected (LLM): text={repr(stripped[:80])}")
             return True, stripped
         return False, None
 
@@ -310,10 +323,10 @@ class IntentResult:
 
     intent: TurnIntent
     confidence: float
-    matched_pattern: Optional[str] = None
+    matched_pattern: str | None = None
 
 
-def _match_patterns(text: str, patterns: list[str]) -> Optional[str]:
+def _match_patterns(text: str, patterns: list[str]) -> str | None:
     """
     Check if text matches any pattern in the list.
 
@@ -330,7 +343,7 @@ def _match_patterns(text: str, patterns: list[str]) -> Optional[str]:
     return None
 
 
-def _detect_end_of_command(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+def _detect_end_of_command(tail: str, has_continuation: bool) -> IntentResult | None:
     """
     Detect end-of-command in the tail using multi-signal scoring.
 
@@ -352,9 +365,13 @@ def _detect_end_of_command(tail: str, has_continuation: bool) -> Optional[Intent
     has_handoff = _match_patterns(tail, END_OF_COMMAND_HANDOFF_PATTERNS)
 
     if has_summary and (has_soft_close or has_handoff):
-        return IntentResult(TurnIntent.END_OF_COMMAND, 0.95, matched_pattern=has_summary)
+        return IntentResult(
+            TurnIntent.END_OF_COMMAND, 0.95, matched_pattern=has_summary
+        )
     elif has_soft_close:
-        return IntentResult(TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_soft_close)
+        return IntentResult(
+            TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_soft_close
+        )
     elif has_summary:
         return IntentResult(TurnIntent.END_OF_COMMAND, 0.7, matched_pattern=has_summary)
     elif has_handoff:
@@ -363,7 +380,7 @@ def _detect_end_of_command(tail: str, has_continuation: bool) -> Optional[Intent
     return None
 
 
-def _detect_trailing_question(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+def _detect_trailing_question(tail: str, has_continuation: bool) -> IntentResult | None:
     """
     Detect a trailing question in the last 3 non-empty lines of the tail.
 
@@ -410,7 +427,7 @@ def _detect_trailing_question(tail: str, has_continuation: bool) -> Optional[Int
     return None
 
 
-def _detect_completion_opener(tail: str, has_continuation: bool) -> Optional[IntentResult]:
+def _detect_completion_opener(tail: str, has_continuation: bool) -> IntentResult | None:
     """
     Detect completion opener at the start of the tail.
 
@@ -456,7 +473,7 @@ def _infer_completion_classification(
     inference_service: Any,
     project_id: int | None = None,
     agent_id: int | None = None,
-) -> Optional[IntentResult]:
+) -> IntentResult | None:
     """LLM fallback for ambiguous agent output classification."""
     prompt = build_prompt("completion_classification", tail=tail)
 
@@ -482,7 +499,7 @@ def _infer_completion_classification(
 
 
 def detect_agent_intent(
-    text: Optional[str],
+    text: str | None,
     inference_service: Any = None,
     project_id: int | None = None,
     agent_id: int | None = None,
@@ -632,9 +649,7 @@ def detect_agent_intent(
             tail, inference_service, project_id=project_id, agent_id=agent_id
         )
         if inferred:
-            logger.debug(
-                f"Inference fallback classified as {inferred.intent.value}"
-            )
+            logger.debug(f"Inference fallback classified as {inferred.intent.value}")
             return inferred
 
     # Default to progress with lower confidence since no pattern matched
@@ -646,7 +661,7 @@ def detect_agent_intent(
     )
 
 
-def detect_user_intent(text: Optional[str], current_state: CommandState) -> IntentResult:
+def detect_user_intent(text: str | None, current_state: CommandState) -> IntentResult:
     """
     Detect the intent of a user turn based on the current command state.
 
@@ -689,7 +704,7 @@ def detect_user_intent(text: Optional[str], current_state: CommandState) -> Inte
 
 
 def detect_intent(
-    text: Optional[str],
+    text: str | None,
     actor: TurnActor,
     current_state: CommandState,
 ) -> IntentResult:

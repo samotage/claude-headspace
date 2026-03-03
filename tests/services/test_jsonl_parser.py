@@ -33,9 +33,7 @@ class TestJSONLParser:
     @pytest.fixture
     def temp_jsonl(self):
         """Create a temporary jsonl file."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
             yield f.name
         os.unlink(f.name)
 
@@ -115,7 +113,11 @@ class TestJSONLParser:
         """Test that non-user/assistant messages are skipped."""
         lines = [
             {"type": "progress", "data": {}},
-            {"type": "user", "message": {"content": "Hi"}, "timestamp": "2026-01-29T10:00:00Z"},
+            {
+                "type": "user",
+                "message": {"content": "Hi"},
+                "timestamp": "2026-01-29T10:00:00Z",
+            },
             {"type": "file-history-snapshot", "snapshot": {}},
         ]
         with open(temp_jsonl, "w") as f:
@@ -132,11 +134,16 @@ class TestJSONLParser:
         """Test handling malformed JSON line."""
         with open(temp_jsonl, "w") as f:
             f.write("not valid json\n")
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Valid message"},
-                "timestamp": "2026-01-29T10:00:00Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Valid message"},
+                        "timestamp": "2026-01-29T10:00:00Z",
+                    }
+                )
+                + "\n"
+            )
 
         parser = JSONLParser(temp_jsonl)
         turns = parser.read_new_lines()
@@ -149,11 +156,16 @@ class TestJSONLParser:
         """Test incremental reading of file."""
         # Write first message
         with open(temp_jsonl, "w") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "First"},
-                "timestamp": "2026-01-29T10:00:00Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "First"},
+                        "timestamp": "2026-01-29T10:00:00Z",
+                    }
+                )
+                + "\n"
+            )
 
         parser = JSONLParser(temp_jsonl)
         turns1 = parser.read_new_lines()
@@ -162,11 +174,16 @@ class TestJSONLParser:
 
         # Append second message
         with open(temp_jsonl, "a") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Second"},
-                "timestamp": "2026-01-29T10:00:01Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Second"},
+                        "timestamp": "2026-01-29T10:00:01Z",
+                    }
+                )
+                + "\n"
+            )
 
         turns2 = parser.read_new_lines()
         assert len(turns2) == 1
@@ -175,11 +192,16 @@ class TestJSONLParser:
     def test_reset_position(self, temp_jsonl):
         """Test resetting file position."""
         with open(temp_jsonl, "w") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Message"},
-                "timestamp": "2026-01-29T10:00:00Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Message"},
+                        "timestamp": "2026-01-29T10:00:00Z",
+                    }
+                )
+                + "\n"
+            )
 
         parser = JSONLParser(temp_jsonl)
         turns1 = parser.read_new_lines()
@@ -199,11 +221,16 @@ class TestJSONLParser:
     def test_parse_timestamp_with_z_suffix(self, temp_jsonl):
         """Test parsing timestamp with Z suffix."""
         with open(temp_jsonl, "w") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Test"},
-                "timestamp": "2026-01-29T10:00:00Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Test"},
+                        "timestamp": "2026-01-29T10:00:00Z",
+                    }
+                )
+                + "\n"
+            )
 
         parser = JSONLParser(temp_jsonl)
         turns = parser.read_new_lines()
@@ -215,11 +242,16 @@ class TestJSONLParser:
     def test_parse_timestamp_with_offset(self, temp_jsonl):
         """Test parsing timestamp with timezone offset."""
         with open(temp_jsonl, "w") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Test"},
-                "timestamp": "2026-01-29T10:00:00+11:00",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Test"},
+                        "timestamp": "2026-01-29T10:00:00+11:00",
+                    }
+                )
+                + "\n"
+            )
 
         parser = JSONLParser(temp_jsonl)
         turns = parser.read_new_lines()

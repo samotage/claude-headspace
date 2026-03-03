@@ -2,7 +2,6 @@
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from unittest.mock import patch
 
 import pytest
 
@@ -304,7 +303,9 @@ class TestContentDedup:
         for i in range(10):
             state.is_duplicate_prompt(1, f"prompt-{i}")
         with state._lock:
-            assert len(state._recent_prompt_hashes.get(1, [])) <= state._DEDUP_MAX_HISTORY
+            assert (
+                len(state._recent_prompt_hashes.get(1, [])) <= state._DEDUP_MAX_HISTORY
+            )
 
 
 class TestCommandRateLimiting:

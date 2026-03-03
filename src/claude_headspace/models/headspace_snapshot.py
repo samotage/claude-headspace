@@ -25,11 +25,14 @@ class HeadspaceSnapshot(db.Model):
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
     frustration_rolling_10: Mapped[float | None] = mapped_column(Float, nullable=True)
-    frustration_rolling_30min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    frustration_rolling_30min: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
     frustration_rolling_3hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String(10), nullable=False, default="green")
     turn_rate_per_hour: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -41,7 +44,9 @@ class HeadspaceSnapshot(db.Model):
     alert_count_today: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     def __repr__(self) -> str:
-        return f"<HeadspaceSnapshot id={self.id} state={self.state} ts={self.timestamp}>"
+        return (
+            f"<HeadspaceSnapshot id={self.id} state={self.state} ts={self.timestamp}>"
+        )
 
 
 Index("ix_headspace_snapshots_timestamp", HeadspaceSnapshot.timestamp)

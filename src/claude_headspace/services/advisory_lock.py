@@ -37,12 +37,14 @@ class LockNamespace(IntEnum):
     PostgreSQL advisory locks take two int4 keys. The first key is the
     namespace, the second is the entity ID.
     """
+
     AGENT = 1
     CHANNEL = 2
 
 
 class AdvisoryLockError(Exception):
     """Raised when an advisory lock cannot be acquired."""
+
     pass
 
 
@@ -99,6 +101,7 @@ def advisory_lock(namespace: LockNamespace, entity_id: int, timeout: float = 15.
         )
 
     from ..database import db
+
     engine = db.engine
 
     conn = engine.connect()
@@ -195,6 +198,7 @@ def advisory_lock_or_skip(namespace: LockNamespace, entity_id: int):
         return
 
     from ..database import db
+
     engine = db.engine
 
     lock_acquired = False
@@ -276,17 +280,23 @@ def get_held_advisory_locks():
         result = db.session.execute(query)
         locks = []
         for row in result:
-            locks.append({
-                "pid": row.pid,
-                "application_name": row.application_name,
-                "state": row.state,
-                "query_start": row.query_start.isoformat() if row.query_start else None,
-                "namespace": row.namespace,
-                "entity_id": row.entity_id,
-                "mode": row.mode,
-                "granted": row.granted,
-                "duration_seconds": round(row.duration_seconds, 2) if row.duration_seconds else None,
-            })
+            locks.append(
+                {
+                    "pid": row.pid,
+                    "application_name": row.application_name,
+                    "state": row.state,
+                    "query_start": row.query_start.isoformat()
+                    if row.query_start
+                    else None,
+                    "namespace": row.namespace,
+                    "entity_id": row.entity_id,
+                    "mode": row.mode,
+                    "granted": row.granted,
+                    "duration_seconds": round(row.duration_seconds, 2)
+                    if row.duration_seconds
+                    else None,
+                }
+            )
         return locks
     except Exception as e:
         logger.warning(f"Failed to query advisory locks: {e}")

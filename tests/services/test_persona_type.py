@@ -115,7 +115,9 @@ class TestPersonaTypeModel:
 class TestPersonaFKAndBackfill:
     """Test Persona FK and default value (Task 3.2)."""
 
-    def test_new_persona_defaults_to_agent_internal(self, app, seed_persona_types, developer_role):
+    def test_new_persona_defaults_to_agent_internal(
+        self, app, seed_persona_types, developer_role
+    ):
         """New personas default to persona_type_id=1 (agent/internal)."""
         persona = Persona(name="Con", role=developer_role)
         db.session.add(persona)
@@ -160,7 +162,9 @@ class TestCanCreateChannel:
 
         assert persona.can_create_channel is True
 
-    def test_agent_external_cannot_create(self, app, seed_persona_types, developer_role):
+    def test_agent_external_cannot_create(
+        self, app, seed_persona_types, developer_role
+    ):
         """agent/external persona cannot create channels."""
         persona = Persona(name="Ext", role=developer_role, persona_type_id=2)
         db.session.add(persona)
@@ -168,7 +172,9 @@ class TestCanCreateChannel:
 
         assert persona.can_create_channel is False
 
-    def test_person_external_cannot_create(self, app, seed_persona_types, operator_role):
+    def test_person_external_cannot_create(
+        self, app, seed_persona_types, operator_role
+    ):
         """person/external persona cannot create channels."""
         persona = Persona(name="Guest", role=operator_role, persona_type_id=4)
         db.session.add(persona)
@@ -178,6 +184,7 @@ class TestCanCreateChannel:
 
     def test_no_persona_type_returns_false(self, app, db_session):
         """If persona_type is None, can_create_channel returns False."""
+
         # Test the guard clause by mocking the property return
         # Use a simple object with persona_type = None
         class FakePersona:
@@ -207,7 +214,9 @@ class TestGetOperator:
         assert result.persona_type.type_key == "person"
         assert result.persona_type.subtype == "internal"
 
-    def test_returns_none_when_no_operator(self, app, seed_persona_types, developer_role):
+    def test_returns_none_when_no_operator(
+        self, app, seed_persona_types, developer_role
+    ):
         """get_operator() returns None when no person/internal Persona exists."""
         # Create only agent/internal personas
         persona = Persona(name="Con", role=developer_role, persona_type_id=1)
@@ -293,7 +302,9 @@ class TestOperatorPersona:
 class TestExistingPersonaFlows:
     """Test that existing persona flows are not broken (Task 3.7)."""
 
-    def test_registration_defaults_to_agent_internal(self, app, seed_persona_types, tmp_path):
+    def test_registration_defaults_to_agent_internal(
+        self, app, seed_persona_types, tmp_path
+    ):
         """PersonaRegistration creates agent/internal personas by default."""
         from claude_headspace.services.persona_registration import register_persona
 
@@ -308,7 +319,9 @@ class TestExistingPersonaFlows:
         assert persona.persona_type.type_key == "agent"
         assert persona.persona_type.subtype == "internal"
 
-    def test_multiple_registrations_all_agent_internal(self, app, seed_persona_types, tmp_path):
+    def test_multiple_registrations_all_agent_internal(
+        self, app, seed_persona_types, tmp_path
+    ):
         """Multiple registrations all default to agent/internal."""
         from claude_headspace.services.persona_registration import register_persona
 
@@ -328,9 +341,11 @@ class TestModelImport:
     def test_importable_from_models(self):
         """PersonaType is importable from claude_headspace.models."""
         from claude_headspace.models import PersonaType as PT
+
         assert PT is PersonaType
 
     def test_in_all(self):
         """PersonaType is listed in __all__."""
         from claude_headspace.models import __all__
+
         assert "PersonaType" in __all__

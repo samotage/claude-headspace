@@ -32,8 +32,11 @@ def _create_persona(session, name="Con", role=None, description=None, status="ac
     if role is None:
         role = _create_role(session)
     persona = Persona(
-        name=name, role_id=role.id, role=role,
-        description=description, status=status,
+        name=name,
+        role_id=role.id,
+        role=role,
+        description=description,
+        status=status,
     )
     session.add(persona)
     session.flush()
@@ -105,7 +108,9 @@ class TestApiListActivePersonas:
         """Persona description is included in response."""
         role = _create_role(db_session, "developer")
         _create_persona(
-            db_session, name="Con", role=role,
+            db_session,
+            name="Con",
+            role=role,
             description="Backend Python developer",
         )
         db_session.commit()

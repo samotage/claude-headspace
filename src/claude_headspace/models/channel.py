@@ -40,9 +40,7 @@ class Channel(db.Model):
     __tablename__ = "channels"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(
-        String(128), nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     slug: Mapped[str] = mapped_column(
         String(128), nullable=False, unique=True, default=temp_slug
     )
@@ -60,11 +58,11 @@ class Channel(db.Model):
     created_by_persona_id: Mapped[int | None] = mapped_column(
         ForeignKey("personas.id", ondelete="SET NULL"), nullable=True
     )
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="pending"
-    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -80,13 +78,13 @@ class Channel(db.Model):
 
     # Children
     memberships: Mapped[list["ChannelMembership"]] = relationship(
-        "ChannelMembership", back_populates="channel",
-        cascade="all, delete-orphan"
+        "ChannelMembership", back_populates="channel", cascade="all, delete-orphan"
     )
     messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="channel",
+        "Message",
+        back_populates="channel",
         cascade="all, delete-orphan",
-        order_by="Message.sent_at"
+        order_by="Message.sent_at",
     )
 
     def generate_slug(self) -> str:

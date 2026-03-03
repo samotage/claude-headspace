@@ -1,9 +1,7 @@
 """Tests for voice bridge file upload and serving routes."""
 
 import io
-import os
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +12,6 @@ from src.claude_headspace.models.turn import TurnActor, TurnIntent
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 from src.claude_headspace.services.file_upload import FileUploadService
 from src.claude_headspace.services.tmux_bridge import SendResult
-
 
 # ──────────────────────────────────────────────────────────────
 # Fixtures
@@ -135,15 +132,32 @@ def mock_agent_no_pane(mock_project):
 class TestUploadEndpoint:
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_upload_valid_image(self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting):
+    def test_upload_valid_image(
+        self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting
+    ):
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
-            with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
-                data = {"file": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "test.png")}
-                resp = client.post("/api/voice/agents/1/upload", data=data, content_type="multipart/form-data")
+        with patch(
+            "src.claude_headspace.services.hook_extractors.mark_question_answered"
+        ):
+            with patch(
+                "src.claude_headspace.services.state_machine.validate_transition"
+            ) as mock_vt:
+                mock_vt.return_value = MagicMock(
+                    valid=True, to_state=CommandState.PROCESSING
+                )
+                data = {
+                    "file": (
+                        io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100),
+                        "test.png",
+                    )
+                }
+                resp = client.post(
+                    "/api/voice/agents/1/upload",
+                    data=data,
+                    content_type="multipart/form-data",
+                )
 
         assert resp.status_code == 200
         json_data = resp.get_json()
@@ -153,12 +167,16 @@ class TestUploadEndpoint:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_upload_valid_text_file(self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_idle):
+    def test_upload_valid_text_file(
+        self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_idle
+    ):
         mock_db.session.get.return_value = mock_agent_idle
         mock_tmux.send_text.return_value = SendResult(success=True)
 
         data = {"file": (io.BytesIO(b"print('hello')"), "code.py")}
-        resp = client.post("/api/voice/agents/2/upload", data=data, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/2/upload", data=data, content_type="multipart/form-data"
+        )
 
         assert resp.status_code == 200
         json_data = resp.get_json()
@@ -166,15 +184,22 @@ class TestUploadEndpoint:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_upload_with_text(self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_idle):
+    def test_upload_with_text(
+        self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_idle
+    ):
         mock_db.session.get.return_value = mock_agent_idle
         mock_tmux.send_text.return_value = SendResult(success=True)
 
         data = {
-            "file": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100), "screenshot.png"),
+            "file": (
+                io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100),
+                "screenshot.png",
+            ),
             "text": "Check this screenshot",
         }
-        resp = client.post("/api/voice/agents/2/upload", data=data, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/2/upload", data=data, content_type="multipart/form-data"
+        )
 
         assert resp.status_code == 200
         # Verify tmux was called with both text and file path
@@ -187,7 +212,9 @@ class TestUploadEndpoint:
         mock_db.session.get.return_value = mock_agent_awaiting
 
         data = {"file": (io.BytesIO(b"malware"), "virus.exe")}
-        resp = client.post("/api/voice/agents/1/upload", data=data, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/1/upload", data=data, content_type="multipart/form-data"
+        )
 
         assert resp.status_code == 400
         json_data = resp.get_json()
@@ -196,7 +223,9 @@ class TestUploadEndpoint:
     def test_upload_no_file(self, client, mock_db, mock_agent_awaiting):
         mock_db.session.get.return_value = mock_agent_awaiting
 
-        resp = client.post("/api/voice/agents/1/upload", data={}, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/1/upload", data={}, content_type="multipart/form-data"
+        )
 
         assert resp.status_code == 400
 
@@ -204,7 +233,11 @@ class TestUploadEndpoint:
         mock_db.session.get.return_value = None
 
         data = {"file": (io.BytesIO(b"test"), "test.txt")}
-        resp = client.post("/api/voice/agents/999/upload", data=data, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/999/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
 
         assert resp.status_code == 404
 
@@ -212,7 +245,9 @@ class TestUploadEndpoint:
         mock_db.session.get.return_value = mock_agent_no_pane
 
         data = {"file": (io.BytesIO(b"test"), "test.txt")}
-        resp = client.post("/api/voice/agents/3/upload", data=data, content_type="multipart/form-data")
+        resp = client.post(
+            "/api/voice/agents/3/upload", data=data, content_type="multipart/form-data"
+        )
 
         assert resp.status_code == 503
 
@@ -253,7 +288,9 @@ class TestServeUpload:
 
 
 class TestTranscriptFileMetadata:
-    def test_transcript_includes_file_metadata(self, client, mock_db, mock_agent_awaiting):
+    def test_transcript_includes_file_metadata(
+        self, client, mock_db, mock_agent_awaiting
+    ):
         mock_db.session.get.return_value = mock_agent_awaiting
 
         # Mock turn with file_metadata
@@ -307,13 +344,21 @@ class TestTranscriptFileMetadata:
 class TestExistingCommandUnchanged:
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_text_only_command(self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting):
+    def test_text_only_command(
+        self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting
+    ):
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
-            with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
+        with patch(
+            "src.claude_headspace.services.hook_extractors.mark_question_answered"
+        ):
+            with patch(
+                "src.claude_headspace.services.state_machine.validate_transition"
+            ) as mock_vt:
+                mock_vt.return_value = MagicMock(
+                    valid=True, to_state=CommandState.PROCESSING
+                )
                 resp = client.post(
                     "/api/voice/command",
                     json={"text": "Use option A", "agent_id": 1},
@@ -328,16 +373,28 @@ class TestExistingCommandUnchanged:
 
     @patch("src.claude_headspace.routes.voice_bridge.broadcast_card_refresh")
     @patch("src.claude_headspace.routes.voice_bridge.tmux_bridge")
-    def test_command_with_file_path(self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting):
+    def test_command_with_file_path(
+        self, mock_tmux, mock_broadcast, client, mock_db, mock_agent_awaiting
+    ):
         mock_db.session.get.return_value = mock_agent_awaiting
         mock_tmux.send_text.return_value = SendResult(success=True)
 
-        with patch("src.claude_headspace.services.hook_extractors.mark_question_answered"):
-            with patch("src.claude_headspace.services.state_machine.validate_transition") as mock_vt:
-                mock_vt.return_value = MagicMock(valid=True, to_state=CommandState.PROCESSING)
+        with patch(
+            "src.claude_headspace.services.hook_extractors.mark_question_answered"
+        ):
+            with patch(
+                "src.claude_headspace.services.state_machine.validate_transition"
+            ) as mock_vt:
+                mock_vt.return_value = MagicMock(
+                    valid=True, to_state=CommandState.PROCESSING
+                )
                 resp = client.post(
                     "/api/voice/command",
-                    json={"text": "Look at this", "agent_id": 1, "file_path": "/tmp/test.png"},
+                    json={
+                        "text": "Look at this",
+                        "agent_id": 1,
+                        "file_path": "/tmp/test.png",
+                    },
                 )
 
         assert resp.status_code == 200

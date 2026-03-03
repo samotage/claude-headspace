@@ -4,15 +4,13 @@ Uses pytest tmp_path fixture — no database or Flask app context needed.
 """
 
 import pytest
-from pathlib import Path
 
 from claude_headspace.services.persona_assets import (
-    AssetStatus,
     EXPERIENCE_FILENAME,
     GUARDRAILS_DIR,
     GUARDRAILS_FILENAME,
-    GuardrailValidationError,
     SKILL_FILENAME,
+    GuardrailValidationError,
     check_assets,
     compute_guardrails_hash,
     create_persona_assets,
@@ -66,7 +64,9 @@ class TestSeedSkillFile:
     """Test skill.md template seeding."""
 
     def test_creates_file_with_template(self, tmp_path):
-        path = seed_skill_file("developer-con-1", "Con", "developer", project_root=tmp_path)
+        path = seed_skill_file(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         assert path.exists()
         content = path.read_text(encoding="utf-8")
         assert "# Con — developer" in content
@@ -108,13 +108,17 @@ class TestCreatePersonaAssets:
     """Test combined directory and template creation."""
 
     def test_creates_directory_and_both_files(self, tmp_path):
-        result = create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        result = create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         assert result.is_dir()
         assert (result / SKILL_FILENAME).exists()
         assert (result / EXPERIENCE_FILENAME).exists()
 
     def test_idempotent(self, tmp_path):
-        create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         persona_dir = get_persona_dir("developer-con-1", tmp_path)
         skill_path = persona_dir / SKILL_FILENAME
         original_content = skill_path.read_text(encoding="utf-8")
@@ -123,7 +127,9 @@ class TestCreatePersonaAssets:
         skill_path.write_text("custom skill", encoding="utf-8")
 
         # Call again — should NOT overwrite
-        create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         assert skill_path.read_text(encoding="utf-8") == "custom skill"
 
 
@@ -131,7 +137,9 @@ class TestReadSkillFile:
     """Test reading skill.md content."""
 
     def test_returns_content_when_exists(self, tmp_path):
-        create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         content = read_skill_file("developer-con-1", project_root=tmp_path)
         assert content is not None
         assert "# Con — developer" in content
@@ -145,7 +153,9 @@ class TestReadExperienceFile:
     """Test reading experience.md content."""
 
     def test_returns_content_when_exists(self, tmp_path):
-        create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         content = read_experience_file("developer-con-1", project_root=tmp_path)
         assert content is not None
         assert "# Experience Log — Con" in content
@@ -159,7 +169,9 @@ class TestCheckAssets:
     """Test asset existence checking."""
 
     def test_both_files_present(self, tmp_path):
-        create_persona_assets("developer-con-1", "Con", "developer", project_root=tmp_path)
+        create_persona_assets(
+            "developer-con-1", "Con", "developer", project_root=tmp_path
+        )
         status = check_assets("developer-con-1", project_root=tmp_path)
         assert status.skill_exists is True
         assert status.experience_exists is True
@@ -198,7 +210,9 @@ class TestWriteSkillFile:
 
     def test_writes_new_file(self, tmp_path):
         """Creates a new skill file with the given content."""
-        path = write_skill_file("developer-con-1", "# Custom Skill", project_root=tmp_path)
+        path = write_skill_file(
+            "developer-con-1", "# Custom Skill", project_root=tmp_path
+        )
         assert path.exists()
         assert path.read_text(encoding="utf-8") == "# Custom Skill"
 
@@ -254,7 +268,9 @@ class TestEdgeCases:
 # ──────────────────────────────────────────────────────────────
 
 
-def _create_guardrails(tmp_path, content="# Platform Guardrails\n\nThese are the rules."):
+def _create_guardrails(
+    tmp_path, content="# Platform Guardrails\n\nThese are the rules."
+):
     """Helper to create a guardrails file in the expected location."""
     guardrails_dir = tmp_path / GUARDRAILS_DIR
     guardrails_dir.mkdir(parents=True, exist_ok=True)

@@ -17,5 +17,5 @@ def slugify(text: str) -> str:
     """Sanitize text for use in a slug: lowercase, replace spaces/special chars with hyphens."""
     s = text.lower().strip()
     s = re.sub(r"[^a-z0-9]+", "-", s)  # Replace non-alphanumeric with hyphens
-    s = re.sub(r"-+", "-", s)            # Collapse consecutive hyphens
-    return s.strip("-")                   # Remove leading/trailing hyphens
+    s = re.sub(r"-+", "-", s)  # Collapse consecutive hyphens
+    return s.strip("-")  # Remove leading/trailing hyphens

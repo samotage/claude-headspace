@@ -269,9 +269,7 @@ class CommanderAvailability:
                     return  # Reconnected successfully
             self._update_availability(agent_id, health.available)
         except Exception as e:
-            logger.debug(
-                f"Health check failed for agent {agent_id} (non-fatal): {e}"
-            )
+            logger.debug(f"Health check failed for agent {agent_id} (non-fatal): {e}")
             self._update_availability(agent_id, False)
 
     def _check_all_agents(self) -> None:
@@ -290,7 +288,9 @@ class CommanderAvailability:
             for agent_id, pane_id in agents_to_check.items():
                 if self._stop_event.is_set():
                     break
-                futures[pool.submit(self._check_single_agent, agent_id, pane_id)] = agent_id
+                futures[pool.submit(self._check_single_agent, agent_id, pane_id)] = (
+                    agent_id
+                )
             for future in as_completed(futures):
                 if self._stop_event.is_set():
                     pool.shutdown(wait=False)

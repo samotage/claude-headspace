@@ -3,8 +3,6 @@
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.iterm_focus import (
     APPLESCRIPT_TIMEOUT,
     AttachResult,
@@ -133,7 +131,7 @@ class TestParseApplescriptError:
     def test_iterm_cant_get_application(self):
         """Test detection of can't get application error."""
         error_type, message = _parse_applescript_error(
-            "execution error: Can't get application \"iTerm\".",
+            'execution error: Can\'t get application "iTerm".',
             1,
         )
         assert error_type == FocusErrorType.ITERM_NOT_RUNNING
@@ -324,6 +322,7 @@ class TestCheckPaneExists:
     def setup_method(self):
         """Clear the pane cache before each test."""
         import claude_headspace.services.iterm_focus as itf
+
         itf._pane_cache.clear()
 
     def test_empty_pane_id(self):
@@ -344,7 +343,9 @@ class TestCheckPaneExists:
 
     @patch("claude_headspace.services.iterm_focus.subprocess.run")
     def test_iterm_not_running_via_stdout(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="ITERM_NOT_RUNNING\n", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="ITERM_NOT_RUNNING\n", stderr=""
+        )
         assert check_pane_exists("pty-123") == PaneStatus.ITERM_NOT_RUNNING
 
     @patch("claude_headspace.services.iterm_focus.subprocess.run")
@@ -467,7 +468,8 @@ class TestFocusItermByTty:
     def test_timeout(self, mock_run):
         """Test focus timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd="osascript", timeout=APPLESCRIPT_TIMEOUT,
+            cmd="osascript",
+            timeout=APPLESCRIPT_TIMEOUT,
         )
 
         result = focus_iterm_by_tty("/dev/ttys003")
@@ -640,13 +642,18 @@ class TestAttachTmuxSession:
     @patch("claude_headspace.services.iterm_focus.focus_iterm_by_tty")
     @patch("claude_headspace.services.iterm_focus._get_tmux_client_ttys")
     def test_falls_through_to_new_tab_when_reuse_fails(
-        self, mock_clients, mock_focus_tty, mock_run,
+        self,
+        mock_clients,
+        mock_focus_tty,
+        mock_run,
     ):
         """Test opens new tab when existing client focus fails."""
         mock_clients.return_value = ["/dev/ttys005"]
         mock_focus_tty.return_value = FocusResult(
-            success=False, error_type=FocusErrorType.PANE_NOT_FOUND,
-            error_message="not found", latency_ms=50,
+            success=False,
+            error_type=FocusErrorType.PANE_NOT_FOUND,
+            error_message="not found",
+            latency_ms=50,
         )
         mock_run.return_value = MagicMock(returncode=0, stderr="")
 
@@ -676,7 +683,8 @@ class TestAttachTmuxSession:
         """Test handles timeout on AppleScript execution."""
         mock_clients.return_value = []
         mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd="osascript", timeout=APPLESCRIPT_TIMEOUT,
+            cmd="osascript",
+            timeout=APPLESCRIPT_TIMEOUT,
         )
 
         result = attach_tmux_session("hs-test-123")

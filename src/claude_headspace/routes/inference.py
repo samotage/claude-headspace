@@ -33,5 +33,6 @@ def inference_usage():
         return jsonify({"error": "Inference service not initialized"}), 503
 
     from ..database import db
+
     usage = service.get_usage(db_session=db.session)
     return jsonify(usage)

@@ -1,10 +1,8 @@
 """Tests for the SSE broadcaster service."""
 
 import threading
-import time
 from datetime import datetime, timezone
 from queue import Queue
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -105,15 +103,9 @@ class TestSSEClient:
         )
 
         # Both conditions must match
-        assert (
-            client.matches_filter("state_transition", {"project_id": 42}) is True
-        )
-        assert (
-            client.matches_filter("turn_detected", {"project_id": 42}) is False
-        )
-        assert (
-            client.matches_filter("state_transition", {"project_id": 99}) is False
-        )
+        assert client.matches_filter("state_transition", {"project_id": 42}) is True
+        assert client.matches_filter("turn_detected", {"project_id": 42}) is False
+        assert client.matches_filter("state_transition", {"project_id": 99}) is False
 
 
 class TestSSEEvent:

@@ -1,18 +1,18 @@
 """Dashboard route for agent monitoring."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, render_template, request
 from sqlalchemy.orm import selectinload
 
 from ..database import db
-from ..models import Agent, Project, Command, CommandState
+from ..models import Agent, CommandState, Project
 from ..models.channel import Channel
 from ..models.channel_membership import ChannelMembership
 from ..models.message import Message
-from ..models.persona import Persona
 from ..models.objective import Objective
+from ..models.persona import Persona
 from ..models.turn import TurnActor
 from ..services.card_state import (
     TIMED_OUT,
@@ -20,12 +20,12 @@ from ..services.card_state import (
     _get_current_command_turn_count,
     format_last_seen,
     format_uptime,
-    get_effective_state,
-    get_state_info,
     get_command_completion_summary,
     get_command_instruction,
     get_command_summary,
+    get_effective_state,
     get_question_options,
+    get_state_info,
     is_agent_active,
 )
 
@@ -79,7 +79,8 @@ def get_recommended_next(all_agents: list, agent_data_map: dict) -> dict | None:
 
     # Filter to agents needing attention (AWAITING_INPUT or TIMED_OUT)
     needs_attention = [
-        a for a in all_agents
+        a
+        for a in all_agents
         if get_effective_state(a) in (CommandState.AWAITING_INPUT, TIMED_OUT)
     ]
 
@@ -176,7 +177,9 @@ def sort_agents_by_priority(all_agents_data: list) -> list:
             priority_group = 2
 
         # Tertiary: last_seen_at descending
-        last_seen = agent_data.get("last_seen_at", datetime.min.replace(tzinfo=timezone.utc))
+        last_seen = agent_data.get(
+            "last_seen_at", datetime.min.replace(tzinfo=timezone.utc)
+        )
         return (-score, priority_group, -last_seen.timestamp())
 
     return sorted(all_agents_data, key=priority_key)
@@ -261,7 +264,9 @@ def count_active_agents(agents: list[Agent]) -> int:
 
 
 def _prepare_kanban_data(
-    projects: list, project_data: list, priority_enabled: bool,
+    projects: list,
+    project_data: list,
+    priority_enabled: bool,
     projects_by_id: dict | None = None,
 ) -> list:
     """Prepare Kanban board data grouped by project and command state.
@@ -310,7 +315,11 @@ def _prepare_kanban_data(
 
                 current_command = agent.get_current_command()
                 effective_state = get_effective_state(agent)
-                state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+                state_name = (
+                    effective_state
+                    if isinstance(effective_state, str)
+                    else effective_state.name
+                )
 
                 if current_command is None or state_name in ("IDLE", "COMPLETE"):
                     # Agent is idle (or just completed a command — completed commands
@@ -327,21 +336,31 @@ def _prepare_kanban_data(
                             "command_instruction": None,
                             "command_completion_summary": None,
                         }
-                    state_columns["IDLE"].append({
-                        "type": "agent",
-                        "agent": idle_data,
-                    })
+                    state_columns["IDLE"].append(
+                        {
+                            "type": "agent",
+                            "agent": idle_data,
+                        }
+                    )
                 else:
                     # Agent has active command - goes in the state's column
                     # COMMANDED is a transitory state; display in PROCESSING column
-                    col_name = "PROCESSING" if state_name in ("COMMANDED", "TIMED_OUT") else state_name
-                    state_columns[col_name].append({
-                        "type": "command",
-                        "agent": agent_data,
-                        "command_instruction": agent_data.get("command_instruction"),
-                        "command_summary": agent_data.get("command_summary"),
-                        "state": state_name,
-                    })
+                    col_name = (
+                        "PROCESSING"
+                        if state_name in ("COMMANDED", "TIMED_OUT")
+                        else state_name
+                    )
+                    state_columns[col_name].append(
+                        {
+                            "type": "command",
+                            "agent": agent_data,
+                            "command_instruction": agent_data.get(
+                                "command_instruction"
+                            ),
+                            "command_summary": agent_data.get("command_summary"),
+                            "state": state_name,
+                        }
+                    )
 
                 # Add all completed commands to COMPLETE column as condensed accordion cards
                 if agent.commands:
@@ -353,7 +372,9 @@ def _prepare_kanban_data(
                         if not completion_summary and command.turns:
                             last_turn = command.turns[-1]
                             completion_summary = last_turn.summary or (
-                                last_turn.text[:100] + "..." if last_turn.text and len(last_turn.text) > 100 else last_turn.text
+                                last_turn.text[:100] + "..."
+                                if last_turn.text and len(last_turn.text) > 100
+                                else last_turn.text
                             )
                         # Compute elapsed time
                         elapsed = None
@@ -369,16 +390,18 @@ def _prepare_kanban_data(
                             else:
                                 elapsed = "<1m"
 
-                        state_columns["COMPLETE"].append({
-                            "type": "completed_command",
-                            "agent": agent_data,
-                            "command_id": command.id,
-                            "completion_summary": completion_summary or "Completed",
-                            "instruction": _get_completed_instruction(command),
-                            "completed_at": command.completed_at,
-                            "turn_count": len(command.turns),
-                            "elapsed": elapsed,
-                        })
+                        state_columns["COMPLETE"].append(
+                            {
+                                "type": "completed_command",
+                                "agent": agent_data,
+                                "command_id": command.id,
+                                "completion_summary": completion_summary or "Completed",
+                                "instruction": _get_completed_instruction(command),
+                                "completed_at": command.completed_at,
+                                "turn_count": len(command.turns),
+                                "elapsed": elapsed,
+                            }
+                        )
 
         # Apply priority ordering within columns
         if priority_enabled:
@@ -387,15 +410,17 @@ def _prepare_kanban_data(
                     key=lambda x: -(x["agent"].get("priority", 50) or 50)
                 )
 
-        kanban_projects.append({
-            "id": proj_data["id"],
-            "name": proj_data["name"],
-            "slug": proj_data["slug"],
-            "columns": state_columns,
-            "staleness": proj_data.get("staleness"),
-            "state_flags": proj_data.get("state_flags", {}),
-            "active_count": proj_data.get("active_count", 0),
-        })
+        kanban_projects.append(
+            {
+                "id": proj_data["id"],
+                "name": proj_data["name"],
+                "slug": proj_data["slug"],
+                "columns": state_columns,
+                "staleness": proj_data.get("staleness"),
+                "state_flags": proj_data.get("state_flags", {}),
+                "active_count": proj_data.get("active_count", 0),
+            }
+        )
 
     return kanban_projects
 
@@ -435,11 +460,19 @@ def _get_dashboard_activity_metrics() -> dict | None:
         weighted_time_sum = 0.0
         weighted_time_count = 0
         for m in today_metrics:
-            if m.avg_turn_time_seconds is not None and m.turn_count and m.turn_count >= 2:
+            if (
+                m.avg_turn_time_seconds is not None
+                and m.turn_count
+                and m.turn_count >= 2
+            ):
                 weight = m.turn_count - 1  # number of deltas
                 weighted_time_sum += m.avg_turn_time_seconds * weight
                 weighted_time_count += weight
-        avg_turn_time = (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+        avg_turn_time = (
+            (weighted_time_sum / weighted_time_count)
+            if weighted_time_count > 0
+            else None
+        )
 
         # Count distinct agents active today from agent-level metrics
         distinct_agents = (
@@ -458,7 +491,11 @@ def _get_dashboard_activity_metrics() -> dict | None:
         # Frustration: aggregate across all buckets
         total_frustration = sum(m.total_frustration or 0 for m in today_metrics)
         total_frust_turns = sum(m.frustration_turn_count or 0 for m in today_metrics)
-        frustration_avg = round(total_frustration / total_frust_turns, 1) if total_frust_turns > 0 else None
+        frustration_avg = (
+            round(total_frustration / total_frust_turns, 1)
+            if total_frust_turns > 0
+            else None
+        )
 
         # Try to get immediate frustration (last 10 turns) from headspace
         immediate_frustration = None
@@ -478,7 +515,9 @@ def _get_dashboard_activity_metrics() -> dict | None:
             "turn_rate": turn_rate,
             "avg_turn_time": round(avg_turn_time, 1) if avg_turn_time else None,
             "active_agents": distinct_agents,
-            "frustration": immediate_frustration if immediate_frustration is not None else frustration_avg,
+            "frustration": immediate_frustration
+            if immediate_frustration is not None
+            else frustration_avg,
         }
     except Exception as e:
         logger.warning(f"Activity bar computation failed: {e}")
@@ -572,15 +611,17 @@ def get_channel_data_for_operator() -> list[dict]:
                 "sent_at": last_msg.sent_at.isoformat() if last_msg.sent_at else None,
             }
 
-        result.append({
-            "slug": channel.slug,
-            "name": channel.name,
-            "channel_type": channel.channel_type.value,
-            "status": channel.status,
-            "description": channel.description,
-            "members": members,
-            "last_message": last_message,
-        })
+        result.append(
+            {
+                "slug": channel.slug,
+                "name": channel.name,
+                "channel_type": channel.channel_type.value,
+                "status": channel.status,
+                "description": channel.description,
+                "members": members,
+                "last_message": last_message,
+            }
+        )
 
     return result
 
@@ -605,9 +646,7 @@ def dashboard():
     # Query all projects with eager-loaded relationships
     projects = (
         db.session.query(Project)
-        .options(
-            selectinload(Project.agents).selectinload(Agent.commands)
-        )
+        .options(selectinload(Project.agents).selectinload(Agent.commands))
         .order_by(Project.name)
         .all()
     )
@@ -640,7 +679,11 @@ def dashboard():
         for agent in live_agents:
             effective_state = get_effective_state(agent)
             # state_name: string for templates (handles both CommandState enum and TIMED_OUT string)
-            state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+            state_name = (
+                effective_state
+                if isinstance(effective_state, str)
+                else effective_state.name
+            )
             truncated_uuid = str(agent.session_uuid)[:8]
             agent_dict = {
                 "id": agent.id,
@@ -656,7 +699,9 @@ def dashboard():
                 "command_summary": get_command_summary(agent),
                 "command_instruction": get_command_instruction(agent),
                 "command_completion_summary": get_command_completion_summary(agent),
-                "priority": agent.priority_score if agent.priority_score is not None else 50,
+                "priority": agent.priority_score
+                if agent.priority_score is not None
+                else 50,
                 "priority_reason": agent.priority_reason,
                 "turn_count": _get_current_command_turn_count(agent),
                 "elapsed": _get_current_command_elapsed(agent),
@@ -669,21 +714,34 @@ def dashboard():
                 "context_remaining_tokens": agent.context_remaining_tokens,
                 "tmux_session": agent.tmux_session,
                 "persona_name": agent.persona.name if agent.persona else None,
-                "persona_role": agent.persona.role.name if agent.persona and getattr(agent.persona, "role", None) else None,
+                "persona_role": agent.persona.role.name
+                if agent.persona and getattr(agent.persona, "role", None)
+                else None,
                 "previous_agent_id": agent.previous_agent_id,
             }
             # Add current command ID and plan state for on-demand drill-down
             _ct = agent.get_current_command()
-            agent_dict["current_command_id"] = _ct.id if _ct else (agent.commands[0].id if agent.commands else None)
+            agent_dict["current_command_id"] = (
+                _ct.id if _ct else (agent.commands[0].id if agent.commands else None)
+            )
             agent_dict["has_plan"] = bool(_ct and _ct.plan_content)
             # Plan mode label overrides
             if _ct:
                 if _ct.plan_content and _ct.plan_approved_at:
-                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Executing plan..."}
+                    agent_dict["state_info"] = {
+                        **agent_dict["state_info"],
+                        "label": "Executing plan...",
+                    }
                 elif _ct.plan_content and not _ct.plan_approved_at:
-                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
+                    agent_dict["state_info"] = {
+                        **agent_dict["state_info"],
+                        "label": "Planning...",
+                    }
                 elif _ct.plan_file_path == "pending":
-                    agent_dict["state_info"] = {**agent_dict["state_info"], "label": "Planning..."}
+                    agent_dict["state_info"] = {
+                        **agent_dict["state_info"],
+                        "label": "Planning...",
+                    }
             # Bridge connectivity — use cache, fall back to live check
             is_bridge = False
             if agent.tmux_pane_id:
@@ -691,16 +749,16 @@ def dashboard():
                 if commander:
                     is_bridge = commander.is_available(agent.id)
                     if not is_bridge:
-                        is_bridge = commander.check_agent(
-                            agent.id, agent.tmux_pane_id
-                        )
+                        is_bridge = commander.check_agent(agent.id, agent.tmux_pane_id)
             agent_dict["is_bridge_connected"] = is_bridge
 
             # Handoff eligibility: persona + context data + threshold exceeded
             handoff_eligible = False
             ctx_pct = agent.context_percent_used
             if agent.persona_id is not None and isinstance(ctx_pct, (int, float)):
-                _ctx_cfg = current_app.config.get("APP_CONFIG", {}).get("context_monitor", {})
+                _ctx_cfg = current_app.config.get("APP_CONFIG", {}).get(
+                    "context_monitor", {}
+                )
                 handoff_threshold = _ctx_cfg.get("handoff_threshold", 80)
                 handoff_eligible = ctx_pct >= handoff_threshold
             agent_dict["handoff_eligible"] = handoff_eligible
@@ -714,7 +772,9 @@ def dashboard():
         staleness_dict = None
         if staleness_info:
             staleness_dict = {
-                "tier": staleness_info["tier"].value if hasattr(staleness_info["tier"], "value") else staleness_info["tier"],
+                "tier": staleness_info["tier"].value
+                if hasattr(staleness_info["tier"], "value")
+                else staleness_info["tier"],
                 "days_since_activity": staleness_info["days_since_activity"],
             }
 
@@ -739,7 +799,9 @@ def dashboard():
     priority_enabled = bool(objective and objective.priority_enabled)
 
     # Calculate recommended next agent (only when prioritisation is enabled)
-    recommended_next = get_recommended_next(all_agents, agent_data_map) if priority_enabled else None
+    recommended_next = (
+        get_recommended_next(all_agents, agent_data_map) if priority_enabled else None
+    )
 
     # Sort agents for priority view
     priority_sorted_agents = sort_agents_by_priority(all_agents_data)
@@ -754,7 +816,9 @@ def dashboard():
     kanban_data = []
     if sort_mode == "kanban":
         kanban_data = _prepare_kanban_data(
-            projects, project_data, priority_enabled,
+            projects,
+            project_data,
+            priority_enabled,
             projects_by_id=projects_by_id,
         )
 

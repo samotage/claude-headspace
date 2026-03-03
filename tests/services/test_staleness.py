@@ -57,9 +57,9 @@ class TestGetLastActivity:
         ts1 = datetime(2026, 1, 18, 12, 0, tzinfo=timezone.utc)
         ts2 = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
         ts3 = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
-        project = _make_project(agents=[
-            _make_agent(ts1), _make_agent(ts2), _make_agent(ts3)
-        ])
+        project = _make_project(
+            agents=[_make_agent(ts1), _make_agent(ts2), _make_agent(ts3)]
+        )
         assert service.get_last_activity(project) == ts2
 
     def test_agent_with_none_last_seen(self, service):

@@ -6,7 +6,14 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, jsonify, make_response, request, send_from_directory
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    make_response,
+    request,
+    send_from_directory,
+)
 
 from ..database import db
 from ..models.agent import Agent
@@ -173,7 +180,9 @@ def _detect_channel_intent(text: str) -> dict | None:
                 "action": "create",
                 "name": name,
                 "channel_type": inferred_type,
-                "member_refs": _extract_member_refs(members_text) if members_text else [],
+                "member_refs": _extract_member_refs(members_text)
+                if members_text
+                else [],
             }
 
     # 5. Add member patterns
@@ -308,7 +317,10 @@ def _resolve_channel_ref(channel_ref: str, auth_id: str) -> str:
     Raises ValueError if context reference used but no context is set.
     """
     if channel_ref.strip().lower() in (
-        "this channel", "the channel", "this", "current channel",
+        "this channel",
+        "the channel",
+        "this",
+        "current channel",
     ):
         ctx = _get_channel_context(auth_id)
         if ctx:
@@ -402,17 +414,27 @@ def _handle_channel_intent(intent: dict, text: str, formatter) -> tuple:
     auth_id = _get_auth_id()
 
     if action == "send":
-        return _handle_channel_send(intent, channel_service, formatter, auth_id, operator_persona)
+        return _handle_channel_send(
+            intent, channel_service, formatter, auth_id, operator_persona
+        )
     elif action == "history":
-        return _handle_channel_history(intent, channel_service, formatter, auth_id, operator_persona)
+        return _handle_channel_history(
+            intent, channel_service, formatter, auth_id, operator_persona
+        )
     elif action == "list":
         return _handle_channel_list(channel_service, operator_persona, formatter)
     elif action == "create":
-        return _handle_channel_create(intent, channel_service, formatter, auth_id, operator_persona)
+        return _handle_channel_create(
+            intent, channel_service, formatter, auth_id, operator_persona
+        )
     elif action == "add_member":
-        return _handle_channel_add_member(intent, channel_service, formatter, auth_id, operator_persona)
+        return _handle_channel_add_member(
+            intent, channel_service, formatter, auth_id, operator_persona
+        )
     elif action == "complete":
-        return _handle_channel_complete(intent, channel_service, formatter, auth_id, operator_persona)
+        return _handle_channel_complete(
+            intent, channel_service, formatter, auth_id, operator_persona
+        )
     else:
         return _voice_error(
             "Unknown channel action.",
@@ -444,7 +466,9 @@ def _handle_channel_send(intent, channel_service, formatter, auth_id, operator_p
     return jsonify({"voice": voice}), 200
 
 
-def _handle_channel_history(intent, channel_service, formatter, auth_id, operator_persona):
+def _handle_channel_history(
+    intent, channel_service, formatter, auth_id, operator_persona
+):
     """Handle channel history retrieval."""
     channel_ref = intent.get("channel_ref", "")
 
@@ -485,9 +509,7 @@ def _handle_channel_list(channel_service, operator_persona, formatter):
         return _voice_error(str(e), "Check operator persona.", 400)
 
     # Filter to pending/active only
-    active_channels = [
-        ch for ch in channels if ch.status in ("pending", "active")
-    ]
+    active_channels = [ch for ch in channels if ch.status in ("pending", "active")]
 
     channel_dicts = [
         {
@@ -502,7 +524,9 @@ def _handle_channel_list(channel_service, operator_persona, formatter):
     return jsonify({"voice": voice}), 200
 
 
-def _handle_channel_create(intent, channel_service, formatter, auth_id, operator_persona):
+def _handle_channel_create(
+    intent, channel_service, formatter, auth_id, operator_persona
+):
     """Handle channel creation via voice."""
     name = intent.get("name", "")
     channel_type = intent.get("channel_type", "workshop")
@@ -553,7 +577,9 @@ def _handle_channel_create(intent, channel_service, formatter, auth_id, operator
     return jsonify({"voice": voice}), 200
 
 
-def _handle_channel_add_member(intent, channel_service, formatter, auth_id, operator_persona):
+def _handle_channel_add_member(
+    intent, channel_service, formatter, auth_id, operator_persona
+):
     """Handle adding a member to a channel."""
     member_ref = intent.get("member_ref", "")
     channel_ref = intent.get("channel_ref", "")
@@ -592,18 +618,20 @@ def _handle_channel_add_member(intent, channel_service, formatter, auth_id, oper
 
     # Check if agent is spinning up
     agent = (
-        db.session.query(Agent)
-        .filter_by(persona_id=persona.id, ended_at=None)
-        .first()
+        db.session.query(Agent).filter_by(persona_id=persona.id, ended_at=None).first()
     )
     spinning_up = agent is None
 
     _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_member_added(persona.name, channel.slug, spinning_up)
+    voice = formatter.format_channel_member_added(
+        persona.name, channel.slug, spinning_up
+    )
     return jsonify({"voice": voice}), 200
 
 
-def _handle_channel_complete(intent, channel_service, formatter, auth_id, operator_persona):
+def _handle_channel_complete(
+    intent, channel_service, formatter, auth_id, operator_persona
+):
     """Handle channel completion."""
     channel_ref = intent.get("channel_ref", "")
 
@@ -623,8 +651,25 @@ def _handle_channel_complete(intent, channel_service, formatter, auth_id, operat
     voice = formatter.format_channel_completed(channel.slug)
     return jsonify({"voice": voice}), 200
 
+
 # Affirmative patterns for matching voice text to "Yes" options
-_AFFIRMATIVE_PATTERNS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "approve", "go", "proceed", "do it", "go ahead", "absolutely", "confirmed", "confirm"}
+_AFFIRMATIVE_PATTERNS = {
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "sure",
+    "ok",
+    "okay",
+    "approve",
+    "go",
+    "proceed",
+    "do it",
+    "go ahead",
+    "absolutely",
+    "confirmed",
+    "confirm",
+}
 
 
 def _match_picker_option(text: str, labels: list[str]) -> int:
@@ -701,18 +746,20 @@ def _voice_error(error_type: str, suggestion: str, status_code: int = 400):
     if formatter:
         body = {"voice": formatter.format_error(error_type, suggestion)}
     else:
-        body = {"voice": {"status_line": error_type, "results": [], "next_action": suggestion}}
+        body = {
+            "voice": {
+                "status_line": error_type,
+                "results": [],
+                "next_action": suggestion,
+            }
+        }
     body["error"] = error_type
     return jsonify(body), status_code
 
 
 def _get_active_agents():
     """Get all active agents (not ended) — matches dashboard behaviour."""
-    return (
-        db.session.query(Agent)
-        .filter(Agent.ended_at.is_(None))
-        .all()
-    )
+    return db.session.query(Agent).filter(Agent.ended_at.is_(None)).all()
 
 
 def _get_ended_agents(hours: int = 24) -> list:
@@ -730,21 +777,28 @@ def _get_ended_agents(hours: int = 24) -> list:
 def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> dict:
     """Convert an agent to a voice-friendly dict."""
     from ..services.card_state import (
-        get_effective_state,
-        get_state_info,
+        get_command_completion_summary,
         get_command_instruction,
         get_command_summary,
-        get_command_completion_summary,
+        get_effective_state,
+        get_state_info,
     )
 
     current_command = agent.get_current_command()
     effective_state = get_effective_state(agent)
-    state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+    state_name = (
+        effective_state if isinstance(effective_state, str) else effective_state.name
+    )
     state_info = get_state_info(effective_state)
-    awaiting = current_command is not None and current_command.state == CommandState.AWAITING_INPUT
+    awaiting = (
+        current_command is not None
+        and current_command.state == CommandState.AWAITING_INPUT
+    )
 
     # Command details from card_state helpers (consistent with dashboard)
-    command_instruction = get_command_instruction(agent, _current_command=current_command)
+    command_instruction = get_command_instruction(
+        agent, _current_command=current_command
+    )
     command_summary = get_command_summary(agent, _current_command=current_command)
     command_completion_summary = get_command_completion_summary(agent)
 
@@ -759,7 +813,9 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     hero_trail = truncated_uuid[2:] if truncated_uuid else ""
     project_name = agent.project.name if agent.project else "unknown"
     persona_name = agent.persona.name if agent.persona else None
-    persona_role = agent.persona.role.name if agent.persona and agent.persona.role else None
+    persona_role = (
+        agent.persona.role.name if agent.persona and agent.persona.role else None
+    )
 
     # Time since last activity
     if agent.last_seen_at:
@@ -896,7 +952,11 @@ def list_sessions():
     if formatter:
         voice = formatter.format_sessions(agent_dicts, verbosity=verbosity)
     else:
-        voice = {"status_line": f"{len(agents)} agents active.", "results": [], "next_action": "none"}
+        voice = {
+            "status_line": f"{len(agents)} agents active.",
+            "results": [],
+            "next_action": "none",
+        }
 
     config = current_app.config.get("APP_CONFIG", {})
     auto_target = config.get("voice_bridge", {}).get("auto_target", False)
@@ -928,7 +988,9 @@ def voice_command():
     file_path = data.get("file_path", "").strip()
 
     if not text and not file_path:
-        return _voice_error("No command text provided.", "Say your command and try again.")
+        return _voice_error(
+            "No command text provided.", "Say your command and try again."
+        )
 
     formatter = _get_voice_formatter()
 
@@ -946,7 +1008,9 @@ def voice_command():
     if agent_id:
         agent = db.session.get(Agent, agent_id)
         if not agent:
-            return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
+            return _voice_error(
+                "Agent not found.", "Check the agent ID and try again.", 404
+            )
     else:
         # Auto-target: find the single agent awaiting input (if enabled)
         config = current_app.config.get("APP_CONFIG", {})
@@ -958,7 +1022,12 @@ def voice_command():
                 400,
             )
         active = _get_active_agents()
-        awaiting = [a for a in active if a.get_current_command() and a.get_current_command().state == CommandState.AWAITING_INPUT]
+        awaiting = [
+            a
+            for a in active
+            if a.get_current_command()
+            and a.get_current_command().state == CommandState.AWAITING_INPUT
+        ]
         if len(awaiting) == 0:
             # No agents awaiting input — return status summary
             logger.warning(
@@ -971,9 +1040,15 @@ def voice_command():
                     "No agents are waiting for input.",
                     "Check agent status for what they're working on.",
                 )
-                voice["results"] = [f"{d['project']}: {d['state']}" for d in agent_dicts[:3]]
+                voice["results"] = [
+                    f"{d['project']}: {d['state']}" for d in agent_dicts[:3]
+                ]
             else:
-                voice = {"status_line": "No agents awaiting input.", "results": [], "next_action": "none"}
+                voice = {
+                    "status_line": "No agents awaiting input.",
+                    "results": [],
+                    "next_action": "none",
+                }
             return jsonify({"voice": voice}), 409
         elif len(awaiting) > 1:
             names = [a.name for a in awaiting]
@@ -989,6 +1064,7 @@ def voice_command():
     # (regex patterns + LLM fallback). If the user's message is a handoff
     # request, route to HandoffExecutor instead of sending via tmux.
     from ..services.intent_detector import detect_handoff_intent
+
     is_handoff, handoff_context = detect_handoff_intent(text)
     if is_handoff:
         handoff_executor = current_app.extensions.get("handoff_executor")
@@ -1004,14 +1080,23 @@ def voice_command():
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
-            voice = formatter.format_command_result(agent.name, True, "Handoff initiated")
+            voice = formatter.format_command_result(
+                agent.name, True, "Handoff initiated"
+            )
         else:
             voice = {
                 "status_line": f"Handoff initiated for {agent.name}.",
                 "results": [],
                 "next_action": "Successor agent will be created when summary is written.",
             }
-        return jsonify({"voice": voice, "agent_id": agent.id, "handoff": True, "latency_ms": latency_ms}), 200
+        return jsonify(
+            {
+                "voice": voice,
+                "agent_id": agent.id,
+                "handoff": True,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     # Determine agent state
     current_command = agent.get_current_command()
@@ -1056,7 +1141,9 @@ def voice_command():
                     has_picker = True
                 break
         if has_picker:
-            route_desc = "plan approval (direct select)" if is_plan_approval else "'Other'"
+            route_desc = (
+                "plan approval (direct select)" if is_plan_approval else "'Other'"
+            )
             logger.info(
                 f"Voice command to agent {agent.id} targeting a picker question "
                 f"({picker_option_count} options). Will route through {route_desc}."
@@ -1090,6 +1177,7 @@ def voice_command():
     # send and respond_pending (set after commit).  The hook's
     # process_user_prompt_submit checks this to skip duplicate turn creation.
     from ..services.hook_agent_state import get_agent_hook_state
+
     get_agent_hook_state().set_respond_inflight(agent.id)
 
     if has_picker and is_answering and is_plan_approval:
@@ -1169,7 +1257,11 @@ def voice_command():
         if formatter:
             voice = formatter.format_command_result(agent.name, False, error_msg)
         else:
-            voice = {"status_line": f"Command failed: {error_msg}", "results": [], "next_action": "Try again."}
+            voice = {
+                "status_line": f"Command failed: {error_msg}",
+                "results": [],
+                "next_action": "Try again.",
+            }
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
     if is_idle or is_processing:
@@ -1183,19 +1275,28 @@ def voice_command():
         turn_result = None
         try:
             from ..services.command_lifecycle import CommandLifecycleManager
+
             event_writer = current_app.extensions.get("event_writer")
             lifecycle = CommandLifecycleManager(
                 session=db.session,
                 event_writer=event_writer,
             )
             turn_result = lifecycle.process_turn(
-                agent=agent, actor=TurnActor.USER, text=send_text,
+                agent=agent,
+                actor=TurnActor.USER,
+                text=send_text,
             )
             # Auto-transition COMMANDED → PROCESSING
-            if turn_result.success and turn_result.command and turn_result.command.state == CommandState.COMMANDED:
+            if (
+                turn_result.success
+                and turn_result.command
+                and turn_result.command.state == CommandState.COMMANDED
+            ):
                 lifecycle.update_command_state(
-                    command=turn_result.command, to_state=CommandState.PROCESSING,
-                    trigger="voice_command", confidence=1.0,
+                    command=turn_result.command,
+                    to_state=CommandState.PROCESSING,
+                    trigger="voice_command",
+                    confidence=1.0,
                 )
 
             pending = lifecycle.get_pending_summarisations()
@@ -1206,29 +1307,36 @@ def voice_command():
             if turn_result.success and turn_result.command:
                 try:
                     from ..services.broadcaster import get_broadcaster
+
                     user_turn_id = None
                     if turn_result.command.turns:
                         for t in reversed(turn_result.command.turns):
                             if t.actor == TurnActor.USER:
                                 user_turn_id = t.id
                                 break
-                    get_broadcaster().broadcast("turn_created", {
-                        "agent_id": agent.id,
-                        "project_id": agent.project_id,
-                        "text": send_text,
-                        "actor": "user",
-                        "intent": turn_result.intent.intent.value if turn_result.intent else "command",
-                        "command_id": turn_result.command.id,
-                        "command_instruction": turn_result.command.instruction,
-                        "turn_id": user_turn_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
+                    get_broadcaster().broadcast(
+                        "turn_created",
+                        {
+                            "agent_id": agent.id,
+                            "project_id": agent.project_id,
+                            "text": send_text,
+                            "actor": "user",
+                            "intent": turn_result.intent.intent.value
+                            if turn_result.intent
+                            else "command",
+                            "command_id": turn_result.command.id,
+                            "command_instruction": turn_result.command.instruction,
+                            "turn_id": user_turn_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
                 except Exception as e:
                     logger.warning(f"Voice command turn_created broadcast failed: {e}")
 
             # Set respond_pending AFTER commit so hook's user_prompt_submit
             # skips duplicate turn creation
             from ..services.hook_agent_state import get_agent_hook_state
+
             get_agent_hook_state().set_respond_pending(agent.id)
 
             broadcast_card_refresh(agent, "voice_command")
@@ -1236,7 +1344,9 @@ def voice_command():
             # Execute summarisations (instruction + turn)
             if pending:
                 try:
-                    summarisation_service = current_app.extensions.get("summarisation_service")
+                    summarisation_service = current_app.extensions.get(
+                        "summarisation_service"
+                    )
                     if summarisation_service:
                         summarisation_service.execute_pending(pending, db.session)
                 except Exception as e:
@@ -1245,7 +1355,9 @@ def voice_command():
         except Exception as e:
             # Lifecycle processing failed but tmux send already succeeded.
             # Fall back: no turn persisted, hooks may still handle it.
-            logger.warning(f"Voice command turn creation failed (tmux send succeeded): {e}")
+            logger.warning(
+                f"Voice command turn creation failed (tmux send succeeded): {e}"
+            )
             db.session.rollback()
             get_agent_hook_state().clear_respond_inflight(agent.id)
             agent.last_seen_at = datetime.now(timezone.utc)
@@ -1256,7 +1368,11 @@ def voice_command():
         if formatter:
             voice = formatter.format_command_result(agent.name, True)
         else:
-            voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
+            voice = {
+                "status_line": f"Command sent to {agent.name}.",
+                "results": [],
+                "next_action": "none",
+            }
 
         new_state = "processing"
         if turn_result and turn_result.command:
@@ -1275,13 +1391,18 @@ def voice_command():
     # AWAITING_INPUT path: create ANSWER turn and transition state
     try:
         from ..services.command_lifecycle import complete_answer
+
         result = complete_answer(current_command, agent, text, source="voice_command")
 
         latency_ms = int((time.time() - start_time) * 1000)
         if formatter:
             voice = formatter.format_command_result(agent.name, True)
         else:
-            voice = {"status_line": f"Command sent to {agent.name}.", "results": [], "next_action": "none"}
+            voice = {
+                "status_line": f"Command sent to {agent.name}.",
+                "results": [],
+                "next_action": "none",
+            }
 
         response_data = {
             "voice": voice,
@@ -1311,7 +1432,9 @@ def upload_file(agent_id: int):
 
     agent = db.session.get(Agent, agent_id)
     if not agent:
-        return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
+        return _voice_error(
+            "Agent not found.", "Check the agent ID and try again.", 404
+        )
 
     # Check tmux pane
     if not agent.tmux_pane_id:
@@ -1331,22 +1454,29 @@ def upload_file(agent_id: int):
 
     # Defense-in-depth: validate filename for path traversal at route level
     from ..services.file_upload import FileUploadService
+
     if not FileUploadService.is_safe_filename(uploaded_file.filename):
-        return _voice_error("Invalid filename.", "Filename contains unsafe characters.", 400)
+        return _voice_error(
+            "Invalid filename.", "Filename contains unsafe characters.", 400
+        )
 
     text = request.form.get("text", "").strip()
 
     # Validate and save via FileUploadService
     file_upload = current_app.extensions.get("file_upload")
     if not file_upload:
-        return _voice_error("File upload not available.", "Server configuration error.", 503)
+        return _voice_error(
+            "File upload not available.", "Server configuration error.", 503
+        )
 
     # Read file data to get size
     uploaded_file.seek(0, 2)  # seek to end
     file_size = uploaded_file.tell()
     uploaded_file.seek(0)
 
-    validation = file_upload.validate_file(uploaded_file.filename, file_size, uploaded_file)
+    validation = file_upload.validate_file(
+        uploaded_file.filename, file_size, uploaded_file
+    )
     uploaded_file.seek(0)
 
     if not validation["valid"]:
@@ -1401,6 +1531,7 @@ def upload_file(agent_id: int):
     if not result.success:
         # Clean up saved file since delivery failed
         from pathlib import Path
+
         Path(file_metadata["server_path"]).unlink(missing_ok=True)
         error_msg = result.error_message or "Send failed"
         return jsonify({"error": f"File delivery failed: {error_msg}"}), 502
@@ -1413,8 +1544,11 @@ def upload_file(agent_id: int):
         # tmux text (which has the file path prepended), avoiding a duplicate
         # bubble in the chat UI where the frontend dedup compares by text.
         from ..services.hook_agent_state import get_agent_hook_state
+
         pending_meta = dict(db_metadata)
-        pending_meta["_display_text"] = text or f"[File: {file_metadata['original_filename']}]"
+        pending_meta["_display_text"] = (
+            text or f"[File: {file_metadata['original_filename']}]"
+        )
         get_agent_hook_state().set_file_metadata_pending(agent.id, pending_meta)
 
         agent.last_seen_at = datetime.now(timezone.utc)
@@ -1422,30 +1556,38 @@ def upload_file(agent_id: int):
         broadcast_card_refresh(agent, "file_upload")
 
         latency_ms = int((time.time() - start_time) * 1000)
-        return jsonify({
-            "file_metadata": db_metadata,
-            "agent_id": agent.id,
-            "new_state": "idle",
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "file_metadata": db_metadata,
+                "agent_id": agent.id,
+                "new_state": "idle",
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     # AWAITING_INPUT path
     try:
         from ..services.command_lifecycle import complete_answer
+
         display_text = text if text else f"[File: {file_metadata['original_filename']}]"
         result = complete_answer(
-            current_command, agent, display_text,
-            file_metadata=db_metadata, source="file_upload",
+            current_command,
+            agent,
+            display_text,
+            file_metadata=db_metadata,
+            source="file_upload",
         )
 
         latency_ms = int((time.time() - start_time) * 1000)
-        return jsonify({
-            "file_metadata": file_metadata,
-            "agent_id": agent.id,
-            "turn_id": result.turn.id,
-            "new_state": result.new_state.value,
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "file_metadata": file_metadata,
+                "agent_id": agent.id,
+                "turn_id": result.turn.id,
+                "new_state": result.new_state.value,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     except Exception as e:
         db.session.rollback()
@@ -1484,7 +1626,9 @@ def agent_output(agent_id: int):
 
     agent = db.session.get(Agent, agent_id)
     if not agent:
-        return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
+        return _voice_error(
+            "Agent not found.", "Check the agent ID and try again.", 404
+        )
 
     commands = (
         db.session.query(Command)
@@ -1496,22 +1640,30 @@ def agent_output(agent_id: int):
 
     command_dicts = []
     for command in commands:
-        command_dicts.append({
-            "command_id": command.id,
-            "state": command.state.value,
-            "instruction": command.instruction,
-            "completion_summary": command.completion_summary,
-            "full_command": command.full_command,
-            "full_output": command.full_output,
-        })
+        command_dicts.append(
+            {
+                "command_id": command.id,
+                "state": command.state.value,
+                "instruction": command.instruction,
+                "completion_summary": command.completion_summary,
+                "full_command": command.full_command,
+                "full_output": command.full_output,
+            }
+        )
 
     if formatter:
         voice = formatter.format_output(agent.name, command_dicts, verbosity=verbosity)
     else:
-        voice = {"status_line": f"{len(commands)} recent commands.", "results": [], "next_action": "none"}
+        voice = {
+            "status_line": f"{len(commands)} recent commands.",
+            "results": [],
+            "next_action": "none",
+        }
 
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({"voice": voice, "commands": command_dicts, "latency_ms": latency_ms}), 200
+    return jsonify(
+        {"voice": voice, "commands": command_dicts, "latency_ms": latency_ms}
+    ), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/question", methods=["GET"])
@@ -1522,7 +1674,9 @@ def agent_question(agent_id: int):
 
     agent = db.session.get(Agent, agent_id)
     if not agent:
-        return _voice_error("Agent not found.", "Check the agent ID and try again.", 404)
+        return _voice_error(
+            "Agent not found.", "Check the agent ID and try again.", 404
+        )
 
     current_command = agent.get_current_command()
     if not current_command or current_command.state != CommandState.AWAITING_INPUT:
@@ -1560,23 +1714,35 @@ def agent_question(agent_id: int):
         if questions and isinstance(questions, list):
             if len(questions) > 1:
                 # Multi-question: return full structure array
-                q_options = [{
-                    "question": qq.get("question", ""),
-                    "header": qq.get("header", ""),
-                    "multiSelect": qq.get("multiSelect", False),
-                    "options": [
-                        {"label": o.get("label", ""), "description": o.get("description", "")}
-                        for o in qq.get("options", []) if isinstance(o, dict)
-                    ],
-                } for qq in questions if isinstance(qq, dict)]
+                q_options = [
+                    {
+                        "question": qq.get("question", ""),
+                        "header": qq.get("header", ""),
+                        "multiSelect": qq.get("multiSelect", False),
+                        "options": [
+                            {
+                                "label": o.get("label", ""),
+                                "description": o.get("description", ""),
+                            }
+                            for o in qq.get("options", [])
+                            if isinstance(o, dict)
+                        ],
+                    }
+                    for qq in questions
+                    if isinstance(qq, dict)
+                ]
                 if not q_source or q_source == "unknown":
                     q_source = "ask_user_question"
             else:
                 opts = questions[0].get("options", []) if questions else []
                 if opts:
                     q_options = [
-                        {"label": o.get("label", ""), "description": o.get("description", "")}
-                        for o in opts if isinstance(o, dict)
+                        {
+                            "label": o.get("label", ""),
+                            "description": o.get("description", ""),
+                        }
+                        for o in opts
+                        if isinstance(o, dict)
                     ]
                     if not q_source or q_source == "unknown":
                         q_source = "ask_user_question"
@@ -1592,10 +1758,16 @@ def agent_question(agent_id: int):
     if formatter:
         voice = formatter.format_question(agent_data)
     else:
-        voice = {"status_line": "Question from agent.", "results": [q_text], "next_action": "Respond."}
+        voice = {
+            "status_line": "Question from agent.",
+            "results": [q_text],
+            "next_action": "Respond.",
+        }
 
     latency_ms = int((time.time() - start_time) * 1000)
-    return jsonify({"voice": voice, "question": agent_data, "latency_ms": latency_ms}), 200
+    return jsonify(
+        {"voice": voice, "question": agent_data, "latency_ms": latency_ms}
+    ), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/transcript", methods=["GET"])
@@ -1654,23 +1826,25 @@ def agent_transcript(agent_id: int):
         # Filter out PROGRESS turns with no meaningful text
         if t.intent == TurnIntent.PROGRESS and (not t.text or not t.text.strip()):
             continue
-        turn_list.append({
-            "id": t.id,
-            "actor": t.actor.value,
-            "intent": t.intent.value,
-            "text": t.text,
-            "summary": t.summary,
-            "timestamp": t.timestamp.isoformat() if t.timestamp else None,
-            "tool_input": t.tool_input,
-            "question_text": t.question_text,
-            "question_options": t.question_options,
-            "question_source_type": t.question_source_type,
-            "answered_by_turn_id": t.answered_by_turn_id,
-            "file_metadata": t.file_metadata,
-            "command_id": command.id,
-            "command_instruction": command.instruction,
-            "command_state": command.state.value,
-        })
+        turn_list.append(
+            {
+                "id": t.id,
+                "actor": t.actor.value,
+                "intent": t.intent.value,
+                "text": t.text,
+                "summary": t.summary,
+                "timestamp": t.timestamp.isoformat() if t.timestamp else None,
+                "tool_input": t.tool_input,
+                "question_text": t.question_text,
+                "question_options": t.question_options,
+                "question_source_type": t.question_source_type,
+                "answered_by_turn_id": t.answered_by_turn_id,
+                "file_metadata": t.file_metadata,
+                "command_id": command.id,
+                "command_instruction": command.instruction,
+                "command_state": command.state.value,
+            }
+        )
 
     # Deduplicate: suppress PROGRESS turns whose text is fully contained in
     # a COMPLETION/END_OF_COMMAND turn for the same command.  This prevents
@@ -1680,7 +1854,10 @@ def agent_transcript(agent_id: int):
         for t in turn_list:
             if t.get("type") == "command_boundary":
                 continue
-            if t.get("actor") == "agent" and t.get("intent") in ("completion", "end_of_command"):
+            if t.get("actor") == "agent" and t.get("intent") in (
+                "completion",
+                "end_of_command",
+            ):
                 existing = completion_text_by_cmd.get(t["command_id"], "")
                 if len(t.get("text", "") or "") > len(existing):
                     completion_text_by_cmd[t["command_id"]] = t.get("text", "") or ""
@@ -1688,9 +1865,11 @@ def agent_transcript(agent_id: int):
         if completion_text_by_cmd:
             deduped = []
             for t in turn_list:
-                if (t.get("intent") == "progress"
-                        and t.get("actor") == "agent"
-                        and t.get("command_id") in completion_text_by_cmd):
+                if (
+                    t.get("intent") == "progress"
+                    and t.get("actor") == "agent"
+                    and t.get("command_id") in completion_text_by_cmd
+                ):
                     completion_text = completion_text_by_cmd[t["command_id"]]
                     progress_text = (t.get("text", "") or "").strip()
                     if progress_text and progress_text in completion_text:
@@ -1726,14 +1905,16 @@ def agent_transcript(agent_id: int):
             )
             for cmd in empty_commands:
                 ts_iso = cmd.started_at.isoformat() if cmd.started_at else None
-                turn_list.append({
-                    "type": "command_boundary",
-                    "command_id": cmd.id,
-                    "command_instruction": cmd.instruction,
-                    "command_state": cmd.state.value,
-                    "timestamp": ts_iso,
-                    "has_turns": False,
-                })
+                turn_list.append(
+                    {
+                        "type": "command_boundary",
+                        "command_id": cmd.id,
+                        "command_instruction": cmd.instruction,
+                        "command_state": cmd.state.value,
+                        "timestamp": ts_iso,
+                        "has_turns": False,
+                    }
+                )
             # Re-sort by timestamp to place synthetic entries chronologically
             turn_list.sort(key=lambda x: x.get("timestamp") or "")
 
@@ -1744,19 +1925,23 @@ def agent_transcript(agent_id: int):
 
     truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
 
-    return jsonify({
-        "turns": turn_list,
-        "has_more": has_more,
-        "agent_state": agent_state,
-        "agent_ended": agent_ended,
-        "project": agent.project.name if agent.project else "unknown",
-        "agent_name": agent.name,
-        "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
-        "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
-        "tmux_session": agent.tmux_session,
-        "persona_name": agent.persona.name if agent.persona else None,
-        "persona_role": agent.persona.role.name if agent.persona and agent.persona.role else None,
-    }), 200
+    return jsonify(
+        {
+            "turns": turn_list,
+            "has_more": has_more,
+            "agent_state": agent_state,
+            "agent_ended": agent_ended,
+            "project": agent.project.name if agent.project else "unknown",
+            "agent_name": agent.name,
+            "hero_chars": truncated_uuid[:2] if truncated_uuid else "",
+            "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
+            "tmux_session": agent.tmux_session,
+            "persona_name": agent.persona.name if agent.persona else None,
+            "persona_role": agent.persona.role.name
+            if agent.persona and agent.persona.role
+            else None,
+        }
+    ), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/create", methods=["POST"])
@@ -1801,20 +1986,32 @@ def voice_create_agent():
         if formatter:
             voice = formatter.format_error(result.message, "Check project settings.")
         else:
-            voice = {"status_line": result.message, "results": [], "next_action": "none"}
-        return jsonify({"voice": voice, "error": result.message, "latency_ms": latency_ms}), 422
+            voice = {
+                "status_line": result.message,
+                "results": [],
+                "next_action": "none",
+            }
+        return jsonify(
+            {"voice": voice, "error": result.message, "latency_ms": latency_ms}
+        ), 422
 
     if formatter:
-        voice = {"status_line": "Agent starting.", "results": [result.message], "next_action": "Wait for it to appear on the dashboard."}
+        voice = {
+            "status_line": "Agent starting.",
+            "results": [result.message],
+            "next_action": "Wait for it to appear on the dashboard.",
+        }
     else:
         voice = {"status_line": result.message, "results": [], "next_action": "none"}
 
-    return jsonify({
-        "voice": voice,
-        "message": result.message,
-        "tmux_session_name": result.tmux_session_name,
-        "latency_ms": latency_ms,
-    }), 201
+    return jsonify(
+        {
+            "voice": voice,
+            "message": result.message,
+            "tmux_session_name": result.tmux_session_name,
+            "latency_ms": latency_ms,
+        }
+    ), 201
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/shutdown", methods=["POST"])
@@ -1831,15 +2028,27 @@ def voice_shutdown_agent(agent_id: int):
         if formatter:
             voice = formatter.format_error(result.message, "Check the agent status.")
         else:
-            voice = {"status_line": result.message, "results": [], "next_action": "none"}
-        return jsonify({"voice": voice, "error": result.message, "latency_ms": latency_ms}), status
+            voice = {
+                "status_line": result.message,
+                "results": [],
+                "next_action": "none",
+            }
+        return jsonify(
+            {"voice": voice, "error": result.message, "latency_ms": latency_ms}
+        ), status
 
     if formatter:
-        voice = {"status_line": "Shutting down.", "results": [result.message], "next_action": "Agent will disappear when hooks fire."}
+        voice = {
+            "status_line": "Shutting down.",
+            "results": [result.message],
+            "next_action": "Agent will disappear when hooks fire.",
+        }
     else:
         voice = {"status_line": result.message, "results": [], "next_action": "none"}
 
-    return jsonify({"voice": voice, "message": result.message, "latency_ms": latency_ms}), 200
+    return jsonify(
+        {"voice": voice, "message": result.message, "latency_ms": latency_ms}
+    ), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/context", methods=["GET"])
@@ -1865,30 +2074,40 @@ def voice_agent_context(agent_id: int):
             voice = {"status_line": msg, "results": [], "next_action": "none"}
         else:
             voice = {"status_line": msg, "results": [], "next_action": "none"}
-        return jsonify({
-            "voice": voice,
-            "available": False,
-            "reason": result.reason,
-            "latency_ms": latency_ms,
-        }), status
+        return jsonify(
+            {
+                "voice": voice,
+                "available": False,
+                "reason": result.reason,
+                "latency_ms": latency_ms,
+            }
+        ), status
 
     summary = f"{result.percent_used}% used, {result.remaining_tokens} remaining"
     if formatter:
-        voice = {"status_line": summary, "results": [result.raw or summary], "next_action": "none"}
+        voice = {
+            "status_line": summary,
+            "results": [result.raw or summary],
+            "next_action": "none",
+        }
     else:
         voice = {"status_line": summary, "results": [], "next_action": "none"}
 
-    return jsonify({
-        "voice": voice,
-        "available": True,
-        "percent_used": result.percent_used,
-        "remaining_tokens": result.remaining_tokens,
-        "raw": result.raw,
-        "latency_ms": latency_ms,
-    }), 200
+    return jsonify(
+        {
+            "voice": voice,
+            "available": True,
+            "percent_used": result.percent_used,
+            "remaining_tokens": result.remaining_tokens,
+            "raw": result.raw,
+            "latency_ms": latency_ms,
+        }
+    ), 200
 
 
-@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/recapture-permission", methods=["POST"])
+@voice_bridge_bp.route(
+    "/api/voice/agents/<int:agent_id>/recapture-permission", methods=["POST"]
+)
 def recapture_permission_options(agent_id: int):
     """Re-capture permission options from tmux when initial capture timed out.
 
@@ -1928,13 +2147,18 @@ def recapture_permission_options(agent_id: int):
 
     # Only recapture permission_request turns — free_text questions are
     # conversational and must not be overwritten with Yes/No buttons.
-    if question_turn.question_source_type and question_turn.question_source_type != "permission_request":
-        return jsonify({
-            "recaptured": False,
-            "already_present": False,
-            "error": f"Turn is {question_turn.question_source_type}, not a permission request",
-            "turn_id": question_turn.id,
-        }), 200
+    if (
+        question_turn.question_source_type
+        and question_turn.question_source_type != "permission_request"
+    ):
+        return jsonify(
+            {
+                "recaptured": False,
+                "already_present": False,
+                "error": f"Turn is {question_turn.question_source_type}, not a permission request",
+                "turn_id": question_turn.id,
+            }
+        ), 200
 
     # If options already exist, return them immediately
     existing_options = question_turn.question_options
@@ -1945,22 +2169,29 @@ def recapture_permission_options(agent_id: int):
             opts = questions[0].get("options", []) if questions else []
             if opts:
                 existing_options = [
-                    {"label": o.get("label", ""), "description": o.get("description", "")}
-                    for o in opts if isinstance(o, dict)
+                    {
+                        "label": o.get("label", ""),
+                        "description": o.get("description", ""),
+                    }
+                    for o in opts
+                    if isinstance(o, dict)
                 ]
 
     if existing_options:
         latency_ms = int((time.time() - start_time) * 1000)
-        return jsonify({
-            "recaptured": False,
-            "already_present": True,
-            "turn_id": question_turn.id,
-            "question_options": existing_options,
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "recaptured": False,
+                "already_present": True,
+                "turn_id": question_turn.id,
+                "question_options": existing_options,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     # Attempt to capture from tmux with generous timeout
     from ..services.hook_extractors import synthesize_permission_options
+
     structured_options = synthesize_permission_options(
         agent,
         tool_name=None,  # Unknown at this point
@@ -1969,13 +2200,15 @@ def recapture_permission_options(agent_id: int):
 
     if not structured_options:
         latency_ms = int((time.time() - start_time) * 1000)
-        return jsonify({
-            "recaptured": False,
-            "already_present": False,
-            "error": "Could not capture options from terminal",
-            "turn_id": question_turn.id,
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "recaptured": False,
+                "already_present": False,
+                "error": "Could not capture options from terminal",
+                "turn_id": question_turn.id,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     # Extract options from the synthesized structure
     synth_questions = structured_options.get("questions", [])
@@ -1985,18 +2218,21 @@ def recapture_permission_options(agent_id: int):
         if opts:
             q_options = [
                 {"label": o.get("label", ""), "description": o.get("description", "")}
-                for o in opts if isinstance(o, dict)
+                for o in opts
+                if isinstance(o, dict)
             ]
 
     if not q_options:
         latency_ms = int((time.time() - start_time) * 1000)
-        return jsonify({
-            "recaptured": False,
-            "already_present": False,
-            "error": "Captured context but no options found",
-            "turn_id": question_turn.id,
-            "latency_ms": latency_ms,
-        }), 200
+        return jsonify(
+            {
+                "recaptured": False,
+                "already_present": False,
+                "error": "Captured context but no options found",
+                "turn_id": question_turn.id,
+                "latency_ms": latency_ms,
+            }
+        ), 200
 
     # Update question text if we got a better one
     if synth_questions and synth_questions[0].get("question"):
@@ -2012,16 +2248,20 @@ def recapture_permission_options(agent_id: int):
     # Broadcast turn_updated so all clients get the options
     try:
         from ..services.broadcaster import get_broadcaster
-        get_broadcaster().broadcast("turn_updated", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "turn_id": question_turn.id,
-            "update_type": "options_recaptured",
-            "question_options": q_options,
-            "question_text": question_turn.question_text,
-            "tool_input": structured_options,
-            "safety": structured_options.get("safety", ""),
-        })
+
+        get_broadcaster().broadcast(
+            "turn_updated",
+            {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "turn_id": question_turn.id,
+                "update_type": "options_recaptured",
+                "question_options": q_options,
+                "question_text": question_turn.question_text,
+                "tool_input": structured_options,
+                "safety": structured_options.get("safety", ""),
+            },
+        )
     except Exception as e:
         logger.warning(f"Failed to broadcast recaptured options: {e}")
 
@@ -2030,11 +2270,13 @@ def recapture_permission_options(agent_id: int):
         f"Recaptured permission options for agent {agent_id}, "
         f"turn {question_turn.id}: {len(q_options)} options ({latency_ms}ms)"
     )
-    return jsonify({
-        "recaptured": True,
-        "turn_id": question_turn.id,
-        "question_options": q_options,
-        "question_text": question_turn.question_text,
-        "tool_input": structured_options,
-        "latency_ms": latency_ms,
-    }), 200
+    return jsonify(
+        {
+            "recaptured": True,
+            "turn_id": question_turn.id,
+            "question_options": q_options,
+            "question_text": question_turn.question_text,
+            "tool_input": structured_options,
+            "latency_ms": latency_ms,
+        }
+    ), 200

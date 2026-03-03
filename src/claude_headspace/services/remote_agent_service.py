@@ -9,16 +9,15 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 from flask import current_app
 
 from ..database import db
 from ..models.agent import Agent
 from ..models.project import Project
+from .advisory_lock import LockNamespace, advisory_lock
 from .agent_lifecycle import create_agent, shutdown_agent
 from .persona_assets import GuardrailValidationError, validate_guardrails_content
-from .advisory_lock import LockNamespace, advisory_lock
 from .session_token import SessionTokenService
 
 logger = logging.getLogger(__name__)
@@ -35,16 +34,16 @@ class RemoteAgentResult:
     """Result of remote agent creation."""
 
     success: bool
-    agent_id: Optional[int] = None
-    embed_url: Optional[str] = None
-    session_token: Optional[str] = None
-    project_slug: Optional[str] = None
-    persona_slug: Optional[str] = None
-    tmux_session_name: Optional[str] = None
+    agent_id: int | None = None
+    embed_url: str | None = None
+    session_token: str | None = None
+    project_slug: str | None = None
+    persona_slug: str | None = None
+    tmux_session_name: str | None = None
     status: str = "error"
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
-    guardrails_version: Optional[str] = None
+    error_code: str | None = None
+    error_message: str | None = None
+    guardrails_version: str | None = None
 
 
 class RemoteAgentService:
@@ -53,7 +52,9 @@ class RemoteAgentService:
     Registered in app.extensions["remote_agent_service"].
     """
 
-    def __init__(self, app=None, session_token_service: SessionTokenService | None = None):
+    def __init__(
+        self, app=None, session_token_service: SessionTokenService | None = None
+    ):
         self._app = app
         self._session_token_service = session_token_service
 
@@ -103,11 +104,7 @@ class RemoteAgentService:
             RemoteAgentResult with all creation details or error info.
         """
         # 1. Resolve project by slug
-        project = (
-            db.session.query(Project)
-            .filter(Project.slug == project_slug)
-            .first()
-        )
+        project = db.session.query(Project).filter(Project.slug == project_slug).first()
         if not project:
             return RemoteAgentResult(
                 success=False,

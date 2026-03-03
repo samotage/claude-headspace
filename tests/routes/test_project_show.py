@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from src.claude_headspace.routes.projects import projects_bp
 from src.claude_headspace.models.project import generate_slug
+from src.claude_headspace.routes.projects import projects_bp
 
 # Resolve template folder relative to the project root
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -118,8 +118,13 @@ class TestProjectShowRoute:
 
     def test_show_page_returns_200(self, client, mock_db, mock_project):
         """Test show page returns 200 for valid slug."""
-        with patch("src.claude_headspace.routes.projects.Project") as MockProject, \
-             patch("src.claude_headspace.routes.projects.render_template", return_value="ok") as mock_render:
+        with (
+            patch("src.claude_headspace.routes.projects.Project") as MockProject,
+            patch(
+                "src.claude_headspace.routes.projects.render_template",
+                return_value="ok",
+            ) as mock_render,
+        ):
             MockProject.query.filter_by.return_value.first.return_value = mock_project
 
             response = client.get("/projects/test-project")
@@ -131,8 +136,13 @@ class TestProjectShowRoute:
 
     def test_show_page_returns_404_for_invalid_slug(self, client, mock_db):
         """Test show page returns 404 for invalid slug."""
-        with patch("src.claude_headspace.routes.projects.Project") as MockProject, \
-             patch("src.claude_headspace.routes.projects.render_template", return_value="not found") as mock_render:
+        with (
+            patch("src.claude_headspace.routes.projects.Project") as MockProject,
+            patch(
+                "src.claude_headspace.routes.projects.render_template",
+                return_value="not found",
+            ) as mock_render,
+        ):
             MockProject.query.filter_by.return_value.first.return_value = None
 
             response = client.get("/projects/nonexistent-slug")
@@ -147,7 +157,9 @@ class TestSlugInApiResponses:
 
     def test_list_includes_slug(self, client, mock_db, mock_project):
         """Test that list response includes slug field."""
-        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [mock_project]
+        mock_db.session.query.return_value.options.return_value.order_by.return_value.all.return_value = [
+            mock_project
+        ]
 
         response = client.get("/api/projects")
         data = response.get_json()
@@ -180,10 +192,13 @@ class TestSlugInApiResponses:
             mock_project.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
             MockProject.return_value = mock_project
 
-            response = client.post("/api/projects", json={
-                "name": "new-project",
-                "path": "/path/to/new",
-            })
+            response = client.post(
+                "/api/projects",
+                json={
+                    "name": "new-project",
+                    "path": "/path/to/new",
+                },
+            )
 
             assert response.status_code == 201
             data = response.get_json()
@@ -206,7 +221,10 @@ class TestSlugRegeneration:
         """Test that updating name regenerates slug."""
         mock_db.session.get.return_value = mock_project
 
-        with patch("src.claude_headspace.routes.projects._unique_slug", return_value="updated-name") as mock_unique:
+        with patch(
+            "src.claude_headspace.routes.projects._unique_slug",
+            return_value="updated-name",
+        ) as mock_unique:
             response = client.put("/api/projects/1", json={"name": "Updated Name"})
             assert response.status_code == 200
             mock_unique.assert_called_once_with("Updated Name", exclude_id=1)
@@ -230,6 +248,7 @@ class TestUniqueSlug:
             MockProject.query.filter_by.return_value.first.return_value = None
 
             from src.claude_headspace.routes.projects import _unique_slug
+
             result = _unique_slug("My Project")
             assert result == "my-project"
 
@@ -238,9 +257,16 @@ class TestUniqueSlug:
         with patch("src.claude_headspace.routes.projects.Project") as MockProject:
             existing = MagicMock()
             # First call (slug="my-project") returns existing, second call (slug="my-project-2") returns None
-            MockProject.query.filter_by.return_value.filter.return_value.first.side_effect = [existing, None]
-            MockProject.query.filter_by.return_value.first.side_effect = [existing, None]
+            MockProject.query.filter_by.return_value.filter.return_value.first.side_effect = [
+                existing,
+                None,
+            ]
+            MockProject.query.filter_by.return_value.first.side_effect = [
+                existing,
+                None,
+            ]
 
             from src.claude_headspace.routes.projects import _unique_slug
+
             result = _unique_slug("My Project")
             assert result == "my-project-2"

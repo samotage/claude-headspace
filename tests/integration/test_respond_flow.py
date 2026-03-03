@@ -8,7 +8,6 @@ Verifies the full respond cycle:
 
 import pytest
 from sqlalchemy import select
-from unittest.mock import patch, MagicMock
 
 from claude_headspace.models import (
     Agent,
@@ -21,8 +20,8 @@ from claude_headspace.models import (
 
 from .factories import (
     AgentFactory,
-    ProjectFactory,
     CommandFactory,
+    ProjectFactory,
     TurnFactory,
 )
 
@@ -154,9 +153,13 @@ class TestRespondFlow:
         db_session.flush()
 
         # Verify: Turn chain exists
-        turns = db_session.execute(
-            select(Turn).where(Turn.command_id == command.id).order_by(Turn.id)
-        ).scalars().all()
+        turns = (
+            db_session.execute(
+                select(Turn).where(Turn.command_id == command.id).order_by(Turn.id)
+            )
+            .scalars()
+            .all()
+        )
 
         assert len(turns) == 2
         assert turns[0].actor == TurnActor.AGENT

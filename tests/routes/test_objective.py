@@ -4,8 +4,6 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestObjectivePage:
     """Tests for the objective page route."""
@@ -44,12 +42,16 @@ class TestObjectivePage:
         mock_history_item.id = 1
         mock_history_item.text = "Previous objective"
         mock_history_item.constraints = None
-        mock_history_item.started_at = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        mock_history_item.started_at = datetime(
+            2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc
+        )
         mock_history_item.ended_at = datetime(2024, 1, 1, 11, 0, 0, tzinfo=timezone.utc)
 
         with patch("claude_headspace.routes.objective.db") as mock_db:
             mock_db.session.query.return_value.first.return_value = None
-            mock_db.session.query.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_history_item]
+            mock_db.session.query.return_value.order_by.return_value.limit.return_value.all.return_value = [
+                mock_history_item
+            ]
             mock_db.session.query.return_value.count.return_value = 1
 
             response = client.get("/objective")
@@ -158,7 +160,7 @@ class TestUpdateObjectiveAPI:
                     response = client.post(
                         "/api/objective",
                         data=json.dumps({"text": "New objective"}),
-                        content_type="application/json"
+                        content_type="application/json",
                     )
 
                     assert response.status_code == 200
@@ -185,8 +187,10 @@ class TestUpdateObjectiveAPI:
             with patch("claude_headspace.routes.objective.ObjectiveHistory"):
                 response = client.post(
                     "/api/objective",
-                    data=json.dumps({"text": "Updated objective", "constraints": "New constraints"}),
-                    content_type="application/json"
+                    data=json.dumps(
+                        {"text": "Updated objective", "constraints": "New constraints"}
+                    ),
+                    content_type="application/json",
                 )
 
                 assert response.status_code == 200
@@ -210,7 +214,7 @@ class TestUpdateObjectiveAPI:
                 response = client.post(
                     "/api/objective",
                     data=json.dumps({"text": "New objective", "new": True}),
-                    content_type="application/json"
+                    content_type="application/json",
                 )
 
                 assert response.status_code == 200
@@ -232,7 +236,7 @@ class TestUpdateObjectiveAPI:
             response = client.post(
                 "/api/objective",
                 data=json.dumps({"text": "Fixed typo"}),
-                content_type="application/json"
+                content_type="application/json",
             )
 
             assert response.status_code == 200
@@ -246,7 +250,7 @@ class TestUpdateObjectiveAPI:
         response = client.post(
             "/api/objective",
             data=json.dumps({"text": ""}),
-            content_type="application/json"
+            content_type="application/json",
         )
 
         assert response.status_code == 400
@@ -259,7 +263,7 @@ class TestUpdateObjectiveAPI:
         response = client.post(
             "/api/objective",
             data=json.dumps({"text": "   "}),
-            content_type="application/json"
+            content_type="application/json",
         )
 
         assert response.status_code == 400
@@ -271,7 +275,7 @@ class TestUpdateObjectiveAPI:
         response = client.post(
             "/api/objective",
             data=json.dumps({"constraints": "Some constraints"}),
-            content_type="application/json"
+            content_type="application/json",
         )
 
         assert response.status_code == 400
@@ -281,9 +285,7 @@ class TestUpdateObjectiveAPI:
     def test_update_objective_non_json_body(self, client):
         """Test that non-JSON body returns error."""
         response = client.post(
-            "/api/objective",
-            data="not json",
-            content_type="text/plain"
+            "/api/objective", data="not json", content_type="text/plain"
         )
 
         # Flask returns 415 Unsupported Media Type for wrong content-type
@@ -300,7 +302,7 @@ class TestUpdateObjectiveAPI:
                     response = client.post(
                         "/api/objective",
                         data=json.dumps({"text": "Test"}),
-                        content_type="application/json"
+                        content_type="application/json",
                     )
 
                     assert response.status_code == 500
@@ -319,7 +321,9 @@ class TestGetObjectiveHistoryAPI:
             item.text = f"Objective {i}"
             item.constraints = None
             item.started_at = datetime(2024, 1, i + 1, tzinfo=timezone.utc)
-            item.ended_at = datetime(2024, 1, i + 2, tzinfo=timezone.utc) if i < 4 else None
+            item.ended_at = (
+                datetime(2024, 1, i + 2, tzinfo=timezone.utc) if i < 4 else None
+            )
             mock_items.append(item)
 
         with patch("claude_headspace.routes.objective.db") as mock_db:

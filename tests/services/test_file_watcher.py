@@ -3,9 +3,8 @@
 import json
 import os
 import tempfile
-import threading
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -136,11 +135,16 @@ class TestFileWatcher:
 
         # Write a turn to the file
         with open(jsonl_path, "a") as f:
-            f.write(json.dumps({
-                "type": "user",
-                "message": {"content": "Hello!"},
-                "timestamp": "2026-01-29T10:00:00Z",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {"content": "Hello!"},
+                        "timestamp": "2026-01-29T10:00:00Z",
+                    }
+                )
+                + "\n"
+            )
 
         # Wait for polling to detect it
         time.sleep(0.3)
@@ -172,9 +176,7 @@ class TestFileWatcher:
 
         # Register a session
         session_uuid = uuid4()
-        session = short_timeout_watcher.register_session(
-            session_uuid, "/test", "/test"
-        )
+        session = short_timeout_watcher.register_session(session_uuid, "/test", "/test")
 
         # Make session appear old
         session.last_activity_at = datetime.now(timezone.utc) - timedelta(seconds=1)
@@ -230,11 +232,16 @@ class TestFileWatcherDebouncing:
         # Write multiple rapid changes
         for i in range(5):
             with open(jsonl_path, "a") as f:
-                f.write(json.dumps({
-                    "type": "user",
-                    "message": {"content": f"Message {i}"},
-                    "timestamp": "2026-01-29T10:00:00Z",
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "message": {"content": f"Message {i}"},
+                            "timestamp": "2026-01-29T10:00:00Z",
+                        }
+                    )
+                    + "\n"
+                )
             time.sleep(0.01)  # Very fast writes
 
         # Wait for debounce + polling

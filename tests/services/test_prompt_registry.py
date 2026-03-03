@@ -2,7 +2,10 @@
 
 import pytest
 
-from src.claude_headspace.services.prompt_registry import build_prompt, _PROMPT_TEMPLATES
+from src.claude_headspace.services.prompt_registry import (
+    _PROMPT_TEMPLATES,
+    build_prompt,
+)
 
 
 class TestBuildPrompt:
@@ -31,7 +34,9 @@ class TestBuildPrompt:
             "question_classification",
         ]
         for prompt_type in expected_types:
-            assert prompt_type in _PROMPT_TEMPLATES, f"{prompt_type} missing from registry"
+            assert prompt_type in _PROMPT_TEMPLATES, (
+                f"{prompt_type} missing from registry"
+            )
 
 
 class TestTurnPrompts:

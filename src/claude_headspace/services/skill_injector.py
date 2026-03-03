@@ -35,6 +35,7 @@ def _report_guardrail_failure(agent_id: int, reason: str) -> None:
     """
     try:
         from flask import current_app
+
         reporter = current_app.extensions.get("exception_reporter")
         if reporter and reporter.is_configured:
             exc = GuardrailValidationError(reason)
@@ -63,31 +64,37 @@ def _compose_priming_message(
     parts = []
 
     if guardrails_content:
-        parts.extend([
-            "## Platform Guardrails",
-            "",
-            guardrails_content.strip(),
-            "",
-        ])
+        parts.extend(
+            [
+                "## Platform Guardrails",
+                "",
+                guardrails_content.strip(),
+                "",
+            ]
+        )
 
-    parts.extend([
-        f"You are {persona_name}. Read the following skill and experience "
-        "content carefully. Absorb this identity and respond in character "
-        "with a brief greeting confirming who you are. Your first task "
-        "will be provided immediately after this greeting — do not ask "
-        "the user what they need help with.",
-        "",
-        "## Skills",
-        "",
-        skill_content.strip(),
-    ])
+    parts.extend(
+        [
+            f"You are {persona_name}. Read the following skill and experience "
+            "content carefully. Absorb this identity and respond in character "
+            "with a brief greeting confirming who you are. Your first task "
+            "will be provided immediately after this greeting — do not ask "
+            "the user what they need help with.",
+            "",
+            "## Skills",
+            "",
+            skill_content.strip(),
+        ]
+    )
     if experience_content:
-        parts.extend([
-            "",
-            "## Experience",
-            "",
-            experience_content.strip(),
-        ])
+        parts.extend(
+            [
+                "",
+                "## Experience",
+                "",
+                experience_content.strip(),
+            ]
+        )
     return "\n".join(parts)
 
 
@@ -113,9 +120,7 @@ def inject_persona_skills(agent) -> bool:
 
     # Skip agents without a tmux pane
     if not getattr(agent, "tmux_pane_id", None):
-        logger.debug(
-            f"skill_injection: skipped — agent_id={agent_id}, no tmux_pane_id"
-        )
+        logger.debug(f"skill_injection: skipped — agent_id={agent_id}, no tmux_pane_id")
         return False
 
     # Defence in depth: refresh agent from DB to get the latest
@@ -123,6 +128,7 @@ def inject_persona_skills(agent) -> bool:
     # when concurrent hooks race to inject.
     try:
         from ..database import db
+
         db.session.refresh(agent)
     except Exception:
         pass  # Proceed with existing state if refresh fails

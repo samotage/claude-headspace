@@ -6,16 +6,14 @@ Tests cover:
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from src.claude_headspace.routes.dashboard import get_channel_data_for_operator
-
 
 # ──────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────
+
 
 def _make_mock_persona(id=1, name="Sam", slug="person-sam-1"):
     """Create a mock Persona."""
@@ -123,6 +121,7 @@ def _setup_db_mock(mock_db, memberships, latest_messages):
 # Test: get_channel_data_for_operator()
 # ──────────────────────────────────────────────────────────────
 
+
 class TestGetChannelDataForOperator:
     """Tests for the get_channel_data_for_operator function."""
 
@@ -168,16 +167,26 @@ class TestGetChannelDataForOperator:
             channel_type_value="workshop",
             status="active",
         )
-        cm1 = _make_mock_membership(id=1, channel_id=10, persona_id=1, persona=member1, status="active")
-        cm2 = _make_mock_membership(id=2, channel_id=10, persona_id=2, persona=member2, status="active")
+        cm1 = _make_mock_membership(
+            id=1, channel_id=10, persona_id=1, persona=member1, status="active"
+        )
+        cm2 = _make_mock_membership(
+            id=2, channel_id=10, persona_id=2, persona=member2, status="active"
+        )
         channel.memberships = [cm1, cm2]
 
         membership = _make_mock_membership(
-            id=1, channel_id=10, persona_id=1, channel=channel,
+            id=1,
+            channel_id=10,
+            persona_id=1,
+            channel=channel,
         )
 
         last_msg = _make_mock_message(
-            id=5, channel_id=10, content="Looking at the auth module", persona_name="Con",
+            id=5,
+            channel_id=10,
+            content="Looking at the auth module",
+            persona_name="Con",
         )
 
         _setup_db_mock(mock_db, memberships=[membership], latest_messages=[last_msg])
@@ -220,7 +229,9 @@ class TestGetChannelDataForOperator:
         mock_persona_cls.get_operator.return_value = operator
 
         channel = _make_mock_channel(id=10, slug="review-check-10", name="Code Check")
-        membership = _make_mock_membership(id=1, channel_id=10, persona_id=1, channel=channel)
+        membership = _make_mock_membership(
+            id=1, channel_id=10, persona_id=1, channel=channel
+        )
 
         _setup_db_mock(mock_db, memberships=[membership], latest_messages=[])
 
@@ -238,10 +249,14 @@ class TestGetChannelDataForOperator:
         mock_persona_cls.get_operator.return_value = operator
 
         channel = _make_mock_channel(id=10, slug="standup-daily-10", name="Daily")
-        membership = _make_mock_membership(id=1, channel_id=10, persona_id=1, channel=channel)
+        membership = _make_mock_membership(
+            id=1, channel_id=10, persona_id=1, channel=channel
+        )
 
         long_content = "A" * 200
-        last_msg = _make_mock_message(id=5, channel_id=10, content=long_content, persona_name="Con")
+        last_msg = _make_mock_message(
+            id=5, channel_id=10, content=long_content, persona_name="Con"
+        )
 
         _setup_db_mock(mock_db, memberships=[membership], latest_messages=[last_msg])
 
@@ -257,6 +272,7 @@ class TestGetChannelDataForOperator:
 # ──────────────────────────────────────────────────────────────
 # Test: Dashboard template rendering with channel data
 # ──────────────────────────────────────────────────────────────
+
 
 class TestDashboardChannelRendering:
     """Tests for channel card rendering in the dashboard template."""
@@ -300,7 +316,9 @@ class TestDashboardChannelRendering:
         assert "channel-cards-section" not in html
 
     @patch("claude_headspace.routes.dashboard.get_channel_data_for_operator")
-    def test_channel_card_displays_name_type_members_message(self, mock_get_channels, client):
+    def test_channel_card_displays_name_type_members_message(
+        self, mock_get_channels, client
+    ):
         """3.6: Card displays name, type badge, members, and last message."""
         mock_get_channels.return_value = [
             {

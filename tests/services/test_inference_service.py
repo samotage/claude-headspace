@@ -63,13 +63,13 @@ def service(config):
 def service_no_key(config):
     with patch.dict("os.environ", {}, clear=True):
         import os
+
         os.environ.pop("OPENROUTER_API_KEY", None)
         config["openrouter"].pop("api_key", None)
         return InferenceService(config=config)
 
 
 class TestModelSelection:
-
     def test_turn_uses_haiku(self, service):
         assert service.get_model_for_level("turn") == "anthropic/claude-3-haiku"
 
@@ -88,7 +88,6 @@ class TestModelSelection:
 
 
 class TestServiceAvailability:
-
     def test_available_with_key(self, service):
         assert service.is_available is True
 
@@ -101,7 +100,6 @@ class TestServiceAvailability:
 
 
 class TestInference:
-
     def test_successful_inference(self, service):
         mock_result = InferenceResult(
             text="Summary text",
@@ -112,7 +110,9 @@ class TestInference:
         )
 
         with patch.object(service.client, "chat_completion", return_value=mock_result):
-            result = service.infer(level="turn", purpose="summarise", input_text="test input")
+            result = service.infer(
+                level="turn", purpose="summarise", input_text="test input"
+            )
 
         assert result.text == "Summary text"
         assert result.input_tokens == 100
@@ -134,7 +134,9 @@ class TestInference:
 
         with patch.object(service.client, "chat_completion") as mock_call:
             # Second call - should hit cache
-            result = service.infer(level="turn", purpose="summarise", input_text="same input")
+            result = service.infer(
+                level="turn", purpose="summarise", input_text="same input"
+            )
             mock_call.assert_not_called()
 
         assert result.cached is True
@@ -159,7 +161,6 @@ class TestInference:
 
 
 class TestCostCalculation:
-
     def test_haiku_cost(self, service):
         cost = service._calculate_cost(
             "anthropic/claude-3-haiku",
@@ -186,7 +187,6 @@ class TestCostCalculation:
 
 
 class TestServiceStatus:
-
     def test_status_available(self, service):
         with patch.object(service.client, "check_connectivity", return_value=True):
             status = service.get_status()
@@ -211,7 +211,6 @@ class TestServiceStatus:
 
 
 class TestLogging:
-
     def test_log_call_with_session_factory(self, config):
         mock_session = MagicMock()
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
@@ -254,12 +253,15 @@ class TestLogging:
         mock_sessionmaker = MagicMock()
 
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
-            with patch(
-                "sqlalchemy.create_engine",
-                return_value=mock_engine,
-            ) as mock_create_engine, patch(
-                "sqlalchemy.orm.sessionmaker",
-                return_value=mock_sessionmaker,
+            with (
+                patch(
+                    "sqlalchemy.create_engine",
+                    return_value=mock_engine,
+                ) as mock_create_engine,
+                patch(
+                    "sqlalchemy.orm.sessionmaker",
+                    return_value=mock_sessionmaker,
+                ),
             ):
                 service = InferenceService(
                     config=config,
@@ -282,12 +284,15 @@ class TestLogging:
         mock_sessionmaker_cls = MagicMock(return_value=mock_session)
 
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
-            with patch(
-                "sqlalchemy.create_engine",
-                return_value=mock_engine,
-            ), patch(
-                "sqlalchemy.orm.sessionmaker",
-                return_value=mock_sessionmaker_cls,
+            with (
+                patch(
+                    "sqlalchemy.create_engine",
+                    return_value=mock_engine,
+                ),
+                patch(
+                    "sqlalchemy.orm.sessionmaker",
+                    return_value=mock_sessionmaker_cls,
+                ),
             ):
                 service = InferenceService(
                     config=config,
@@ -317,12 +322,15 @@ class TestLogging:
         mock_sessionmaker_cls = MagicMock(return_value=mock_session)
 
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
-            with patch(
-                "sqlalchemy.create_engine",
-                return_value=mock_engine,
-            ), patch(
-                "sqlalchemy.orm.sessionmaker",
-                return_value=mock_sessionmaker_cls,
+            with (
+                patch(
+                    "sqlalchemy.create_engine",
+                    return_value=mock_engine,
+                ),
+                patch(
+                    "sqlalchemy.orm.sessionmaker",
+                    return_value=mock_sessionmaker_cls,
+                ),
             ):
                 service = InferenceService(
                     config=config,
@@ -350,12 +358,15 @@ class TestLogging:
         mock_factory = MagicMock()
 
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}):
-            with patch(
-                "sqlalchemy.create_engine",
-                return_value=mock_engine,
-            ), patch(
-                "sqlalchemy.orm.sessionmaker",
-                return_value=mock_sessionmaker,
+            with (
+                patch(
+                    "sqlalchemy.create_engine",
+                    return_value=mock_engine,
+                ),
+                patch(
+                    "sqlalchemy.orm.sessionmaker",
+                    return_value=mock_sessionmaker,
+                ),
             ):
                 service = InferenceService(
                     config=config,

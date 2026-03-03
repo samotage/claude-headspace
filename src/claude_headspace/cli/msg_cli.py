@@ -23,7 +23,9 @@ def _get_channel_service():
 @click.argument("slug")
 @click.argument("content")
 @click.option(
-    "--type", "message_type", default="message",
+    "--type",
+    "message_type",
+    default="message",
     type=click.Choice(["message", "delegation", "escalation"]),
     help="Message type.",
 )
@@ -52,12 +54,16 @@ def send_command(slug, content, message_type, attachment):
 @msg_cli.command("history")
 @click.argument("slug")
 @click.option(
-    "--format", "output_format", default="envelope",
+    "--format",
+    "output_format",
+    default="envelope",
     type=click.Choice(["envelope", "yaml"]),
     help="Output format.",
 )
 @click.option("--limit", default=50, type=int, help="Maximum messages.")
-@click.option("--since", default=None, help="ISO timestamp — show messages after this time.")
+@click.option(
+    "--since", default=None, help="ISO timestamp — show messages after this time."
+)
 def history_command(slug, output_format, limit, since):
     """Show message history for a channel."""
     _, persona = resolve_caller_persona()

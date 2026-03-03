@@ -49,9 +49,7 @@ class TestGenerateEndpoint:
             "has_summary": True,
         }
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot")
 
@@ -61,9 +59,7 @@ class TestGenerateEndpoint:
         assert data["has_waypoint"] is True
 
     def test_project_not_found(self, client, mock_service):
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = None
             response = client.post("/api/projects/999/brain-reboot")
 
@@ -75,9 +71,7 @@ class TestGenerateEndpoint:
         app.extensions.pop("brain_reboot_service")
         client = app.test_client()
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot")
 
@@ -86,9 +80,7 @@ class TestGenerateEndpoint:
     def test_generation_error(self, client, mock_service):
         mock_service.generate.side_effect = Exception("Disk full")
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot")
 
@@ -105,9 +97,7 @@ class TestGetEndpoint:
             "status": "generated",
         }
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.get("/api/projects/1/brain-reboot")
 
@@ -118,9 +108,7 @@ class TestGetEndpoint:
     def test_not_generated_yet(self, client, mock_service):
         mock_service.get_last_generated.return_value = None
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.get("/api/projects/1/brain-reboot")
 
@@ -129,9 +117,7 @@ class TestGetEndpoint:
         assert data["status"] == "not_found"
 
     def test_project_not_found(self, client, mock_service):
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = None
             response = client.get("/api/projects/999/brain-reboot")
 
@@ -141,9 +127,7 @@ class TestGetEndpoint:
         app.extensions.pop("brain_reboot_service")
         client = app.test_client()
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.get("/api/projects/1/brain-reboot")
 
@@ -162,9 +146,7 @@ class TestExportEndpoint:
             "error": None,
         }
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot/export")
 
@@ -176,9 +158,7 @@ class TestExportEndpoint:
     def test_not_generated_yet(self, client, mock_service):
         mock_service.get_last_generated.return_value = None
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot/export")
 
@@ -195,9 +175,7 @@ class TestExportEndpoint:
             "error": "Permission denied",
         }
 
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = _mock_project()
             response = client.post("/api/projects/1/brain-reboot/export")
 
@@ -206,9 +184,7 @@ class TestExportEndpoint:
         assert "Permission denied" in data["error"]
 
     def test_project_not_found(self, client, mock_service):
-        with patch(
-            "src.claude_headspace.database.db"
-        ) as mock_db:
+        with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = None
             response = client.post("/api/projects/999/brain-reboot/export")
 

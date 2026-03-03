@@ -6,7 +6,6 @@ Tests cover:
 - CommandLifecycleManager.complete_command() persists full_output
 """
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,9 +13,9 @@ from sqlalchemy.orm import Session
 
 from claude_headspace.models.agent import Agent
 from claude_headspace.models.command import Command, CommandState
-from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
-from claude_headspace.services.event_writer import EventWriter, WriteResult
+from claude_headspace.models.turn import TurnActor
 from claude_headspace.services.command_lifecycle import CommandLifecycleManager
+from claude_headspace.services.event_writer import EventWriter, WriteResult
 
 
 class TestCommandModelFullTextFields:
@@ -81,9 +80,13 @@ class TestProcessTurnFullCommand:
         mock_query.order_by.return_value = mock_query
         mock_query.first.return_value = None
 
-    def test_full_command_persisted_on_new_command(self, mock_session, mock_event_writer, mock_agent):
+    def test_full_command_persisted_on_new_command(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """User command should persist full text to command.full_command."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
         self._setup_no_current_command(mock_session)
 
         command_text = "Please refactor the authentication module to use JWT tokens instead of session cookies"
@@ -98,14 +101,20 @@ class TestProcessTurnFullCommand:
         assert result.new_command_created is True
 
         # Find the Command object that was added to session
-        command_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)]
+        command_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)
+        ]
         assert len(command_adds) == 1
         cmd = command_adds[0][0][0]
         assert cmd.full_command == command_text
 
-    def test_full_command_not_set_when_text_is_none(self, mock_session, mock_event_writer, mock_agent):
+    def test_full_command_not_set_when_text_is_none(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """full_command should not be set when text is None (hook path)."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
         self._setup_no_current_command(mock_session)
 
         result = manager.process_turn(
@@ -116,14 +125,20 @@ class TestProcessTurnFullCommand:
 
         assert result.success is True
         # Command was created but full_command stays at default (None)
-        command_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)]
+        command_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)
+        ]
         assert len(command_adds) == 1
         cmd = command_adds[0][0][0]
         assert cmd.full_command is None
 
-    def test_full_command_preserves_long_text(self, mock_session, mock_event_writer, mock_agent):
+    def test_full_command_preserves_long_text(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """full_command should preserve very long command text without truncation."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
         self._setup_no_current_command(mock_session)
 
         long_text = "Fix the bug " * 500  # ~6500 chars
@@ -135,7 +150,9 @@ class TestProcessTurnFullCommand:
         )
 
         assert result.success is True
-        command_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)]
+        command_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Command)
+        ]
         cmd = command_adds[0][0][0]
         assert cmd.full_command == long_text
 
@@ -166,9 +183,13 @@ class TestCompleteCommandFullOutput:
         cmd.full_output = None
         return cmd
 
-    def test_full_output_persisted_on_completion(self, mock_session, mock_event_writer, mock_command):
+    def test_full_output_persisted_on_completion(
+        self, mock_session, mock_event_writer, mock_command
+    ):
         """complete_command should persist agent_text to command.full_output."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
 
         agent_text = "Done. I've refactored the auth module to use JWT. Changes:\n1. Added jwt_utils.py\n2. Updated middleware"
 
@@ -177,9 +198,13 @@ class TestCompleteCommandFullOutput:
         assert mock_command.full_output == agent_text
         assert mock_command.state == CommandState.COMPLETE
 
-    def test_full_output_not_set_when_agent_text_empty(self, mock_session, mock_event_writer, mock_command):
+    def test_full_output_not_set_when_agent_text_empty(
+        self, mock_session, mock_event_writer, mock_command
+    ):
         """full_output should not be set when agent_text is empty string."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
 
         manager.complete_command(mock_command, agent_text="")
 
@@ -187,9 +212,13 @@ class TestCompleteCommandFullOutput:
         assert mock_command.full_output is None
         assert mock_command.state == CommandState.COMPLETE
 
-    def test_full_output_preserves_long_text(self, mock_session, mock_event_writer, mock_command):
+    def test_full_output_preserves_long_text(
+        self, mock_session, mock_event_writer, mock_command
+    ):
         """full_output should preserve very long output text."""
-        manager = CommandLifecycleManager(session=mock_session, event_writer=mock_event_writer)
+        manager = CommandLifecycleManager(
+            session=mock_session, event_writer=mock_event_writer
+        )
 
         long_output = "I've completed the implementation. " * 500
 

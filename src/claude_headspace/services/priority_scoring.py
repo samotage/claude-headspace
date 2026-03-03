@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class PriorityScoringService:
     """Scores all active agents 0-100 using LLM inference with objective/waypoint context."""
 
-    def __init__(self, inference_service: InferenceService, app=None, config: dict | None = None):
+    def __init__(
+        self, inference_service: InferenceService, app=None, config: dict | None = None
+    ):
         self._inference = inference_service
         self._app = app
         self._debounce_timer: threading.Timer | None = None
@@ -79,12 +81,14 @@ class PriorityScoringService:
                 agent.priority_score = 50
                 agent.priority_reason = "No scoring context available"
                 agent.priority_updated_at = now
-                scored.append({
-                    "agent_id": agent.id,
-                    "score": 50,
-                    "reason": "No scoring context available",
-                    "scored_at": now.isoformat(),
-                })
+                scored.append(
+                    {
+                        "agent_id": agent.id,
+                        "score": 50,
+                        "reason": "No scoring context available",
+                        "scored_at": now.isoformat(),
+                    }
+                )
             db_session.commit()
             self._broadcast_score_update(scored)
             self._broadcast_card_refreshes(agents, "priority_scored")
@@ -113,21 +117,32 @@ class PriorityScoringService:
                     agent.priority_score = entry["score"]
                     agent.priority_reason = entry["reason"]
                     agent.priority_updated_at = now
-                    scored.append({
-                        "agent_id": agent.id,
-                        "score": entry["score"],
-                        "reason": entry["reason"],
-                        "scored_at": now.isoformat(),
-                    })
+                    scored.append(
+                        {
+                            "agent_id": agent.id,
+                            "score": entry["score"],
+                            "reason": entry["reason"],
+                            "scored_at": now.isoformat(),
+                        }
+                    )
 
             db_session.commit()
             self._broadcast_score_update(scored)
             self._broadcast_card_refreshes(agents, "priority_scored")
-            return {"scored": len(scored), "agents": scored, "context_type": context["context_type"]}
+            return {
+                "scored": len(scored),
+                "agents": scored,
+                "context_type": context["context_type"],
+            }
 
         except (InferenceServiceError, Exception) as e:
             logger.error(f"Priority scoring failed: {e}")
-            return {"scored": 0, "agents": [], "context_type": context["context_type"], "error": str(e)}
+            return {
+                "scored": 0,
+                "agents": [],
+                "context_type": context["context_type"],
+                "error": str(e),
+            }
 
     def score_all_agents_async(self) -> None:
         """Trigger scoring asynchronously in a background thread."""
@@ -175,6 +190,7 @@ class PriorityScoringService:
         try:
             with self._app.app_context():
                 from ..database import db as flask_db
+
                 self.score_all_agents(flask_db.session)
         except Exception as e:
             logger.error(f"Async priority scoring failed: {e}")
@@ -185,9 +201,7 @@ class PriorityScoringService:
 
         # Try objective first
         objective = (
-            db_session.query(Objective)
-            .order_by(Objective.set_at.desc())
-            .first()
+            db_session.query(Objective).order_by(Objective.set_at.desc()).first()
         )
         if objective:
             return {
@@ -208,7 +222,9 @@ class PriorityScoringService:
                         if wp.exists:
                             waypoint_data[agent.project.path] = wp.content
                     except Exception as e:
-                        logger.debug(f"Failed to load waypoint for {agent.project.path}: {e}")
+                        logger.debug(
+                            f"Failed to load waypoint for {agent.project.path}: {e}"
+                        )
 
         if waypoint_data:
             # Parse Next Up and Upcoming sections from waypoint content
@@ -217,7 +233,9 @@ class PriorityScoringService:
                 next_up = self._extract_section(content, "Next Up")
                 upcoming = self._extract_section(content, "Upcoming")
                 if next_up or upcoming:
-                    sections.append(f"Project ({path}):\n  Next Up: {next_up}\n  Upcoming: {upcoming}")
+                    sections.append(
+                        f"Project ({path}):\n  Next Up: {next_up}\n  Upcoming: {upcoming}"
+                    )
 
             if sections:
                 return {
@@ -253,7 +271,9 @@ class PriorityScoringService:
         agent_lines = []
         for agent in agents:
             project_name = agent.project.name if agent.project else "Unknown"
-            state = agent.state.value if hasattr(agent.state, "value") else str(agent.state)
+            state = (
+                agent.state.value if hasattr(agent.state, "value") else str(agent.state)
+            )
 
             # Get command summary
             command_summary = "None"
@@ -280,6 +300,7 @@ class PriorityScoringService:
             if agent.project and agent.project.path:
                 try:
                     from ..services.waypoint_editor import load_waypoint
+
                     wp = load_waypoint(agent.project.path)
                     if wp.exists:
                         waypoint_next = self._extract_section(wp.content, "Next Up")
@@ -320,7 +341,7 @@ class PriorityScoringService:
                 logger.error(f"No JSON array found in scoring response: {text[:200]}")
                 return []
 
-            json_text = text[start:end + 1]
+            json_text = text[start : end + 1]
             parsed = json.loads(json_text)
 
             if not isinstance(parsed, list):
@@ -345,11 +366,13 @@ class PriorityScoringService:
                 else:
                     score = 50  # Default if invalid
 
-                results.append({
-                    "agent_id": agent_id,
-                    "score": score,
-                    "reason": str(reason),
-                })
+                results.append(
+                    {
+                        "agent_id": agent_id,
+                        "score": score,
+                        "reason": str(reason),
+                    }
+                )
 
             return results
 
@@ -369,7 +392,9 @@ class PriorityScoringService:
             for agent in agents:
                 broadcast_card_refresh(agent, reason)
         except Exception as e:
-            logger.debug(f"card_refresh broadcast after scoring failed (non-fatal): {e}")
+            logger.debug(
+                f"card_refresh broadcast after scoring failed (non-fatal): {e}"
+            )
 
     def _broadcast_score_update(self, scored: list[dict]) -> None:
         """Broadcast priority_update SSE event."""

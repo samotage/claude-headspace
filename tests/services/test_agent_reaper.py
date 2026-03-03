@@ -7,13 +7,13 @@ from uuid import uuid4
 import pytest
 
 from claude_headspace.services.agent_reaper import (
+    DEFAULT_GRACE_PERIOD_SECONDS,
+    DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
+    DEFAULT_INTERVAL_SECONDS,
     AgentReaper,
     ReapDetail,
     ReapResult,
     _is_claude_running_in_pane,
-    DEFAULT_GRACE_PERIOD_SECONDS,
-    DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
-    DEFAULT_INTERVAL_SECONDS,
 )
 from claude_headspace.services.iterm_focus import PaneStatus
 
@@ -22,8 +22,12 @@ from claude_headspace.services.iterm_focus import PaneStatus
 PATCH_CHECK_PANE = "claude_headspace.services.iterm_focus.check_pane_exists"
 PATCH_DB = "claude_headspace.database.db"
 PATCH_BROADCASTER = "claude_headspace.services.broadcaster.get_broadcaster"
-PATCH_CLAUDE_RUNNING = "claude_headspace.services.agent_reaper._is_claude_running_in_pane"
-PATCH_GET_LIFECYCLE = "claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+PATCH_CLAUDE_RUNNING = (
+    "claude_headspace.services.agent_reaper._is_claude_running_in_pane"
+)
+PATCH_GET_LIFECYCLE = (
+    "claude_headspace.services.command_lifecycle.CommandLifecycleManager"
+)
 
 
 def _make_agent(
@@ -147,7 +151,9 @@ class TestReapOnce:
         """Agent created 1 minute ago should be skipped."""
         now = datetime.now(timezone.utc)
         agent = _make_agent(started_at=now - timedelta(minutes=1))
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
 
         result = reaper.reap_once()
 
@@ -161,7 +167,9 @@ class TestReapOnce:
     def test_pane_found_skips_agent(self, mock_db, mock_check, reaper):
         """Agent with existing iTerm pane (no tmux) should not be reaped."""
         agent = _make_agent(iterm_pane_id="pty-123")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.FOUND
 
         result = reaper.reap_once()
@@ -175,7 +183,9 @@ class TestReapOnce:
     def test_pane_not_found_reaps_agent(self, mock_db, mock_check, reaper):
         """Agent without tmux whose iTerm pane is gone should be reaped."""
         agent = _make_agent(iterm_pane_id="pty-123")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.NOT_FOUND
 
         result = reaper.reap_once()
@@ -188,14 +198,18 @@ class TestReapOnce:
 
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_iterm_not_running_falls_back_to_inactivity(self, mock_db, mock_check, reaper):
+    def test_iterm_not_running_falls_back_to_inactivity(
+        self, mock_db, mock_check, reaper
+    ):
         """When iTerm isn't running, fall through to inactivity check."""
         now = datetime.now(timezone.utc)
         agent = _make_agent(
             iterm_pane_id="pty-123",
             last_seen_at=now - timedelta(minutes=10),  # 10min > 5min timeout
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.ITERM_NOT_RUNNING
 
         result = reaper.reap_once()
@@ -212,7 +226,9 @@ class TestReapOnce:
             iterm_pane_id="pty-123",
             last_seen_at=now - timedelta(minutes=1),  # 1min < 5min timeout
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.ITERM_NOT_RUNNING
 
         result = reaper.reap_once()
@@ -225,7 +241,9 @@ class TestReapOnce:
     def test_error_status_skips_agent(self, mock_db, mock_check, reaper):
         """On pane check error, don't reap (conservative)."""
         agent = _make_agent(iterm_pane_id="pty-123")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.ERROR
 
         result = reaper.reap_once()
@@ -242,7 +260,9 @@ class TestReapOnce:
             iterm_pane_id=None,
             last_seen_at=now - timedelta(minutes=10),  # over threshold
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
 
         result = reaper.reap_once()
 
@@ -259,7 +279,9 @@ class TestReapOnce:
             iterm_pane_id=None,
             last_seen_at=now - timedelta(minutes=1),
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
 
         result = reaper.reap_once()
 
@@ -277,7 +299,9 @@ class TestReapOnce:
         new = _make_agent(agent_id=3, started_at=now - timedelta(minutes=1))
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            alive, dead, new
+            alive,
+            dead,
+            new,
         ]
         mock_check.side_effect = [PaneStatus.FOUND, PaneStatus.NOT_FOUND]
 
@@ -296,7 +320,8 @@ class TestReapOnce:
         new_agent = _make_agent(agent_id=2, iterm_pane_id="pty-shared")
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            old_agent, new_agent
+            old_agent,
+            new_agent,
         ]
         mock_check.return_value = PaneStatus.FOUND
 
@@ -315,7 +340,9 @@ class TestReapOnce:
     def test_no_commit_when_nothing_reaped(self, mock_db, mock_check, reaper):
         """db.session.commit() should not be called if nothing was reaped."""
         agent = _make_agent(iterm_pane_id="pty-123")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_check.return_value = PaneStatus.FOUND
 
         reaper.reap_once()
@@ -336,7 +363,9 @@ class TestTmuxProcessTree:
             tmux_pane_id="%5",
             last_seen_at=datetime.now(timezone.utc) - timedelta(hours=2),  # Very stale
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = True
 
         result = reaper.reap_once()
@@ -354,7 +383,9 @@ class TestTmuxProcessTree:
             iterm_pane_id="pty-123",
             tmux_pane_id="%5",
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = False
 
         result = reaper.reap_once()
@@ -366,13 +397,17 @@ class TestTmuxProcessTree:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_tmux_check_fails_falls_through_to_iterm(self, mock_db, mock_check, mock_claude, reaper):
+    def test_tmux_check_fails_falls_through_to_iterm(
+        self, mock_db, mock_check, mock_claude, reaper
+    ):
         """When tmux check returns None, fall through to iTerm check."""
         agent = _make_agent(
             iterm_pane_id="pty-123",
             tmux_pane_id="%5",
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = None  # Can't determine
         mock_check.return_value = PaneStatus.FOUND
 
@@ -385,13 +420,17 @@ class TestTmuxProcessTree:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_tmux_check_fails_iterm_not_found_reaps(self, mock_db, mock_check, mock_claude, reaper):
+    def test_tmux_check_fails_iterm_not_found_reaps(
+        self, mock_db, mock_check, mock_claude, reaper
+    ):
         """When tmux check returns None and iTerm says not found, reap."""
         agent = _make_agent(
             iterm_pane_id="pty-123",
             tmux_pane_id="%5",
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = None
         mock_check.return_value = PaneStatus.NOT_FOUND
 
@@ -403,14 +442,18 @@ class TestTmuxProcessTree:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_claude_running_survives_hours_of_inactivity(self, mock_db, mock_check, mock_claude, reaper):
+    def test_claude_running_survives_hours_of_inactivity(
+        self, mock_db, mock_check, mock_claude, reaper
+    ):
         """Claude running in pane should survive even hours of user inactivity."""
         agent = _make_agent(
             iterm_pane_id="pty-123",
             tmux_pane_id="%5",
             last_seen_at=datetime.now(timezone.utc) - timedelta(hours=8),
         )
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = True
 
         result = reaper.reap_once()
@@ -421,13 +464,16 @@ class TestTmuxProcessTree:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_different_tmux_panes_both_survive(self, mock_db, mock_check, mock_claude, reaper):
+    def test_different_tmux_panes_both_survive(
+        self, mock_db, mock_check, mock_claude, reaper
+    ):
         """Two agents in different tmux panes, both with claude running → both survive."""
         agent_a = _make_agent(agent_id=1, iterm_pane_id="pty-shared", tmux_pane_id="%0")
         agent_b = _make_agent(agent_id=2, iterm_pane_id="pty-shared", tmux_pane_id="%1")
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            agent_a, agent_b
+            agent_a,
+            agent_b,
         ]
         mock_claude.return_value = True
 
@@ -440,13 +486,20 @@ class TestTmuxProcessTree:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_same_tmux_pane_claude_exited_older_reaped(self, mock_db, mock_check, mock_claude, reaper):
+    def test_same_tmux_pane_claude_exited_older_reaped(
+        self, mock_db, mock_check, mock_claude, reaper
+    ):
         """Two agents same tmux pane, claude exited → both get claude_exited."""
-        old_agent = _make_agent(agent_id=1, iterm_pane_id="pty-shared", tmux_pane_id="%0")
-        new_agent = _make_agent(agent_id=2, iterm_pane_id="pty-shared", tmux_pane_id="%0")
+        old_agent = _make_agent(
+            agent_id=1, iterm_pane_id="pty-shared", tmux_pane_id="%0"
+        )
+        new_agent = _make_agent(
+            agent_id=2, iterm_pane_id="pty-shared", tmux_pane_id="%0"
+        )
 
         mock_db.session.query.return_value.filter.return_value.all.return_value = [
-            old_agent, new_agent
+            old_agent,
+            new_agent,
         ]
         mock_claude.return_value = False
 
@@ -545,10 +598,14 @@ class TestOrphanedCommandCompletion:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_completes_processing_command(self, mock_db, mock_check, mock_claude, mock_app):
+    def test_reap_completes_processing_command(
+        self, mock_db, mock_check, mock_claude, mock_app
+    ):
         """Reaping an agent should complete its PROCESSING command."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = False
 
         mock_command = MagicMock()
@@ -574,9 +631,16 @@ class TestOrphanedCommandCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="TASK COMPLETE — did stuff")), \
-             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
-            reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        with (
+            patch(
+                "claude_headspace.services.transcript_reader.read_transcript_file",
+                return_value=MagicMock(success=True, text="TASK COMPLETE — did stuff"),
+            ),
+            patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle),
+        ):
+            reaper = AgentReaper(
+                app=mock_app, config={"reaper": {"grace_period_seconds": 300}}
+            )
             result = reaper.reap_once()
 
         assert result.reaped == 1
@@ -589,10 +653,14 @@ class TestOrphanedCommandCompletion:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_completes_command_without_transcript(self, mock_db, mock_check, mock_claude, mock_app):
+    def test_reap_completes_command_without_transcript(
+        self, mock_db, mock_check, mock_claude, mock_app
+    ):
         """Reaping should complete commands even with empty transcript."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = False
 
         mock_command = MagicMock()
@@ -618,9 +686,16 @@ class TestOrphanedCommandCompletion:
         mock_lifecycle = MagicMock()
         mock_lifecycle.get_pending_summarisations.return_value = []
 
-        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="")), \
-             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
-            reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        with (
+            patch(
+                "claude_headspace.services.transcript_reader.read_transcript_file",
+                return_value=MagicMock(success=True, text=""),
+            ),
+            patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle),
+        ):
+            reaper = AgentReaper(
+                app=mock_app, config={"reaper": {"grace_period_seconds": 300}}
+            )
             result = reaper.reap_once()
 
         assert result.reaped == 1
@@ -631,10 +706,14 @@ class TestOrphanedCommandCompletion:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_no_commands_no_error(self, mock_db, mock_check, mock_claude, mock_app):
+    def test_reap_no_commands_no_error(
+        self, mock_db, mock_check, mock_claude, mock_app
+    ):
         """Reaping agent with no active commands should not error."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = False
 
         query_mock = MagicMock()
@@ -651,7 +730,9 @@ class TestOrphanedCommandCompletion:
 
         mock_db.session.query.side_effect = [query_mock, cmd_query_mock]
 
-        reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        reaper = AgentReaper(
+            app=mock_app, config={"reaper": {"grace_period_seconds": 300}}
+        )
         result = reaper.reap_once()
 
         assert result.reaped == 1
@@ -660,10 +741,14 @@ class TestOrphanedCommandCompletion:
     @patch(PATCH_CLAUDE_RUNNING)
     @patch(PATCH_CHECK_PANE)
     @patch(PATCH_DB)
-    def test_reap_detects_end_of_command_intent(self, mock_db, mock_check, mock_claude, mock_app):
+    def test_reap_detects_end_of_command_intent(
+        self, mock_db, mock_check, mock_claude, mock_app
+    ):
         """Reaper should detect END_OF_COMMAND intent from transcript."""
         agent = _make_agent(iterm_pane_id="pty-123", tmux_pane_id="%5")
-        mock_db.session.query.return_value.filter.return_value.all.return_value = [agent]
+        mock_db.session.query.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
         mock_claude.return_value = False
 
         mock_command = MagicMock()
@@ -691,12 +776,25 @@ class TestOrphanedCommandCompletion:
 
         mock_intent_result = MagicMock()
         from claude_headspace.models.turn import TurnIntent
+
         mock_intent_result.intent = TurnIntent.END_OF_COMMAND
 
-        with patch("claude_headspace.services.transcript_reader.read_transcript_file", return_value=MagicMock(success=True, text="---\nTASK COMPLETE — finished work\n---")), \
-             patch("claude_headspace.services.intent_detector.detect_agent_intent", return_value=mock_intent_result), \
-             patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle):
-            reaper = AgentReaper(app=mock_app, config={"reaper": {"grace_period_seconds": 300}})
+        with (
+            patch(
+                "claude_headspace.services.transcript_reader.read_transcript_file",
+                return_value=MagicMock(
+                    success=True, text="---\nTASK COMPLETE — finished work\n---"
+                ),
+            ),
+            patch(
+                "claude_headspace.services.intent_detector.detect_agent_intent",
+                return_value=mock_intent_result,
+            ),
+            patch(PATCH_GET_LIFECYCLE, return_value=mock_lifecycle),
+        ):
+            reaper = AgentReaper(
+                app=mock_app, config={"reaper": {"grace_period_seconds": 300}}
+            )
             result = reaper.reap_once()
 
         assert result.reaped == 1
@@ -714,6 +812,7 @@ class TestIsClaudeRunningInPane:
     def test_returns_true_when_process_tree_shows_claude(self, mock_health):
         """check_health PROCESS_TREE returns running=True → True."""
         from claude_headspace.services.tmux_bridge import HealthResult
+
         mock_health.return_value = HealthResult(available=True, running=True, pid=52807)
         assert _is_claude_running_in_pane("%5") is True
 
@@ -721,13 +820,20 @@ class TestIsClaudeRunningInPane:
     def test_returns_false_when_no_claude_process(self, mock_health):
         """check_health PROCESS_TREE returns running=False → False."""
         from claude_headspace.services.tmux_bridge import HealthResult
-        mock_health.return_value = HealthResult(available=True, running=False, pid=52807)
+
+        mock_health.return_value = HealthResult(
+            available=True, running=False, pid=52807
+        )
         assert _is_claude_running_in_pane("%5") is False
 
     @patch(PATCH_TMUX_CHECK_HEALTH)
     def test_returns_none_when_pane_not_found(self, mock_health):
         """check_health returns available=False → None."""
-        from claude_headspace.services.tmux_bridge import HealthResult, TmuxBridgeErrorType
+        from claude_headspace.services.tmux_bridge import (
+            HealthResult,
+            TmuxBridgeErrorType,
+        )
+
         mock_health.return_value = HealthResult(
             available=False,
             error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
@@ -737,7 +843,11 @@ class TestIsClaudeRunningInPane:
     @patch(PATCH_TMUX_CHECK_HEALTH)
     def test_returns_none_when_tmux_fails(self, mock_health):
         """check_health returns available=False on error → None."""
-        from claude_headspace.services.tmux_bridge import HealthResult, TmuxBridgeErrorType
+        from claude_headspace.services.tmux_bridge import (
+            HealthResult,
+            TmuxBridgeErrorType,
+        )
+
         mock_health.return_value = HealthResult(
             available=False,
             error_type=TmuxBridgeErrorType.TMUX_NOT_INSTALLED,
@@ -748,6 +858,7 @@ class TestIsClaudeRunningInPane:
     def test_uses_process_tree_level(self, mock_health):
         """Verify _is_claude_running_in_pane passes PROCESS_TREE level."""
         from claude_headspace.services.tmux_bridge import HealthCheckLevel, HealthResult
+
         mock_health.return_value = HealthResult(available=True, running=True)
         _is_claude_running_in_pane("%5")
         _, kwargs = mock_health.call_args

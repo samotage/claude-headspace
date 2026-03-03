@@ -35,6 +35,7 @@ channels_api_bp = Blueprint("channels_api", __name__)
 # Error envelope helper
 # ──────────────────────────────────────────────────────────────
 
+
 def _error_response(status_code: int, error_code: str, message: str):
     """Build a standardised JSON error response.
 
@@ -81,6 +82,7 @@ def _handle_service_error(e):
 # ──────────────────────────────────────────────────────────────
 # Auth helpers
 # ──────────────────────────────────────────────────────────────
+
 
 class AuthError(Exception):
     """Raised when caller authentication fails."""
@@ -140,6 +142,7 @@ def _get_channel_service():
 # Route decorator: auth + service resolution + error handling
 # ──────────────────────────────────────────────────────────────
 
+
 def _channel_route(f):
     """Decorator that handles auth, service lookup, and exception mapping.
 
@@ -147,6 +150,7 @@ def _channel_route(f):
     into the wrapped view function.  Catches AuthError and ChannelError
     and returns the appropriate JSON error envelope.
     """
+
     @wraps(f)
     def decorated(*args, **kwargs):
         try:
@@ -156,7 +160,9 @@ def _channel_route(f):
 
         service = _get_channel_service()
         if not service:
-            return _error_response(503, "service_unavailable", "Channel service not available")
+            return _error_response(
+                503, "service_unavailable", "Channel service not available"
+            )
 
         kwargs["persona"] = persona
         kwargs["agent"] = agent
@@ -179,6 +185,7 @@ def _channel_route(f):
 # Response serializers
 # ──────────────────────────────────────────────────────────────
 
+
 def _channel_to_dict(channel) -> dict:
     """Serialize a Channel to a JSON-safe dict.
 
@@ -188,9 +195,7 @@ def _channel_to_dict(channel) -> dict:
     # Use loaded relationship if available, else empty
     memberships = getattr(channel, "memberships", None) or []
 
-    member_count = sum(
-        1 for m in memberships if m.status in ("active", "muted")
-    )
+    member_count = sum(1 for m in memberships if m.status in ("active", "muted"))
 
     chair_persona_slug = None
     for m in memberships:
@@ -211,7 +216,9 @@ def _channel_to_dict(channel) -> dict:
         "chair_persona_slug": chair_persona_slug,
         "member_count": member_count,
         "created_at": channel.created_at.isoformat() if channel.created_at else None,
-        "completed_at": channel.completed_at.isoformat() if channel.completed_at else None,
+        "completed_at": channel.completed_at.isoformat()
+        if channel.completed_at
+        else None,
         "archived_at": channel.archived_at.isoformat() if channel.archived_at else None,
     }
 
@@ -252,6 +259,7 @@ def _message_to_dict(message, channel_slug: str) -> dict:
 # Channel Endpoints
 # ──────────────────────────────────────────────────────────────
 
+
 @channels_api_bp.route("/api/channels", methods=["POST"])
 @_channel_route
 def create_channel(*, persona, agent, service):
@@ -259,7 +267,11 @@ def create_channel(*, persona, agent, service):
     data = request.get_json(silent=True) or {}
 
     name = data.get("name", "").strip() if isinstance(data.get("name"), str) else ""
-    channel_type = data.get("channel_type", "").strip() if isinstance(data.get("channel_type"), str) else ""
+    channel_type = (
+        data.get("channel_type", "").strip()
+        if isinstance(data.get("channel_type"), str)
+        else ""
+    )
 
     missing = []
     if not name:
@@ -268,17 +280,21 @@ def create_channel(*, persona, agent, service):
         missing.append("channel_type")
 
     if missing:
-        return _error_response(400, "missing_fields", f"Missing required fields: {', '.join(missing)}")
+        return _error_response(
+            400, "missing_fields", f"Missing required fields: {', '.join(missing)}"
+        )
 
     # Validate channel_type
     from ..models.channel import ChannelType
+
     try:
         ChannelType(channel_type)
     except ValueError:
         valid_types = [ct.value for ct in ChannelType]
         return _error_response(
-            400, "invalid_field",
-            f"Invalid channel_type '{channel_type}'. Must be one of: {', '.join(valid_types)}"
+            400,
+            "invalid_field",
+            f"Invalid channel_type '{channel_type}'. Must be one of: {', '.join(valid_types)}",
         )
 
     channel = service.create_channel(
@@ -303,6 +319,7 @@ def list_channels(*, persona, agent, service):
 
     # Only operator can use ?all=true -- silent fallback for non-operators
     from ..models.persona import Persona
+
     if all_flag:
         operator = Persona.get_operator()
         if not operator or operator.id != persona.id:
@@ -362,6 +379,7 @@ def archive_channel(slug: str, *, persona, agent, service):
 # Membership Endpoints
 # ──────────────────────────────────────────────────────────────
 
+
 @channels_api_bp.route("/api/channels/<slug>/members", methods=["GET"])
 @_channel_route
 def list_members(slug: str, *, persona, agent, service):
@@ -375,10 +393,16 @@ def list_members(slug: str, *, persona, agent, service):
 def add_member(slug: str, *, persona, agent, service):
     """Add a member to a channel (FR7)."""
     data = request.get_json(silent=True) or {}
-    persona_slug = data.get("persona_slug", "").strip() if isinstance(data.get("persona_slug"), str) else ""
+    persona_slug = (
+        data.get("persona_slug", "").strip()
+        if isinstance(data.get("persona_slug"), str)
+        else ""
+    )
 
     if not persona_slug:
-        return _error_response(400, "missing_fields", "Missing required field: persona_slug")
+        return _error_response(
+            400, "missing_fields", "Missing required field: persona_slug"
+        )
 
     membership = service.add_member(
         slug=slug,
@@ -418,10 +442,16 @@ def unmute_channel(slug: str, *, persona, agent, service):
 def transfer_chair(slug: str, *, persona, agent, service):
     """Transfer chair role (FR11)."""
     data = request.get_json(silent=True) or {}
-    target_slug = data.get("persona_slug", "").strip() if isinstance(data.get("persona_slug"), str) else ""
+    target_slug = (
+        data.get("persona_slug", "").strip()
+        if isinstance(data.get("persona_slug"), str)
+        else ""
+    )
 
     if not target_slug:
-        return _error_response(400, "missing_fields", "Missing required field: persona_slug")
+        return _error_response(
+            400, "missing_fields", "Missing required field: persona_slug"
+        )
 
     service.transfer_chair(
         slug=slug,
@@ -435,6 +465,7 @@ def transfer_chair(slug: str, *, persona, agent, service):
 # ──────────────────────────────────────────────────────────────
 # Message Endpoints
 # ──────────────────────────────────────────────────────────────
+
 
 @channels_api_bp.route("/api/channels/<slug>/messages", methods=["GET"])
 @_channel_route
@@ -466,23 +497,27 @@ def send_message(slug: str, *, persona, agent, service):
     """Send a message to a channel (FR13)."""
     data = request.get_json(silent=True) or {}
 
-    content = data.get("content", "").strip() if isinstance(data.get("content"), str) else ""
+    content = (
+        data.get("content", "").strip() if isinstance(data.get("content"), str) else ""
+    )
     if not content:
         return _error_response(400, "missing_fields", "Missing required field: content")
 
     message_type = data.get("message_type", "message")
     if message_type == "system":
         return _error_response(
-            400, "invalid_message_type",
-            "The 'system' message type is service-generated only and cannot be sent via the API"
+            400,
+            "invalid_message_type",
+            "The 'system' message type is service-generated only and cannot be sent via the API",
         )
 
     # Validate message_type
     valid_types = ["message", "delegation", "escalation"]
     if message_type not in valid_types:
         return _error_response(
-            400, "invalid_message_type",
-            f"Invalid message_type '{message_type}'. Must be one of: {', '.join(valid_types)}"
+            400,
+            "invalid_message_type",
+            f"Invalid message_type '{message_type}'. Must be one of: {', '.join(valid_types)}",
         )
 
     message = service.send_message(

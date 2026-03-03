@@ -205,8 +205,16 @@ class TestRespondToAgent:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_success(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Test successful response send."""
         mock_db.session.get.return_value = mock_agent
@@ -241,8 +249,16 @@ class TestRespondToAgent:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_creates_turn(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Test that successful send creates a Turn record via complete_answer."""
         mock_db.session.get.return_value = mock_agent
@@ -266,8 +282,17 @@ class TestRespondToAgent:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_transitions_state(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent, mock_cmd_awaiting,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
+        mock_cmd_awaiting,
     ):
         """Test that successful send transitions command to PROCESSING."""
         mock_db.session.get.return_value = mock_agent
@@ -286,8 +311,16 @@ class TestRespondToAgent:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_send_broadcasts(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Test that successful send triggers broadcasts via complete_answer."""
         mock_db.session.get.return_value = mock_agent
@@ -414,7 +447,9 @@ class TestRespondToAgent:
         mock_cl_db.session = mock_db.session
         mock_db.session.commit.side_effect = Exception("DB error")
 
-        with patch("src.claude_headspace.services.command_lifecycle.get_agent_hook_state") as mock_get_state:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.get_agent_hook_state"
+        ) as mock_get_state:
             response = client.post("/api/respond/1", json={"text": "hello"})
 
             assert response.status_code == 500
@@ -432,8 +467,16 @@ class TestSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_option_0_sends_enter_only(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Select index 0 sends just Enter (already highlighted)."""
         mock_db.session.get.return_value = mock_agent
@@ -451,8 +494,11 @@ class TestSelectMode:
         assert data["mode"] == "select"
 
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
 
     @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
@@ -462,8 +508,16 @@ class TestSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_option_2_sends_down_down_enter(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Select index 2 sends Down, Down, Enter."""
         mock_db.session.get.return_value = mock_agent
@@ -477,8 +531,13 @@ class TestSelectMode:
 
         assert response.status_code == 200
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Down", "Down", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Down",
+            "Down",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
 
     @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
@@ -488,8 +547,16 @@ class TestSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_creates_turn_with_marker_text(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Select mode records a descriptive marker as turn text."""
         mock_db.session.get.return_value = mock_agent
@@ -509,17 +576,26 @@ class TestSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_select_with_option_label_uses_label(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Select mode uses option_label as turn text when provided."""
         mock_db.session.get.return_value = mock_agent
         mock_cl_db.session = mock_db.session
         mock_bridge.send_keys.return_value = SendResult(success=True, latency_ms=30)
 
-        client.post("/api/respond/1", json={
-            "mode": "select", "option_index": 0, "option_label": "Yes"
-        })
+        client.post(
+            "/api/respond/1",
+            json={"mode": "select", "option_index": 0, "option_label": "Yes"},
+        )
 
         mock_db.session.add.assert_called_once()
         turn = mock_db.session.add.call_args[0][0]
@@ -581,28 +657,45 @@ class TestOtherMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_other_navigates_then_types(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        mock_time, client, mock_db, mock_agent, mock_cmd_awaiting
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        mock_time,
+        client,
+        mock_db,
+        mock_agent,
+        mock_cmd_awaiting,
     ):
         """Other mode navigates to Other option then types text."""
         mock_db.session.get.return_value = mock_agent
         mock_cl_db.session = mock_db.session
-        mock_time.time.side_effect = [0, 0.05, 0.1]  # start_time, respond_pending, final latency
+        mock_time.time.side_effect = [
+            0,
+            0.05,
+            0.1,
+        ]  # start_time, respond_pending, final latency
         mock_time.sleep = MagicMock()  # don't actually sleep
 
         # Set up command with 2 structured options
         from src.claude_headspace.models.turn import TurnActor, TurnIntent
+
         mock_turn = MagicMock()
         mock_turn.actor = TurnActor.AGENT
         mock_turn.intent = TurnIntent.QUESTION
         mock_turn.tool_input = {
-            "questions": [{
-                "question": "Which?",
-                "options": [
-                    {"label": "A", "description": "Option A"},
-                    {"label": "B", "description": "Option B"},
-                ],
-            }]
+            "questions": [
+                {
+                    "question": "Which?",
+                    "options": [
+                        {"label": "A", "description": "Option A"},
+                        {"label": "B", "description": "Option B"},
+                    ],
+                }
+            ]
         }
         mock_cmd_awaiting.turns = [mock_turn]
 
@@ -617,8 +710,13 @@ class TestOtherMode:
         assert response.status_code == 200
         # Navigate: Down × 2 (num_options) + Enter
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Down", "Down", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Down",
+            "Down",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
         # Wait, then type text
         mock_time.sleep.assert_called_with(0.5)  # select_other_delay_ms=500
@@ -654,8 +752,16 @@ class TestMultiSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_two_single_select_answers(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Two single-select answers produce correct key sequence."""
         mock_db.session.get.return_value = mock_agent
@@ -680,8 +786,14 @@ class TestMultiSelectMode:
 
         # Q1: Down, Enter; Q2: Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Down", "Enter", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Down",
+            "Enter",
+            "Enter",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
 
     @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
@@ -691,8 +803,16 @@ class TestMultiSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_mixed_single_and_multi_select(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Mixed single + multi-select answers produce correct key sequence."""
         mock_db.session.get.return_value = mock_agent
@@ -713,8 +833,19 @@ class TestMultiSelectMode:
         assert response.status_code == 200
         # Q1: Down, Down, Enter; Q2: Space (idx 0), Down, Down, Space (idx 2), Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Down", "Down", "Enter", "Space", "Down", "Down", "Space", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Down",
+            "Down",
+            "Enter",
+            "Space",
+            "Down",
+            "Down",
+            "Space",
+            "Enter",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
 
     @patch("src.claude_headspace.services.command_lifecycle.broadcast_card_refresh")
@@ -724,8 +855,16 @@ class TestMultiSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_option_index_0_no_down_keys(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Option index 0 produces no Down keys."""
         mock_db.session.get.return_value = mock_agent
@@ -743,8 +882,12 @@ class TestMultiSelectMode:
         assert response.status_code == 200
         # Q1: Enter; Submit: Enter
         mock_bridge.send_keys.assert_called_once_with(
-            "%5", "Enter", "Enter",
-            timeout=5, sequential_delay_ms=150, verify_enter=True,
+            "%5",
+            "Enter",
+            "Enter",
+            timeout=5,
+            sequential_delay_ms=150,
+            verify_enter=True,
         )
 
     def test_empty_answers_returns_400(self, client, mock_db, mock_agent):
@@ -793,8 +936,16 @@ class TestMultiSelectMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_creates_turn_with_descriptive_text(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Multi-select creates a turn with descriptive summary text."""
         mock_db.session.get.return_value = mock_agent
@@ -846,27 +997,33 @@ class TestBuildMultiSelectKeys:
     def test_single_question_index_0(self):
         """Single question, option 0: just Enter + Submit Enter."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
+
         keys = _build_multi_select_keys([{"option_index": 0}])
         assert keys == ["Enter", "Enter"]
 
     def test_single_question_index_3(self):
         """Single question, option 3: Down×3 + Enter + Submit Enter."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
+
         keys = _build_multi_select_keys([{"option_index": 3}])
         assert keys == ["Down", "Down", "Down", "Enter", "Enter"]
 
     def test_two_single_selects(self):
         """Two single-select: Down+Enter each, then Submit Enter."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
-        keys = _build_multi_select_keys([
-            {"option_index": 1},
-            {"option_index": 0},
-        ])
+
+        keys = _build_multi_select_keys(
+            [
+                {"option_index": 1},
+                {"option_index": 0},
+            ]
+        )
         assert keys == ["Down", "Enter", "Enter", "Enter"]
 
     def test_multi_select_indices(self):
         """Multi-select with option_indices: Space toggles."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
+
         keys = _build_multi_select_keys([{"option_indices": [0, 2]}])
         # idx 0: Space, then Down×2 to idx 2: Space, Enter, Submit Enter
         assert keys == ["Space", "Down", "Down", "Space", "Enter", "Enter"]
@@ -874,20 +1031,30 @@ class TestBuildMultiSelectKeys:
     def test_mixed_single_and_multi(self):
         """Mixed single + multi-select answers."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
-        keys = _build_multi_select_keys([
-            {"option_index": 2},
-            {"option_indices": [0, 2]},
-        ])
+
+        keys = _build_multi_select_keys(
+            [
+                {"option_index": 2},
+                {"option_indices": [0, 2]},
+            ]
+        )
         expected = [
-            "Down", "Down", "Enter",         # Q1: select option 2
-            "Space", "Down", "Down", "Space", "Enter",  # Q2: toggle 0 and 2
-            "Enter",                           # Submit
+            "Down",
+            "Down",
+            "Enter",  # Q1: select option 2
+            "Space",
+            "Down",
+            "Down",
+            "Space",
+            "Enter",  # Q2: toggle 0 and 2
+            "Enter",  # Submit
         ]
         assert keys == expected
 
     def test_multi_select_unsorted_indices_get_sorted(self):
         """option_indices are sorted before processing."""
         from src.claude_headspace.routes.respond import _build_multi_select_keys
+
         keys = _build_multi_select_keys([{"option_indices": [3, 1]}])
         # Sorted: [1, 3] -> Down, Space (idx 1), Down×2, Space (idx 3), Enter, Submit Enter
         assert keys == ["Down", "Space", "Down", "Down", "Space", "Enter", "Enter"]
@@ -920,8 +1087,16 @@ class TestLegacyTextMode:
     @patch("src.claude_headspace.services.command_lifecycle.db")
     @patch("src.claude_headspace.routes.respond.tmux_bridge")
     def test_legacy_text_without_mode(
-        self, mock_bridge, mock_cl_db, mock_mark, mock_hook, mock_get_bc, mock_bcast_card,
-        client, mock_db, mock_agent,
+        self,
+        mock_bridge,
+        mock_cl_db,
+        mock_mark,
+        mock_hook,
+        mock_get_bc,
+        mock_bcast_card,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Request without mode field defaults to text mode."""
         mock_db.session.get.return_value = mock_agent

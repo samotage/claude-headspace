@@ -1,14 +1,12 @@
 """Unit tests for HeadspaceMonitor service."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.claude_headspace.services.headspace_monitor import (
     HeadspaceMonitor,
-    GENTLE_ALERTS_DEFAULT,
-    FLOW_MESSAGES_DEFAULT,
 )
 
 
@@ -44,7 +42,6 @@ def monitor(mock_app, config):
 
 
 class TestConfiguration:
-
     def test_enabled_from_config(self, mock_app):
         config = {"headspace": {"enabled": True}}
         m = HeadspaceMonitor(app=mock_app, config=config)
@@ -92,7 +89,6 @@ class TestConfiguration:
 
 
 class TestDetermineState:
-
     def test_green_when_no_averages(self, monitor):
         assert monitor._determine_state(None, None) == "green"
 
@@ -123,18 +119,23 @@ class TestDetermineState:
 
 
 class TestDetectFlow:
-
     def test_no_flow_when_no_averages(self, monitor):
-        is_flow, duration = monitor._detect_flow(None, None, 10.0, datetime.now(timezone.utc))
+        is_flow, duration = monitor._detect_flow(
+            None, None, 10.0, datetime.now(timezone.utc)
+        )
         assert is_flow is False
         assert duration is None
 
     def test_no_flow_when_frustration_too_high(self, monitor):
-        is_flow, duration = monitor._detect_flow(5.0, 5.0, 10.0, datetime.now(timezone.utc))
+        is_flow, duration = monitor._detect_flow(
+            5.0, 5.0, 10.0, datetime.now(timezone.utc)
+        )
         assert is_flow is False
 
     def test_no_flow_when_turn_rate_too_low(self, monitor):
-        is_flow, duration = monitor._detect_flow(1.0, 1.0, 3.0, datetime.now(timezone.utc))
+        is_flow, duration = monitor._detect_flow(
+            1.0, 1.0, 3.0, datetime.now(timezone.utc)
+        )
         assert is_flow is False
 
     def test_flow_detected_after_min_duration(self, monitor):
@@ -163,7 +164,6 @@ class TestDetectFlow:
 
 
 class TestAlertSuppression:
-
     def test_suppress_alerts(self, monitor):
         assert monitor._is_suppressed() is False
         monitor.suppress_alerts(hours=1)
@@ -175,7 +175,6 @@ class TestAlertSuppression:
 
 
 class TestAlertCooldown:
-
     def test_not_in_cooldown_initially(self, monitor):
         assert monitor._is_in_cooldown(datetime.now(timezone.utc)) is False
 
@@ -191,7 +190,6 @@ class TestAlertCooldown:
 
 
 class TestDailyAlertCount:
-
     def test_count_increments(self, monitor):
         now = datetime.now(timezone.utc)
         monitor._update_daily_alert_count(now)
@@ -210,7 +208,6 @@ class TestDailyAlertCount:
 
 
 class TestCalcRollingWindows:
-
     @patch("src.claude_headspace.services.headspace_monitor.db")
     def test_returns_none_when_no_turns(self, mock_db, monitor):
         mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
@@ -250,7 +247,6 @@ class TestCalcRollingWindows:
 
 
 class TestRecalculate:
-
     def test_disabled_monitor_skips(self, mock_app):
         config = {"headspace": {"enabled": False}}
         monitor = HeadspaceMonitor(app=mock_app, config=config)
@@ -275,7 +271,11 @@ class TestRecalculate:
         mock_db.session.query.return_value.filter.return_value.count.return_value = 5
         # Mock rising trend query (limit chain)
         mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            (3,), (2,), (4,), (3,), (2,),
+            (3,),
+            (2,),
+            (4,),
+            (3,),
+            (2,),
         ]
 
         # Prune returns 0
@@ -292,10 +292,11 @@ class TestRecalculate:
 
 
 class TestGetCurrentState:
-
     @patch("src.claude_headspace.services.headspace_monitor.db")
     def test_no_snapshots_returns_default(self, mock_db, monitor):
-        mock_db.session.query.return_value.order_by.return_value.first.return_value = None
+        mock_db.session.query.return_value.order_by.return_value.first.return_value = (
+            None
+        )
         state = monitor.get_current_state()
         assert state["state"] == "green"
         assert state["frustration_rolling_10"] is None
@@ -316,7 +317,9 @@ class TestGetCurrentState:
         mock_snapshot.alert_count_today = 1
         mock_snapshot.timestamp = datetime.now(timezone.utc)
 
-        mock_db.session.query.return_value.order_by.return_value.first.return_value = mock_snapshot
+        mock_db.session.query.return_value.order_by.return_value.first.return_value = (
+            mock_snapshot
+        )
         state = monitor.get_current_state()
         assert state["state"] == "yellow"
         assert state["frustration_rolling_10"] == 5.0

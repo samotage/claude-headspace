@@ -50,7 +50,11 @@ def summarize_permission_command(
         return _summarize_file_op("Edit", tool_input.get("file_path", ""))
     elif tool_name in ("Glob", "Grep"):
         pattern = tool_input.get("pattern", "")
-        return _truncate(f"Search: {pattern}") if pattern else f"Search: {tool_name.lower()}"
+        return (
+            _truncate(f"Search: {pattern}")
+            if pattern
+            else f"Search: {tool_name.lower()}"
+        )
     elif tool_name in ("WebFetch", "WebSearch"):
         return _summarize_web(tool_name, tool_input)
     elif tool_name == "NotebookEdit":
@@ -99,6 +103,7 @@ def classify_safety(
 
 
 # --- Bash command parsing ---
+
 
 def _summarize_bash(tool_input: dict) -> str:
     """Summarize a Bash permission request from its command string."""
@@ -149,7 +154,9 @@ def _extract_primary_command(command: str) -> list[str] | None:
         return tokens if tokens else None
 
 
-def _match_bash_command(cmd_name: str, args: list[str], full_command: str) -> str | None:
+def _match_bash_command(
+    cmd_name: str, args: list[str], full_command: str
+) -> str | None:
     """Match a bash command name against known patterns and return a summary."""
     # Strip path prefix (e.g. /usr/bin/curl -> curl)
     base_cmd = os.path.basename(cmd_name)
@@ -265,6 +272,7 @@ def _summarize_web(tool_name: str, tool_input: dict) -> str:
 
 # --- File/path helpers ---
 
+
 def _summarize_file_op(tool_name: str, file_path: str) -> str:
     """Summarize a file operation (Read/Write/Edit) with abbreviated path."""
     if not file_path:
@@ -302,8 +310,20 @@ def _first_file_arg(args: list[str]) -> str | None:
             continue
         if arg.startswith("-"):
             # Flags that take a value argument (skip the next arg)
-            if arg in ("-n", "-c", "-e", "-o", "-p", "-s", "-t", "-w",
-                        "--lines", "--bytes", "--output", "--file"):
+            if arg in (
+                "-n",
+                "-c",
+                "-e",
+                "-o",
+                "-p",
+                "-s",
+                "-t",
+                "-w",
+                "--lines",
+                "--bytes",
+                "--output",
+                "--file",
+            ):
                 skip_next = True
             continue
         # Must look like a file path (contains / or . with extension, or starts with ./)
@@ -349,6 +369,7 @@ def _truncate(text: str, max_length: int = MAX_SUMMARY_LENGTH) -> str:
 
 # --- Option label classification ---
 
+
 def _classify_from_option_labels(options: list[dict] | None) -> str | None:
     """Check option labels for Claude Code's 'allow reading/writing' patterns.
 
@@ -364,39 +385,94 @@ def _classify_from_option_labels(options: list[dict] | None) -> str | None:
         label = (opt.get("label") or "").lower()
         if "allow reading" in label:
             return "safe_read"
-        if any(kw in label for kw in ("allow writing", "allow editing", "allow modifying")):
+        if any(
+            kw in label for kw in ("allow writing", "allow editing", "allow modifying")
+        ):
             return "safe_write"
     return None
 
 
 # --- Bash safety classification ---
 
-_SAFE_READ_COMMANDS = frozenset({
-    "cat", "head", "tail", "less", "more", "bat",
-    "ls", "find", "tree", "fd", "wc", "file",
-    "which", "whereis", "type", "whoami", "id",
-    "echo", "printf", "date", "uname", "hostname",
-    "pwd", "env", "printenv",
-    "sort", "uniq", "tr", "cut", "grep", "rg", "ag",
-    "diff", "comm",
-})
+_SAFE_READ_COMMANDS = frozenset(
+    {
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "bat",
+        "ls",
+        "find",
+        "tree",
+        "fd",
+        "wc",
+        "file",
+        "which",
+        "whereis",
+        "type",
+        "whoami",
+        "id",
+        "echo",
+        "printf",
+        "date",
+        "uname",
+        "hostname",
+        "pwd",
+        "env",
+        "printenv",
+        "sort",
+        "uniq",
+        "tr",
+        "cut",
+        "grep",
+        "rg",
+        "ag",
+        "diff",
+        "comm",
+    }
+)
 
-_SAFE_READ_GIT = frozenset({
-    "status", "log", "diff", "show", "branch", "tag",
-    "describe", "rev-parse", "ls-files", "ls-tree",
-    "stash", "reflog", "shortlog", "blame",
-})
+_SAFE_READ_GIT = frozenset(
+    {
+        "status",
+        "log",
+        "diff",
+        "show",
+        "branch",
+        "tag",
+        "describe",
+        "rev-parse",
+        "ls-files",
+        "ls-tree",
+        "stash",
+        "reflog",
+        "shortlog",
+        "blame",
+    }
+)
 
-_DESTRUCTIVE_COMMANDS = frozenset({
-    "rm", "rmdir", "shred",
-    "dd",
-    "truncate",
-})
+_DESTRUCTIVE_COMMANDS = frozenset(
+    {
+        "rm",
+        "rmdir",
+        "shred",
+        "dd",
+        "truncate",
+    }
+)
 
-_DESTRUCTIVE_GIT = frozenset({
-    "push", "reset", "clean", "checkout",
-    "rebase", "merge", "cherry-pick",
-})
+_DESTRUCTIVE_GIT = frozenset(
+    {
+        "push",
+        "reset",
+        "clean",
+        "checkout",
+        "rebase",
+        "merge",
+        "cherry-pick",
+    }
+)
 
 
 def _classify_compound_bash(command: str) -> str | None:
@@ -457,7 +533,10 @@ def _classify_bash_safety(tool_input: dict) -> str:
     # curl/wget without -X POST/PUT/DELETE or -d/--data are reads
     if base_cmd in ("curl", "wget"):
         cmd_str = " ".join([base_cmd] + args).lower()
-        if any(flag in cmd_str for flag in ("-x post", "-x put", "-x delete", "-d ", "--data")):
+        if any(
+            flag in cmd_str
+            for flag in ("-x post", "-x put", "-x delete", "-d ", "--data")
+        ):
             return "safe_write"
         return "safe_read"
 

@@ -23,14 +23,18 @@ def get_advisory_locks():
 
     try:
         locks = get_held_advisory_locks()
-        return jsonify({
-            "status": "ok",
-            "total": len(locks),
-            "locks": locks,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "total": len(locks),
+                "locks": locks,
+            }
+        ), 200
     except Exception as e:
         logger.warning(f"Failed to query advisory locks: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to query advisory locks",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to query advisory locks",
+            }
+        ), 500

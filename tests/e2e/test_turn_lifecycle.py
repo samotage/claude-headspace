@@ -5,8 +5,6 @@ session-start → command → processing → awaiting input → answer → sessi
 """
 
 import pytest
-from playwright.sync_api import expect
-
 
 pytestmark = pytest.mark.e2e
 
@@ -59,9 +57,7 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_status_counts(input_needed=0, working=1, idle=0)
         dashboard.capture("processing")
 
-    def test_stop_completes_command(
-        self, page, e2e_server, hook_client, dashboard
-    ):
+    def test_stop_completes_command(self, page, e2e_server, hook_client, dashboard):
         """stop hook immediately transitions command to COMPLETE."""
         # Setup: session-start → user-prompt-submit → PROCESSING
         result = hook_client.session_start()
@@ -104,9 +100,7 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_command_summary_contains(agent_id, "Yes, proceed")
         dashboard.capture("answer_processing")
 
-    def test_session_end_removes_card(
-        self, page, e2e_server, hook_client, dashboard
-    ):
+    def test_session_end_removes_card(self, page, e2e_server, hook_client, dashboard):
         """session-end removes the agent card from the dashboard."""
         # Setup: start session and process
         result = hook_client.session_start()
@@ -128,9 +122,7 @@ class TestSingleAgentTurnLifecycle:
         dashboard.assert_agent_card_gone(agent_id)
         dashboard.capture("session_ended")
 
-    def test_full_lifecycle_sequence(
-        self, page, e2e_server, hook_client, dashboard
-    ):
+    def test_full_lifecycle_sequence(self, page, e2e_server, hook_client, dashboard):
         """Comprehensive: full lifecycle with screenshots at each step."""
         # 1. Session start
         result = hook_client.session_start()

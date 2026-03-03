@@ -12,7 +12,6 @@ import pytest
 import requests
 from playwright.sync_api import expect
 
-
 pytestmark = pytest.mark.e2e
 
 
@@ -150,10 +149,7 @@ class TestSSETurnCreatedDelivery:
         page.evaluate("if (window._testSSE) window._testSSE.close()")
 
         # Find the turn_created event for our agent
-        agent_events = [
-            e for e in captured
-            if e.get("agent_id") == agent_id
-        ]
+        agent_events = [e for e in captured if e.get("agent_id") == agent_id]
 
         assert len(agent_events) >= 1, (
             f"Expected at least 1 turn_created event for agent {agent_id}, "
@@ -212,7 +208,8 @@ class TestSSETurnCreatedDelivery:
 
         # Find agent question events
         question_events = [
-            e for e in captured
+            e
+            for e in captured
             if e.get("agent_id") == agent_id and e.get("actor") == "agent"
         ]
 
@@ -310,7 +307,8 @@ class TestProgressCollapsePreservesDOM:
         # Inject test bubbles directly to verify the collapse logic
         # This tests _collapseProgressBubbles without needing a full
         # voice chat session (which requires tmux, etc.)
-        page.evaluate("""(agentId) => {
+        page.evaluate(
+            """(agentId) => {
             const container = document.getElementById('chat-messages');
             if (!container) return;
 
@@ -339,7 +337,9 @@ class TestProgressCollapsePreservesDOM:
                     bubbles[i].classList.add('collapsed');
                 }
             }
-        }""", agent_id)
+        }""",
+            agent_id,
+        )
 
         page.wait_for_timeout(500)
 
@@ -434,7 +434,8 @@ class TestOptimisticUserSend:
         # Inject an optimistic bubble the way VoiceApp does it:
         # Creates a bubble with a fake turn ID (pending-xxx) that gets
         # promoted when the server's turn_created event arrives.
-        page.evaluate("""(agentId) => {
+        page.evaluate(
+            """(agentId) => {
             const container = document.getElementById('chat-messages');
             if (!container) return;
 
@@ -445,7 +446,9 @@ class TestOptimisticUserSend:
             bubble.setAttribute('data-timestamp', new Date().toISOString());
             bubble.textContent = 'Optimistic message';
             container.appendChild(bubble);
-        }""", agent_id)
+        }""",
+            agent_id,
+        )
 
         # Verify the optimistic bubble exists in DOM
         pending_bubble = page.locator('[data-turn-id="pending-12345"]')
@@ -465,13 +468,11 @@ class TestOptimisticUserSend:
         page.wait_for_timeout(500)
 
         # Verify: the old pending ID is gone, the new real ID exists
-        expect(
-            page.locator('[data-turn-id="pending-12345"]')
-        ).to_have_count(0, timeout=3000)
+        expect(page.locator('[data-turn-id="pending-12345"]')).to_have_count(
+            0, timeout=3000
+        )
 
-        expect(
-            page.locator('[data-turn-id="42"]')
-        ).to_have_count(1, timeout=3000)
+        expect(page.locator('[data-turn-id="42"]')).to_have_count(1, timeout=3000)
 
         dashboard.capture("optimistic_send_promoted")
 

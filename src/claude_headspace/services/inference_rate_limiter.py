@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,12 @@ class InferenceRateLimiter:
 
         with self._lock:
             # Prune old entries
-            self._call_timestamps = [t for t in self._call_timestamps if t > window_start]
-            self._token_records = [(t, c) for t, c in self._token_records if t > window_start]
+            self._call_timestamps = [
+                t for t in self._call_timestamps if t > window_start
+            ]
+            self._token_records = [
+                (t, c) for t, c in self._token_records if t > window_start
+            ]
 
             # Check calls per minute
             if len(self._call_timestamps) >= self.calls_per_minute:

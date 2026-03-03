@@ -17,10 +17,10 @@ from claude_headspace.services.notification_service import (
     get_notification_service,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def prefs():
@@ -51,8 +51,8 @@ def available_service(service):
 # NotificationPreferences
 # ---------------------------------------------------------------------------
 
-class TestNotificationPreferences:
 
+class TestNotificationPreferences:
     def test_defaults(self):
         p = NotificationPreferences()
         assert p.enabled is True
@@ -72,25 +72,36 @@ class TestNotificationPreferences:
 # Availability detection
 # ---------------------------------------------------------------------------
 
-class TestAvailability:
 
-    @patch("claude_headspace.services.notification_service.shutil.which", return_value="/usr/local/bin/terminal-notifier")
+class TestAvailability:
+    @patch(
+        "claude_headspace.services.notification_service.shutil.which",
+        return_value="/usr/local/bin/terminal-notifier",
+    )
     def test_is_available_when_installed(self, mock_which, service):
         assert service.is_available() is True
         mock_which.assert_called_once_with("terminal-notifier")
 
-    @patch("claude_headspace.services.notification_service.shutil.which", return_value=None)
+    @patch(
+        "claude_headspace.services.notification_service.shutil.which", return_value=None
+    )
     def test_not_available_when_missing(self, mock_which, service):
         assert service.is_available() is False
 
-    @patch("claude_headspace.services.notification_service.shutil.which", return_value="/usr/local/bin/terminal-notifier")
+    @patch(
+        "claude_headspace.services.notification_service.shutil.which",
+        return_value="/usr/local/bin/terminal-notifier",
+    )
     def test_caches_availability_check(self, mock_which, service):
         service.is_available()
         service.is_available()
         # Only called once due to caching
         mock_which.assert_called_once()
 
-    @patch("claude_headspace.services.notification_service.shutil.which", return_value="/usr/local/bin/terminal-notifier")
+    @patch(
+        "claude_headspace.services.notification_service.shutil.which",
+        return_value="/usr/local/bin/terminal-notifier",
+    )
     def test_refresh_availability_resets_cache(self, mock_which, service):
         service.is_available()
         service.refresh_availability()
@@ -101,8 +112,8 @@ class TestAvailability:
 # Rate limiting
 # ---------------------------------------------------------------------------
 
-class TestRateLimiting:
 
+class TestRateLimiting:
     def test_first_call_not_rate_limited(self, service):
         assert service._is_rate_limited("agent-1") is False
 
@@ -151,8 +162,8 @@ class TestRateLimiting:
 # Command building
 # ---------------------------------------------------------------------------
 
-class TestBuildNotificationCommand:
 
+class TestBuildNotificationCommand:
     def test_basic_command(self, service):
         cmd = service._build_notification_command("Title", "Sub", "Msg")
         assert cmd[0] == "terminal-notifier"
@@ -173,7 +184,9 @@ class TestBuildNotificationCommand:
         assert "-sound" not in cmd
 
     def test_includes_url_when_provided(self, service):
-        cmd = service._build_notification_command("T", "S", "M", url="http://example.com")
+        cmd = service._build_notification_command(
+            "T", "S", "M", url="http://example.com"
+        )
         assert "-open" in cmd
         idx = cmd.index("-open")
         assert cmd[idx + 1] == "http://example.com"
@@ -193,15 +206,19 @@ class TestBuildNotificationCommand:
 # Contextual message building
 # ---------------------------------------------------------------------------
 
-class TestBuildContextualMessage:
 
+class TestBuildContextualMessage:
     def test_command_complete_with_turn_text(self, service):
-        msg = service._build_contextual_message("command_complete", turn_text="All done")
+        msg = service._build_contextual_message(
+            "command_complete", turn_text="All done"
+        )
         assert "\u2713" in msg
         assert "All done" in msg
 
     def test_awaiting_input_with_turn_text(self, service):
-        msg = service._build_contextual_message("awaiting_input", turn_text="What next?")
+        msg = service._build_contextual_message(
+            "awaiting_input", turn_text="What next?"
+        )
         assert "?" in msg
         assert "What next?" in msg
 
@@ -231,14 +248,16 @@ class TestBuildContextualMessage:
 # send_notification
 # ---------------------------------------------------------------------------
 
-class TestSendNotification:
 
+class TestSendNotification:
     @patch("claude_headspace.services.notification_service.subprocess.run")
     def test_successful_send(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1",
-            event_type="command_complete", project="My Project",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
+            project="My Project",
         )
         assert result is True
         mock_run.assert_called_once()
@@ -246,21 +265,29 @@ class TestSendNotification:
     def test_disabled_returns_true_without_sending(self, available_service):
         available_service.preferences.enabled = False
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is True
 
     def test_event_type_disabled_returns_true(self, available_service):
         available_service.preferences.events["command_complete"] = False
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is True
 
-    @patch("claude_headspace.services.notification_service.shutil.which", return_value=None)
+    @patch(
+        "claude_headspace.services.notification_service.shutil.which", return_value=None
+    )
     def test_not_available_returns_false(self, mock_which, service):
         result = service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is False
 
@@ -268,11 +295,15 @@ class TestSendNotification:
     def test_rate_limited_returns_true(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         # Second call immediately should be rate-limited (returns True, no send)
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is True
         assert mock_run.call_count == 1  # Only first call actually sent
@@ -281,16 +312,23 @@ class TestSendNotification:
     def test_nonzero_returncode_returns_false(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=1, stderr="error")
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is False
 
     @patch("claude_headspace.services.notification_service.subprocess.run")
     def test_timeout_returns_false(self, mock_run, available_service):
         import subprocess
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="terminal-notifier", timeout=5)
+
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="terminal-notifier", timeout=5
+        )
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is False
 
@@ -298,7 +336,9 @@ class TestSendNotification:
     def test_exception_returns_false(self, mock_run, available_service):
         mock_run.side_effect = OSError("File not found")
         result = available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1", event_type="command_complete",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
         )
         assert result is False
 
@@ -306,8 +346,10 @@ class TestSendNotification:
     def test_subtitle_with_project(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1",
-            event_type="command_complete", project="MyProj",
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
+            project="MyProj",
         )
         cmd = mock_run.call_args[0][0]
         sub_idx = cmd.index("-subtitle")
@@ -318,8 +360,10 @@ class TestSendNotification:
     def test_subtitle_without_project(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1",
-            event_type="command_complete", project=None,
+            agent_id="a1",
+            agent_name="Agent 1",
+            event_type="command_complete",
+            project=None,
         )
         cmd = mock_run.call_args[0][0]
         sub_idx = cmd.index("-subtitle")
@@ -329,7 +373,8 @@ class TestSendNotification:
     def test_custom_dashboard_url(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         available_service.send_notification(
-            agent_id="a1", agent_name="Agent 1",
+            agent_id="a1",
+            agent_name="Agent 1",
             event_type="command_complete",
             dashboard_url="http://custom:9999",
         )
@@ -342,13 +387,14 @@ class TestSendNotification:
 # Dispatch convenience methods
 # ---------------------------------------------------------------------------
 
-class TestDispatchMethods:
 
+class TestDispatchMethods:
     @patch("claude_headspace.services.notification_service.subprocess.run")
     def test_notify_command_complete(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         result = available_service.notify_command_complete(
-            agent_id="a1", agent_name="Agent 1",
+            agent_id="a1",
+            agent_name="Agent 1",
         )
         assert result is True
 
@@ -356,7 +402,8 @@ class TestDispatchMethods:
     def test_notify_awaiting_input(self, mock_run, available_service):
         mock_run.return_value = MagicMock(returncode=0)
         result = available_service.notify_awaiting_input(
-            agent_id="a1", agent_name="Agent 1",
+            agent_id="a1",
+            agent_name="Agent 1",
         )
         assert result is True
 
@@ -365,8 +412,8 @@ class TestDispatchMethods:
 # Preferences get/update
 # ---------------------------------------------------------------------------
 
-class TestPreferences:
 
+class TestPreferences:
     def test_get_preferences(self, service):
         prefs = service.get_preferences()
         assert prefs["enabled"] is True
@@ -382,11 +429,15 @@ class TestPreferences:
     def test_update_preferences_events(self, service):
         service.update_preferences(events={"new_event": True})
         assert service.preferences.events["new_event"] is True
-        assert service.preferences.events["command_complete"] is True  # Merged, not replaced
+        assert (
+            service.preferences.events["command_complete"] is True
+        )  # Merged, not replaced
 
     def test_update_preferences_all(self, service):
         service.update_preferences(
-            enabled=False, sound=False, rate_limit_seconds=30,
+            enabled=False,
+            sound=False,
+            rate_limit_seconds=30,
         )
         assert service.preferences.enabled is False
         assert service.preferences.sound is False
@@ -397,10 +448,11 @@ class TestPreferences:
 # Singleton / thread-safety
 # ---------------------------------------------------------------------------
 
-class TestSingleton:
 
+class TestSingleton:
     def test_get_notification_service_returns_instance(self):
         import claude_headspace.services.notification_service as ns
+
         original = ns._notification_service
         try:
             ns._notification_service = None
@@ -411,6 +463,7 @@ class TestSingleton:
 
     def test_get_notification_service_returns_same_instance(self):
         import claude_headspace.services.notification_service as ns
+
         original = ns._notification_service
         try:
             ns._notification_service = None
@@ -422,6 +475,7 @@ class TestSingleton:
 
     def test_configure_replaces_instance(self):
         import claude_headspace.services.notification_service as ns
+
         original = ns._notification_service
         try:
             ns._notification_service = None
@@ -435,6 +489,7 @@ class TestSingleton:
 
     def test_thread_safe_creation(self):
         import claude_headspace.services.notification_service as ns
+
         original = ns._notification_service
         try:
             ns._notification_service = None

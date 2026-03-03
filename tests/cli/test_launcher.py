@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import signal
 import subprocess
 import tempfile
 import uuid
@@ -44,12 +43,16 @@ class TestGetServerUrl:
 
     def test_from_environment(self):
         """Test getting URL from environment variable."""
-        with patch.dict(os.environ, {"CLAUDE_HEADSPACE_URL": "http://example.com:8080"}):
+        with patch.dict(
+            os.environ, {"CLAUDE_HEADSPACE_URL": "http://example.com:8080"}
+        ):
             assert get_server_url() == "http://example.com:8080"
 
     def test_strips_trailing_slash(self):
         """Test that trailing slash is stripped."""
-        with patch.dict(os.environ, {"CLAUDE_HEADSPACE_URL": "http://example.com:8080/"}):
+        with patch.dict(
+            os.environ, {"CLAUDE_HEADSPACE_URL": "http://example.com:8080/"}
+        ):
             assert get_server_url() == "http://example.com:8080"
 
     def test_from_config_file(self):
@@ -118,7 +121,9 @@ class TestGetProjectInfo:
     def test_non_git_directory(self):
         """Test project detection outside git repository."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="not a git repo")
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="", stderr="not a git repo"
+            )
 
             with patch("os.getcwd", return_value="/home/user/project"):
                 info = get_project_info()
@@ -264,7 +269,8 @@ class TestValidatePrerequisites:
             mock_get.return_value = MagicMock(status_code=200)
 
             with patch(
-                "src.claude_headspace.cli.launcher.verify_claude_cli", return_value=False
+                "src.claude_headspace.cli.launcher.verify_claude_cli",
+                return_value=False,
             ):
                 valid, error = validate_prerequisites("http://localhost:5055")
 
@@ -489,7 +495,10 @@ class TestValidatePersona:
         mock_get.return_value = MagicMock(
             status_code=404,
             text='{"valid": false, "error": "not found"}',
-            json=lambda: {"valid": False, "error": "Persona 'nope' not found or not active"},
+            json=lambda: {
+                "valid": False,
+                "error": "Persona 'nope' not found or not active",
+            },
         )
         valid, error = validate_persona("http://localhost:5055", "nope")
         assert valid is False
@@ -499,6 +508,7 @@ class TestValidatePersona:
     def test_connection_error(self, mock_get):
         """Test validation handles connection errors gracefully."""
         import requests as req
+
         mock_get.side_effect = req.exceptions.ConnectionError("refused")
         valid, error = validate_persona("http://localhost:5055", "dev-con")
         assert valid is False
@@ -508,6 +518,7 @@ class TestValidatePersona:
     def test_timeout_error(self, mock_get):
         """Test validation handles timeout errors gracefully."""
         import requests as req
+
         mock_get.side_effect = req.exceptions.Timeout("timed out")
         valid, error = validate_persona("http://localhost:5055", "dev-con")
         assert valid is False
@@ -573,23 +584,17 @@ class TestSessionManager:
         """Test that cleanup is called on exit."""
         session_uuid = uuid.uuid4()
 
-        with patch(
-            "src.claude_headspace.cli.launcher.cleanup_session"
-        ) as mock_cleanup:
+        with patch("src.claude_headspace.cli.launcher.cleanup_session") as mock_cleanup:
             with SessionManager("http://localhost:5055", session_uuid):
                 pass
 
-            mock_cleanup.assert_called_once_with(
-                "http://localhost:5055", session_uuid
-            )
+            mock_cleanup.assert_called_once_with("http://localhost:5055", session_uuid)
 
     def test_cleanup_idempotent(self):
         """Test that cleanup is only called once."""
         session_uuid = uuid.uuid4()
 
-        with patch(
-            "src.claude_headspace.cli.launcher.cleanup_session"
-        ) as mock_cleanup:
+        with patch("src.claude_headspace.cli.launcher.cleanup_session") as mock_cleanup:
             manager = SessionManager("http://localhost:5055", session_uuid)
             manager._cleanup()
             manager._cleanup()
@@ -605,7 +610,12 @@ class TestWrapInTmux:
         """Test that execvp is called with correct tmux command."""
         args = argparse.Namespace(bridge=True)
 
-        with patch("shutil.which", side_effect=lambda cmd: "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"):
+        with patch(
+            "shutil.which",
+            side_effect=lambda cmd: (
+                "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"
+            ),
+        ):
             with patch(
                 "src.claude_headspace.cli.launcher.get_project_info",
                 return_value=ProjectInfo("my-project", "/path/to/my-project", "main"),
@@ -613,7 +623,9 @@ class TestWrapInTmux:
                 with patch("src.claude_headspace.cli.launcher.uuid.uuid4") as mock_uuid:
                     mock_uuid.return_value = MagicMock(hex="abcdef1234567890")
                     with patch("os.execvp") as mock_execvp:
-                        with patch("sys.argv", ["claude-headspace", "start", "--bridge"]):
+                        with patch(
+                            "sys.argv", ["claude-headspace", "start", "--bridge"]
+                        ):
                             _wrap_in_tmux(args)
 
         mock_execvp.assert_called_once()
@@ -630,7 +642,9 @@ class TestWrapInTmux:
         assert argv[path_idx + 1] == "/path/to/my-project"
         assert "-e" in argv
         env_idx = argv.index("-e")
-        assert argv[env_idx + 1] == "CLAUDE_HEADSPACE_TMUX_SESSION=hs-my-project-abcdef12"
+        assert (
+            argv[env_idx + 1] == "CLAUDE_HEADSPACE_TMUX_SESSION=hs-my-project-abcdef12"
+        )
         assert "--" in argv
 
     def test_tmux_not_installed_returns_fallback(self, capsys):
@@ -650,7 +664,12 @@ class TestWrapInTmux:
         """Test OSError handling from execvp."""
         args = argparse.Namespace(bridge=True)
 
-        with patch("shutil.which", side_effect=lambda cmd: "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"):
+        with patch(
+            "shutil.which",
+            side_effect=lambda cmd: (
+                "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"
+            ),
+        ):
             with patch(
                 "src.claude_headspace.cli.launcher.get_project_info",
                 return_value=ProjectInfo("test", "/test", "main"),
@@ -667,10 +686,17 @@ class TestWrapInTmux:
         """Test that session name follows hs-{name}-{hex8} pattern."""
         args = argparse.Namespace(bridge=True)
 
-        with patch("shutil.which", side_effect=lambda cmd: "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"):
+        with patch(
+            "shutil.which",
+            side_effect=lambda cmd: (
+                "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"
+            ),
+        ):
             with patch(
                 "src.claude_headspace.cli.launcher.get_project_info",
-                return_value=ProjectInfo("cool-project", "/path/to/cool-project", "dev"),
+                return_value=ProjectInfo(
+                    "cool-project", "/path/to/cool-project", "dev"
+                ),
             ):
                 with patch("os.execvp") as mock_execvp:
                     with patch("sys.argv", ["claude-headspace", "start", "--bridge"]):
@@ -689,7 +715,12 @@ class TestWrapInTmux:
         """Test that a status line is printed before exec."""
         args = argparse.Namespace(bridge=True)
 
-        with patch("shutil.which", side_effect=lambda cmd: "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"):
+        with patch(
+            "shutil.which",
+            side_effect=lambda cmd: (
+                "/usr/bin/tmux" if cmd == "tmux" else "/usr/local/bin/claude-headspace"
+            ),
+        ):
             with patch(
                 "src.claude_headspace.cli.launcher.get_project_info",
                 return_value=ProjectInfo("test", "/test", "main"),
@@ -757,7 +788,11 @@ class TestMain:
 
         assert exit_code == EXIT_SUCCESS
         captured = capsys.readouterr()
-        assert "usage:" in captured.out.lower() or "usage:" in captured.err.lower() or exit_code == 0
+        assert (
+            "usage:" in captured.out.lower()
+            or "usage:" in captured.err.lower()
+            or exit_code == 0
+        )
 
     def test_separator_handling(self):
         """Test -- separator handling for claude args."""
@@ -911,11 +946,11 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.SessionManager"
                                         ) as MockManager:
                                             mock_manager = MagicMock()
-                                            MockManager.return_value.__enter__ = MagicMock(
-                                                return_value=mock_manager
+                                            MockManager.return_value.__enter__ = (
+                                                MagicMock(return_value=mock_manager)
                                             )
-                                            MockManager.return_value.__exit__ = MagicMock(
-                                                return_value=False
+                                            MockManager.return_value.__exit__ = (
+                                                MagicMock(return_value=False)
                                             )
 
                                             with patch(
@@ -983,11 +1018,11 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.SessionManager"
                                         ) as MockManager:
                                             mock_manager = MagicMock()
-                                            MockManager.return_value.__enter__ = MagicMock(
-                                                return_value=mock_manager
+                                            MockManager.return_value.__enter__ = (
+                                                MagicMock(return_value=mock_manager)
                                             )
-                                            MockManager.return_value.__exit__ = MagicMock(
-                                                return_value=False
+                                            MockManager.return_value.__exit__ = (
+                                                MagicMock(return_value=False)
                                             )
                                             with patch(
                                                 "src.claude_headspace.cli.launcher.launch_claude",
@@ -1095,11 +1130,11 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.SessionManager"
                                         ) as MockManager:
                                             mock_manager = MagicMock()
-                                            MockManager.return_value.__enter__ = MagicMock(
-                                                return_value=mock_manager
+                                            MockManager.return_value.__enter__ = (
+                                                MagicMock(return_value=mock_manager)
                                             )
-                                            MockManager.return_value.__exit__ = MagicMock(
-                                                return_value=False
+                                            MockManager.return_value.__exit__ = (
+                                                MagicMock(return_value=False)
                                             )
                                             with patch(
                                                 "src.claude_headspace.cli.launcher.launch_claude",
@@ -1152,11 +1187,11 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.SessionManager"
                                         ) as MockManager:
                                             mock_manager = MagicMock()
-                                            MockManager.return_value.__enter__ = MagicMock(
-                                                return_value=mock_manager
+                                            MockManager.return_value.__enter__ = (
+                                                MagicMock(return_value=mock_manager)
                                             )
-                                            MockManager.return_value.__exit__ = MagicMock(
-                                                return_value=False
+                                            MockManager.return_value.__exit__ = (
+                                                MagicMock(return_value=False)
                                             )
                                             with patch(
                                                 "src.claude_headspace.cli.launcher.launch_claude",
@@ -1209,17 +1244,19 @@ class TestMain:
                                             "src.claude_headspace.cli.launcher.SessionManager"
                                         ) as MockManager:
                                             mock_manager = MagicMock()
-                                            MockManager.return_value.__enter__ = MagicMock(
-                                                return_value=mock_manager
+                                            MockManager.return_value.__enter__ = (
+                                                MagicMock(return_value=mock_manager)
                                             )
-                                            MockManager.return_value.__exit__ = MagicMock(
-                                                return_value=False
+                                            MockManager.return_value.__exit__ = (
+                                                MagicMock(return_value=False)
                                             )
                                             with patch(
                                                 "src.claude_headspace.cli.launcher.launch_claude",
                                                 return_value=0,
                                             ):
-                                                exit_code = main(["start", "--no-bridge"])
+                                                exit_code = main(
+                                                    ["start", "--no-bridge"]
+                                                )
 
         assert exit_code == EXIT_SUCCESS
         # --no-bridge wins over config
@@ -1253,16 +1290,12 @@ class TestGetBridgeDefault:
 
     def test_reads_from_config(self):
         """Test reading cli.default_bridge from config.yaml."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump({"cli": {"default_bridge": False}}, f)
             config_path = f.name
 
         try:
-            with patch.object(
-                Path, "cwd", return_value=Path(config_path).parent
-            ):
+            with patch.object(Path, "cwd", return_value=Path(config_path).parent):
                 original_exists = Path.exists
 
                 def mock_exists(self):
@@ -1283,16 +1316,12 @@ class TestGetBridgeDefault:
 
     def test_returns_true_when_cli_section_missing(self):
         """Test that True is returned when config has no cli section."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump({"server": {"port": 5055}}, f)
             config_path = f.name
 
         try:
-            with patch.object(
-                Path, "cwd", return_value=Path(config_path).parent
-            ):
+            with patch.object(Path, "cwd", return_value=Path(config_path).parent):
                 original_exists = Path.exists
 
                 def mock_exists(self):

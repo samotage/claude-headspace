@@ -30,21 +30,17 @@ class Persona(db.Model):
     slug: Mapped[str] = mapped_column(
         String(128), nullable=False, unique=True, default=temp_slug
     )
-    name: Mapped[str] = mapped_column(
-        String(64), nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="active"
-    )
-    role_id: Mapped[int] = mapped_column(
-        ForeignKey("roles.id"), nullable=False
-    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     persona_type_id: Mapped[int] = mapped_column(
         ForeignKey("persona_types.id", ondelete="RESTRICT"), nullable=False, default=1
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -77,10 +73,14 @@ class Persona(db.Model):
         """Return the operator's Persona (person/internal type), or None."""
         from .persona_type import PersonaType
 
-        return cls.query.join(PersonaType).filter(
-            PersonaType.type_key == "person",
-            PersonaType.subtype == "internal",
-        ).first()
+        return (
+            cls.query.join(PersonaType)
+            .filter(
+                PersonaType.type_key == "person",
+                PersonaType.subtype == "internal",
+            )
+            .first()
+        )
 
     def __repr__(self) -> str:
         return f"<Persona id={self.id} slug={self.slug} name={self.name}>"

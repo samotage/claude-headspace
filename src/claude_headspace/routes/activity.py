@@ -60,7 +60,11 @@ def _get_window() -> tuple[str, datetime, datetime | None]:
 def _metric_to_dict(m: ActivityMetric) -> dict:
     """Convert an ActivityMetric to a JSON-serialisable dict."""
     frustration_avg = None
-    if m.total_frustration and m.frustration_turn_count and m.frustration_turn_count > 0:
+    if (
+        m.total_frustration
+        and m.frustration_turn_count
+        and m.frustration_turn_count > 0
+    ):
         frustration_avg = round(m.total_frustration / m.frustration_turn_count, 1)
     return {
         "id": m.id,
@@ -72,7 +76,9 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "frustration_turn_count": m.frustration_turn_count,
         "frustration_avg": frustration_avg,
         "max_frustration": m.max_frustration,
-        "max_frustration_at": m.max_frustration_at.isoformat() if m.max_frustration_at else None,
+        "max_frustration_at": m.max_frustration_at.isoformat()
+        if m.max_frustration_at
+        else None,
     }
 
 
@@ -112,12 +118,9 @@ def agent_metrics(agent_id: int):
 
         window, cutoff, cutoff_end = _get_window()
 
-        query = (
-            db.session.query(ActivityMetric)
-            .filter(
-                ActivityMetric.agent_id == agent_id,
-                ActivityMetric.bucket_start >= cutoff,
-            )
+        query = db.session.query(ActivityMetric).filter(
+            ActivityMetric.agent_id == agent_id,
+            ActivityMetric.bucket_start >= cutoff,
         )
         if cutoff_end:
             query = query.filter(ActivityMetric.bucket_start < cutoff_end)
@@ -125,12 +128,14 @@ def agent_metrics(agent_id: int):
 
         current = history[-1] if history else None
 
-        return jsonify({
-            "agent_id": agent_id,
-            "window": window,
-            "current": _metric_to_dict(current) if current else None,
-            "history": [_metric_to_dict(m) for m in history],
-        }), 200
+        return jsonify(
+            {
+                "agent_id": agent_id,
+                "window": window,
+                "current": _metric_to_dict(current) if current else None,
+                "history": [_metric_to_dict(m) for m in history],
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get agent metrics for %s", agent_id)
@@ -149,12 +154,9 @@ def project_metrics(project_id: int):
 
         window, cutoff, cutoff_end = _get_window()
 
-        query = (
-            db.session.query(ActivityMetric)
-            .filter(
-                ActivityMetric.project_id == project_id,
-                ActivityMetric.bucket_start >= cutoff,
-            )
+        query = db.session.query(ActivityMetric).filter(
+            ActivityMetric.project_id == project_id,
+            ActivityMetric.bucket_start >= cutoff,
         )
         if cutoff_end:
             query = query.filter(ActivityMetric.bucket_start < cutoff_end)
@@ -162,12 +164,14 @@ def project_metrics(project_id: int):
 
         current = history[-1] if history else None
 
-        return jsonify({
-            "project_id": project_id,
-            "window": window,
-            "current": _metric_to_dict(current) if current else None,
-            "history": [_metric_to_dict(m) for m in history],
-        }), 200
+        return jsonify(
+            {
+                "project_id": project_id,
+                "window": window,
+                "current": _metric_to_dict(current) if current else None,
+                "history": [_metric_to_dict(m) for m in history],
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get project metrics for %s", project_id)
@@ -180,12 +184,9 @@ def overall_metrics():
     try:
         window, cutoff, cutoff_end = _get_window()
 
-        query = (
-            db.session.query(ActivityMetric)
-            .filter(
-                ActivityMetric.is_overall == True,
-                ActivityMetric.bucket_start >= cutoff,
-            )
+        query = db.session.query(ActivityMetric).filter(
+            ActivityMetric.is_overall == True,
+            ActivityMetric.bucket_start >= cutoff,
         )
         if cutoff_end:
             query = query.filter(ActivityMetric.bucket_start < cutoff_end)
@@ -196,12 +197,14 @@ def overall_metrics():
         # Compute daily totals aggregated across all buckets in the window
         daily_totals = _compute_daily_totals(history, cutoff, cutoff_end)
 
-        return jsonify({
-            "window": window,
-            "current": _metric_to_dict(current) if current else None,
-            "history": [_metric_to_dict(m) for m in history],
-            "daily_totals": daily_totals,
-        }), 200
+        return jsonify(
+            {
+                "window": window,
+                "current": _metric_to_dict(current) if current else None,
+                "history": [_metric_to_dict(m) for m in history],
+                "daily_totals": daily_totals,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get overall metrics")
@@ -233,7 +236,9 @@ def _compute_daily_totals(
             weight = m.turn_count - 1
             weighted_time_sum += m.avg_turn_time_seconds * weight
             weighted_time_count += weight
-    avg_turn_time = (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+    avg_turn_time = (
+        (weighted_time_sum / weighted_time_count) if weighted_time_count > 0 else None
+    )
 
     # Count distinct agents active in the window from agent-level metrics
     distinct_agents = (
@@ -255,7 +260,11 @@ def _compute_daily_totals(
     # Frustration average
     total_frustration = sum(m.total_frustration or 0 for m in metrics)
     total_frust_turns = sum(m.frustration_turn_count or 0 for m in metrics)
-    frustration_avg = round(total_frustration / total_frust_turns, 1) if total_frust_turns > 0 else None
+    frustration_avg = (
+        round(total_frustration / total_frust_turns, 1)
+        if total_frust_turns > 0
+        else None
+    )
 
     return {
         "total_turns": total_turns,

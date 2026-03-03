@@ -4,7 +4,6 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ class JSONLParser:
         turns = []
 
         try:
-            with open(self._file_path, "r", encoding="utf-8") as f:
+            with open(self._file_path, encoding="utf-8") as f:
                 # Seek to last known position
                 f.seek(self._position)
 
@@ -82,7 +81,7 @@ class JSONLParser:
 
         return turns
 
-    def _parse_line(self, line: str) -> Optional[ParsedTurn]:
+    def _parse_line(self, line: str) -> ParsedTurn | None:
         """
         Parse a single jsonl line.
 
@@ -126,7 +125,7 @@ class JSONLParser:
             message_type=msg_type,
         )
 
-    def _extract_text(self, data: dict) -> Optional[str]:
+    def _extract_text(self, data: dict) -> str | None:
         """
         Extract text content from a message.
 
@@ -157,7 +156,7 @@ class JSONLParser:
 
         return None
 
-    def _parse_timestamp(self, timestamp_str: Optional[str]) -> datetime:
+    def _parse_timestamp(self, timestamp_str: str | None) -> datetime:
         """
         Parse ISO 8601 timestamp string.
 

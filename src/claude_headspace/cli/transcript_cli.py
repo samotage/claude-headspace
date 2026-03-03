@@ -13,7 +13,7 @@ from flask.cli import AppGroup
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.command import Command, CommandState
+from ..models.command import Command
 from ..models.turn import Turn, TurnActor
 
 transcript_cli = AppGroup("transcript", help="Agent transcript commands.")

@@ -16,8 +16,9 @@ Test methodology:
   that attack vector and needs to be updated.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
@@ -27,7 +28,9 @@ def guardrails_content():
     project_root = Path(__file__).parent.parent.parent
     guardrails_path = project_root / "data" / "platform-guardrails.md"
     if not guardrails_path.exists():
-        pytest.skip("Platform guardrails file not found (expected at data/platform-guardrails.md)")
+        pytest.skip(
+            "Platform guardrails file not found (expected at data/platform-guardrails.md)"
+        )
     return guardrails_path.read_text(encoding="utf-8")
 
 
@@ -155,7 +158,9 @@ class TestSystemPromptExtraction:
     def test_never_follow_show_instructions(self, guardrails_lower):
         """Guardrails address 'show your instructions' attacks."""
         # Check for various phrasings
-        assert "your instructions" in guardrails_lower or "your rules" in guardrails_lower
+        assert (
+            "your instructions" in guardrails_lower or "your rules" in guardrails_lower
+        )
 
     def test_never_confirm_deny_guesses(self, guardrails_lower):
         """Guardrails prevent confirming or denying guesses about instructions."""

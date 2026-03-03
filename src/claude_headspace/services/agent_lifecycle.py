@@ -7,8 +7,8 @@ to provide remote agent lifecycle management.
 import logging
 import os
 import shlex
-import signal
 import shutil
+import signal
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -270,16 +270,12 @@ def create_agent(
 
     # Check that tmux is available
     if not shutil.which("tmux"):
-        return CreateResult(
-            success=False, message="tmux is not installed"
-        )
+        return CreateResult(success=False, message="tmux is not installed")
 
     # Check that claude-headspace CLI is available
     cli_path = shutil.which("claude-headspace")
     if not cli_path:
-        return CreateResult(
-            success=False, message="claude-headspace CLI not found"
-        )
+        return CreateResult(success=False, message="claude-headspace CLI not found")
 
     # Generate a unique tmux session name
     import uuid
@@ -317,13 +313,16 @@ def create_agent(
             "-d",
             "-s",
             session_name,
-            "-e", f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
+            "-e",
+            f"CLAUDE_HEADSPACE_TMUX_SESSION={session_name}",
         ]
         # Always set persona slug explicitly — empty string prevents inheritance
         # from the tmux server's global environment or parent process.
         tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PERSONA_SLUG={persona_slug or ''}"])
         if previous_agent_id is not None:
-            tmux_cmd.extend(["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"])
+            tmux_cmd.extend(
+                ["-e", f"CLAUDE_HEADSPACE_PREVIOUS_AGENT_ID={previous_agent_id}"]
+            )
         tmux_cmd.extend(["-c", str(project_path), "--"])
 
         # Build the shell command to run inside the tmux session.
@@ -334,7 +333,9 @@ def create_agent(
         # (claude-headspace needs claude_headspace importable).
         cli_str = " ".join(shlex.quote(arg) for arg in cli_args)
         if has_venv:
-            shell_cmd = f"export PATH=\"$PATH:{shlex.quote(str(venv_bin))}\" && exec {cli_str}"
+            shell_cmd = (
+                f'export PATH="$PATH:{shlex.quote(str(venv_bin))}" && exec {cli_str}'
+            )
         else:
             shell_cmd = f"exec {cli_str}"
         session_cmd = ["bash", "-c", shell_cmd]
@@ -408,8 +409,7 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
     if not result.success:
         error_msg = result.error_message or "Send failed"
         logger.warning(
-            f"Failed to send /exit to agent {agent_id} "
-            f"(pane {pane_id}): {error_msg}"
+            f"Failed to send /exit to agent {agent_id} (pane {pane_id}): {error_msg}"
         )
         return ShutdownResult(
             success=False, message=f"Failed to send /exit: {error_msg}"
@@ -436,7 +436,8 @@ def shutdown_agent(agent_id: int) -> ShutdownResult:
             time.sleep(poll_interval_s)
 
         health = tmux_bridge.check_health(
-            pane_id, level=tmux_bridge.HealthCheckLevel.EXISTS,
+            pane_id,
+            level=tmux_bridge.HealthCheckLevel.EXISTS,
         )
         if not health.available:
             logger.info(
@@ -541,6 +542,7 @@ def get_context_usage(agent_id: int) -> ContextResult:
     # Fallback: read sidecar file written by statusline-command.sh
     if not ctx:
         from .context_poller import _read_sidecar
+
         ctx = _read_sidecar(agent.tmux_pane_id)
 
     if not ctx:
@@ -647,7 +649,9 @@ def get_agent_info(agent_id: int) -> dict | None:
 
     # --- Lifecycle ---
     effective_state = get_effective_state(agent)
-    state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+    state_name = (
+        effective_state if isinstance(effective_state, str) else effective_state.name
+    )
 
     lifecycle = {
         "started_at": agent.started_at.isoformat() if agent.started_at else None,
@@ -662,7 +666,9 @@ def get_agent_info(agent_id: int) -> dict | None:
     priority = {
         "score": agent.priority_score,
         "reason": agent.priority_reason,
-        "updated_at": agent.priority_updated_at.isoformat() if agent.priority_updated_at else None,
+        "updated_at": agent.priority_updated_at.isoformat()
+        if agent.priority_updated_at
+        else None,
     }
 
     # --- Headspace ---
@@ -695,10 +701,12 @@ def get_agent_info(agent_id: int) -> dict | None:
         if hasattr(command, "turns"):
             for turn in command.turns:
                 if turn.actor == TurnActor.USER and turn.frustration_score is not None:
-                    frustration_scores.append({
-                        "score": turn.frustration_score,
-                        "timestamp": turn.timestamp.isoformat(),
-                    })
+                    frustration_scores.append(
+                        {
+                            "score": turn.frustration_score,
+                            "timestamp": turn.timestamp.isoformat(),
+                        }
+                    )
 
     # --- Commands (last 10) with turns ---
     commands_info = []
@@ -709,33 +717,42 @@ def get_agent_info(agent_id: int) -> dict | None:
         for turn in reversed(recent_turns):  # chronological order
             text = turn.text or ""
             text_truncated = len(text) > 500
-            turns_info.append({
-                "id": turn.id,
-                "actor": turn.actor.value,
-                "intent": turn.intent.value,
-                "timestamp": turn.timestamp.isoformat(),
-                "text": text[:500] if text_truncated else text,
-                "text_truncated": text_truncated,
-                "summary": turn.summary,
-                "frustration_score": turn.frustration_score,
-            })
+            turns_info.append(
+                {
+                    "id": turn.id,
+                    "actor": turn.actor.value,
+                    "intent": turn.intent.value,
+                    "timestamp": turn.timestamp.isoformat(),
+                    "text": text[:500] if text_truncated else text,
+                    "text_truncated": text_truncated,
+                    "summary": turn.summary,
+                    "frustration_score": turn.frustration_score,
+                }
+            )
 
-        commands_info.append({
-            "id": command.id,
-            "state": command.state.value,
-            "instruction": command.instruction,
-            "completion_summary": command.completion_summary,
-            "started_at": command.started_at.isoformat() if command.started_at else None,
-            "completed_at": command.completed_at.isoformat() if command.completed_at else None,
-            "turn_count": len(command.turns) if hasattr(command, "turns") else 0,
-            "turns": turns_info,
-        })
+        commands_info.append(
+            {
+                "id": command.id,
+                "state": command.state.value,
+                "instruction": command.instruction,
+                "completion_summary": command.completion_summary,
+                "started_at": command.started_at.isoformat()
+                if command.started_at
+                else None,
+                "completed_at": command.completed_at.isoformat()
+                if command.completed_at
+                else None,
+                "turn_count": len(command.turns) if hasattr(command, "turns") else 0,
+                "turns": turns_info,
+            }
+        )
 
     # --- Guardrails ---
     guardrails_info = None
     guardrails_hash = getattr(agent, "guardrails_version_hash", None)
     if guardrails_hash is not None:
         from .persona_assets import get_current_guardrails_hash
+
         current_hash = get_current_guardrails_hash()
         guardrails_info = {
             "version_hash": guardrails_hash,

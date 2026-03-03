@@ -62,7 +62,14 @@ class InferenceCache:
             self._hits += 1
             return entry
 
-    def put(self, input_hash: str, result_text: str, input_tokens: int, output_tokens: int, model: str) -> None:
+    def put(
+        self,
+        input_hash: str,
+        result_text: str,
+        input_tokens: int,
+        output_tokens: int,
+        model: str,
+    ) -> None:
         """Store a result in the cache."""
         if not self.enabled:
             return

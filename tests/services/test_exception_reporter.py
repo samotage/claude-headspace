@@ -1,17 +1,14 @@
 """Tests for ExceptionReporter service."""
 
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.exception_reporter import ExceptionReporter
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_config(
     enabled=True,
@@ -40,6 +37,7 @@ def _make_reporter(config=None, secret="test-secret"):
 # Configuration & is_configured
 # ---------------------------------------------------------------------------
 
+
 class TestConfiguration:
     def test_is_configured_when_all_present(self):
         reporter = _make_reporter()
@@ -61,6 +59,7 @@ class TestConfiguration:
         with patch.dict("os.environ", {}, clear=False):
             # Remove env var if present
             import os
+
             os.environ.pop("OTAGEMON_WEBHOOK_SECRET", None)
             reporter = ExceptionReporter({})
         assert reporter.is_configured is False
@@ -72,6 +71,7 @@ class TestConfiguration:
         config["otagemon"]["webhook_secret"] = "config-secret"
         with patch.dict("os.environ", {}, clear=False):
             import os
+
             os.environ.pop("OTAGEMON_WEBHOOK_SECRET", None)
             reporter = ExceptionReporter(config)
         assert reporter._webhook_secret == "config-secret"
@@ -87,6 +87,7 @@ class TestConfiguration:
 # ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
+
 
 class TestRateLimiting:
     def test_allows_up_to_rate_limit(self):
@@ -119,6 +120,7 @@ class TestRateLimiting:
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
+
 
 class TestReport:
     @patch("claude_headspace.services.exception_reporter.ExceptionReporter._send")
@@ -188,6 +190,7 @@ class TestReport:
 # HTTP sending
 # ---------------------------------------------------------------------------
 
+
 class TestSend:
     @patch("claude_headspace.services.exception_reporter.requests.post")
     def test_send_posts_to_webhook(self, mock_post):
@@ -236,6 +239,7 @@ class TestSend:
     @patch("claude_headspace.services.exception_reporter.requests.post")
     def test_send_handles_timeout(self, mock_post):
         import requests as req_lib
+
         mock_post.side_effect = req_lib.exceptions.Timeout("timed out")
 
         reporter = _make_reporter()
@@ -246,6 +250,7 @@ class TestSend:
 # ---------------------------------------------------------------------------
 # App integration
 # ---------------------------------------------------------------------------
+
 
 class TestAppIntegration:
     def test_exception_reporter_registered_in_extensions(self, app):

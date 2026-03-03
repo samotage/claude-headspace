@@ -64,7 +64,9 @@ class TestRevivalInjection:
         agent = _make_revival_agent(previous_agent_id=5)
 
         # No handoff record on predecessor -> this is a revival
-        mock_rs_db.session.query.return_value.filter.return_value.first.return_value = None
+        mock_rs_db.session.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
 
         # Handoff executor returns no_handoff_record
         with app.app_context():
@@ -138,7 +140,9 @@ class TestRevivalInjection:
         agent = _make_revival_agent(previous_agent_id=5)
 
         # No handoff record
-        mock_rs_db.session.query.return_value.filter.return_value.first.return_value = None
+        mock_rs_db.session.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
 
         with app.app_context():
             handoff_executor = MagicMock()

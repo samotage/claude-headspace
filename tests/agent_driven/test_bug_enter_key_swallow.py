@@ -28,7 +28,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
-from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
+from tests.agent_driven.helpers.output import scenario_footer, scenario_header, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -38,6 +38,7 @@ RESPONSE_TIMEOUT = 60_000  # ms -- generous timeout for real LLM processing
 # ---------------------------------------------------------------------------
 # Test: Enter-Key Swallowing Regression (FR17 / bug e48f1ef)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.agent_driven
 def test_long_command_not_swallowed(claude_session, page, e2e_server, e2e_app):

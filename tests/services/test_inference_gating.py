@@ -60,7 +60,9 @@ def mock_agent_active(active_project):
 class TestSummariseTurnGating:
     """Tests for inference gating in summarise_turn."""
 
-    def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
+    def test_returns_none_when_project_paused(
+        self, summarisation_service, mock_inference, mock_agent_paused
+    ):
         """summarise_turn should return None when project inference is paused."""
         cmd = MagicMock()
         cmd.agent = mock_agent_paused
@@ -78,7 +80,9 @@ class TestSummariseTurnGating:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
+    def test_proceeds_when_project_active(
+        self, summarisation_service, mock_inference, mock_agent_active
+    ):
         """summarise_turn should call inference when project is active."""
         cmd = MagicMock()
         cmd.agent = mock_agent_active
@@ -105,7 +109,9 @@ class TestSummariseTurnGating:
 class TestSummariseCommandGating:
     """Tests for inference gating in summarise_command."""
 
-    def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
+    def test_returns_none_when_project_paused(
+        self, summarisation_service, mock_inference, mock_agent_paused
+    ):
         """summarise_command should return None when project inference is paused."""
         cmd = MagicMock()
         cmd.id = 1
@@ -118,7 +124,9 @@ class TestSummariseCommandGating:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
+    def test_proceeds_when_project_active(
+        self, summarisation_service, mock_inference, mock_agent_active
+    ):
         """summarise_command should call inference when project is active."""
         turn = MagicMock()
         turn.text = "Final turn text"
@@ -145,7 +153,9 @@ class TestSummariseCommandGating:
 class TestSummariseInstructionGating:
     """Tests for inference gating in summarise_instruction."""
 
-    def test_returns_none_when_project_paused(self, summarisation_service, mock_inference, mock_agent_paused):
+    def test_returns_none_when_project_paused(
+        self, summarisation_service, mock_inference, mock_agent_paused
+    ):
         """summarise_instruction should return None when project inference is paused."""
         cmd = MagicMock()
         cmd.id = 1
@@ -158,7 +168,9 @@ class TestSummariseInstructionGating:
         assert result is None
         mock_inference.infer.assert_not_called()
 
-    def test_proceeds_when_project_active(self, summarisation_service, mock_inference, mock_agent_active):
+    def test_proceeds_when_project_active(
+        self, summarisation_service, mock_inference, mock_agent_active
+    ):
         """summarise_instruction should call inference when project is active."""
         cmd = MagicMock()
         cmd.id = 1
@@ -177,9 +189,15 @@ class TestSummariseInstructionGating:
 class TestPriorityScoringGating:
     """Tests for inference gating in priority scoring."""
 
-    @patch("claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_score_update")
-    @patch("claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_card_refreshes")
-    def test_excludes_paused_project_agents(self, mock_card_refresh, mock_broadcast, mock_inference):
+    @patch(
+        "claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_score_update"
+    )
+    @patch(
+        "claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_card_refreshes"
+    )
+    def test_excludes_paused_project_agents(
+        self, mock_card_refresh, mock_broadcast, mock_inference
+    ):
         """score_all_agents should exclude agents from paused projects."""
         from claude_headspace.services.priority_scoring import PriorityScoringService
 
@@ -202,9 +220,15 @@ class TestPriorityScoringGating:
         assert result["scored"] == 0
         assert result["agents"] == []
 
-    @patch("claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_score_update")
-    @patch("claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_card_refreshes")
-    def test_scores_active_project_agents(self, mock_card_refresh, mock_broadcast, mock_inference, active_project):
+    @patch(
+        "claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_score_update"
+    )
+    @patch(
+        "claude_headspace.services.priority_scoring.PriorityScoringService._broadcast_card_refreshes"
+    )
+    def test_scores_active_project_agents(
+        self, mock_card_refresh, mock_broadcast, mock_inference, active_project
+    ):
         """score_all_agents should score agents from active projects."""
         from claude_headspace.services.priority_scoring import PriorityScoringService
 
@@ -228,10 +252,14 @@ class TestPriorityScoringGating:
 
         # Objective query
         db_session.query.return_value.first.return_value = mock_objective
-        db_session.query.return_value.order_by.return_value.first.return_value = mock_objective
+        db_session.query.return_value.order_by.return_value.first.return_value = (
+            mock_objective
+        )
 
         # Agent query (filtered to exclude paused)
-        db_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [agent]
+        db_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [
+            agent
+        ]
 
         mock_inference.infer.return_value = MagicMock(
             text='[{"agent_id": 1, "score": 75, "reason": "Active"}]'

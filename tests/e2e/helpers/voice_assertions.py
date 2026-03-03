@@ -61,9 +61,9 @@ class VoiceAssertions:
 
     def assert_bubble_exists(self, turn_id, timeout: int = 10000):
         """Wait for [data-turn-id="N"]."""
-        expect(
-            self.page.locator(f'[data-turn-id="{turn_id}"]')
-        ).to_be_visible(timeout=timeout)
+        expect(self.page.locator(f'[data-turn-id="{turn_id}"]')).to_be_visible(
+            timeout=timeout
+        )
 
     def send_chat_message(self, text: str):
         """Fill #chat-text-input, submit form."""
@@ -112,9 +112,7 @@ class VoiceAssertions:
 
     def assert_settings_panel_open(self, timeout: int = 10000):
         """Settings panel is open."""
-        expect(self.page.locator("#settings-panel.open")).to_be_visible(
-            timeout=timeout
-        )
+        expect(self.page.locator("#settings-panel.open")).to_be_visible(timeout=timeout)
 
     def assert_settings_panel_closed(self, timeout: int = 5000):
         """Settings panel is closed."""
@@ -124,9 +122,7 @@ class VoiceAssertions:
 
     def assert_project_picker_open(self, timeout: int = 10000):
         """Project picker is open."""
-        expect(self.page.locator("#project-picker.open")).to_be_visible(
-            timeout=timeout
-        )
+        expect(self.page.locator("#project-picker.open")).to_be_visible(timeout=timeout)
 
     def assert_project_picker_closed(self, timeout: int = 5000):
         """Project picker is closed."""

@@ -4,7 +4,15 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,7 +40,7 @@ class Agent(db.Model):
         CheckConstraint(
             "(priority_score IS NULL AND priority_reason IS NULL AND priority_updated_at IS NULL) OR "
             "(priority_score IS NOT NULL AND priority_reason IS NOT NULL AND priority_updated_at IS NOT NULL)",
-            name='ck_agents_priority_consistency',
+            name="ck_agents_priority_consistency",
         ),
     )
 
@@ -41,7 +49,8 @@ class Agent(db.Model):
         PG_UUID(as_uuid=True), nullable=False, unique=True, index=True
     )
     claude_session_id: Mapped[str | None] = mapped_column(
-        nullable=True, index=True,
+        nullable=True,
+        index=True,
     )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
@@ -52,10 +61,14 @@ class Agent(db.Model):
         String(128), nullable=True, default=None
     )
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
     last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
@@ -113,9 +126,7 @@ class Agent(db.Model):
         cascade="all, delete-orphan",
         order_by="Command.started_at.desc()",
     )
-    persona: Mapped["Persona | None"] = relationship(
-        "Persona", back_populates="agents"
-    )
+    persona: Mapped["Persona | None"] = relationship("Persona", back_populates="agents")
     position: Mapped["Position | None"] = relationship("Position")
     previous_agent: Mapped["Agent | None"] = relationship(
         "Agent",

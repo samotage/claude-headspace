@@ -82,9 +82,15 @@ class ActivityAggregator:
                 if consecutive_failures <= 3:
                     logger.exception("Activity aggregation pass failed")
                 else:
-                    logger.error("Activity aggregation pass failed (repeated, suppressing traceback)")
+                    logger.error(
+                        "Activity aggregation pass failed (repeated, suppressing traceback)"
+                    )
 
-            backoff = min(self._interval * (2 ** consecutive_failures), max_backoff) if consecutive_failures else self._interval
+            backoff = (
+                min(self._interval * (2**consecutive_failures), max_backoff)
+                if consecutive_failures
+                else self._interval
+            )
             self._stop_event.wait(timeout=backoff)
 
     def aggregate_once(self) -> dict:
@@ -128,22 +134,28 @@ class ActivityAggregator:
 
             # Single bulk query: fetch all turns in this bucket for all relevant agents
             from ..models.command import Command
+
             agent_ids = [a.id for a in relevant_agents]
 
             all_turns = (
-                db.session.query(Turn, Command.agent_id)
-                .join(Command, Turn.command_id == Command.id)
-                .filter(
-                    Command.agent_id.in_(agent_ids),
-                    Turn.timestamp >= bucket_start,
-                    Turn.timestamp < bucket_end,
+                (
+                    db.session.query(Turn, Command.agent_id)
+                    .join(Command, Turn.command_id == Command.id)
+                    .filter(
+                        Command.agent_id.in_(agent_ids),
+                        Turn.timestamp >= bucket_start,
+                        Turn.timestamp < bucket_end,
+                    )
+                    .order_by(Command.agent_id, Turn.timestamp.asc())
+                    .all()
                 )
-                .order_by(Command.agent_id, Turn.timestamp.asc())
-                .all()
-            ) if agent_ids else []
+                if agent_ids
+                else []
+            )
 
             # Group turns by agent_id
             from collections import defaultdict
+
             turns_by_agent: dict[int, list] = defaultdict(list)
             for turn, agent_id in all_turns:
                 turns_by_agent[agent_id].append(turn)
@@ -160,21 +172,38 @@ class ActivityAggregator:
                 if turn_count >= 2:
                     deltas = []
                     for i in range(1, len(turns)):
-                        delta = (turns[i].timestamp - turns[i - 1].timestamp).total_seconds()
+                        delta = (
+                            turns[i].timestamp - turns[i - 1].timestamp
+                        ).total_seconds()
                         deltas.append(delta)
                     avg_turn_time = sum(deltas) / len(deltas) if deltas else None
 
                 # Compute frustration metrics from USER turns
                 user_frustration_turns = [
-                    t for t in turns
+                    t
+                    for t in turns
                     if t.actor == TurnActor.USER and t.frustration_score is not None
                 ]
-                frustration_sum = sum(t.frustration_score for t in user_frustration_turns)
+                frustration_sum = sum(
+                    t.frustration_score for t in user_frustration_turns
+                )
                 total_frustration = frustration_sum if frustration_sum > 0 else None
-                frustration_turn_count = len(user_frustration_turns) if user_frustration_turns else None
-                max_frustration_turn = max(user_frustration_turns, key=lambda t: t.frustration_score, default=None)
-                max_frustration = int(max_frustration_turn.frustration_score) if max_frustration_turn else None
-                max_frustration_at = max_frustration_turn.timestamp if max_frustration_turn else None
+                frustration_turn_count = (
+                    len(user_frustration_turns) if user_frustration_turns else None
+                )
+                max_frustration_turn = max(
+                    user_frustration_turns,
+                    key=lambda t: t.frustration_score,
+                    default=None,
+                )
+                max_frustration = (
+                    int(max_frustration_turn.frustration_score)
+                    if max_frustration_turn
+                    else None
+                )
+                max_frustration_at = (
+                    max_frustration_turn.timestamp if max_frustration_turn else None
+                )
 
                 # Upsert agent metric
                 self._upsert_metric(
@@ -198,12 +227,20 @@ class ActivityAggregator:
                 project_agent_counts[pid] = project_agent_counts.get(pid, 0) + 1
                 project_turn_counts[pid] = project_turn_counts.get(pid, 0) + turn_count
                 if avg_turn_time is not None:
-                    project_turn_time_sums[pid] = project_turn_time_sums.get(pid, 0.0) + avg_turn_time * (turn_count - 1)
-                    project_turn_time_counts[pid] = project_turn_time_counts.get(pid, 0) + (turn_count - 1)
+                    project_turn_time_sums[pid] = project_turn_time_sums.get(
+                        pid, 0.0
+                    ) + avg_turn_time * (turn_count - 1)
+                    project_turn_time_counts[pid] = project_turn_time_counts.get(
+                        pid, 0
+                    ) + (turn_count - 1)
                 if total_frustration is not None:
-                    project_frustration[pid] = project_frustration.get(pid, 0) + total_frustration
+                    project_frustration[pid] = (
+                        project_frustration.get(pid, 0) + total_frustration
+                    )
                 if frustration_turn_count is not None:
-                    project_frustration_turns[pid] = project_frustration_turns.get(pid, 0) + frustration_turn_count
+                    project_frustration_turns[pid] = (
+                        project_frustration_turns.get(pid, 0) + frustration_turn_count
+                    )
                 if max_frustration is not None:
                     if max_frustration > project_max_frustration.get(pid, 0):
                         project_max_frustration[pid] = max_frustration
@@ -222,8 +259,13 @@ class ActivityAggregator:
             for pid, turn_count in project_turn_counts.items():
                 active_count = project_agent_counts.get(pid, 0)
                 avg_turn_time = None
-                if pid in project_turn_time_counts and project_turn_time_counts[pid] > 0:
-                    avg_turn_time = project_turn_time_sums[pid] / project_turn_time_counts[pid]
+                if (
+                    pid in project_turn_time_counts
+                    and project_turn_time_counts[pid] > 0
+                ):
+                    avg_turn_time = (
+                        project_turn_time_sums[pid] / project_turn_time_counts[pid]
+                    )
 
                 pid_frustration = project_frustration.get(pid)
                 pid_frustration_turns = project_frustration_turns.get(pid)
@@ -276,10 +318,18 @@ class ActivityAggregator:
                     turn_count=total_turn_count,
                     avg_turn_time_seconds=overall_avg,
                     active_agents=total_active_agents,
-                    total_frustration=total_frustration_sum if total_frustration_sum > 0 else None,
-                    frustration_turn_count=total_frustration_turn_count if total_frustration_turn_count > 0 else None,
-                    max_frustration=total_max_frustration if total_max_frustration > 0 else None,
-                    max_frustration_at=total_max_frustration_at if total_max_frustration > 0 else None,
+                    total_frustration=total_frustration_sum
+                    if total_frustration_sum > 0
+                    else None,
+                    frustration_turn_count=total_frustration_turn_count
+                    if total_frustration_turn_count > 0
+                    else None,
+                    max_frustration=total_max_frustration
+                    if total_max_frustration > 0
+                    else None,
+                    max_frustration_at=total_max_frustration_at
+                    if total_max_frustration > 0
+                    else None,
                 )
                 stats["overall"] = 1
 
@@ -302,11 +352,14 @@ class ActivityAggregator:
             from .broadcaster import get_broadcaster
 
             broadcaster = get_broadcaster()
-            broadcaster.broadcast("activity_update", {
-                "agents_updated": stats.get("agents", 0),
-                "projects_updated": stats.get("projects", 0),
-                "overall_updated": stats.get("overall", 0),
-            })
+            broadcaster.broadcast(
+                "activity_update",
+                {
+                    "agents_updated": stats.get("agents", 0),
+                    "projects_updated": stats.get("projects", 0),
+                    "overall_updated": stats.get("overall", 0),
+                },
+            )
         except Exception as e:
             logger.debug(f"Failed to broadcast activity update (non-fatal): {e}")
 
@@ -326,7 +379,9 @@ class ActivityAggregator:
             db.session.commit()
 
             if deleted > 0:
-                logger.info(f"Pruned {deleted} activity metric records older than {self._retention_days} days")
+                logger.info(
+                    f"Pruned {deleted} activity metric records older than {self._retention_days} days"
+                )
 
             return deleted
 

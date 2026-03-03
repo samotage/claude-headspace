@@ -20,6 +20,11 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
+from claude_headspace.services.process_monitor import (
+    remove_pid_file,
+    write_pid_file,
+)
+
 from claude_headspace.config import (
     get_claude_projects_path,
     get_database_url,
@@ -28,11 +33,6 @@ from claude_headspace.config import (
 )
 from claude_headspace.services.event_writer import create_event_writer
 from claude_headspace.services.file_watcher import FileWatcher
-from claude_headspace.services.process_monitor import (
-    DEFAULT_PID_FILE,
-    remove_pid_file,
-    write_pid_file,
-)
 
 # Configure logging
 logging.basicConfig(

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -45,7 +45,9 @@ def mock_app(mock_inference):
 @pytest.fixture
 def mock_archive():
     archive = MagicMock()
-    archive.archive_artifact.return_value = "archive/progress_summary_2026-01-31_10-00-00.md"
+    archive.archive_artifact.return_value = (
+        "archive/progress_summary_2026-01-31_10-00-00.md"
+    )
     return archive
 
 
@@ -97,7 +99,6 @@ def sample_analysis():
 
 
 class TestBuildPrompt:
-
     def test_prompt_includes_project_name(self, service, sample_analysis):
         prompt = service._build_prompt("my-project", sample_analysis)
         assert "my-project" in prompt
@@ -134,7 +135,6 @@ class TestBuildPrompt:
 
 
 class TestWriteSummary:
-
     def test_writes_file_with_frontmatter(self, service, tmp_path):
         metadata = {
             "generated_at": "2026-01-31T10:00:00+00:00",
@@ -191,7 +191,6 @@ class TestWriteSummary:
 
 
 class TestGetCurrentSummary:
-
     def test_returns_content_when_exists(self, service, mock_project, tmp_path):
         base_dir = tmp_path / SUMMARY_DIR
         base_dir.mkdir(parents=True)
@@ -218,7 +217,6 @@ class TestGetCurrentSummary:
 
 
 class TestConcurrentGuard:
-
     def test_guard_prevents_duplicate(self, service, mock_project):
         # Manually set in_progress
         with service._lock:
@@ -253,7 +251,6 @@ class TestConcurrentGuard:
 
 
 class TestGenerate:
-
     def test_empty_scope_returns_message(self, service, mock_project):
         with patch.object(service._git_analyzer, "analyze") as mock_analyze:
             mock_analyze.return_value = GitAnalysisResult(
@@ -267,7 +264,9 @@ class TestGenerate:
         # Should not call inference
         service._inference.infer.assert_not_called()
 
-    def test_successful_generation(self, service, mock_project, mock_inference, sample_analysis):
+    def test_successful_generation(
+        self, service, mock_project, mock_inference, sample_analysis
+    ):
         mock_inference.infer.return_value = InferenceResult(
             text="The team made great progress this week.",
             input_tokens=500,
@@ -276,7 +275,9 @@ class TestGenerate:
             latency_ms=2000,
         )
 
-        with patch.object(service._git_analyzer, "analyze", return_value=sample_analysis):
+        with patch.object(
+            service._git_analyzer, "analyze", return_value=sample_analysis
+        ):
             result = service.generate(mock_project)
 
         assert result["status"] == "success"
@@ -297,10 +298,16 @@ class TestGenerate:
         assert result["status"] == "error"
         assert "Not a git repository" in result["error"]
 
-    def test_inference_error_returns_error(self, service, mock_project, mock_inference, sample_analysis):
-        mock_inference.infer.side_effect = InferenceServiceError("API key not configured")
+    def test_inference_error_returns_error(
+        self, service, mock_project, mock_inference, sample_analysis
+    ):
+        mock_inference.infer.side_effect = InferenceServiceError(
+            "API key not configured"
+        )
 
-        with patch.object(service._git_analyzer, "analyze", return_value=sample_analysis):
+        with patch.object(
+            service._git_analyzer, "analyze", return_value=sample_analysis
+        ):
             result = service.generate(mock_project)
 
         assert result["status"] == "error"
@@ -313,27 +320,46 @@ class TestGenerate:
         result = service.generate(project)
         assert result["status"] == "error"
 
-    def test_scope_override(self, service, mock_project, mock_inference, sample_analysis):
+    def test_scope_override(
+        self, service, mock_project, mock_inference, sample_analysis
+    ):
         mock_inference.infer.return_value = InferenceResult(
-            text="Summary.", input_tokens=100, output_tokens=50,
-            model="test", latency_ms=100,
+            text="Summary.",
+            input_tokens=100,
+            output_tokens=50,
+            model="test",
+            latency_ms=100,
         )
 
-        with patch.object(service._git_analyzer, "analyze", return_value=sample_analysis) as mock_analyze:
+        with patch.object(
+            service._git_analyzer, "analyze", return_value=sample_analysis
+        ) as mock_analyze:
             service.generate(mock_project, scope="time_based")
 
         mock_analyze.assert_called_once()
         call_kwargs = mock_analyze.call_args
-        assert call_kwargs.kwargs.get("scope") == "time_based" or call_kwargs[1].get("scope") == "time_based"
-
-    def test_file_write_error_returns_summary(self, service, mock_project, mock_inference, sample_analysis):
-        mock_inference.infer.return_value = InferenceResult(
-            text="Summary text.", input_tokens=100, output_tokens=50,
-            model="test", latency_ms=100,
+        assert (
+            call_kwargs.kwargs.get("scope") == "time_based"
+            or call_kwargs[1].get("scope") == "time_based"
         )
 
-        with patch.object(service._git_analyzer, "analyze", return_value=sample_analysis):
-            with patch.object(service, "_write_summary", side_effect=PermissionError("denied")):
+    def test_file_write_error_returns_summary(
+        self, service, mock_project, mock_inference, sample_analysis
+    ):
+        mock_inference.infer.return_value = InferenceResult(
+            text="Summary text.",
+            input_tokens=100,
+            output_tokens=50,
+            model="test",
+            latency_ms=100,
+        )
+
+        with patch.object(
+            service._git_analyzer, "analyze", return_value=sample_analysis
+        ):
+            with patch.object(
+                service, "_write_summary", side_effect=PermissionError("denied")
+            ):
                 result = service.generate(mock_project)
 
         assert result["status"] == "error"
@@ -343,7 +369,6 @@ class TestGenerate:
 
 
 class TestFrontmatter:
-
     def test_build_frontmatter(self):
         metadata = {
             "generated_at": "2026-01-31T10:00:00+00:00",
@@ -383,7 +408,6 @@ class TestFrontmatter:
 
 
 class TestGetLastGenerationTimestamp:
-
     def test_returns_timestamp_from_existing(self, service, tmp_path):
         base_dir = tmp_path / SUMMARY_DIR
         base_dir.mkdir(parents=True)

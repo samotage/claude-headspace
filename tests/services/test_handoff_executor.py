@@ -1,7 +1,6 @@
 """Tests for handoff_executor service module."""
 
 import os
-import tempfile
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -59,9 +58,7 @@ class TestValidatePreconditions:
     def test_agent_not_found(self, app):
         with app.app_context():
             executor = HandoffExecutor(app=app)
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db:
+            with patch("claude_headspace.services.handoff_executor.db") as mock_db:
                 mock_db.session.get.return_value = None
                 result = executor.validate_preconditions(999)
 
@@ -72,9 +69,7 @@ class TestValidatePreconditions:
         with app.app_context():
             executor = HandoffExecutor(app=app)
             agent = _make_agent(ended=True)
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db:
+            with patch("claude_headspace.services.handoff_executor.db") as mock_db:
                 mock_db.session.get.return_value = agent
                 result = executor.validate_preconditions(1)
 
@@ -86,9 +81,7 @@ class TestValidatePreconditions:
             executor = HandoffExecutor(app=app)
             agent = _make_agent(persona_slug=None)
             agent.persona_id = None
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db:
+            with patch("claude_headspace.services.handoff_executor.db") as mock_db:
                 mock_db.session.get.return_value = agent
                 result = executor.validate_preconditions(1)
 
@@ -99,9 +92,7 @@ class TestValidatePreconditions:
         with app.app_context():
             executor = HandoffExecutor(app=app)
             agent = _make_agent(tmux_pane_id=None)
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db:
+            with patch("claude_headspace.services.handoff_executor.db") as mock_db:
                 mock_db.session.get.return_value = agent
                 result = executor.validate_preconditions(1)
 
@@ -112,11 +103,12 @@ class TestValidatePreconditions:
         with app.app_context():
             executor = HandoffExecutor(app=app)
             agent = _make_agent()
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.handoff_executor.Handoff"
-            ) as mock_handoff:
+            with (
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch(
+                    "claude_headspace.services.handoff_executor.Handoff"
+                ) as mock_handoff,
+            ):
                 mock_db.session.get.return_value = agent
                 mock_handoff.query.filter_by.return_value.first.return_value = (
                     MagicMock()
@@ -130,15 +122,14 @@ class TestValidatePreconditions:
         with app.app_context():
             executor = HandoffExecutor(app=app)
             agent = _make_agent()
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.handoff_executor.Handoff"
-            ) as mock_handoff:
+            with (
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch(
+                    "claude_headspace.services.handoff_executor.Handoff"
+                ) as mock_handoff,
+            ):
                 mock_db.session.get.return_value = agent
-                mock_handoff.query.filter_by.return_value.first.return_value = (
-                    None
-                )
+                mock_handoff.query.filter_by.return_value.first.return_value = None
                 result = executor.validate_preconditions(1)
 
         assert result.success
@@ -162,7 +153,9 @@ class TestGenerateHandoffFilePath:
         filename = os.path.basename(path)
         # Three sections separated by underscores
         parts = filename.split("_", 2)
-        assert len(parts) == 3, f"Expected 3 underscore-separated parts, got: {filename}"
+        assert len(parts) == 3, (
+            f"Expected 3 underscore-separated parts, got: {filename}"
+        )
 
         # Section 1: ISO 8601 timestamp with separators
         timestamp = parts[0]
@@ -205,6 +198,7 @@ class TestGenerateHandoffFilePath:
 
         # Should match YYYY-MM-DDTHH:MM:SS
         import re
+
         assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", timestamp)
 
 
@@ -321,16 +315,12 @@ class TestTriggerHandoff:
             executor = HandoffExecutor(app=app)
             agent = _make_agent()
 
-            with patch.object(
-                executor, "validate_preconditions"
-            ) as mock_validate, patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.tmux_bridge"
-            ) as mock_tmux:
-                mock_validate.return_value = HandoffResult(
-                    success=True, message="OK"
-                )
+            with (
+                patch.object(executor, "validate_preconditions") as mock_validate,
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch("claude_headspace.services.tmux_bridge") as mock_tmux,
+            ):
+                mock_validate.return_value = HandoffResult(success=True, message="OK")
                 mock_db.session.get.return_value = agent
                 mock_tmux.send_text.return_value = MagicMock(success=True)
 
@@ -361,18 +351,13 @@ class TestTriggerHandoff:
             executor = HandoffExecutor(app=app)
             agent = _make_agent()
 
-            with patch.object(
-                executor, "validate_preconditions"
-            ) as mock_validate, patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.tmux_bridge"
-            ) as mock_tmux, patch.object(
-                executor, "_broadcast_error"
+            with (
+                patch.object(executor, "validate_preconditions") as mock_validate,
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch("claude_headspace.services.tmux_bridge") as mock_tmux,
+                patch.object(executor, "_broadcast_error"),
             ):
-                mock_validate.return_value = HandoffResult(
-                    success=True, message="OK"
-                )
+                mock_validate.return_value = HandoffResult(success=True, message="OK")
                 mock_db.session.get.return_value = agent
                 mock_tmux.send_text.return_value = MagicMock(
                     success=False, error_message="Pane not found"
@@ -398,13 +383,11 @@ class TestHandoffInProgressFlag:
             executor = HandoffExecutor(app=app)
             agent = _make_agent()
 
-            with patch.object(
-                executor, "validate_preconditions"
-            ) as mock_v, patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.tmux_bridge"
-            ) as mock_tmux:
+            with (
+                patch.object(executor, "validate_preconditions") as mock_v,
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch("claude_headspace.services.tmux_bridge") as mock_tmux,
+            ):
                 mock_v.return_value = HandoffResult(success=True, message="OK")
                 mock_db.session.get.return_value = agent
                 mock_tmux.send_text.return_value = MagicMock(success=True)
@@ -449,11 +432,11 @@ class TestContinueAfterStop:
                     "triggered_at": "2026-01-01T00:00:00",
                 }
 
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch.object(
-                executor, "_broadcast_error"
-            ), patch.object(executor, "_notify_error"):
+            with (
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch.object(executor, "_broadcast_error"),
+                patch.object(executor, "_notify_error"),
+            ):
                 mock_db.session.get.return_value = agent
                 result = executor.continue_after_stop(agent)
 
@@ -496,11 +479,12 @@ class TestCompleteHandoff:
                     "triggered_at": "2026-01-01T00:00:00",
                 }
 
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.handoff_executor.Handoff"
-            ) as mock_handoff:
+            with (
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch(
+                    "claude_headspace.services.handoff_executor.Handoff"
+                ) as mock_handoff,
+            ):
                 mock_db.session.get.return_value = agent
                 # Simulate existing Handoff record
                 mock_handoff.query.filter_by.return_value.first.return_value = (
@@ -538,14 +522,13 @@ class TestCompleteHandoff:
             mock_handoff_record = MagicMock()
             mock_handoff_record.id = 42
 
-            with patch(
-                "claude_headspace.services.handoff_executor.db"
-            ) as mock_db, patch(
-                "claude_headspace.services.handoff_executor.Handoff"
-            ) as mock_handoff_cls, patch.object(
-                executor, "_create_successor"
-            ) as mock_create, patch.object(
-                executor, "_broadcast_success"
+            with (
+                patch("claude_headspace.services.handoff_executor.db") as mock_db,
+                patch(
+                    "claude_headspace.services.handoff_executor.Handoff"
+                ) as mock_handoff_cls,
+                patch.object(executor, "_create_successor") as mock_create,
+                patch.object(executor, "_broadcast_success"),
             ):
                 mock_db.session.get.return_value = agent
                 # No existing Handoff record
@@ -590,9 +573,7 @@ class TestDeliverInjectionPrompt:
             with patch(
                 "claude_headspace.services.handoff_executor.Handoff"
             ) as mock_handoff:
-                mock_handoff.query.filter_by.return_value.first.return_value = (
-                    None
-                )
+                mock_handoff.query.filter_by.return_value.first.return_value = None
                 result = executor.deliver_injection_prompt(agent)
 
         assert not result.success
@@ -609,9 +590,7 @@ class TestDeliverInjectionPrompt:
             with patch(
                 "claude_headspace.services.handoff_executor.Handoff"
             ) as mock_handoff:
-                mock_handoff.query.filter_by.return_value.first.return_value = (
-                    handoff
-                )
+                mock_handoff.query.filter_by.return_value.first.return_value = handoff
                 result = executor.deliver_injection_prompt(agent)
 
         assert not result.success
@@ -626,14 +605,13 @@ class TestDeliverInjectionPrompt:
             handoff.id = 5
             handoff.injection_prompt = "Read the handoff doc at handoff.md"
 
-            with patch(
-                "claude_headspace.services.handoff_executor.Handoff"
-            ) as mock_handoff, patch(
-                "claude_headspace.services.tmux_bridge"
-            ) as mock_tmux:
-                mock_handoff.query.filter_by.return_value.first.return_value = (
-                    handoff
-                )
+            with (
+                patch(
+                    "claude_headspace.services.handoff_executor.Handoff"
+                ) as mock_handoff,
+                patch("claude_headspace.services.tmux_bridge") as mock_tmux,
+            ):
+                mock_handoff.query.filter_by.return_value.first.return_value = handoff
                 mock_tmux.send_text.return_value = MagicMock(success=True)
 
                 result = executor.deliver_injection_prompt(agent)
@@ -663,7 +641,9 @@ class TestPollingGlobFallback:
         )
 
         # The agent renamed the file (replaced the placeholder)
-        renamed = handoff_dir / "2026-01-01T12:00:00_refactored-auth-module_agent-id:42.md"
+        renamed = (
+            handoff_dir / "2026-01-01T12:00:00_refactored-auth-module_agent-id:42.md"
+        )
         renamed.write_text("# Handoff\nContent here")
 
         # Set up handoff metadata
@@ -681,9 +661,7 @@ class TestPollingGlobFallback:
 
         # Mock complete_handoff to verify it's called
         with patch.object(executor, "complete_handoff") as mock_complete:
-            mock_complete.return_value = HandoffResult(
-                success=True, message="OK"
-            )
+            mock_complete.return_value = HandoffResult(success=True, message="OK")
 
             # Run poll (with very short timeout)
             with patch(
@@ -730,13 +708,12 @@ class TestPollingGlobFallback:
             }
 
         with patch.object(executor, "complete_handoff") as mock_complete:
-            mock_complete.return_value = HandoffResult(
-                success=True, message="OK"
-            )
+            mock_complete.return_value = HandoffResult(success=True, message="OK")
             with patch(
                 "claude_headspace.services.handoff_executor.POLL_TIMEOUT_SECONDS", 1
             ):
                 import logging
+
                 with caplog.at_level(logging.WARNING):
                     executor._poll_for_handoff_file(42)
 
@@ -753,9 +730,7 @@ class TestPollingGlobFallback:
         handoff_dir.mkdir()
 
         # Create the exact file (with placeholder name)
-        exact_file = (
-            handoff_dir / "2026-01-01T12:00:00_<insert-summary>_agent-id:42.md"
-        )
+        exact_file = handoff_dir / "2026-01-01T12:00:00_<insert-summary>_agent-id:42.md"
         exact_file.write_text("# Handoff with placeholder name")
         exact_path = str(exact_file)
 
@@ -772,9 +747,7 @@ class TestPollingGlobFallback:
             }
 
         with patch.object(executor, "complete_handoff") as mock_complete:
-            mock_complete.return_value = HandoffResult(
-                success=True, message="OK"
-            )
+            mock_complete.return_value = HandoffResult(success=True, message="OK")
             with patch(
                 "claude_headspace.services.handoff_executor.POLL_TIMEOUT_SECONDS", 1
             ):

@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from claude_headspace.services.agent_lifecycle import (
     ContextResult,
     CreateResult,
@@ -103,9 +101,7 @@ class TestAgentContextEndpoint:
 
     @patch("claude_headspace.routes.agents.get_context_usage")
     def test_not_found(self, mock_ctx, client):
-        mock_ctx.return_value = ContextResult(
-            available=False, reason="agent_not_found"
-        )
+        mock_ctx.return_value = ContextResult(available=False, reason="agent_not_found")
         response = client.get("/api/agents/99/context")
         assert response.status_code == 404
 

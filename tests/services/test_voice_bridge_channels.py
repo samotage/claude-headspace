@@ -9,7 +9,6 @@ Tests cover:
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,7 +23,6 @@ from src.claude_headspace.routes.voice_bridge import (
     _set_channel_context,
 )
 from src.claude_headspace.services.voice_formatter import VoiceFormatter
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -132,7 +130,9 @@ class TestChannelIntentDetection:
 
     # 3.1.4 Create patterns extract type, name, and member_refs
     def test_create_typed_channel(self):
-        result = _detect_channel_intent("create a delegation channel called auth refactor")
+        result = _detect_channel_intent(
+            "create a delegation channel called auth refactor"
+        )
         assert result["action"] == "create"
         assert result["channel_type"] == "delegation"
         assert result["name"] == "auth refactor"
@@ -246,7 +246,10 @@ class TestChannelNameMatching:
         result = _match_channel("alignment persona", self.channels)
         assert "match" in result or "ambiguous" in result
         if "match" in result:
-            assert "persona" in result["match"].name.lower() or "alignment" in result["match"].name.lower()
+            assert (
+                "persona" in result["match"].name.lower()
+                or "alignment" in result["match"].name.lower()
+            )
 
     # 3.2.5 Ambiguous matches
     def test_ambiguous_matches(self):
@@ -370,7 +373,9 @@ class TestVoiceFormatterChannels:
     # 3.4.3 format_channel_created
     def test_channel_created(self, formatter):
         members = ["Robbo joined.", "Paula -- agent spinning up."]
-        result = formatter.format_channel_created("workshop-alpha-1", "workshop", members)
+        result = formatter.format_channel_created(
+            "workshop-alpha-1", "workshop", members
+        )
         assert "Created channel #workshop-alpha-1" in result["status_line"]
         assert "(workshop)" in result["status_line"]
         assert result["results"] == members
@@ -384,7 +389,11 @@ class TestVoiceFormatterChannels:
     # 3.4.5 format_channel_list
     def test_channel_list_with_channels(self, formatter):
         channels = [
-            {"slug": "workshop-alpha-1", "channel_type": "workshop", "status": "active"},
+            {
+                "slug": "workshop-alpha-1",
+                "channel_type": "workshop",
+                "status": "active",
+            },
             {"slug": "review-beta-2", "channel_type": "review", "status": "pending"},
         ]
         result = formatter.format_channel_list(channels)
@@ -408,7 +417,9 @@ class TestVoiceFormatterChannels:
         assert "(agent spinning up)" not in result["status_line"]
 
     def test_member_added_spinning_up(self, formatter):
-        result = formatter.format_channel_member_added("Robbo", "workshop-alpha-1", spinning_up=True)
+        result = formatter.format_channel_member_added(
+            "Robbo", "workshop-alpha-1", spinning_up=True
+        )
         assert "(agent spinning up)" in result["status_line"]
 
 

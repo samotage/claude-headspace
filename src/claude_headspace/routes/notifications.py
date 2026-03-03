@@ -2,13 +2,12 @@
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from ..services.config_editor import load_config_file, save_config_file
 from ..services.notification_service import (
-    NotificationPreferences,
     get_notification_service,
 )
-from ..services.config_editor import load_config_file, save_config_file
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +104,12 @@ def get_preferences():
 
     except Exception as e:
         logger.exception(f"Error getting notification preferences: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to get notification preferences",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to get notification preferences",
+            }
+        ), 500
 
 
 @notifications_bp.route("/api/notifications/preferences", methods=["PUT"])
@@ -133,17 +134,21 @@ def update_preferences():
         500: Save failed
     """
     if not request.is_json:
-        return jsonify({
-            "status": "error",
-            "message": "Content-Type must be application/json",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Content-Type must be application/json",
+            }
+        ), 400
 
     data = request.get_json(silent=True)
     if data is None:
-        return jsonify({
-            "status": "error",
-            "message": "Invalid JSON payload",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Invalid JSON payload",
+            }
+        ), 400
 
     try:
         # Get current config
@@ -152,60 +157,76 @@ def update_preferences():
         # Update with provided values (validate types)
         if "enabled" in data:
             if not isinstance(data["enabled"], bool):
-                return jsonify({
-                    "status": "error",
-                    "message": "enabled must be a boolean",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "enabled must be a boolean",
+                    }
+                ), 400
             preferences["enabled"] = data["enabled"]
 
         if "sound" in data:
             if not isinstance(data["sound"], bool):
-                return jsonify({
-                    "status": "error",
-                    "message": "sound must be a boolean",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "sound must be a boolean",
+                    }
+                ), 400
             preferences["sound"] = data["sound"]
 
         if "events" in data:
             if not isinstance(data["events"], dict):
-                return jsonify({
-                    "status": "error",
-                    "message": "events must be an object",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "events must be an object",
+                    }
+                ), 400
             for event_type, value in data["events"].items():
                 if event_type not in ["command_complete", "awaiting_input"]:
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Unknown event type: {event_type}",
-                    }), 400
+                    return jsonify(
+                        {
+                            "status": "error",
+                            "message": f"Unknown event type: {event_type}",
+                        }
+                    ), 400
                 if not isinstance(value, bool):
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Event {event_type} value must be a boolean",
-                    }), 400
+                    return jsonify(
+                        {
+                            "status": "error",
+                            "message": f"Event {event_type} value must be a boolean",
+                        }
+                    ), 400
                 preferences["events"][event_type] = value
 
         if "rate_limit_seconds" in data:
             if not isinstance(data["rate_limit_seconds"], int):
-                return jsonify({
-                    "status": "error",
-                    "message": "rate_limit_seconds must be an integer",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "rate_limit_seconds must be an integer",
+                    }
+                ), 400
             if data["rate_limit_seconds"] < 0 or data["rate_limit_seconds"] > 60:
-                return jsonify({
-                    "status": "error",
-                    "message": "rate_limit_seconds must be between 0 and 60",
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "rate_limit_seconds must be between 0 and 60",
+                    }
+                ), 400
             preferences["rate_limit_seconds"] = data["rate_limit_seconds"]
 
         # Save to config file
         success, error_message = save_notifications_config(preferences)
 
         if not success:
-            return jsonify({
-                "status": "error",
-                "message": error_message or "Failed to save preferences",
-            }), 500
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": error_message or "Failed to save preferences",
+                }
+            ), 500
 
         # Update the service instance
         service = get_notification_service()
@@ -218,18 +239,22 @@ def update_preferences():
 
         logger.info("Notification preferences updated")
 
-        return jsonify({
-            "status": "ok",
-            "message": "Preferences updated",
-            "preferences": preferences,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "Preferences updated",
+                "preferences": preferences,
+            }
+        ), 200
 
     except Exception as e:
         logger.exception(f"Error updating notification preferences: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to update preferences",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to update preferences",
+            }
+        ), 500
 
 
 @notifications_bp.route("/api/notifications/refresh-availability", methods=["POST"])
@@ -249,17 +274,21 @@ def refresh_availability():
         service = get_notification_service()
         available = service.refresh_availability()
 
-        return jsonify({
-            "status": "ok",
-            "available": available,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "available": available,
+            }
+        ), 200
 
     except Exception as e:
         logger.exception(f"Error refreshing availability: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to refresh availability",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to refresh availability",
+            }
+        ), 500
 
 
 @notifications_bp.route("/api/notifications/test", methods=["POST"])
@@ -275,19 +304,24 @@ def test_notification():
         service = get_notification_service()
 
         if not service.is_available():
-            return jsonify({
-                "status": "error",
-                "message": "Notifications unavailable - terminal-notifier not installed",
-            }), 400
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Notifications unavailable - terminal-notifier not installed",
+                }
+            ), 400
 
         if not service.preferences.enabled:
-            return jsonify({
-                "status": "error",
-                "message": "Notifications are disabled",
-            }), 400
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Notifications are disabled",
+                }
+            ), 400
 
         # Send test notification (bypass rate limiting by using unique ID)
         import time
+
         success = service.send_notification(
             agent_id=f"test-{time.time()}",
             agent_name="Test Agent",
@@ -296,19 +330,25 @@ def test_notification():
         )
 
         if success:
-            return jsonify({
-                "status": "ok",
-                "message": "Test notification sent",
-            }), 200
+            return jsonify(
+                {
+                    "status": "ok",
+                    "message": "Test notification sent",
+                }
+            ), 200
         else:
-            return jsonify({
-                "status": "error",
-                "message": "Failed to send test notification",
-            }), 500
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Failed to send test notification",
+                }
+            ), 500
 
     except Exception as e:
         logger.exception(f"Error sending test notification: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to send test notification",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to send test notification",
+            }
+        ), 500

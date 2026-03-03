@@ -1,18 +1,18 @@
 """Tests for the remote agents API routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from flask import Flask
 
 from claude_headspace.routes.remote_agents import remote_agents_bp
-from claude_headspace.services.session_token import SessionTokenService
 from claude_headspace.services.remote_agent_service import RemoteAgentResult
-
+from claude_headspace.services.session_token import SessionTokenService
 
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def token_service():
@@ -61,6 +61,7 @@ def client(app):
 # ──────────────────────────────────────────────────────────────
 # Create endpoint tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestCreateEndpoint:
     """Tests for POST /api/remote_agents/create."""
@@ -166,6 +167,7 @@ class TestCreateEndpoint:
 # Alive endpoint tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestAliveEndpoint:
     """Tests for GET /api/remote_agents/<id>/alive."""
 
@@ -221,6 +223,7 @@ class TestAliveEndpoint:
 # Shutdown endpoint tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestShutdownEndpoint:
     """Tests for POST /api/remote_agents/<id>/shutdown.
 
@@ -254,7 +257,9 @@ class TestShutdownEndpoint:
         assert data["agent_id"] == 1
         assert data["message"] == "Agent shutdown initiated"
 
-    def test_already_terminated_returns_200(self, client, token_service, mock_remote_service):
+    def test_already_terminated_returns_200(
+        self, client, token_service, mock_remote_service
+    ):
         """Idempotent — double-shutdown returns 200, not an error."""
         token = token_service.generate(agent_id=1)
         mock_remote_service.shutdown.return_value = {
@@ -272,7 +277,9 @@ class TestShutdownEndpoint:
         assert data["agent_id"] == 1
         assert data["message"] == "Agent already terminated"
 
-    def test_agent_not_found_returns_404(self, client, token_service, mock_remote_service):
+    def test_agent_not_found_returns_404(
+        self, client, token_service, mock_remote_service
+    ):
         token = token_service.generate(agent_id=1)
         mock_remote_service.shutdown.return_value = {
             "result": "not_found",
@@ -292,6 +299,7 @@ class TestShutdownEndpoint:
 # CORS tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestCORS:
     """Tests for CORS header handling."""
 
@@ -301,7 +309,10 @@ class TestCORS:
             json={},
             headers={"Origin": "https://allowed.example.com"},
         )
-        assert resp.headers.get("Access-Control-Allow-Origin") == "https://allowed.example.com"
+        assert (
+            resp.headers.get("Access-Control-Allow-Origin")
+            == "https://allowed.example.com"
+        )
         assert "Authorization" in resp.headers.get("Access-Control-Allow-Headers", "")
 
     def test_disallowed_origin_no_cors_headers(self, client):
@@ -327,6 +338,7 @@ class TestCORS:
 # ──────────────────────────────────────────────────────────────
 # Embed view tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestEmbedView:
     """Tests for the embed view route."""
@@ -357,6 +369,7 @@ class TestEmbedView:
 # ──────────────────────────────────────────────────────────────
 # Error envelope tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestErrorEnvelope:
     """Tests for standardised error response format (S5 FR5 contract).
@@ -408,6 +421,7 @@ class TestErrorEnvelope:
 # Guardrails enforcement tests (E8-S19)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestGuardrailsEnforcement:
     """Tests for guardrail enforcement in remote agent creation."""
 
@@ -432,7 +446,9 @@ class TestGuardrailsEnforcement:
         assert data["error"]["code"] == "guardrails_missing"
         assert data["error"]["retryable"] is False
 
-    def test_successful_create_includes_guardrails_version(self, client, mock_remote_service):
+    def test_successful_create_includes_guardrails_version(
+        self, client, mock_remote_service
+    ):
         """Successful creation includes guardrails_version in response."""
         mock_remote_service.create_blocking.return_value = RemoteAgentResult(
             success=True,
@@ -458,7 +474,9 @@ class TestGuardrailsEnforcement:
         data = resp.get_json()
         assert data["guardrails_version"] == "a" * 64
 
-    def test_successful_create_without_guardrails_version(self, client, mock_remote_service):
+    def test_successful_create_without_guardrails_version(
+        self, client, mock_remote_service
+    ):
         """Successful creation without guardrails_version omits the field."""
         mock_remote_service.create_blocking.return_value = RemoteAgentResult(
             success=True,
@@ -484,7 +502,9 @@ class TestGuardrailsEnforcement:
         data = resp.get_json()
         assert "guardrails_version" not in data
 
-    def test_alive_includes_staleness_info(self, client, token_service, mock_remote_service):
+    def test_alive_includes_staleness_info(
+        self, client, token_service, mock_remote_service
+    ):
         """Alive endpoint includes guardrail staleness when agent has guardrails."""
         token = token_service.generate(agent_id=1)
         mock_remote_service.check_alive.return_value = {

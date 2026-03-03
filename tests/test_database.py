@@ -4,20 +4,18 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 import yaml
 
 from claude_headspace.app import create_app
 from claude_headspace.config import (
-    load_config,
-    get_database_url,
-    mask_database_url,
     DEFAULTS,
     ENV_MAPPINGS,
+    get_database_url,
+    load_config,
+    mask_database_url,
 )
-from claude_headspace.database import db, check_database_health, init_database
 
 
 class TestDatabaseConfigDefaults:
@@ -37,7 +35,7 @@ class TestDatabaseConfigDefaults:
 
     def test_load_config_has_database_defaults(self):
         """Test that load_config includes database defaults."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump({}, f)
             config = load_config(f.name)
         os.unlink(f.name)
@@ -69,7 +67,9 @@ class TestDatabaseEnvMappings:
         original = os.environ.get("DATABASE_HOST")
         os.environ["DATABASE_HOST"] = "customhost"
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
                 yaml.dump({"database": {"host": "localhost"}}, f)
                 config = load_config(f.name)
             os.unlink(f.name)
@@ -85,7 +85,9 @@ class TestDatabaseEnvMappings:
         original = os.environ.get("DATABASE_PORT")
         os.environ["DATABASE_PORT"] = "5433"
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
                 yaml.dump({"database": {"port": 5432}}, f)
                 config = load_config(f.name)
             os.unlink(f.name)
@@ -101,7 +103,9 @@ class TestDatabaseEnvMappings:
         original = os.environ.get("DATABASE_POOL_SIZE")
         os.environ["DATABASE_POOL_SIZE"] = "20"
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
                 yaml.dump({"database": {"pool_size": 10}}, f)
                 config = load_config(f.name)
             os.unlink(f.name)
@@ -154,7 +158,10 @@ class TestDatabaseURL:
                 }
             }
             url = get_database_url(config)
-            assert url == "postgresql://samotage:secret123@localhost:5432/claude_headspace_test"
+            assert (
+                url
+                == "postgresql://samotage:secret123@localhost:5432/claude_headspace_test"
+            )
         finally:
             if original is not None:
                 os.environ["DATABASE_URL"] = original
@@ -162,7 +169,9 @@ class TestDatabaseURL:
     def test_database_url_env_takes_precedence(self):
         """Test DATABASE_URL env var takes precedence over config fields."""
         original = os.environ.get("DATABASE_URL")
-        os.environ["DATABASE_URL"] = "postgresql://samotage@otherhost:5555/claude_headspace_test"
+        os.environ["DATABASE_URL"] = (
+            "postgresql://samotage@otherhost:5555/claude_headspace_test"
+        )
         try:
             config = {
                 "database": {
@@ -203,7 +212,9 @@ class TestDatabaseURL:
     def test_guard_blocks_production_db_via_env(self):
         """Test that DATABASE_URL pointing to production is also blocked."""
         original = os.environ.get("DATABASE_URL")
-        os.environ["DATABASE_URL"] = "postgresql://samotage@localhost:5432/claude_headspace"
+        os.environ["DATABASE_URL"] = (
+            "postgresql://samotage@localhost:5432/claude_headspace"
+        )
         try:
             config = {"database": {"name": "claude_headspace"}}
             with pytest.raises(RuntimeError, match="SAFETY GUARD"):
@@ -264,7 +275,7 @@ class TestHealthEndpointWithDatabase:
 
     def test_health_returns_database_status(self, client):
         """Test GET /health includes database field."""
-        response = client.get('/health')
+        response = client.get("/health")
         data = json.loads(response.data)
         assert "database" in data
         # Database will be disconnected in test environment
@@ -272,7 +283,7 @@ class TestHealthEndpointWithDatabase:
 
     def test_health_degraded_when_db_disconnected(self, client):
         """Test status is degraded when database disconnected."""
-        response = client.get('/health')
+        response = client.get("/health")
         data = json.loads(response.data)
         # In test environment without Postgres, database is disconnected
         if data["database"] == "disconnected":
@@ -281,7 +292,7 @@ class TestHealthEndpointWithDatabase:
 
     def test_health_healthy_status_format(self, client):
         """Test health response has correct fields."""
-        response = client.get('/health')
+        response = client.get("/health")
         data = json.loads(response.data)
         assert "status" in data
         assert "version" in data
@@ -299,7 +310,9 @@ class TestAppStartsWithoutDatabase:
 
         try:
             # App should start even though database connection will fail
-            app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
+            app = create_app(
+                config_path=str(project_root / "config.yaml"), testing=True
+            )
             assert app is not None
             # DATABASE_CONNECTED should be False when DB is unavailable
             assert "DATABASE_CONNECTED" in app.config
@@ -312,19 +325,19 @@ class TestFlaskMigrateCommands:
 
     def test_db_command_group_exists(self, runner):
         """Test 'flask db' command group is registered."""
-        result = runner.invoke(args=['db', '--help'])
+        result = runner.invoke(args=["db", "--help"])
         # Should show help output, not an error
-        assert 'Usage:' in result.output or 'Commands:' in result.output
+        assert "Usage:" in result.output or "Commands:" in result.output
 
     def test_db_upgrade_command_exists(self, runner):
         """Test 'flask db upgrade' command is registered."""
-        result = runner.invoke(args=['db', 'upgrade', '--help'])
-        assert result.exit_code == 0 or 'Usage:' in result.output
+        result = runner.invoke(args=["db", "upgrade", "--help"])
+        assert result.exit_code == 0 or "Usage:" in result.output
 
     def test_db_downgrade_command_exists(self, runner):
         """Test 'flask db downgrade' command is registered."""
-        result = runner.invoke(args=['db', 'downgrade', '--help'])
-        assert result.exit_code == 0 or 'Usage:' in result.output
+        result = runner.invoke(args=["db", "downgrade", "--help"])
+        assert result.exit_code == 0 or "Usage:" in result.output
 
 
 class TestConnectionPoolConfig:
@@ -332,7 +345,7 @@ class TestConnectionPoolConfig:
 
     def test_pool_size_config_read(self):
         """Test pool_size is read from config."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump({"database": {"pool_size": 5}}, f)
             config = load_config(f.name)
         os.unlink(f.name)
@@ -340,7 +353,7 @@ class TestConnectionPoolConfig:
 
     def test_pool_timeout_config_read(self):
         """Test pool_timeout is read from config."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump({"database": {"pool_timeout": 60}}, f)
             config = load_config(f.name)
         os.unlink(f.name)
@@ -353,7 +366,9 @@ class TestConnectionPoolConfig:
         os.chdir(project_root)
 
         try:
-            app = create_app(config_path=str(project_root / "config.yaml"), testing=True)
+            app = create_app(
+                config_path=str(project_root / "config.yaml"), testing=True
+            )
             engine_options = app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {})
             assert "pool_size" in engine_options
             assert "pool_timeout" in engine_options

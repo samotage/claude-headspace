@@ -36,8 +36,11 @@ def setup_data(app, db_session):
     pt_internal = db_session.get(PersonaType, 1)
 
     persona = Persona(
-        name="Alice", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Alice",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     db_session.add(persona)
     db_session.flush()
@@ -47,7 +50,8 @@ def setup_data(app, db_session):
     db_session.flush()
 
     agent = Agent(
-        session_uuid=uuid4(), project_id=project.id,
+        session_uuid=uuid4(),
+        project_id=project.id,
         persona_id=persona.id,
     )
     db_session.add(agent)
@@ -72,22 +76,16 @@ class TestMsgSend:
     def test_send_message(self, runner, setup_data):
         """Send a message to a channel."""
         # Create a channel first
-        runner.invoke(
-            args=["channel", "create", "msg-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "msg-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "msg-test").first()
 
-        result = runner.invoke(
-            args=["msg", "send", channel.slug, "Hello world!"]
-        )
+        result = runner.invoke(args=["msg", "send", channel.slug, "Hello world!"])
         assert result.exit_code == 0
         assert "Message sent" in result.output
 
     def test_send_to_nonexistent_channel(self, runner, setup_data):
         """Send to non-existent channel fails."""
-        result = runner.invoke(
-            args=["msg", "send", "nonexistent", "Hello"]
-        )
+        result = runner.invoke(args=["msg", "send", "nonexistent", "Hello"])
         assert result.exit_code == 1
 
 
@@ -96,30 +94,20 @@ class TestMsgHistory:
 
     def test_history_envelope_format(self, runner, setup_data):
         """History in envelope format shows headers and content."""
-        runner.invoke(
-            args=["channel", "create", "hist-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "hist-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "hist-test").first()
-        runner.invoke(
-            args=["msg", "send", channel.slug, "Test message content"]
-        )
+        runner.invoke(args=["msg", "send", channel.slug, "Test message content"])
 
-        result = runner.invoke(
-            args=["msg", "history", channel.slug]
-        )
+        result = runner.invoke(args=["msg", "history", channel.slug])
         assert result.exit_code == 0
         assert "Test message content" in result.output
         assert "Alice" in result.output
 
     def test_history_yaml_format(self, runner, setup_data):
         """History in YAML format shows structured output."""
-        runner.invoke(
-            args=["channel", "create", "yaml-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "yaml-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "yaml-test").first()
-        runner.invoke(
-            args=["msg", "send", channel.slug, "YAML test"]
-        )
+        runner.invoke(args=["msg", "send", channel.slug, "YAML test"])
 
         result = runner.invoke(
             args=["msg", "history", channel.slug, "--format", "yaml"]
@@ -130,13 +118,9 @@ class TestMsgHistory:
 
     def test_history_empty(self, runner, setup_data):
         """Empty history shows message."""
-        runner.invoke(
-            args=["channel", "create", "empty-hist", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "empty-hist", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "empty-hist").first()
 
-        result = runner.invoke(
-            args=["msg", "history", channel.slug]
-        )
+        result = runner.invoke(args=["msg", "history", channel.slug])
         assert result.exit_code == 0
         # Might have system messages or "No messages" text

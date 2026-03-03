@@ -24,7 +24,9 @@ persona_cli = AppGroup("persona", help="Persona management commands.")
 
 @persona_cli.command("register")
 @click.option("--name", required=True, help="Persona name (e.g. 'Con').")
-@click.option("--role", required=True, help="Role name (e.g. 'developer'). Lowercased on input.")
+@click.option(
+    "--role", required=True, help="Role name (e.g. 'developer'). Lowercased on input."
+)
 @click.option("--description", default=None, help="Optional persona description.")
 def register_command(name: str, role: str, description: str | None) -> None:
     """Register a new persona (DB record + filesystem assets)."""
@@ -34,14 +36,16 @@ def register_command(name: str, role: str, description: str | None) -> None:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Persona registered successfully:")
+    click.echo("Persona registered successfully:")
     click.echo(f"  Slug: {result.slug}")
     click.echo(f"  ID:   {result.id}")
     click.echo(f"  Path: {result.path}")
 
 
 @persona_cli.command("list")
-@click.option("--active", is_flag=True, default=False, help="Show only active personas.")
+@click.option(
+    "--active", is_flag=True, default=False, help="Show only active personas."
+)
 @click.option("--role", default=None, help="Filter by role name (case-insensitive).")
 def list_command(active: bool, role: str | None) -> None:
     """List all personas in a formatted table."""
@@ -74,23 +78,33 @@ def list_command(active: bool, role: str | None) -> None:
     # Build table data
     rows = []
     for p, agent_count in results:
-        rows.append({
-            "name": p.name,
-            "role": p.role.name if p.role else "-",
-            "slug": p.slug,
-            "status": p.status,
-            "agents": str(agent_count or 0),
-        })
+        rows.append(
+            {
+                "name": p.name,
+                "role": p.role.name if p.role else "-",
+                "slug": p.slug,
+                "status": p.status,
+                "agents": str(agent_count or 0),
+            }
+        )
 
     # Print table
-    headers = {"name": "Name", "role": "Role", "slug": "Slug", "status": "Status", "agents": "Agents"}
+    headers = {
+        "name": "Name",
+        "role": "Role",
+        "slug": "Slug",
+        "status": "Status",
+        "agents": "Agents",
+    }
     print_table(headers, rows)
 
     # Summary line
     total = len(rows)
     active_count = sum(1 for r in rows if r["status"] == "active")
     archived_count = sum(1 for r in rows if r["status"] == "archived")
-    click.echo(f"\n{total} persona{'s' if total != 1 else ''} ({active_count} active, {archived_count} archived)")
+    click.echo(
+        f"\n{total} persona{'s' if total != 1 else ''} ({active_count} active, {archived_count} archived)"
+    )
 
 
 # ── Filename parsing for handoffs command ────────────────────
@@ -101,9 +115,7 @@ _NEW_FORMAT_RE = re.compile(
 )
 
 # Legacy format: {YYYYMMDDTHHmmss}-{NNNNNNNN}.md
-_LEGACY_FORMAT_RE = re.compile(
-    r"^(\d{8}T\d{6})-(\d+)\.md$"
-)
+_LEGACY_FORMAT_RE = re.compile(r"^(\d{8}T\d{6})-(\d+)\.md$")
 
 
 def _parse_handoff_filename(filename: str) -> dict | None:
@@ -144,8 +156,16 @@ def _parse_handoff_filename(filename: str) -> dict | None:
 
 @persona_cli.command("handoffs")
 @click.argument("slug")
-@click.option("--limit", "-n", default=None, type=int, help="Show only the N most recent handoffs.")
-@click.option("--paths", is_flag=True, default=False, help="Include full absolute file paths.")
+@click.option(
+    "--limit",
+    "-n",
+    default=None,
+    type=int,
+    help="Show only the N most recent handoffs.",
+)
+@click.option(
+    "--paths", is_flag=True, default=False, help="Include full absolute file paths."
+)
 def handoffs_command(slug: str, limit: int | None, paths: bool) -> None:
     """List all handoff files for a persona (filesystem-only)."""
     # Verify persona exists

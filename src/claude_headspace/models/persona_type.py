@@ -31,12 +31,8 @@ class PersonaType(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type_key: Mapped[str] = mapped_column(
-        String(16), nullable=False
-    )
-    subtype: Mapped[str] = mapped_column(
-        String(16), nullable=False
-    )
+    type_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    subtype: Mapped[str] = mapped_column(String(16), nullable=False)
 
     # Relationships
     personas: Mapped[list["Persona"]] = relationship(

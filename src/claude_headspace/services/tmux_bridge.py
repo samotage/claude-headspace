@@ -77,8 +77,8 @@ class SendResult(NamedTuple):
 class HealthCheckLevel(str, Enum):
     """Level of health check to perform."""
 
-    EXISTS = "exists"              # Pane found in list-panes (cheapest)
-    COMMAND = "command"            # + current_command check (default)
+    EXISTS = "exists"  # Pane found in list-panes (cheapest)
+    COMMAND = "command"  # + current_command check (default)
     PROCESS_TREE = "process_tree"  # + ps tree walk (most expensive)
 
 
@@ -142,7 +142,9 @@ class WaitResult(NamedTuple):
     error_message: str | None = None
 
 
-def _classify_subprocess_error(error: subprocess.CalledProcessError) -> TmuxBridgeErrorType:
+def _classify_subprocess_error(
+    error: subprocess.CalledProcessError,
+) -> TmuxBridgeErrorType:
     """Classify a tmux subprocess error based on stderr content."""
     stderr = (error.stderr or b"").decode("utf-8", errors="replace").lower()
     if "can't find pane" in stderr or "no such" in stderr or "not found" in stderr:
@@ -174,9 +176,7 @@ def _diagnostic_dump(pane_id: str, context: str) -> None:
                 f"capture returned empty"
             )
     except Exception as e:
-        logger.warning(
-            f"Diagnostic dump ({context}) for pane {pane_id} failed: {e}"
-        )
+        logger.warning(f"Diagnostic dump ({context}) for pane {pane_id} failed: {e}")
 
 
 def wait_for_pattern(
@@ -215,9 +215,7 @@ def wait_for_pattern(
     last_content = ""
 
     while True:
-        content = capture_pane(
-            pane_id, lines=capture_lines, join_wrapped=join_wrapped
-        )
+        content = capture_pane(pane_id, lines=capture_lines, join_wrapped=join_wrapped)
         last_content = content
 
         if content and re.search(pattern, content, re.MULTILINE):
@@ -336,6 +334,7 @@ def _pane_content_changed(before: str, after: str) -> bool:
     Returns:
         True if the pane content has changed meaningfully
     """
+
     def _significant_lines(text: str) -> list[str]:
         return [line.strip() for line in text.strip().splitlines() if line.strip()]
 
@@ -378,7 +377,9 @@ def _verify_submission(
     for attempt in range(1, max_retries + 1):
         time.sleep(verify_delay_ms / 1000.0)
         post_content = capture_pane(
-            pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+            pane_id,
+            lines=DEFAULT_ENTER_VERIFY_LINES,
+            timeout=timeout,
         )
 
         if use_snippet:
@@ -399,13 +400,15 @@ def _verify_submission(
 
         # Enter was lost — try to recover
         logger.debug(
-            f"Pane {pane_id} unchanged after Enter "
-            f"(attempt {attempt}/{max_retries})"
+            f"Pane {pane_id} unchanged after Enter (attempt {attempt}/{max_retries})"
         )
 
         # Check for autocomplete ghost text that may have appeared
         ghost_content = capture_pane(
-            pane_id, lines=3, include_escapes=True, timeout=timeout,
+            pane_id,
+            lines=3,
+            include_escapes=True,
+            timeout=timeout,
         )
         if _has_autocomplete_ghost(ghost_content):
             logger.debug(
@@ -568,7 +571,10 @@ def send_text(
             # Step 1: Ghost text detection (configurable — skip when not relevant)
             if detect_ghost_text:
                 pane_content = capture_pane(
-                    pane_id, lines=3, include_escapes=True, timeout=timeout,
+                    pane_id,
+                    lines=3,
+                    include_escapes=True,
+                    timeout=timeout,
                 )
                 if _has_autocomplete_ghost(pane_content):
                     logger.debug(
@@ -604,7 +610,10 @@ def send_text(
             # Dismiss them before sending Enter to prevent swallowing.
             if detect_ghost_text:
                 post_type_content = capture_pane(
-                    pane_id, lines=3, include_escapes=True, timeout=timeout,
+                    pane_id,
+                    lines=3,
+                    include_escapes=True,
+                    timeout=timeout,
                 )
                 if _has_autocomplete_ghost(post_type_content):
                     logger.debug(
@@ -624,7 +633,9 @@ def send_text(
             pre_enter_content = ""
             if should_verify:
                 pre_enter_content = capture_pane(
-                    pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+                    pane_id,
+                    lines=DEFAULT_ENTER_VERIFY_LINES,
+                    timeout=timeout,
                 )
 
             # Step 5: Send Enter as a key (triggers Ink's onSubmit)
@@ -685,7 +696,9 @@ def send_text(
             return SendResult(
                 success=False,
                 error_type=error_type,
-                error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
+                error_message=f"tmux send-keys failed: {stderr_text}"
+                if stderr_text
+                else "tmux send-keys failed",
                 latency_ms=latency_ms,
             )
 
@@ -785,7 +798,9 @@ def interrupt_and_send_text(
             return SendResult(
                 success=False,
                 error_type=error_type,
-                error_message=f"Interrupt failed: {stderr_text}" if stderr_text else "Interrupt failed",
+                error_message=f"Interrupt failed: {stderr_text}"
+                if stderr_text
+                else "Interrupt failed",
                 latency_ms=latency_ms,
             )
         except subprocess.TimeoutExpired:
@@ -811,7 +826,9 @@ def interrupt_and_send_text(
 
         if result.success:
             total_latency_ms = int((time.time() - start_time) * 1000)
-            logger.info(f"Interrupt + send to tmux pane {pane_id} ({total_latency_ms}ms)")
+            logger.info(
+                f"Interrupt + send to tmux pane {pane_id} ({total_latency_ms}ms)"
+            )
             return SendResult(success=True, latency_ms=total_latency_ms)
 
         return result
@@ -861,7 +878,9 @@ def send_keys(
             pre_keys_content = ""
             if verify_enter:
                 pre_keys_content = capture_pane(
-                    pane_id, lines=DEFAULT_ENTER_VERIFY_LINES, timeout=timeout,
+                    pane_id,
+                    lines=DEFAULT_ENTER_VERIFY_LINES,
+                    timeout=timeout,
                 )
 
             for i, key in enumerate(keys):
@@ -912,7 +931,9 @@ def send_keys(
             return SendResult(
                 success=False,
                 error_type=error_type,
-                error_message=f"tmux send-keys failed: {stderr_text}" if stderr_text else "tmux send-keys failed",
+                error_message=f"tmux send-keys failed: {stderr_text}"
+                if stderr_text
+                else "tmux send-keys failed",
                 latency_ms=latency_ms,
             )
 
@@ -1115,7 +1136,11 @@ def check_health(
 
     try:
         # For EXISTS level, we only need pane_id in the output
-        fmt = "#{pane_id} #{pane_current_command}" if level != HealthCheckLevel.EXISTS else "#{pane_id}"
+        fmt = (
+            "#{pane_id} #{pane_current_command}"
+            if level != HealthCheckLevel.EXISTS
+            else "#{pane_id}"
+        )
         result = subprocess.run(
             ["tmux", "list-panes", "-a", "-F", fmt],
             check=True,
@@ -1133,10 +1158,7 @@ def check_health(
                     return HealthResult(available=True, running=False)
 
                 current_command = parts[1] if len(parts) >= 2 else ""
-                running = any(
-                    proc in current_command.lower()
-                    for proc in process_names
-                )
+                running = any(proc in current_command.lower() for proc in process_names)
 
                 if level == HealthCheckLevel.COMMAND:
                     return HealthResult(available=True, running=running)
@@ -1177,7 +1199,10 @@ def check_health(
     except subprocess.CalledProcessError as e:
         stderr_text = (e.stderr or b"").decode("utf-8", errors="replace").strip()
         # tmux may not be running (no server)
-        if "no server running" in stderr_text.lower() or "no current" in stderr_text.lower():
+        if (
+            "no server running" in stderr_text.lower()
+            or "no current" in stderr_text.lower()
+        ):
             return HealthResult(
                 available=False,
                 error_type=TmuxBridgeErrorType.PANE_NOT_FOUND,
@@ -1338,8 +1363,12 @@ def parse_permission_context(pane_text: str) -> dict | None:
         return None
 
     # Find the LAST "Do you want to proceed?" line (or similar prompt)
-    prompt_pattern = r"^\s*(Do you want to (?:proceed|allow|continue)\??|Allow this .*\??)\s*$"
-    prompt_matches = list(re.finditer(prompt_pattern, clean, re.MULTILINE | re.IGNORECASE))
+    prompt_pattern = (
+        r"^\s*(Do you want to (?:proceed|allow|continue)\??|Allow this .*\??)\s*$"
+    )
+    prompt_matches = list(
+        re.finditer(prompt_pattern, clean, re.MULTILINE | re.IGNORECASE)
+    )
     prompt_match = prompt_matches[-1] if prompt_matches else None
 
     # Find tool type header — a line like "Bash command", "Read file", etc.
@@ -1350,7 +1379,9 @@ def parse_permission_context(pane_text: str) -> dict | None:
 
     # Look for known tool header patterns — find the LAST one
     header_pattern = r"^\s*((?:Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|NotebookEdit)\s+\w*)\s*$"
-    header_matches = list(re.finditer(header_pattern, clean, re.MULTILINE | re.IGNORECASE))
+    header_matches = list(
+        re.finditer(header_pattern, clean, re.MULTILINE | re.IGNORECASE)
+    )
     header_match = header_matches[-1] if header_matches else None
 
     if header_match:
@@ -1359,17 +1390,21 @@ def parse_permission_context(pane_text: str) -> dict | None:
 
         # The command block is indented text between the header and the prompt
         if prompt_match and prompt_match.start() > header_end:
-            block_text = clean[header_end:prompt_match.start()]
+            block_text = clean[header_end : prompt_match.start()]
         else:
             # No prompt found after header — take text up to the first option line after header
-            first_option_match = re.search(r"^\s*(?:[❯›>]\s*)?\d+\.\s*", clean[header_end:], re.MULTILINE)
+            first_option_match = re.search(
+                r"^\s*(?:[❯›>]\s*)?\d+\.\s*", clean[header_end:], re.MULTILINE
+            )
             if first_option_match:
-                block_text = clean[header_end:header_end + first_option_match.start()]
+                block_text = clean[header_end : header_end + first_option_match.start()]
             else:
                 block_text = ""
 
         # Parse the block: indented lines are command/description
-        block_lines = [line.strip() for line in block_text.strip().splitlines() if line.strip()]
+        block_lines = [
+            line.strip() for line in block_text.strip().splitlines() if line.strip()
+        ]
 
         if block_lines:
             # First non-empty line(s) are the command, last line may be description
@@ -1387,7 +1422,9 @@ def parse_permission_context(pane_text: str) -> dict | None:
     # ("Bash command", "Read file") and/or a confirmation prompt
     # ("Do you want to proceed?").
     if not header_match and not prompt_match:
-        logger.debug("Rejecting numbered list — no dialog structure found (no header or prompt)")
+        logger.debug(
+            "Rejecting numbered list — no dialog structure found (no header or prompt)"
+        )
         return None
 
     return {
@@ -1564,7 +1601,9 @@ def kill_session(
         return SendResult(
             success=False,
             error_type=_classify_subprocess_error(e),
-            error_message=f"tmux kill-session failed: {stderr_text}" if stderr_text else "tmux kill-session failed",
+            error_message=f"tmux kill-session failed: {stderr_text}"
+            if stderr_text
+            else "tmux kill-session failed",
             latency_ms=latency_ms,
         )
 
@@ -1595,10 +1634,14 @@ def list_panes(
         cmd = ["tmux"]
         if socket_path:
             cmd.extend(["-S", socket_path])
-        cmd.extend([
-            "list-panes", "-a", "-F",
-            "#{pane_id}\t#{session_name}\t#{pane_current_command}\t#{pane_current_path}",
-        ])
+        cmd.extend(
+            [
+                "list-panes",
+                "-a",
+                "-F",
+                "#{pane_id}\t#{session_name}\t#{pane_current_command}\t#{pane_current_path}",
+            ]
+        )
         result = subprocess.run(
             cmd,
             check=True,
@@ -1607,15 +1650,19 @@ def list_panes(
         )
 
         panes = []
-        for line in result.stdout.decode("utf-8", errors="replace").strip().splitlines():
+        for line in (
+            result.stdout.decode("utf-8", errors="replace").strip().splitlines()
+        ):
             parts = line.split("\t")
             if len(parts) >= 4:
-                panes.append(PaneInfo(
-                    pane_id=parts[0],
-                    session_name=parts[1],
-                    current_command=parts[2],
-                    working_directory=parts[3],
-                ))
+                panes.append(
+                    PaneInfo(
+                        pane_id=parts[0],
+                        session_name=parts[1],
+                        current_command=parts[2],
+                        working_directory=parts[3],
+                    )
+                )
         return panes
 
     except Exception as e:
@@ -1683,7 +1730,9 @@ def get_pane_client_tty(
         return TtyResult(
             success=False,
             error_type=_classify_subprocess_error(e),
-            error_message=f"tmux list-panes failed: {stderr_text}" if stderr_text else "tmux list-panes failed",
+            error_message=f"tmux list-panes failed: {stderr_text}"
+            if stderr_text
+            else "tmux list-panes failed",
         )
 
     except subprocess.TimeoutExpired:
@@ -1725,7 +1774,9 @@ def get_pane_client_tty(
             success=False,
             session_name=session_name,
             error_type=_classify_subprocess_error(e),
-            error_message=f"tmux list-clients failed: {stderr_text}" if stderr_text else "tmux list-clients failed",
+            error_message=f"tmux list-clients failed: {stderr_text}"
+            if stderr_text
+            else "tmux list-clients failed",
         )
 
     except subprocess.TimeoutExpired:
@@ -1797,7 +1848,9 @@ def select_pane(
         return SendResult(
             success=False,
             error_type=error_type,
-            error_message=f"tmux select failed: {stderr_text}" if stderr_text else "tmux select failed",
+            error_message=f"tmux select failed: {stderr_text}"
+            if stderr_text
+            else "tmux select failed",
             latency_ms=latency_ms,
         )
 

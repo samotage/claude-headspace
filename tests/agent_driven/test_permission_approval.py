@@ -17,7 +17,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.agent_driven.helpers.cross_layer import verify_cross_layer_consistency
-from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
+from tests.agent_driven.helpers.output import scenario_footer, scenario_header, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -27,6 +27,7 @@ RESPONSE_TIMEOUT = 60_000  # ms -- generous timeout for real LLM processing
 # ---------------------------------------------------------------------------
 # Test: Permission Approval Flow (FR16)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.agent_driven
 def test_permission_approval_flow(claude_session, page, e2e_server, e2e_app):
@@ -128,12 +129,14 @@ def test_permission_approval_flow(claude_session, page, e2e_server, e2e_app):
             time.sleep(1)  # Let permission UI render
             subprocess.run(
                 ["tmux", "send-keys", "-t", session_name, "y"],
-                check=True, timeout=5,
+                check=True,
+                timeout=5,
             )
             time.sleep(0.5)
             subprocess.run(
                 ["tmux", "send-keys", "-t", session_name, "Enter"],
-                check=True, timeout=5,
+                check=True,
+                timeout=5,
             )
             va.capture("perm_07_permission_approved")
     else:

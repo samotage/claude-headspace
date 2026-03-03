@@ -1,16 +1,14 @@
 """Tests for event schemas and validation."""
 
-import pytest
 from datetime import datetime, timezone
 
 from claude_headspace.services.event_schemas import (
+    PAYLOAD_SCHEMAS,
     EventType,
     PayloadSchema,
-    PAYLOAD_SCHEMAS,
+    create_validated_event,
     validate_event_type,
     validate_payload,
-    create_validated_event,
-    ValidatedEvent,
 )
 
 

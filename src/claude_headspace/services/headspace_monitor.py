@@ -56,7 +56,9 @@ class HeadspaceMonitor:
         self._flow_max_frustration = flow.get("max_frustration", 3)
         self._flow_min_duration = flow.get("min_duration_minutes", 15)
 
-        self._session_rolling_window_minutes = hs.get("session_rolling_window_minutes", 180)
+        self._session_rolling_window_minutes = hs.get(
+            "session_rolling_window_minutes", 180
+        )
 
         messages = hs.get("messages", {})
         self._gentle_alerts = messages.get("gentle_alerts", GENTLE_ALERTS_DEFAULT)
@@ -101,7 +103,9 @@ class HeadspaceMonitor:
                     "flow_duration_minutes": None,
                     "alert_suppressed": self._is_suppressed(),
                     "peak_frustration_today": peak_score,
-                    "peak_frustration_today_at": peak_at.isoformat() if peak_at else None,
+                    "peak_frustration_today_at": peak_at.isoformat()
+                    if peak_at
+                    else None,
                     "timestamp": None,
                 }
             return self._snapshot_to_dict(snapshot)
@@ -136,8 +140,14 @@ class HeadspaceMonitor:
 
                 # Create snapshot
                 snapshot = self._create_snapshot(
-                    now, rolling_10, rolling_30min, rolling_3hr, state,
-                    turn_rate, is_flow, flow_duration,
+                    now,
+                    rolling_10,
+                    rolling_30min,
+                    rolling_3hr,
+                    state,
+                    turn_rate,
+                    is_flow,
+                    flow_duration,
                 )
 
                 # Prune old snapshots
@@ -160,7 +170,9 @@ class HeadspaceMonitor:
         except Exception as e:
             logger.error(f"Headspace recalculation failed: {e}")
 
-    def _calc_rolling_windows(self, now: datetime) -> tuple[float | None, float | None, float | None]:
+    def _calc_rolling_windows(
+        self, now: datetime
+    ) -> tuple[float | None, float | None, float | None]:
         """Calculate all three rolling windows from a single DB query.
 
         Fetches all scored USER turns from the last 3 hours (session window),
@@ -235,7 +247,9 @@ class HeadspaceMonitor:
             return None, None
         return float(turn.frustration_score), turn.timestamp
 
-    def _determine_state(self, rolling_10: float | None, rolling_30min: float | None) -> str:
+    def _determine_state(
+        self, rolling_10: float | None, rolling_30min: float | None
+    ) -> str:
         """Determine traffic light state from rolling averages."""
         avg = None
         if rolling_10 is not None and rolling_30min is not None:
@@ -254,8 +268,11 @@ class HeadspaceMonitor:
         return "green"
 
     def _detect_flow(
-        self, rolling_10: float | None, rolling_30min: float | None,
-        turn_rate: float, now: datetime,
+        self,
+        rolling_10: float | None,
+        rolling_30min: float | None,
+        turn_rate: float,
+        now: datetime,
     ) -> tuple[bool, int | None]:
         """Detect flow state. Returns (is_flow, flow_duration_minutes)."""
         # Use the lower of rolling averages for flow (we want low frustration)
@@ -287,8 +304,12 @@ class HeadspaceMonitor:
                 return False, None
 
     def _check_thresholds(
-        self, turn, rolling_10: float | None, rolling_30min: float | None,
-        state: str, now: datetime,
+        self,
+        turn,
+        rolling_10: float | None,
+        rolling_30min: float | None,
+        state: str,
+        now: datetime,
     ) -> str | None:
         """Check alert thresholds. Returns alert_type if triggered, else None."""
         if self._is_suppressed():
@@ -330,7 +351,10 @@ class HeadspaceMonitor:
         # Sustained yellow: avg >= 5 for 5+ minutes
         if not alert_type and avg is not None and avg >= 5:
             with self._lock:
-                if self._sustained_state_since and self._last_state in ("yellow", "red"):
+                if self._sustained_state_since and self._last_state in (
+                    "yellow",
+                    "red",
+                ):
                     duration = (now - self._sustained_state_since).total_seconds() / 60
                     if duration >= 5:
                         alert_type = "sustained_yellow"
@@ -369,7 +393,10 @@ class HeadspaceMonitor:
 
     def _is_suppressed(self) -> bool:
         with self._lock:
-            if self._suppressed_until and datetime.now(timezone.utc) < self._suppressed_until:
+            if (
+                self._suppressed_until
+                and datetime.now(timezone.utc) < self._suppressed_until
+            ):
                 return True
             return False
 
@@ -393,8 +420,15 @@ class HeadspaceMonitor:
         self._alert_count_today += 1
 
     def _create_snapshot(
-        self, now, rolling_10, rolling_30min, rolling_3hr, state,
-        turn_rate, is_flow, flow_duration,
+        self,
+        now,
+        rolling_10,
+        rolling_30min,
+        rolling_3hr,
+        state,
+        turn_rate,
+        is_flow,
+        flow_duration,
     ) -> HeadspaceSnapshot:
         with self._lock:
             last_alert_at = self._last_alert_at
@@ -430,35 +464,47 @@ class HeadspaceMonitor:
     def _broadcast_state_update(self, snapshot: HeadspaceSnapshot) -> None:
         try:
             from .broadcaster import get_broadcaster
+
             broadcaster = get_broadcaster()
             peak_score, peak_at = self._calc_peak_today()
-            broadcaster.broadcast("headspace_update", {
-                "state": snapshot.state,
-                "frustration_rolling_10": snapshot.frustration_rolling_10,
-                "frustration_rolling_30min": snapshot.frustration_rolling_30min,
-                "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
-                "is_flow_state": snapshot.is_flow_state,
-                "flow_duration_minutes": snapshot.flow_duration_minutes,
-                "peak_frustration_today": peak_score,
-                "peak_frustration_today_at": peak_at.isoformat() if peak_at else None,
-            })
+            broadcaster.broadcast(
+                "headspace_update",
+                {
+                    "state": snapshot.state,
+                    "frustration_rolling_10": snapshot.frustration_rolling_10,
+                    "frustration_rolling_30min": snapshot.frustration_rolling_30min,
+                    "frustration_rolling_3hr": snapshot.frustration_rolling_3hr,
+                    "is_flow_state": snapshot.is_flow_state,
+                    "flow_duration_minutes": snapshot.flow_duration_minutes,
+                    "peak_frustration_today": peak_score,
+                    "peak_frustration_today_at": peak_at.isoformat()
+                    if peak_at
+                    else None,
+                },
+            )
         except Exception as e:
             logger.debug(f"Failed to broadcast headspace update (non-fatal): {e}")
 
     def _broadcast_alert(self, alert_type: str) -> None:
         try:
             from .broadcaster import get_broadcaster
+
             broadcaster = get_broadcaster()
             message = random.choice(self._gentle_alerts)
-            broadcaster.broadcast("headspace_alert", {
-                "message": message,
-                "alert_type": alert_type,
-                "dismissable": True,
-            })
+            broadcaster.broadcast(
+                "headspace_alert",
+                {
+                    "message": message,
+                    "alert_type": alert_type,
+                    "dismissable": True,
+                },
+            )
         except Exception as e:
             logger.debug(f"Failed to broadcast headspace alert (non-fatal): {e}")
 
-    def _maybe_broadcast_flow(self, flow_duration: int, turn_rate: float, now: datetime) -> None:
+    def _maybe_broadcast_flow(
+        self, flow_duration: int, turn_rate: float, now: datetime
+    ) -> None:
         with self._lock:
             if self._last_flow_message_at:
                 elapsed = (now - self._last_flow_message_at).total_seconds() / 60
@@ -468,14 +514,18 @@ class HeadspaceMonitor:
 
         try:
             from .broadcaster import get_broadcaster
+
             broadcaster = get_broadcaster()
             template = random.choice(self._flow_messages)
             message = template.format(minutes=flow_duration, turns=int(turn_rate))
-            broadcaster.broadcast("headspace_flow", {
-                "message": message,
-                "minutes": flow_duration,
-                "turns": int(turn_rate),
-            })
+            broadcaster.broadcast(
+                "headspace_flow",
+                {
+                    "message": message,
+                    "minutes": flow_duration,
+                    "turns": int(turn_rate),
+                },
+            )
         except Exception as e:
             logger.debug(f"Failed to broadcast flow message (non-fatal): {e}")
 
@@ -489,7 +539,9 @@ class HeadspaceMonitor:
             "turn_rate_per_hour": snapshot.turn_rate_per_hour,
             "is_flow_state": snapshot.is_flow_state,
             "flow_duration_minutes": snapshot.flow_duration_minutes,
-            "last_alert_at": snapshot.last_alert_at.isoformat() if snapshot.last_alert_at else None,
+            "last_alert_at": snapshot.last_alert_at.isoformat()
+            if snapshot.last_alert_at
+            else None,
             "alert_count_today": snapshot.alert_count_today,
             "alert_suppressed": self._is_suppressed(),
             "peak_frustration_today": peak_score,

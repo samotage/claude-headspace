@@ -10,7 +10,6 @@ import logging
 import secrets
 import threading
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class SessionTokenService:
         logger.info(f"Session token generated for agent {agent_id}")
         return token
 
-    def validate(self, token: str) -> Optional[TokenInfo]:
+    def validate(self, token: str) -> TokenInfo | None:
         """Validate a session token.
 
         Args:
@@ -80,7 +79,7 @@ class SessionTokenService:
         with self._lock:
             return self._tokens.get(token)
 
-    def validate_for_agent(self, token: str, agent_id: int) -> Optional[TokenInfo]:
+    def validate_for_agent(self, token: str, agent_id: int) -> TokenInfo | None:
         """Validate a session token is valid AND scoped to a specific agent.
 
         Args:
@@ -129,7 +128,7 @@ class SessionTokenService:
                 return True
             return False
 
-    def get_agent_id(self, token: str) -> Optional[int]:
+    def get_agent_id(self, token: str) -> int | None:
         """Get the agent ID associated with a token.
 
         Args:

@@ -61,12 +61,7 @@ class TestParseContextUsage:
         assert result["remaining_tokens"] == "155k"
 
     def test_multiline_pane_text(self):
-        text = (
-            "some output line\n"
-            "another line\n"
-            "[ctx: 45% used, 110k remaining]\n"
-            "$ "
-        )
+        text = "some output line\nanother line\n[ctx: 45% used, 110k remaining]\n$ "
         result = parse_context_usage(text)
         assert result is not None
         assert result["percent_used"] == 45

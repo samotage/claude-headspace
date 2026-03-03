@@ -1,7 +1,6 @@
 """Brain reboot service for generating context restoration documents."""
 
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -173,16 +172,18 @@ class BrainRebootService:
         has_summary = summary_content is not None
 
         if not has_waypoint and not has_summary:
-            lines.extend([
-                "## No Artifacts Available",
-                "",
-                "Neither a progress summary nor a waypoint has been created for this project yet.",
-                "",
-                "**To get started:**",
-                "- **Progress Summary:** Click the \"Generate Progress Summary\" button below to create one from git history",
-                "- **Waypoint:** Use the waypoint editor to define your project's path ahead",
-                "",
-            ])
+            lines.extend(
+                [
+                    "## No Artifacts Available",
+                    "",
+                    "Neither a progress summary nor a waypoint has been created for this project yet.",
+                    "",
+                    "**To get started:**",
+                    '- **Progress Summary:** Click the "Generate Progress Summary" button below to create one from git history',
+                    "- **Waypoint:** Use the waypoint editor to define your project's path ahead",
+                    "",
+                ]
+            )
         else:
             # Waypoint first (path ahead context before progress)
             lines.append("## Waypoint (Path Ahead)")
@@ -190,7 +191,9 @@ class BrainRebootService:
             if has_waypoint:
                 lines.append(waypoint_content)
             else:
-                lines.append("*Waypoint is not yet available. Use the waypoint editor to define your project's path ahead.*")
+                lines.append(
+                    "*Waypoint is not yet available. Use the waypoint editor to define your project's path ahead.*"
+                )
             lines.append("")
 
             # Progress summary second
@@ -199,15 +202,19 @@ class BrainRebootService:
             if has_summary:
                 lines.append(summary_content)
             else:
-                lines.append("*Progress summary is not yet available. Click \"Generate Progress Summary\" below to create one from git history.*")
+                lines.append(
+                    '*Progress summary is not yet available. Click "Generate Progress Summary" below to create one from git history.*'
+                )
             lines.append("")
 
-        lines.extend([
-            "---",
-            "",
-            "_Use this document to quickly restore context when returning to this project._",
-            "",
-        ])
+        lines.extend(
+            [
+                "---",
+                "",
+                "_Use this document to quickly restore context when returning to this project._",
+                "",
+            ]
+        )
 
         return "\n".join(lines)
 

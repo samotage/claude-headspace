@@ -3,8 +3,6 @@
 import os
 import tempfile
 
-import pytest
-
 from claude_headspace.services.project_decoder import (
     decode_project_path,
     encode_project_path,
@@ -118,6 +116,7 @@ class TestLocateJsonlFile:
 
             # Small delay and create newer file
             import time
+
             time.sleep(0.1)
             newer_path = os.path.join(project_folder, "new.jsonl")
             with open(newer_path, "w") as f:

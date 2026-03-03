@@ -7,12 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import get_value
-from .git_analyzer import GitAnalyzer, GitAnalysisResult, GitAnalyzerError
+from .git_analyzer import GitAnalysisResult, GitAnalyzer, GitAnalyzerError
 from .inference_service import InferenceService, InferenceServiceError
-from .prompt_registry import build_prompt
-
 from .path_constants import BRAIN_REBOOT_DIR as SUMMARY_DIR
 from .path_constants import SUMMARY_FILENAME
+from .prompt_registry import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,9 @@ class ProgressSummaryService:
     Writes progress_summary.md to target project's brain_reboot/ directory.
     """
 
-    def __init__(self, inference_service: InferenceService, app=None, archive_service=None):
+    def __init__(
+        self, inference_service: InferenceService, app=None, archive_service=None
+    ):
         self._inference = inference_service
         self._app = app
         self._config = app.config.get("APP_CONFIG", {}) if app else {}
@@ -55,7 +56,10 @@ class ProgressSummaryService:
         # Check concurrent guard
         with self._lock:
             if project_id in self._in_progress:
-                return {"error": "Generation already in progress", "status": "in_progress"}
+                return {
+                    "error": "Generation already in progress",
+                    "status": "in_progress",
+                }
             self._in_progress.add(project_id)
 
         try:
@@ -115,8 +119,12 @@ class ProgressSummaryService:
         metadata = {
             "generated_at": now.isoformat(),
             "scope": analysis.scope_used,
-            "date_range_start": analysis.date_range_start.isoformat() if analysis.date_range_start else None,
-            "date_range_end": analysis.date_range_end.isoformat() if analysis.date_range_end else None,
+            "date_range_start": analysis.date_range_start.isoformat()
+            if analysis.date_range_start
+            else None,
+            "date_range_end": analysis.date_range_end.isoformat()
+            if analysis.date_range_end
+            else None,
             "commit_count": analysis.total_commit_count,
             "truncated": analysis.truncated,
         }
@@ -227,9 +235,7 @@ class ProgressSummaryService:
         # Archive existing before overwriting via centralized service
         if summary_path.exists() and self._archive_service is not None:
             try:
-                self._archive_service.archive_artifact(
-                    project_path, "progress_summary"
-                )
+                self._archive_service.archive_artifact(project_path, "progress_summary")
             except Exception as e:
                 logger.warning(f"Archive failed (non-blocking): {e}")
 
@@ -285,7 +291,7 @@ class ProgressSummaryService:
         """Remove YAML frontmatter from content."""
         match = re.match(r"^---\s*\n.*?\n---\s*\n", content, re.DOTALL)
         if match:
-            return content[match.end():].strip()
+            return content[match.end() :].strip()
         return content.strip()
 
     def _get_last_generation_timestamp(self, project_path: str) -> datetime | None:

@@ -8,8 +8,8 @@ import pytest
 
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
-from claude_headspace.models.project import Project
 from claude_headspace.models.command import Command, CommandState
+from claude_headspace.models.project import Project
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
 from claude_headspace.services.transcript_reader import TranscriptEntry
 from claude_headspace.services.transcript_reconciler import (
@@ -19,7 +19,6 @@ from claude_headspace.services.transcript_reconciler import (
     reconcile_agent_session,
     reconcile_transcript_entries,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -203,7 +202,9 @@ class TestReconcileExactMatch:
         turn_id = turn.id
 
         # Reconcile with matching JSONL entry
-        entry = _make_entry(role="user", content="Fix the login bug", timestamp=jsonl_ts)
+        entry = _make_entry(
+            role="user", content="Fix the login bug", timestamp=jsonl_ts
+        )
         result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 1
@@ -236,7 +237,9 @@ class TestReconcileExactMatch:
         db.session.add(turn)
         db.session.flush()
 
-        entry = _make_entry(role="user", content="Deploy to staging", timestamp=exact_ts)
+        entry = _make_entry(
+            role="user", content="Deploy to staging", timestamp=exact_ts
+        )
         result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["updated"]) == 0
@@ -268,7 +271,9 @@ class TestReconcileExactMatch:
         refreshed = db.session.get(Turn, turn_id)
         assert refreshed.jsonl_entry_hash is not None
 
-    def test_match_without_timestamp_preserves_existing_hash(self, app_ctx, agent, command):
+    def test_match_without_timestamp_preserves_existing_hash(
+        self, app_ctx, agent, command
+    ):
         """If turn already has a hash, matching without timestamp doesn't overwrite it."""
         now = datetime.now(timezone.utc)
         existing_hash = "abcdef1234567890"
@@ -321,7 +326,9 @@ class TestReconcileNoMatch:
         """Unmatched agent entry creates a Turn with AGENT actor and PROGRESS intent."""
         jsonl_ts = datetime.now(timezone.utc)
 
-        entry = _make_entry(role="assistant", content="I will fix this now", timestamp=jsonl_ts)
+        entry = _make_entry(
+            role="assistant", content="I will fix this now", timestamp=jsonl_ts
+        )
         result = reconcile_transcript_entries(agent, command, [entry])
 
         assert len(result["created"]) == 1
@@ -500,7 +507,9 @@ class TestBroadcastReconciliationUpdated:
     """Test broadcast_reconciliation for updated turns."""
 
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
-    def test_broadcasts_turn_updated_for_timestamp_corrections(self, mock_get_broadcaster):
+    def test_broadcasts_turn_updated_for_timestamp_corrections(
+        self, mock_get_broadcaster
+    ):
         """Updated turns trigger turn_updated broadcast events."""
         mock_broadcaster = MagicMock()
         mock_get_broadcaster.return_value = mock_broadcaster
@@ -642,7 +651,9 @@ class TestBroadcastReconciliationCreated:
 
     @patch("claude_headspace.services.transcript_reconciler.db")
     @patch("claude_headspace.services.broadcaster.get_broadcaster")
-    def test_created_broadcast_exception_does_not_propagate(self, mock_get_broadcaster, mock_db):
+    def test_created_broadcast_exception_does_not_propagate(
+        self, mock_get_broadcaster, mock_db
+    ):
         """Broadcast exceptions for created turns are caught and logged."""
         mock_broadcaster = MagicMock()
         mock_broadcaster.broadcast.side_effect = RuntimeError("SSE error")
@@ -669,7 +680,10 @@ class TestBroadcastReconciliationCreated:
         agent.id = 1
         agent.project_id = 10
 
-        result = {"updated": [(42, datetime.now(timezone.utc), datetime.now(timezone.utc))], "created": []}
+        result = {
+            "updated": [(42, datetime.now(timezone.utc), datetime.now(timezone.utc))],
+            "created": [],
+        }
 
         # Should not raise
         broadcast_reconciliation(agent, result)
@@ -734,7 +748,9 @@ class TestReconcileAgentSession:
         assert result == {"updated": [], "created": []}
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_creates_missing_turns(self, mock_read, app_ctx, agent, command):
+    def test_reconcile_agent_session_creates_missing_turns(
+        self, mock_read, app_ctx, agent, command
+    ):
         """Missing JSONL entries should be created as new turns."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         jsonl_ts = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -742,7 +758,9 @@ class TestReconcileAgentSession:
         mock_read.return_value = (
             [
                 _make_entry(role="user", content="First command", timestamp=jsonl_ts),
-                _make_entry(role="assistant", content="Working on it", timestamp=jsonl_ts),
+                _make_entry(
+                    role="assistant", content="Working on it", timestamp=jsonl_ts
+                ),
             ],
             1000,
         )
@@ -760,7 +778,9 @@ class TestReconcileAgentSession:
             assert turn.timestamp_source == "jsonl"
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_skips_existing_turns(self, mock_read, app_ctx, agent, command):
+    def test_reconcile_agent_session_skips_existing_turns(
+        self, mock_read, app_ctx, agent, command
+    ):
         """Turns that already exist in the DB should be skipped."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         now = datetime.now(timezone.utc)
@@ -791,7 +811,9 @@ class TestReconcileAgentSession:
         assert new_turn.text == "New command"
 
     @patch("claude_headspace.services.transcript_reader.read_new_entries_from_position")
-    def test_reconcile_agent_session_empty_entries(self, mock_read, app_ctx, agent, command):
+    def test_reconcile_agent_session_empty_entries(
+        self, mock_read, app_ctx, agent, command
+    ):
         """Empty entries list returns empty result."""
         agent.transcript_path = "/tmp/test-transcript.jsonl"
         mock_read.return_value = ([], 0)

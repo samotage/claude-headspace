@@ -99,7 +99,9 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         return TranscriptReadResult(success=False, error="No transcript path")
 
     if not os.path.exists(transcript_path):
-        return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
+        return TranscriptReadResult(
+            success=False, error=f"File not found: {transcript_path}"
+        )
 
     try:
         # Reverse-read strategy: only read the last 64KB instead of the whole file
@@ -108,7 +110,7 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         # errors="replace" handles seeking into the middle of a multi-byte
         # UTF-8 sequence — replacement chars land in the partial line that
         # readline() discards, so actual content is unaffected.
-        with open(transcript_path, "r", errors="replace") as f:
+        with open(transcript_path, errors="replace") as f:
             start_pos = max(0, file_size - _TAIL_SIZE)
             if start_pos > 0:
                 f.seek(start_pos)
@@ -118,7 +120,9 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         # Walk backwards, collecting assistant texts until we hit a user message
         parts: list[str] = []
         result_timestamp: datetime | None = None
-        logger.debug(f"TRANSCRIPT_READ: walking backwards through {len(lines)} lines from {transcript_path}")
+        logger.debug(
+            f"TRANSCRIPT_READ: walking backwards through {len(lines)} lines from {transcript_path}"
+        )
         lines_scanned = 0
         for line in reversed(lines):
             line = line.strip()
@@ -145,9 +149,13 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
                     or (isinstance(content, list) and len(content) > 0)
                 )
                 if has_content:
-                    logger.debug(f"TRANSCRIPT_READ: hit user entry with content after scanning {lines_scanned} lines, collected {len(parts)} parts")
+                    logger.debug(
+                        f"TRANSCRIPT_READ: hit user entry with content after scanning {lines_scanned} lines, collected {len(parts)} parts"
+                    )
                     break
-                logger.debug(f"TRANSCRIPT_READ: skipping empty user entry at scan line {lines_scanned}")
+                logger.debug(
+                    f"TRANSCRIPT_READ: skipping empty user entry at scan line {lines_scanned}"
+                )
                 continue
 
             if entry_type != "assistant":
@@ -159,10 +167,14 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
                 # Capture timestamp from the most recent (first found) assistant entry
                 if result_timestamp is None:
                     result_timestamp = _parse_jsonl_timestamp(data)
-                logger.debug(f"TRANSCRIPT_READ: collected assistant text ({len(text)} chars): {repr(text[:100])}")
+                logger.debug(
+                    f"TRANSCRIPT_READ: collected assistant text ({len(text)} chars): {repr(text[:100])}"
+                )
 
         if not parts:
-            logger.debug(f"TRANSCRIPT_READ: no assistant text found after scanning {lines_scanned} lines")
+            logger.debug(
+                f"TRANSCRIPT_READ: no assistant text found after scanning {lines_scanned} lines"
+            )
             return TranscriptReadResult(success=True, text="")
 
         # Reverse to restore chronological order
@@ -172,7 +184,9 @@ def read_transcript_file(transcript_path: str) -> TranscriptReadResult:
         if len(combined) > MAX_CONTENT_LENGTH:
             combined = combined[:MAX_CONTENT_LENGTH] + "... [truncated]"
 
-        return TranscriptReadResult(success=True, text=combined, timestamp=result_timestamp)
+        return TranscriptReadResult(
+            success=True, text=combined, timestamp=result_timestamp
+        )
 
     except Exception as e:
         logger.warning(f"Error reading transcript {transcript_path}: {e}")
@@ -190,12 +204,14 @@ def read_last_user_message(transcript_path: str) -> TranscriptReadResult:
         return TranscriptReadResult(success=False, error="No transcript path")
 
     if not os.path.exists(transcript_path):
-        return TranscriptReadResult(success=False, error=f"File not found: {transcript_path}")
+        return TranscriptReadResult(
+            success=False, error=f"File not found: {transcript_path}"
+        )
 
     try:
         _TAIL_SIZE = 64 * 1024
         file_size = os.path.getsize(transcript_path)
-        with open(transcript_path, "r", errors="replace") as f:
+        with open(transcript_path, errors="replace") as f:
             start_pos = max(0, file_size - _TAIL_SIZE)
             if start_pos > 0:
                 f.seek(start_pos)
@@ -259,7 +275,7 @@ def read_new_entries_from_position(
         return [], position
 
     try:
-        with open(transcript_path, "r", errors="replace") as f:
+        with open(transcript_path, errors="replace") as f:
             f.seek(position)
             new_content = f.read()
             new_position = f.tell()
@@ -280,13 +296,15 @@ def read_new_entries_from_position(
 
             role, text = _extract_text(data)
             ts = _parse_jsonl_timestamp(data)
-            entries.append(TranscriptEntry(
-                type=data.get("type", ""),
-                role=role,
-                content=text,
-                timestamp=ts,
-                raw_data=data,
-            ))
+            entries.append(
+                TranscriptEntry(
+                    type=data.get("type", ""),
+                    role=role,
+                    content=text,
+                    timestamp=ts,
+                    raw_data=data,
+                )
+            )
 
         return entries, new_position
 

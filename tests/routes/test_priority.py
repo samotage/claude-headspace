@@ -36,7 +36,6 @@ def mock_inference():
 
 
 class TestTriggerScoringEndpoint:
-
     def test_score_success(self, app, client, mock_service, mock_inference):
         app.extensions["priority_scoring_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
@@ -44,8 +43,18 @@ class TestTriggerScoringEndpoint:
         mock_service.score_all_agents.return_value = {
             "scored": 2,
             "agents": [
-                {"agent_id": 1, "score": 85, "reason": "Aligned", "scored_at": "2026-01-31T10:00:00+00:00"},
-                {"agent_id": 2, "score": 60, "reason": "Moderate", "scored_at": "2026-01-31T10:00:00+00:00"},
+                {
+                    "agent_id": 1,
+                    "score": 85,
+                    "reason": "Aligned",
+                    "scored_at": "2026-01-31T10:00:00+00:00",
+                },
+                {
+                    "agent_id": 2,
+                    "score": 60,
+                    "reason": "Moderate",
+                    "scored_at": "2026-01-31T10:00:00+00:00",
+                },
             ],
             "context_type": "objective",
         }
@@ -107,7 +116,6 @@ class TestTriggerScoringEndpoint:
 
 
 class TestRankingsEndpoint:
-
     def test_rankings_success(self, app, client, mock_service):
         app.extensions["priority_scoring_service"] = mock_service
 
@@ -118,7 +126,9 @@ class TestRankingsEndpoint:
         mock_agent_1.priority_score = 85
         mock_agent_1.priority_reason = "Aligned with objective"
         mock_agent_1.priority_updated_at = MagicMock()
-        mock_agent_1.priority_updated_at.isoformat.return_value = "2026-01-31T10:00:00+00:00"
+        mock_agent_1.priority_updated_at.isoformat.return_value = (
+            "2026-01-31T10:00:00+00:00"
+        )
 
         mock_agent_2 = MagicMock()
         mock_agent_2.id = 2
@@ -127,11 +137,14 @@ class TestRankingsEndpoint:
         mock_agent_2.priority_score = 40
         mock_agent_2.priority_reason = "Low priority"
         mock_agent_2.priority_updated_at = MagicMock()
-        mock_agent_2.priority_updated_at.isoformat.return_value = "2026-01-31T10:00:00+00:00"
+        mock_agent_2.priority_updated_at.isoformat.return_value = (
+            "2026-01-31T10:00:00+00:00"
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-                mock_agent_1, mock_agent_2
+                mock_agent_1,
+                mock_agent_2,
             ]
             response = client.get("/api/priority/rankings")
 
@@ -169,7 +182,9 @@ class TestRankingsEndpoint:
         mock_agent.priority_updated_at = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_agent]
+            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+                mock_agent
+            ]
             response = client.get("/api/priority/rankings")
 
         assert response.status_code == 200

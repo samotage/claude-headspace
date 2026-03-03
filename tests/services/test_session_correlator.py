@@ -2,7 +2,7 @@
 
 import os
 from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -196,7 +196,9 @@ class TestCorrelateSession:
         # Cache miss
         mock_db.session.get.return_value = None
         # DB lookup returns the agent
-        mock_db.session.query.return_value.filter.return_value.first.return_value = mock_agent
+        mock_db.session.query.return_value.filter.return_value.first.return_value = (
+            mock_agent
+        )
 
         result = correlate_session("db-session-456")
 
@@ -218,9 +220,7 @@ class TestCorrelateSession:
         mock_db.session.query.return_value.filter.return_value.first.return_value = (
             mock_project
         )
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            mock_agent
-        )
+        mock_db.session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_agent
 
         result = correlate_session("new-session", "/path/to/project")
 
@@ -396,7 +396,9 @@ class TestStrategy4TmuxPaneId:
                 q.filter.return_value.first.return_value = None
             elif call_count[0] == 2:
                 # Strategy 4: match by tmux_pane_id
-                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+                q.filter.return_value.order_by.return_value.first.return_value = (
+                    mock_agent
+                )
             return q
 
         mock_db.session.query.side_effect = query_side_effect
@@ -431,7 +433,9 @@ class TestStrategy4TmuxPaneId:
             if call_count[0] == 1:
                 q.filter.return_value.first.return_value = None
             elif call_count[0] == 2:
-                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+                q.filter.return_value.order_by.return_value.first.return_value = (
+                    mock_agent
+                )
             return q
 
         mock_db.session.query.side_effect = query_side_effect
@@ -460,7 +464,9 @@ class TestStrategy4TmuxPaneId:
             if call_count[0] == 1:
                 q.filter.return_value.first.return_value = None
             elif call_count[0] == 2:
-                q.filter.return_value.order_by.return_value.first.return_value = mock_agent
+                q.filter.return_value.order_by.return_value.first.return_value = (
+                    mock_agent
+                )
             return q
 
         mock_db.session.query.side_effect = query_side_effect
@@ -644,7 +650,7 @@ class TestCreateAgentForSessionRejectsUnregistered:
         # query().filter().first() calls: project lookup, then agent fetch after upsert
         mock_db.session.query.return_value.filter.return_value.first.side_effect = [
             mock_project,  # project lookup
-            mock_agent,    # agent fetch after upsert
+            mock_agent,  # agent fetch after upsert
         ]
 
         agent, project = _create_agent_for_session("session-123", "/registered/path")

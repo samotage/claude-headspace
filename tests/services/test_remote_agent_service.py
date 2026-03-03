@@ -8,7 +8,6 @@ import pytest
 
 from claude_headspace.services.remote_agent_service import (
     RemoteAgentService,
-    RemoteAgentResult,
 )
 from claude_headspace.services.session_token import SessionTokenService
 
@@ -82,9 +81,12 @@ class TestCreateBlocking:
         mock_project = MagicMock()
         mock_project.id = 1
         mock_project.slug = "test-project"
-        mock_db.session.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.session.query.return_value.filter.return_value.first.return_value = (
+            mock_project
+        )
 
         from claude_headspace.services.agent_lifecycle import CreateResult
+
         mock_create.return_value = CreateResult(
             success=False,
             message="Persona 'bad' not found or not active.",
@@ -109,6 +111,7 @@ class TestCreateBlocking:
         mock_project.slug = "test-project"
 
         from claude_headspace.services.agent_lifecycle import CreateResult
+
         mock_create.return_value = CreateResult(
             success=True,
             message="Agent starting",
@@ -117,6 +120,7 @@ class TestCreateBlocking:
 
         # Use a dispatcher that returns project for first call, None for polls
         call_count = [0]
+
         def query_side_effect(model):
             mock_chain = MagicMock()
             call_count[0] += 1
@@ -127,14 +131,17 @@ class TestCreateBlocking:
                 # Agent polling — never found
                 mock_chain.filter.return_value.first.return_value = None
             return mock_chain
+
         mock_db.session.query.side_effect = query_side_effect
 
         # Use a counter that increments past timeout after a few calls
         time_counter = [0.0]
+
         def fake_time():
             val = time_counter[0]
             time_counter[0] += 0.6  # Each call advances 0.6s, timeout is 2s
             return val
+
         mock_time.time.side_effect = fake_time
         mock_time.sleep = MagicMock()
 
@@ -150,7 +157,9 @@ class TestCreateBlocking:
     @patch("claude_headspace.services.remote_agent_service.db")
     @patch("claude_headspace.services.remote_agent_service.create_agent")
     @patch("claude_headspace.services.remote_agent_service.time")
-    def test_successful_creation(self, mock_time, mock_create, mock_db, service, token_service):
+    def test_successful_creation(
+        self, mock_time, mock_create, mock_db, service, token_service
+    ):
         """Agent becomes ready — should return full result."""
         mock_project = MagicMock()
         mock_project.id = 1
@@ -163,6 +172,7 @@ class TestCreateBlocking:
         mock_agent.project = mock_project
 
         from claude_headspace.services.agent_lifecycle import CreateResult
+
         mock_create.return_value = CreateResult(
             success=True,
             message="Agent starting",
@@ -171,6 +181,7 @@ class TestCreateBlocking:
 
         # Use a dispatcher: first query returns project, subsequent return agent
         call_count = [0]
+
         def query_side_effect(model):
             mock_chain = MagicMock()
             call_count[0] += 1
@@ -184,14 +195,17 @@ class TestCreateBlocking:
                 # Second agent poll — agent is ready
                 mock_chain.filter.return_value.first.return_value = mock_agent
             return mock_chain
+
         mock_db.session.query.side_effect = query_side_effect
 
         # Use a counter — returns small values (well within 2s timeout)
         time_counter = [0.0]
+
         def fake_time():
             val = time_counter[0]
             time_counter[0] += 0.3
             return val
+
         mock_time.time.side_effect = fake_time
         mock_time.sleep = MagicMock()
 
@@ -277,6 +291,7 @@ class TestShutdown:
 
         # Give the daemon thread a moment to fire
         import time
+
         time.sleep(0.1)
         mock_shutdown.assert_called_once_with(1)
 

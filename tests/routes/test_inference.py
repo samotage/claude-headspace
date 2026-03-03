@@ -14,13 +14,13 @@ import pytest
 from flask import Flask
 
 from src.claude_headspace.routes.inference import inference_bp
-from src.claude_headspace.routes.summarisation import summarisation_bp
 from src.claude_headspace.routes.priority import priority_bp
-
+from src.claude_headspace.routes.summarisation import summarisation_bp
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def app():
@@ -94,8 +94,8 @@ def mock_priority():
 # Inference Status Endpoint
 # ===========================================================================
 
-class TestInferenceStatus:
 
+class TestInferenceStatus:
     def test_status_returns_service_status(self, app, client, mock_inference):
         app.extensions["inference_service"] = mock_inference
         response = client.get("/api/inference/status")
@@ -151,8 +151,8 @@ class TestInferenceStatus:
 # Inference Usage Endpoint
 # ===========================================================================
 
-class TestInferenceUsage:
 
+class TestInferenceUsage:
     def test_usage_returns_statistics(self, app, client, mock_inference):
         app.extensions["inference_service"] = mock_inference
 
@@ -212,9 +212,11 @@ class TestInferenceUsage:
 # Summarisation Endpoints
 # ===========================================================================
 
-class TestSummariseTurn:
 
-    def test_success_generates_summary(self, app, client, mock_summarisation, mock_inference):
+class TestSummariseTurn:
+    def test_success_generates_summary(
+        self, app, client, mock_summarisation, mock_inference
+    ):
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
@@ -224,7 +226,9 @@ class TestSummariseTurn:
 
         def set_summary(turn, db_session=None):
             turn.summary = "Generated turn summary"
-            turn.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+            turn.summary_generated_at = datetime(
+                2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+            )
             return "Generated turn summary"
 
         mock_summarisation.summarise_turn.side_effect = set_summary
@@ -243,7 +247,9 @@ class TestSummariseTurn:
 
         mock_turn = MagicMock()
         mock_turn.summary = "Cached summary"
-        mock_turn.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+        mock_turn.summary_generated_at = datetime(
+            2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_turn
@@ -283,7 +289,9 @@ class TestSummariseTurn:
 
         assert response.status_code == 503
 
-    def test_summarisation_failure_returns_500(self, app, client, mock_summarisation, mock_inference):
+    def test_summarisation_failure_returns_500(
+        self, app, client, mock_summarisation, mock_inference
+    ):
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
@@ -299,8 +307,9 @@ class TestSummariseTurn:
 
 
 class TestSummariseCommand:
-
-    def test_success_generates_summary(self, app, client, mock_summarisation, mock_inference):
+    def test_success_generates_summary(
+        self, app, client, mock_summarisation, mock_inference
+    ):
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
@@ -310,7 +319,9 @@ class TestSummariseCommand:
 
         def set_summary(cmd, db_session=None):
             cmd.completion_summary = "Command done summary"
-            cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+            cmd.completion_summary_generated_at = datetime(
+                2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+            )
             return "Command done summary"
 
         mock_summarisation.summarise_command.side_effect = set_summary
@@ -329,7 +340,9 @@ class TestSummariseCommand:
 
         mock_cmd = MagicMock()
         mock_cmd.completion_summary = "Already summarised"
-        mock_cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+        mock_cmd.completion_summary_generated_at = datetime(
+            2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_cmd
@@ -369,7 +382,9 @@ class TestSummariseCommand:
 
         assert response.status_code == 503
 
-    def test_summarisation_failure_returns_500(self, app, client, mock_summarisation, mock_inference):
+    def test_summarisation_failure_returns_500(
+        self, app, client, mock_summarisation, mock_inference
+    ):
         app.extensions["summarisation_service"] = mock_summarisation
         app.extensions["inference_service"] = mock_inference
 
@@ -388,8 +403,8 @@ class TestSummariseCommand:
 # Priority Scoring Endpoints
 # ===========================================================================
 
-class TestTriggerScoring:
 
+class TestTriggerScoring:
     def test_score_success(self, app, client, mock_priority, mock_inference):
         app.extensions["priority_scoring_service"] = mock_priority
         app.extensions["inference_service"] = mock_inference
@@ -415,7 +430,9 @@ class TestTriggerScoring:
         app.extensions["priority_scoring_service"] = mock_priority
         app.extensions["inference_service"] = mock_inference
         mock_priority.score_all_agents.return_value = {
-            "scored": 0, "agents": [], "context_type": "none",
+            "scored": 0,
+            "agents": [],
+            "context_type": "none",
         }
 
         with patch("src.claude_headspace.database.db"):
@@ -458,7 +475,6 @@ class TestTriggerScoring:
 
 
 class TestRankings:
-
     def test_rankings_success(self, app, client, mock_priority):
         app.extensions["priority_scoring_service"] = mock_priority
 
@@ -469,10 +485,14 @@ class TestRankings:
         mock_agent.priority_score = 85
         mock_agent.priority_reason = "Aligned"
         mock_agent.priority_updated_at = MagicMock()
-        mock_agent.priority_updated_at.isoformat.return_value = "2026-01-31T10:00:00+00:00"
+        mock_agent.priority_updated_at.isoformat.return_value = (
+            "2026-01-31T10:00:00+00:00"
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_agent]
+            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+                mock_agent
+            ]
             response = client.get("/api/priority/rankings")
 
         assert response.status_code == 200
@@ -508,7 +528,9 @@ class TestRankings:
         mock_agent.priority_updated_at = None
 
         with patch("src.claude_headspace.database.db") as mock_db:
-            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_agent]
+            mock_db.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+                mock_agent
+            ]
             response = client.get("/api/priority/rankings")
 
         assert response.status_code == 200
@@ -528,7 +550,9 @@ class TestRankings:
             agent.priority_score = score
             agent.priority_reason = f"Reason {i}"
             agent.priority_updated_at = MagicMock()
-            agent.priority_updated_at.isoformat.return_value = "2026-01-31T10:00:00+00:00"
+            agent.priority_updated_at.isoformat.return_value = (
+                "2026-01-31T10:00:00+00:00"
+            )
             agents.append(agent)
 
         with patch("src.claude_headspace.database.db") as mock_db:

@@ -234,7 +234,9 @@ class TestSSEEndpoint:
             "src.claude_headspace.routes.sse.get_broadcaster",
             return_value=mock_broadcaster,
         ):
-            client.get("/api/events/stream?types=state_transition&project_id=42&agent_id=7")
+            client.get(
+                "/api/events/stream?types=state_transition&project_id=42&agent_id=7"
+            )
 
             mock_broadcaster.register_client.assert_called_once_with(
                 types=["state_transition"],

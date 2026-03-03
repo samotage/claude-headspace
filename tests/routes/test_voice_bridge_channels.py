@@ -12,7 +12,6 @@ from flask import Flask
 
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 
-
 # ── Fixtures ──────────────────────────────────────────────────────
 
 
@@ -33,16 +32,24 @@ def app():
     # Mock formatter
     mock_formatter = MagicMock()
     mock_formatter.format_channel_message_sent.return_value = {
-        "status_line": "Message sent.", "results": [], "next_action": "none"
+        "status_line": "Message sent.",
+        "results": [],
+        "next_action": "none",
     }
     mock_formatter.format_channel_history.return_value = {
-        "status_line": "History.", "results": [], "next_action": "none"
+        "status_line": "History.",
+        "results": [],
+        "next_action": "none",
     }
     mock_formatter.format_channel_list.return_value = {
-        "status_line": "Channels.", "results": [], "next_action": "none"
+        "status_line": "Channels.",
+        "results": [],
+        "next_action": "none",
     }
     mock_formatter.format_error.return_value = {
-        "status_line": "Error", "results": [], "next_action": "Fix"
+        "status_line": "Error",
+        "results": [],
+        "next_action": "Fix",
     }
 
     app.extensions = {
@@ -91,11 +98,10 @@ class TestChannelSendRoute:
         mock_persona.name = "Operator"
 
         # Patch at the route module location (where the names are used)
-        with patch(
-            "src.claude_headspace.routes.voice_bridge.Channel"
-        ) as MockChannel, patch(
-            "src.claude_headspace.routes.voice_bridge.Persona"
-        ) as MockPersona:
+        with (
+            patch("src.claude_headspace.routes.voice_bridge.Channel") as MockChannel,
+            patch("src.claude_headspace.routes.voice_bridge.Persona") as MockPersona,
+        ):
             MockChannel.query.filter.return_value.all.return_value = [mock_channel]
             MockPersona.get_operator.return_value = mock_persona
 
@@ -128,11 +134,10 @@ class TestChannelHistoryRoute:
         mock_persona = MagicMock()
         mock_persona.name = "Operator"
 
-        with patch(
-            "src.claude_headspace.routes.voice_bridge.Channel"
-        ) as MockChannel, patch(
-            "src.claude_headspace.routes.voice_bridge.Persona"
-        ) as MockPersona:
+        with (
+            patch("src.claude_headspace.routes.voice_bridge.Channel") as MockChannel,
+            patch("src.claude_headspace.routes.voice_bridge.Persona") as MockPersona,
+        ):
             MockChannel.query.filter.return_value.all.return_value = [mock_channel]
             MockPersona.get_operator.return_value = mock_persona
 
@@ -163,8 +168,10 @@ class TestChannelServiceUnavailable:
         )
         assert resp.status_code == 503
         data = resp.get_json()
-        assert "not available" in data.get("error", "").lower() or \
-               "not available" in data.get("voice", {}).get("status_line", "").lower()
+        assert (
+            "not available" in data.get("error", "").lower()
+            or "not available" in data.get("voice", {}).get("status_line", "").lower()
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════

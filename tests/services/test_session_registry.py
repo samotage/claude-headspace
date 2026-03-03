@@ -2,7 +2,7 @@
 
 import threading
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -185,13 +185,17 @@ class TestSessionRegistryThreadSafety:
                 uuid = uuid4()
                 registry.register_session(uuid, "/test", "/test")
 
-        threads = [threading.Thread(target=register_sessions) for _ in range(num_threads)]
+        threads = [
+            threading.Thread(target=register_sessions) for _ in range(num_threads)
+        ]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
-        assert len(registry.get_registered_sessions()) == num_threads * sessions_per_thread
+        assert (
+            len(registry.get_registered_sessions()) == num_threads * sessions_per_thread
+        )
 
     def test_concurrent_unregistration(self):
         """Test concurrent session unregistration."""

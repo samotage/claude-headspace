@@ -70,7 +70,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Use direct form. NEVER start with 'The user' or 'The agent'. "
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
-
     # --- Summarisation: command completion ---
     "command_completion": (
         "Command: {instruction}\n"
@@ -79,7 +78,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Use past tense. NEVER start with 'The user' or 'The agent'. "
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
-
     # Command completion when no final agent message available — uses turn activity
     "command_completion_from_activity": (
         "Command: {instruction}\n\n"
@@ -88,7 +86,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Use past tense. NEVER start with 'The user' or 'The agent'. "
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
-
     # Command completion when only the instruction is available (no agent output)
     "command_completion_from_instruction": (
         "Command: {instruction}\n\n"
@@ -97,7 +94,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Use past tense. NEVER start with 'The user' or 'The agent'. "
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
-
     # --- Summarisation: instruction ---
     "instruction": (
         "Command: {command_text}\n\n"
@@ -106,7 +102,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "NEVER start with 'The user' or describe user behavior. "
         "Output ONLY the entry — no preamble, labels, or commentary."
     ),
-
     # --- Priority scoring ---
     "priority_scoring": (
         "You are prioritising agents working across multiple projects.\n\n"
@@ -122,7 +117,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "5. Recent activity (10%) - Recently active vs stale\n\n"
         'Return ONLY a JSON array: [{{"agent_id": N, "score": N, "reason": "..."}}]'
     ),
-
     # --- Progress summary ---
     "progress_summary": (
         "You are summarising recent development progress for the project '{project_name}'.\n\n"
@@ -132,7 +126,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Output is a bullet point list of work, each with a short one sentence summary (~18 tokens) of each item.\n"
         "Use a professional tone suitable for a development journal."
     ),
-
     # --- Headspace: frustration-aware turn summarisation ---
     "turn_frustration": (
         "{instruction_context}"
@@ -156,7 +149,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "and patience indicators (clear instructions, positive framing).\n\n"
         'Return ONLY valid JSON: {{"summary": "...", "frustration_score": N}}'
     ),
-
     # --- Project metadata: description generation ---
     "project_description": (
         "Below is the CLAUDE.md file from a software project.\n\n"
@@ -167,7 +159,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Focus on what the project does and its primary technology. "
         "Output ONLY the description — no preamble, labels, or commentary."
     ),
-
     # --- Permission summary ---
     "permission_summary": (
         "Tool: {tool_name}\n"
@@ -180,7 +171,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "'Read: check test config', 'Bash: install npm packages'. "
         "Output ONLY the summary."
     ),
-
     # --- Classification: completion ---
     "completion_classification": (
         "Classify this agent output. Is the agent:\n"
@@ -194,7 +184,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "\n"
         "Respond with only the letter."
     ),
-
     # --- Classification: handoff ---
     "handoff_classification": (
         "Classify this user message. Is the user:\n"
@@ -206,7 +195,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "User message:\n"
         "{text}"
     ),
-
     # --- Classification: question ---
     "question_classification": (
         "You are classifying Claude Code agent output. "
@@ -215,7 +203,6 @@ _PROMPT_TEMPLATES: dict[str, str] = {
         "Is the agent asking the user a question or waiting for user input? "
         "Answer only 'yes' or 'no'."
     ),
-
     # --- Voice bridge: output formatting ---
     "voice_format_output": (
         "Agent: {agent_name}\n"
@@ -242,4 +229,3 @@ def build_prompt(prompt_type: str, **context) -> str:
         KeyError: If *prompt_type* is not in the registry.
     """
     return _PROMPT_TEMPLATES[prompt_type].format(**context)
-

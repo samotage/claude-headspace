@@ -1,7 +1,5 @@
 """Tests for the projects page route."""
 
-import pytest
-
 
 class TestProjectsPage:
     """Test GET /projects page route."""

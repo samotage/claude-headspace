@@ -20,7 +20,9 @@ from claude_headspace.models.project import Project
 @pytest.fixture
 def test_project(db_session):
     """Create a test Project for Agent FK."""
-    project = Project(name="test-project", slug="test-project", path="/tmp/test-project")
+    project = Project(
+        name="test-project", slug="test-project", path="/tmp/test-project"
+    )
     db_session.add(project)
     db_session.flush()
     return project
@@ -56,8 +58,14 @@ class TestHandoffCreation:
         assert handoff.id is not None
         assert handoff.agent_id == agent.id
         assert handoff.reason == "context_limit"
-        assert handoff.file_path == "data/personas/dev/handoffs/20260220T143025-4b6f8a2c.md"
-        assert handoff.injection_prompt == "Continue from where the previous agent left off."
+        assert (
+            handoff.file_path
+            == "data/personas/dev/handoffs/20260220T143025-4b6f8a2c.md"
+        )
+        assert (
+            handoff.injection_prompt
+            == "Continue from where the previous agent left off."
+        )
         assert handoff.created_at is not None
 
     def test_create_handoff_minimal_fields(self, db_session, test_project):

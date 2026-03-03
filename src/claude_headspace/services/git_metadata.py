@@ -10,7 +10,6 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,8 @@ logger = logging.getLogger(__name__)
 class GitInfo:
     """Data class representing git metadata for a project."""
 
-    repo_url: Optional[str]
-    current_branch: Optional[str]
+    repo_url: str | None
+    current_branch: str | None
 
 
 class GitMetadata:
@@ -31,7 +30,7 @@ class GitMetadata:
     """
 
     @staticmethod
-    def parse_owner_repo(raw_url: Optional[str]) -> Optional[str]:
+    def parse_owner_repo(raw_url: str | None) -> str | None:
         """Parse a git remote URL into owner/repo format.
 
         Supports:
@@ -66,7 +65,7 @@ class GitMetadata:
                 slash_idx = after_proto.find("/")
                 if slash_idx < 0:
                     return None
-                path = after_proto[slash_idx + 1:]
+                path = after_proto[slash_idx + 1 :]
             except Exception as e:
                 logger.warning(f"GitHub URL parsing failed: {e}")
                 return None
@@ -129,7 +128,7 @@ class GitMetadata:
         """Clear entire cache."""
         self._cache.clear()
 
-    def _get_repo_url(self, project_path: str) -> Optional[str]:
+    def _get_repo_url(self, project_path: str) -> str | None:
         """
         Get the git remote URL for a project.
 
@@ -158,7 +157,7 @@ class GitMetadata:
 
         return None
 
-    def _get_current_branch(self, project_path: str) -> Optional[str]:
+    def _get_current_branch(self, project_path: str) -> str | None:
         """
         Get the current git branch for a project.
 

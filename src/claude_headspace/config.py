@@ -167,8 +167,21 @@ DEFAULTS = {
         "allowed_image_types": ["png", "jpg", "jpeg", "gif", "webp"],
         "allowed_document_types": ["pdf"],
         "allowed_text_types": [
-            "txt", "md", "py", "js", "ts", "json", "yaml", "yml",
-            "html", "css", "rb", "sh", "sql", "csv", "log",
+            "txt",
+            "md",
+            "py",
+            "js",
+            "ts",
+            "json",
+            "yaml",
+            "yml",
+            "html",
+            "css",
+            "rb",
+            "sh",
+            "sql",
+            "csv",
+            "log",
         ],
     },
     "voice_bridge": {
@@ -214,8 +227,16 @@ ENV_MAPPINGS = {
     "FILE_WATCHER_DEBOUNCE_INTERVAL": ("file_watcher", "debounce_interval", float),
     "EVENT_SYSTEM_WRITE_RETRY_ATTEMPTS": ("event_system", "write_retry_attempts", int),
     "EVENT_SYSTEM_WRITE_RETRY_DELAY_MS": ("event_system", "write_retry_delay_ms", int),
-    "EVENT_SYSTEM_MAX_RESTARTS_PER_MINUTE": ("event_system", "max_restarts_per_minute", int),
-    "EVENT_SYSTEM_SHUTDOWN_TIMEOUT_SECONDS": ("event_system", "shutdown_timeout_seconds", int),
+    "EVENT_SYSTEM_MAX_RESTARTS_PER_MINUTE": (
+        "event_system",
+        "max_restarts_per_minute",
+        int,
+    ),
+    "EVENT_SYSTEM_SHUTDOWN_TIMEOUT_SECONDS": (
+        "event_system",
+        "shutdown_timeout_seconds",
+        int,
+    ),
     "SSE_HEARTBEAT_INTERVAL_SECONDS": ("sse", "heartbeat_interval_seconds", int),
     "SSE_MAX_CONNECTIONS": ("sse", "max_connections", int),
     "SSE_CONNECTION_TIMEOUT_SECONDS": ("sse", "connection_timeout_seconds", int),
@@ -223,14 +244,26 @@ ENV_MAPPINGS = {
     "HOOKS_ENABLED": ("hooks", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
     "HOOKS_POLLING_INTERVAL_WITH_HOOKS": ("hooks", "polling_interval_with_hooks", int),
     "HOOKS_FALLBACK_TIMEOUT": ("hooks", "fallback_timeout", int),
-    "NOTIFICATIONS_ENABLED": ("notifications", "enabled", lambda x: x.lower() in ("true", "1", "yes")),
-    "NOTIFICATIONS_SOUND": ("notifications", "sound", lambda x: x.lower() in ("true", "1", "yes")),
+    "NOTIFICATIONS_ENABLED": (
+        "notifications",
+        "enabled",
+        lambda x: x.lower() in ("true", "1", "yes"),
+    ),
+    "NOTIFICATIONS_SOUND": (
+        "notifications",
+        "sound",
+        lambda x: x.lower() in ("true", "1", "yes"),
+    ),
     "NOTIFICATIONS_RATE_LIMIT_SECONDS": ("notifications", "rate_limit_seconds", int),
     "OPENROUTER_BASE_URL": ("openrouter", "base_url", str),
     "OPENROUTER_TIMEOUT": ("openrouter", "timeout", int),
     "OPENROUTER_CALLS_PER_MINUTE": ("openrouter", "calls_per_minute", int),
     "OPENROUTER_TOKENS_PER_MINUTE": ("openrouter", "tokens_per_minute", int),
-    "DASHBOARD_STALE_PROCESSING_SECONDS": ("dashboard", "stale_processing_seconds", int),
+    "DASHBOARD_STALE_PROCESSING_SECONDS": (
+        "dashboard",
+        "stale_processing_seconds",
+        int,
+    ),
     "DASHBOARD_ACTIVE_TIMEOUT_MINUTES": ("dashboard", "active_timeout_minutes", int),
 }
 
@@ -251,7 +284,7 @@ def load_yaml_config(config_path: Path) -> dict:
     if not config_path.exists():
         return {}
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         content = yaml.safe_load(f)
         return content if content else {}
 
@@ -266,7 +299,9 @@ def apply_env_overrides(config: dict) -> dict:
             try:
                 converted = converter(value)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid value for {env_var}={value!r}: {e}, skipping override")
+                logger.warning(
+                    f"Invalid value for {env_var}={value!r}: {e}, skipping override"
+                )
                 continue
             if section not in result:
                 result[section] = {}
@@ -349,6 +384,7 @@ def _guard_production_db(database_url: str, config: dict) -> None:
     connecting to development or production databases.
     """
     import sys
+
     if "_pytest" not in sys.modules and "pytest" not in sys.modules:
         return  # Not running under pytest — allow anything
 
@@ -368,6 +404,7 @@ def _guard_production_db(database_url: str, config: dict) -> None:
 def mask_database_url(url: str) -> str:
     """Mask the password in a database URL for safe logging."""
     import re
+
     # Match postgresql://user:password@host pattern
     return re.sub(r"(postgresql://[^:]+:)[^@]+(@)", r"\1***\2", url)
 
@@ -381,9 +418,7 @@ def get_claude_projects_path(config: dict) -> str:
 def get_file_watcher_config(config: dict) -> dict:
     """Get file watcher configuration with defaults."""
     return {
-        "enabled": get_value(
-            config, "file_watcher", "enabled", default=False
-        ),
+        "enabled": get_value(config, "file_watcher", "enabled", default=False),
         "polling_interval": get_value(
             config, "file_watcher", "polling_interval", default=2
         ),
@@ -406,12 +441,8 @@ def get_notifications_config(config: dict) -> dict:
     """Get notifications configuration with defaults."""
     events = config.get("notifications", {}).get("events", {})
     return {
-        "enabled": get_value(
-            config, "notifications", "enabled", default=True
-        ),
-        "sound": get_value(
-            config, "notifications", "sound", default=True
-        ),
+        "enabled": get_value(config, "notifications", "enabled", default=True),
+        "sound": get_value(config, "notifications", "sound", default=True),
         "events": {
             "command_complete": events.get("command_complete", True),
             "awaiting_input": events.get("awaiting_input", True),

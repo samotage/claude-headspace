@@ -1,14 +1,13 @@
 """Unit tests for priority scoring service."""
 
 import json
-import time
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.claude_headspace.services.priority_scoring import PriorityScoringService
 from src.claude_headspace.services.openrouter_client import InferenceResult
+from src.claude_headspace.services.priority_scoring import PriorityScoringService
 
 
 @pytest.fixture
@@ -61,13 +60,14 @@ def mock_agent_2():
 
 
 class TestScoringContextFallback:
-
     def test_objective_context_when_set(self, service):
         mock_session = MagicMock()
         mock_objective = MagicMock()
         mock_objective.current_text = "Ship auth feature by Friday"
         mock_objective.constraints = "Must pass security review"
-        mock_session.query.return_value.order_by.return_value.first.return_value = mock_objective
+        mock_session.query.return_value.order_by.return_value.first.return_value = (
+            mock_objective
+        )
 
         context = service._get_scoring_context(mock_session, [])
 
@@ -81,9 +81,14 @@ class TestScoringContextFallback:
 
         wp_result = MagicMock()
         wp_result.exists = True
-        wp_result.content = "# Waypoint\n\n## Next Up\n\nFix login bug\n\n## Upcoming\n\nAdd search"
+        wp_result.content = (
+            "# Waypoint\n\n## Next Up\n\nFix login bug\n\n## Upcoming\n\nAdd search"
+        )
 
-        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+        with patch(
+            "src.claude_headspace.services.waypoint_editor.load_waypoint",
+            return_value=wp_result,
+        ):
             context = service._get_scoring_context(mock_session, [mock_agent])
 
         assert context["context_type"] == "waypoint"
@@ -96,14 +101,16 @@ class TestScoringContextFallback:
         wp_result = MagicMock()
         wp_result.exists = False
 
-        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+        with patch(
+            "src.claude_headspace.services.waypoint_editor.load_waypoint",
+            return_value=wp_result,
+        ):
             context = service._get_scoring_context(mock_session, [mock_agent])
 
         assert context["context_type"] == "default"
 
 
 class TestBuildScoringPrompt:
-
     def test_prompt_includes_objective_context(self, service, mock_agent):
         context = {
             "context_type": "objective",
@@ -153,12 +160,13 @@ class TestBuildScoringPrompt:
 
 
 class TestParseResponse:
-
     def test_valid_json_parsed(self, service):
-        response = json.dumps([
-            {"agent_id": 1, "score": 85, "reason": "High alignment"},
-            {"agent_id": 2, "score": 40, "reason": "Low alignment"},
-        ])
+        response = json.dumps(
+            [
+                {"agent_id": 1, "score": 85, "reason": "High alignment"},
+                {"agent_id": 2, "score": 40, "reason": "Low alignment"},
+            ]
+        )
 
         results = service._parse_scoring_response(response, [1, 2])
 
@@ -168,10 +176,12 @@ class TestParseResponse:
         assert results[0]["reason"] == "High alignment"
 
     def test_score_clamped_to_range(self, service):
-        response = json.dumps([
-            {"agent_id": 1, "score": 150, "reason": "Over max"},
-            {"agent_id": 2, "score": -10, "reason": "Under min"},
-        ])
+        response = json.dumps(
+            [
+                {"agent_id": 1, "score": 150, "reason": "Over max"},
+                {"agent_id": 2, "score": -10, "reason": "Under min"},
+            ]
+        )
 
         results = service._parse_scoring_response(response, [1, 2])
 
@@ -187,10 +197,12 @@ class TestParseResponse:
         assert results == []
 
     def test_unknown_agent_ids_filtered(self, service):
-        response = json.dumps([
-            {"agent_id": 1, "score": 85, "reason": "Known"},
-            {"agent_id": 999, "score": 40, "reason": "Unknown"},
-        ])
+        response = json.dumps(
+            [
+                {"agent_id": 1, "score": 85, "reason": "Known"},
+                {"agent_id": 999, "score": 40, "reason": "Unknown"},
+            ]
+        )
 
         results = service._parse_scoring_response(response, [1, 2])
 
@@ -214,7 +226,6 @@ class TestParseResponse:
 
 
 class TestPriorityDisabledGuard:
-
     def test_scoring_skipped_when_disabled(self, service, mock_agent):
         """Scoring returns early with context_type 'disabled' when priority_enabled is False."""
         mock_session = MagicMock()
@@ -236,13 +247,18 @@ class TestPriorityDisabledGuard:
         # Second query (Agent join/filter) returns agents
         # Third query (Objective order_by) for context also returns None
         mock_session.query.return_value.first.return_value = None
-        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
         mock_session.query.return_value.order_by.return_value.first.return_value = None
 
         wp_result = MagicMock()
         wp_result.exists = False
 
-        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+        with patch(
+            "src.claude_headspace.services.waypoint_editor.load_waypoint",
+            return_value=wp_result,
+        ):
             result = service.score_all_agents(mock_session)
 
         # Should not be "disabled" — it should proceed to default scoring
@@ -251,7 +267,6 @@ class TestPriorityDisabledGuard:
 
 
 class TestScoreAllAgents:
-
     def test_no_agents_returns_empty(self, service):
         mock_session = MagicMock()
         mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = []
@@ -264,14 +279,19 @@ class TestScoreAllAgents:
 
     def test_default_context_assigns_50(self, service, mock_agent):
         mock_session = MagicMock()
-        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
         # No objective
         mock_session.query.return_value.order_by.return_value.first.return_value = None
 
         wp_result = MagicMock()
         wp_result.exists = False
 
-        with patch("src.claude_headspace.services.waypoint_editor.load_waypoint", return_value=wp_result):
+        with patch(
+            "src.claude_headspace.services.waypoint_editor.load_waypoint",
+            return_value=wp_result,
+        ):
             result = service.score_all_agents(mock_session)
 
         assert result["scored"] == 1
@@ -279,20 +299,29 @@ class TestScoreAllAgents:
         assert mock_agent.priority_score == 50
         assert mock_agent.priority_reason == "No scoring context available"
 
-    def test_successful_scoring_persists(self, service, mock_inference, mock_agent, mock_agent_2):
+    def test_successful_scoring_persists(
+        self, service, mock_inference, mock_agent, mock_agent_2
+    ):
         mock_session = MagicMock()
-        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent, mock_agent_2]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [
+            mock_agent,
+            mock_agent_2,
+        ]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Ship auth"
         mock_objective.constraints = ""
-        mock_session.query.return_value.order_by.return_value.first.return_value = mock_objective
+        mock_session.query.return_value.order_by.return_value.first.return_value = (
+            mock_objective
+        )
 
         mock_inference.infer.return_value = InferenceResult(
-            text=json.dumps([
-                {"agent_id": 1, "score": 85, "reason": "Aligned with auth"},
-                {"agent_id": 2, "score": 60, "reason": "Waiting for input"},
-            ]),
+            text=json.dumps(
+                [
+                    {"agent_id": 1, "score": 85, "reason": "Aligned with auth"},
+                    {"agent_id": 2, "score": 60, "reason": "Waiting for input"},
+                ]
+            ),
             input_tokens=200,
             output_tokens=50,
             model="anthropic/claude-3-haiku",
@@ -307,14 +336,20 @@ class TestScoreAllAgents:
         assert mock_agent_2.priority_score == 60
         mock_session.commit.assert_called()
 
-    def test_inference_error_preserves_scores(self, service, mock_inference, mock_agent):
+    def test_inference_error_preserves_scores(
+        self, service, mock_inference, mock_agent
+    ):
         mock_session = MagicMock()
-        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [mock_agent]
+        mock_session.query.return_value.join.return_value.filter.return_value.filter.return_value.all.return_value = [
+            mock_agent
+        ]
 
         mock_objective = MagicMock()
         mock_objective.current_text = "Test"
         mock_objective.constraints = ""
-        mock_session.query.return_value.order_by.return_value.first.return_value = mock_objective
+        mock_session.query.return_value.order_by.return_value.first.return_value = (
+            mock_objective
+        )
 
         mock_inference.infer.side_effect = Exception("API error")
 
@@ -326,7 +361,6 @@ class TestScoreAllAgents:
 
 
 class TestDebounceTrigger:
-
     def test_trigger_scoring_debounces(self, service, mock_inference):
         with patch.object(service, "score_all_agents_async") as mock_async:
             service.trigger_scoring()
@@ -354,7 +388,6 @@ class TestDebounceTrigger:
 
 
 class TestDebounceConfig:
-
     def test_default_debounce_when_no_config(self, mock_inference):
         service = PriorityScoringService(inference_service=mock_inference)
         assert service._debounce_seconds == 5.0
@@ -365,12 +398,16 @@ class TestDebounceConfig:
 
     def test_custom_debounce_from_config(self, mock_inference):
         config = {"openrouter": {"priority_scoring": {"debounce_seconds": 10.0}}}
-        service = PriorityScoringService(inference_service=mock_inference, config=config)
+        service = PriorityScoringService(
+            inference_service=mock_inference, config=config
+        )
         assert service._debounce_seconds == 10.0
 
     def test_debounce_used_in_trigger(self, mock_inference):
         config = {"openrouter": {"priority_scoring": {"debounce_seconds": 2.0}}}
-        service = PriorityScoringService(inference_service=mock_inference, config=config)
+        service = PriorityScoringService(
+            inference_service=mock_inference, config=config
+        )
 
         with patch.object(service, "score_all_agents_async"):
             service.trigger_scoring()
@@ -380,19 +417,19 @@ class TestDebounceConfig:
 
 
 class TestAsyncScoring:
-
     def test_async_skipped_when_unavailable(self, mock_inference):
         mock_inference.is_available = False
         service = PriorityScoringService(inference_service=mock_inference, config={})
         service.score_all_agents_async()  # Should not raise
 
     def test_async_skipped_without_app(self, mock_inference):
-        service = PriorityScoringService(inference_service=mock_inference, app=None, config={})
+        service = PriorityScoringService(
+            inference_service=mock_inference, app=None, config={}
+        )
         service.score_all_agents_async()  # Should not raise
 
 
 class TestExtractSection:
-
     def test_extract_next_up(self):
         content = "# Waypoint\n\n## Next Up\n\nFix login bug\nAdd tests\n\n## Upcoming\n\nSearch feature"
         result = PriorityScoringService._extract_section(content, "Next Up")
@@ -405,21 +442,26 @@ class TestExtractSection:
         assert result == "None"
 
     def test_extract_removes_html_comments(self):
-        content = "# Waypoint\n\n## Next Up\n\n<!-- placeholder -->\n\n## Upcoming\n\nStuff"
+        content = (
+            "# Waypoint\n\n## Next Up\n\n<!-- placeholder -->\n\n## Upcoming\n\nStuff"
+        )
         result = PriorityScoringService._extract_section(content, "Next Up")
         assert result == "None"
 
 
 class TestSSEBroadcast:
-
     def test_broadcast_score_update(self, service):
-        with patch("src.claude_headspace.services.broadcaster.get_broadcaster") as mock_get:
+        with patch(
+            "src.claude_headspace.services.broadcaster.get_broadcaster"
+        ) as mock_get:
             mock_broadcaster = MagicMock()
             mock_get.return_value = mock_broadcaster
 
-            service._broadcast_score_update([
-                {"agent_id": 1, "score": 85, "reason": "Test"},
-            ])
+            service._broadcast_score_update(
+                [
+                    {"agent_id": 1, "score": 85, "reason": "Test"},
+                ]
+            )
 
             mock_broadcaster.broadcast.assert_called_once()
             call_args = mock_broadcaster.broadcast.call_args
@@ -427,7 +469,11 @@ class TestSSEBroadcast:
             assert call_args[0][1]["agents"][0]["score"] == 85
 
     def test_broadcast_failure_non_fatal(self, service):
-        with patch("src.claude_headspace.services.broadcaster.get_broadcaster") as mock_get:
+        with patch(
+            "src.claude_headspace.services.broadcaster.get_broadcaster"
+        ) as mock_get:
             mock_get.side_effect = RuntimeError("No broadcaster")
             # Should not raise
-            service._broadcast_score_update([{"agent_id": 1, "score": 85, "reason": "Test"}])
+            service._broadcast_score_update(
+                [{"agent_id": 1, "score": 85, "reason": "Test"}]
+            )

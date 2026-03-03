@@ -3,14 +3,13 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.event import Event, EventType
 from ..models.command import Command, CommandState
+from ..models.event import EventType
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .broadcaster import get_broadcaster
 from .card_state import broadcast_card_refresh
@@ -37,9 +36,9 @@ class SummarisationRequest:
     """A pending summarisation request to be executed after db commit."""
 
     type: str  # "turn", "instruction", "command_completion"
-    turn: Optional[Turn] = None
-    command: Optional[Command] = None
-    command_text: Optional[str] = None
+    turn: Turn | None = None
+    command: Command | None = None
+    command_text: str | None = None
 
 
 @dataclass
@@ -47,11 +46,11 @@ class TurnProcessingResult:
     """Result of processing a turn event."""
 
     success: bool
-    command: Optional[Command] = None
-    transition: Optional[TransitionResult] = None
-    intent: Optional[IntentResult] = None
+    command: Command | None = None
+    transition: TransitionResult | None = None
+    intent: IntentResult | None = None
     event_written: bool = False
-    error: Optional[str] = None
+    error: str | None = None
     new_command_created: bool = False
     pending_summarisations: list = field(default_factory=list)
 
@@ -69,7 +68,11 @@ def get_instruction_for_notification(command, max_length: int = 120) -> str | No
             if t.actor == TurnActor.USER and t.intent == TurnIntent.COMMAND:
                 text = (t.text or "").strip()
                 if text:
-                    return text[:max_length - 3] + "..." if len(text) > max_length else text
+                    return (
+                        text[: max_length - 3] + "..."
+                        if len(text) > max_length
+                        else text
+                    )
     except Exception as e:
         logger.warning(f"Failed to extract instruction for notification: {e}")
     return None
@@ -155,25 +158,33 @@ def complete_answer(
     # 10. Broadcast state_changed + turn_created
     try:
         broadcaster = get_broadcaster()
-        broadcaster.broadcast("state_changed", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "event_type": source,
-            "new_state": new_state.value,
-            "message": f"User responded via {source}",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-        broadcaster.broadcast("turn_created", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "text": text,
-            "actor": "user",
-            "intent": "answer",
-            "command_id": command.id,
-            "command_instruction": command.instruction,
-            "turn_id": turn.id,
-            "timestamp": turn.timestamp.isoformat() if turn.timestamp else datetime.now(timezone.utc).isoformat(),
-        })
+        broadcaster.broadcast(
+            "state_changed",
+            {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "event_type": source,
+                "new_state": new_state.value,
+                "message": f"User responded via {source}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        broadcaster.broadcast(
+            "turn_created",
+            {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "text": text,
+                "actor": "user",
+                "intent": "answer",
+                "command_id": command.id,
+                "command_instruction": command.instruction,
+                "turn_id": turn.id,
+                "timestamp": turn.timestamp.isoformat()
+                if turn.timestamp
+                else datetime.now(timezone.utc).isoformat(),
+            },
+        )
     except Exception as e:
         logger.warning(f"complete_answer broadcast failed ({source}): {e}")
 
@@ -191,7 +202,7 @@ class CommandLifecycleManager:
     def __init__(
         self,
         session: Session,
-        event_writer: Optional[EventWriter] = None,
+        event_writer: EventWriter | None = None,
     ) -> None:
         self._session = session
         self._event_writer = event_writer
@@ -203,7 +214,9 @@ class CommandLifecycleManager:
         self._pending_summarisations = []
         return pending
 
-    def create_command(self, agent: Agent, initial_state: CommandState = CommandState.COMMANDED) -> Command:
+    def create_command(
+        self, agent: Agent, initial_state: CommandState = CommandState.COMMANDED
+    ) -> Command:
         """
         Create a new command for an agent.
 
@@ -222,7 +235,9 @@ class CommandLifecycleManager:
         self._session.add(command)
         self._session.flush()  # Get the command ID
 
-        logger.info(f"Created command id={command.id} for agent id={agent.id} with state={initial_state.value}")
+        logger.info(
+            f"Created command id={command.id} for agent id={agent.id} with state={initial_state.value}"
+        )
 
         # Write state transition event for command creation
         if self._event_writer:
@@ -237,7 +252,7 @@ class CommandLifecycleManager:
 
         return command
 
-    def get_current_command(self, agent: Agent) -> Optional[Command]:
+    def get_current_command(self, agent: Agent) -> Command | None:
         """
         Get the current (incomplete) command for an agent.
 
@@ -298,6 +313,7 @@ class CommandLifecycleManager:
 
         # Validate through state machine — reject invalid transitions.
         from .state_machine import validate_transition as _validate
+
         # Build a synthetic actor/intent for validation.
         # Triggers from hook_receiver use "hook:*" patterns; triggers from
         # process_turn use "ACTOR:INTENT" patterns from the state machine.
@@ -305,7 +321,10 @@ class CommandLifecycleManager:
             "hook:user_prompt_submit": (TurnActor.USER, TurnIntent.COMMAND),
             "hook:stop:question_detected": (TurnActor.AGENT, TurnIntent.QUESTION),
             "hook:stop:deferred_question": (TurnActor.AGENT, TurnIntent.QUESTION),
-            "hook:pre_tool_use:stale_awaiting_recovery": (TurnActor.AGENT, TurnIntent.PROGRESS),
+            "hook:pre_tool_use:stale_awaiting_recovery": (
+                TurnActor.AGENT,
+                TurnIntent.PROGRESS,
+            ),
             "hook:post_tool_use:inferred": (TurnActor.AGENT, TurnIntent.PROGRESS),
             "notification": (TurnActor.AGENT, TurnIntent.QUESTION),
             "pre_tool_use": (TurnActor.AGENT, TurnIntent.QUESTION),
@@ -317,7 +336,9 @@ class CommandLifecycleManager:
             "agent:completion": (TurnActor.AGENT, TurnIntent.COMPLETION),
             "agent:end_of_command": (TurnActor.AGENT, TurnIntent.END_OF_COMMAND),
         }
-        _actor, _intent = _actor_map.get(trigger, (TurnActor.AGENT, TurnIntent.PROGRESS))
+        _actor, _intent = _actor_map.get(
+            trigger, (TurnActor.AGENT, TurnIntent.PROGRESS)
+        )
         if to_state == CommandState.AWAITING_INPUT:
             _intent = TurnIntent.QUESTION
         elif to_state == CommandState.COMPLETE:
@@ -328,13 +349,16 @@ class CommandLifecycleManager:
 
         command.state = to_state
 
-        logger.debug(f"Command id={command.id} state updated: {from_state.value} -> {to_state.value}")
+        logger.debug(
+            f"Command id={command.id} state updated: {from_state.value} -> {to_state.value}"
+        )
 
         # Send notification for awaiting_input state
         if to_state == CommandState.AWAITING_INPUT:
             try:
                 # Lazy import to avoid circular imports and test context issues
                 from .notification_service import get_notification_service
+
                 notification_service = get_notification_service()
 
                 instruction = self._get_instruction_for_notification(command)
@@ -343,7 +367,10 @@ class CommandLifecycleManager:
                 question_text = None
                 try:
                     for t in reversed(command.turns):
-                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+                        if (
+                            t.actor == TurnActor.AGENT
+                            and t.intent == TurnIntent.QUESTION
+                        ):
                             question_text = t.summary or t.text
                             break
                 except Exception as e:
@@ -352,7 +379,9 @@ class CommandLifecycleManager:
                 notification_service.notify_awaiting_input(
                     agent_id=str(command.agent_id),
                     agent_name=command.agent.name or f"Agent {command.agent_id}",
-                    project=command.agent.project.name if command.agent.project else None,
+                    project=command.agent.project.name
+                    if command.agent.project
+                    else None,
                     command_instruction=instruction,
                     turn_text=question_text,
                 )
@@ -375,13 +404,12 @@ class CommandLifecycleManager:
         if to_state == CommandState.AWAITING_INPUT:
             try:
                 from flask import current_app
+
                 ch_delivery = current_app.extensions.get("channel_delivery_service")
                 if ch_delivery:
                     ch_delivery.drain_queue(command.agent)
             except Exception as qd_err:
-                logger.warning(
-                    f"Channel queue drain failed (non-fatal): {qd_err}"
-                )
+                logger.warning(f"Channel queue drain failed (non-fatal): {qd_err}")
 
         return True
 
@@ -469,7 +497,9 @@ class CommandLifecycleManager:
                 self._session.add(turn)
                 self._session.flush()
 
-        logger.info(f"Command id={command.id} completed at {command.completed_at.isoformat()}")
+        logger.info(
+            f"Command id={command.id} completed at {command.completed_at.isoformat()}"
+        )
 
         # NOTE: Completion notification is sent by the caller (hook_receiver)
         # AFTER summarisation completes, so the notification contains the
@@ -501,8 +531,8 @@ class CommandLifecycleManager:
         self,
         agent: Agent,
         actor: TurnActor,
-        text: Optional[str],
-        file_metadata: Optional[dict] = None,
+        text: str | None,
+        file_metadata: dict | None = None,
         is_internal: bool = False,
     ) -> TurnProcessingResult:
         """
@@ -536,12 +566,19 @@ class CommandLifecycleManager:
         # This handles IDLE (no active command), AWAITING_INPUT (agent asked a question),
         # and PROCESSING (edge case: stop hook completion may not have been received).
         if actor == TurnActor.USER and intent_result.intent == TurnIntent.COMMAND:
-            if current_state in (CommandState.IDLE, CommandState.AWAITING_INPUT, CommandState.PROCESSING, CommandState.COMMANDED):
+            if current_state in (
+                CommandState.IDLE,
+                CommandState.AWAITING_INPUT,
+                CommandState.PROCESSING,
+                CommandState.COMMANDED,
+            ):
                 # User sends follow-up before agent starts — append to existing command
                 if current_state == CommandState.COMMANDED and current_command:
                     if text:
                         existing = current_command.full_command or ""
-                        current_command.full_command = (existing + "\n" + text).strip() if existing else text
+                        current_command.full_command = (
+                            (existing + "\n" + text).strip() if existing else text
+                        )
 
                     turn = Turn(
                         command_id=current_command.id,
@@ -559,7 +596,11 @@ class CommandLifecycleManager:
                     )
                     if text:
                         self._pending_summarisations.append(
-                            SummarisationRequest(type="instruction", command=current_command, command_text=current_command.full_command)
+                            SummarisationRequest(
+                                type="instruction",
+                                command=current_command,
+                                command_text=current_command.full_command,
+                            )
                         )
 
                     logger.info(
@@ -586,7 +627,8 @@ class CommandLifecycleManager:
                     and self._session.query(Turn)
                     .filter_by(command_id=current_command.id)
                     .filter(Turn.actor == TurnActor.USER)
-                    .count() == 0
+                    .count()
+                    == 0
                 ):
                     if text:
                         current_command.full_command = text
@@ -607,7 +649,11 @@ class CommandLifecycleManager:
                     )
                     if text:
                         self._pending_summarisations.append(
-                            SummarisationRequest(type="instruction", command=current_command, command_text=text)
+                            SummarisationRequest(
+                                type="instruction",
+                                command=current_command,
+                                command_text=text,
+                            )
                         )
 
                     logger.info(
@@ -652,7 +698,9 @@ class CommandLifecycleManager:
                 )
                 if text:
                     self._pending_summarisations.append(
-                        SummarisationRequest(type="instruction", command=new_command, command_text=text)
+                        SummarisationRequest(
+                            type="instruction", command=new_command, command_text=text
+                        )
                     )
 
                 return TurnProcessingResult(
@@ -666,7 +714,9 @@ class CommandLifecycleManager:
 
         # No active command and not a user command - nothing to do
         if not current_command:
-            logger.warning(f"No active command for agent id={agent.id} and turn is not a command")
+            logger.warning(
+                f"No active command for agent id={agent.id} and turn is not a command"
+            )
             return TurnProcessingResult(
                 success=False,
                 error="No active command and turn is not a user command",
@@ -692,7 +742,9 @@ class CommandLifecycleManager:
 
         # Apply the transition
         if transition_result.to_state == CommandState.COMPLETE:
-            self.complete_command(current_command, trigger=transition_result.trigger or "unknown")
+            self.complete_command(
+                current_command, trigger=transition_result.trigger or "unknown"
+            )
         else:
             self.update_command_state(
                 command=current_command,
@@ -735,7 +787,7 @@ class CommandLifecycleManager:
         to_state: CommandState,
         trigger: str,
         confidence: float,
-    ) -> Optional[WriteResult]:
+    ) -> WriteResult | None:
         """
         Write a state_transition event.
 
@@ -773,5 +825,7 @@ class CommandLifecycleManager:
 
         return result
 
-    def _get_instruction_for_notification(self, command: Command, max_length: int = 120) -> str | None:
+    def _get_instruction_for_notification(
+        self, command: Command, max_length: int = 120
+    ) -> str | None:
         return get_instruction_for_notification(command, max_length)

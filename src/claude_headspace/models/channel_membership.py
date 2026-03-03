@@ -48,17 +48,13 @@ class ChannelMembership(db.Model):
     )
     # FK to position_assignments deferred — table does not yet exist.
     # Will be added as a FK constraint when PositionAssignment model is implemented.
-    position_assignment_id: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
-    is_chair: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="active"
-    )
+    position_assignment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_chair: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     joined_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
     left_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

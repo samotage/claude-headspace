@@ -47,8 +47,9 @@ def mock_project():
 
 
 class TestGenerateEndpoint:
-
-    def test_generate_success(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_success(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -71,7 +72,9 @@ class TestGenerateEndpoint:
         assert data["status"] == "success"
         assert "Progress summary text." in data["summary"]
 
-    def test_generate_with_scope_override(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_with_scope_override(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -92,7 +95,9 @@ class TestGenerateEndpoint:
         assert response.status_code == 200
         mock_service.generate.assert_called_once_with(mock_project, scope="time_based")
 
-    def test_generate_project_not_found(self, app, client, mock_service, mock_inference):
+    def test_generate_project_not_found(
+        self, app, client, mock_service, mock_inference
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -102,7 +107,9 @@ class TestGenerateEndpoint:
 
         assert response.status_code == 404
 
-    def test_generate_not_git_repo(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_not_git_repo(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -117,7 +124,9 @@ class TestGenerateEndpoint:
 
         assert response.status_code == 422
 
-    def test_generate_already_in_progress(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_already_in_progress(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
         mock_service.is_generating.return_value = True
@@ -142,7 +151,9 @@ class TestGenerateEndpoint:
         response = client.post("/api/projects/1/progress-summary")
         assert response.status_code == 503
 
-    def test_generate_empty_scope(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_empty_scope(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -160,7 +171,9 @@ class TestGenerateEndpoint:
         data = response.get_json()
         assert data["status"] == "empty"
 
-    def test_generate_generic_error(self, app, client, mock_service, mock_inference, mock_project):
+    def test_generate_generic_error(
+        self, app, client, mock_service, mock_inference, mock_project
+    ):
         app.extensions["progress_summary_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
 
@@ -177,7 +190,6 @@ class TestGenerateEndpoint:
 
 
 class TestGetSummaryEndpoint:
-
     def test_get_summary_success(self, app, client, mock_service, mock_project):
         app.extensions["progress_summary_service"] = mock_service
 

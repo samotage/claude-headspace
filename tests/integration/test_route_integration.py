@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from claude_headspace.models import Agent, Project
+from claude_headspace.models import Agent
 
 from .factories import AgentFactory, ProjectFactory
 
@@ -25,10 +25,12 @@ def _set_factory_session(db_session):
 # Helper: Flask test app wired to the integration DB session
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def int_app(test_db_engine):
     """Create a Flask app that uses the integration test database."""
     from pathlib import Path
+
     from claude_headspace.app import create_app
 
     project_root = Path(__file__).parent.parent.parent
@@ -47,8 +49,8 @@ def int_client(int_app):
 # Projects CRUD
 # ===========================================================================
 
-class TestProjectsCRUDIntegration:
 
+class TestProjectsCRUDIntegration:
     def test_list_projects_empty(self, int_client, int_app):
         """GET /api/projects returns empty list when no projects exist."""
         with int_app.app_context():
@@ -59,10 +61,13 @@ class TestProjectsCRUDIntegration:
     def test_create_project(self, int_client, int_app):
         """POST /api/projects creates a project in the real DB."""
         with int_app.app_context():
-            response = int_client.post("/api/projects", json={
-                "name": "integration-test-project",
-                "path": "/Users/test/integration-test-project",
-            })
+            response = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "integration-test-project",
+                    "path": "/Users/test/integration-test-project",
+                },
+            )
         assert response.status_code == 201
         data = response.get_json()
         assert data["name"] == "integration-test-project"
@@ -71,10 +76,13 @@ class TestProjectsCRUDIntegration:
     def test_create_and_get_project(self, int_client, int_app):
         """Create then retrieve a project."""
         with int_app.app_context():
-            create_resp = int_client.post("/api/projects", json={
-                "name": "get-test-proj",
-                "path": "/Users/test/get-test-proj",
-            })
+            create_resp = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "get-test-proj",
+                    "path": "/Users/test/get-test-proj",
+                },
+            )
             assert create_resp.status_code == 201
             proj_id = create_resp.get_json()["id"]
 
@@ -86,24 +94,33 @@ class TestProjectsCRUDIntegration:
     def test_update_project(self, int_client, int_app):
         """PUT /api/projects/<id> updates project fields."""
         with int_app.app_context():
-            create_resp = int_client.post("/api/projects", json={
-                "name": "update-me",
-                "path": "/Users/test/update-me",
-            })
+            create_resp = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "update-me",
+                    "path": "/Users/test/update-me",
+                },
+            )
             proj_id = create_resp.get_json()["id"]
 
-            update_resp = int_client.put(f"/api/projects/{proj_id}", json={
-                "description": "Updated description",
-            })
+            update_resp = int_client.put(
+                f"/api/projects/{proj_id}",
+                json={
+                    "description": "Updated description",
+                },
+            )
         assert update_resp.status_code == 200
 
     def test_delete_project(self, int_client, int_app):
         """DELETE /api/projects/<id> removes the project."""
         with int_app.app_context():
-            create_resp = int_client.post("/api/projects", json={
-                "name": "delete-me",
-                "path": "/Users/test/delete-me",
-            })
+            create_resp = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "delete-me",
+                    "path": "/Users/test/delete-me",
+                },
+            )
             proj_id = create_resp.get_json()["id"]
 
             del_resp = int_client.delete(f"/api/projects/{proj_id}")
@@ -120,14 +137,20 @@ class TestProjectsCRUDIntegration:
     def test_create_duplicate_path_returns_409(self, int_client, int_app):
         """POST with duplicate path returns 409."""
         with int_app.app_context():
-            int_client.post("/api/projects", json={
-                "name": "first",
-                "path": "/Users/test/dup-path",
-            })
-            response = int_client.post("/api/projects", json={
-                "name": "second",
-                "path": "/Users/test/dup-path",
-            })
+            int_client.post(
+                "/api/projects",
+                json={
+                    "name": "first",
+                    "path": "/Users/test/dup-path",
+                },
+            )
+            response = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "second",
+                    "path": "/Users/test/dup-path",
+                },
+            )
         assert response.status_code == 409
 
     def test_create_missing_fields_returns_400(self, int_client, int_app):
@@ -141,18 +164,21 @@ class TestProjectsCRUDIntegration:
 # Agent dismiss
 # ===========================================================================
 
-class TestAgentDismissIntegration:
 
+class TestAgentDismissIntegration:
     def test_dismiss_agent(self, int_client, int_app):
         """POST /api/agents/<id>/dismiss marks an agent as ended."""
         with int_app.app_context():
             from claude_headspace.database import db as flask_db
 
             # Create project + agent
-            create_resp = int_client.post("/api/projects", json={
-                "name": "dismiss-proj",
-                "path": "/Users/test/dismiss-proj",
-            })
+            create_resp = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "dismiss-proj",
+                    "path": "/Users/test/dismiss-proj",
+                },
+            )
             proj_id = create_resp.get_json()["id"]
 
             agent = Agent(
@@ -175,30 +201,39 @@ class TestAgentDismissIntegration:
 # Project settings
 # ===========================================================================
 
-class TestProjectSettingsIntegration:
 
+class TestProjectSettingsIntegration:
     def test_pause_and_resume_inference(self, int_client, int_app):
         """PUT /api/projects/<id>/settings toggles inference_paused."""
         with int_app.app_context():
-            create_resp = int_client.post("/api/projects", json={
-                "name": "settings-proj",
-                "path": "/Users/test/settings-proj",
-            })
+            create_resp = int_client.post(
+                "/api/projects",
+                json={
+                    "name": "settings-proj",
+                    "path": "/Users/test/settings-proj",
+                },
+            )
             proj_id = create_resp.get_json()["id"]
 
             # Pause
-            pause_resp = int_client.put(f"/api/projects/{proj_id}/settings", json={
-                "inference_paused": True,
-                "inference_paused_reason": "Testing pause",
-            })
+            pause_resp = int_client.put(
+                f"/api/projects/{proj_id}/settings",
+                json={
+                    "inference_paused": True,
+                    "inference_paused_reason": "Testing pause",
+                },
+            )
             assert pause_resp.status_code == 200
             pause_data = pause_resp.get_json()
             assert pause_data["inference_paused"] is True
 
             # Resume
-            resume_resp = int_client.put(f"/api/projects/{proj_id}/settings", json={
-                "inference_paused": False,
-            })
+            resume_resp = int_client.put(
+                f"/api/projects/{proj_id}/settings",
+                json={
+                    "inference_paused": False,
+                },
+            )
             assert resume_resp.status_code == 200
             resume_data = resume_resp.get_json()
             assert resume_data["inference_paused"] is False

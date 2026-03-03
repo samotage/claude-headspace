@@ -14,7 +14,7 @@ src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
 from claude_headspace.app import create_app
-from claude_headspace.config import load_config, get_value
+from claude_headspace.config import get_value, load_config
 
 
 def main():

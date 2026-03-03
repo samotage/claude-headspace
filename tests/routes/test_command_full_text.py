@@ -61,7 +61,9 @@ def mock_command_empty_fields():
 class TestGetCommandFullText:
     """Route tests for GET /api/commands/<id>/full-text."""
 
-    def test_happy_path_returns_full_text(self, client, mock_db, mock_command_with_full_text):
+    def test_happy_path_returns_full_text(
+        self, client, mock_db, mock_command_with_full_text
+    ):
         """Should return full_command and full_output for existing command."""
         mock_db.session.get.return_value = mock_command_with_full_text
 
@@ -72,7 +74,9 @@ class TestGetCommandFullText:
         assert data["full_command"] == "Please refactor the auth module to use JWT"
         assert "Done. I've refactored" in data["full_output"]
 
-    def test_returns_null_when_fields_empty(self, client, mock_db, mock_command_empty_fields):
+    def test_returns_null_when_fields_empty(
+        self, client, mock_db, mock_command_empty_fields
+    ):
         """Should return null for fields that haven't been populated."""
         mock_db.session.get.return_value = mock_command_empty_fields
 
@@ -94,7 +98,9 @@ class TestGetCommandFullText:
         assert "error" in data
         assert "not found" in data["error"].lower()
 
-    def test_returns_only_two_fields(self, client, mock_db, mock_command_with_full_text):
+    def test_returns_only_two_fields(
+        self, client, mock_db, mock_command_with_full_text
+    ):
         """Response should contain exactly full_command and full_output keys."""
         mock_db.session.get.return_value = mock_command_with_full_text
 
@@ -156,7 +162,10 @@ class TestCardStateExcludesFullText:
         """build_card_state() should not include full_command or full_output."""
         from claude_headspace.services.card_state import build_card_state
 
-        mock_config.return_value = {"stale_processing_seconds": 600, "active_timeout_minutes": 5}
+        mock_config.return_value = {
+            "stale_processing_seconds": 600,
+            "active_timeout_minutes": 5,
+        }
 
         mock_command = MagicMock()
         mock_command.id = 1

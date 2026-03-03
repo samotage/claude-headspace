@@ -22,13 +22,37 @@ _PREAMBLE_RE = re.compile(
 
 # Short confirmations that don't warrant LLM summarisation.
 # Matched against lowercased, stripped turn text.
-_TRIVIAL_CONFIRMATIONS = frozenset({
-    "y", "yes", "ok", "okay", "k", "sure", "go", "go ahead",
-    "do it", "proceed", "continue", "yep", "yup", "yeah",
-    "confirmed", "approve", "approved", "accept", "right",
-    "correct", "affirmative", "ack", "agreed", "sounds good",
-    "looks good", "lgtm", "ship it",
-})
+_TRIVIAL_CONFIRMATIONS = frozenset(
+    {
+        "y",
+        "yes",
+        "ok",
+        "okay",
+        "k",
+        "sure",
+        "go",
+        "go ahead",
+        "do it",
+        "proceed",
+        "continue",
+        "yep",
+        "yup",
+        "yeah",
+        "confirmed",
+        "approve",
+        "approved",
+        "accept",
+        "right",
+        "correct",
+        "affirmative",
+        "ack",
+        "agreed",
+        "sounds good",
+        "looks good",
+        "lgtm",
+        "ship it",
+    }
+)
 
 # Slash-command pattern: /word or /word:word (with optional arguments after space)
 _SLASH_COMMAND_RE = re.compile(r"^(/[\w:.=-]+)")
@@ -120,8 +144,10 @@ class SummarisationService:
         # Internal turn guard: skip summarisation for system plumbing turns
         # (e.g. persona skill injection priming messages).
         # Use `is True` for strict comparison — avoids MagicMock truthiness in tests.
-        if getattr(turn, 'is_internal', False) is True:
-            logger.debug(f"Skipping turn summarisation for turn {turn.id}: is_internal=True")
+        if getattr(turn, "is_internal", False) is True:
+            logger.debug(
+                f"Skipping turn summarisation for turn {turn.id}: is_internal=True"
+            )
             return None
 
         # Empty text guard: skip summarisation when text is None/empty
@@ -132,9 +158,10 @@ class SummarisationService:
         # Row-level dedup: SELECT ... FOR UPDATE NOWAIT to prevent concurrent
         # summarisation of the same turn. If another thread holds the row lock,
         # we skip immediately instead of making a duplicate LLM call.
-        if db_session and hasattr(turn, 'id') and turn.id:
+        if db_session and hasattr(turn, "id") and turn.id:
             try:
                 from sqlalchemy.orm import Session as SASession
+
                 from ..models.turn import Turn as TurnModel
 
                 # Only attempt row lock with a real SQLAlchemy session
@@ -145,7 +172,11 @@ class SummarisationService:
                         .with_for_update(nowait=True)
                         .first()
                     )
-                    if locked_turn and isinstance(locked_turn.summary, str) and locked_turn.summary:
+                    if (
+                        locked_turn
+                        and isinstance(locked_turn.summary, str)
+                        and locked_turn.summary
+                    ):
                         # Another thread completed summarisation while we waited
                         return locked_turn.summary
                     if locked_turn:
@@ -153,7 +184,10 @@ class SummarisationService:
             except Exception as e:
                 # OperationalError from FOR UPDATE NOWAIT = another thread has the row
                 error_str = str(e)
-                if "could not obtain lock" in error_str or "lock not available" in error_str:
+                if (
+                    "could not obtain lock" in error_str
+                    or "lock not available" in error_str
+                ):
                     logger.debug(
                         f"Turn {turn.id} row locked by another thread — skipping summarisation"
                     )
@@ -190,11 +224,17 @@ class SummarisationService:
             if agent:
                 project = getattr(agent, "project", None)
                 if project and getattr(project, "inference_paused", None) is True:
-                    logger.debug("Skipping turn summarisation for turn %s: project %s inference paused", turn.id, project.id)
+                    logger.debug(
+                        "Skipping turn summarisation for turn %s: project %s inference paused",
+                        turn.id,
+                        project.id,
+                    )
                     return None
 
         # Determine if this is a USER turn eligible for frustration extraction
-        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        actor_value = (
+            turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        )
         use_frustration_prompt = self._headspace_enabled and actor_value == "user"
 
         # Build prompt
@@ -208,9 +248,15 @@ class SummarisationService:
         agent_id = None
         project_id = None
         if hasattr(turn, "command") and turn.command:
-            agent_id = turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            agent_id = (
+                turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            )
             if hasattr(turn.command, "agent") and turn.command.agent:
-                project_id = turn.command.agent.project_id if hasattr(turn.command.agent, "project_id") else None
+                project_id = (
+                    turn.command.agent.project_id
+                    if hasattr(turn.command.agent, "project_id")
+                    else None
+                )
 
         # Step 1: Inference call
         try:
@@ -232,13 +278,17 @@ class SummarisationService:
         frustration_score = None
         try:
             if use_frustration_prompt:
-                summary, frustration_score = self._parse_frustration_response(result.text)
+                summary, frustration_score = self._parse_frustration_response(
+                    result.text
+                )
             else:
                 summary = self._clean_response(result.text)
         except Exception as e:
             logger.error(f"Turn summarisation parse failed for turn {turn.id}: {e}")
             # Fall back to raw text
-            summary = self._clean_response(result.text) if result and result.text else None
+            summary = (
+                self._clean_response(result.text) if result and result.text else None
+            )
 
         # Step 3: Persist whatever succeeded
         if summary:
@@ -252,14 +302,18 @@ class SummarisationService:
                     db_session.add(turn)
                     db_session.commit()
             except Exception as e:
-                logger.error(f"Turn summarisation persist failed for turn {turn.id}: {e}")
+                logger.error(
+                    f"Turn summarisation persist failed for turn {turn.id}: {e}"
+                )
 
         # Trigger headspace recalculation after successful summarisation
         if frustration_score is not None:
             try:
                 self._trigger_headspace_recalculation(turn)
             except Exception as e:
-                logger.warning(f"Headspace recalculation trigger failed (non-fatal): {e}")
+                logger.warning(
+                    f"Headspace recalculation trigger failed (non-fatal): {e}"
+                )
 
         return summary
 
@@ -280,7 +334,9 @@ class SummarisationService:
             return turn.summary
 
         if not self._inference.is_available:
-            logger.debug("Inference service unavailable, skipping permission summarisation")
+            logger.debug(
+                "Inference service unavailable, skipping permission summarisation"
+            )
             return None
 
         # Extract tool name and command from the turn context
@@ -326,9 +382,15 @@ class SummarisationService:
         agent_id = None
         project_id = None
         if hasattr(turn, "command") and turn.command:
-            agent_id = turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            agent_id = (
+                turn.command.agent_id if hasattr(turn.command, "agent_id") else None
+            )
             if hasattr(turn.command, "agent") and turn.command.agent:
-                project_id = turn.command.agent.project_id if hasattr(turn.command.agent, "project_id") else None
+                project_id = (
+                    turn.command.agent.project_id
+                    if hasattr(turn.command.agent, "project_id")
+                    else None
+                )
 
         try:
             result = self._inference.infer(
@@ -380,13 +442,25 @@ class SummarisationService:
         except Exception:
             turns = []
         if turns:
-            user_turns = [t for t in turns if hasattr(t, 'actor') and (t.actor.value if hasattr(t.actor, 'value') else str(t.actor)) == 'user']
-            if user_turns and all(getattr(t, 'is_internal', False) is True for t in user_turns):
-                logger.debug(f"Skipping command summarisation for command {command.id}: all user turns are internal")
+            user_turns = [
+                t
+                for t in turns
+                if hasattr(t, "actor")
+                and (t.actor.value if hasattr(t.actor, "value") else str(t.actor))
+                == "user"
+            ]
+            if user_turns and all(
+                getattr(t, "is_internal", False) is True for t in user_turns
+            ):
+                logger.debug(
+                    f"Skipping command summarisation for command {command.id}: all user turns are internal"
+                )
                 return None
 
         if not self._inference.is_available:
-            logger.debug("Inference service unavailable, skipping command summarisation")
+            logger.debug(
+                "Inference service unavailable, skipping command summarisation"
+            )
             return None
 
         # Check if project inference is paused
@@ -394,7 +468,11 @@ class SummarisationService:
         if agent:
             project = getattr(agent, "project", None)
             if project and getattr(project, "inference_paused", None) is True:
-                logger.debug("Skipping command summarisation for command %s: project %s inference paused", command.id, project.id)
+                logger.debug(
+                    "Skipping command summarisation for command %s: project %s inference paused",
+                    command.id,
+                    project.id,
+                )
                 return None
 
         # Build prompt — returns None when there's nothing to summarise
@@ -407,7 +485,11 @@ class SummarisationService:
         agent_id = command.agent_id if hasattr(command, "agent_id") else None
         project_id = None
         if hasattr(command, "agent") and command.agent:
-            project_id = command.agent.project_id if hasattr(command.agent, "project_id") else None
+            project_id = (
+                command.agent.project_id
+                if hasattr(command.agent, "project_id")
+                else None
+            )
 
         try:
             result = self._inference.infer(
@@ -434,7 +516,13 @@ class SummarisationService:
             logger.error(f"Command summarisation failed for command {command.id}: {e}")
             return None
 
-    def summarise_instruction(self, command, command_text: str, db_session=None, reuse_summary: str | None = None) -> str | None:
+    def summarise_instruction(
+        self,
+        command,
+        command_text: str,
+        db_session=None,
+        reuse_summary: str | None = None,
+    ) -> str | None:
         """Generate an instruction summary from the user's command text.
 
         Produces a 1-2 sentence summary of what the user instructed.
@@ -456,7 +544,9 @@ class SummarisationService:
 
         # Empty text guard
         if not command_text or not command_text.strip():
-            logger.debug(f"Skipping instruction summarisation for command {command.id}: empty command text")
+            logger.debug(
+                f"Skipping instruction summarisation for command {command.id}: empty command text"
+            )
             return None
 
         # Internal turns guard: skip if all user turns on this command are internal
@@ -465,9 +555,19 @@ class SummarisationService:
         except Exception:
             turns = []
         if turns:
-            user_turns = [t for t in turns if hasattr(t, 'actor') and (t.actor.value if hasattr(t.actor, 'value') else str(t.actor)) == 'user']
-            if user_turns and all(getattr(t, 'is_internal', False) is True for t in user_turns):
-                logger.debug(f"Skipping instruction summarisation for command {command.id}: all user turns are internal")
+            user_turns = [
+                t
+                for t in turns
+                if hasattr(t, "actor")
+                and (t.actor.value if hasattr(t.actor, "value") else str(t.actor))
+                == "user"
+            ]
+            if user_turns and all(
+                getattr(t, "is_internal", False) is True for t in user_turns
+            ):
+                logger.debug(
+                    f"Skipping instruction summarisation for command {command.id}: all user turns are internal"
+                )
                 return None
 
         # Slash command bypass: use the command name directly as the instruction
@@ -479,7 +579,9 @@ class SummarisationService:
             if db_session:
                 db_session.add(command)
                 db_session.commit()
-            logger.info(f"Slash command bypass for command {command.id}: {command.instruction!r}")
+            logger.info(
+                f"Slash command bypass for command {command.id}: {command.instruction!r}"
+            )
             return command.instruction
 
         # Reuse a pre-computed summary (e.g. from the turn_command summarisation)
@@ -495,7 +597,9 @@ class SummarisationService:
             return command.instruction
 
         if not self._inference.is_available:
-            logger.debug("Inference service unavailable, skipping instruction summarisation")
+            logger.debug(
+                "Inference service unavailable, skipping instruction summarisation"
+            )
             return None
 
         # Check if project inference is paused
@@ -503,7 +607,11 @@ class SummarisationService:
         if agent:
             project = getattr(agent, "project", None)
             if project and getattr(project, "inference_paused", None) is True:
-                logger.debug("Skipping instruction summarisation for command %s: project %s inference paused", command.id, project.id)
+                logger.debug(
+                    "Skipping instruction summarisation for command %s: project %s inference paused",
+                    command.id,
+                    project.id,
+                )
                 return None
 
         input_text = build_prompt("instruction", command_text=command_text)
@@ -511,7 +619,11 @@ class SummarisationService:
         agent_id = command.agent_id if hasattr(command, "agent_id") else None
         project_id = None
         if hasattr(command, "agent") and command.agent:
-            project_id = command.agent.project_id if hasattr(command.agent, "project_id") else None
+            project_id = (
+                command.agent.project_id
+                if hasattr(command.agent, "project_id")
+                else None
+            )
 
         try:
             result = self._inference.infer(
@@ -534,7 +646,9 @@ class SummarisationService:
             return instruction
 
         except (InferenceServiceError, Exception) as e:
-            logger.error(f"Instruction summarisation failed for command {command.id}: {e}")
+            logger.error(
+                f"Instruction summarisation failed for command {command.id}: {e}"
+            )
             return None
 
     def execute_pending(self, requests, db_session) -> None:
@@ -565,12 +679,22 @@ class SummarisationService:
                     summary = self.summarise_turn(req.turn, db_session=db_session)
                     if summary:
                         # Track COMMAND turn summaries for reuse by instruction requests
-                        intent_value = req.turn.intent.value if hasattr(req.turn.intent, "value") else str(req.turn.intent)
+                        intent_value = (
+                            req.turn.intent.value
+                            if hasattr(req.turn.intent, "value")
+                            else str(req.turn.intent)
+                        )
                         if intent_value == "command":
                             last_command_turn_summary = summary
 
-                        agent_id = req.turn.command.agent_id if req.turn.command else None
-                        project_id = req.turn.command.agent.project_id if req.turn.command and req.turn.command.agent else None
+                        agent_id = (
+                            req.turn.command.agent_id if req.turn.command else None
+                        )
+                        project_id = (
+                            req.turn.command.agent.project_id
+                            if req.turn.command and req.turn.command.agent
+                            else None
+                        )
                         self._broadcast_summary_update(
                             event_type="turn_summary",
                             entity_id=req.turn.id,
@@ -579,16 +703,28 @@ class SummarisationService:
                             project_id=project_id,
                         )
                         if not has_instruction_request:
-                            self._broadcast_card_refresh_for_agent(agent_id, db_session, "turn_summary_updated")
+                            self._broadcast_card_refresh_for_agent(
+                                agent_id, db_session, "turn_summary_updated"
+                            )
 
                 elif req.type == "instruction" and req.command:
                     instruction = self.summarise_instruction(
-                        req.command, req.command_text, db_session=db_session,
+                        req.command,
+                        req.command_text,
+                        db_session=db_session,
                         reuse_summary=last_command_turn_summary,
                     )
                     if instruction:
-                        agent_id = req.command.agent_id if hasattr(req.command, "agent_id") else None
-                        project_id = req.command.agent.project_id if hasattr(req.command, "agent") and req.command.agent else None
+                        agent_id = (
+                            req.command.agent_id
+                            if hasattr(req.command, "agent_id")
+                            else None
+                        )
+                        project_id = (
+                            req.command.agent.project_id
+                            if hasattr(req.command, "agent") and req.command.agent
+                            else None
+                        )
                         self._broadcast_summary_update(
                             event_type="instruction_summary",
                             entity_id=req.command.id,
@@ -596,13 +732,25 @@ class SummarisationService:
                             agent_id=agent_id,
                             project_id=project_id,
                         )
-                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "instruction_updated")
+                        self._broadcast_card_refresh_for_agent(
+                            agent_id, db_session, "instruction_updated"
+                        )
 
                 elif req.type == "command_completion" and req.command:
-                    completion = self.summarise_command(req.command, db_session=db_session)
+                    completion = self.summarise_command(
+                        req.command, db_session=db_session
+                    )
                     if completion:
-                        agent_id = req.command.agent_id if hasattr(req.command, "agent_id") else None
-                        project_id = req.command.agent.project_id if hasattr(req.command, "agent") and req.command.agent else None
+                        agent_id = (
+                            req.command.agent_id
+                            if hasattr(req.command, "agent_id")
+                            else None
+                        )
+                        project_id = (
+                            req.command.agent.project_id
+                            if hasattr(req.command, "agent") and req.command.agent
+                            else None
+                        )
                         self._broadcast_summary_update(
                             event_type="command_summary",
                             entity_id=req.command.id,
@@ -611,19 +759,29 @@ class SummarisationService:
                             project_id=project_id,
                             extra={"is_completion": True},
                         )
-                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "command_summary_updated")
+                        self._broadcast_card_refresh_for_agent(
+                            agent_id, db_session, "command_summary_updated"
+                        )
 
                 elif req.type == "permission_summary" and req.turn:
                     summary = self.summarise_permission(req.turn, db_session=db_session)
                     if summary:
-                        agent_id = req.turn.command.agent_id if req.turn.command else None
-                        self._broadcast_card_refresh_for_agent(agent_id, db_session, "permission_summary_updated")
+                        agent_id = (
+                            req.turn.command.agent_id if req.turn.command else None
+                        )
+                        self._broadcast_card_refresh_for_agent(
+                            agent_id, db_session, "permission_summary_updated"
+                        )
 
             except Exception as e:
-                logger.warning(f"Pending summarisation failed for {req.type} (non-fatal): {e}")
+                logger.warning(
+                    f"Pending summarisation failed for {req.type} (non-fatal): {e}"
+                )
 
     @staticmethod
-    def _broadcast_card_refresh_for_agent(agent_id: int | None, db_session, reason: str) -> None:
+    def _broadcast_card_refresh_for_agent(
+        agent_id: int | None, db_session, reason: str
+    ) -> None:
         """Load agent and broadcast card_refresh. No-op if agent not found."""
         if not agent_id:
             return
@@ -686,8 +844,7 @@ class SummarisationService:
 
             # Find the previous command (the one before the current one)
             prior_commands = [
-                t for t in agent.commands
-                if t.id < command.id and t.instruction
+                t for t in agent.commands if t.id < command.id and t.instruction
             ]
             if not prior_commands:
                 return ""
@@ -710,8 +867,12 @@ class SummarisationService:
         For COMMAND turns without a command instruction, includes prior
         command context to help the LLM understand implicit references.
         """
-        intent_value = turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
-        actor_value = turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        intent_value = (
+            turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent)
+        )
+        actor_value = (
+            turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor)
+        )
 
         # Get command instruction context if available
         instruction_context = ""
@@ -721,7 +882,9 @@ class SummarisationService:
                 instruction_context = f"Command instruction: {instruction}\n\n"
             elif intent_value == "command":
                 # COMMAND turns have no instruction yet — use prior command for context
-                instruction_context = SummarisationService._get_prior_command_context(turn)
+                instruction_context = SummarisationService._get_prior_command_context(
+                    turn
+                )
 
         # Select intent-specific template key
         prompt_type = f"turn_{intent_value}"
@@ -757,7 +920,9 @@ class SummarisationService:
         except Exception as e:
             # Guard against DetachedInstanceError when command was loaded in a
             # different session context (e.g. post-commit summarisation).
-            logger.warning(f"Failed to access command.turns for command {command.id} (defaulting to empty): {e}")
+            logger.warning(
+                f"Failed to access command.turns for command {command.id} (defaulting to empty): {e}"
+            )
             turns = []
         final_turn_text = turns[-1].text.strip() if turns and turns[-1].text else ""
 
@@ -810,7 +975,9 @@ class SummarisationService:
                 instruction_context = f"Command instruction: {instruction}\n\n"
             else:
                 # No instruction yet — use prior command for context
-                instruction_context = SummarisationService._get_prior_command_context(turn)
+                instruction_context = SummarisationService._get_prior_command_context(
+                    turn
+                )
 
         return build_prompt(
             "turn_frustration",
@@ -889,6 +1056,7 @@ class SummarisationService:
         """Trigger headspace monitor recalculation after frustration extraction."""
         try:
             from flask import current_app
+
             monitor = current_app.extensions.get("headspace_monitor")
             if monitor:
                 monitor.recalculate(turn)

@@ -58,13 +58,19 @@ def get_rankings():
 
     rankings = []
     for agent in agents:
-        rankings.append({
-            "agent_id": agent.id,
-            "project_name": agent.project.name if agent.project else "Unknown",
-            "state": agent.state.value if hasattr(agent.state, "value") else str(agent.state),
-            "score": agent.priority_score,
-            "reason": agent.priority_reason,
-            "scored_at": agent.priority_updated_at.isoformat() if agent.priority_updated_at else None,
-        })
+        rankings.append(
+            {
+                "agent_id": agent.id,
+                "project_name": agent.project.name if agent.project else "Unknown",
+                "state": agent.state.value
+                if hasattr(agent.state, "value")
+                else str(agent.state),
+                "score": agent.priority_score,
+                "reason": agent.priority_reason,
+                "scored_at": agent.priority_updated_at.isoformat()
+                if agent.priority_updated_at
+                else None,
+            }
+        )
 
     return jsonify({"agents": rankings})

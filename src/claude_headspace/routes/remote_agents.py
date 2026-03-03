@@ -20,6 +20,7 @@ remote_agents_bp = Blueprint("remote_agents", __name__)
 # Error envelope helper (Task 2.2.5)
 # ──────────────────────────────────────────────────────────────
 
+
 def _error_response(
     status_code: int,
     error_code: str,
@@ -58,6 +59,7 @@ def _error_response(
 # Session token auth decorator (Task 2.2.1)
 # ──────────────────────────────────────────────────────────────
 
+
 def _get_token_from_request() -> str | None:
     """Extract session token from Authorization header or query param."""
     # Check Authorization: Bearer <token>
@@ -83,15 +85,20 @@ def require_session_token(f):
     For routes with an <agent_id> parameter, the token must be scoped to
     that specific agent. For routes without, any valid token is accepted.
     """
+
     @wraps(f)
     def decorated(*args, **kwargs):
         token = _get_token_from_request()
         if not token:
-            return _error_response(401, "invalid_session_token", "Session token is required")
+            return _error_response(
+                401, "invalid_session_token", "Session token is required"
+            )
 
         token_service = _get_session_token_service()
         if not token_service:
-            return _error_response(503, "service_unavailable", "Token service not available")
+            return _error_response(
+                503, "service_unavailable", "Token service not available"
+            )
 
         agent_id = kwargs.get("agent_id")
         if agent_id is not None:
@@ -101,7 +108,9 @@ def require_session_token(f):
             token_info = token_service.validate(token)
 
         if not token_info:
-            return _error_response(401, "invalid_session_token", "Invalid or expired session token")
+            return _error_response(
+                401, "invalid_session_token", "Invalid or expired session token"
+            )
 
         kwargs["token_info"] = token_info
         return f(*args, **kwargs)
@@ -112,6 +121,7 @@ def require_session_token(f):
 # ──────────────────────────────────────────────────────────────
 # CORS handling (Task 2.4.2)
 # ──────────────────────────────────────────────────────────────
+
 
 @remote_agents_bp.after_request
 def _apply_cors_headers(response):
@@ -136,7 +146,9 @@ def _apply_cors_headers(response):
 
 @remote_agents_bp.route("/api/remote_agents/create", methods=["OPTIONS"])
 @remote_agents_bp.route("/api/remote_agents/<int:agent_id>/alive", methods=["OPTIONS"])
-@remote_agents_bp.route("/api/remote_agents/<int:agent_id>/shutdown", methods=["OPTIONS"])
+@remote_agents_bp.route(
+    "/api/remote_agents/<int:agent_id>/shutdown", methods=["OPTIONS"]
+)
 def _cors_preflight(**kwargs):
     """Handle CORS preflight requests."""
     return "", 204
@@ -145,6 +157,7 @@ def _cors_preflight(**kwargs):
 # ──────────────────────────────────────────────────────────────
 # OpenAPI spec (served as text/plain for browser rendering)
 # ──────────────────────────────────────────────────────────────
+
 
 @remote_agents_bp.route("/api/remote_agents/openapi.yaml", methods=["GET"])
 def openapi_spec():
@@ -160,6 +173,7 @@ def openapi_spec():
 # ──────────────────────────────────────────────────────────────
 # Routes (Tasks 2.2.2 - 2.2.4, 2.3.6)
 # ──────────────────────────────────────────────────────────────
+
 
 @remote_agents_bp.route("/api/remote_agents/create", methods=["POST"])
 def create_remote_agent():
@@ -211,7 +225,9 @@ def create_remote_agent():
 
     remote_service = current_app.extensions.get("remote_agent_service")
     if not remote_service:
-        return _error_response(503, "service_unavailable", "Remote agent service not available")
+        return _error_response(
+            503, "service_unavailable", "Remote agent service not available"
+        )
 
     try:
         result = remote_service.create_blocking(
@@ -222,7 +238,9 @@ def create_remote_agent():
         )
     except Exception as e:
         logger.exception(f"Remote agent creation failed: {e}")
-        return _error_response(500, "server_error", "Internal server error during agent creation")
+        return _error_response(
+            500, "server_error", "Internal server error during agent creation"
+        )
 
     if not result.success:
         # Map error codes to HTTP status codes
@@ -270,7 +288,9 @@ def check_alive(agent_id: int, token_info=None):
     """
     remote_service = current_app.extensions.get("remote_agent_service")
     if not remote_service:
-        return _error_response(503, "service_unavailable", "Remote agent service not available")
+        return _error_response(
+            503, "service_unavailable", "Remote agent service not available"
+        )
 
     result = remote_service.check_alive(agent_id)
     return jsonify(result), 200
@@ -293,7 +313,9 @@ def shutdown_remote_agent(agent_id: int, token_info=None):
     """
     remote_service = current_app.extensions.get("remote_agent_service")
     if not remote_service:
-        return _error_response(503, "service_unavailable", "Remote agent service not available")
+        return _error_response(
+            503, "service_unavailable", "Remote agent service not available"
+        )
 
     result = remote_service.shutdown(agent_id)
 
@@ -301,17 +323,21 @@ def shutdown_remote_agent(agent_id: int, token_info=None):
         return _error_response(404, "agent_not_found", f"Agent {agent_id} not found")
 
     if result["result"] == "already_terminated":
-        return jsonify({
+        return jsonify(
+            {
+                "status": "ok",
+                "agent_id": agent_id,
+                "message": "Agent already terminated",
+            }
+        ), 200
+
+    return jsonify(
+        {
             "status": "ok",
             "agent_id": agent_id,
-            "message": "Agent already terminated",
-        }), 200
-
-    return jsonify({
-        "status": "ok",
-        "agent_id": agent_id,
-        "message": "Agent shutdown initiated",
-    }), 200
+            "message": "Agent shutdown initiated",
+        }
+    ), 200
 
 
 @remote_agents_bp.route("/embed/<int:agent_id>", methods=["GET"])
@@ -331,15 +357,21 @@ def embed_view(agent_id: int):
 
     token = request.args.get("token")
     if not token:
-        return _error_response(401, "invalid_session_token", "Session token is required")
+        return _error_response(
+            401, "invalid_session_token", "Session token is required"
+        )
 
     token_service = _get_session_token_service()
     if not token_service:
-        return _error_response(503, "service_unavailable", "Token service not available")
+        return _error_response(
+            503, "service_unavailable", "Token service not available"
+        )
 
     token_info = token_service.validate_for_agent(token, agent_id)
     if not token_info:
-        return _error_response(401, "invalid_session_token", "Invalid or expired session token")
+        return _error_response(
+            401, "invalid_session_token", "Invalid or expired session token"
+        )
 
     # Resolve feature flags: URL params override token defaults
     config = current_app.config.get("APP_CONFIG", {})

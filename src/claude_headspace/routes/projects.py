@@ -5,16 +5,16 @@ import os
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models.agent import Agent
-from .hooks import rate_limited
+from ..models.command import Command
 from ..models.inference_call import InferenceCall
 from ..models.project import Project, generate_slug
-from ..models.command import Command
 from ..models.turn import Turn
+from .hooks import rate_limited
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ def _broadcast_project_event(event_type: str, data: dict) -> None:
     """Broadcast project-related SSE event."""
     try:
         from ..services.broadcaster import get_broadcaster
+
         broadcaster = get_broadcaster()
         broadcaster.broadcast(event_type, data)
     except Exception as e:
@@ -82,18 +83,20 @@ def list_projects():
         result = []
         for p in projects:
             agent_count = len([a for a in p.agents if a.ended_at is None])
-            result.append({
-                "id": p.id,
-                "name": p.name,
-                "slug": p.slug,
-                "path": p.path,
-                "github_repo": p.github_repo,
-                "description": p.description,
-                "current_branch": p.current_branch,
-                "inference_paused": p.inference_paused,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-                "agent_count": agent_count,
-            })
+            result.append(
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "slug": p.slug,
+                    "path": p.path,
+                    "github_repo": p.github_repo,
+                    "description": p.description,
+                    "current_branch": p.current_branch,
+                    "inference_paused": p.inference_paused,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                    "agent_count": agent_count,
+                }
+            )
 
         return jsonify(result), 200
 
@@ -135,10 +138,12 @@ def create_project():
     try:
         existing = Project.query.filter_by(path=path).first()
         if existing:
-            return jsonify({
-                "error": f"A project with path '{path}' already exists",
-                "existing_id": existing.id,
-            }), 409
+            return jsonify(
+                {
+                    "error": f"A project with path '{path}' already exists",
+                    "existing_id": existing.id,
+                }
+            ), 409
 
         project = Project(
             name=name,
@@ -150,21 +155,28 @@ def create_project():
         db.session.add(project)
         db.session.commit()
 
-        _broadcast_project_event("project_changed", {
-            "action": "created",
-            "project_id": project.id,
-        })
+        _broadcast_project_event(
+            "project_changed",
+            {
+                "action": "created",
+                "project_id": project.id,
+            },
+        )
 
-        return jsonify({
-            "id": project.id,
-            "name": project.name,
-            "slug": project.slug,
-            "path": project.path,
-            "github_repo": project.github_repo,
-            "description": project.description,
-            "inference_paused": project.inference_paused,
-            "created_at": project.created_at.isoformat() if project.created_at else None,
-        }), 201
+        return jsonify(
+            {
+                "id": project.id,
+                "name": project.name,
+                "slug": project.slug,
+                "path": project.path,
+                "github_repo": project.github_repo,
+                "description": project.description,
+                "inference_paused": project.inference_paused,
+                "created_at": project.created_at.isoformat()
+                if project.created_at
+                else None,
+            }
+        ), 201
 
     except Exception:
         logger.exception("Failed to create project")
@@ -187,10 +199,7 @@ def get_project(project_id: int):
         per_page = max(1, min(per_page, 100))
         include_ended = request.args.get("include_ended", "false").lower() == "true"
 
-        agents_query = (
-            db.session.query(Agent)
-            .filter(Agent.project_id == project.id)
-        )
+        agents_query = db.session.query(Agent).filter(Agent.project_id == project.id)
         if not include_ended:
             agents_query = agents_query.filter(Agent.ended_at.is_(None))
         agents_query = agents_query.order_by(Agent.last_seen_at.desc().nullslast())
@@ -224,20 +233,28 @@ def get_project(project_id: int):
             for row in turn_stats:
                 agent_metrics[row.agent_id] = {
                     "turn_count": row.turn_count or 0,
-                    "frustration_avg": round(float(row.frustration_avg), 1) if row.frustration_avg is not None else None,
+                    "frustration_avg": round(float(row.frustration_avg), 1)
+                    if row.frustration_avg is not None
+                    else None,
                 }
 
             # Approximate avg turn time per agent:
             # For each command, compute (max_timestamp - min_timestamp) / (count - 1)
             # then average across commands
             from sqlalchemy import case
+
             avg_turn_time_stats = (
                 db.session.query(
                     Command.agent_id,
                     case(
-                        (func.count(Turn.id) > 1,
-                         func.extract("epoch", func.max(Turn.timestamp) - func.min(Turn.timestamp))
-                         / (func.count(Turn.id) - 1)),
+                        (
+                            func.count(Turn.id) > 1,
+                            func.extract(
+                                "epoch",
+                                func.max(Turn.timestamp) - func.min(Turn.timestamp),
+                            )
+                            / (func.count(Turn.id) - 1),
+                        ),
                         else_=None,
                     ).label("avg_turn_time"),
                 )
@@ -249,7 +266,9 @@ def get_project(project_id: int):
             avg_per_agent = (
                 db.session.query(
                     avg_turn_time_stats.c.agent_id,
-                    func.avg(avg_turn_time_stats.c.avg_turn_time).label("avg_turn_time"),
+                    func.avg(avg_turn_time_stats.c.avg_turn_time).label(
+                        "avg_turn_time"
+                    ),
                 )
                 .group_by(avg_turn_time_stats.c.agent_id)
                 .all()
@@ -257,13 +276,17 @@ def get_project(project_id: int):
             for row in avg_per_agent:
                 if row.agent_id in agent_metrics:
                     agent_metrics[row.agent_id]["avg_turn_time"] = (
-                        round(float(row.avg_turn_time), 1) if row.avg_turn_time is not None else None
+                        round(float(row.avg_turn_time), 1)
+                        if row.avg_turn_time is not None
+                        else None
                     )
                 else:
                     agent_metrics[row.agent_id] = {
                         "turn_count": 0,
                         "frustration_avg": None,
-                        "avg_turn_time": round(float(row.avg_turn_time), 1) if row.avg_turn_time is not None else None,
+                        "avg_turn_time": round(float(row.avg_turn_time), 1)
+                        if row.avg_turn_time is not None
+                        else None,
                     }
 
         agents_data = []
@@ -293,27 +316,33 @@ def get_project(project_id: int):
                     agent_dict["persona_role"] = role.name if role else None
             agents_data.append(agent_dict)
 
-        return jsonify({
-            "id": project.id,
-            "name": project.name,
-            "slug": project.slug,
-            "path": project.path,
-            "github_repo": project.github_repo,
-            "description": project.description,
-            "current_branch": project.current_branch,
-            "inference_paused": project.inference_paused,
-            "inference_paused_at": project.inference_paused_at.isoformat() if project.inference_paused_at else None,
-            "inference_paused_reason": project.inference_paused_reason,
-            "created_at": project.created_at.isoformat() if project.created_at else None,
-            "active_agent_count": active_agent_count,
-            "agents": agents_data,
-            "agents_pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total_agents,
-                "total_pages": (total_agents + per_page - 1) // per_page,
-            },
-        }), 200
+        return jsonify(
+            {
+                "id": project.id,
+                "name": project.name,
+                "slug": project.slug,
+                "path": project.path,
+                "github_repo": project.github_repo,
+                "description": project.description,
+                "current_branch": project.current_branch,
+                "inference_paused": project.inference_paused,
+                "inference_paused_at": project.inference_paused_at.isoformat()
+                if project.inference_paused_at
+                else None,
+                "inference_paused_reason": project.inference_paused_reason,
+                "created_at": project.created_at.isoformat()
+                if project.created_at
+                else None,
+                "active_agent_count": active_agent_count,
+                "agents": agents_data,
+                "agents_pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total_agents,
+                    "total_pages": (total_agents + per_page - 1) // per_page,
+                },
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get project %s", project_id)
@@ -353,10 +382,12 @@ def update_project(project_id: int):
             if new_path and new_path != project.path:
                 conflict = Project.query.filter_by(path=new_path).first()
                 if conflict:
-                    return jsonify({
-                        "error": f"A project with path '{new_path}' already exists",
-                        "existing_id": conflict.id,
-                    }), 409
+                    return jsonify(
+                        {
+                            "error": f"A project with path '{new_path}' already exists",
+                            "existing_id": conflict.id,
+                        }
+                    ), 409
                 project.path = new_path
 
         if "name" in data:
@@ -373,21 +404,28 @@ def update_project(project_id: int):
 
         db.session.commit()
 
-        _broadcast_project_event("project_changed", {
-            "action": "updated",
-            "project_id": project.id,
-        })
+        _broadcast_project_event(
+            "project_changed",
+            {
+                "action": "updated",
+                "project_id": project.id,
+            },
+        )
 
-        return jsonify({
-            "id": project.id,
-            "name": project.name,
-            "slug": project.slug,
-            "path": project.path,
-            "github_repo": project.github_repo,
-            "description": project.description,
-            "inference_paused": project.inference_paused,
-            "created_at": project.created_at.isoformat() if project.created_at else None,
-        }), 200
+        return jsonify(
+            {
+                "id": project.id,
+                "name": project.name,
+                "slug": project.slug,
+                "path": project.path,
+                "github_repo": project.github_repo,
+                "description": project.description,
+                "inference_paused": project.inference_paused,
+                "created_at": project.created_at.isoformat()
+                if project.created_at
+                else None,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to update project %s", project_id)
@@ -416,7 +454,9 @@ def delete_project(project_id: int):
         # Agent → Command → Turn) would SET NULL every FK on inference_calls,
         # leaving rows with no parent at all.
         agent_subq = db.session.query(Agent.id).filter(Agent.project_id == project_id)
-        command_subq = db.session.query(Command.id).filter(Command.agent_id.in_(agent_subq))
+        command_subq = db.session.query(Command.id).filter(
+            Command.agent_id.in_(agent_subq)
+        )
         turn_subq = db.session.query(Turn.id).filter(Turn.command_id.in_(command_subq))
 
         InferenceCall.query.filter(
@@ -431,16 +471,21 @@ def delete_project(project_id: int):
         db.session.delete(project)
         db.session.commit()
 
-        _broadcast_project_event("project_changed", {
-            "action": "deleted",
-            "project_id": project_id,
-        })
+        _broadcast_project_event(
+            "project_changed",
+            {
+                "action": "deleted",
+                "project_id": project_id,
+            },
+        )
 
-        return jsonify({
-            "deleted": True,
-            "id": project_id,
-            "name": project_name,
-        }), 200
+        return jsonify(
+            {
+                "deleted": True,
+                "id": project_id,
+                "name": project_name,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to delete project %s", project_id)
@@ -460,11 +505,15 @@ def get_project_settings(project_id: int):
         if not project:
             return jsonify({"error": "Project not found"}), 404
 
-        return jsonify({
-            "inference_paused": project.inference_paused,
-            "inference_paused_at": project.inference_paused_at.isoformat() if project.inference_paused_at else None,
-            "inference_paused_reason": project.inference_paused_reason,
-        }), 200
+        return jsonify(
+            {
+                "inference_paused": project.inference_paused,
+                "inference_paused_at": project.inference_paused_at.isoformat()
+                if project.inference_paused_at
+                else None,
+                "inference_paused_reason": project.inference_paused_reason,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get settings for project %s", project_id)
@@ -500,7 +549,9 @@ def update_project_settings(project_id: int):
         if paused:
             project.inference_paused = True
             project.inference_paused_at = datetime.now(timezone.utc)
-            project.inference_paused_reason = (data.get("inference_paused_reason") or "").strip() or None
+            project.inference_paused_reason = (
+                data.get("inference_paused_reason") or ""
+            ).strip() or None
         else:
             project.inference_paused = False
             project.inference_paused_at = None
@@ -508,17 +559,26 @@ def update_project_settings(project_id: int):
 
         db.session.commit()
 
-        _broadcast_project_event("project_settings_changed", {
-            "project_id": project.id,
-            "inference_paused": project.inference_paused,
-            "inference_paused_at": project.inference_paused_at.isoformat() if project.inference_paused_at else None,
-        })
+        _broadcast_project_event(
+            "project_settings_changed",
+            {
+                "project_id": project.id,
+                "inference_paused": project.inference_paused,
+                "inference_paused_at": project.inference_paused_at.isoformat()
+                if project.inference_paused_at
+                else None,
+            },
+        )
 
-        return jsonify({
-            "inference_paused": project.inference_paused,
-            "inference_paused_at": project.inference_paused_at.isoformat() if project.inference_paused_at else None,
-            "inference_paused_reason": project.inference_paused_reason,
-        }), 200
+        return jsonify(
+            {
+                "inference_paused": project.inference_paused,
+                "inference_paused_at": project.inference_paused_at.isoformat()
+                if project.inference_paused_at
+                else None,
+                "inference_paused_reason": project.inference_paused_reason,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to update settings for project %s", project_id)
@@ -554,6 +614,7 @@ def detect_metadata(project_id: int):
         if not project.github_repo and project.path:
             try:
                 from ..services.git_metadata import GitMetadata
+
                 git_metadata = current_app.extensions.get("git_metadata")
                 if git_metadata:
                     git_metadata.invalidate_cache(project.path)
@@ -565,21 +626,27 @@ def detect_metadata(project_id: int):
                             project.github_repo = owner_repo
                             dirty = True
             except Exception as e:
-                logger.debug(f"Git metadata detection failed for project {project_id}: {e}")
+                logger.debug(
+                    f"Git metadata detection failed for project {project_id}: {e}"
+                )
 
         # Detect description from CLAUDE.md via LLM
         if not project.description and project.path:
             try:
                 claude_md_path = os.path.join(project.path, "CLAUDE.md")
                 if os.path.isfile(claude_md_path):
-                    with open(claude_md_path, "r", encoding="utf-8") as f:
+                    with open(claude_md_path, encoding="utf-8") as f:
                         claude_md_content = f.read(8000)
 
                     if claude_md_content.strip():
-                        inference_service = current_app.extensions.get("inference_service")
+                        inference_service = current_app.extensions.get(
+                            "inference_service"
+                        )
                         if inference_service and inference_service.is_available:
                             from ..services.prompt_registry import build_prompt
-                            from ..services.summarisation_service import SummarisationService
+                            from ..services.summarisation_service import (
+                                SummarisationService,
+                            )
 
                             prompt = build_prompt(
                                 "project_description",
@@ -592,22 +659,31 @@ def detect_metadata(project_id: int):
                                 project_id=project_id,
                             )
                             if inference_result.text:
-                                cleaned = SummarisationService._clean_response(inference_result.text)
+                                cleaned = SummarisationService._clean_response(
+                                    inference_result.text
+                                )
                                 result["description"] = cleaned
                                 project.description = cleaned
                                 dirty = True
             except Exception as e:
-                logger.debug(f"Description detection failed for project {project_id}: {e}")
+                logger.debug(
+                    f"Description detection failed for project {project_id}: {e}"
+                )
 
         if dirty:
             try:
                 db.session.commit()
-                _broadcast_project_event("project_changed", {
-                    "action": "updated",
-                    "project_id": project.id,
-                })
+                _broadcast_project_event(
+                    "project_changed",
+                    {
+                        "action": "updated",
+                        "project_id": project.id,
+                    },
+                )
             except Exception as e:
-                logger.warning(f"Failed to persist detected metadata for project {project_id}: {e}")
+                logger.warning(
+                    f"Failed to persist detected metadata for project {project_id}: {e}"
+                )
                 db.session.rollback()
 
         return jsonify(result), 200
@@ -649,15 +725,21 @@ def get_agent_commands(agent_id: int):
 
         result = []
         for c in commands:
-            result.append({
-                "id": c.id,
-                "state": c.state.value if hasattr(c.state, "value") else str(c.state),
-                "instruction": c.instruction,
-                "completion_summary": c.completion_summary,
-                "started_at": c.started_at.isoformat() if c.started_at else None,
-                "completed_at": c.completed_at.isoformat() if c.completed_at else None,
-                "turn_count": turn_counts.get(c.id, 0),
-            })
+            result.append(
+                {
+                    "id": c.id,
+                    "state": c.state.value
+                    if hasattr(c.state, "value")
+                    else str(c.state),
+                    "instruction": c.instruction,
+                    "completion_summary": c.completion_summary,
+                    "started_at": c.started_at.isoformat() if c.started_at else None,
+                    "completed_at": c.completed_at.isoformat()
+                    if c.completed_at
+                    else None,
+                    "turn_count": turn_counts.get(c.id, 0),
+                }
+            )
 
         return jsonify(result), 200
 
@@ -686,16 +768,24 @@ def get_command_turns(command_id: int):
         for turn in turns:
             text = turn.text or ""
             text_truncated = len(text) > 500
-            result.append({
-                "id": turn.id,
-                "actor": turn.actor.value if hasattr(turn.actor, "value") else str(turn.actor),
-                "intent": turn.intent.value if hasattr(turn.intent, "value") else str(turn.intent),
-                "text": text[:500] if text_truncated else text,
-                "text_truncated": text_truncated,
-                "summary": turn.summary,
-                "frustration_score": turn.frustration_score,
-                "created_at": turn.timestamp.isoformat() if turn.timestamp else None,
-            })
+            result.append(
+                {
+                    "id": turn.id,
+                    "actor": turn.actor.value
+                    if hasattr(turn.actor, "value")
+                    else str(turn.actor),
+                    "intent": turn.intent.value
+                    if hasattr(turn.intent, "value")
+                    else str(turn.intent),
+                    "text": text[:500] if text_truncated else text,
+                    "text_truncated": text_truncated,
+                    "summary": turn.summary,
+                    "frustration_score": turn.frustration_score,
+                    "created_at": turn.timestamp.isoformat()
+                    if turn.timestamp
+                    else None,
+                }
+            )
 
         return jsonify(result), 200
 
@@ -712,12 +802,14 @@ def get_command_full_text(command_id: int):
         if not command:
             return jsonify({"error": "Command not found"}), 404
 
-        return jsonify({
-            "full_command": command.full_command,
-            "full_output": command.full_output,
-            "plan_content": command.plan_content,
-            "plan_file_path": command.plan_file_path,
-        }), 200
+        return jsonify(
+            {
+                "full_command": command.full_command,
+                "full_output": command.full_output,
+                "plan_content": command.plan_content,
+                "plan_file_path": command.plan_file_path,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get full text for command %s", command_id)
@@ -737,21 +829,27 @@ def get_project_inference_summary(project_id: int):
         row = (
             db.session.query(
                 func.count(InferenceCall.id).label("total_calls"),
-                func.coalesce(func.sum(InferenceCall.input_tokens), 0).label("total_input_tokens"),
-                func.coalesce(func.sum(InferenceCall.output_tokens), 0).label("total_output_tokens"),
+                func.coalesce(func.sum(InferenceCall.input_tokens), 0).label(
+                    "total_input_tokens"
+                ),
+                func.coalesce(func.sum(InferenceCall.output_tokens), 0).label(
+                    "total_output_tokens"
+                ),
                 func.coalesce(func.sum(InferenceCall.cost), 0).label("total_cost"),
             )
             .filter(InferenceCall.project_id == project_id)
             .one()
         )
 
-        return jsonify({
-            "project_id": project_id,
-            "total_calls": row.total_calls,
-            "total_input_tokens": row.total_input_tokens,
-            "total_output_tokens": row.total_output_tokens,
-            "total_cost": float(row.total_cost) if row.total_cost else 0.0,
-        }), 200
+        return jsonify(
+            {
+                "project_id": project_id,
+                "total_calls": row.total_calls,
+                "total_input_tokens": row.total_input_tokens,
+                "total_output_tokens": row.total_output_tokens,
+                "total_cost": float(row.total_cost) if row.total_cost else 0.0,
+            }
+        ), 200
 
     except Exception:
         logger.exception("Failed to get inference summary for project %s", project_id)

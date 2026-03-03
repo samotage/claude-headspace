@@ -1,14 +1,11 @@
 """Tests for ``flask persona handoffs`` CLI command."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
 from claude_headspace.cli.persona_cli import (
     _parse_handoff_filename,
-    handoffs_command,
     persona_cli,
 )
 
@@ -91,9 +88,7 @@ class TestHandoffsCommand:
 
     def test_basic_listing(self, runner, handoff_dir):
         """Should list handoffs newest first."""
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona = MagicMock()
             mock_persona.slug = "developer-con-1"
             mock_persona_cls.query.filter_by.return_value.first.return_value = (
@@ -113,9 +108,7 @@ class TestHandoffsCommand:
 
     def test_limit_option(self, runner, handoff_dir):
         """--limit N should restrict output."""
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona = MagicMock()
             mock_persona.slug = "developer-con-1"
             mock_persona_cls.query.filter_by.return_value.first.return_value = (
@@ -135,9 +128,7 @@ class TestHandoffsCommand:
 
     def test_paths_option(self, runner, handoff_dir):
         """--paths should include absolute file paths."""
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona = MagicMock()
             mock_persona.slug = "developer-con-1"
             mock_persona_cls.query.filter_by.return_value.first.return_value = (
@@ -156,9 +147,7 @@ class TestHandoffsCommand:
 
     def test_legacy_format_shows_legacy_label(self, runner, handoff_dir):
         """Legacy filenames should show (legacy) in summary column."""
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona = MagicMock()
             mock_persona.slug = "developer-con-1"
             mock_persona_cls.query.filter_by.return_value.first.return_value = (
@@ -173,9 +162,7 @@ class TestHandoffsCommand:
     def test_invalid_persona_slug(self, runner, app, tmp_path):
         """Invalid persona slug should show error."""
         app.config["PERSONA_DATA_ROOT"] = str(tmp_path)
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona_cls.query.filter_by.return_value.first.return_value = None
 
             result = runner.invoke(persona_cli, ["handoffs", "nonexistent"])
@@ -189,9 +176,7 @@ class TestHandoffsCommand:
         d = tmp_path / slug / "handoffs"
         d.mkdir(parents=True)
 
-        with patch(
-            "claude_headspace.cli.persona_cli.Persona"
-        ) as mock_persona_cls:
+        with patch("claude_headspace.cli.persona_cli.Persona") as mock_persona_cls:
             mock_persona = MagicMock()
             mock_persona.slug = slug
             mock_persona_cls.query.filter_by.return_value.first.return_value = (

@@ -9,7 +9,6 @@ Verifies real Postgres constraints and behavior:
 - Relationship navigation
 """
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -35,14 +34,15 @@ from claude_headspace.models import (
     TurnIntent,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
 def test_project(db_session):
     """Create a test Project."""
-    project = Project(name="test-project", slug="test-project-ch", path="/tmp/test-project-ch")
+    project = Project(
+        name="test-project", slug="test-project-ch", path="/tmp/test-project-ch"
+    )
     db_session.add(project)
     db_session.flush()
     return project
@@ -61,9 +61,11 @@ def test_organisation(db_session):
 def test_persona_type(db_session):
     """Get or create a PersonaType (agent/internal)."""
     # Query for existing first (may exist from create_all or prior test)
-    pt = db_session.query(PersonaType).filter_by(
-        type_key="agent", subtype="internal"
-    ).first()
+    pt = (
+        db_session.query(PersonaType)
+        .filter_by(type_key="agent", subtype="internal")
+        .first()
+    )
     if pt is None:
         pt = PersonaType(type_key="agent", subtype="internal")
         db_session.add(pt)
@@ -274,19 +276,13 @@ class TestChannelMembershipCreation:
         assert membership.status == "active"
         assert membership.agent_id is None
 
-    def test_membership_unique_constraint(
-        self, db_session, test_channel, test_persona
-    ):
+    def test_membership_unique_constraint(self, db_session, test_channel, test_persona):
         """Duplicate (channel_id, persona_id) raises IntegrityError."""
-        m1 = ChannelMembership(
-            channel_id=test_channel.id, persona_id=test_persona.id
-        )
+        m1 = ChannelMembership(channel_id=test_channel.id, persona_id=test_persona.id)
         db_session.add(m1)
         db_session.flush()
 
-        m2 = ChannelMembership(
-            channel_id=test_channel.id, persona_id=test_persona.id
-        )
+        m2 = ChannelMembership(channel_id=test_channel.id, persona_id=test_persona.id)
         db_session.add(m2)
         with pytest.raises(IntegrityError):
             db_session.flush()
@@ -410,9 +406,7 @@ class TestTurnSourceMessageId:
         column_names = [c.name for c in Turn.__table__.columns]
         assert "source_message_id" in column_names
 
-    def test_turn_with_source_message(
-        self, db_session, test_channel, test_project
-    ):
+    def test_turn_with_source_message(self, db_session, test_channel, test_project):
         """Turn can reference a source Message via source_message_id."""
         agent = _make_agent(db_session, test_project)
         command = Command(agent_id=agent.id, state=CommandState.PROCESSING)
@@ -441,9 +435,7 @@ class TestTurnSourceMessageId:
         assert turn.source_message is not None
         assert turn.source_message.id == message.id
 
-    def test_turn_source_message_id_nullable(
-        self, db_session, test_project
-    ):
+    def test_turn_source_message_id_nullable(self, db_session, test_project):
         """Turn.source_message_id is nullable (most turns have no source message)."""
         agent = _make_agent(db_session, test_project)
         command = Command(agent_id=agent.id, state=CommandState.IDLE)
@@ -508,9 +500,7 @@ class TestChannelCascadeDelete:
         result = db_session.get(ChannelMembership, membership_id)
         assert result is None
 
-    def test_channel_delete_cascades_messages(
-        self, db_session, test_channel
-    ):
+    def test_channel_delete_cascades_messages(self, db_session, test_channel):
         """Deleting a Channel cascades to delete all Message records."""
         message = Message(
             channel_id=test_channel.id,
@@ -672,9 +662,7 @@ class TestPartialUniqueIndex:
         with pytest.raises(IntegrityError):
             db_session.flush()
 
-    def test_allows_null_agent_id(
-        self, db_session, test_persona, test_persona_2
-    ):
+    def test_allows_null_agent_id(self, db_session, test_persona, test_persona_2):
         """Multiple memberships with NULL agent_id are allowed."""
         ch1 = Channel(name="Ch1", channel_type=ChannelType.STANDUP)
         ch2 = Channel(name="Ch2", channel_type=ChannelType.STANDUP)
@@ -682,10 +670,16 @@ class TestPartialUniqueIndex:
         db_session.flush()
 
         m1 = ChannelMembership(
-            channel_id=ch1.id, persona_id=test_persona.id, agent_id=None, status="active"
+            channel_id=ch1.id,
+            persona_id=test_persona.id,
+            agent_id=None,
+            status="active",
         )
         m2 = ChannelMembership(
-            channel_id=ch2.id, persona_id=test_persona_2.id, agent_id=None, status="active"
+            channel_id=ch2.id,
+            persona_id=test_persona_2.id,
+            agent_id=None,
+            status="active",
         )
         db_session.add_all([m1, m2])
         db_session.flush()
@@ -785,9 +779,7 @@ class TestMessageTurnSourceSetNull:
         message_id = message.id
 
         # Delete the turn via raw SQL to avoid ORM cascade from Command
-        db_session.execute(
-            text("DELETE FROM turns WHERE id = :tid"), {"tid": turn.id}
-        )
+        db_session.execute(text("DELETE FROM turns WHERE id = :tid"), {"tid": turn.id})
         db_session.flush()
         db_session.expire_all()
 
@@ -850,9 +842,7 @@ class TestRelationshipNavigation:
         assert len(test_channel.memberships) == 1
         assert test_channel.memberships[0].id == membership.id
 
-    def test_channel_messages_relationship(
-        self, db_session, test_channel
-    ):
+    def test_channel_messages_relationship(self, db_session, test_channel):
         """Channel.messages navigates to Message list."""
         msg = Message(
             channel_id=test_channel.id,
@@ -865,9 +855,7 @@ class TestRelationshipNavigation:
         assert len(test_channel.messages) == 1
         assert test_channel.messages[0].id == msg.id
 
-    def test_channel_organisation_relationship(
-        self, db_session, test_organisation
-    ):
+    def test_channel_organisation_relationship(self, db_session, test_organisation):
         """Channel.organisation navigates to Organisation."""
         channel = Channel(
             name="Org Channel",
@@ -880,9 +868,7 @@ class TestRelationshipNavigation:
         assert channel.organisation is not None
         assert channel.organisation.id == test_organisation.id
 
-    def test_channel_project_relationship(
-        self, db_session, test_project
-    ):
+    def test_channel_project_relationship(self, db_session, test_project):
         """Channel.project navigates to Project."""
         channel = Channel(
             name="Project Channel",
@@ -895,9 +881,7 @@ class TestRelationshipNavigation:
         assert channel.project is not None
         assert channel.project.id == test_project.id
 
-    def test_channel_created_by_persona_relationship(
-        self, db_session, test_persona
-    ):
+    def test_channel_created_by_persona_relationship(self, db_session, test_persona):
         """Channel.created_by_persona navigates to Persona."""
         channel = Channel(
             name="Persona Channel",
@@ -951,9 +935,7 @@ class TestRelationshipNavigation:
         assert membership.agent is not None
         assert membership.agent.id == test_agent.id
 
-    def test_message_channel_relationship(
-        self, db_session, test_channel
-    ):
+    def test_message_channel_relationship(self, db_session, test_channel):
         """Message.channel navigates to Channel."""
         msg = Message(
             channel_id=test_channel.id,

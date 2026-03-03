@@ -4,8 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from claude_headspace.cli.transcript_cli import format_transcript
 
 
@@ -25,7 +23,9 @@ class TestFormatTranscript:
         agent = MagicMock()
         agent.id = agent_id
         agent.session_uuid = uuid4()
-        agent.started_at = started_at or datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        agent.started_at = started_at or datetime(
+            2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc
+        )
         agent.ended_at = ended_at
 
         project = MagicMock()
@@ -42,16 +42,25 @@ class TestFormatTranscript:
         agent.commands = commands if commands is not None else []
         return agent
 
-    def _make_command(self, instruction="Do something", state="complete",
-                      started_at=None, completed_at=None, turns=None,
-                      full_command=None, completion_summary=None):
+    def _make_command(
+        self,
+        instruction="Do something",
+        state="complete",
+        started_at=None,
+        completed_at=None,
+        turns=None,
+        full_command=None,
+        completion_summary=None,
+    ):
         """Helper to create a mock command."""
         cmd = MagicMock()
         cmd.instruction = instruction
         cmd.full_command = full_command
         cmd.state = MagicMock()
         cmd.state.value = state
-        cmd.started_at = started_at or datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        cmd.started_at = started_at or datetime(
+            2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc
+        )
         cmd.completed_at = completed_at
         cmd.completion_summary = completion_summary
         cmd.turns = turns if turns is not None else []
@@ -65,7 +74,9 @@ class TestFormatTranscript:
         turn = MagicMock()
         turn.actor = TurnActor.USER if actor == "user" else TurnActor.AGENT
         turn.text = text
-        turn.timestamp = timestamp or datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        turn.timestamp = timestamp or datetime(
+            2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc
+        )
         return turn
 
     def test_header_includes_agent_id(self):
@@ -108,11 +119,13 @@ class TestFormatTranscript:
 
             # Use side_effect to return different results for commands vs turns queries
             call_count = [0]
+
             def all_side_effect():
                 call_count[0] += 1
                 if call_count[0] == 1:
                     return [cmd]  # Commands query
                 return []  # Turns query
+
             order_mock.all.side_effect = all_side_effect
 
             output = format_transcript(agent)
@@ -120,7 +133,6 @@ class TestFormatTranscript:
         assert "## Command: Fix the login bug" in output
 
     def test_turns_prefixed_with_actor(self):
-        from claude_headspace.models.turn import TurnActor
 
         user_turn = self._make_turn(actor="user", text="Please fix this")
         agent_turn = self._make_turn(actor="agent", text="I will fix it")
@@ -134,11 +146,13 @@ class TestFormatTranscript:
             order_mock = filter_mock.order_by.return_value
 
             call_count = [0]
+
             def all_side_effect():
                 call_count[0] += 1
                 if call_count[0] == 1:
                     return [cmd]
                 return [user_turn, agent_turn]
+
             order_mock.all.side_effect = all_side_effect
 
             output = format_transcript(agent)
@@ -158,8 +172,7 @@ class TestFormatTranscript:
 
     def test_completion_summary_included(self):
         cmd = self._make_command(
-            instruction="Build feature",
-            completion_summary="Feature built successfully"
+            instruction="Build feature", completion_summary="Feature built successfully"
         )
         agent = self._make_agent()
 
@@ -170,6 +183,7 @@ class TestFormatTranscript:
             # Commands query: .filter(agent_id).order_by(started_at).all()
             # Turns query: .filter(cmd_id, text not null, text != "").order_by(timestamp).all()
             call_count = [0]
+
             def filter_side_effect(*args, **kwargs):
                 call_count[0] += 1
                 filter_result = MagicMock()

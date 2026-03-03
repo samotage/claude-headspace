@@ -150,9 +150,7 @@ class TmuxWatchdog:
             try:
                 self._check_agent(agent_id, pane_id)
             except Exception as e:
-                logger.debug(
-                    f"[TMUX_WATCHDOG] Agent {agent_id} check failed: {e}"
-                )
+                logger.debug(f"[TMUX_WATCHDOG] Agent {agent_id} check failed: {e}")
 
     def _cleanup_stale_state(self, active_agents: dict[int, str]):
         """Remove ephemeral state for agents no longer active."""
@@ -278,7 +276,9 @@ class TmuxWatchdog:
                     return False
 
                 # Extract representative lines from pane content
-                lines = [l.strip() for l in pane_content.strip().splitlines() if l.strip()]
+                lines = [
+                    l.strip() for l in pane_content.strip().splitlines() if l.strip()
+                ]
                 if not lines:
                     return False
 
@@ -336,4 +336,6 @@ class TmuxWatchdog:
                             f"created {len(result['created'])} turn(s)"
                         )
         except Exception as e:
-            logger.debug(f"[TMUX_WATCHDOG] Reconciliation failed for agent {agent_id}: {e}")
+            logger.debug(
+                f"[TMUX_WATCHDOG] Reconciliation failed for agent {agent_id}: {e}"
+            )

@@ -1,13 +1,16 @@
 """Unit tests for CommandLifecycleManager summarisation integration."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.claude_headspace.models.command import CommandState
 from src.claude_headspace.models.turn import TurnActor
+from src.claude_headspace.services.command_lifecycle import (
+    CommandLifecycleManager,
+    SummarisationRequest,
+)
 from src.claude_headspace.services.state_machine import TransitionResult
-from src.claude_headspace.services.command_lifecycle import CommandLifecycleManager, SummarisationRequest
 
 
 @pytest.fixture
@@ -31,8 +34,9 @@ def mock_agent():
 
 
 class TestTurnSummarisationTrigger:
-
-    def test_summarisation_queued_on_user_command(self, manager, mock_session, mock_agent):
+    def test_summarisation_queued_on_user_command(
+        self, manager, mock_session, mock_agent
+    ):
         """When a user command creates a new command, turn and instruction summarisation should be queued."""
         # Setup: no current command (IDLE state)
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
@@ -49,12 +53,16 @@ class TestTurnSummarisationTrigger:
         assert turn_reqs[0].turn is not None
 
         # Should have an instruction summarisation request
-        instruction_reqs = [r for r in result.pending_summarisations if r.type == "instruction"]
+        instruction_reqs = [
+            r for r in result.pending_summarisations if r.type == "instruction"
+        ]
         assert len(instruction_reqs) == 1
         assert instruction_reqs[0].command is not None
         assert instruction_reqs[0].command_text == "Fix the login bug"
 
-    def test_summarisation_queued_on_agent_turn(self, manager, mock_session, mock_agent):
+    def test_summarisation_queued_on_agent_turn(
+        self, manager, mock_session, mock_agent
+    ):
         """When an agent produces a non-completion turn, turn summarisation should be queued."""
         # Setup: active command in COMMANDED state (agent progress → PROCESSING)
         mock_command = MagicMock()
@@ -64,7 +72,11 @@ class TestTurnSummarisationTrigger:
 
         result = manager.process_turn(mock_agent, TurnActor.AGENT, "Working on the fix")
 
-        if result.success and result.transition and result.transition.to_state != CommandState.COMPLETE:
+        if (
+            result.success
+            and result.transition
+            and result.transition.to_state != CommandState.COMPLETE
+        ):
             turn_reqs = [r for r in result.pending_summarisations if r.type == "turn"]
             assert len(turn_reqs) == 1
 
@@ -81,13 +93,16 @@ class TestTurnSummarisationTrigger:
 
 
 class TestCommandSummarisationTrigger:
-
     @pytest.fixture(autouse=True)
     def _patch_validate(self):
-        with patch("src.claude_headspace.services.command_lifecycle.validate_transition") as self._mock_validate:
+        with patch(
+            "src.claude_headspace.services.command_lifecycle.validate_transition"
+        ) as self._mock_validate:
             yield
 
-    def test_summarisation_queued_on_command_completion(self, manager, mock_session, mock_agent):
+    def test_summarisation_queued_on_command_completion(
+        self, manager, mock_session, mock_agent
+    ):
         """When a command is completed via process_turn, command_completion summarisation should be queued."""
         mock_command = MagicMock()
         mock_command.id = 42
@@ -106,11 +121,15 @@ class TestCommandSummarisationTrigger:
         result = manager.process_turn(mock_agent, TurnActor.AGENT, "")
 
         assert result.success is True
-        command_reqs = [r for r in result.pending_summarisations if r.type == "command_completion"]
+        command_reqs = [
+            r for r in result.pending_summarisations if r.type == "command_completion"
+        ]
         assert len(command_reqs) == 1
         assert command_reqs[0].command is mock_command
 
-    def test_no_command_summarisation_on_non_completion(self, manager, mock_session, mock_agent):
+    def test_no_command_summarisation_on_non_completion(
+        self, manager, mock_session, mock_agent
+    ):
         """When a transition is not to COMPLETE, command summarisation should not be queued."""
         mock_command = MagicMock()
         mock_command.id = 42
@@ -129,13 +148,16 @@ class TestCommandSummarisationTrigger:
         result = manager.process_turn(mock_agent, TurnActor.AGENT, "Starting work")
 
         assert result.success is True
-        command_reqs = [r for r in result.pending_summarisations if r.type == "command_completion"]
+        command_reqs = [
+            r for r in result.pending_summarisations if r.type == "command_completion"
+        ]
         assert len(command_reqs) == 0
 
 
 class TestSummarisationErrorHandling:
-
-    def test_pending_summarisations_always_populated(self, manager, mock_session, mock_agent):
+    def test_pending_summarisations_always_populated(
+        self, manager, mock_session, mock_agent
+    ):
         """Summarisation requests are always queued regardless of service availability."""
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
@@ -147,7 +169,6 @@ class TestSummarisationErrorHandling:
 
 
 class TestGetPendingSummarisations:
-
     def test_get_pending_clears_list(self, mock_session):
         """get_pending_summarisations should return and clear the list."""
         manager = CommandLifecycleManager(session=mock_session)

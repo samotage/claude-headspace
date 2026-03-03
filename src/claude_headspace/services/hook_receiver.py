@@ -18,18 +18,34 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .card_state import broadcast_card_refresh as _card_state_broadcast
+from .command_lifecycle import (
+    CommandLifecycleManager,
+    get_instruction_for_notification,
+)
+from .guardrail_sanitiser import contains_error_patterns, sanitise_error_output
 from .hook_agent_state import get_agent_hook_state
 from .hook_extractors import (
     capture_plan_write as _capture_plan_write,
+)
+from .hook_extractors import (
     extract_question_text as _extract_question_text,
+)
+from .hook_extractors import (
     extract_structured_options as _extract_structured_options,
+)
+from .hook_extractors import (
     mark_question_answered as _mark_question_answered,
+)
+from .hook_extractors import (
     synthesize_permission_options as _synthesize_permission_options,
 )
 from .intent_detector import detect_agent_intent
-from .command_lifecycle import CommandLifecycleManager, TurnProcessingResult, get_instruction_for_notification
-from .guardrail_sanitiser import contains_error_patterns, sanitise_error_output
-from .team_content_detector import filter_skill_expansion, is_persona_injection, is_skill_expansion, is_team_internal_content
+from .team_content_detector import (
+    filter_skill_expansion,
+    is_persona_injection,
+    is_skill_expansion,
+    is_team_internal_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +56,21 @@ def _fetch_context_opportunistically(agent):
         return
     try:
         from flask import current_app
+
         config = current_app.config.get("APP_CONFIG", {})
         if not config.get("context_monitor", {}).get("enabled", True):
             return
     except RuntimeError:
         return
     if agent.context_updated_at:
-        elapsed = (datetime.now(timezone.utc) - agent.context_updated_at).total_seconds()
+        elapsed = (
+            datetime.now(timezone.utc) - agent.context_updated_at
+        ).total_seconds()
         if elapsed < 15:
             return
     from . import tmux_bridge
     from .context_parser import parse_context_usage
+
     pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
     if not pane_text:
         return
@@ -92,6 +112,7 @@ def _get_lifecycle_manager():
     event_writer = None
     try:
         from flask import current_app
+
         event_writer = current_app.extensions.get("event_writer")
     except RuntimeError:
         logger.debug("No app context for event_writer")
@@ -105,6 +126,7 @@ def _trigger_priority_scoring() -> None:
     """Trigger rate-limited priority scoring after state transitions."""
     try:
         from flask import current_app
+
         service = current_app.extensions.get("priority_scoring_service")
         if service:
             service.trigger_scoring()
@@ -118,6 +140,7 @@ def _execute_pending_summarisations(pending: list) -> None:
         return
     try:
         from flask import current_app
+
         service = current_app.extensions.get("summarisation_service")
         if service:
             service.execute_pending(pending, db.session)
@@ -125,28 +148,45 @@ def _execute_pending_summarisations(pending: list) -> None:
         logger.warning(f"Post-commit summarisation failed (non-fatal): {e}")
 
 
-def _broadcast_state_change(agent: Agent, event_type: str, new_state: str, message: str | None = None) -> None:
+def _broadcast_state_change(
+    agent: Agent, event_type: str, new_state: str, message: str | None = None
+) -> None:
     """Broadcast a state_changed SSE event."""
     try:
         from .broadcaster import get_broadcaster
-        get_broadcaster().broadcast("state_changed", {
-            "agent_id": agent.id,
-            "project_id": agent.project_id,
-            "project_name": agent.project.name if agent.project else None,
-            "agent_session": str(agent.session_uuid),
-            "event_type": event_type,
-            "new_state": new_state.upper() if isinstance(new_state, str) else new_state,
-            "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+
+        get_broadcaster().broadcast(
+            "state_changed",
+            {
+                "agent_id": agent.id,
+                "project_id": agent.project_id,
+                "project_name": agent.project.name if agent.project else None,
+                "agent_session": str(agent.session_uuid),
+                "event_type": event_type,
+                "new_state": new_state.upper()
+                if isinstance(new_state, str)
+                else new_state,
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     except Exception as e:
         logger.warning(f"State change broadcast failed: {e}")
 
 
-def _broadcast_turn_created(agent: Agent, text: str, command, tool_input: dict | None = None, turn_id: int | None = None, intent: str = "question", question_source_type: str | None = None) -> None:
+def _broadcast_turn_created(
+    agent: Agent,
+    text: str,
+    command,
+    tool_input: dict | None = None,
+    turn_id: int | None = None,
+    intent: str = "question",
+    question_source_type: str | None = None,
+) -> None:
     """Broadcast a turn_created SSE event."""
     try:
         from .broadcaster import get_broadcaster
+
         payload = {
             "agent_id": agent.id,
             "project_id": agent.project_id,
@@ -171,6 +211,7 @@ def _send_notification(agent: Agent, command, turn_text: str | None) -> None:
     """Send an OS notification for awaiting input."""
     try:
         from .notification_service import get_notification_service
+
         svc = get_notification_service()
         svc.notify_awaiting_input(
             agent_id=str(agent.id),
@@ -187,6 +228,7 @@ def _send_completion_notification(agent: Agent, command) -> None:
     """Send command-complete notification using AI-generated summaries."""
     try:
         from .notification_service import get_notification_service
+
         svc = get_notification_service()
         svc.notify_command_complete(
             agent_id=str(agent.id),
@@ -206,6 +248,7 @@ def _extract_transcript_content(agent: Agent) -> str:
         return ""
     try:
         from .transcript_reader import read_transcript_file
+
         result = read_transcript_file(agent.transcript_path)
         logger.debug(
             f"TRANSCRIPT_EXTRACT agent={agent.id}: success={result.success}, "
@@ -225,11 +268,14 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
         return
 
     import os
+
     from .transcript_reader import read_new_entries_from_position
 
     if state.get_transcript_position(agent.id) is None:
         try:
-            state.set_transcript_position(agent.id, os.path.getsize(agent.transcript_path))
+            state.set_transcript_position(
+                agent.id, os.path.getsize(agent.transcript_path)
+            )
         except OSError:
             return
         return
@@ -249,7 +295,11 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
     MIN_PROGRESS_LEN = 10
     progress_entries = []
     for entry in entries:
-        if entry.role == "assistant" and entry.content and len(entry.content.strip()) >= MIN_PROGRESS_LEN:
+        if (
+            entry.role == "assistant"
+            and entry.content
+            and len(entry.content.strip()) >= MIN_PROGRESS_LEN
+        ):
             progress_entries.append(entry)
 
     if not progress_entries:
@@ -311,18 +361,22 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
 
         try:
             from .broadcaster import get_broadcaster
-            get_broadcaster().broadcast("turn_created", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "text": text,
-                "actor": "agent",
-                "intent": "progress",
-                "command_id": current_command.id,
-                "command_instruction": current_command.instruction,
-                "turn_id": turn.id,
-                "is_internal": internal,
-                "timestamp": turn.timestamp.isoformat(),
-            })
+
+            get_broadcaster().broadcast(
+                "turn_created",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "text": text,
+                    "actor": "agent",
+                    "intent": "progress",
+                    "command_id": current_command.id,
+                    "command_instruction": current_command.instruction,
+                    "turn_id": turn.id,
+                    "is_internal": internal,
+                    "timestamp": turn.timestamp.isoformat(),
+                },
+            )
         except Exception as e:
             logger.warning(f"Progress turn broadcast failed: {e}")
 
@@ -343,6 +397,7 @@ def _capture_progress_text_impl(agent: Agent, current_command, state) -> None:
 
 class _AwaitingToolProxy:
     """Dict-like proxy to AgentHookState._awaiting_tool."""
+
     def __getitem__(self, agent_id):
         return get_agent_hook_state().get_awaiting_tool(agent_id)
 
@@ -371,6 +426,7 @@ class _AwaitingToolProxy:
 
 class _RespondPendingProxy:
     """Dict-like proxy to AgentHookState._respond_pending."""
+
     def __getitem__(self, agent_id):
         raise KeyError(agent_id)  # Not needed
 
@@ -399,6 +455,7 @@ class _RespondPendingProxy:
 
 class _DeferredStopProxy:
     """Set-like proxy to AgentHookState._deferred_stop_pending."""
+
     def add(self, agent_id):
         state = get_agent_hook_state()
         with state._lock:
@@ -421,6 +478,7 @@ class _DeferredStopProxy:
 
 class _TranscriptPositionsProxy:
     """Dict-like proxy to AgentHookState._transcript_positions."""
+
     def __getitem__(self, agent_id):
         val = get_agent_hook_state().get_transcript_position(agent_id)
         if val is None:
@@ -446,6 +504,7 @@ class _TranscriptPositionsProxy:
 
 class _ProgressTextsProxy:
     """Dict-like proxy to AgentHookState._progress_texts."""
+
     def __getitem__(self, agent_id):
         val = get_agent_hook_state().get_progress_texts(agent_id)
         if not val:
@@ -473,6 +532,7 @@ class _ProgressTextsProxy:
 
 class _FileMetadataPendingProxy:
     """Dict-like proxy to AgentHookState._file_metadata_pending."""
+
     def __setitem__(self, agent_id, value):
         get_agent_hook_state().set_file_metadata_pending(agent_id, value)
 
@@ -493,6 +553,7 @@ _file_metadata_pending_for_agent = _FileMetadataPendingProxy()
 
 
 # --- Data types ---
+
 
 class HookEventType(str, Enum):
     SESSION_START = "session_start"
@@ -519,6 +580,7 @@ class HookEventResult(NamedTuple):
 
 
 # --- Receiver state ---
+
 
 @dataclass
 class HookReceiverState:
@@ -548,11 +610,17 @@ class HookReceiverState:
             elapsed = (datetime.now(timezone.utc) - self.last_event_at).total_seconds()
             if elapsed > self.fallback_timeout:
                 self.mode = HookMode.POLLING_FALLBACK
-                logger.warning(f"No hook events for {elapsed:.0f}s, reverting to POLLING_FALLBACK")
+                logger.warning(
+                    f"No hook events for {elapsed:.0f}s, reverting to POLLING_FALLBACK"
+                )
 
     def get_polling_interval(self) -> int:
         with self._lock:
-            return self.polling_interval_with_hooks if self.mode == HookMode.HOOKS_ACTIVE else self.polling_interval_fallback
+            return (
+                self.polling_interval_with_hooks
+                if self.mode == HookMode.HOOKS_ACTIVE
+                else self.polling_interval_fallback
+            )
 
 
 _receiver_state = HookReceiverState()
@@ -587,6 +655,7 @@ def reset_receiver_state() -> None:
 # _capture_progress_text_impl requires an explicit state parameter.
 # This wrapper provides the default AgentHookState for callers within this module.
 
+
 def _capture_progress_text(agent: Agent, current_command) -> None:
     """Capture progress text from the agent's transcript.
 
@@ -600,16 +669,19 @@ def _capture_progress_text(agent: Agent, current_command) -> None:
 
 # --- Deferred stop handler (INT-H1: non-blocking transcript retry) ---
 
+
 def _schedule_deferred_stop(agent: Agent, current_command) -> None:
     """Schedule a background thread to retry transcript extraction.
 
     Delegates to hook_deferred_stop.schedule_deferred_stop().
     """
     from .hook_deferred_stop import schedule_deferred_stop
+
     schedule_deferred_stop(agent, current_command)
 
 
 # --- Hook processors ---
+
 
 def process_session_start(
     agent: Agent,
@@ -680,6 +752,7 @@ def process_session_start(
             agent.tmux_pane_id = tmux_pane_id
             try:
                 from flask import current_app
+
                 availability = current_app.extensions.get("commander_availability")
                 if availability:
                     availability.register_agent(agent.id, tmux_pane_id)
@@ -703,6 +776,7 @@ def process_session_start(
         if agent.persona_id:
             try:
                 from flask import current_app as _app
+
                 detection_svc = _app.extensions.get("handoff_detection_service")
                 if detection_svc:
                     detection_svc.detect_and_emit(agent)
@@ -762,6 +836,7 @@ def process_session_start(
         if agent.previous_agent_id and agent.tmux_pane_id:
             try:
                 from flask import current_app as _app
+
                 handoff_executor = _app.extensions.get("handoff_executor")
                 handoff_delivered = False
                 if handoff_executor:
@@ -790,8 +865,11 @@ def process_session_start(
                     )
 
                     if is_revival_successor(agent):
-                        revival_msg = compose_revival_instruction(agent.previous_agent_id)
+                        revival_msg = compose_revival_instruction(
+                            agent.previous_agent_id
+                        )
                         from . import tmux_bridge
+
                         send_result = tmux_bridge.send_text(
                             agent.tmux_pane_id, revival_msg
                         )
@@ -818,12 +896,11 @@ def process_session_start(
         if _linked_channel_memberships and agent.tmux_pane_id:
             try:
                 from flask import current_app as _app
+
                 channel_svc = _app.extensions.get("channel_service")
                 if channel_svc:
                     for membership in _linked_channel_memberships:
-                        channel_svc._deliver_context_briefing(
-                            membership.channel, agent
-                        )
+                        channel_svc._deliver_context_briefing(membership.channel, agent)
             except Exception as e:
                 logger.debug(
                     f"session_start: channel context briefing failed "
@@ -835,8 +912,12 @@ def process_session_start(
         # re-triggering session_start for the same agent).
         db.session.commit()
 
-        logger.info(f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}")
-        return HookEventResult(success=True, agent_id=agent.id, new_state=agent.state.value)
+        logger.info(
+            f"hook_event: type=session_start, agent_id={agent.id}, session_id={claude_session_id}"
+        )
+        return HookEventResult(
+            success=True, agent_id=agent.id, new_state=agent.state.value
+        )
     except Exception as e:
         logger.exception(f"Error processing session_start: {e}")
         db.session.rollback()
@@ -865,13 +946,16 @@ def process_session_end(
 
         # Clear skill injection idempotency record
         from .skill_injector import clear_injection_record
+
         clear_injection_record(agent.id)
 
         # Centralized cache cleanup (correlator, hook_agent_state, commander, watchdog)
         from .session_correlator import invalidate_agent_caches
+
         invalidate_agent_caches(agent.id, session_id=claude_session_id)
         try:
             from flask import current_app
+
             watchdog = current_app.extensions.get("tmux_watchdog")
             if watchdog:
                 watchdog.unregister_agent(agent.id)
@@ -886,7 +970,11 @@ def process_session_end(
 
         # Phase 2: Reconcile JSONL transcript to backfill missed turns
         try:
-            from .transcript_reconciler import reconcile_agent_session, broadcast_reconciliation
+            from .transcript_reconciler import (
+                broadcast_reconciliation,
+                reconcile_agent_session,
+            )
+
             recon_result = reconcile_agent_session(agent)
             if recon_result["created"]:
                 logger.info(
@@ -908,20 +996,33 @@ def process_session_end(
             except Exception as e:
                 logger.warning(f"Session-end reconciliation broadcast failed: {e}")
 
-        _broadcast_state_change(agent, "session_end", CommandState.COMPLETE.value, message="Session ended")
+        _broadcast_state_change(
+            agent, "session_end", CommandState.COMPLETE.value, message="Session ended"
+        )
         try:
             from .broadcaster import get_broadcaster
-            get_broadcaster().broadcast("session_ended", {
-                "agent_id": agent.id,
-                "project_id": agent.project_id,
-                "session_uuid": str(agent.session_uuid),
-                "timestamp": now.isoformat(),
-            })
+
+            get_broadcaster().broadcast(
+                "session_ended",
+                {
+                    "agent_id": agent.id,
+                    "project_id": agent.project_id,
+                    "session_uuid": str(agent.session_uuid),
+                    "timestamp": now.isoformat(),
+                },
+            )
         except Exception as e:
             logger.warning(f"Session ended broadcast failed: {e}")
 
-        logger.info(f"hook_event: type=session_end, agent_id={agent.id}, session_id={claude_session_id}")
-        return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=CommandState.COMPLETE.value)
+        logger.info(
+            f"hook_event: type=session_end, agent_id={agent.id}, session_id={claude_session_id}"
+        )
+        return HookEventResult(
+            success=True,
+            agent_id=agent.id,
+            state_changed=True,
+            new_state=CommandState.COMPLETE.value,
+        )
     except Exception as e:
         logger.exception(f"Error processing session_end: {e}")
         db.session.rollback()
@@ -952,8 +1053,11 @@ def process_user_prompt_submit(
             _progress_texts_for_agent.pop(agent.id, None)
             if agent.transcript_path:
                 import os
+
                 try:
-                    _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+                    _transcript_positions[agent.id] = os.path.getsize(
+                        agent.transcript_path
+                    )
                 except OSError:
                     _transcript_positions.pop(agent.id, None)
             agent.last_seen_at = datetime.now(timezone.utc)
@@ -964,8 +1068,10 @@ def process_user_prompt_submit(
                 f"session_id={claude_session_id}, skipped=respond_inflight"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Use non-consuming check so the flag persists for the full TTL.
@@ -979,8 +1085,11 @@ def process_user_prompt_submit(
             _progress_texts_for_agent.pop(agent.id, None)
             if agent.transcript_path:
                 import os
+
                 try:
-                    _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+                    _transcript_positions[agent.id] = os.path.getsize(
+                        agent.transcript_path
+                    )
                 except OSError:
                     _transcript_positions.pop(agent.id, None)
             agent.last_seen_at = datetime.now(timezone.utc)
@@ -991,8 +1100,10 @@ def process_user_prompt_submit(
                 f"session_id={claude_session_id}, skipped=respond_pending"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Filter out system-injected XML messages that aren't real user input.
@@ -1001,8 +1112,7 @@ def process_user_prompt_submit(
         # user_prompt_submit hook but should NOT create turns or trigger state
         # transitions — they'd appear as nonsensical "COMMAND" bubbles in chat.
         if prompt_text and (
-            "<task-notification>" in prompt_text
-            or "<system-reminder>" in prompt_text
+            "<task-notification>" in prompt_text or "<system-reminder>" in prompt_text
         ):
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
@@ -1011,8 +1121,10 @@ def process_user_prompt_submit(
                 f"session_id={claude_session_id}, skipped=system_xml"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Filter out Claude Code interruption artifacts from tool use key injection.
@@ -1026,8 +1138,10 @@ def process_user_prompt_submit(
                 f"session_id={claude_session_id}, skipped=tool_interruption_artifact"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Detect persona injection priming messages by content pattern.
@@ -1058,7 +1172,9 @@ def process_user_prompt_submit(
         # Content deduplication: suppress identical prompts within 30s.
         # Defence-in-depth against Claude Code firing the same hook hundreds
         # of times (e.g. persona injection storm — 395 times in 97 seconds).
-        if prompt_text and get_agent_hook_state().is_duplicate_prompt(agent.id, prompt_text):
+        if prompt_text and get_agent_hook_state().is_duplicate_prompt(
+            agent.id, prompt_text
+        ):
             agent.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
             logger.info(
@@ -1067,8 +1183,10 @@ def process_user_prompt_submit(
                 f"(len={len(prompt_text)})"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Command creation rate limiting: cap blast radius even if dedup misses.
@@ -1081,8 +1199,10 @@ def process_user_prompt_submit(
                 f"session_id={claude_session_id}, skipped=command_rate_limited"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         # Filter out skill/command expansion content.  When a user invokes a
@@ -1101,8 +1221,10 @@ def process_user_prompt_submit(
                 f"(len={len(prompt_text)})"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
-                state_changed=False, new_state=None,
+                success=True,
+                agent_id=agent.id,
+                state_changed=False,
+                new_state=None,
             )
 
         agent.last_seen_at = datetime.now(timezone.utc)
@@ -1114,12 +1236,14 @@ def process_user_prompt_submit(
         # to decide whether HandoffExecutor should be triggered after
         # the turn is committed.
         from .intent_detector import detect_handoff_intent
+
         is_handoff, handoff_context = detect_handoff_intent(prompt_text)
 
         # Initialize transcript position for incremental PROGRESS capture.
         # Set to current file size so post_tool_use only reads NEW content.
         if agent.transcript_path:
             import os
+
             try:
                 _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
             except OSError:
@@ -1166,9 +1290,14 @@ def process_user_prompt_submit(
             prompt_text = f"{persona_name} is ready"
 
         result = lifecycle.process_turn(
-            agent=agent, actor=TurnActor.USER, text=prompt_text,
+            agent=agent,
+            actor=TurnActor.USER,
+            text=prompt_text,
             file_metadata=pending_file_meta,
-            is_internal=is_injection or content_is_persona_injection or content_is_skill_expansion or is_team_internal_content(prompt_text),
+            is_internal=is_injection
+            or content_is_persona_injection
+            or content_is_skill_expansion
+            or is_team_internal_content(prompt_text),
         )
 
         if result.success:
@@ -1185,11 +1314,17 @@ def process_user_prompt_submit(
         # Auto-transition COMMANDED → PROCESSING
         # Use agent:progress trigger because this transition represents the
         # agent starting to work, not the user issuing another command.
-        if result.success and result.command and result.command.state == CommandState.COMMANDED:
+        if (
+            result.success
+            and result.command
+            and result.command.state == CommandState.COMMANDED
+        ):
             try:
                 lifecycle.update_command_state(
-                    command=result.command, to_state=CommandState.PROCESSING,
-                    trigger="agent:progress", confidence=1.0,
+                    command=result.command,
+                    to_state=CommandState.PROCESSING,
+                    trigger="agent:progress",
+                    confidence=1.0,
                 )
                 db.session.commit()
             except Exception as e:
@@ -1206,6 +1341,7 @@ def process_user_prompt_submit(
         if is_handoff and result.success:
             try:
                 from flask import current_app as _app
+
                 handoff_executor = _app.extensions.get("handoff_executor")
                 if handoff_executor:
                     handoff_result = handoff_executor.trigger_handoff(
@@ -1229,6 +1365,7 @@ def process_user_prompt_submit(
         if prompt_text:
             try:
                 from .broadcaster import get_broadcaster
+
                 # Find the turn_id for the user turn just created by process_turn
                 user_turn_id = None
                 if result.command and result.command.turns:
@@ -1236,18 +1373,28 @@ def process_user_prompt_submit(
                         if t.actor == TurnActor.USER:
                             user_turn_id = t.id
                             break
-                get_broadcaster().broadcast("turn_created", {
-                    "agent_id": agent.id,
-                    "project_id": agent.project_id,
-                    "text": prompt_text,
-                    "actor": "user",
-                    "intent": result.intent.intent.value if result.intent else "command",
-                    "command_id": result.command.id if result.command else None,
-                    "command_instruction": result.command.instruction if result.command else None,
-                    "turn_id": user_turn_id,
-                    "is_internal": is_injection or content_is_persona_injection or content_is_skill_expansion or is_team_internal_content(prompt_text),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                get_broadcaster().broadcast(
+                    "turn_created",
+                    {
+                        "agent_id": agent.id,
+                        "project_id": agent.project_id,
+                        "text": prompt_text,
+                        "actor": "user",
+                        "intent": result.intent.intent.value
+                        if result.intent
+                        else "command",
+                        "command_id": result.command.id if result.command else None,
+                        "command_instruction": result.command.instruction
+                        if result.command
+                        else None,
+                        "turn_id": user_turn_id,
+                        "is_internal": is_injection
+                        or content_is_persona_injection
+                        or content_is_skill_expansion
+                        or is_team_internal_content(prompt_text),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
             except Exception as e:
                 logger.warning(f"Turn created broadcast failed: {e}")
 
@@ -1258,16 +1405,25 @@ def process_user_prompt_submit(
         _execute_pending_summarisations(pending)
         broadcast_card_refresh(agent, "user_prompt_submit")
 
-        new_state = result.command.state.value if result.command else CommandState.PROCESSING.value
-        _broadcast_state_change(agent, "user_prompt_submit", new_state, message=prompt_text)
+        new_state = (
+            result.command.state.value
+            if result.command
+            else CommandState.PROCESSING.value
+        )
+        _broadcast_state_change(
+            agent, "user_prompt_submit", new_state, message=prompt_text
+        )
 
         logger.info(
             f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
             f"session_id={claude_session_id}, new_state={new_state}"
         )
         return HookEventResult(
-            success=result.success, agent_id=agent.id,
-            state_changed=True, new_state=new_state, error_message=result.error,
+            success=result.success,
+            agent_id=agent.id,
+            state_changed=True,
+            new_state=new_state,
+            error_message=result.error,
         )
     except Exception as e:
         logger.exception(f"Error processing user_prompt_submit: {e}")
@@ -1289,6 +1445,7 @@ def process_stop(
         # successor creation) instead of normal stop processing.
         try:
             from flask import current_app as _app
+
             handoff_executor = _app.extensions.get("handoff_executor")
             if handoff_executor and handoff_executor.is_handoff_in_progress(agent.id):
                 logger.info(
@@ -1313,7 +1470,9 @@ def process_stop(
                 return HookEventResult(
                     success=handoff_result.success,
                     agent_id=agent.id,
-                    error_message=None if handoff_result.success else handoff_result.message,
+                    error_message=None
+                    if handoff_result.success
+                    else handoff_result.message,
                 )
         except RuntimeError:
             pass  # No app context — skip handoff check
@@ -1323,7 +1482,9 @@ def process_stop(
         if not current_command:
             db.session.commit()
             broadcast_card_refresh(agent, "stop")
-            logger.info(f"hook_event: type=stop, agent_id={agent.id}, no active command")
+            logger.info(
+                f"hook_event: type=stop, agent_id={agent.id}, no active command"
+            )
             return HookEventResult(success=True, agent_id=agent.id)
 
         # Guard: if an interactive tool (AskUserQuestion, ExitPlanMode) has
@@ -1342,7 +1503,8 @@ def process_stop(
                     f"preserved AWAITING_INPUT (active interactive tool: {awaiting_tool})"
                 )
                 return HookEventResult(
-                    success=True, agent_id=agent.id,
+                    success=True,
+                    agent_id=agent.id,
                     new_state="AWAITING_INPUT",
                 )
 
@@ -1368,7 +1530,8 @@ def process_stop(
                 f"transcript empty — deferred re-check scheduled"
             )
             return HookEventResult(
-                success=True, agent_id=agent.id,
+                success=True,
+                agent_id=agent.id,
                 new_state=current_command.state.value,
             )
 
@@ -1384,9 +1547,13 @@ def process_stop(
             pos = _transcript_positions.get(agent.id, 0)
             if pos > 0 and agent.transcript_path:
                 from .transcript_reader import read_new_entries_from_position
-                new_entries, _ = read_new_entries_from_position(agent.transcript_path, pos)
+
+                new_entries, _ = read_new_entries_from_position(
+                    agent.transcript_path, pos
+                )
                 new_texts = [
-                    e.content.strip() for e in new_entries
+                    e.content.strip()
+                    for e in new_entries
                     if e.role == "assistant" and e.content and e.content.strip()
                 ]
                 if new_texts:
@@ -1405,14 +1572,17 @@ def process_stop(
 
         try:
             from flask import current_app
+
             inference_service = current_app.extensions.get("inference_service")
         except RuntimeError:
             inference_service = None
 
         # Use full text for intent detection (completion patterns may be at the end)
         intent_result = detect_agent_intent(
-            full_agent_text, inference_service=inference_service,
-            project_id=agent.project_id, agent_id=agent.id,
+            full_agent_text,
+            inference_service=inference_service,
+            project_id=agent.project_id,
+            agent_id=agent.id,
         )
 
         logger.info(
@@ -1434,12 +1604,16 @@ def process_stop(
         stale_notification_turn = None
         if current_command.turns:
             for t in reversed(current_command.turns):
-                if (t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION
-                        and t.text == "Claude is waiting for your input"):
+                if (
+                    t.actor == TurnActor.AGENT
+                    and t.intent == TurnIntent.QUESTION
+                    and t.text == "Claude is waiting for your input"
+                ):
                     stale_notification_turn = t
                     break
 
         from .transcript_reconciler import _content_hash, is_content_duplicate
+
         agent_content_key = _content_hash("agent", full_agent_text or "")
 
         # Dedup guard: check if reconciler already created a turn with this
@@ -1456,8 +1630,12 @@ def process_stop(
                     break
                 # Tier 2: paragraph-level duck-typing for near-identical content
                 # (e.g. minor whitespace/formatting differences between hook and JSONL text)
-                if t.intent in (TurnIntent.QUESTION, TurnIntent.COMPLETION,
-                                TurnIntent.END_OF_COMMAND, TurnIntent.PROGRESS):
+                if t.intent in (
+                    TurnIntent.QUESTION,
+                    TurnIntent.COMPLETION,
+                    TurnIntent.END_OF_COMMAND,
+                    TurnIntent.PROGRESS,
+                ):
                     if is_content_duplicate(t.text, full_agent_text, actor="agent"):
                         existing_dup = t
                         logger.info(
@@ -1470,7 +1648,10 @@ def process_stop(
             # Reconciler already has this turn — update it in-place rather than
             # creating a duplicate. Upgrade intent if the stop hook detected a
             # more specific one (e.g. QUESTION vs PROGRESS).
-            if existing_dup.intent == TurnIntent.PROGRESS and intent_result.intent != TurnIntent.PROGRESS:
+            if (
+                existing_dup.intent == TurnIntent.PROGRESS
+                and intent_result.intent != TurnIntent.PROGRESS
+            ):
                 existing_dup.intent = intent_result.intent
             if intent_result.intent == TurnIntent.QUESTION:
                 existing_dup.question_text = full_agent_text or ""
@@ -1486,12 +1667,21 @@ def process_stop(
             # may not have driven it (e.g. lifecycle failed on first attempt).
             # complete_command is idempotent via the state machine; if already
             # COMPLETE, the transition fails harmlessly and gets caught below.
-            if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
+            if intent_result.intent in (
+                TurnIntent.END_OF_COMMAND,
+                TurnIntent.COMPLETION,
+            ):
                 try:
-                    trigger = "hook:stop:end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop"
+                    trigger = (
+                        "hook:stop:end_of_command"
+                        if intent_result.intent == TurnIntent.END_OF_COMMAND
+                        else "hook:stop"
+                    )
                     lifecycle.complete_command(
-                        command=current_command, trigger=trigger,
-                        agent_text=completion_text, intent=intent_result.intent,
+                        command=current_command,
+                        trigger=trigger,
+                        agent_text=completion_text,
+                        intent=intent_result.intent,
                     )
                     if completion_text != full_agent_text:
                         current_command.full_output = full_agent_text
@@ -1506,7 +1696,8 @@ def process_stop(
             # last PROGRESS turn's intent rather than creating a duplicate
             # COMPLETION turn with the same content.
             progress_turns = [
-                t for t in current_command.turns
+                t
+                for t in current_command.turns
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS
             ]
             if progress_turns:
@@ -1523,12 +1714,21 @@ def process_stop(
                     f"[HOOK_RECEIVER] process_stop: all text captured by PROGRESS — "
                     f"upgraded turn {last_progress.id} to {intent_result.intent.value}"
                 )
-                if intent_result.intent in (TurnIntent.END_OF_COMMAND, TurnIntent.COMPLETION):
+                if intent_result.intent in (
+                    TurnIntent.END_OF_COMMAND,
+                    TurnIntent.COMPLETION,
+                ):
                     try:
-                        trigger = "hook:stop:end_of_command" if intent_result.intent == TurnIntent.END_OF_COMMAND else "hook:stop"
+                        trigger = (
+                            "hook:stop:end_of_command"
+                            if intent_result.intent == TurnIntent.END_OF_COMMAND
+                            else "hook:stop"
+                        )
                         lifecycle.complete_command(
-                            command=current_command, trigger=trigger,
-                            agent_text=completion_text, intent=intent_result.intent,
+                            command=current_command,
+                            trigger=trigger,
+                            agent_text=completion_text,
+                            intent=intent_result.intent,
                         )
                         if completion_text != full_agent_text:
                             current_command.full_output = full_agent_text
@@ -1546,8 +1746,10 @@ def process_stop(
                 stale_notification_turn.jsonl_entry_hash = agent_content_key
             else:
                 turn = Turn(
-                    command_id=current_command.id, actor=TurnActor.AGENT,
-                    intent=TurnIntent.QUESTION, text=full_agent_text or "",
+                    command_id=current_command.id,
+                    actor=TurnActor.AGENT,
+                    intent=TurnIntent.QUESTION,
+                    text=full_agent_text or "",
                     question_text=full_agent_text or "",
                     question_source_type="free_text",
                     is_internal=is_team_internal_content(full_agent_text),
@@ -1568,8 +1770,10 @@ def process_stop(
             # Now attempt completion in a separate commit scope.
             try:
                 lifecycle.complete_command(
-                    command=current_command, trigger="hook:stop:end_of_command",
-                    agent_text=completion_text, intent=TurnIntent.END_OF_COMMAND,
+                    command=current_command,
+                    trigger="hook:stop:end_of_command",
+                    agent_text=completion_text,
+                    intent=TurnIntent.END_OF_COMMAND,
                 )
                 # Preserve full output even when completion turn is deduplicated
                 if completion_text != full_agent_text:
@@ -1592,7 +1796,11 @@ def process_stop(
             db.session.commit()
             # Now attempt completion in a separate commit scope.
             try:
-                lifecycle.complete_command(command=current_command, trigger="hook:stop", agent_text=completion_text)
+                lifecycle.complete_command(
+                    command=current_command,
+                    trigger="hook:stop",
+                    agent_text=completion_text,
+                )
                 if completion_text != full_agent_text:
                     current_command.full_output = full_agent_text
                 db.session.commit()
@@ -1611,6 +1819,7 @@ def process_stop(
         # Single lookup for the delivery service used by both relay and drain.
         try:
             from flask import current_app as _cd_app
+
             ch_delivery = _cd_app.extensions.get("channel_delivery_service")
         except Exception:
             ch_delivery = None
@@ -1618,14 +1827,18 @@ def process_stop(
         # Channel relay: if this agent is in an active channel and the turn
         # is a COMPLETION or END_OF_COMMAND, relay the response as a channel
         # Message to fan out to other members (FR7-FR10).
-        if ch_delivery and intent_result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+        if ch_delivery and intent_result.intent in (
+            TurnIntent.COMPLETION,
+            TurnIntent.END_OF_COMMAND,
+        ):
             try:
                 # Find the turn that was just committed for source tracking
                 relay_turn_id = None
                 if current_command.turns:
                     for t in reversed(current_command.turns):
                         if t.actor == TurnActor.AGENT and t.intent in (
-                            TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
+                            TurnIntent.COMPLETION,
+                            TurnIntent.END_OF_COMMAND,
                         ):
                             relay_turn_id = t.id
                             break
@@ -1637,9 +1850,7 @@ def process_stop(
                     command_id=current_command.id,
                 )
             except Exception as ch_err:
-                logger.warning(
-                    f"Channel relay failed (non-fatal): {ch_err}"
-                )
+                logger.warning(f"Channel relay failed (non-fatal): {ch_err}")
 
         # Queue drain: deliver oldest queued channel message if agent
         # is now in a safe state after completion (FR13).
@@ -1647,9 +1858,7 @@ def process_stop(
             try:
                 ch_delivery.drain_queue(agent)
             except Exception as qd_err:
-                logger.warning(
-                    f"Channel queue drain failed (non-fatal): {qd_err}"
-                )
+                logger.warning(f"Channel queue drain failed (non-fatal): {qd_err}")
 
         pending = lifecycle.get_pending_summarisations()
 
@@ -1658,8 +1867,10 @@ def process_stop(
         if intent_result.intent == TurnIntent.QUESTION:
             try:
                 lifecycle.update_command_state(
-                    command=current_command, to_state=CommandState.AWAITING_INPUT,
-                    trigger="hook:stop:question_detected", confidence=intent_result.confidence,
+                    command=current_command,
+                    to_state=CommandState.AWAITING_INPUT,
+                    trigger="hook:stop:question_detected",
+                    confidence=intent_result.confidence,
                 )
                 db.session.commit()
             except Exception as e:
@@ -1678,7 +1889,9 @@ def process_stop(
             broadcast_turn = None
             for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent in (
-                    TurnIntent.QUESTION, TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND,
+                    TurnIntent.QUESTION,
+                    TurnIntent.COMPLETION,
+                    TurnIntent.END_OF_COMMAND,
                 ):
                     broadcast_turn = t
                     break
@@ -1687,13 +1900,20 @@ def process_stop(
             # so the voice chat gets the agent's response via SSE.
             if not broadcast_turn:
                 for t in reversed(current_command.turns):
-                    if t.actor == TurnActor.AGENT and t.intent == TurnIntent.PROGRESS and t.text:
+                    if (
+                        t.actor == TurnActor.AGENT
+                        and t.intent == TurnIntent.PROGRESS
+                        and t.text
+                    ):
                         broadcast_turn = t
                         break
             if broadcast_turn:
                 _broadcast_turn_created(
-                    agent, broadcast_turn.text, current_command,
-                    tool_input=broadcast_turn.tool_input, turn_id=broadcast_turn.id,
+                    agent,
+                    broadcast_turn.text,
+                    current_command,
+                    tool_input=broadcast_turn.tool_input,
+                    turn_id=broadcast_turn.id,
                     intent=broadcast_turn.intent.value,
                     question_source_type=broadcast_turn.question_source_type,
                 )
@@ -1702,7 +1922,9 @@ def process_stop(
         _execute_pending_summarisations(pending)
 
         actual_state = current_command.state.value
-        _broadcast_state_change(agent, "stop", actual_state, message=f"\u2192 {actual_state.upper()}")
+        _broadcast_state_change(
+            agent, "stop", actual_state, message=f"\u2192 {actual_state.upper()}"
+        )
 
         # Send completion notification AFTER summarisation so it contains
         # the AI-generated summary instead of raw transcript text.
@@ -1714,8 +1936,10 @@ def process_stop(
             f"session_id={claude_session_id}, new_state={actual_state}"
         )
         return HookEventResult(
-            success=True, agent_id=agent.id,
-            state_changed=True, new_state=actual_state,
+            success=True,
+            agent_id=agent.id,
+            state_changed=True,
+            new_state=actual_state,
         )
     except Exception as e:
         logger.exception(f"Error processing stop: {e}")
@@ -1724,6 +1948,7 @@ def process_stop(
 
 
 # --- Awaiting input handlers (pre_tool_use, permission_request, notification) ---
+
 
 def _handle_awaiting_input(
     agent: Agent,
@@ -1741,10 +1966,15 @@ def _handle_awaiting_input(
         agent.last_seen_at = datetime.now(timezone.utc)
         current_command = agent.get_current_command()
 
-        if not current_command or current_command.state not in (CommandState.PROCESSING, CommandState.COMMANDED):
+        if not current_command or current_command.state not in (
+            CommandState.PROCESSING,
+            CommandState.COMMANDED,
+        ):
             db.session.commit()
             broadcast_card_refresh(agent, event_type_str)
-            logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing command)")
+            logger.info(
+                f"hook_event: type={event_type_str}, agent_id={agent.id}, ignored (no active processing command)"
+            )
             return HookEventResult(success=True, agent_id=agent.id)
 
         # Flush any pending agent output from the transcript BEFORE creating
@@ -1771,22 +2001,34 @@ def _handle_awaiting_input(
                 questions = structured_options.get("questions", [])
                 if questions and isinstance(questions, list) and len(questions) > 1:
                     # Multi-question: store full structure array for rendering
-                    q_options = [{
-                        "question": qq.get("question", ""),
-                        "header": qq.get("header", ""),
-                        "multiSelect": qq.get("multiSelect", False),
-                        "options": [
-                            {"label": o.get("label", ""), "description": o.get("description", "")}
-                            for o in qq.get("options", []) if isinstance(o, dict)
-                        ],
-                    } for qq in questions if isinstance(qq, dict)]
+                    q_options = [
+                        {
+                            "question": qq.get("question", ""),
+                            "header": qq.get("header", ""),
+                            "multiSelect": qq.get("multiSelect", False),
+                            "options": [
+                                {
+                                    "label": o.get("label", ""),
+                                    "description": o.get("description", ""),
+                                }
+                                for o in qq.get("options", [])
+                                if isinstance(o, dict)
+                            ],
+                        }
+                        for qq in questions
+                        if isinstance(qq, dict)
+                    ]
                 elif questions and isinstance(questions, list):
                     q = questions[0] if questions else {}
                     opts = q.get("options", [])
                     if opts:
                         q_options = [
-                            {"label": o.get("label", ""), "description": o.get("description", "")}
-                            for o in opts if isinstance(o, dict)
+                            {
+                                "label": o.get("label", ""),
+                                "description": o.get("description", ""),
+                            }
+                            for o in opts
+                            if isinstance(o, dict)
                         ]
             elif event_type_enum == HookEventType.PERMISSION_REQUEST:
                 q_source_type = "permission_request"
@@ -1794,28 +2036,46 @@ def _handle_awaiting_input(
             if structured_options is None and tool_name == "ExitPlanMode":
                 question_text = "Approve plan and proceed?"
                 structured_options = {
-                    "questions": [{
-                        "question": question_text,
-                        "options": [
-                            {"label": "Yes", "description": "Approve the plan and begin implementation"},
-                            {"label": "No", "description": "Reject and stay in plan mode"},
-                        ],
-                    }],
+                    "questions": [
+                        {
+                            "question": question_text,
+                            "options": [
+                                {
+                                    "label": "Yes",
+                                    "description": "Approve the plan and begin implementation",
+                                },
+                                {
+                                    "label": "No",
+                                    "description": "Reject and stay in plan mode",
+                                },
+                            ],
+                        }
+                    ],
                     "source": "exit_plan_mode_default",
                 }
                 # Attach plan content so the voice chat can display it
                 if current_command.plan_content:
                     structured_options["plan_content"] = current_command.plan_content
                     if current_command.plan_file_path:
-                        structured_options["plan_file_path"] = current_command.plan_file_path
+                        structured_options["plan_file_path"] = (
+                            current_command.plan_file_path
+                        )
                 q_source_type = "ask_user_question"
                 q_options = [
-                    {"label": "Yes", "description": "Approve the plan and begin implementation"},
+                    {
+                        "label": "Yes",
+                        "description": "Approve the plan and begin implementation",
+                    },
                     {"label": "No", "description": "Reject and stay in plan mode"},
                 ]
             # For permission_request, try capturing options + context from the tmux pane
-            if structured_options is None and event_type_enum == HookEventType.PERMISSION_REQUEST:
-                structured_options = _synthesize_permission_options(agent, tool_name, tool_input)
+            if (
+                structured_options is None
+                and event_type_enum == HookEventType.PERMISSION_REQUEST
+            ):
+                structured_options = _synthesize_permission_options(
+                    agent, tool_name, tool_input
+                )
                 # Use the synthesized question text (from permission summarizer) if available
                 if structured_options:
                     synth_questions = structured_options.get("questions", [])
@@ -1826,8 +2086,12 @@ def _handle_awaiting_input(
                         opts = synth_questions[0].get("options", [])
                         if opts:
                             q_options = [
-                                {"label": o.get("label", ""), "description": o.get("description", "")}
-                                for o in opts if isinstance(o, dict)
+                                {
+                                    "label": o.get("label", ""),
+                                    "description": o.get("description", ""),
+                                }
+                                for o in opts
+                                if isinstance(o, dict)
                             ]
                     # Check if LLM fallback needed (generic summary)
                     if question_text and question_text.startswith("Permission:"):
@@ -1835,8 +2099,10 @@ def _handle_awaiting_input(
             if structured_options:
                 structured_options["status"] = "pending"
             question_turn = Turn(
-                command_id=current_command.id, actor=TurnActor.AGENT,
-                intent=TurnIntent.QUESTION, text=question_text,
+                command_id=current_command.id,
+                actor=TurnActor.AGENT,
+                intent=TurnIntent.QUESTION,
+                text=question_text,
                 tool_input=structured_options,
                 question_text=question_text,
                 question_options=q_options,
@@ -1856,16 +2122,23 @@ def _handle_awaiting_input(
                 has_recent = False
                 if current_command.turns:
                     for t in reversed(current_command.turns):
-                        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                            has_recent = (datetime.now(timezone.utc) - t.timestamp).total_seconds() < 10
+                        if (
+                            t.actor == TurnActor.AGENT
+                            and t.intent == TurnIntent.QUESTION
+                        ):
+                            has_recent = (
+                                datetime.now(timezone.utc) - t.timestamp
+                            ).total_seconds() < 10
                             break
                 if not has_recent:
                     question_text = (f"[{title}] " if title else "") + (message or "")
                     question_text = question_text.strip()
                     if question_text:
                         question_turn = Turn(
-                            command_id=current_command.id, actor=TurnActor.AGENT,
-                            intent=TurnIntent.QUESTION, text=question_text,
+                            command_id=current_command.id,
+                            actor=TurnActor.AGENT,
+                            intent=TurnIntent.QUESTION,
+                            text=question_text,
                             question_text=question_text,
                             question_source_type="free_text",
                             is_internal=is_team_internal_content(question_text),
@@ -1884,8 +2157,10 @@ def _handle_awaiting_input(
         lifecycle = _get_lifecycle_manager()
         try:
             lifecycle.update_command_state(
-                current_command, CommandState.AWAITING_INPUT,
-                trigger=event_type_str, confidence=1.0,
+                current_command,
+                CommandState.AWAITING_INPUT,
+                trigger=event_type_str,
+                confidence=1.0,
             )
             db.session.commit()
         except Exception as e:
@@ -1899,16 +2174,28 @@ def _handle_awaiting_input(
         # Broadcast
         _broadcast_state_change(agent, event_type_str, "AWAITING_INPUT")
         if question_text:
-            _broadcast_turn_created(agent, question_text, current_command,
-                                    tool_input=structured_options,
-                                    turn_id=question_turn.id if question_turn else None,
-                                    question_source_type=question_turn.question_source_type if question_turn else None)
+            _broadcast_turn_created(
+                agent,
+                question_text,
+                current_command,
+                tool_input=structured_options,
+                turn_id=question_turn.id if question_turn else None,
+                question_source_type=question_turn.question_source_type
+                if question_turn
+                else None,
+            )
         elif current_command.turns:
             # Broadcast existing turn (dedup case: pre_tool_use fired first)
             for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                    _broadcast_turn_created(agent, t.text, current_command, tool_input=t.tool_input, turn_id=t.id,
-                                            question_source_type=t.question_source_type)
+                    _broadcast_turn_created(
+                        agent,
+                        t.text,
+                        current_command,
+                        tool_input=t.tool_input,
+                        turn_id=t.id,
+                        question_source_type=t.question_source_type,
+                    )
                     break
 
         # Queue LLM fallback for generic permission summaries
@@ -1916,13 +2203,23 @@ def _handle_awaiting_input(
             for t in reversed(current_command.turns):
                 if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
                     from .command_lifecycle import SummarisationRequest
-                    _execute_pending_summarisations([
-                        SummarisationRequest(type="permission_summary", turn=t),
-                    ])
+
+                    _execute_pending_summarisations(
+                        [
+                            SummarisationRequest(type="permission_summary", turn=t),
+                        ]
+                    )
                     break
 
-        logger.info(f"hook_event: type={event_type_str}, agent_id={agent.id}, AWAITING_INPUT")
-        return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state="AWAITING_INPUT")
+        logger.info(
+            f"hook_event: type={event_type_str}, agent_id={agent.id}, AWAITING_INPUT"
+        )
+        return HookEventResult(
+            success=True,
+            agent_id=agent.id,
+            state_changed=True,
+            new_state="AWAITING_INPUT",
+        )
     except Exception as e:
         logger.exception(f"Error processing {event_type_str}: {e}")
         db.session.rollback()
@@ -1937,10 +2234,7 @@ def process_notification(
     notification_type: str | None = None,
 ) -> HookEventResult:
     # Filter team-internal XML notifications (sub-agent comms).
-    if message and (
-        "<task-notification>" in message
-        or "<system-reminder>" in message
-    ):
+    if message and ("<task-notification>" in message or "<system-reminder>" in message):
         state = get_receiver_state()
         state.record_event(HookEventType.NOTIFICATION)
         agent.last_seen_at = datetime.now(timezone.utc)
@@ -1950,8 +2244,10 @@ def process_notification(
             f"session_id={claude_session_id}, skipped=system_xml"
         )
         return HookEventResult(
-            success=True, agent_id=agent.id,
-            state_changed=False, new_state=None,
+            success=True,
+            agent_id=agent.id,
+            state_changed=False,
+            new_state=None,
         )
     # Filter interruption artifact notifications from tmux key injection.
     if message and "Interruption detected" in message:
@@ -1964,14 +2260,18 @@ def process_notification(
             f"session_id={claude_session_id}, skipped=interruption_artifact"
         )
         return HookEventResult(
-            success=True, agent_id=agent.id,
-            state_changed=False, new_state=None,
+            success=True,
+            agent_id=agent.id,
+            state_changed=False,
+            new_state=None,
         )
     return _handle_awaiting_input(
-        agent, HookEventType.NOTIFICATION, "notification",
-        message=message, title=title,
+        agent,
+        HookEventType.NOTIFICATION,
+        "notification",
+        message=message,
+        title=title,
     )
-
 
 
 def process_pre_tool_use(
@@ -1994,8 +2294,11 @@ def process_pre_tool_use(
             except Exception as e:
                 logger.warning(f"Failed to mark plan mode entry: {e}")
         return _handle_awaiting_input(
-            agent, HookEventType.PRE_TOOL_USE, "pre_tool_use",
-            tool_name=tool_name, tool_input=tool_input,
+            agent,
+            HookEventType.PRE_TOOL_USE,
+            "pre_tool_use",
+            tool_name=tool_name,
+            tool_input=tool_input,
         )
 
     # Non-interactive tool: lightweight update, but recover stale AWAITING_INPUT.
@@ -2016,23 +2319,32 @@ def process_pre_tool_use(
             _mark_question_answered(current_command)
             lifecycle = _get_lifecycle_manager()
             lifecycle.update_command_state(
-                command=current_command, to_state=CommandState.PROCESSING,
+                command=current_command,
+                to_state=CommandState.PROCESSING,
                 trigger="hook:pre_tool_use:stale_awaiting_recovery",
                 confidence=0.9,
             )
             _awaiting_tool_for_agent.pop(agent.id, None)
             db.session.commit()
             broadcast_card_refresh(agent, "pre_tool_use_recovery")
-            _broadcast_state_change(agent, "pre_tool_use", CommandState.PROCESSING.value)
+            _broadcast_state_change(
+                agent, "pre_tool_use", CommandState.PROCESSING.value
+            )
             logger.info(
                 f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, "
                 f"recovered stale AWAITING_INPUT → PROCESSING"
             )
-            return HookEventResult(success=True, agent_id=agent.id,
-                                   state_changed=True, new_state=CommandState.PROCESSING.value)
+            return HookEventResult(
+                success=True,
+                agent_id=agent.id,
+                state_changed=True,
+                new_state=CommandState.PROCESSING.value,
+            )
 
         db.session.commit()
-        logger.debug(f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, no state change")
+        logger.debug(
+            f"hook_event: type=pre_tool_use, agent_id={agent.id}, tool={tool_name}, no state change"
+        )
         return HookEventResult(success=True, agent_id=agent.id)
     except Exception as e:
         logger.exception(f"Error processing pre_tool_use: {e}")
@@ -2047,8 +2359,11 @@ def process_permission_request(
     tool_input: dict | None = None,
 ) -> HookEventResult:
     return _handle_awaiting_input(
-        agent, HookEventType.PERMISSION_REQUEST, "permission_request",
-        tool_name=tool_name, tool_input=tool_input,
+        agent,
+        HookEventType.PERMISSION_REQUEST,
+        "permission_request",
+        tool_name=tool_name,
+        tool_input=tool_input,
     )
 
 
@@ -2076,7 +2391,9 @@ def process_post_tool_use(
             if agent.ended_at is not None:
                 db.session.commit()
                 broadcast_card_refresh(agent, "post_tool_use")
-                logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, skipped (agent ended)")
+                logger.info(
+                    f"hook_event: type=post_tool_use, agent_id={agent.id}, skipped (agent ended)"
+                )
                 return HookEventResult(success=True, agent_id=agent.id)
 
             # Guard: don't infer a command if the previous one just completed
@@ -2094,7 +2411,9 @@ def process_post_tool_use(
                 .first()
             )
             if recent_complete and recent_complete.completed_at:
-                elapsed = (datetime.now(timezone.utc) - recent_complete.completed_at).total_seconds()
+                elapsed = (
+                    datetime.now(timezone.utc) - recent_complete.completed_at
+                ).total_seconds()
                 if elapsed < INFERRED_COMMAND_COOLDOWN_SECONDS:
                     db.session.commit()
                     broadcast_card_refresh(agent, "post_tool_use")
@@ -2114,6 +2433,7 @@ def process_post_tool_use(
             if agent.transcript_path:
                 try:
                     from .transcript_reader import read_last_user_message
+
                     result = read_last_user_message(agent.transcript_path)
                     if result.success and result.text:
                         new_command.full_command = result.text
@@ -2126,18 +2446,25 @@ def process_post_tool_use(
                         db.session.add(turn)
                         db.session.flush()
                         from .command_lifecycle import SummarisationRequest
+
                         lifecycle._pending_summarisations.append(
                             SummarisationRequest(type="turn", turn=turn)
                         )
                         lifecycle._pending_summarisations.append(
-                            SummarisationRequest(type="instruction", command=new_command, command_text=result.text)
+                            SummarisationRequest(
+                                type="instruction",
+                                command=new_command,
+                                command_text=result.text,
+                            )
                         )
                         logger.info(
                             f"hook_event: type=post_tool_use, agent_id={agent.id}, "
                             f"recovered user command from transcript ({len(result.text)} chars)"
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to recover user command from transcript: {e}")
+                    logger.warning(
+                        f"Failed to recover user command from transcript: {e}"
+                    )
 
             # Commit turn FIRST — turn must survive even if state transition fails.
             _trigger_priority_scoring()
@@ -2147,8 +2474,10 @@ def process_post_tool_use(
             # Now attempt state transition in a separate commit scope.
             try:
                 lifecycle.update_command_state(
-                    command=new_command, to_state=CommandState.PROCESSING,
-                    trigger="hook:post_tool_use:inferred", confidence=0.9,
+                    command=new_command,
+                    to_state=CommandState.PROCESSING,
+                    trigger="hook:post_tool_use:inferred",
+                    confidence=0.9,
                 )
                 db.session.commit()
             except Exception as e:
@@ -2160,18 +2489,35 @@ def process_post_tool_use(
 
             broadcast_card_refresh(agent, "post_tool_use_inferred")
             _execute_pending_summarisations(pending)
-            _broadcast_state_change(agent, "post_tool_use", CommandState.PROCESSING.value)
-            logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, inferred PROCESSING command_id={new_command.id}")
-            return HookEventResult(success=True, agent_id=agent.id, state_changed=True, new_state=CommandState.PROCESSING.value)
+            _broadcast_state_change(
+                agent, "post_tool_use", CommandState.PROCESSING.value
+            )
+            logger.info(
+                f"hook_event: type=post_tool_use, agent_id={agent.id}, inferred PROCESSING command_id={new_command.id}"
+            )
+            return HookEventResult(
+                success=True,
+                agent_id=agent.id,
+                state_changed=True,
+                new_state=CommandState.PROCESSING.value,
+            )
 
-        if current_command.state == CommandState.AWAITING_INPUT and tool_name in USER_INTERACTIVE_TOOLS:
+        if (
+            current_command.state == CommandState.AWAITING_INPUT
+            and tool_name in USER_INTERACTIVE_TOOLS
+        ):
             # ExitPlanMode fires post_tool_use after showing the plan but before the
             # user approves/rejects — preserve AWAITING_INPUT until user_prompt_submit
             db.session.commit()
-            logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, "
-                        f"preserved AWAITING_INPUT for interactive tool {tool_name}")
-            return HookEventResult(success=True, agent_id=agent.id,
-                                   new_state=CommandState.AWAITING_INPUT.value)
+            logger.info(
+                f"hook_event: type=post_tool_use, agent_id={agent.id}, "
+                f"preserved AWAITING_INPUT for interactive tool {tool_name}"
+            )
+            return HookEventResult(
+                success=True,
+                agent_id=agent.id,
+                new_state=CommandState.AWAITING_INPUT.value,
+            )
 
         if current_command.state == CommandState.AWAITING_INPUT:
             # Only resume if the completing tool matches the one that triggered
@@ -2188,8 +2534,11 @@ def process_post_tool_use(
                     f"hook_event: type=post_tool_use, agent_id={agent.id}, "
                     f"preserved AWAITING_INPUT (awaiting={awaiting_tool}, got={tool_name})"
                 )
-                return HookEventResult(success=True, agent_id=agent.id,
-                                       new_state=CommandState.AWAITING_INPUT.value)
+                return HookEventResult(
+                    success=True,
+                    agent_id=agent.id,
+                    new_state=CommandState.AWAITING_INPUT.value,
+                )
 
             # Resume: matching tool completed (or no tracking) — user answered
             _mark_question_answered(current_command)
@@ -2197,8 +2546,12 @@ def process_post_tool_use(
             # Detect plan approval via post_tool_use resume
             if current_command.plan_content and not current_command.plan_approved_at:
                 current_command.plan_approved_at = datetime.now(timezone.utc)
-                logger.info(f"plan_approved: agent_id={agent.id}, command_id={current_command.id} (post_tool_use)")
-            result = lifecycle.process_turn(agent=agent, actor=TurnActor.USER, text=None)
+                logger.info(
+                    f"plan_approved: agent_id={agent.id}, command_id={current_command.id} (post_tool_use)"
+                )
+            result = lifecycle.process_turn(
+                agent=agent, actor=TurnActor.USER, text=None
+            )
             if result.success:
                 _trigger_priority_scoring()
             pending = lifecycle.get_pending_summarisations()
@@ -2208,21 +2561,33 @@ def process_post_tool_use(
             new_state = result.command.state.value if result.command else None
             if new_state == CommandState.PROCESSING.value:
                 _broadcast_state_change(
-                    agent, "post_tool_use", CommandState.PROCESSING.value,
+                    agent,
+                    "post_tool_use",
+                    CommandState.PROCESSING.value,
                     message=f"Tool: {tool_name}" if tool_name else None,
                 )
-            logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, resumed from AWAITING_INPUT")
+            logger.info(
+                f"hook_event: type=post_tool_use, agent_id={agent.id}, resumed from AWAITING_INPUT"
+            )
             return HookEventResult(
-                success=result.success, agent_id=agent.id,
-                state_changed=new_state == CommandState.PROCESSING.value if new_state else False,
-                new_state=new_state, error_message=result.error,
+                success=result.success,
+                agent_id=agent.id,
+                state_changed=new_state == CommandState.PROCESSING.value
+                if new_state
+                else False,
+                new_state=new_state,
+                error_message=result.error,
             )
 
         # Already PROCESSING/COMMANDED — capture intermediate PROGRESS text
         _capture_progress_text(agent, current_command)
         db.session.commit()
-        logger.info(f"hook_event: type=post_tool_use, agent_id={agent.id}, progress_capture (state={current_command.state.value})")
-        return HookEventResult(success=True, agent_id=agent.id, new_state=current_command.state.value)
+        logger.info(
+            f"hook_event: type=post_tool_use, agent_id={agent.id}, progress_capture (state={current_command.state.value})"
+        )
+        return HookEventResult(
+            success=True, agent_id=agent.id, new_state=current_command.state.value
+        )
     except Exception as e:
         logger.exception(f"Error processing post_tool_use: {e}")
         db.session.rollback()

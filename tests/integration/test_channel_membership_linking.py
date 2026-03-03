@@ -1,6 +1,5 @@
 """Integration tests for agent-to-membership linking on session start (FR14, FR14a)."""
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -41,13 +40,19 @@ def setup_data(app, db_session):
 
     # Creator persona with agent
     creator_persona = Persona(
-        name="Creator", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Creator",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     # Target persona (will get a new agent via session-start)
     target_persona = Persona(
-        name="Target", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Target",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     db_session.add_all([creator_persona, target_persona])
     db_session.flush()
@@ -58,7 +63,8 @@ def setup_data(app, db_session):
 
     # Creator's agent
     creator_agent = Agent(
-        session_uuid=uuid4(), project_id=project.id,
+        session_uuid=uuid4(),
+        project_id=project.id,
         persona_id=creator_persona.id,
     )
     db_session.add(creator_agent)
@@ -122,9 +128,7 @@ class TestAgentMembershipLinking:
     """Test FR14: agent_id updated on session start."""
 
     @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
-    def test_links_agent_to_pending_membership(
-        self, mock_broadcast, app, setup_data
-    ):
+    def test_links_agent_to_pending_membership(self, mock_broadcast, app, setup_data):
         """Agent registration links to pending ChannelMembership."""
         target_membership_id = setup_data["target_membership"].id
 
@@ -159,9 +163,7 @@ class TestContextBriefingDelivery:
     """Test FR14a: context briefing delivered after linking."""
 
     @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
-    def test_context_briefing_delivered(
-        self, mock_broadcast, app, setup_data
-    ):
+    def test_context_briefing_delivered(self, mock_broadcast, app, setup_data):
         """Context briefing delivered via tmux after agent links to membership."""
         channel_id = setup_data["channel"].id
 

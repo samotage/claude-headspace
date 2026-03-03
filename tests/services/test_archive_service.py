@@ -1,7 +1,5 @@
 """Tests for centralized archive service."""
 
-import os
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -19,16 +17,18 @@ from claude_headspace.services.archive_service import (
 @pytest.fixture
 def service():
     """Create an ArchiveService with default config."""
-    return ArchiveService(config={
-        "archive": {
-            "enabled": True,
-            "retention": {
-                "policy": "keep_all",
-                "keep_last_n": 10,
-                "days": 90,
+    return ArchiveService(
+        config={
+            "archive": {
+                "enabled": True,
+                "retention": {
+                    "policy": "keep_all",
+                    "keep_last_n": 10,
+                    "days": 90,
+                },
             },
-        },
-    })
+        }
+    )
 
 
 @pytest.fixture
@@ -79,7 +79,9 @@ class TestArchiveArtifact:
         result = service.archive_artifact(project_dir, "progress_summary", timestamp=ts)
 
         assert result is not None
-        archive_path = project_dir / ARCHIVE_DIR / "progress_summary_2026-01-29_16-00-00.md"
+        archive_path = (
+            project_dir / ARCHIVE_DIR / "progress_summary_2026-01-29_16-00-00.md"
+        )
         assert archive_path.exists()
         assert archive_path.read_text() == "# Summary"
 
@@ -127,7 +129,9 @@ class TestArchiveArtifact:
         _create_artifact(project_dir, "waypoint", "# Content")
 
         with patch("claude_headspace.services.archive_service.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 3, 15, 10, 20, 30, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(
+                2026, 3, 15, 10, 20, 30, tzinfo=timezone.utc
+            )
             mock_dt.strptime = datetime.strptime
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             service.archive_artifact(project_dir, "waypoint")
@@ -139,12 +143,15 @@ class TestArchiveArtifact:
         """Should use atomic write via tempfile + os.replace."""
         _create_artifact(project_dir, "waypoint", "# Content")
 
-        with patch("claude_headspace.services.archive_service.os.replace") as mock_replace:
+        with patch(
+            "claude_headspace.services.archive_service.os.replace"
+        ) as mock_replace:
             mock_replace.side_effect = lambda src, dst: Path(dst).write_text(
                 Path(src).read_text()
             )
             service.archive_artifact(
-                project_dir, "waypoint",
+                project_dir,
+                "waypoint",
                 timestamp=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
             )
             assert mock_replace.call_count == 1
@@ -153,7 +160,9 @@ class TestArchiveArtifact:
         """Should return None on failure, not raise."""
         _create_artifact(project_dir, "waypoint", "# Content")
 
-        with patch("claude_headspace.services.archive_service.tempfile.mkstemp") as mock:
+        with patch(
+            "claude_headspace.services.archive_service.tempfile.mkstemp"
+        ) as mock:
             mock.side_effect = OSError("disk full")
             result = service.archive_artifact(project_dir, "waypoint")
             assert result is None
@@ -208,7 +217,7 @@ class TestEnforceRetention:
     def test_keep_all_deletes_nothing(self, service, project_dir):
         """keep_all policy should not delete any archives."""
         for i in range(15):
-            ts = f"2026-01-{i+1:02d}_12-00-00"
+            ts = f"2026-01-{i + 1:02d}_12-00-00"
             _create_archive(project_dir, "waypoint", ts)
 
         deleted = service.enforce_retention(project_dir, "waypoint")
@@ -219,15 +228,17 @@ class TestEnforceRetention:
 
     def test_keep_last_n_removes_oldest(self, project_dir):
         """keep_last_n should remove archives beyond N."""
-        svc = ArchiveService(config={
-            "archive": {
-                "enabled": True,
-                "retention": {"policy": "keep_last_n", "keep_last_n": 3},
-            },
-        })
+        svc = ArchiveService(
+            config={
+                "archive": {
+                    "enabled": True,
+                    "retention": {"policy": "keep_last_n", "keep_last_n": 3},
+                },
+            }
+        )
 
         for i in range(5):
-            ts = f"2026-01-{i+1:02d}_12-00-00"
+            ts = f"2026-01-{i + 1:02d}_12-00-00"
             _create_archive(project_dir, "waypoint", ts)
 
         deleted = svc.enforce_retention(project_dir, "waypoint")
@@ -243,12 +254,14 @@ class TestEnforceRetention:
 
     def test_time_based_removes_expired(self, project_dir):
         """time_based should remove archives older than N days."""
-        svc = ArchiveService(config={
-            "archive": {
-                "enabled": True,
-                "retention": {"policy": "time_based", "days": 30},
-            },
-        })
+        svc = ArchiveService(
+            config={
+                "archive": {
+                    "enabled": True,
+                    "retention": {"policy": "time_based", "days": 30},
+                },
+            }
+        )
 
         now = datetime.now(timezone.utc)
         # Create one recent and one old archive
@@ -268,15 +281,17 @@ class TestEnforceRetention:
 
     def test_only_affects_specified_artifact_type(self, project_dir):
         """Should only clean up the specified artifact type."""
-        svc = ArchiveService(config={
-            "archive": {
-                "enabled": True,
-                "retention": {"policy": "keep_last_n", "keep_last_n": 1},
-            },
-        })
+        svc = ArchiveService(
+            config={
+                "archive": {
+                    "enabled": True,
+                    "retention": {"policy": "keep_last_n", "keep_last_n": 1},
+                },
+            }
+        )
 
         for i in range(3):
-            ts = f"2026-01-{i+1:02d}_12-00-00"
+            ts = f"2026-01-{i + 1:02d}_12-00-00"
             _create_archive(project_dir, "waypoint", ts)
             _create_archive(project_dir, "progress_summary", ts)
 

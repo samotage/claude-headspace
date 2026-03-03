@@ -36,7 +36,6 @@ def mock_inference():
 
 
 class TestTurnSummarisationEndpoint:
-
     def test_summarise_turn_success(self, app, client, mock_service, mock_inference):
         app.extensions["summarisation_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
@@ -45,12 +44,17 @@ class TestTurnSummarisationEndpoint:
         mock_turn.summary = None
         mock_turn.summary_generated_at = None
         mock_service.summarise_turn.return_value = "Generated summary"
+
         # After summarise_turn is called, summary is set
         def set_summary(turn, db_session=None):
             turn.summary = "Generated summary"
             from datetime import datetime, timezone
-            turn.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+
+            turn.summary_generated_at = datetime(
+                2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+            )
             return "Generated summary"
+
         mock_service.summarise_turn.side_effect = set_summary
 
         with patch("src.claude_headspace.database.db") as mock_db:
@@ -69,7 +73,10 @@ class TestTurnSummarisationEndpoint:
         mock_turn = MagicMock()
         mock_turn.summary = "Existing summary"
         from datetime import datetime, timezone
-        mock_turn.summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+
+        mock_turn.summary_generated_at = datetime(
+            2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_turn
@@ -113,7 +120,6 @@ class TestTurnSummarisationEndpoint:
 
 
 class TestCommandSummarisationEndpoint:
-
     def test_summarise_command_success(self, app, client, mock_service, mock_inference):
         app.extensions["summarisation_service"] = mock_service
         app.extensions["inference_service"] = mock_inference
@@ -121,11 +127,16 @@ class TestCommandSummarisationEndpoint:
         mock_cmd = MagicMock()
         mock_cmd.completion_summary = None
         mock_cmd.completion_summary_generated_at = None
+
         def set_summary(cmd, db_session=None):
             cmd.completion_summary = "Command summary"
             from datetime import datetime, timezone
-            cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+
+            cmd.completion_summary_generated_at = datetime(
+                2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+            )
             return "Command summary"
+
         mock_service.summarise_command.side_effect = set_summary
 
         with patch("src.claude_headspace.database.db") as mock_db:
@@ -143,7 +154,10 @@ class TestCommandSummarisationEndpoint:
         mock_cmd = MagicMock()
         mock_cmd.completion_summary = "Already done"
         from datetime import datetime, timezone
-        mock_cmd.completion_summary_generated_at = datetime(2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc)
+
+        mock_cmd.completion_summary_generated_at = datetime(
+            2026, 1, 31, 10, 0, 0, tzinfo=timezone.utc
+        )
 
         with patch("src.claude_headspace.database.db") as mock_db:
             mock_db.session.get.return_value = mock_cmd

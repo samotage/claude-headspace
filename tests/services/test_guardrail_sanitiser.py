@@ -5,8 +5,6 @@ module names, environment details, and process IDs from text while
 preserving generic failure messages.
 """
 
-import pytest
-
 from claude_headspace.services.guardrail_sanitiser import (
     contains_error_patterns,
     sanitise_error_output,
@@ -84,7 +82,9 @@ class TestSanitiseErrorOutput:
 
     def test_preserves_user_facing_text(self):
         """Normal user-facing text without system details passes through."""
-        text = "I'm having trouble completing that request. Let me try another approach."
+        text = (
+            "I'm having trouble completing that request. Let me try another approach."
+        )
         result = sanitise_error_output(text)
         assert result == text
 
@@ -106,9 +106,7 @@ class TestSanitiseErrorOutput:
 
     def test_collapses_multiple_redactions(self):
         """Multiple consecutive redactions are collapsed into one."""
-        text = (
-            "Error at /a/b/c.py in /d/e/f.py near /g/h/i.py"
-        )
+        text = "Error at /a/b/c.py in /d/e/f.py near /g/h/i.py"
         result = sanitise_error_output(text)
         # Should not have multiple consecutive [details redacted]
         assert "[details redacted]  [details redacted]" not in result

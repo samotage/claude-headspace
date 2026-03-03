@@ -13,18 +13,22 @@ import re
 # beginning of the message. Agents that DISCUSS these tags mid-text (in prose,
 # backticks, or code) must not be flagged.
 _XML_TAG_PATTERN = re.compile(r"^\s*<(task-notification|system-reminder)\b")
-_JSON_TYPE_PATTERN = re.compile(r'"type"\s*:\s*"(message|broadcast|shutdown_request|shutdown_response|plan_approval_request|plan_approval_response|idle)"')
+_JSON_TYPE_PATTERN = re.compile(
+    r'"type"\s*:\s*"(message|broadcast|shutdown_request|shutdown_response|plan_approval_request|plan_approval_response|idle)"'
+)
 
 # JSON types that indicate team-internal communication
-_INTERNAL_JSON_TYPES = frozenset({
-    "message",
-    "broadcast",
-    "shutdown_request",
-    "shutdown_response",
-    "plan_approval_request",
-    "plan_approval_response",
-    "idle",
-})
+_INTERNAL_JSON_TYPES = frozenset(
+    {
+        "message",
+        "broadcast",
+        "shutdown_request",
+        "shutdown_response",
+        "plan_approval_request",
+        "plan_approval_response",
+        "idle",
+    }
+)
 
 
 def is_team_internal_content(text: str | None) -> bool:
@@ -127,7 +131,9 @@ def is_persona_injection(text: str | None) -> bool:
     # Direct persona priming (no guardrails prefix)
     if stripped.startswith(_PERSONA_PRIMING_PREFIX):
         first_500 = stripped[:500]
-        return _PERSONA_PRIMING_MIDDLE in first_500 and _PERSONA_SKILLS_HEADING in stripped
+        return (
+            _PERSONA_PRIMING_MIDDLE in first_500 and _PERSONA_SKILLS_HEADING in stripped
+        )
 
     # Guardrails-prefixed variant: "## Platform Guardrails\n...\nYou are ..."
     # The guardrails block can be ~10 KB, so the persona priming markers
@@ -192,7 +198,9 @@ def is_skill_expansion(text: str | None) -> bool:
         return True
 
     # OTL SOP/util/misc: "# Title" + "**Goal:**" or "**Purpose:**"
-    if _SKILL_HEADING_RE.match(stripped) and ("**Goal:**" in first_300 or "**Purpose:**" in first_300):
+    if _SKILL_HEADING_RE.match(stripped) and (
+        "**Goal:**" in first_300 or "**Purpose:**" in first_300
+    ):
         return True
 
     # OPSX skills: contain "**Input**:" or "**Input:**" near the start
@@ -210,7 +218,11 @@ def is_skill_expansion(text: str | None) -> bool:
     # Structured command files: heading + section separators + sub-headings.
     # Catches orch v2 commands and other multi-section .md command files that
     # don't use the legacy **Command name:** / **Goal:** / **Input:** markers.
-    if _SKILL_HEADING_RE.match(stripped) and "\n---\n" in stripped and "\n## " in stripped:
+    if (
+        _SKILL_HEADING_RE.match(stripped)
+        and "\n---\n" in stripped
+        and "\n## " in stripped
+    ):
         return True
 
     # Claude Code user skills (.claude/skills/): the Skill tool prepends

@@ -5,8 +5,6 @@ hook firing, double prompts, and session-end during input.
 """
 
 import pytest
-from playwright.sync_api import expect
-
 
 pytestmark = pytest.mark.e2e
 
@@ -76,9 +74,7 @@ class TestEdgeCases:
         dashboard.assert_agent_card_gone(agent_id)
         dashboard.capture("end_during_awaiting")
 
-    def test_session_end_while_idle(
-        self, page, e2e_server, hook_client, dashboard
-    ):
+    def test_session_end_while_idle(self, page, e2e_server, hook_client, dashboard):
         """session-end on IDLE agent removes the card cleanly."""
         result = hook_client.session_start()
         agent_id = result["agent_id"]

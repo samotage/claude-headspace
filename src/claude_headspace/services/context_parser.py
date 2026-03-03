@@ -14,9 +14,7 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 # Match context usage statusline: [ctx: 22% used, 155k remaining]
 # Allows for variations in whitespace and number formats
-_CTX_RE = re.compile(
-    r"\[ctx:\s*(\d+)%\s*used,\s*(\d+\.?\d*[kKmM]?)\s*remaining\]"
-)
+_CTX_RE = re.compile(r"\[ctx:\s*(\d+)%\s*used,\s*(\d+\.?\d*[kKmM]?)\s*remaining\]")
 
 
 def parse_context_usage(pane_text: str) -> dict | None:

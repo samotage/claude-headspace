@@ -12,11 +12,11 @@ import pytest
 
 from claude_headspace.models.persona import Persona
 from claude_headspace.models.role import Role
+from claude_headspace.services.persona_assets import check_assets
 from claude_headspace.services.persona_registration import (
     RegistrationError,
     register_persona,
 )
-from claude_headspace.services.persona_assets import check_assets
 
 
 @pytest.fixture
@@ -79,7 +79,9 @@ class TestPersonaRegistrationIntegration:
         assert p1.role_id == p2.role_id
         assert Role.query.count() == 1
 
-    def test_different_roles_create_separate_records(self, app, app_db_session, tmp_path):
+    def test_different_roles_create_separate_records(
+        self, app, app_db_session, tmp_path
+    ):
         """Different role names create separate Role records."""
         register_persona(name="Con", role_name="developer", project_root=tmp_path)
         register_persona(name="Vern", role_name="tester", project_root=tmp_path)

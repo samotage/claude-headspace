@@ -107,7 +107,9 @@ def update_objective():
         return jsonify({"error": "Text exceeds maximum length of 5000 characters"}), 400
 
     if constraints and len(constraints) > 5000:
-        return jsonify({"error": "Constraints exceeds maximum length of 5000 characters"}), 400
+        return jsonify(
+            {"error": "Constraints exceeds maximum length of 5000 characters"}
+        ), 400
 
     try:
         now = datetime.now(timezone.utc)
@@ -281,7 +283,9 @@ def delete_history_item(history_id):
             return jsonify({"error": "History item not found"}), 404
 
         if item.ended_at is None:
-            return jsonify({"error": "Cannot delete the active objective history item"}), 400
+            return jsonify(
+                {"error": "Cannot delete the active objective history item"}
+            ), 400
 
         db.session.delete(item)
         db.session.commit()

@@ -36,16 +36,18 @@ class TestGitMetadata:
         """Create a temporary git repository."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Initialize git repo
-            subprocess.run(
-                ["git", "init"], cwd=tmpdir, capture_output=True, check=True
-            )
+            subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True, check=True)
             subprocess.run(
                 ["git", "config", "user.email", "test@example.com"],
-                cwd=tmpdir, capture_output=True, check=True
+                cwd=tmpdir,
+                capture_output=True,
+                check=True,
             )
             subprocess.run(
                 ["git", "config", "user.name", "Test User"],
-                cwd=tmpdir, capture_output=True, check=True
+                cwd=tmpdir,
+                capture_output=True,
+                check=True,
             )
             # Create initial commit
             test_file = os.path.join(tmpdir, "test.txt")
@@ -56,12 +58,16 @@ class TestGitMetadata:
             )
             subprocess.run(
                 ["git", "commit", "-m", "Initial commit"],
-                cwd=tmpdir, capture_output=True, check=True
+                cwd=tmpdir,
+                capture_output=True,
+                check=True,
             )
             # Add remote
             subprocess.run(
                 ["git", "remote", "add", "origin", "https://github.com/test/repo.git"],
-                cwd=tmpdir, capture_output=True, check=True
+                cwd=tmpdir,
+                capture_output=True,
+                check=True,
             )
             yield tmpdir
 
@@ -135,7 +141,9 @@ class TestGitMetadata:
         # Create and checkout a branch
         subprocess.run(
             ["git", "checkout", "-b", "test-branch"],
-            cwd=git_repo, capture_output=True, check=True
+            cwd=git_repo,
+            capture_output=True,
+            check=True,
         )
 
         metadata.invalidate_cache(git_repo)
@@ -148,7 +156,10 @@ class TestParseOwnerRepo:
 
     def test_ssh_format(self):
         """Test git@github.com:owner/repo.git format."""
-        assert GitMetadata.parse_owner_repo("git@github.com:owner/repo.git") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("git@github.com:owner/repo.git")
+            == "owner/repo"
+        )
 
     def test_ssh_format_no_git_suffix(self):
         """Test SSH format without .git suffix."""
@@ -156,15 +167,24 @@ class TestParseOwnerRepo:
 
     def test_https_format(self):
         """Test https://github.com/owner/repo.git format."""
-        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo.git") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("https://github.com/owner/repo.git")
+            == "owner/repo"
+        )
 
     def test_https_format_no_git_suffix(self):
         """Test HTTPS format without .git suffix."""
-        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("https://github.com/owner/repo")
+            == "owner/repo"
+        )
 
     def test_ssh_url_format(self):
         """Test ssh://git@github.com/owner/repo.git format."""
-        assert GitMetadata.parse_owner_repo("ssh://git@github.com/owner/repo.git") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("ssh://git@github.com/owner/repo.git")
+            == "owner/repo"
+        )
 
     def test_none_input(self):
         """Test None input returns None."""
@@ -184,11 +204,17 @@ class TestParseOwnerRepo:
 
     def test_url_with_trailing_slash(self):
         """Test URL with trailing slash."""
-        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo/") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("https://github.com/owner/repo/")
+            == "owner/repo"
+        )
 
     def test_nested_path(self):
         """Test URL with nested paths returns only owner/repo."""
-        assert GitMetadata.parse_owner_repo("https://github.com/owner/repo/tree/main") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("https://github.com/owner/repo/tree/main")
+            == "owner/repo"
+        )
 
     def test_url_only_host(self):
         """Test URL with only host (no path) returns None."""
@@ -200,12 +226,21 @@ class TestParseOwnerRepo:
 
     def test_strips_whitespace(self):
         """Test that leading/trailing whitespace is stripped."""
-        assert GitMetadata.parse_owner_repo("  https://github.com/owner/repo.git  ") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("  https://github.com/owner/repo.git  ")
+            == "owner/repo"
+        )
 
     def test_gitlab_ssh(self):
         """Test GitLab SSH format."""
-        assert GitMetadata.parse_owner_repo("git@gitlab.com:org/project.git") == "org/project"
+        assert (
+            GitMetadata.parse_owner_repo("git@gitlab.com:org/project.git")
+            == "org/project"
+        )
 
     def test_http_format(self):
         """Test HTTP (non-HTTPS) format."""
-        assert GitMetadata.parse_owner_repo("http://github.com/owner/repo.git") == "owner/repo"
+        assert (
+            GitMetadata.parse_owner_repo("http://github.com/owner/repo.git")
+            == "owner/repo"
+        )

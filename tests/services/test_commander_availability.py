@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.commander_availability import CommanderAvailability
 from claude_headspace.services.tmux_bridge import HealthResult, PaneInfo
 
@@ -136,7 +134,9 @@ class TestCommanderAvailability:
         """unregister_agent calls release_send_lock for the pane."""
         svc = CommanderAvailability()
         svc.register_agent(1, "%5")
-        with patch("claude_headspace.services.commander_availability.tmux_bridge.release_send_lock") as mock_release:
+        with patch(
+            "claude_headspace.services.commander_availability.tmux_bridge.release_send_lock"
+        ) as mock_release:
             svc.unregister_agent(1)
             mock_release.assert_called_once_with("%5")
 
@@ -177,9 +177,16 @@ class TestAttemptReconnection:
 
         # New pane running claude in same directory
         mock_list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-new", current_command="claude", working_directory="/home/user/project"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-new",
+                current_command="claude",
+                working_directory="/home/user/project",
+            ),
         ]
-        mock_check_health.return_value = HealthResult(available=True, running=True, pid=456)
+        mock_check_health.return_value = HealthResult(
+            available=True, running=True, pid=456
+        )
 
         result = svc._attempt_reconnection(1, "%5")
 
@@ -201,7 +208,12 @@ class TestAttemptReconnection:
 
         # Only non-hs sessions
         mock_list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="main", current_command="bash", working_directory="/home/user/project"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="main",
+                current_command="bash",
+                working_directory="/home/user/project",
+            ),
         ]
 
         result = svc._attempt_reconnection(1, "%5")
@@ -211,7 +223,9 @@ class TestAttemptReconnection:
     @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     @patch("claude_headspace.services.commander_availability.tmux_bridge.list_panes")
     @patch("claude_headspace.database.db")
-    def test_reconnection_skips_dead_candidate(self, mock_db, mock_list_panes, mock_check_health):
+    def test_reconnection_skips_dead_candidate(
+        self, mock_db, mock_list_panes, mock_check_health
+    ):
         """Candidate pane where claude is not running is skipped."""
         mock_app = MagicMock()
         svc = CommanderAvailability(app=mock_app)
@@ -222,7 +236,12 @@ class TestAttemptReconnection:
         mock_db.session.get.return_value = mock_agent
 
         mock_list_panes.return_value = [
-            PaneInfo(pane_id="%10", session_name="hs-proj-x", current_command="bash", working_directory="/proj"),
+            PaneInfo(
+                pane_id="%10",
+                session_name="hs-proj-x",
+                current_command="bash",
+                working_directory="/proj",
+            ),
         ]
         mock_check_health.return_value = HealthResult(available=True, running=False)
 
@@ -238,7 +257,9 @@ class TestAttemptReconnection:
     @patch("claude_headspace.services.commander_availability.tmux_bridge.check_health")
     @patch("claude_headspace.services.commander_availability.tmux_bridge.list_panes")
     @patch("claude_headspace.database.db")
-    def test_reconnection_skips_old_pane(self, mock_db, mock_list_panes, mock_check_health):
+    def test_reconnection_skips_old_pane(
+        self, mock_db, mock_list_panes, mock_check_health
+    ):
         """The old dead pane is skipped even if it appears in list_panes."""
         mock_app = MagicMock()
         svc = CommanderAvailability(app=mock_app)
@@ -250,9 +271,16 @@ class TestAttemptReconnection:
 
         # Only the old pane shows up
         mock_list_panes.return_value = [
-            PaneInfo(pane_id="%5", session_name="hs-proj-old", current_command="claude", working_directory="/proj"),
+            PaneInfo(
+                pane_id="%5",
+                session_name="hs-proj-old",
+                current_command="claude",
+                working_directory="/proj",
+            ),
         ]
-        mock_check_health.return_value = HealthResult(available=True, running=True, pid=123)
+        mock_check_health.return_value = HealthResult(
+            available=True, running=True, pid=123
+        )
 
         result = svc._attempt_reconnection(1, "%5")
 

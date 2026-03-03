@@ -17,10 +17,12 @@ class NotificationPreferences:
 
     enabled: bool = True
     sound: bool = True
-    events: dict = field(default_factory=lambda: {
-        "command_complete": True,
-        "awaiting_input": True,
-    })
+    events: dict = field(
+        default_factory=lambda: {
+            "command_complete": True,
+            "awaiting_input": True,
+        }
+    )
     rate_limit_seconds: int = 5
     dashboard_url: str = "https://localhost:5055"
 
@@ -49,7 +51,9 @@ class NotificationService:
             if self._is_available:
                 logger.info("terminal-notifier detected")
             else:
-                logger.warning("terminal-notifier not found - install with: brew install terminal-notifier")
+                logger.warning(
+                    "terminal-notifier not found - install with: brew install terminal-notifier"
+                )
         return self._is_available
 
     def refresh_availability(self) -> bool:
@@ -64,8 +68,7 @@ class NotificationService:
             if len(self._rate_limit_tracker) > 10:
                 cutoff = now - (self.preferences.rate_limit_seconds * 10)
                 self._rate_limit_tracker = {
-                    k: v for k, v in self._rate_limit_tracker.items()
-                    if v > cutoff
+                    k: v for k, v in self._rate_limit_tracker.items() if v > cutoff
                 }
             last = self._rate_limit_tracker.get(agent_id, 0)
             return (now - last) < self.preferences.rate_limit_seconds
@@ -75,14 +78,22 @@ class NotificationService:
             self._rate_limit_tracker[agent_id] = time.time()
 
     def _build_notification_command(
-        self, title: str, subtitle: str, message: str, url: str | None = None,
+        self,
+        title: str,
+        subtitle: str,
+        message: str,
+        url: str | None = None,
     ) -> list[str]:
         cmd = [
             "terminal-notifier",
-            "-title", title,
-            "-subtitle", subtitle,
-            "-message", message,
-            "-sender", "com.googlecode.iterm2",
+            "-title",
+            title,
+            "-subtitle",
+            subtitle,
+            "-message",
+            message,
+            "-sender",
+            "com.googlecode.iterm2",
         ]
         if self.preferences.sound:
             cmd.extend(["-sound", "default"])
@@ -91,13 +102,18 @@ class NotificationService:
         return cmd
 
     def _build_contextual_message(
-        self, event_type: str, command_instruction: str | None = None, turn_text: str | None = None,
+        self,
+        event_type: str,
+        command_instruction: str | None = None,
+        turn_text: str | None = None,
     ) -> str:
         parts = []
         if command_instruction:
             parts.append(command_instruction)
         if turn_text:
-            prefix = {"command_complete": "\u2713 ", "awaiting_input": "? "}.get(event_type, "")
+            prefix = {"command_complete": "\u2713 ", "awaiting_input": "? "}.get(
+                event_type, ""
+            )
             parts.append(f"{prefix}{turn_text}")
         if parts:
             return "\n".join(parts)
@@ -124,16 +140,23 @@ class NotificationService:
             return True
         if not self.is_available():
             if not self._first_failure_logged:
-                logger.warning("Cannot send notification - terminal-notifier not available")
+                logger.warning(
+                    "Cannot send notification - terminal-notifier not available"
+                )
                 self._first_failure_logged = True
             return False
         if self._is_rate_limited(agent_id):
             return True
 
-        titles = {"command_complete": "Command Complete", "awaiting_input": "Input Needed"}
+        titles = {
+            "command_complete": "Command Complete",
+            "awaiting_input": "Input Needed",
+        }
         title = titles.get(event_type, "Claude Headspace")
         subtitle = f"{project} ({agent_name})" if project else agent_name
-        message = self._build_contextual_message(event_type, command_instruction, turn_text)
+        message = self._build_contextual_message(
+            event_type, command_instruction, turn_text
+        )
         base_url = dashboard_url or self.preferences.dashboard_url
         url = f"{base_url}?highlight={agent_id}"
         cmd = self._build_notification_command(title, subtitle, message, url)
@@ -141,7 +164,9 @@ class NotificationService:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
-                logger.warning(f"terminal-notifier returned {result.returncode}: {result.stderr}")
+                logger.warning(
+                    f"terminal-notifier returned {result.returncode}: {result.stderr}"
+                )
                 return False
             self._update_rate_limit(agent_id)
             logger.info(f"Notification sent: agent={agent_name}, event={event_type}")
@@ -169,7 +194,8 @@ class NotificationService:
             if len(self._channel_rate_limit_tracker) > 20:
                 cutoff = now - (self.CHANNEL_RATE_LIMIT_SECONDS * 2)
                 self._channel_rate_limit_tracker = {
-                    k: v for k, v in self._channel_rate_limit_tracker.items()
+                    k: v
+                    for k, v in self._channel_rate_limit_tracker.items()
                     if v > cutoff
                 }
             last = self._channel_rate_limit_tracker.get(channel_slug, 0)

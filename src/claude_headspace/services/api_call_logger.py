@@ -20,15 +20,17 @@ CAPTURED_PREFIXES = (
 )
 
 # Safe request headers to store (lowercase). Authorization values are never stored.
-SAFE_HEADERS = frozenset({
-    "content-type",
-    "accept",
-    "user-agent",
-    "origin",
-    "referer",
-    "x-forwarded-for",
-    "x-real-ip",
-})
+SAFE_HEADERS = frozenset(
+    {
+        "content-type",
+        "accept",
+        "user-agent",
+        "origin",
+        "referer",
+        "x-forwarded-for",
+        "x-real-ip",
+    }
+)
 
 
 def _should_capture(path: str) -> bool:
@@ -161,7 +163,9 @@ class ApiCallLogger:
             self._persist_log(response)
         except Exception:
             # Fault-tolerant: never break the API response
-            logger.exception("Failed to persist API call log for %s %s", request.method, request.path)
+            logger.exception(
+                "Failed to persist API call log for %s %s", request.method, request.path
+            )
 
         return response
 
@@ -198,7 +202,9 @@ class ApiCallLogger:
             timestamp=datetime.now(timezone.utc),
             http_method=request.method,
             endpoint_path=request.path,
-            query_string=request.query_string.decode("utf-8", errors="replace") if request.query_string else None,
+            query_string=request.query_string.decode("utf-8", errors="replace")
+            if request.query_string
+            else None,
             request_content_type=request.content_type,
             request_headers=safe_headers if safe_headers else None,
             request_body=request_body if request_body else None,
@@ -222,13 +228,16 @@ class ApiCallLogger:
         """Broadcast an api_call_logged SSE event with metadata only."""
         try:
             from flask import current_app
+
             broadcaster = current_app.extensions.get("broadcaster")
             if broadcaster is None:
                 return
 
             event_data = {
                 "id": log_record.id,
-                "timestamp": log_record.timestamp.isoformat() if log_record.timestamp else None,
+                "timestamp": log_record.timestamp.isoformat()
+                if log_record.timestamp
+                else None,
                 "http_method": log_record.http_method,
                 "endpoint_path": log_record.endpoint_path,
                 "response_status_code": log_record.response_status_code,

@@ -1,7 +1,6 @@
 """Tests for the voice_auth service (tasks 3.2, 3.8)."""
 
 import time
-from unittest.mock import MagicMock, patch
 
 import pytest
 from flask import Flask

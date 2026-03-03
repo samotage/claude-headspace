@@ -42,7 +42,6 @@ def client_no_key(config):
 
 
 class TestOpenRouterClientInit:
-
     def test_is_configured_with_env_key(self, client_with_key):
         assert client_with_key.is_configured is True
 
@@ -51,6 +50,7 @@ class TestOpenRouterClientInit:
         with patch.dict("os.environ", {}, clear=True):
             # Remove OPENROUTER_API_KEY if present
             import os
+
             os.environ.pop("OPENROUTER_API_KEY", None)
             client = OpenRouterClient(config)
             assert client.is_configured is False
@@ -65,13 +65,13 @@ class TestOpenRouterClientInit:
         config = {"openrouter": {"api_key": "config-key"}}
         with patch.dict("os.environ", {}, clear=True):
             import os
+
             os.environ.pop("OPENROUTER_API_KEY", None)
             client = OpenRouterClient(config)
             assert client.api_key == "config-key"
 
 
 class TestChatCompletion:
-
     def test_successful_call(self, client_with_key):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -158,7 +158,9 @@ class TestChatCompletion:
             assert mock_post.call_count == 2
 
     def test_timeout_is_retryable(self, client_with_key):
-        with patch("requests.post", side_effect=requests.exceptions.Timeout) as mock_post:
+        with patch(
+            "requests.post", side_effect=requests.exceptions.Timeout
+        ) as mock_post:
             with pytest.raises(OpenRouterClientError) as exc_info:
                 client_with_key.chat_completion(
                     model="test-model",
@@ -168,7 +170,9 @@ class TestChatCompletion:
             assert mock_post.call_count == 2
 
     def test_connection_error_is_retryable(self, client_with_key):
-        with patch("requests.post", side_effect=requests.exceptions.ConnectionError) as mock_post:
+        with patch(
+            "requests.post", side_effect=requests.exceptions.ConnectionError
+        ) as mock_post:
             with pytest.raises(OpenRouterClientError) as exc_info:
                 client_with_key.chat_completion(
                     model="test-model",
@@ -204,7 +208,6 @@ class TestChatCompletion:
 
 
 class TestConnectivity:
-
     def test_check_connectivity_success(self, client_with_key):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -221,7 +224,6 @@ class TestConnectivity:
 
 
 class TestInputHash:
-
     def test_compute_input_hash(self):
         hash1 = OpenRouterClient.compute_input_hash("Hello world")
         hash2 = OpenRouterClient.compute_input_hash("Hello world")

@@ -12,8 +12,8 @@ Sanitised output preserves a generic failure message so the agent
 can acknowledge the failure and retry without leaking system details.
 """
 
-import re
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +22,11 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────
 
 # Absolute file paths: /foo/bar/baz.py, /home/user/.venv/lib/...
-_ABSOLUTE_PATH = re.compile(
-    r'(?<![a-zA-Z0-9])/(?:[a-zA-Z0-9._-]+/)+[a-zA-Z0-9._-]+'
-)
+_ABSOLUTE_PATH = re.compile(r"(?<![a-zA-Z0-9])/(?:[a-zA-Z0-9._-]+/)+[a-zA-Z0-9._-]+")
 
 # Python traceback blocks: "Traceback (most recent call last): ... ExceptionType: message"
 _TRACEBACK_BLOCK = re.compile(
-    r'Traceback \(most recent call last\):.*?(?=\n\n|\n[^\s]|\Z)',
+    r"Traceback \(most recent call last\):.*?(?=\n\n|\n[^\s]|\Z)",
     re.DOTALL,
 )
 
@@ -41,30 +39,30 @@ _TRACEBACK_FRAME = re.compile(
 # Module dotted names from error lines: "module.submodule.ClassName: error message"
 # Also matches dotted names followed by ) as in "(psycopg2.errors.UndefinedColumn)"
 _MODULE_ERROR = re.compile(
-    r'\b(?:[a-zA-Z_]\w*\.){2,}[a-zA-Z_]\w*(?=[:\)\s])',
+    r"\b(?:[a-zA-Z_]\w*\.){2,}[a-zA-Z_]\w*(?=[:\)\s])",
 )
 
 # Python/virtualenv path fragments
 _VENV_PATH = re.compile(
-    r'(?:venv|\.venv|virtualenv|site-packages|dist-packages)'
-    r'(?:/[a-zA-Z0-9._-]+)*',
+    r"(?:venv|\.venv|virtualenv|site-packages|dist-packages)"
+    r"(?:/[a-zA-Z0-9._-]+)*",
 )
 
 # Process IDs: "pid=12345", "PID: 12345", "process 12345"
 _PROCESS_ID = re.compile(
-    r'\b(?:pid[=:]\s*\d+|PID[=:]\s*\d+|process\s+\d+)\b',
+    r"\b(?:pid[=:]\s*\d+|PID[=:]\s*\d+|process\s+\d+)\b",
     re.IGNORECASE,
 )
 
 # Python version strings: "Python 3.10.4", "python3.10"
 _PYTHON_VERSION = re.compile(
-    r'\bpython\s*3\.\d+(?:\.\d+)?\b',
+    r"\bpython\s*3\.\d+(?:\.\d+)?\b",
     re.IGNORECASE,
 )
 
 # Environment variable patterns: "ENV_VAR=value" or "SOME_SETTING: value"
 _ENV_VAR = re.compile(
-    r'\b[A-Z][A-Z0-9_]{3,}(?:=\S+|:\s+\S+)',
+    r"\b[A-Z][A-Z0-9_]{3,}(?:=\S+|:\s+\S+)",
 )
 
 # Generic replacement for redacted content
@@ -125,13 +123,13 @@ def sanitise_error_output(text: str | None) -> str | None:
 
     # Collapse multiple consecutive redactions into one
     result = re.sub(
-        r'(?:\[details redacted\]\s*){2,}',
-        '[details redacted] ',
+        r"(?:\[details redacted\]\s*){2,}",
+        "[details redacted] ",
         result,
     )
 
     # Clean up empty lines left by redaction
-    result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
+    result = re.sub(r"\n\s*\n\s*\n", "\n\n", result)
 
     return result.strip()
 
@@ -158,7 +156,9 @@ def contains_error_patterns(text: str) -> bool:
             return True
 
     # Check for file path patterns in context that suggests error output
-    if _ABSOLUTE_PATH.search(text) and ("error" in text_lower or "failed" in text_lower):
+    if _ABSOLUTE_PATH.search(text) and (
+        "error" in text_lower or "failed" in text_lower
+    ):
         return True
 
     return False

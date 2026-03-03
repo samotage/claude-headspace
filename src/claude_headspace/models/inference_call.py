@@ -3,7 +3,16 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import db
@@ -29,21 +38,26 @@ class InferenceCall(db.Model):
     __tablename__ = "inference_calls"
     __table_args__ = (
         CheckConstraint(
-            'COALESCE(project_id, agent_id, command_id, turn_id) IS NOT NULL',
-            name='ck_inference_calls_has_parent',
+            "COALESCE(project_id, agent_id, command_id, turn_id) IS NOT NULL",
+            name="ck_inference_calls_has_parent",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
     )
     level: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     purpose: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    input_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     input_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -72,5 +86,9 @@ class InferenceCall(db.Model):
 
 
 # Composite indexes for common query patterns
-Index("ix_inference_calls_level_timestamp", InferenceCall.level, InferenceCall.timestamp)
-Index("ix_inference_calls_model_timestamp", InferenceCall.model, InferenceCall.timestamp)
+Index(
+    "ix_inference_calls_level_timestamp", InferenceCall.level, InferenceCall.timestamp
+)
+Index(
+    "ix_inference_calls_model_timestamp", InferenceCall.model, InferenceCall.timestamp
+)

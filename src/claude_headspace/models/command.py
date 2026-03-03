@@ -30,8 +30,8 @@ class Command(db.Model):
     __tablename__ = "commands"
     __table_args__ = (
         db.CheckConstraint(
-            'completed_at IS NULL OR completed_at >= started_at',
-            name='ck_commands_completed_after_started',
+            "completed_at IS NULL OR completed_at >= started_at",
+            name="ck_commands_completed_after_started",
         ),
     )
 
@@ -46,9 +46,13 @@ class Command(db.Model):
         index=True,
     )
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     completion_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     completion_summary_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -61,7 +65,9 @@ class Command(db.Model):
     full_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     plan_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    plan_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    plan_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     agent: Mapped["Agent"] = relationship("Agent", back_populates="commands")
@@ -93,7 +99,9 @@ class Command(db.Model):
         )
 
     def __repr__(self) -> str:
-        return f"<Command id={self.id} state={self.state.value} agent_id={self.agent_id}>"
+        return (
+            f"<Command id={self.id} state={self.state.value} agent_id={self.agent_id}>"
+        )
 
 
 # Additional indexes

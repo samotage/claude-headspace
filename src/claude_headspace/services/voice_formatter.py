@@ -64,7 +64,9 @@ class VoiceFormatter:
             "next_action": next_action,
         }
 
-    def format_command_result(self, agent_name: str, success: bool, error: str | None = None) -> dict:
+    def format_command_result(
+        self, agent_name: str, success: bool, error: str | None = None
+    ) -> dict:
         """Format voice command result."""
         if success:
             return {
@@ -111,7 +113,9 @@ class VoiceFormatter:
             "next_action": next_action,
         }
 
-    def format_output(self, agent_name: str, commands: list[dict], verbosity: str | None = None) -> dict:
+    def format_output(
+        self, agent_name: str, commands: list[dict], verbosity: str | None = None
+    ) -> dict:
         """Format recent agent output for voice consumption.
 
         Args:
@@ -131,7 +135,11 @@ class VoiceFormatter:
         results = []
         for cmd in commands:
             if v == "concise":
-                summary = cmd.get("completion_summary") or cmd.get("instruction") or "Command completed"
+                summary = (
+                    cmd.get("completion_summary")
+                    or cmd.get("instruction")
+                    or "Command completed"
+                )
                 results.append(summary)
             elif v == "normal":
                 instr = cmd.get("instruction") or "Unknown command"
@@ -170,7 +178,9 @@ class VoiceFormatter:
         }
 
     def format_channel_history(
-        self, channel_slug: str, messages: list[dict],
+        self,
+        channel_slug: str,
+        messages: list[dict],
         verbosity: str | None = None,
     ) -> dict:
         """Format channel message history for voice consumption."""
@@ -198,7 +208,9 @@ class VoiceFormatter:
         }
 
     def format_channel_created(
-        self, channel_slug: str, channel_type: str,
+        self,
+        channel_slug: str,
+        channel_type: str,
         member_results: list[str],
     ) -> dict:
         """Format channel creation confirmation."""
@@ -225,8 +237,7 @@ class VoiceFormatter:
                 "next_action": "Create a channel with 'create a workshop channel called [name]'.",
             }
         results = [
-            f"#{ch['slug']} ({ch['channel_type']}, {ch['status']})"
-            for ch in channels
+            f"#{ch['slug']} ({ch['channel_type']}, {ch['status']})" for ch in channels
         ]
         return {
             "status_line": f"{len(channels)} active channel{'s' if len(channels) != 1 else ''}.",
@@ -235,7 +246,9 @@ class VoiceFormatter:
         }
 
     def format_channel_member_added(
-        self, persona_name: str, channel_slug: str,
+        self,
+        persona_name: str,
+        channel_slug: str,
         spinning_up: bool = False,
     ) -> dict:
         """Format member addition confirmation."""

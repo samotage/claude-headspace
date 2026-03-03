@@ -4,8 +4,6 @@ Tests lock acquisition, release, timeout, non-blocking skip,
 connection cleanup, key hashing, and nested safety.
 """
 
-import struct
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,10 +11,10 @@ import pytest
 from claude_headspace.services.advisory_lock import (
     AdvisoryLockError,
     LockNamespace,
+    _get_held_locks,
     advisory_lock,
     advisory_lock_or_skip,
     lock_key_from_string,
-    _get_held_locks,
 )
 
 
@@ -52,7 +50,7 @@ class TestLockKeyFromString:
     def test_fits_int32(self):
         """Result fits within signed int32 range."""
         key = lock_key_from_string("any-string")
-        assert -2**31 <= key < 2**31
+        assert -(2**31) <= key < 2**31
 
     def test_empty_string(self):
         """Empty string produces a valid key."""
@@ -275,6 +273,7 @@ class TestGetHeldAdvisoryLocks:
         """Returns a list even with no locks held."""
         with app.app_context():
             from claude_headspace.services.advisory_lock import get_held_advisory_locks
+
             result = get_held_advisory_locks()
             assert isinstance(result, list)
 
@@ -283,6 +282,9 @@ class TestGetHeldAdvisoryLocks:
         with app.app_context():
             with patch("claude_headspace.database.db") as mock_db:
                 mock_db.session.execute.side_effect = Exception("query failed")
-                from claude_headspace.services.advisory_lock import get_held_advisory_locks
+                from claude_headspace.services.advisory_lock import (
+                    get_held_advisory_locks,
+                )
+
                 result = get_held_advisory_locks()
                 assert result == []

@@ -1,10 +1,8 @@
 """File upload service for voice bridge file/image sharing."""
 
 import logging
-import os
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -56,21 +54,51 @@ class FileUploadService:
         self.upload_dir_name = fu_config.get("upload_dir", "uploads")
         self.upload_dir = Path(app_root) / self.upload_dir_name
         self.max_file_size = fu_config.get("max_file_size_mb", 10) * 1024 * 1024
-        self.max_total_storage = fu_config.get("max_total_storage_mb", 500) * 1024 * 1024
+        self.max_total_storage = (
+            fu_config.get("max_total_storage_mb", 500) * 1024 * 1024
+        )
         self.retention_days = fu_config.get("retention_days", 7)
-        self.allowed_image_types = set(fu_config.get("allowed_image_types", ["png", "jpg", "jpeg", "gif", "webp"]))
-        self.allowed_document_types = set(fu_config.get("allowed_document_types", ["pdf"]))
-        self.allowed_text_types = set(fu_config.get("allowed_text_types", [
-            "txt", "md", "py", "js", "ts", "json", "yaml", "yml",
-            "html", "css", "rb", "sh", "sql", "csv", "log",
-        ]))
-        self.all_allowed_extensions = self.allowed_image_types | self.allowed_document_types | self.allowed_text_types
+        self.allowed_image_types = set(
+            fu_config.get("allowed_image_types", ["png", "jpg", "jpeg", "gif", "webp"])
+        )
+        self.allowed_document_types = set(
+            fu_config.get("allowed_document_types", ["pdf"])
+        )
+        self.allowed_text_types = set(
+            fu_config.get(
+                "allowed_text_types",
+                [
+                    "txt",
+                    "md",
+                    "py",
+                    "js",
+                    "ts",
+                    "json",
+                    "yaml",
+                    "yml",
+                    "html",
+                    "css",
+                    "rb",
+                    "sh",
+                    "sql",
+                    "csv",
+                    "log",
+                ],
+            )
+        )
+        self.all_allowed_extensions = (
+            self.allowed_image_types
+            | self.allowed_document_types
+            | self.allowed_text_types
+        )
 
     def ensure_upload_dir(self) -> None:
         """Create upload directory if it doesn't exist."""
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    def validate_file(self, filename: str, file_size: int, file_obj: Any = None) -> dict:
+    def validate_file(
+        self, filename: str, file_size: int, file_obj: Any = None
+    ) -> dict:
         """Validate file type, size, and storage quota.
 
         Returns:
@@ -80,12 +108,18 @@ class FileUploadService:
         ext = self._get_extension(filename)
         if not ext or ext not in self.all_allowed_extensions:
             allowed_list = ", ".join(sorted(self.all_allowed_extensions))
-            return {"valid": False, "error": f"File type '.{ext}' is not allowed. Accepted: {allowed_list}"}
+            return {
+                "valid": False,
+                "error": f"File type '.{ext}' is not allowed. Accepted: {allowed_list}",
+            }
 
         # Check file size
         if file_size > self.max_file_size:
             max_mb = self.max_file_size / (1024 * 1024)
-            return {"valid": False, "error": f"File too large ({file_size / (1024 * 1024):.1f}MB). Maximum: {max_mb:.0f}MB"}
+            return {
+                "valid": False,
+                "error": f"File too large ({file_size / (1024 * 1024):.1f}MB). Maximum: {max_mb:.0f}MB",
+            }
 
         # Check magic bytes for image and PDF files (content inspection)
         if file_obj and ext in (self.allowed_image_types | self.allowed_document_types):
@@ -100,7 +134,10 @@ class FileUploadService:
         # Check storage quota
         current_usage = self.get_storage_usage()
         if current_usage + file_size > self.max_total_storage:
-            return {"valid": False, "error": "Storage quota exceeded. Please wait for old files to be cleaned up."}
+            return {
+                "valid": False,
+                "error": "Storage quota exceeded. Please wait for old files to be cleaned up.",
+            }
 
         return {"valid": True}
 
@@ -132,7 +169,11 @@ class FileUploadService:
         metadata = {
             "original_filename": original_filename,
             "stored_filename": stored_filename,
-            "file_type": "image" if is_image else "document" if ext in self.allowed_document_types else "text",
+            "file_type": "image"
+            if is_image
+            else "document"
+            if ext in self.allowed_document_types
+            else "text",
             "mime_type": mime_type,
             "file_size": file_size,
             "server_path": str(stored_path.resolve()),

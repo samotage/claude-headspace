@@ -24,9 +24,7 @@ class DashboardAssertions:
 
     def assert_state_label(self, agent_id: int, text: str, timeout: int = 10000):
         """Wait for .state-label text content to match."""
-        locator = self.page.locator(
-            f'article[data-agent-id="{agent_id}"] .state-label'
-        )
+        locator = self.page.locator(f'article[data-agent-id="{agent_id}"] .state-label')
         expect(locator).to_contain_text(text, timeout=timeout)
 
     def assert_command_summary_contains(
@@ -66,15 +64,15 @@ class DashboardAssertions:
         timeout: int = 10000,
     ):
         """Wait for header status count badges to match."""
-        expect(
-            self.page.locator("#status-input-needed .status-count")
-        ).to_have_text(f"[{input_needed}]", timeout=timeout)
-        expect(
-            self.page.locator("#status-working .status-count")
-        ).to_have_text(f"[{working}]", timeout=timeout)
-        expect(
-            self.page.locator("#status-idle .status-count")
-        ).to_have_text(f"[{idle}]", timeout=timeout)
+        expect(self.page.locator("#status-input-needed .status-count")).to_have_text(
+            f"[{input_needed}]", timeout=timeout
+        )
+        expect(self.page.locator("#status-working .status-count")).to_have_text(
+            f"[{working}]", timeout=timeout
+        )
+        expect(self.page.locator("#status-idle .status-count")).to_have_text(
+            f"[{idle}]", timeout=timeout
+        )
 
     def assert_sse_connected(self, timeout: int = 10000):
         """Wait for SSE connection indicator to show connected."""
@@ -84,15 +82,15 @@ class DashboardAssertions:
 
     def assert_agent_card_exists(self, agent_id: int, timeout: int = 10000):
         """Wait for agent card to appear in DOM."""
-        expect(
-            self.page.locator(f'article[data-agent-id="{agent_id}"]')
-        ).to_be_visible(timeout=timeout)
+        expect(self.page.locator(f'article[data-agent-id="{agent_id}"]')).to_be_visible(
+            timeout=timeout
+        )
 
     def assert_agent_card_gone(self, agent_id: int, timeout: int = 15000):
         """Wait for agent card to disappear (after page reload)."""
-        expect(
-            self.page.locator(f'article[data-agent-id="{agent_id}"]')
-        ).to_have_count(0, timeout=timeout)
+        expect(self.page.locator(f'article[data-agent-id="{agent_id}"]')).to_have_count(
+            0, timeout=timeout
+        )
 
     def capture(self, name: str):
         """Save a screenshot with step numbering."""

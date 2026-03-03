@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-from claude_headspace.config import load_config, get_database_url
+from claude_headspace.config import load_config
 from claude_headspace.database import db
 
 
@@ -105,12 +105,14 @@ def test_db_engine(test_database_url):
     try:
         with admin_engine.connect() as conn:
             # Terminate any remaining connections
-            conn.execute(text(
-                f"SELECT pg_terminate_backend(pg_stat_activity.pid) "
-                f"FROM pg_stat_activity "
-                f"WHERE pg_stat_activity.datname = '{db_name}' "
-                f"AND pid <> pg_backend_pid()"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT pg_terminate_backend(pg_stat_activity.pid) "
+                    f"FROM pg_stat_activity "
+                    f"WHERE pg_stat_activity.datname = '{db_name}' "
+                    f"AND pid <> pg_backend_pid()"
+                )
+            )
             conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
     finally:
         admin_engine.dispose()

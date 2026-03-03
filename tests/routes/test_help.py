@@ -2,12 +2,12 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from flask import Flask
 
-from src.claude_headspace.routes.help import help_bp, extract_excerpt, extract_title
+from src.claude_headspace.routes.help import extract_excerpt, extract_title, help_bp
 
 
 @pytest.fixture
@@ -34,7 +34,9 @@ def temp_help_dir():
 
         # Create test files
         (help_dir / "index.md").write_text("# Help Overview\n\nWelcome to help.")
-        (help_dir / "getting-started.md").write_text("# Getting Started\n\nQuick start guide.")
+        (help_dir / "getting-started.md").write_text(
+            "# Getting Started\n\nQuick start guide."
+        )
         (help_dir / "dashboard.md").write_text("# Dashboard\n\nDashboard overview.")
         (help_dir / "external-api.md").write_text(
             "# External API\n\nAPI documentation for external integrations.\n\n"
@@ -244,7 +246,9 @@ class TestExternalApiTopic:
         assert "External API" in data["title"]
 
     @patch("src.claude_headspace.routes.help.get_help_dir")
-    def test_external_api_appears_in_topic_list(self, mock_get_dir, client, temp_help_dir):
+    def test_external_api_appears_in_topic_list(
+        self, mock_get_dir, client, temp_help_dir
+    ):
         """GET /api/help/topics should include external-api."""
         mock_get_dir.return_value = temp_help_dir
 

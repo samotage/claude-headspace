@@ -1661,17 +1661,20 @@ body.layout-split .channel-card:hover {
 }
 
 /* Copy button on all bubbles */
+.chat-bubble:has(.bubble-copy-btn) {
+  padding-right: 36px;
+}
 .bubble-copy-btn {
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--icon-btn-bg);
   color: var(--text-muted);
   cursor: pointer;

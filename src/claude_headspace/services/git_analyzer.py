@@ -1,7 +1,6 @@
 """Git analyzer for extracting structured commit history from target project repositories."""
 
 import logging
-import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -156,9 +155,7 @@ class GitAnalyzer:
     def _is_git_repo(self, repo_path: Path) -> bool:
         """Check if the path is a valid git repository."""
         try:
-            result = self._run_git(
-                repo_path, ["rev-parse", "--is-inside-work-tree"]
-            )
+            result = self._run_git(repo_path, ["rev-parse", "--is-inside-work-tree"])
             return result.strip() == "true"
         except GitAnalyzerError:
             return False
@@ -233,7 +230,9 @@ class GitAnalyzer:
                 if timestamp.tzinfo is None:
                     timestamp = timestamp.replace(tzinfo=timezone.utc)
             except (ValueError, TypeError):
-                logger.warning(f"Skipping commit with invalid timestamp: {timestamp_str}")
+                logger.warning(
+                    f"Skipping commit with invalid timestamp: {timestamp_str}"
+                )
                 continue
 
             commits.append(
@@ -247,9 +246,7 @@ class GitAnalyzer:
 
         return commits
 
-    def _get_commits_since(
-        self, repo_path: Path, since: datetime
-    ) -> list[CommitInfo]:
+    def _get_commits_since(self, repo_path: Path, since: datetime) -> list[CommitInfo]:
         """Get commits since a specific timestamp."""
         since_str = since.isoformat()
         output = self._run_git(
@@ -266,9 +263,7 @@ class GitAnalyzer:
         )
         return self._parse_git_log(output)
 
-    def _get_commits_time_based(
-        self, repo_path: Path, days: int
-    ) -> list[CommitInfo]:
+    def _get_commits_time_based(self, repo_path: Path, days: int) -> list[CommitInfo]:
         """Get commits within the last N days."""
         output = self._run_git(
             repo_path,

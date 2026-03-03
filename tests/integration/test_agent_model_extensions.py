@@ -25,7 +25,9 @@ from claude_headspace.models.project import Project
 @pytest.fixture
 def test_project(db_session):
     """Create a test Project for Agent FK."""
-    project = Project(name="test-project", slug="test-project", path="/tmp/test-project")
+    project = Project(
+        name="test-project", slug="test-project", path="/tmp/test-project"
+    )
     db_session.add(project)
     db_session.flush()
     return project
@@ -214,11 +216,14 @@ class TestBackwardCompatibility:
 class TestCombinedFields:
     """Test agent with all three new fields set simultaneously."""
 
-    def test_agent_with_all_fields(self, db_session, test_project, test_persona, test_position):
+    def test_agent_with_all_fields(
+        self, db_session, test_project, test_persona, test_position
+    ):
         """Agent can have persona, position, and predecessor all set."""
         predecessor = _make_agent(db_session, test_project)
         agent = _make_agent(
-            db_session, test_project,
+            db_session,
+            test_project,
             persona_id=test_persona.id,
             position_id=test_position.id,
             previous_agent_id=predecessor.id,

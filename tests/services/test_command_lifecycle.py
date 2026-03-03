@@ -1,26 +1,20 @@
 """Tests for command lifecycle manager service."""
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
-from claude_headspace.models.project import Project
 from claude_headspace.models.command import Command, CommandState
 from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
-from claude_headspace.services.event_writer import EventWriter, WriteResult
-from claude_headspace.services.state_machine import TransitionResult
 from claude_headspace.services.command_lifecycle import (
     AnswerCompletionResult,
     CommandLifecycleManager,
     TurnProcessingResult,
-    SummarisationRequest,
     complete_answer,
 )
+from claude_headspace.services.event_writer import EventWriter, WriteResult
 
 
 class TestCommandLifecycleManagerUnit:
@@ -69,7 +63,7 @@ class TestCommandLifecycleManagerUnit:
             if isinstance(obj, Command):
                 obj.id = 42
 
-        mock_session.add.side_effect = lambda obj: setattr(obj, 'id', 42)
+        mock_session.add.side_effect = lambda obj: setattr(obj, "id", 42)
         mock_session.flush.side_effect = lambda: None
 
         command = manager.create_command(mock_agent)
@@ -79,7 +73,9 @@ class TestCommandLifecycleManagerUnit:
         assert command.agent_id == mock_agent.id
         assert command.state == CommandState.COMMANDED
 
-    def test_create_command_writes_event(self, mock_session, mock_event_writer, mock_agent):
+    def test_create_command_writes_event(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """create_command should write a state_transition event."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -124,7 +120,9 @@ class TestCommandLifecycleManagerUnit:
 
         assert result is None
 
-    def test_derive_agent_state_with_active_command(self, mock_session, mock_agent, mock_command):
+    def test_derive_agent_state_with_active_command(
+        self, mock_session, mock_agent, mock_command
+    ):
         """derive_agent_state should return command state when active command exists."""
         manager = CommandLifecycleManager(session=mock_session)
 
@@ -187,21 +185,27 @@ class TestCommandLifecycleManagerUnit:
         # Mock query chain for PROGRESS dedup check — no existing progress turn
         mock_session.query.return_value.filter_by.return_value.filter.return_value.first.return_value = None
 
-        result = manager.complete_command(mock_command, agent_text="Command completed successfully.")
+        result = manager.complete_command(
+            mock_command, agent_text="Command completed successfully."
+        )
 
         assert result is True
         assert mock_command.state == CommandState.COMPLETE
         assert mock_command.completed_at is not None
 
         # Verify completion turn was created
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
         turn = turn_adds[0][0][0]
         assert turn.actor == TurnActor.AGENT
         assert turn.intent == TurnIntent.COMPLETION
         assert turn.command_id == mock_command.id
 
-    def test_complete_command_does_not_send_notification(self, mock_session, mock_event_writer):
+    def test_complete_command_does_not_send_notification(
+        self, mock_session, mock_event_writer
+    ):
         """complete_command should NOT send notifications — hook_receiver sends them after summarisation."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -221,12 +225,16 @@ class TestCommandLifecycleManagerUnit:
             event_writer=mock_event_writer,
         )
 
-        with patch("claude_headspace.services.notification_service.get_notification_service") as mock_get_notif:
+        with patch(
+            "claude_headspace.services.notification_service.get_notification_service"
+        ) as mock_get_notif:
             manager.complete_command(mock_command, agent_text="Updated config defaults")
             mock_get_notif.assert_not_called()
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
-    def test_update_command_state_sends_awaiting_input_notification(self, mock_get_notif, mock_session, mock_event_writer):
+    def test_update_command_state_sends_awaiting_input_notification(
+        self, mock_get_notif, mock_session, mock_event_writer
+    ):
         """update_command_state should send awaiting_input notification with context when transitioning to AWAITING_INPUT."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -270,7 +278,9 @@ class TestCommandLifecycleManagerUnit:
             turn_text="Which CSS framework?",
         )
 
-    def test_complete_command_does_not_send_notification_even_without_instruction(self, mock_session, mock_event_writer):
+    def test_complete_command_does_not_send_notification_even_without_instruction(
+        self, mock_session, mock_event_writer
+    ):
         """complete_command should NOT send notifications even when instruction is None — hook_receiver handles it."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -292,12 +302,16 @@ class TestCommandLifecycleManagerUnit:
             event_writer=mock_event_writer,
         )
 
-        with patch("claude_headspace.services.notification_service.get_notification_service") as mock_get_notif:
+        with patch(
+            "claude_headspace.services.notification_service.get_notification_service"
+        ) as mock_get_notif:
             manager.complete_command(mock_command)
             mock_get_notif.assert_not_called()
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
-    def test_update_command_state_notification_falls_back_to_command_text(self, mock_get_notif, mock_session, mock_event_writer):
+    def test_update_command_state_notification_falls_back_to_command_text(
+        self, mock_get_notif, mock_session, mock_event_writer
+    ):
         """update_command_state notification should fall back to first USER COMMAND turn text when instruction is None."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -346,7 +360,9 @@ class TestCommandLifecycleManagerUnit:
         )
 
     @patch("claude_headspace.services.notification_service.get_notification_service")
-    def test_update_command_state_does_not_notify_for_non_awaiting_states(self, mock_get_notif, mock_session, mock_event_writer):
+    def test_update_command_state_does_not_notify_for_non_awaiting_states(
+        self, mock_get_notif, mock_session, mock_event_writer
+    ):
         """update_command_state should NOT send notification for non-AWAITING_INPUT transitions."""
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -373,7 +389,9 @@ class TestCommandLifecycleManagerUnit:
 
         mock_svc.notify_awaiting_input.assert_not_called()
 
-    def test_process_turn_user_command_idle(self, mock_session, mock_event_writer, mock_agent):
+    def test_process_turn_user_command_idle(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """User command from IDLE should create new command."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -398,14 +416,18 @@ class TestCommandLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.COMMAND
 
         # Verify user command turn was created
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
         turn = turn_adds[0][0][0]
         assert turn.actor == TurnActor.USER
         assert turn.intent == TurnIntent.COMMAND
         assert turn.text == "Fix the bug"
 
-    def test_process_turn_agent_progress(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_agent_progress(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """Agent progress should transition from COMMANDED to PROCESSING."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -432,14 +454,18 @@ class TestCommandLifecycleManagerUnit:
         assert result.transition.to_state == CommandState.PROCESSING
 
         # Verify progress turn was created
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
         turn = turn_adds[0][0][0]
         assert turn.actor == TurnActor.AGENT
         assert turn.intent == TurnIntent.PROGRESS
         assert turn.text == "I'm now working on the fix."
 
-    def test_process_turn_agent_question(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_agent_question(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """Agent question should transition to AWAITING_INPUT."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -465,7 +491,9 @@ class TestCommandLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.QUESTION
         assert result.transition.to_state == CommandState.AWAITING_INPUT
 
-    def test_process_turn_user_answer(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_user_answer(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """User answer should transition from AWAITING_INPUT to PROCESSING."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -491,7 +519,9 @@ class TestCommandLifecycleManagerUnit:
         assert result.intent.intent == TurnIntent.ANSWER
         assert result.transition.to_state == CommandState.PROCESSING
 
-    def test_process_turn_agent_completion(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_agent_completion(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """Agent completion should transition to COMPLETE."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -521,10 +551,14 @@ class TestCommandLifecycleManagerUnit:
         # process_turn delegates to complete_command without agent_text (that comes
         # from the transcript, which only hook_receiver provides). No Turn is
         # created for empty agent_text — that's correct behavior.
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 0
 
-    def test_process_turn_user_while_awaiting_treated_as_answer(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_user_while_awaiting_treated_as_answer(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """User turn while AWAITING_INPUT is treated as ANSWER (transitions to PROCESSING).
 
         Note: In Epic 1 with regex-based intent detection, all user turns while
@@ -557,7 +591,9 @@ class TestCommandLifecycleManagerUnit:
         assert result.transition.to_state == CommandState.PROCESSING
         assert result.new_command_created is False
 
-    def test_process_turn_user_answer_while_processing_continues_command(self, mock_session, mock_event_writer, mock_agent, mock_command):
+    def test_process_turn_user_answer_while_processing_continues_command(
+        self, mock_session, mock_event_writer, mock_agent, mock_command
+    ):
         """User confirmation while PROCESSING should stay PROCESSING (no new command)."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -585,7 +621,9 @@ class TestCommandLifecycleManagerUnit:
         assert result.transition.to_state == CommandState.PROCESSING
         assert result.new_command_created is False
 
-    def test_process_turn_creates_turn_with_empty_text_when_none(self, mock_session, mock_event_writer, mock_agent):
+    def test_process_turn_creates_turn_with_empty_text_when_none(
+        self, mock_session, mock_event_writer, mock_agent
+    ):
         """Turn text should default to empty string when None (hook path)."""
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -608,16 +646,22 @@ class TestCommandLifecycleManagerUnit:
         assert result.success is True
 
         # Verify turn was created with empty string, not None
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
         turn = turn_adds[0][0][0]
         assert turn.text == ""
 
-    def test_process_turn_invalid_transition(self, mock_session, mock_agent, mock_command):
+    def test_process_turn_invalid_transition(
+        self, mock_session, mock_agent, mock_command
+    ):
         """Invalid transition should fail gracefully."""
         manager = CommandLifecycleManager(session=mock_session)
 
-        mock_command.state = CommandState.COMPLETE  # COMPLETE is terminal — no valid outgoing transitions
+        mock_command.state = (
+            CommandState.COMPLETE
+        )  # COMPLETE is terminal — no valid outgoing transitions
 
         # Mock current command
         mock_query = MagicMock()
@@ -717,7 +761,9 @@ class TestUserCommandWhileCommanded:
         assert result.command == mock_commanded_cmd
 
         # Verify turn was created and attached to existing command
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
         turn = turn_adds[0][0][0]
         assert turn.actor == TurnActor.USER
@@ -747,7 +793,10 @@ class TestUserCommandWhileCommanded:
         )
 
         assert result.success is True
-        assert mock_commanded_cmd.full_command == "Fix the login bug\nAlso fix the logout button"
+        assert (
+            mock_commanded_cmd.full_command
+            == "Fix the login bug\nAlso fix the logout button"
+        )
 
     def test_multiple_user_commands_while_commanded(
         self, mock_session, mock_event_writer, mock_agent, mock_commanded_cmd
@@ -780,10 +829,15 @@ class TestUserCommandWhileCommanded:
         )
         assert result2.success is True
 
-        assert mock_commanded_cmd.full_command == "Fix the login bug\nAlso fix the logout button\nAnd add error handling"
+        assert (
+            mock_commanded_cmd.full_command
+            == "Fix the login bug\nAlso fix the logout button\nAnd add error handling"
+        )
 
         # Both turns should have been added
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 2
 
     def test_user_command_while_commanded_queues_summarisation(
@@ -852,7 +906,9 @@ class TestCommandLifecycleSessionPassThrough:
         """_write_transition_event should pass self._session to event_writer.write_event."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -884,12 +940,14 @@ class TestCommandLifecycleSessionPassThrough:
         """create_command should write event using the same session as command creation."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
 
-        mock_session.add.side_effect = lambda obj: setattr(obj, 'id', 42)
+        mock_session.add.side_effect = lambda obj: setattr(obj, "id", 42)
 
         manager = CommandLifecycleManager(
             session=mock_session,
@@ -906,7 +964,9 @@ class TestCommandLifecycleSessionPassThrough:
         """update_command_state should write event using the same session."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -943,7 +1003,9 @@ class TestCompleteCommandSummarisation:
         """complete_command should queue turn and command_completion summarisation requests."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -974,7 +1036,9 @@ class TestCompleteCommandSummarisation:
         """complete_command should not fail when no summarisation service."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -1036,7 +1100,9 @@ class TestCompleteCommandSummarisation:
         manager.complete_command(mock_command, agent_text="")
 
         # No Turn should be added for empty text
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 0
 
         # Only command_completion summarisation (no turn summarisation)
@@ -1066,7 +1132,9 @@ class TestCompleteCommandSummarisation:
         manager.complete_command(mock_command, agent_text="All done.")
 
         # Turn should be added for non-empty text
-        turn_adds = [c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)]
+        turn_adds = [
+            c for c in mock_session.add.call_args_list if isinstance(c[0][0], Turn)
+        ]
         assert len(turn_adds) == 1
 
         # Both turn and command_completion summarisations queued
@@ -1111,7 +1179,9 @@ class TestStateTransitionEventPayload:
         """State transition event should have correct payload fields."""
         mock_session = MagicMock(spec=Session)
         mock_event_writer = MagicMock(spec=EventWriter)
-        mock_event_writer.write_event.return_value = WriteResult(success=True, event_id=1)
+        mock_event_writer.write_event.return_value = WriteResult(
+            success=True, event_id=1
+        )
 
         mock_agent = MagicMock()
         mock_agent.id = 1
@@ -1160,22 +1230,30 @@ class TestCompleteAnswer:
 
     @pytest.fixture
     def mock_hook_state(self):
-        with patch("claude_headspace.services.command_lifecycle.get_agent_hook_state") as mock:
+        with patch(
+            "claude_headspace.services.command_lifecycle.get_agent_hook_state"
+        ) as mock:
             yield mock.return_value
 
     @pytest.fixture
     def mock_broadcast_card(self):
-        with patch("claude_headspace.services.command_lifecycle.broadcast_card_refresh") as mock:
+        with patch(
+            "claude_headspace.services.command_lifecycle.broadcast_card_refresh"
+        ) as mock:
             yield mock
 
     @pytest.fixture
     def mock_broadcaster(self):
-        with patch("claude_headspace.services.command_lifecycle.get_broadcaster") as mock:
+        with patch(
+            "claude_headspace.services.command_lifecycle.get_broadcaster"
+        ) as mock:
             yield mock.return_value
 
     @pytest.fixture
     def mock_mark_answered(self):
-        with patch("claude_headspace.services.command_lifecycle.mark_question_answered") as mock:
+        with patch(
+            "claude_headspace.services.command_lifecycle.mark_question_answered"
+        ) as mock:
             yield mock
 
     @pytest.fixture
@@ -1200,8 +1278,14 @@ class TestCompleteAnswer:
         return command
 
     def test_happy_path(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """complete_answer happy path: creates turn, transitions state, commits, broadcasts."""
         result = complete_answer(mock_command, mock_agent, "yes", source="test")
@@ -1240,14 +1324,23 @@ class TestCompleteAnswer:
         assert "turn_created" in broadcast_calls
 
     def test_file_metadata_passthrough(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """complete_answer passes file_metadata to the Turn."""
         meta = {"original_filename": "photo.png", "stored_filename": "abc123.png"}
         result = complete_answer(
-            mock_command, mock_agent, "[File: photo.png]",
-            file_metadata=meta, source="file_upload",
+            mock_command,
+            mock_agent,
+            "[File: photo.png]",
+            file_metadata=meta,
+            source="file_upload",
         )
 
         turn = mock_db.session.add.call_args[0][0]
@@ -1255,8 +1348,13 @@ class TestCompleteAnswer:
         assert turn.text == "[File: photo.png]"
 
     def test_force_processing_on_invalid_transition(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
     ):
         """complete_answer forces PROCESSING when state machine rejects transition."""
         command = MagicMock()
@@ -1272,8 +1370,13 @@ class TestCompleteAnswer:
         assert command.state == CommandState.PROCESSING
 
     def test_no_question_turn_sets_none_answered_by(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
     ):
         """complete_answer sets answered_by_turn_id=None when no QUESTION turn exists."""
         command = MagicMock()
@@ -1288,11 +1391,18 @@ class TestCompleteAnswer:
         assert turn.answered_by_turn_id is None
 
     def test_broadcast_failure_does_not_raise(
-        self, mock_db, mock_hook_state, mock_broadcast_card,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """complete_answer should not raise if broadcasts fail."""
-        with patch("claude_headspace.services.command_lifecycle.get_broadcaster") as mock_get:
+        with patch(
+            "claude_headspace.services.command_lifecycle.get_broadcaster"
+        ) as mock_get:
             mock_get.return_value.broadcast.side_effect = Exception("SSE down")
 
             # Should NOT raise
@@ -1300,27 +1410,42 @@ class TestCompleteAnswer:
             assert result.new_state == CommandState.PROCESSING
 
     def test_respond_pending_set_after_commit(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """set_respond_pending must be called AFTER commit (not before)."""
         call_order = []
         mock_db.session.commit.side_effect = lambda: call_order.append("commit")
-        mock_hook_state.set_respond_pending.side_effect = lambda _: call_order.append("set_respond_pending")
+        mock_hook_state.set_respond_pending.side_effect = lambda _: call_order.append(
+            "set_respond_pending"
+        )
 
         complete_answer(mock_command, mock_agent, "yes", source="test")
 
         assert call_order.index("commit") < call_order.index("set_respond_pending")
 
     def test_state_changed_broadcast_payload(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """state_changed broadcast should contain source as event_type."""
         complete_answer(mock_command, mock_agent, "yes", source="voice_command")
 
         state_call = [
-            c for c in mock_broadcaster.broadcast.call_args_list
+            c
+            for c in mock_broadcaster.broadcast.call_args_list
             if c[0][0] == "state_changed"
         ][0]
         payload = state_call[0][1]
@@ -1330,14 +1455,21 @@ class TestCompleteAnswer:
         assert payload["new_state"] == "processing"
 
     def test_turn_created_broadcast_payload(
-        self, mock_db, mock_hook_state, mock_broadcast_card, mock_broadcaster,
-        mock_mark_answered, mock_agent, mock_command,
+        self,
+        mock_db,
+        mock_hook_state,
+        mock_broadcast_card,
+        mock_broadcaster,
+        mock_mark_answered,
+        mock_agent,
+        mock_command,
     ):
         """turn_created broadcast should contain turn details."""
         complete_answer(mock_command, mock_agent, "my answer", source="respond")
 
         turn_call = [
-            c for c in mock_broadcaster.broadcast.call_args_list
+            c
+            for c in mock_broadcaster.broadcast.call_args_list
             if c[0][0] == "turn_created"
         ][0]
         payload = turn_call[0][1]

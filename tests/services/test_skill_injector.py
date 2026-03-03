@@ -11,8 +11,6 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.persona_assets import GuardrailValidationError
 from claude_headspace.services.skill_injector import (
     clear_injection_record,
@@ -21,8 +19,16 @@ from claude_headspace.services.skill_injector import (
 )
 
 
-def _make_agent(agent_id=1, persona_id=5, tmux_pane_id="%0", slug="developer-con-1", name="Con",
-                prompt_injected_at=None, is_remote_agent=False, guardrails_version_hash=None):
+def _make_agent(
+    agent_id=1,
+    persona_id=5,
+    tmux_pane_id="%0",
+    slug="developer-con-1",
+    name="Con",
+    prompt_injected_at=None,
+    is_remote_agent=False,
+    guardrails_version_hash=None,
+):
     """Create a mock agent with persona relationship."""
     agent = MagicMock()
     agent.id = agent_id
@@ -155,7 +161,9 @@ class TestInjectPersonaSkills:
         """Unhealthy tmux pane skips injection with warning."""
         mock_read_skill.return_value = "# skill content"
         mock_read_exp.return_value = None
-        mock_health.return_value = MagicMock(available=False, error_message="pane not found")
+        mock_health.return_value = MagicMock(
+            available=False, error_message="pane not found"
+        )
 
         agent = _make_agent()
         with caplog.at_level(logging.WARNING):
@@ -328,7 +336,13 @@ class TestFailClosedGuardrails:
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
     def test_local_agent_warns_when_guardrails_missing(
-        self, mock_read_skill, mock_read_exp, mock_validate, mock_health, mock_send, caplog
+        self,
+        mock_read_skill,
+        mock_read_exp,
+        mock_validate,
+        mock_health,
+        mock_send,
+        caplog,
     ):
         """Local agent injection WARNS but proceeds when guardrails are missing."""
         mock_read_skill.return_value = "# skill content"
@@ -371,8 +385,13 @@ class TestFailClosedGuardrails:
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
     def test_remote_agent_reports_tmux_send_failure(
-        self, mock_read_skill, mock_read_exp, mock_validate,
-        mock_health, mock_send, mock_report
+        self,
+        mock_read_skill,
+        mock_read_exp,
+        mock_validate,
+        mock_health,
+        mock_send,
+        mock_report,
     ):
         """Remote agent tmux send failure triggers otageMon report."""
         mock_read_skill.return_value = "# skill content"
@@ -398,8 +417,7 @@ class TestGuardrailsVersionHash:
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
     def test_hash_stored_on_agent_after_successful_injection(
-        self, mock_read_skill, mock_read_exp, mock_validate,
-        mock_health, mock_send
+        self, mock_read_skill, mock_read_exp, mock_validate, mock_health, mock_send
     ):
         """Successful injection stores guardrails_version_hash on the agent."""
         expected_hash = "a" * 64
@@ -422,8 +440,7 @@ class TestGuardrailsVersionHash:
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
     def test_hash_not_stored_on_send_failure(
-        self, mock_read_skill, mock_read_exp, mock_validate,
-        mock_health, mock_send
+        self, mock_read_skill, mock_read_exp, mock_validate, mock_health, mock_send
     ):
         """Failed injection does NOT store guardrails_version_hash."""
         mock_read_skill.return_value = "# skill content"
@@ -443,8 +460,7 @@ class TestGuardrailsVersionHash:
     @patch("claude_headspace.services.skill_injector.read_experience_file")
     @patch("claude_headspace.services.skill_injector.read_skill_file")
     def test_hash_not_stored_when_guardrails_unavailable(
-        self, mock_read_skill, mock_read_exp, mock_validate,
-        mock_health, mock_send
+        self, mock_read_skill, mock_read_exp, mock_validate, mock_health, mock_send
     ):
         """When guardrails are unavailable (local agent), hash is not stored."""
         mock_read_skill.return_value = "# skill content"

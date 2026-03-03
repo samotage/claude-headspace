@@ -14,7 +14,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.agent_driven.helpers.cross_layer import verify_cross_layer_consistency
-from tests.agent_driven.helpers.output import scenario_header, scenario_footer, step
+from tests.agent_driven.helpers.output import scenario_footer, scenario_header, step
 from tests.e2e.helpers.voice_assertions import VoiceAssertions
 
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
@@ -24,6 +24,7 @@ RESPONSE_TIMEOUT = 60_000  # ms -- generous timeout for real LLM processing
 # ---------------------------------------------------------------------------
 # Test: Multi-Turn Conversation (FR10)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.agent_driven
 def test_multi_turn_with_cross_layer_verification(

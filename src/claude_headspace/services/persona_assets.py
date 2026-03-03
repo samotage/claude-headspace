@@ -37,6 +37,7 @@ def _resolve_personas_dir(project_root: Path | None = None) -> Path:
 
     try:
         from flask import current_app
+
         configured = current_app.config.get("PERSONA_DATA_ROOT")
         if configured:
             return Path(configured)
@@ -59,6 +60,7 @@ def _resolve_guardrails_path(project_root: Path | None = None) -> Path:
 
     try:
         from flask import current_app
+
         configured = current_app.config.get("PERSONA_DATA_ROOT")
         if configured:
             # PERSONA_DATA_ROOT points at data/personas — go up one level
@@ -354,9 +356,7 @@ def read_experience_file(slug: str, project_root: Path | None = None) -> str | N
     return experience_path.read_text(encoding="utf-8")
 
 
-def write_skill_file(
-    slug: str, content: str, project_root: Path | None = None
-) -> Path:
+def write_skill_file(slug: str, content: str, project_root: Path | None = None) -> Path:
     """Write content to a persona's skill.md file.
 
     Creates the persona directory if it does not exist. Overwrites any

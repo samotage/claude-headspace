@@ -3,10 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.api_call_logger import (
-    CAPTURED_PREFIXES,
     MAX_PAYLOAD_BYTES,
     TRUNCATION_INDICATOR,
     ApiCallLogger,

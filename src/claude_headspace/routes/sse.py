@@ -1,7 +1,7 @@
 """SSE (Server-Sent Events) endpoint for real-time updates."""
 
 import logging
-from typing import Generator, Optional
+from collections.abc import Generator
 
 from flask import Blueprint, Response, request
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 sse_bp = Blueprint("sse", __name__)
 
 
-def parse_filter_types(types_param: Optional[str]) -> Optional[list[str]]:
+def parse_filter_types(types_param: str | None) -> list[str] | None:
     """
     Parse the types query parameter into a list of event types.
 
@@ -27,7 +27,7 @@ def parse_filter_types(types_param: Optional[str]) -> Optional[list[str]]:
     return [t.strip() for t in types_param.split(",") if t.strip()]
 
 
-def parse_int_param(value: Optional[str]) -> Optional[int]:
+def parse_int_param(value: str | None) -> int | None:
     """
     Parse an integer query parameter.
 
@@ -145,7 +145,9 @@ def events():
     # Check both the standard header (browser auto-retry) and a query param
     # fallback (our SSE client manually closes+recreates the EventSource,
     # which doesn't send the header, so it passes the ID via query param).
-    last_event_id_raw = request.headers.get("Last-Event-ID") or request.args.get("last_event_id")
+    last_event_id_raw = request.headers.get("Last-Event-ID") or request.args.get(
+        "last_event_id"
+    )
     last_event_id: int | None = None
     if last_event_id_raw:
         try:

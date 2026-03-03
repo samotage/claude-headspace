@@ -212,7 +212,11 @@ def get_command_summary(agent: Agent, _current_command=None) -> str:
     """
     from ..models.turn import TurnActor, TurnIntent
 
-    current_command = _current_command if _current_command is not None else agent.get_current_command()
+    current_command = (
+        _current_command
+        if _current_command is not None
+        else agent.get_current_command()
+    )
     if current_command is None:
         # Check if most recent command is COMPLETE (eager-loaded, ordered by started_at desc)
         if agent.commands and agent.commands[0].state == CommandState.COMPLETE:
@@ -271,7 +275,11 @@ def get_command_instruction(agent: Agent, _current_command=None) -> str | None:
     """
     from ..models.turn import TurnActor, TurnIntent
 
-    current_command = _current_command if _current_command is not None else agent.get_current_command()
+    current_command = (
+        _current_command
+        if _current_command is not None
+        else agent.get_current_command()
+    )
     if current_command and current_command.instruction:
         logger.debug(
             f"get_command_instruction: agent={agent.id}, "
@@ -468,7 +476,11 @@ def _get_current_command_turn_count(agent: Agent, _current_command=None) -> int:
     Returns:
         Number of turns in the current/most recent command, or 0
     """
-    current_command = _current_command if _current_command is not None else agent.get_current_command()
+    current_command = (
+        _current_command
+        if _current_command is not None
+        else agent.get_current_command()
+    )
     if current_command and hasattr(current_command, "turns"):
         return len(current_command.turns)
     # Fall back to most recent command (may be COMPLETE)
@@ -490,7 +502,11 @@ def _get_current_command_elapsed(agent: Agent, _current_command=None) -> str | N
     Returns:
         Elapsed time string like "2h 15m", "5m", "<1m", or None
     """
-    current_command = _current_command if _current_command is not None else agent.get_current_command()
+    current_command = (
+        _current_command
+        if _current_command is not None
+        else agent.get_current_command()
+    )
     cmd = current_command or (agent.commands[0] if agent.commands else None)
     if not cmd or not cmd.started_at:
         return None
@@ -520,23 +536,36 @@ def _is_permission_question(text: str | None) -> bool:
     # Permission summarizer outputs like "Bash: ls /foo", "Read: src/file.py",
     # "Permission needed: Bash", "Permission: ToolName", or generic waiting text
     permission_prefixes = (
-        "Bash:", "Read:", "Write:", "Edit:", "Glob:", "Grep:",
-        "NotebookEdit:", "WebFetch:", "WebSearch:",
-        "Permission needed:", "Permission:",
+        "Bash:",
+        "Read:",
+        "Write:",
+        "Edit:",
+        "Glob:",
+        "Grep:",
+        "NotebookEdit:",
+        "WebFetch:",
+        "WebSearch:",
+        "Permission needed:",
+        "Permission:",
     )
-    return text.startswith(permission_prefixes) or text == "Claude is waiting for your input"
+    return (
+        text.startswith(permission_prefixes)
+        or text == "Claude is waiting for your input"
+    )
 
 
 def _default_permission_options(question_text: str) -> dict:
     """Build default Yes/No structured options for permission requests."""
     return {
-        "questions": [{
-            "question": question_text,
-            "options": [
-                {"label": "Yes", "description": "Allow this action"},
-                {"label": "No", "description": "Deny this action"},
-            ],
-        }],
+        "questions": [
+            {
+                "question": question_text,
+                "options": [
+                    {"label": "Yes", "description": "Allow this action"},
+                    {"label": "No", "description": "Deny this action"},
+                ],
+            }
+        ],
         "source": "card_state_fallback",
         "status": "pending",
     }
@@ -558,7 +587,11 @@ def get_question_options(agent: Agent, _current_command=None) -> dict | None:
     """
     from ..models.turn import TurnActor, TurnIntent
 
-    current_command = _current_command if _current_command is not None else agent.get_current_command()
+    current_command = (
+        _current_command
+        if _current_command is not None
+        else agent.get_current_command()
+    )
     if not current_command or current_command.state != CommandState.AWAITING_INPUT:
         return None
 
@@ -594,7 +627,9 @@ def build_card_state(agent: Agent) -> dict:
     current_command = agent.get_current_command()
 
     effective_state = get_effective_state(agent)
-    state_name = effective_state if isinstance(effective_state, str) else effective_state.name
+    state_name = (
+        effective_state if isinstance(effective_state, str) else effective_state.name
+    )
 
     truncated_uuid = str(agent.session_uuid)[:8]
     card = {
@@ -608,7 +643,9 @@ def build_card_state(agent: Agent) -> dict:
         "state": state_name,
         "state_info": get_state_info(effective_state),
         "command_summary": get_command_summary(agent, _current_command=current_command),
-        "command_instruction": get_command_instruction(agent, _current_command=current_command),
+        "command_instruction": get_command_instruction(
+            agent, _current_command=current_command
+        ),
         "command_completion_summary": get_command_completion_summary(agent),
         "priority": agent.priority_score if agent.priority_score is not None else 50,
         "priority_reason": agent.priority_reason,
@@ -646,8 +683,12 @@ def build_card_state(agent: Agent) -> dict:
 
     # Include turn count and elapsed time for all states (used by
     # the agent card footer and condensed completed-command card)
-    card["turn_count"] = _get_current_command_turn_count(agent, _current_command=current_command)
-    card["elapsed"] = _get_current_command_elapsed(agent, _current_command=current_command)
+    card["turn_count"] = _get_current_command_turn_count(
+        agent, _current_command=current_command
+    )
+    card["elapsed"] = _get_current_command_elapsed(
+        agent, _current_command=current_command
+    )
 
     # Include structured question options for AWAITING_INPUT cards
     options = get_question_options(agent, _current_command=current_command)
@@ -660,7 +701,9 @@ def build_card_state(agent: Agent) -> dict:
         ctx_config = _get_context_config()
         handoff_threshold = ctx_config.get("handoff_threshold", 80)
         has_persona = agent.persona_id is not None
-        handoff_eligible = has_persona and agent.context_percent_used >= handoff_threshold
+        handoff_eligible = (
+            has_persona and agent.context_percent_used >= handoff_threshold
+        )
         card["context"] = {
             "percent_used": agent.context_percent_used,
             "remaining_tokens": agent.context_remaining_tokens or "",
@@ -681,9 +724,7 @@ def build_card_state(agent: Agent) -> dict:
             if commander:
                 available = commander.is_available(agent.id)
                 if not available:
-                    available = commander.check_agent(
-                        agent.id, agent.tmux_pane_id
-                    )
+                    available = commander.check_agent(agent.id, agent.tmux_pane_id)
                 card["is_bridge_connected"] = available
         except RuntimeError:
             pass  # No app context (unit tests)
@@ -709,6 +750,8 @@ def broadcast_card_refresh(agent: Agent, reason: str) -> None:
         card["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         get_broadcaster().broadcast("card_refresh", card)
-        logger.debug(f"Broadcast card_refresh for agent {agent.id}: reason={reason}, instruction={card.get('command_instruction', 'N/A')!r:.60}")
+        logger.debug(
+            f"Broadcast card_refresh for agent {agent.id}: reason={reason}, instruction={card.get('command_instruction', 'N/A')!r:.60}"
+        )
     except Exception as e:
         logger.info(f"card_refresh broadcast failed (non-fatal): {e}")

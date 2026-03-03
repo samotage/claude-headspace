@@ -83,7 +83,9 @@ def register_persona(
     )
     db.session.add(persona)
     db.session.flush()  # Triggers after_insert event which sets the real slug
-    logger.info("Created persona: %s (id=%d, slug=%s)", persona.name, persona.id, persona.slug)
+    logger.info(
+        "Created persona: %s (id=%d, slug=%s)", persona.name, persona.id, persona.slug
+    )
 
     # 4. Create filesystem assets
     try:
@@ -95,7 +97,9 @@ def register_persona(
         db.session.rollback()
         logger.error(
             "Filesystem creation failed for persona %s (slug=%s): %s",
-            persona.name, persona.slug, e,
+            persona.name,
+            persona.slug,
+            e,
         )
         raise RegistrationError(
             f"Persona registration failed: filesystem creation error: {e}"

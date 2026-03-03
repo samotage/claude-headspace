@@ -31,32 +31,28 @@ class Position(db.Model):
     role_id: Mapped[int] = mapped_column(
         ForeignKey("roles.id", ondelete="CASCADE"), nullable=False
     )
-    title: Mapped[str] = mapped_column(
-        String(128), nullable=False
-    )
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
     reports_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("positions.id", ondelete="SET NULL"), nullable=True
     )
     escalates_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("positions.id", ondelete="SET NULL"), nullable=True
     )
-    level: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_cross_cutting: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships — external FKs
     organisation: Mapped["Organisation"] = relationship(
         "Organisation", back_populates="positions"
     )
-    role: Mapped["Role"] = relationship(
-        "Role", back_populates="positions"
-    )
+    role: Mapped["Role"] = relationship("Role", back_populates="positions")
 
     # Relationships — self-referential
     reports_to: Mapped["Position | None"] = relationship(

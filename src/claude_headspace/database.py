@@ -1,7 +1,6 @@
 """Database setup and utilities using Flask-SQLAlchemy."""
 
 import logging
-from typing import Tuple
 
 from flask import Flask
 from flask_migrate import Migrate
@@ -96,7 +95,7 @@ def verify_connection(app: Flask) -> bool:
         return False
 
 
-def check_database_health() -> Tuple[bool, str | None]:
+def check_database_health() -> tuple[bool, str | None]:
     """
     Check database connectivity for health checks.
 

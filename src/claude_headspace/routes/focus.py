@@ -2,14 +2,12 @@
 
 import logging
 import time
-from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 
 from ..database import db
 from ..models.agent import Agent
 from ..services.iterm_focus import (
-    AttachResult,
     FocusErrorType,
     FocusResult,
     attach_tmux_session,
@@ -68,7 +66,9 @@ def _log_focus_event(
     )
 
 
-def _focus_via_tmux(tmux_pane_id: str, iterm_pane_id: str | None) -> tuple[FocusResult, str]:
+def _focus_via_tmux(
+    tmux_pane_id: str, iterm_pane_id: str | None
+) -> tuple[FocusResult, str]:
     """Focus an agent via tmux pane resolution.
 
     1. Resolve the tmux pane to a client TTY
@@ -100,14 +100,17 @@ def _focus_via_tmux(tmux_pane_id: str, iterm_pane_id: str | None) -> tuple[Focus
             return FocusResult(
                 success=False,
                 error_type=FocusErrorType.PANE_NOT_FOUND,
-                error_message=tty_result.error_message or "Failed to resolve tmux pane TTY.",
+                error_message=tty_result.error_message
+                or "Failed to resolve tmux pane TTY.",
                 latency_ms=0,
             ), "tmux"
 
     # Step 2: Select the correct tmux pane (before focusing iTerm)
     select_result = select_pane(tmux_pane_id)
     if not select_result.success:
-        logger.warning(f"tmux select-pane failed for {tmux_pane_id}: {select_result.error_message}")
+        logger.warning(
+            f"tmux select-pane failed for {tmux_pane_id}: {select_result.error_message}"
+        )
         # Continue anyway — focusing the iTerm window is still useful
 
     # Step 3: Focus the iTerm window by TTY
@@ -145,10 +148,12 @@ def focus_agent(agent_id: int):
             error_type="agent_not_found",
             latency_ms=int((time.time() - start_time) * 1000),
         )
-        return jsonify({
-            "error": f"Agent with ID {agent_id} not found.",
-            "detail": "agent_not_found",
-        }), 404
+        return jsonify(
+            {
+                "error": f"Agent with ID {agent_id} not found.",
+                "detail": "agent_not_found",
+            }
+        ), 404
 
     fallback_path = _get_fallback_path(agent)
     pane_id = agent.iterm_pane_id
@@ -164,11 +169,13 @@ def focus_agent(agent_id: int):
             error_type="pane_not_found",
             latency_ms=latency_ms,
         )
-        return jsonify({
-            "error": "This agent does not have a pane ID.",
-            "detail": "pane_not_found",
-            "fallback_path": fallback_path,
-        }), 400
+        return jsonify(
+            {
+                "error": "This agent does not have a pane ID.",
+                "detail": "pane_not_found",
+                "fallback_path": fallback_path,
+            }
+        ), 400
 
     # Route to appropriate focus method
     if tmux_pane_id:
@@ -189,21 +196,25 @@ def focus_agent(agent_id: int):
     )
 
     if result.success:
-        return jsonify({
-            "status": "ok",
-            "agent_id": agent_id,
-            "pane_id": pane_id,
-            "method": method,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "agent_id": agent_id,
+                "pane_id": pane_id,
+                "method": method,
+            }
+        ), 200
     else:
         status_code = 500
 
-        return jsonify({
-            "error": result.error_message,
-            "detail": result.error_type.value if result.error_type else "unknown",
-            "fallback_path": fallback_path,
-            "method": method,
-        }), status_code
+        return jsonify(
+            {
+                "error": result.error_message,
+                "detail": result.error_type.value if result.error_type else "unknown",
+                "fallback_path": fallback_path,
+                "method": method,
+            }
+        ), status_code
 
 
 @focus_bp.route("/api/agents/<int:agent_id>/dismiss", methods=["POST"])
@@ -227,23 +238,29 @@ def dismiss_agent_endpoint(agent_id: int):
     agent = db.session.get(Agent, agent_id)
 
     if agent is None:
-        return jsonify({
-            "error": f"Agent {agent_id} not found",
-        }), 404
+        return jsonify(
+            {
+                "error": f"Agent {agent_id} not found",
+            }
+        ), 404
 
     if agent.ended_at is not None:
-        return jsonify({
-            "status": "ok",
-            "agent_id": agent_id,
-            "already_ended": True,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "agent_id": agent_id,
+                "already_ended": True,
+            }
+        ), 200
 
     try:
         if dismiss_agent(agent_id):
-            return jsonify({
-                "status": "ok",
-                "agent_id": agent_id,
-            }), 200
+            return jsonify(
+                {
+                    "status": "ok",
+                    "agent_id": agent_id,
+                }
+            ), 200
         else:
             return jsonify({"error": "Failed to dismiss agent"}), 500
     except Exception:
@@ -298,10 +315,12 @@ def attach_agent(agent_id: int):
             error_type="agent_not_found",
             latency_ms=int((time.time() - start_time) * 1000),
         )
-        return jsonify({
-            "error": f"Agent with ID {agent_id} not found.",
-            "detail": "agent_not_found",
-        }), 404
+        return jsonify(
+            {
+                "error": f"Agent with ID {agent_id} not found.",
+                "detail": "agent_not_found",
+            }
+        ), 404
 
     tmux_session_name = agent.tmux_session
     if not tmux_session_name:
@@ -312,10 +331,12 @@ def attach_agent(agent_id: int):
             error_type="no_tmux_session",
             latency_ms=int((time.time() - start_time) * 1000),
         )
-        return jsonify({
-            "error": "This agent does not have a tmux session.",
-            "detail": "no_tmux_session",
-        }), 400
+        return jsonify(
+            {
+                "error": "This agent does not have a tmux session.",
+                "detail": "no_tmux_session",
+            }
+        ), 400
 
     # Verify the tmux session still exists
     if not check_tmux_session_exists(tmux_session_name):
@@ -326,10 +347,12 @@ def attach_agent(agent_id: int):
             error_type="session_not_found",
             latency_ms=int((time.time() - start_time) * 1000),
         )
-        return jsonify({
-            "error": f"Tmux session '{tmux_session_name}' no longer exists.",
-            "detail": "session_not_found",
-        }), 400
+        return jsonify(
+            {
+                "error": f"Tmux session '{tmux_session_name}' no longer exists.",
+                "detail": "session_not_found",
+            }
+        ), 400
 
     result = attach_tmux_session(tmux_session_name)
 
@@ -343,14 +366,18 @@ def attach_agent(agent_id: int):
     )
 
     if result.success:
-        return jsonify({
-            "status": "ok",
-            "agent_id": agent_id,
-            "tmux_session": tmux_session_name,
-            "method": result.method,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "agent_id": agent_id,
+                "tmux_session": tmux_session_name,
+                "method": result.method,
+            }
+        ), 200
     else:
-        return jsonify({
-            "error": result.error_message,
-            "detail": result.error_type.value if result.error_type else "unknown",
-        }), 500
+        return jsonify(
+            {
+                "error": result.error_message,
+                "detail": result.error_type.value if result.error_type else "unknown",
+            }
+        ), 500

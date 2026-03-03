@@ -3,10 +3,7 @@
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.tmux_bridge import (
-    DEFAULT_ENTER_VERIFY_LINES,
     HealthCheckLevel,
     HealthResult,
     PaneInfo,
@@ -19,7 +16,6 @@ from claude_headspace.services.tmux_bridge import (
     _extract_verification_snippet,
     _get_send_lock,
     _has_autocomplete_ghost,
-    _is_process_in_tree,
     _pane_content_changed,
     _send_locks,
     _validate_pane_id,
@@ -28,8 +24,8 @@ from claude_headspace.services.tmux_bridge import (
     capture_permission_context,
     capture_permission_options,
     check_health,
-    get_pane_pid,
     get_pane_client_tty,
+    get_pane_pid,
     interrupt_and_send_text,
     kill_session,
     list_panes,
@@ -112,15 +108,21 @@ class TestClassifySubprocessError:
 
     def test_generic_error(self):
         error = subprocess.CalledProcessError(1, "tmux", stderr=b"some other error")
-        assert _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        assert (
+            _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        )
 
     def test_empty_stderr(self):
         error = subprocess.CalledProcessError(1, "tmux", stderr=b"")
-        assert _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        assert (
+            _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        )
 
     def test_none_stderr(self):
         error = subprocess.CalledProcessError(1, "tmux", stderr=None)
-        assert _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        assert (
+            _classify_subprocess_error(error) == TmuxBridgeErrorType.SUBPROCESS_FAILED
+        )
 
 
 class TestValidatePaneId:
@@ -248,7 +250,9 @@ class TestSendText:
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "  # clean prompt, no ghost text
 
-        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+        result = send_text(
+            "%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False
+        )
 
         assert result.success is True
         assert result.latency_ms >= 0
@@ -274,7 +278,9 @@ class TestSendText:
             "> ",  # post-typing ghost check (clean after Escape)
         ]
 
-        result = send_text("%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+        result = send_text(
+            "%5", "1", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False
+        )
 
         assert result.success is True
         # Three subprocess calls: Escape + text send + Enter send
@@ -517,7 +523,9 @@ class TestPermissionCaptureUsesJoinWrapped:
     @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
     def test_capture_permission_options_uses_join_wrapped(self, mock_wait):
         mock_wait.return_value = WaitResult(
-            matched=True, content="  1. Yes\n  2. No\n", elapsed_ms=10,
+            matched=True,
+            content="  1. Yes\n  2. No\n",
+            elapsed_ms=10,
         )
         capture_permission_options("%5", retry_delay_ms=0)
         _, kwargs = mock_wait.call_args
@@ -572,11 +580,7 @@ class TestParsePermissionOptions:
         assert result == [{"label": "Yes"}, {"label": "No"}]
 
     def test_three_options(self):
-        text = (
-            "  1. Yes\n"
-            "  2. Yes, and don't ask again\n"
-            "  3. No\n"
-        )
+        text = "  1. Yes\n  2. Yes, and don't ask again\n  3. No\n"
         result = parse_permission_options(text)
         assert result == [
             {"label": "Yes"},
@@ -585,11 +589,7 @@ class TestParsePermissionOptions:
         ]
 
     def test_arrow_indicator(self):
-        text = (
-            "❯ 1. Yes\n"
-            "  2. Yes, and don't ask again\n"
-            "  3. No\n"
-        )
+        text = "❯ 1. Yes\n  2. Yes, and don't ask again\n  3. No\n"
         result = parse_permission_options(text)
         assert result == [
             {"label": "Yes"},
@@ -603,10 +603,7 @@ class TestParsePermissionOptions:
         assert result == [{"label": "Yes"}, {"label": "No"}]
 
     def test_ansi_escape_codes_stripped(self):
-        text = (
-            "\x1b[36m  1. Yes\x1b[0m\n"
-            "\x1b[36m  2. No\x1b[0m\n"
-        )
+        text = "\x1b[36m  1. Yes\x1b[0m\n\x1b[36m  2. No\x1b[0m\n"
         result = parse_permission_options(text)
         assert result == [{"label": "Yes"}, {"label": "No"}]
 
@@ -789,13 +786,7 @@ class TestParsePermissionContext:
 
     def test_options_still_parsed_without_header(self):
         """When no tool header is found, options should still be parsed."""
-        text = (
-            " Some custom dialog\n"
-            "\n"
-            " Do you want to proceed?\n"
-            " ❯ 1. Yes\n"
-            "   2. No\n"
-        )
+        text = " Some custom dialog\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n"
         result = parse_permission_context(text)
         assert result is not None
         assert result["tool_type"] is None
@@ -1196,9 +1187,7 @@ class TestWaitForPattern:
     @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
     def test_empty_capture_returns_timeout(self, mock_dump, mock_capture):
         mock_capture.return_value = ""
-        result = wait_for_pattern(
-            "%5", r"anything", timeout_ms=50, poll_interval_ms=10
-        )
+        result = wait_for_pattern("%5", r"anything", timeout_ms=50, poll_interval_ms=10)
         assert result.matched is False
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
 
@@ -1251,7 +1240,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_exists_level_only_checks_pane_exists(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5\n%10\n",
+            returncode=0,
+            stdout=b"%5\n%10\n",
         )
         result = check_health("%5", level=HealthCheckLevel.EXISTS)
         assert result.available is True
@@ -1261,7 +1251,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_exists_level_pane_not_found(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%10\n",
+            returncode=0,
+            stdout=b"%10\n",
         )
         result = check_health("%5", level=HealthCheckLevel.EXISTS)
         assert result.available is False
@@ -1269,7 +1260,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_command_level_detects_claude(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 claude\n",
+            returncode=0,
+            stdout=b"%5 claude\n",
         )
         result = check_health("%5", level=HealthCheckLevel.COMMAND)
         assert result.available is True
@@ -1278,7 +1270,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_command_level_detects_no_claude(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 bash\n",
+            returncode=0,
+            stdout=b"%5 bash\n",
         )
         result = check_health("%5", level=HealthCheckLevel.COMMAND)
         assert result.available is True
@@ -1289,7 +1282,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_process_tree_level_claude_running(self, mock_run, mock_tree, mock_pid):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 bash\n",
+            returncode=0,
+            stdout=b"%5 bash\n",
         )
         mock_pid.return_value = 12345
         mock_tree.return_value = True
@@ -1304,7 +1298,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_process_tree_level_no_claude(self, mock_run, mock_tree, mock_pid):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 bash\n",
+            returncode=0,
+            stdout=b"%5 bash\n",
         )
         mock_pid.return_value = 12345
         mock_tree.return_value = False
@@ -1320,7 +1315,8 @@ class TestHealthCheckLevel:
     def test_process_tree_fallback_on_error(self, mock_run, mock_tree, mock_pid):
         """When tree check returns None, falls back to command-level result."""
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 node\n",
+            returncode=0,
+            stdout=b"%5 node\n",
         )
         mock_pid.return_value = 12345
         mock_tree.return_value = None  # Can't determine
@@ -1332,7 +1328,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_custom_process_names(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 python\n",
+            returncode=0,
+            stdout=b"%5 python\n",
         )
         result = check_health(
             "%5", level=HealthCheckLevel.COMMAND, process_names=("python",)
@@ -1343,7 +1340,8 @@ class TestHealthCheckLevel:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_custom_process_names_no_match(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 bash\n",
+            returncode=0,
+            stdout=b"%5 bash\n",
         )
         result = check_health(
             "%5", level=HealthCheckLevel.COMMAND, process_names=("python",)
@@ -1355,7 +1353,8 @@ class TestHealthCheckLevel:
     def test_default_level_is_command(self, mock_run):
         """Default check_health() behavior should match COMMAND level."""
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5 claude\n",
+            returncode=0,
+            stdout=b"%5 claude\n",
         )
         result = check_health("%5")
         assert result.available is True
@@ -1368,14 +1367,16 @@ class TestGetPanePid:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_success(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="%5 12345\n%10 99999\n",
+            returncode=0,
+            stdout="%5 12345\n%10 99999\n",
         )
         assert get_pane_pid("%5") == 12345
 
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_pane_not_found(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="%10 99999\n",
+            returncode=0,
+            stdout="%10 99999\n",
         )
         assert get_pane_pid("%5") is None
 
@@ -1440,7 +1441,13 @@ class TestSendLockRegistry:
         def tracked_send(label):
             """Send text and record when we enter/exit the lock."""
             call_order.append(f"{label}_start")
-            send_text("%50", f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+            send_text(
+                "%50",
+                f"msg_{label}",
+                text_enter_delay_ms=0,
+                clear_delay_ms=0,
+                verify_enter=False,
+            )
             call_order.append(f"{label}_end")
 
         t1 = threading.Thread(target=tracked_send, args=("A",))
@@ -1476,7 +1483,13 @@ class TestSendLockRegistry:
         results = {}
 
         def send_to_pane(pane_id, label):
-            result = send_text(pane_id, f"msg_{label}", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+            result = send_text(
+                pane_id,
+                f"msg_{label}",
+                text_enter_delay_ms=0,
+                clear_delay_ms=0,
+                verify_enter=False,
+            )
             results[label] = result.success
 
         t1 = threading.Thread(target=send_to_pane, args=("%51", "A"))
@@ -1499,7 +1512,8 @@ class TestSendLockRegistry:
         mock_capture.return_value = ""
 
         result = interrupt_and_send_text(
-            "%53", "hello",
+            "%53",
+            "hello",
             text_enter_delay_ms=0,
             interrupt_settle_ms=0,
             verify_enter=False,
@@ -1526,7 +1540,14 @@ class TestKillSession:
         result = kill_session("hs-test", socket_path="/tmp/tmux-1000/hs")
         assert result.success is True
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["tmux", "-S", "/tmp/tmux-1000/hs", "kill-session", "-t", "hs-test"]
+        assert cmd == [
+            "tmux",
+            "-S",
+            "/tmp/tmux-1000/hs",
+            "kill-session",
+            "-t",
+            "hs-test",
+        ]
 
     def test_empty_session_name(self):
         result = kill_session("")
@@ -1562,7 +1583,8 @@ class TestListPanesSocketPath:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_default_no_socket(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5\tsession1\tbash\t/home\n",
+            returncode=0,
+            stdout=b"%5\tsession1\tbash\t/home\n",
         )
         result = list_panes()
         cmd = mock_run.call_args[0][0]
@@ -1571,7 +1593,8 @@ class TestListPanesSocketPath:
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
     def test_with_socket_path(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=b"%5\tsession1\tbash\t/home\n",
+            returncode=0,
+            stdout=b"%5\tsession1\tbash\t/home\n",
         )
         result = list_panes(socket_path="/tmp/tmux-hs")
         cmd = mock_run.call_args[0][0]
@@ -1653,7 +1676,8 @@ class TestVerifySubmission:
         mock_dump.assert_not_called()
         # Enter was retried once
         enter_calls = [
-            c for c in mock_run.call_args_list
+            c
+            for c in mock_run.call_args_list
             if c[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
         ]
         assert len(enter_calls) == 1
@@ -1713,14 +1737,20 @@ class TestSendTextVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_true_calls_verification(self, mock_run, mock_capture, mock_verify):
+    def test_verify_enter_true_calls_verification(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """verify_enter=True triggers _verify_submission after Enter."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
         mock_verify.return_value = True
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=True,
+            "%5",
+            "hello",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=True,
         )
 
         assert result.success is True
@@ -1729,13 +1759,19 @@ class TestSendTextVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_false_skips_verification(self, mock_run, mock_capture, mock_verify):
+    def test_verify_enter_false_skips_verification(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """verify_enter=False skips _verify_submission entirely."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+            "%5",
+            "hello",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=False,
         )
 
         assert result.success is True
@@ -1744,27 +1780,39 @@ class TestSendTextVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_failure_still_returns_success(self, mock_run, mock_capture, mock_verify):
+    def test_verify_enter_failure_still_returns_success(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """When verification fails, still returns success (non-fatal)."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
         mock_verify.return_value = False
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=True,
+            "%5",
+            "hello",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=True,
         )
 
         assert result.success is True
 
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_detect_ghost_text_false_skips_ghost_detection(self, mock_run, mock_capture):
+    def test_detect_ghost_text_false_skips_ghost_detection(
+        self, mock_run, mock_capture
+    ):
         """detect_ghost_text=False skips all ghost detection and Escape sends."""
         mock_run.return_value = MagicMock(returncode=0)
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0,
-            verify_enter=False, detect_ghost_text=False,
+            "%5",
+            "hello",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=False,
+            detect_ghost_text=False,
         )
 
         assert result.success is True
@@ -1775,14 +1823,20 @@ class TestSendTextVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_skip_verify_hint_skips_verification(self, mock_run, mock_capture, mock_verify):
+    def test_skip_verify_hint_skips_verification(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """skip_verify_hint=True skips verification even when verify_enter=True."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
 
         result = send_text(
-            "%5", "hello", text_enter_delay_ms=0, clear_delay_ms=0,
-            verify_enter=True, skip_verify_hint=True,
+            "%5",
+            "hello",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=True,
+            skip_verify_hint=True,
         )
 
         assert result.success is True
@@ -1805,10 +1859,7 @@ class TestSendTextSanitisation:
         send_text("%5", text_with_newlines, text_enter_delay_ms=0, clear_delay_ms=0)
 
         # Find the literal text send call (has -l flag)
-        text_call = [
-            c for c in mock_run.call_args_list
-            if "-l" in c[0][0]
-        ]
+        text_call = [c for c in mock_run.call_args_list if "-l" in c[0][0]]
         assert len(text_call) == 1
         # The text should still contain newlines
         sent_text = text_call[0][0][0][-1]
@@ -1821,7 +1872,13 @@ class TestSendTextSanitisation:
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "
 
-        send_text("%5", "hello   \n\n", text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False)
+        send_text(
+            "%5",
+            "hello   \n\n",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=False,
+        )
 
         text_call = [c for c in mock_run.call_args_list if "-l" in c[0][0]]
         sent_text = text_call[0][0][0][-1]
@@ -1834,15 +1891,20 @@ class TestSendKeysVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_true_triggers_verification(self, mock_run, mock_capture, mock_verify):
+    def test_verify_enter_true_triggers_verification(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """verify_enter=True captures baseline and calls _verify_submission."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "  1. Yes\n  2. No\n"
         mock_verify.return_value = True
 
         result = send_keys(
-            "%5", "Down", "Enter",
-            sequential_delay_ms=0, verify_enter=True,
+            "%5",
+            "Down",
+            "Enter",
+            sequential_delay_ms=0,
+            verify_enter=True,
         )
 
         assert result.success is True
@@ -1864,15 +1926,20 @@ class TestSendKeysVerifyEnter:
     @patch("claude_headspace.services.tmux_bridge._verify_submission")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_verify_enter_failure_still_returns_success(self, mock_run, mock_capture, mock_verify):
+    def test_verify_enter_failure_still_returns_success(
+        self, mock_run, mock_capture, mock_verify
+    ):
         """When verification fails, still returns success (non-fatal)."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "options still showing\n"
         mock_verify.return_value = False
 
         result = send_keys(
-            "%5", "Down", "Enter",
-            sequential_delay_ms=0, verify_enter=True,
+            "%5",
+            "Down",
+            "Enter",
+            sequential_delay_ms=0,
+            verify_enter=True,
         )
 
         assert result.success is True
@@ -1883,7 +1950,9 @@ class TestExtractVerificationSnippet:
 
     def test_long_text_produces_snippet(self):
         """Text of 40+ chars produces a non-None snippet from the last non-empty line."""
-        text = "This is a long piece of text that has more than forty characters for sure"
+        text = (
+            "This is a long piece of text that has more than forty characters for sure"
+        )
         snippet = _extract_verification_snippet(text)
         assert snippet is not None
         assert len(snippet) >= 15
@@ -1982,7 +2051,8 @@ class TestVerifySubmissionTextPresence:
         assert result is True
         # Enter was retried
         enter_calls = [
-            c for c in mock_run.call_args_list
+            c
+            for c in mock_run.call_args_list
             if c[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
         ]
         assert len(enter_calls) == 1
@@ -2021,8 +2091,11 @@ class TestPostTypingGhostText:
         ]
 
         result = send_text(
-            "%5", "hello world",
-            text_enter_delay_ms=0, clear_delay_ms=0, verify_enter=False,
+            "%5",
+            "hello world",
+            text_enter_delay_ms=0,
+            clear_delay_ms=0,
+            verify_enter=False,
         )
 
         assert result.success is True
@@ -2039,19 +2112,33 @@ class TestAdaptiveDelay:
     @patch("claude_headspace.services.tmux_bridge.time.sleep")
     @patch("claude_headspace.services.tmux_bridge.capture_pane")
     @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_adaptive_delay_scales_with_length(self, mock_run, mock_capture, mock_sleep):
+    def test_adaptive_delay_scales_with_length(
+        self, mock_run, mock_capture, mock_sleep
+    ):
         """Long text (2000+ chars) uses a longer delay than short text (50 chars)."""
         mock_run.return_value = MagicMock(returncode=0)
         mock_capture.return_value = "> "  # clean prompt, no ghost
 
         # Short text
-        send_text("%5", "x" * 50, text_enter_delay_ms=120, clear_delay_ms=0, verify_enter=False)
+        send_text(
+            "%5",
+            "x" * 50,
+            text_enter_delay_ms=120,
+            clear_delay_ms=0,
+            verify_enter=False,
+        )
         short_sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
 
         mock_sleep.reset_mock()
 
         # Long text
-        send_text("%5", "y" * 2000, text_enter_delay_ms=120, clear_delay_ms=0, verify_enter=False)
+        send_text(
+            "%5",
+            "y" * 2000,
+            text_enter_delay_ms=120,
+            clear_delay_ms=0,
+            verify_enter=False,
+        )
         long_sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
 
         # Short text: delay should be base (120ms = 0.12s)

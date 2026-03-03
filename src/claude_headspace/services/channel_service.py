@@ -11,8 +11,6 @@ wrappers that delegate to this service.
 import logging
 from datetime import datetime, timezone
 
-from flask import current_app
-
 from ..database import db
 from ..models.agent import Agent
 from ..models.channel import Channel, ChannelType
@@ -156,19 +154,23 @@ class ChannelService:
 
         # Build member name list for the JS card
         members = self._get_member_names(channel)
-        self._broadcast_update(channel, "channel_created", {
-            "slug": channel.slug,
-            "name": channel.name,
-            "channel_type": channel.channel_type.value,
-            # Nested channel object for channel-cards.js _addCard()
-            "channel": {
+        self._broadcast_update(
+            channel,
+            "channel_created",
+            {
                 "slug": channel.slug,
                 "name": channel.name,
                 "channel_type": channel.channel_type.value,
-                "status": channel.status,
-                "members": members,
+                # Nested channel object for channel-cards.js _addCard()
+                "channel": {
+                    "slug": channel.slug,
+                    "name": channel.name,
+                    "channel_type": channel.channel_type.value,
+                    "status": channel.status,
+                    "members": members,
+                },
             },
-        })
+        )
 
         return channel
 
@@ -193,13 +195,9 @@ class ChannelService:
         if all_visible:
             query = Channel.query.filter(Channel.status != "archived")
         else:
-            query = (
-                Channel.query
-                .join(ChannelMembership)
-                .filter(
-                    ChannelMembership.persona_id == persona.id,
-                    ChannelMembership.status.in_(["active", "muted"]),
-                )
+            query = Channel.query.join(ChannelMembership).filter(
+                ChannelMembership.persona_id == persona.id,
+                ChannelMembership.status.in_(["active", "muted"]),
             )
 
         if status:
@@ -225,9 +223,7 @@ class ChannelService:
         """
         channel = Channel.query.filter_by(slug=slug).first()
         if not channel:
-            raise ChannelNotFoundError(
-                f"Error: Channel #{slug} not found."
-            )
+            raise ChannelNotFoundError(f"Error: Channel #{slug} not found.")
         return channel
 
     def update_channel(
@@ -262,9 +258,13 @@ class ChannelService:
 
         db.session.commit()
 
-        self._broadcast_update(channel, "channel_updated", {
-            "slug": channel.slug,
-        })
+        self._broadcast_update(
+            channel,
+            "channel_updated",
+            {
+                "slug": channel.slug,
+            },
+        )
         return channel
 
     def complete_channel(self, slug: str, persona: Persona) -> Channel:
@@ -288,14 +288,16 @@ class ChannelService:
 
         channel.status = "complete"
         channel.completed_at = datetime.now(timezone.utc)
-        self._post_system_message(
-            channel, f"Channel completed by {persona.name}"
-        )
+        self._post_system_message(channel, f"Channel completed by {persona.name}")
         db.session.commit()
 
-        self._broadcast_update(channel, "channel_completed", {
-            "slug": channel.slug,
-        })
+        self._broadcast_update(
+            channel,
+            "channel_completed",
+            {
+                "slug": channel.slug,
+            },
+        )
         return channel
 
     def archive_channel(self, slug: str, persona: Persona) -> Channel:
@@ -324,14 +326,16 @@ class ChannelService:
 
         channel.status = "archived"
         channel.archived_at = datetime.now(timezone.utc)
-        self._post_system_message(
-            channel, f"Channel archived by {persona.name}"
-        )
+        self._post_system_message(channel, f"Channel archived by {persona.name}")
         db.session.commit()
 
-        self._broadcast_update(channel, "channel_archived", {
-            "slug": channel.slug,
-        })
+        self._broadcast_update(
+            channel,
+            "channel_archived",
+            {
+                "slug": channel.slug,
+            },
+        )
         return channel
 
     # ── Membership ───────────────────────────────────────────────────
@@ -350,8 +354,7 @@ class ChannelService:
         """
         channel = self.get_channel(slug)
         return (
-            ChannelMembership.query
-            .filter_by(channel_id=channel.id)
+            ChannelMembership.query.filter_by(channel_id=channel.id)
             .order_by(ChannelMembership.joined_at.asc())
             .all()
         )
@@ -386,9 +389,7 @@ class ChannelService:
         # Resolve target persona
         target_persona = Persona.query.filter_by(slug=persona_slug).first()
         if not target_persona:
-            raise PersonaNotFoundError(
-                f"Error: Persona '{persona_slug}' not found."
-            )
+            raise PersonaNotFoundError(f"Error: Persona '{persona_slug}' not found.")
 
         # Check not already a member
         existing = ChannelMembership.query.filter_by(
@@ -417,9 +418,7 @@ class ChannelService:
         )
         db.session.add(membership)
 
-        self._post_system_message(
-            channel, f"{target_persona.name} joined the channel"
-        )
+        self._post_system_message(channel, f"{target_persona.name} joined the channel")
         db.session.commit()
 
         # Deliver context briefing if the agent is available and channel has messages
@@ -427,12 +426,16 @@ class ChannelService:
             self._deliver_context_briefing(channel, active_agent)
 
         members = self._get_member_names(channel)
-        self._broadcast_update(channel, "member_added", {
-            "slug": channel.slug,
-            "persona_slug": persona_slug,
-            "persona_name": target_persona.name,
-            "members": members,
-        })
+        self._broadcast_update(
+            channel,
+            "member_added",
+            {
+                "slug": channel.slug,
+                "persona_slug": persona_slug,
+                "persona_name": target_persona.name,
+                "members": members,
+            },
+        )
         return membership
 
     def leave_channel(self, slug: str, persona: Persona) -> None:
@@ -447,27 +450,27 @@ class ChannelService:
             NotAMemberError: If caller is not an active member.
         """
         channel = self.get_channel(slug)
-        membership = self._check_membership(
-            channel, persona, require_active=True
-        )
+        membership = self._check_membership(channel, persona, require_active=True)
 
         membership.status = "left"
         membership.left_at = datetime.now(timezone.utc)
 
-        self._post_system_message(
-            channel, f"{persona.name} left the channel"
-        )
+        self._post_system_message(channel, f"{persona.name} left the channel")
         db.session.commit()
 
         # Check if this was the last active member
         self._auto_complete_if_empty(channel)
 
         members = self._get_member_names(channel)
-        self._broadcast_update(channel, "member_left", {
-            "slug": channel.slug,
-            "persona_name": persona.name,
-            "members": members,
-        })
+        self._broadcast_update(
+            channel,
+            "member_left",
+            {
+                "slug": channel.slug,
+                "persona_name": persona.name,
+                "members": members,
+            },
+        )
 
     def transfer_chair(
         self,
@@ -492,9 +495,7 @@ class ChannelService:
         current_chair = self._check_chair(channel, caller_persona)
 
         # Find target persona
-        target_persona = Persona.query.filter_by(
-            slug=target_persona_slug
-        ).first()
+        target_persona = Persona.query.filter_by(slug=target_persona_slug).first()
         if not target_persona:
             raise PersonaNotFoundError(
                 f"Error: Persona '{target_persona_slug}' not found."
@@ -522,11 +523,15 @@ class ChannelService:
         )
         db.session.commit()
 
-        self._broadcast_update(channel, "chair_transferred", {
-            "slug": channel.slug,
-            "from": caller_persona.name,
-            "to": target_persona.name,
-        })
+        self._broadcast_update(
+            channel,
+            "chair_transferred",
+            {
+                "slug": channel.slug,
+                "from": caller_persona.name,
+                "to": target_persona.name,
+            },
+        )
 
     def mute_channel(self, slug: str, persona: Persona) -> None:
         """Mute a channel for a persona.
@@ -540,21 +545,21 @@ class ChannelService:
             NotAMemberError: If caller is not an active member.
         """
         channel = self.get_channel(slug)
-        membership = self._check_membership(
-            channel, persona, require_active=True
-        )
+        membership = self._check_membership(channel, persona, require_active=True)
 
         membership.status = "muted"
 
-        self._post_system_message(
-            channel, f"{persona.name} muted the channel"
-        )
+        self._post_system_message(channel, f"{persona.name} muted the channel")
         db.session.commit()
 
-        self._broadcast_update(channel, "member_muted", {
-            "slug": channel.slug,
-            "persona_name": persona.name,
-        })
+        self._broadcast_update(
+            channel,
+            "member_muted",
+            {
+                "slug": channel.slug,
+                "persona_name": persona.name,
+            },
+        )
 
     def unmute_channel(self, slug: str, persona: Persona) -> None:
         """Unmute a channel for a persona.
@@ -580,15 +585,17 @@ class ChannelService:
 
         membership.status = "active"
 
-        self._post_system_message(
-            channel, f"{persona.name} unmuted the channel"
-        )
+        self._post_system_message(channel, f"{persona.name} unmuted the channel")
         db.session.commit()
 
-        self._broadcast_update(channel, "member_unmuted", {
-            "slug": channel.slug,
-            "persona_name": persona.name,
-        })
+        self._broadcast_update(
+            channel,
+            "member_unmuted",
+            {
+                "slug": channel.slug,
+                "persona_name": persona.name,
+            },
+        )
 
     # ── Messages ─────────────────────────────────────────────────────
 
@@ -693,12 +700,7 @@ class ChannelService:
             before_dt = datetime.fromisoformat(before)
             query = query.filter(Message.sent_at < before_dt)
 
-        return (
-            query
-            .order_by(Message.sent_at.asc())
-            .limit(limit)
-            .all()
-        )
+        return query.order_by(Message.sent_at.asc()).limit(limit).all()
 
     # ── Internal helpers ─────────────────────────────────────────────
 
@@ -715,8 +717,7 @@ class ChannelService:
             List of persona names for active and muted members.
         """
         memberships = (
-            ChannelMembership.query
-            .filter_by(channel_id=channel.id)
+            ChannelMembership.query.filter_by(channel_id=channel.id)
             .filter(ChannelMembership.status.in_(["active", "muted"]))
             .all()
         )
@@ -772,14 +773,10 @@ class ChannelService:
 
         membership = query.first()
         if not membership:
-            raise NotAMemberError(
-                f"Error: You are not a member of #{channel.slug}."
-            )
+            raise NotAMemberError(f"Error: You are not a member of #{channel.slug}.")
         return membership
 
-    def _check_chair(
-        self, channel: Channel, persona: Persona
-    ) -> ChannelMembership:
+    def _check_chair(self, channel: Channel, persona: Persona) -> ChannelMembership:
         """Validate that a persona is the chair of a channel.
 
         Args:
@@ -823,9 +820,7 @@ class ChannelService:
         if operator and operator.id == persona.id:
             return None
 
-        raise NotChairError(
-            "Error: Only the channel chair can perform this operation."
-        )
+        raise NotChairError("Error: Only the channel chair can perform this operation.")
 
     def _check_closed(self, channel: Channel) -> None:
         """Raise ChannelClosedError if channel is complete or archived.
@@ -872,9 +867,7 @@ class ChannelService:
         """
         if channel.status == "pending":
             channel.status = "active"
-            logger.info(
-                f"Channel #{channel.slug} transitioned from pending to active"
-            )
+            logger.info(f"Channel #{channel.slug} transitioned from pending to active")
 
     def _auto_complete_if_empty(self, channel: Channel) -> bool:
         """Auto-complete a channel if the last active member has left.
@@ -895,9 +888,7 @@ class ChannelService:
                     channel_id=channel.id, status="active"
                 ).count()
 
-                if active_count == 0 and channel.status not in (
-                    "complete", "archived"
-                ):
+                if active_count == 0 and channel.status not in ("complete", "archived"):
                     channel.status = "complete"
                     channel.completed_at = datetime.now(timezone.utc)
                     self._post_system_message(
@@ -905,9 +896,13 @@ class ChannelService:
                     )
                     db.session.commit()
 
-                    self._broadcast_update(channel, "channel_auto_completed", {
-                        "slug": channel.slug,
-                    })
+                    self._broadcast_update(
+                        channel,
+                        "channel_auto_completed",
+                        {
+                            "slug": channel.slug,
+                        },
+                    )
                     logger.info(
                         f"Channel #{channel.slug} auto-completed "
                         f"(last active member left)"
@@ -915,8 +910,7 @@ class ChannelService:
                     return True
         except Exception as e:
             logger.warning(
-                f"Auto-complete advisory lock failed for channel "
-                f"#{channel.slug}: {e}"
+                f"Auto-complete advisory lock failed for channel #{channel.slug}: {e}"
             )
 
         return False
@@ -942,10 +936,10 @@ class ChannelService:
 
         # No active agent — spin up
         try:
-            from .agent_lifecycle import create_agent
-
             # Need a project to spin up an agent — use the first project
             from ..models.project import Project
+            from .agent_lifecycle import create_agent
+
             project = Project.query.first()
             if not project:
                 logger.warning(
@@ -960,27 +954,20 @@ class ChannelService:
             )
             if not result.success:
                 logger.warning(
-                    f"Agent spin-up failed for persona {persona.slug}: "
-                    f"{result.message}"
+                    f"Agent spin-up failed for persona {persona.slug}: {result.message}"
                 )
                 return None
 
             # Agent creation is async — agent_id not immediately available.
             # Return None and let the membership be created with agent_id=NULL.
             # The agent will be linked when it registers via session-start hook.
-            logger.info(
-                f"Agent spin-up initiated for persona {persona.slug}"
-            )
+            logger.info(f"Agent spin-up initiated for persona {persona.slug}")
             return None
         except Exception as e:
-            logger.warning(
-                f"Agent spin-up error for persona {persona.slug}: {e}"
-            )
+            logger.warning(f"Agent spin-up error for persona {persona.slug}: {e}")
             return None
 
-    def _generate_context_briefing(
-        self, channel: Channel, limit: int = 10
-    ) -> str:
+    def _generate_context_briefing(self, channel: Channel, limit: int = 10) -> str:
         """Generate a context briefing from recent channel messages.
 
         Returns a formatted text block with the last N messages,
@@ -994,8 +981,7 @@ class ChannelService:
             Formatted briefing text, or empty string if no messages.
         """
         messages = (
-            Message.query
-            .filter_by(channel_id=channel.id)
+            Message.query.filter_by(channel_id=channel.id)
             .order_by(Message.sent_at.desc())
             .limit(limit)
             .all()
@@ -1017,9 +1003,7 @@ class ChannelService:
 
         return "\n".join(lines)
 
-    def _deliver_context_briefing(
-        self, channel: Channel, agent: Agent
-    ) -> None:
+    def _deliver_context_briefing(self, channel: Channel, agent: Agent) -> None:
         """Deliver a context briefing to an agent via tmux.
 
         Args:
@@ -1055,18 +1039,21 @@ class ChannelService:
         try:
             broadcaster = self.app.extensions.get("broadcaster")
             if broadcaster:
-                broadcaster.broadcast("channel_message", {
-                    "channel_slug": channel.slug,
-                    "channel_name": channel.name,
-                    "message_id": message.id,
-                    "persona_name": (
-                        message.persona.name if message.persona else None
-                    ),
-                    "agent_id": message.agent_id,
-                    "content": message.content,
-                    "message_type": message.message_type.value,
-                    "sent_at": message.sent_at.isoformat(),
-                })
+                broadcaster.broadcast(
+                    "channel_message",
+                    {
+                        "channel_slug": channel.slug,
+                        "channel_name": channel.name,
+                        "message_id": message.id,
+                        "persona_name": (
+                            message.persona.name if message.persona else None
+                        ),
+                        "agent_id": message.agent_id,
+                        "content": message.content,
+                        "message_type": message.message_type.value,
+                        "sent_at": message.sent_at.isoformat(),
+                    },
+                )
         except Exception as e:
             logger.warning(f"SSE broadcast failed for message: {e}")
 
@@ -1083,11 +1070,14 @@ class ChannelService:
         try:
             broadcaster = self.app.extensions.get("broadcaster")
             if broadcaster:
-                broadcaster.broadcast("channel_update", {
-                    "channel_slug": channel.slug,
-                    "update_type": update_type,
-                    "status": channel.status,
-                    **detail,
-                })
+                broadcaster.broadcast(
+                    "channel_update",
+                    {
+                        "channel_slug": channel.slug,
+                        "update_type": update_type,
+                        "status": channel.status,
+                        **detail,
+                    },
+                )
         except Exception as e:
             logger.warning(f"SSE broadcast failed for channel update: {e}")

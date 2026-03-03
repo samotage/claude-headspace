@@ -48,7 +48,10 @@ class TestListArchives:
         mock_db.session.get.return_value = project
         mock_service.list_archives.return_value = {
             "waypoint": [
-                {"filename": "waypoint_2026-01-28_14-30-00.md", "timestamp": "2026-01-28T14:30:00Z"},
+                {
+                    "filename": "waypoint_2026-01-28_14-30-00.md",
+                    "timestamp": "2026-01-28T14:30:00Z",
+                },
             ],
             "progress_summary": [],
             "brain_reboot": [],
@@ -137,7 +140,9 @@ class TestGetArchive:
         project = _mock_project()
         mock_db.session.get.return_value = project
 
-        response = client.get("/api/projects/1/archives/invalid_type/2026-01-28_14-30-00")
+        response = client.get(
+            "/api/projects/1/archives/invalid_type/2026-01-28_14-30-00"
+        )
 
         assert response.status_code == 400
         data = response.get_json()

@@ -126,8 +126,10 @@ class TestConstraints:
     def test_status_not_null(self, db_session):
         """Organisation.status cannot be null."""
         with pytest.raises(IntegrityError):
-            db_session.execute(text(
-                "INSERT INTO organisations (name, status, created_at) "
-                "VALUES ('No Status', NULL, NOW())"
-            ))
+            db_session.execute(
+                text(
+                    "INSERT INTO organisations (name, status, created_at) "
+                    "VALUES ('No Status', NULL, NOW())"
+                )
+            )
             db_session.flush()

@@ -1,7 +1,6 @@
 """Verify each factory produces a valid, persistable model instance."""
 
 import uuid
-from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -126,9 +125,7 @@ class TestTurnFactory:
         turn = TurnFactory()
         db_session.flush()
 
-        result = db_session.execute(
-            select(Turn).where(Turn.id == turn.id)
-        ).scalar_one()
+        result = db_session.execute(select(Turn).where(Turn.id == turn.id)).scalar_one()
 
         assert result.actor == TurnActor.USER
         assert result.intent == TurnIntent.COMMAND

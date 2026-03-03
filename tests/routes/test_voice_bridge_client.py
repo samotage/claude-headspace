@@ -19,14 +19,11 @@ from flask import Flask
 
 from src.claude_headspace.routes.voice_bridge import voice_bridge_bp
 
-
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────
 
-STATIC_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "static", "voice"
-)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static", "voice")
 STATIC_DIR = os.path.normpath(STATIC_DIR)
 
 
@@ -79,6 +76,7 @@ def client_with_auth(app_with_auth):
 # ──────────────────────────────────────────────────────────────
 # Task 3.7: PWA manifest tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestPWAManifest:
     """Validate PWA manifest.json structure for installability."""
@@ -146,6 +144,7 @@ class TestPWAManifest:
 # Task 3.6: Service worker tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestServiceWorker:
     """Validate service worker file and cache strategy."""
 
@@ -191,6 +190,7 @@ class TestServiceWorker:
 # Static file structure tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestStaticFileStructure:
     """Validate all required static files exist."""
 
@@ -217,6 +217,7 @@ class TestStaticFileStructure:
         total = 0
         for ext in ("*.html", "*.css", "*.js", "*.json"):
             import glob
+
             for fpath in glob.glob(os.path.join(STATIC_DIR, ext)):
                 total += os.path.getsize(fpath)
         assert total < 500 * 1024, f"Bundle size {total} bytes exceeds 500KB"
@@ -225,6 +226,7 @@ class TestStaticFileStructure:
 # ──────────────────────────────────────────────────────────────
 # Task 3.1: Voice API client tests (file-level validation)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestVoiceAPIModule:
     """Validate voice-api.js module structure."""
@@ -251,7 +253,11 @@ class TestVoiceAPIModule:
         path = os.path.join(STATIC_DIR, "voice-api.js")
         with open(path) as f:
             content = f.read()
-        assert "reconnect" in content.lower() or "backoff" in content.lower() or "SSE_MAX_DELAY" in content
+        assert (
+            "reconnect" in content.lower()
+            or "backoff" in content.lower()
+            or "SSE_MAX_DELAY" in content
+        )
 
     def test_has_connection_state(self):
         path = os.path.join(STATIC_DIR, "voice-api.js")
@@ -281,6 +287,7 @@ class TestVoiceAPIModule:
 # ──────────────────────────────────────────────────────────────
 # Task 3.2: Voice input tests (file-level validation)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestVoiceInputModule:
     """Validate voice-input.js module structure."""
@@ -325,9 +332,13 @@ class TestVoiceInputModule:
         path = os.path.join(STATIC_DIR, "voice-input.js")
         with open(path) as f:
             content = f.read()
-        assert "start:" in content or "start =" in content or "function start" in content
+        assert (
+            "start:" in content or "start =" in content or "function start" in content
+        )
         assert "stop:" in content or "stop =" in content or "function stop" in content
-        assert "abort:" in content or "abort =" in content or "function abort" in content
+        assert (
+            "abort:" in content or "abort =" in content or "function abort" in content
+        )
 
     def test_timeout_range_validation(self):
         """Timeout range should be 600-1200ms."""
@@ -341,6 +352,7 @@ class TestVoiceInputModule:
 # ──────────────────────────────────────────────────────────────
 # Task 3.3: Voice output tests (file-level validation)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestVoiceOutputModule:
     """Validate voice-output.js module structure."""
@@ -401,6 +413,7 @@ class TestVoiceOutputModule:
 # Task 3.4: Voice app tests (file-level validation)
 # ──────────────────────────────────────────────────────────────
 
+
 class TestVoiceAppModule:
     """Validate voice-app.js module structure."""
 
@@ -460,6 +473,7 @@ class TestVoiceAppModule:
 # Task 3.5: Settings persistence tests
 # ──────────────────────────────────────────────────────────────
 
+
 class TestSettingsPersistence:
     """Validate settings handling in voice-app.js."""
 
@@ -488,6 +502,7 @@ class TestSettingsPersistence:
 # ──────────────────────────────────────────────────────────────
 # Flask route tests — /voice serves PWA HTML
 # ──────────────────────────────────────────────────────────────
+
 
 class TestVoiceRoute:
     """Test the /voice route that serves the PWA."""
@@ -560,36 +575,54 @@ class TestVoiceRoute:
         # Auth's authenticate() should NOT have been called for /voice
         app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
-    def test_api_route_still_requires_auth_from_remote(self, client_with_auth, app_with_auth):
+    def test_api_route_still_requires_auth_from_remote(
+        self, client_with_auth, app_with_auth
+    ):
         """API routes from public (non-LAN) IPs should still trigger auth."""
         from unittest.mock import patch
+
         with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
-            client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"})
+            client_with_auth.get(
+                "/api/voice/sessions", environ_base={"REMOTE_ADDR": "8.8.8.8"}
+            )
             app_with_auth.extensions["voice_auth"].authenticate.assert_called()
 
     def test_api_route_bypasses_auth_from_lan(self, client_with_auth, app_with_auth):
         """API routes from LAN IPs (192.168.x.x) should bypass auth."""
         from unittest.mock import patch
+
         with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
-            client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"})
+            client_with_auth.get(
+                "/api/voice/sessions", environ_base={"REMOTE_ADDR": "192.168.1.100"}
+            )
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
-    def test_api_route_bypasses_auth_from_localhost(self, client_with_auth, app_with_auth):
+    def test_api_route_bypasses_auth_from_localhost(
+        self, client_with_auth, app_with_auth
+    ):
         """API routes from localhost should bypass auth."""
         from unittest.mock import patch
+
         with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
-            client_with_auth.get("/api/voice/sessions")  # test client defaults to 127.0.0.1
+            client_with_auth.get(
+                "/api/voice/sessions"
+            )  # test client defaults to 127.0.0.1
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
-    def test_api_route_bypasses_auth_from_tailscale(self, client_with_auth, app_with_auth):
+    def test_api_route_bypasses_auth_from_tailscale(
+        self, client_with_auth, app_with_auth
+    ):
         """API routes from Tailscale CGNAT IPs (100.x) should bypass auth."""
         from unittest.mock import patch
+
         with patch("src.claude_headspace.routes.voice_bridge.db") as mock_db:
             mock_db.session.query.return_value.filter.return_value.all.return_value = []
-            client_with_auth.get("/api/voice/sessions", environ_base={"REMOTE_ADDR": "100.100.1.1"})
+            client_with_auth.get(
+                "/api/voice/sessions", environ_base={"REMOTE_ADDR": "100.100.1.1"}
+            )
             app_with_auth.extensions["voice_auth"].authenticate.assert_not_called()
 
     def test_voice_sw_route_returns_js(self, client):
@@ -613,6 +646,7 @@ class TestVoiceRoute:
 # ──────────────────────────────────────────────────────────────
 # HTML structure tests
 # ──────────────────────────────────────────────────────────────
+
 
 class TestHTMLStructure:
     """Validate voice.html has required elements."""

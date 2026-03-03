@@ -69,18 +69,22 @@ def get_config():
         # Get schema for field metadata
         schema = get_config_schema()
 
-        return jsonify({
-            "status": "ok",
-            "config": config,
-            "schema": schema,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "config": config,
+                "schema": schema,
+            }
+        ), 200
 
     except Exception as e:
         logger.exception(f"Error loading config: {e}")
-        return jsonify({
-            "status": "error",
-            "message": "Failed to load configuration",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Failed to load configuration",
+            }
+        ), 500
 
 
 @config_bp.route("/api/config", methods=["POST"])
@@ -104,23 +108,29 @@ def save_config():
         500: Save failed
     """
     if request.headers.get("X-Confirm-Destructive") != "true":
-        return jsonify({
-            "status": "error",
-            "message": "Config write requires X-Confirm-Destructive header",
-        }), 403
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Config write requires X-Confirm-Destructive header",
+            }
+        ), 403
 
     if not request.is_json:
-        return jsonify({
-            "status": "error",
-            "message": "Content-Type must be application/json",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Content-Type must be application/json",
+            }
+        ), 400
 
     config = request.get_json(silent=True)
     if config is None:
-        return jsonify({
-            "status": "error",
-            "message": "Invalid JSON payload",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Invalid JSON payload",
+            }
+        ), 400
 
     # Validate configuration
     result = validate_config(config)
@@ -135,11 +145,13 @@ def save_config():
             }
             for e in result.errors
         ]
-        return jsonify({
-            "status": "error",
-            "message": "Validation failed",
-            "errors": errors,
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Validation failed",
+                "errors": errors,
+            }
+        ), 400
 
     # Merge with defaults to ensure complete config
     config = merge_with_defaults(config)
@@ -159,7 +171,11 @@ def save_config():
         original_nested = original.get(nested_section, {})
         config_nested = config.get(nested_section, {})
         for key, value in original_nested.items():
-            if isinstance(value, dict) and key in config_nested and isinstance(config_nested[key], dict):
+            if (
+                isinstance(value, dict)
+                and key in config_nested
+                and isinstance(config_nested[key], dict)
+            ):
                 for subkey, subvalue in value.items():
                     if subkey not in config_nested[key]:
                         config_nested[key][subkey] = subvalue
@@ -171,16 +187,20 @@ def save_config():
 
     if success:
         logger.info("Configuration saved successfully")
-        return jsonify({
-            "status": "ok",
-            "message": "Configuration saved",
-            "requires_restart": True,
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "Configuration saved",
+                "requires_restart": True,
+            }
+        ), 200
     else:
-        return jsonify({
-            "status": "error",
-            "message": error_message or "Failed to save configuration",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": error_message or "Failed to save configuration",
+            }
+        ), 500
 
 
 @config_bp.route("/api/config/restart", methods=["POST"])
@@ -195,20 +215,24 @@ def restart_server():
         500: Script not found or launch failed
     """
     if request.headers.get("X-Confirm-Destructive") != "true":
-        return jsonify({
-            "status": "error",
-            "message": "Server restart requires X-Confirm-Destructive header",
-        }), 403
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Server restart requires X-Confirm-Destructive header",
+            }
+        ), 403
 
     app_root = Path(current_app.config.get("APP_ROOT", "."))
     script = app_root / "restart_server.sh"
 
     if not script.is_file():
         logger.error("restart_server.sh not found at %s", script)
-        return jsonify({
-            "status": "error",
-            "message": "restart_server.sh not found",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": "restart_server.sh not found",
+            }
+        ), 500
 
     try:
         # Strip Werkzeug reloader env vars so the new server starts fresh.
@@ -217,8 +241,7 @@ def restart_server():
         # new python3 process it skips the reloader and tries to reuse a dead
         # file descriptor, crashing on startup.
         clean_env = {
-            k: v for k, v in os.environ.items()
-            if not k.startswith("WERKZEUG_")
+            k: v for k, v in os.environ.items() if not k.startswith("WERKZEUG_")
         }
         subprocess.Popen(
             [str(script)],
@@ -229,13 +252,17 @@ def restart_server():
             env=clean_env,
         )
         logger.info("Server restart initiated via restart_server.sh")
-        return jsonify({
-            "status": "ok",
-            "message": "Restart initiated",
-        }), 200
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "Restart initiated",
+            }
+        ), 200
     except OSError as e:
         logger.exception("Failed to launch restart_server.sh: %s", e)
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to launch restart script: {e}",
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"Failed to launch restart script: {e}",
+            }
+        ), 500

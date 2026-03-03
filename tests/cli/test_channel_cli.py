@@ -1,16 +1,14 @@
 """Tests for flask channel CLI commands."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
-from claude_headspace.models.channel import Channel, ChannelType
-from claude_headspace.models.channel_membership import ChannelMembership
-from claude_headspace.models.message import Message, MessageType
+from claude_headspace.models.channel import Channel
 from claude_headspace.models.persona import Persona
 from claude_headspace.models.persona_type import PersonaType
 from claude_headspace.models.project import Project
@@ -39,12 +37,18 @@ def setup_data(app, db_session):
     pt_internal = db_session.get(PersonaType, 1)
 
     persona_a = Persona(
-        name="Alice", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Alice",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     persona_b = Persona(
-        name="Bob", role_id=role.id, role=role,
-        persona_type_id=pt_internal.id, status="active",
+        name="Bob",
+        role_id=role.id,
+        role=role,
+        persona_type_id=pt_internal.id,
+        status="active",
     )
     db_session.add_all([persona_a, persona_b])
     db_session.flush()
@@ -54,11 +58,13 @@ def setup_data(app, db_session):
     db_session.flush()
 
     agent_a = Agent(
-        session_uuid=uuid4(), project_id=project.id,
+        session_uuid=uuid4(),
+        project_id=project.id,
         persona_id=persona_a.id,
     )
     agent_b = Agent(
-        session_uuid=uuid4(), project_id=project.id,
+        session_uuid=uuid4(),
+        project_id=project.id,
         persona_id=persona_b.id,
     )
     db_session.add_all([agent_a, agent_b])
@@ -97,8 +103,15 @@ class TestChannelCreate:
     def test_create_with_description(self, runner, setup_data):
         """Create a channel with description."""
         result = runner.invoke(
-            args=["channel", "create", "desc-chan", "--type", "review",
-                  "--description", "Test desc"]
+            args=[
+                "channel",
+                "create",
+                "desc-chan",
+                "--type",
+                "review",
+                "--description",
+                "Test desc",
+            ]
         )
         assert result.exit_code == 0
         assert "Test desc" in result.output
@@ -110,18 +123,14 @@ class TestChannelList:
     def test_list_my_channels(self, runner, setup_data):
         """List channels the caller is a member of."""
         # Create a channel first
-        runner.invoke(
-            args=["channel", "create", "list-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "list-test", "--type", "workshop"])
         result = runner.invoke(args=["channel", "list"])
         assert result.exit_code == 0
         assert "list-test" in result.output
 
     def test_list_all(self, runner, setup_data):
         """List all non-archived channels with --all."""
-        runner.invoke(
-            args=["channel", "create", "all-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "all-test", "--type", "workshop"])
         result = runner.invoke(args=["channel", "list", "--all"])
         assert result.exit_code == 0
         assert "all-test" in result.output
@@ -138,9 +147,7 @@ class TestChannelShow:
 
     def test_show_channel(self, runner, setup_data):
         """Show channel details."""
-        runner.invoke(
-            args=["channel", "create", "show-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "show-test", "--type", "workshop"])
         # Get the slug from the channel
         channel = Channel.query.filter(Channel.name == "show-test").first()
         result = runner.invoke(args=["channel", "show", channel.slug])
@@ -160,9 +167,7 @@ class TestChannelMembers:
 
     def test_members(self, runner, setup_data):
         """List channel members."""
-        runner.invoke(
-            args=["channel", "create", "members-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "members-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "members-test").first()
         result = runner.invoke(args=["channel", "members", channel.slug])
         assert result.exit_code == 0
@@ -175,22 +180,23 @@ class TestChannelAdd:
 
     def test_add_member(self, runner, setup_data):
         """Add a persona to a channel."""
-        runner.invoke(
-            args=["channel", "create", "add-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "add-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "add-test").first()
         result = runner.invoke(
-            args=["channel", "add", channel.slug,
-                  "--persona", setup_data["persona_b"].slug]
+            args=[
+                "channel",
+                "add",
+                channel.slug,
+                "--persona",
+                setup_data["persona_b"].slug,
+            ]
         )
         assert result.exit_code == 0
         assert "Added Bob" in result.output
 
     def test_add_not_found(self, runner, setup_data):
         """Add non-existent persona fails."""
-        runner.invoke(
-            args=["channel", "create", "add-fail", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "add-fail", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "add-fail").first()
         result = runner.invoke(
             args=["channel", "add", channel.slug, "--persona", "nonexistent"]
@@ -203,9 +209,7 @@ class TestChannelLeave:
 
     def test_leave_channel(self, runner, setup_data):
         """Leave a channel."""
-        runner.invoke(
-            args=["channel", "create", "leave-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "leave-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "leave-test").first()
         result = runner.invoke(args=["channel", "leave", channel.slug])
         assert result.exit_code == 0
@@ -217,9 +221,7 @@ class TestChannelComplete:
 
     def test_complete_channel(self, runner, setup_data):
         """Complete a channel."""
-        runner.invoke(
-            args=["channel", "create", "comp-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "comp-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "comp-test").first()
         result = runner.invoke(args=["channel", "complete", channel.slug])
         assert result.exit_code == 0
@@ -228,8 +230,15 @@ class TestChannelComplete:
     def test_complete_non_chair(self, runner, setup_data):
         """Non-chair cannot complete."""
         runner.invoke(
-            args=["channel", "create", "comp-fail", "--type", "workshop",
-                  "--members", setup_data["persona_b"].slug]
+            args=[
+                "channel",
+                "create",
+                "comp-fail",
+                "--type",
+                "workshop",
+                "--members",
+                setup_data["persona_b"].slug,
+            ]
         )
         channel = Channel.query.filter(Channel.name == "comp-fail").first()
         # Switch to agent B
@@ -246,13 +255,25 @@ class TestChannelTransferChair:
     def test_transfer_chair(self, runner, setup_data):
         """Transfer chair to another member."""
         runner.invoke(
-            args=["channel", "create", "xfer-test", "--type", "workshop",
-                  "--members", setup_data["persona_b"].slug]
+            args=[
+                "channel",
+                "create",
+                "xfer-test",
+                "--type",
+                "workshop",
+                "--members",
+                setup_data["persona_b"].slug,
+            ]
         )
         channel = Channel.query.filter(Channel.name == "xfer-test").first()
         result = runner.invoke(
-            args=["channel", "transfer-chair", channel.slug,
-                  "--to", setup_data["persona_b"].slug]
+            args=[
+                "channel",
+                "transfer-chair",
+                channel.slug,
+                "--to",
+                setup_data["persona_b"].slug,
+            ]
         )
         assert result.exit_code == 0
         assert "transferred" in result.output
@@ -263,9 +284,7 @@ class TestChannelMuteUnmute:
 
     def test_mute_and_unmute(self, runner, setup_data):
         """Mute and unmute a channel."""
-        runner.invoke(
-            args=["channel", "create", "mute-test", "--type", "workshop"]
-        )
+        runner.invoke(args=["channel", "create", "mute-test", "--type", "workshop"])
         channel = Channel.query.filter(Channel.name == "mute-test").first()
 
         result = runner.invoke(args=["channel", "mute", channel.slug])
@@ -287,6 +306,7 @@ class TestCallerIdentityErrors:
             "claude_headspace.services.caller_identity.resolve_caller"
         ) as mock_resolve:
             from claude_headspace.services.caller_identity import CallerResolutionError
+
             mock_resolve.side_effect = CallerResolutionError(
                 "Error: Cannot identify calling agent."
             )
@@ -304,7 +324,5 @@ class TestChannelErrorDisplay:
 
     def test_channel_error_to_stderr(self, runner, setup_data):
         """ChannelError message displayed to user."""
-        result = runner.invoke(
-            args=["channel", "show", "does-not-exist"]
-        )
+        result = runner.invoke(args=["channel", "show", "does-not-exist"])
         assert result.exit_code == 1

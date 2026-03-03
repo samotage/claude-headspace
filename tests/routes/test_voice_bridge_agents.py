@@ -130,9 +130,7 @@ class TestVoiceCreateAgent:
 
     @patch("src.claude_headspace.routes.voice_bridge.db")
     def test_project_name_not_found(self, mock_db, client):
-        mock_db.session.query.return_value.filter.return_value.first.return_value = (
-            None
-        )
+        mock_db.session.query.return_value.filter.return_value.first.return_value = None
         mock_db.func.lower = MagicMock()
         response = client.post(
             "/api/voice/agents/create",
@@ -203,9 +201,7 @@ class TestVoiceAgentContext:
 
     @patch("src.claude_headspace.routes.voice_bridge.get_context_usage")
     def test_not_found(self, mock_ctx, client):
-        mock_ctx.return_value = ContextResult(
-            available=False, reason="agent_not_found"
-        )
+        mock_ctx.return_value = ContextResult(available=False, reason="agent_not_found")
         response = client.get("/api/voice/agents/99/context")
         assert response.status_code == 404
 

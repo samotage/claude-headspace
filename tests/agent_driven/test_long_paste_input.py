@@ -161,10 +161,20 @@ def test_long_paste_ctrl_v(claude_session, page, e2e_server, e2e_app):
     # --- Verify the response is a summary (not an error) ---
     response_text = agent_bubbles.first.inner_text().lower()
     # The agent should reference concepts from the blog post
-    assert any(keyword in response_text for keyword in [
-        "filesystem", "markdown", "cms", "blog", "agent", "publish",
-        "otagelabs", "frontmatter", "infrastructure",
-    ]), (
+    assert any(
+        keyword in response_text
+        for keyword in [
+            "filesystem",
+            "markdown",
+            "cms",
+            "blog",
+            "agent",
+            "publish",
+            "otagelabs",
+            "frontmatter",
+            "infrastructure",
+        ]
+    ), (
         f"Agent response doesn't appear to summarise the blog post: "
         f"{response_text[:200]!r}"
     )
@@ -234,10 +244,20 @@ def test_long_paste_send_button(claude_session, page, e2e_server, e2e_app):
 
     # --- Verify the response is about the blog post ---
     response_text = agent_bubbles.first.inner_text().lower()
-    assert any(keyword in response_text for keyword in [
-        "filesystem", "markdown", "cms", "blog", "agent", "publish",
-        "otagelabs", "frontmatter", "infrastructure",
-    ]), (
+    assert any(
+        keyword in response_text
+        for keyword in [
+            "filesystem",
+            "markdown",
+            "cms",
+            "blog",
+            "agent",
+            "publish",
+            "otagelabs",
+            "frontmatter",
+            "infrastructure",
+        ]
+    ), (
         f"Agent response doesn't appear to summarise the blog post: "
         f"{response_text[:200]!r}"
     )

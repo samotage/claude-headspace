@@ -63,7 +63,10 @@ class TestGetAgentCommands:
         query_mock.filter.return_value = query_mock
         query_mock.order_by.return_value = query_mock
         query_mock.group_by.return_value = query_mock
-        query_mock.all.side_effect = [[mock_cmd], [(10, 5)]]  # commands, then turn counts
+        query_mock.all.side_effect = [
+            [mock_cmd],
+            [(10, 5)],
+        ]  # commands, then turn counts
         mock_db.session.query.return_value = query_mock
 
         resp = client.get("/api/agents/1/commands")

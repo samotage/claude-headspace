@@ -6,7 +6,11 @@ import pytest
 from flask import Flask
 
 from src.claude_headspace.routes.focus import focus_bp
-from src.claude_headspace.services.iterm_focus import AttachResult, FocusErrorType, FocusResult
+from src.claude_headspace.services.iterm_focus import (
+    AttachResult,
+    FocusErrorType,
+    FocusResult,
+)
 from src.claude_headspace.services.tmux_bridge import TmuxBridgeErrorType, TtyResult
 
 
@@ -259,13 +263,20 @@ class TestFocusTmux:
     @patch("src.claude_headspace.routes.focus.select_pane")
     @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
     def test_focus_tmux_success(
-        self, mock_get_tty, mock_select, mock_focus_tty,
-        client, mock_db, mock_agent_tmux,
+        self,
+        mock_get_tty,
+        mock_select,
+        mock_focus_tty,
+        client,
+        mock_db,
+        mock_agent_tmux,
     ):
         """Test successful tmux focus: TTY resolution + pane select + iTerm focus."""
         mock_db.session.get.return_value = mock_agent_tmux
         mock_get_tty.return_value = TtyResult(
-            success=True, tty="/dev/ttys003", session_name="main",
+            success=True,
+            tty="/dev/ttys003",
+            session_name="main",
         )
         mock_select.return_value = MagicMock(success=True)
         mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
@@ -284,8 +295,12 @@ class TestFocusTmux:
     @patch("src.claude_headspace.routes.focus.focus_iterm_pane")
     @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
     def test_focus_tmux_fallback_to_iterm(
-        self, mock_get_tty, mock_focus_iterm,
-        client, mock_db, mock_agent_tmux,
+        self,
+        mock_get_tty,
+        mock_focus_iterm,
+        client,
+        mock_db,
+        mock_agent_tmux,
     ):
         """Test fallback to iterm when tmux TTY resolution fails."""
         mock_db.session.get.return_value = mock_agent_tmux
@@ -307,7 +322,11 @@ class TestFocusTmux:
 
     @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
     def test_focus_tmux_only_no_iterm(
-        self, mock_get_tty, client, mock_db, mock_agent_tmux_only,
+        self,
+        mock_get_tty,
+        client,
+        mock_db,
+        mock_agent_tmux_only,
     ):
         """Test tmux-only agent with no iterm fallback when TTY resolution fails."""
         mock_db.session.get.return_value = mock_agent_tmux_only
@@ -328,15 +347,24 @@ class TestFocusTmux:
     @patch("src.claude_headspace.routes.focus.select_pane")
     @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
     def test_focus_tmux_select_pane_fails_continues(
-        self, mock_get_tty, mock_select, mock_focus_tty,
-        client, mock_db, mock_agent_tmux,
+        self,
+        mock_get_tty,
+        mock_select,
+        mock_focus_tty,
+        client,
+        mock_db,
+        mock_agent_tmux,
     ):
         """Test that iTerm focus proceeds even if tmux select-pane fails."""
         mock_db.session.get.return_value = mock_agent_tmux
         mock_get_tty.return_value = TtyResult(
-            success=True, tty="/dev/ttys003", session_name="main",
+            success=True,
+            tty="/dev/ttys003",
+            session_name="main",
         )
-        mock_select.return_value = MagicMock(success=False, error_message="select failed")
+        mock_select.return_value = MagicMock(
+            success=False, error_message="select failed"
+        )
         mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
 
         response = client.post("/api/focus/3")
@@ -446,13 +474,21 @@ class TestFocusEventLogging:
     @patch("src.claude_headspace.routes.focus.get_pane_client_tty")
     @patch("src.claude_headspace.routes.focus.logger")
     def test_tmux_focus_logged_with_method(
-        self, mock_logger, mock_get_tty, mock_select, mock_focus_tty,
-        client, mock_db, mock_agent_tmux,
+        self,
+        mock_logger,
+        mock_get_tty,
+        mock_select,
+        mock_focus_tty,
+        client,
+        mock_db,
+        mock_agent_tmux,
     ):
         """Test tmux focus logs include method and tmux_pane_id."""
         mock_db.session.get.return_value = mock_agent_tmux
         mock_get_tty.return_value = TtyResult(
-            success=True, tty="/dev/ttys003", session_name="main",
+            success=True,
+            tty="/dev/ttys003",
+            session_name="main",
         )
         mock_select.return_value = MagicMock(success=True)
         mock_focus_tty.return_value = FocusResult(success=True, latency_ms=80)
@@ -511,7 +547,9 @@ class TestAttachAgent:
         mock_db.session.get.return_value = mock_agent
         mock_check.return_value = True
         mock_attach.return_value = AttachResult(
-            success=True, method="new_tab", latency_ms=150,
+            success=True,
+            method="new_tab",
+            latency_ms=150,
         )
 
         response = client.post("/api/agents/1/attach")
@@ -526,13 +564,17 @@ class TestAttachAgent:
 
     @patch("src.claude_headspace.routes.focus.attach_tmux_session")
     @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
-    def test_attach_reused_tab(self, mock_check, mock_attach, client, mock_db, mock_agent):
+    def test_attach_reused_tab(
+        self, mock_check, mock_attach, client, mock_db, mock_agent
+    ):
         """Test successful attach with tab reuse."""
         mock_agent.tmux_session = "hs-test-123"
         mock_db.session.get.return_value = mock_agent
         mock_check.return_value = True
         mock_attach.return_value = AttachResult(
-            success=True, method="reused_tab", latency_ms=80,
+            success=True,
+            method="reused_tab",
+            latency_ms=80,
         )
 
         response = client.post("/api/agents/1/attach")
@@ -566,14 +608,22 @@ class TestAttachAgent:
     @patch("src.claude_headspace.routes.focus.check_tmux_session_exists")
     @patch("src.claude_headspace.routes.focus.logger")
     def test_attach_event_logged(
-        self, mock_logger, mock_check, mock_attach, client, mock_db, mock_agent,
+        self,
+        mock_logger,
+        mock_check,
+        mock_attach,
+        client,
+        mock_db,
+        mock_agent,
     ):
         """Test attach events are logged."""
         mock_agent.tmux_session = "hs-test-123"
         mock_db.session.get.return_value = mock_agent
         mock_check.return_value = True
         mock_attach.return_value = AttachResult(
-            success=True, method="new_tab", latency_ms=150,
+            success=True,
+            method="new_tab",
+            latency_ms=150,
         )
 
         client.post("/api/agents/1/attach")

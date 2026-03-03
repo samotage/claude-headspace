@@ -8,7 +8,6 @@ for all extraction phases.
 import pytest
 from playwright.sync_api import expect
 
-
 pytestmark = pytest.mark.e2e
 
 
@@ -20,7 +19,9 @@ pytestmark = pytest.mark.e2e
 class TestSetup:
     """App loading and credential flow."""
 
-    def test_setup_screen_exists_but_inactive_on_trusted_network(self, page, e2e_server):
+    def test_setup_screen_exists_but_inactive_on_trusted_network(
+        self, page, e2e_server
+    ):
         """On trusted network (localhost), setup screen exists but is not active."""
         # E2E server runs on 127.0.0.1 which is auto-detected as trusted.
         # The inline script in voice.html auto-injects credentials on trusted
@@ -72,7 +73,9 @@ class TestAgentList:
         # Card should eventually show processing state
         voice_page.page.wait_for_timeout(2000)
         state = voice_page.get_agent_card_state(agent_id)
-        assert state in ("processing", "commanded", "idle"), f"Unexpected state: {state}"
+        assert state in ("processing", "commanded", "idle"), (
+            f"Unexpected state: {state}"
+        )
 
     def test_project_group_header(self, voice_page, hook_client):
         """Agent cards are grouped under project headers."""
@@ -145,28 +148,29 @@ class TestChatScreen:
         voice_page.select_agent(agent_id)
         voice_page.send_chat_message("hello agent")
         # An optimistic bubble with pending-* ID should appear
-        expect(
-            voice_page.page.locator('.chat-bubble.user')
-        ).to_be_visible(timeout=5000)
+        expect(voice_page.page.locator(".chat-bubble.user")).to_be_visible(timeout=5000)
 
     def test_back_button_returns_to_agents(self, page, e2e_server, hook_client):
         """Back button returns to agent list (stacked mode only)."""
         # Back button is hidden in split mode (1280px). Use narrow viewport.
         page.set_viewport_size({"width": 375, "height": 812})
         page.goto(f"{e2e_server}/voice")
-        page.evaluate(f"""(baseUrl) => {{
-            localStorage.setItem('voice_settings', JSON.stringify({{
+        page.evaluate(
+            """(baseUrl) => {
+            localStorage.setItem('voice_settings', JSON.stringify({
                 serverUrl: baseUrl, token: 'test', theme: 'dark', fontSize: 15
-            }}));
-        }}""", e2e_server)
+            }));
+        }""",
+            e2e_server,
+        )
         page.reload()
         page.wait_for_load_state("domcontentloaded")
         result = hook_client.session_start()
         agent_id = result["agent_id"]
         # Wait for agent card and select it
-        expect(
-            page.locator(f'.agent-card[data-agent-id="{agent_id}"]')
-        ).to_be_visible(timeout=10000)
+        expect(page.locator(f'.agent-card[data-agent-id="{agent_id}"]')).to_be_visible(
+            timeout=10000
+        )
         page.locator(f'.agent-card[data-agent-id="{agent_id}"]').click()
         expect(page.locator("#screen-chat.active")).to_be_visible(timeout=10000)
         # Back button should be visible in stacked mode
@@ -336,11 +340,14 @@ class TestLayout:
         page.set_viewport_size({"width": 375, "height": 812})
         # Inject credentials and navigate
         page.goto(f"{e2e_server}/voice")
-        page.evaluate(f"""(baseUrl) => {{
-            localStorage.setItem('voice_settings', JSON.stringify({{
+        page.evaluate(
+            """(baseUrl) => {
+            localStorage.setItem('voice_settings', JSON.stringify({
                 serverUrl: baseUrl, token: 'test', theme: 'dark', fontSize: 15
-            }}));
-        }}""", e2e_server)
+            }));
+        }""",
+            e2e_server,
+        )
         page.reload()
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(1000)
@@ -389,14 +396,14 @@ class TestNavigation:
         # In split mode (1280px), use FAB menu instead of hamburger
         voice_page.page.click("#fab-btn")
         # FAB menu should be open (fab-container has .open class)
-        expect(
-            voice_page.page.locator("#fab-container.open")
-        ).to_be_visible(timeout=3000)
+        expect(voice_page.page.locator("#fab-container.open")).to_be_visible(
+            timeout=3000
+        )
         # Press Escape
         voice_page.page.keyboard.press("Escape")
-        expect(
-            voice_page.page.locator("#fab-container.open")
-        ).to_have_count(0, timeout=3000)
+        expect(voice_page.page.locator("#fab-container.open")).to_have_count(
+            0, timeout=3000
+        )
 
     def test_project_picker_opens_and_lists(self, voice_page):
         """Project picker opens from FAB menu and shows projects."""
@@ -405,9 +412,9 @@ class TestNavigation:
         voice_page.page.click('.fab-menu-item[data-action="new-chat"]')
         voice_page.assert_project_picker_open()
         # Should show at least the seeded project or a loading state
-        expect(
-            voice_page.page.locator("#project-picker-list")
-        ).to_be_visible(timeout=5000)
+        expect(voice_page.page.locator("#project-picker-list")).to_be_visible(
+            timeout=5000
+        )
 
     def test_agent_id_url_param_opens_chat(self, page, e2e_server, hook_client):
         """Navigating with ?agent_id=N opens that agent's chat."""
@@ -415,11 +422,14 @@ class TestNavigation:
         agent_id = result["agent_id"]
         # Navigate with agent_id param (inject credentials first)
         page.goto(f"{e2e_server}/voice")
-        page.evaluate(f"""(baseUrl) => {{
-            localStorage.setItem('voice_settings', JSON.stringify({{
+        page.evaluate(
+            """(baseUrl) => {
+            localStorage.setItem('voice_settings', JSON.stringify({
                 serverUrl: baseUrl, token: 'test', theme: 'dark', fontSize: 15
-            }}));
-        }}""", e2e_server)
+            }));
+        }""",
+            e2e_server,
+        )
         page.goto(f"{e2e_server}/voice?agent_id={agent_id}")
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(2000)

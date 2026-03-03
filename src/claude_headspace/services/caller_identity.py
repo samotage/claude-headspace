@@ -46,8 +46,7 @@ def resolve_caller_persona():
 
     if not agent.persona:
         click.echo(
-            "Error: Your agent has no persona assigned. "
-            "Cannot perform this operation.",
+            "Error: Your agent has no persona assigned. Cannot perform this operation.",
             err=True,
         )
         raise SystemExit(1)

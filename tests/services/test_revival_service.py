@@ -3,10 +3,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from claude_headspace.services.revival_service import (
-    RevivalResult,
     compose_revival_instruction,
     is_revival_successor,
     revive_agent,
@@ -130,7 +127,9 @@ class TestIsRevivalSuccessor:
         agent = MagicMock()
         agent.previous_agent_id = 5
         # Query returns a Handoff record
-        mock_db.session.query.return_value.filter.return_value.first.return_value = MagicMock()
+        mock_db.session.query.return_value.filter.return_value.first.return_value = (
+            MagicMock()
+        )
         assert not is_revival_successor(agent)
 
     @patch("claude_headspace.services.revival_service.db")

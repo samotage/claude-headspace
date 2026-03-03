@@ -1,13 +1,8 @@
 """Tests for config API routes."""
 
-import json
-import os
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 from flask import Flask
 
 from src.claude_headspace.routes.config import config_bp
@@ -36,7 +31,9 @@ class TestConfigPage:
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.get_config_schema")
     @patch("src.claude_headspace.routes.config.render_template")
-    def test_config_page_returns_html(self, mock_render, mock_schema, mock_merge, mock_load, client, app):
+    def test_config_page_returns_html(
+        self, mock_render, mock_schema, mock_merge, mock_load, client, app
+    ):
         """Config page should return HTML."""
         mock_load.return_value = {}
         mock_merge.return_value = {"server": {"port": 5050}}
@@ -52,7 +49,9 @@ class TestConfigPage:
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.get_config_schema")
     @patch("src.claude_headspace.routes.config.render_template")
-    def test_config_page_passes_inference_available_true(self, mock_render, mock_schema, mock_merge, mock_load, client, app):
+    def test_config_page_passes_inference_available_true(
+        self, mock_render, mock_schema, mock_merge, mock_load, client, app
+    ):
         """Config page should pass inference_available=True when inference service is registered."""
         mock_load.return_value = {}
         mock_merge.return_value = {"server": {"port": 5050}}
@@ -70,7 +69,9 @@ class TestConfigPage:
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.get_config_schema")
     @patch("src.claude_headspace.routes.config.render_template")
-    def test_config_page_passes_inference_available_false(self, mock_render, mock_schema, mock_merge, mock_load, client, app):
+    def test_config_page_passes_inference_available_false(
+        self, mock_render, mock_schema, mock_merge, mock_load, client, app
+    ):
         """Config page should pass inference_available=False when inference service is not registered."""
         mock_load.return_value = {}
         mock_merge.return_value = {"server": {"port": 5050}}
@@ -106,7 +107,9 @@ class TestGetConfigAPI:
     @patch("src.claude_headspace.routes.config.load_config_file")
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.get_config_schema")
-    def test_get_config_has_expected_fields(self, mock_schema, mock_merge, mock_load, client):
+    def test_get_config_has_expected_fields(
+        self, mock_schema, mock_merge, mock_load, client
+    ):
         """Response should have status, config, and schema."""
         mock_load.return_value = {}
         mock_merge.return_value = {"server": {"port": 5050}}
@@ -122,7 +125,9 @@ class TestGetConfigAPI:
     @patch("src.claude_headspace.routes.config.load_config_file")
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.get_config_schema")
-    def test_get_config_returns_merged_config(self, mock_schema, mock_merge, mock_load, client):
+    def test_get_config_returns_merged_config(
+        self, mock_schema, mock_merge, mock_load, client
+    ):
         """Should return config with defaults merged."""
         mock_load.return_value = {"server": {"port": 9000}}
         mock_merge.return_value = {"server": {"port": 9000, "host": "127.0.0.1"}}
@@ -185,7 +190,10 @@ class TestSaveConfigAPI:
     @patch("src.claude_headspace.routes.config.validate_config")
     def test_save_config_validates_payload(self, mock_validate, client):
         """Should validate configuration before saving."""
-        from claude_headspace.services.config_editor import ValidationError, ValidationResult
+        from claude_headspace.services.config_editor import (
+            ValidationError,
+            ValidationResult,
+        )
 
         mock_validate.return_value = ValidationResult(
             valid=False,
@@ -230,7 +238,9 @@ class TestSaveConfigAPI:
     @patch("src.claude_headspace.routes.config.validate_config")
     @patch("src.claude_headspace.routes.config.merge_with_defaults")
     @patch("src.claude_headspace.routes.config.save_config_file")
-    def test_save_config_handles_save_error(self, mock_save, mock_merge, mock_validate, client):
+    def test_save_config_handles_save_error(
+        self, mock_save, mock_merge, mock_validate, client
+    ):
         """Should return 500 when save fails."""
         from claude_headspace.services.config_editor import ValidationResult
 
@@ -256,7 +266,10 @@ class TestValidationErrorResponse:
     @patch("src.claude_headspace.routes.config.validate_config")
     def test_multiple_validation_errors(self, mock_validate, client):
         """Should return all validation errors."""
-        from claude_headspace.services.config_editor import ValidationError, ValidationResult
+        from claude_headspace.services.config_editor import (
+            ValidationError,
+            ValidationResult,
+        )
 
         mock_validate.return_value = ValidationResult(
             valid=False,
@@ -280,7 +293,10 @@ class TestValidationErrorResponse:
     @patch("src.claude_headspace.routes.config.validate_config")
     def test_error_format(self, mock_validate, client):
         """Each error should have section, field, message."""
-        from claude_headspace.services.config_editor import ValidationError, ValidationResult
+        from claude_headspace.services.config_editor import (
+            ValidationError,
+            ValidationResult,
+        )
 
         mock_validate.return_value = ValidationResult(
             valid=False,
