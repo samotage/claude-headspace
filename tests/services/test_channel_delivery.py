@@ -255,6 +255,53 @@ class TestQueueOperations:
 # ── State safety tests ───────────────────────────────────────────────
 
 
+class TestQueueDepthLimit:
+    """Test max queue depth enforcement and clear_agent_queue."""
+
+    def test_enqueue_drops_oldest_when_full(self, app, delivery_service):
+        """When queue exceeds max depth, oldest messages are dropped."""
+        delivery_service._max_queue_depth = 3
+
+        delivery_service._enqueue(1, 100)
+        delivery_service._enqueue(1, 200)
+        delivery_service._enqueue(1, 300)
+        # Queue is now at capacity (3). Adding one more should drop 100.
+        delivery_service._enqueue(1, 400)
+
+        assert delivery_service._dequeue(1) == 200  # 100 was dropped
+        assert delivery_service._dequeue(1) == 300
+        assert delivery_service._dequeue(1) == 400
+        assert delivery_service._dequeue(1) is None
+
+    def test_under_limit_not_truncated(self, app, delivery_service):
+        """Messages under the limit are not dropped."""
+        delivery_service._max_queue_depth = 5
+
+        delivery_service._enqueue(1, 100)
+        delivery_service._enqueue(1, 200)
+        delivery_service._enqueue(1, 300)
+
+        assert delivery_service._dequeue(1) == 100
+        assert delivery_service._dequeue(1) == 200
+        assert delivery_service._dequeue(1) == 300
+        assert delivery_service._dequeue(1) is None
+
+    def test_clear_agent_queue_removes_all(self, app, delivery_service):
+        """clear_agent_queue removes all queued messages and returns count."""
+        delivery_service._enqueue(1, 100)
+        delivery_service._enqueue(1, 200)
+        delivery_service._enqueue(1, 300)
+
+        count = delivery_service.clear_agent_queue(1)
+        assert count == 3
+        assert delivery_service._dequeue(1) is None
+
+    def test_clear_nonexistent_returns_zero(self, app, delivery_service):
+        """clear_agent_queue for an agent with no queue returns 0."""
+        count = delivery_service.clear_agent_queue(999)
+        assert count == 0
+
+
 class TestIsSafeState:
     def test_awaiting_input_is_safe(self, app, db_session, setup_data):
         agent = setup_data["agent_a"]

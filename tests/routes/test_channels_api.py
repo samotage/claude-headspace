@@ -11,6 +11,7 @@ from claude_headspace.services.channel_service import (
     AlreadyMemberError,
     ChannelClosedError,
     ChannelNotFoundError,
+    ContentTooLongError,
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
@@ -774,6 +775,97 @@ class TestSendMessage:
             data = resp.get_json()
             assert data["error"]["code"] == "channel_not_active"
 
+    def test_content_too_long_returns_413(self, client, app, mock_operator):
+        """Content exceeding max_message_content_length returns 413."""
+        app.config["APP_CONFIG"] = {
+            "channels": {"max_message_content_length": 100}
+        }
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/messages",
+                json={"content": "x" * 101},
+            )
+            assert resp.status_code == 413
+            data = resp.get_json()
+            assert data["error"]["code"] == "content_too_long"
+
+    def test_content_at_max_length_succeeds(
+        self, client, app, mock_operator, mock_channel_service
+    ):
+        """Content exactly at max length is accepted."""
+        app.config["APP_CONFIG"] = {
+            "channels": {"max_message_content_length": 100}
+        }
+        mock_msg = MagicMock()
+        mock_msg.id = 50
+        mock_msg.persona.slug = "person-sam-1"
+        mock_msg.persona.name = "Sam"
+        mock_msg.agent_id = None
+        mock_msg.content = "x" * 100
+        mock_msg.message_type.value = "message"
+        mock_msg.metadata_ = None
+        mock_msg.attachment_path = None
+        mock_msg.source_turn_id = None
+        mock_msg.source_command_id = None
+        mock_msg.sent_at.isoformat.return_value = "2026-03-03T10:00:00+00:00"
+        mock_channel_service.send_message.return_value = mock_msg
+
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/messages",
+                json={"content": "x" * 100},
+            )
+            assert resp.status_code == 201
+
+    def test_attachment_path_traversal_returns_400(self, client, mock_operator):
+        """attachment_path containing '..' is rejected."""
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/messages",
+                json={"content": "Hello", "attachment_path": "../../../etc/passwd"},
+            )
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert data["error"]["code"] == "invalid_field"
+            assert "traversal" in data["error"]["message"].lower()
+
+    def test_attachment_path_absolute_returns_400(self, client, mock_operator):
+        """attachment_path starting with '/' is rejected."""
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/messages",
+                json={"content": "Hello", "attachment_path": "/etc/passwd"},
+            )
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert data["error"]["code"] == "invalid_field"
+            assert "absolute" in data["error"]["message"].lower()
+
+    def test_attachment_path_valid_relative_accepted(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """A valid relative attachment_path is accepted."""
+        mock_msg = MagicMock()
+        mock_msg.id = 51
+        mock_msg.persona.slug = "person-sam-1"
+        mock_msg.persona.name = "Sam"
+        mock_msg.agent_id = None
+        mock_msg.content = "See attached"
+        mock_msg.message_type.value = "message"
+        mock_msg.metadata_ = None
+        mock_msg.attachment_path = "uploads/file.txt"
+        mock_msg.source_turn_id = None
+        mock_msg.source_command_id = None
+        mock_msg.sent_at.isoformat.return_value = "2026-03-03T10:00:00+00:00"
+        mock_channel_service.send_message.return_value = mock_msg
+
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/messages",
+                json={"content": "See attached", "attachment_path": "uploads/file.txt"},
+            )
+            assert resp.status_code == 201
+
 
 # ──────────────────────────────────────────────────────────────
 # Error Envelope Tests (Section 3.3)
@@ -805,6 +897,7 @@ class TestErrorEnvelope:
             (AlreadyMemberError("Already member"), 409, "already_a_member"),
             (NoCreationCapabilityError("No cap"), 403, "no_creation_capability"),
             (AgentChannelConflictError("Conflict"), 409, "agent_already_in_channel"),
+            (ContentTooLongError("Too long"), 413, "content_too_long"),
         ]
 
         for exc, expected_status, expected_code in error_test_cases:

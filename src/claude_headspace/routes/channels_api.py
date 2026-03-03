@@ -21,6 +21,7 @@ from ..services.channel_service import (
     ChannelClosedError,
     ChannelError,
     ChannelNotFoundError,
+    ContentTooLongError,
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
@@ -66,6 +67,7 @@ _ERROR_MAP = {
     NoCreationCapabilityError: (403, "no_creation_capability"),
     AgentChannelConflictError: (409, "agent_already_in_channel"),
     PersonaNotFoundError: (404, "persona_not_found"),
+    ContentTooLongError: (413, "content_too_long"),
 }
 
 
@@ -339,7 +341,13 @@ def list_channels(*, persona, agent, service):
 @channels_api_bp.route("/api/channels/<slug>", methods=["GET"])
 @_channel_route
 def get_channel(slug: str, *, persona, agent, service):
-    """Get channel detail (FR3)."""
+    """Get channel detail (FR3).
+
+    No membership check — any authenticated caller can view channel
+    metadata. This is intentional: it supports observer/supervisor
+    patterns where operators or monitoring tools inspect channels
+    without being members.
+    """
     channel = service.get_channel(slug)
     return jsonify(_channel_to_dict(channel)), 200
 
@@ -384,7 +392,12 @@ def archive_channel(slug: str, *, persona, agent, service):
 @channels_api_bp.route("/api/channels/<slug>/members", methods=["GET"])
 @_channel_route
 def list_members(slug: str, *, persona, agent, service):
-    """List channel members (FR6)."""
+    """List channel members (FR6).
+
+    No membership check — any authenticated caller can view a
+    channel's member list. This supports observer/supervisor patterns
+    (e.g. operator reviewing composition, monitoring service auditing).
+    """
     members = service.list_members(slug)
     return jsonify([_membership_to_dict(m) for m in members]), 200
 
@@ -504,6 +517,20 @@ def send_message(slug: str, *, persona, agent, service):
     if not content:
         return _error_response(400, "missing_fields", "Missing required field: content")
 
+    # Early content length check (service also validates, but fail fast at API layer)
+    max_len = (
+        current_app.config.get("APP_CONFIG", {})
+        .get("channels", {})
+        .get("max_message_content_length", 50000)
+    )
+    if len(content) > max_len:
+        return _error_response(
+            413,
+            "content_too_long",
+            f"Message content exceeds maximum length "
+            f"({len(content):,} > {max_len:,} characters).",
+        )
+
     message_type = data.get("message_type", "message")
     if message_type == "system":
         return _error_response(
@@ -521,13 +548,39 @@ def send_message(slug: str, *, persona, agent, service):
             f"Invalid message_type '{message_type}'. Must be one of: {', '.join(valid_types)}",
         )
 
+    # Validate attachment_path
+    attachment_path = data.get("attachment_path")
+    if attachment_path is not None:
+        if not isinstance(attachment_path, str):
+            return _error_response(
+                400, "invalid_field", "attachment_path must be a string."
+            )
+        if ".." in attachment_path:
+            return _error_response(
+                400,
+                "invalid_field",
+                "Invalid attachment_path: path traversal ('..') is not allowed.",
+            )
+        if attachment_path.startswith("/") or attachment_path.startswith("\\"):
+            return _error_response(
+                400,
+                "invalid_field",
+                "Invalid attachment_path: absolute paths are not allowed.",
+            )
+        if any(c < " " or c == "\x7f" for c in attachment_path):
+            return _error_response(
+                400,
+                "invalid_field",
+                "Invalid attachment_path: control characters are not allowed.",
+            )
+
     message = service.send_message(
         slug=slug,
         content=content,
         persona=persona,
         agent=agent,
         message_type=message_type,
-        attachment_path=data.get("attachment_path"),
+        attachment_path=attachment_path,
     )
 
     return jsonify(_message_to_dict(message, slug)), 201

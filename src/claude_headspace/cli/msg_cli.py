@@ -32,6 +32,20 @@ def _get_channel_service():
 @click.option("--attachment", default=None, help="File path to attach.")
 def send_command(slug, content, message_type, attachment):
     """Send a message to a channel."""
+    # Content length check (fail fast before service call)
+    max_len = (
+        current_app.config.get("APP_CONFIG", {})
+        .get("channels", {})
+        .get("max_message_content_length", 50000)
+    )
+    if len(content) > max_len:
+        click.echo(
+            f"Error: Message content exceeds maximum length "
+            f"({len(content):,} > {max_len:,} characters).",
+            err=True,
+        )
+        raise SystemExit(1)
+
     agent, persona = resolve_caller_persona()
 
     svc = _get_channel_service()

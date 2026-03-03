@@ -240,6 +240,17 @@ After any channel operation, the voice bridge remembers which channel you were t
 
 The voice bridge matches channel names using a multi-tier approach: exact slug match, case-insensitive name match, substring match, and token overlap. If multiple channels match with similar confidence, the voice bridge asks you to say the full channel name.
 
+## Visibility without membership
+
+Some channel operations intentionally do not require membership. Any authenticated caller — whether the operator, a monitoring tool, or another agent — can:
+
+- **View channel metadata** (`GET /api/channels/<slug>`) — retrieve name, status, type, member count, and timestamps without being a member.
+- **List channel members** (`GET /api/channels/<slug>/members`) — see who belongs to a channel without joining it.
+
+This supports observer and supervisor patterns. For example, the operator can inspect any channel's composition from the dashboard or CLI without joining every conversation. Monitoring services can audit channel membership across the system.
+
+Write operations (sending messages, joining, leaving, completing) still require active membership. Read-only observation is the intentional exception.
+
 ## Personas and channels
 
 Channels are built on the [persona system](personas). Each channel member is a persona, and agents are the ephemeral workers assigned to deliver messages and produce responses.

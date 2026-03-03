@@ -184,6 +184,10 @@ DEFAULTS = {
             "log",
         ],
     },
+    "channels": {
+        "max_message_content_length": 50000,
+        "max_queue_depth_per_agent": 50,
+    },
     "voice_bridge": {
         "enabled": False,
         "auth": {

@@ -398,6 +398,12 @@ class AgentReaper:
                 watchdog.unregister_agent(agent.id)
         except Exception as e:
             logger.debug(f"Reaper watchdog unregister failed (non-fatal): {e}")
+        try:
+            delivery_service = self._app.extensions.get("channel_delivery_service")
+            if delivery_service:
+                delivery_service.clear_agent_queue(agent.id)
+        except Exception as e:
+            logger.debug(f"Reaper delivery queue cleanup failed (non-fatal): {e}")
 
         # Complete any orphaned commands (PROCESSING, COMMANDED, AWAITING_INPUT)
         self._complete_orphaned_commands(agent)

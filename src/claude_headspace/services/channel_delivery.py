@@ -62,6 +62,11 @@ class ChannelDeliveryService:
         # In-memory delivery queue: agent_id -> deque of Message IDs
         self._queue: dict[int, deque[int]] = {}
         self._queue_lock = threading.Lock()
+        self._max_queue_depth = (
+            app.config.get("APP_CONFIG", {})
+            .get("channels", {})
+            .get("max_queue_depth_per_agent", 50)
+        )
 
     # ── Envelope formatting ──────────────────────────────────────────
 
@@ -141,6 +146,14 @@ class ChannelDeliveryService:
             if agent_id not in self._queue:
                 self._queue[agent_id] = deque()
             self._queue[agent_id].append(message_id)
+            # Enforce max queue depth — drop oldest messages on overflow
+            q = self._queue[agent_id]
+            while len(q) > self._max_queue_depth:
+                dropped = q.popleft()
+                logger.warning(
+                    f"Queue overflow for agent {agent_id}: dropped oldest "
+                    f"message {dropped} (depth exceeded {self._max_queue_depth})"
+                )
         logger.debug(
             f"Queued message {message_id} for agent {agent_id} "
             f"(queue depth: {len(self._queue.get(agent_id, []))})"
@@ -165,6 +178,27 @@ class ChannelDeliveryService:
             if not q:
                 del self._queue[agent_id]
             return message_id
+
+    def clear_agent_queue(self, agent_id: int) -> int:
+        """Remove all queued messages for a given agent.
+
+        Called during agent cleanup (e.g. by the AgentReaper) to prevent
+        stale messages from accumulating for dead agents.
+
+        Args:
+            agent_id: The agent whose queue should be cleared.
+
+        Returns:
+            The number of messages that were removed.
+        """
+        with self._queue_lock:
+            q = self._queue.pop(agent_id, None)
+            count = len(q) if q else 0
+        if count:
+            logger.info(
+                f"Cleared {count} queued message(s) for agent {agent_id}"
+            )
+        return count
 
     # ── Single-agent delivery ────────────────────────────────────────
 
