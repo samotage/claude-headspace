@@ -52,11 +52,21 @@
                         </div>
                     </div>
                 </div>
+                <button onclick="window.ChannelManagement && window.ChannelManagement.open()"
+                        class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-magenta/20 text-magenta border-magenta/30 hover:bg-magenta/30 min-h-[36px] inline-flex items-center"
+                        title="Manage channels">
+                    Channels
+                </button>
                 <a href="/voice" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-blue/20 text-blue border-blue/30 hover:bg-blue/30 min-h-[36px] inline-flex items-center no-underline" title="Open chat view">
                     Chat
                 </a>
             </div>
         </div>
+
+        <!-- Channel Cards (operator's active channels) -->
+        {% if channel_data %}
+            {% include "partials/_channel_cards.html" %}
+        {% endif %}
 
         <!-- Content based on sort mode -->
         {% if sort_mode == 'kanban' %}
@@ -195,6 +205,12 @@
 
 <!-- Agent Info Modal -->
 {% include "partials/_agent_info_modal.html" %}
+
+<!-- Channel Chat Panel -->
+{% include "partials/_channel_chat_panel.html" %}
+
+<!-- Channel Management Modal -->
+{% include "partials/_channel_management.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -215,4 +231,10 @@
 <script src="{{ url_for('static', filename='js/agent-info.js') }}?v={{ cache_bust }}"></script>
 <!-- Agent lifecycle (create, kill, context) -->
 <script src="{{ url_for('static', filename='js/agent-lifecycle.js') }}?v={{ cache_bust }}"></script>
+<!-- Channel cards (SSE handlers + card management) -->
+<script src="{{ url_for('static', filename='js/channel-cards.js') }}?v={{ cache_bust }}"></script>
+<!-- Channel chat panel (slide-out message feed) -->
+<script src="{{ url_for('static', filename='js/channel-chat.js') }}?v={{ cache_bust }}"></script>
+<!-- Channel management modal -->
+<script src="{{ url_for('static', filename='js/channel-management.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

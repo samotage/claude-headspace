@@ -264,6 +264,8 @@
         "agent_state_changed",
         "agent_activity",
         "synthetic_turn",
+        "channel_message",
+        "channel_update",
       ];
 
       commonTypes.forEach((type) => {

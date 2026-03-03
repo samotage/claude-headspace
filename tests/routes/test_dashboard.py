@@ -726,6 +726,7 @@ class TestDashboardWithData:
         from src.claude_headspace.routes.help import help_bp
         from src.claude_headspace.routes.logging import logging_bp
         from src.claude_headspace.routes.objective import objective_bp
+        from src.claude_headspace.routes.personas import personas_bp
         from src.claude_headspace.routes.projects import projects_bp
 
         project_root = Path(__file__).parent.parent.parent
@@ -740,6 +741,7 @@ class TestDashboardWithData:
         app.register_blueprint(help_bp)
         app.register_blueprint(logging_bp)
         app.register_blueprint(objective_bp)
+        app.register_blueprint(personas_bp)
         app.register_blueprint(projects_bp)
         app.config["TESTING"] = True
         app.config["APP_CONFIG"] = {
@@ -783,7 +785,8 @@ class TestDashboardWithData:
             return query
         mock_db_session.session.query.side_effect = side_effect
 
-    def test_projects_displayed(self, standalone_client, mock_db_session):
+    @patch("src.claude_headspace.routes.dashboard.get_channel_data_for_operator", return_value=[])
+    def test_projects_displayed(self, mock_channels, standalone_client, mock_db_session):
         """Test that projects are displayed when data exists."""
         mock_agent = create_mock_agent(
             state=CommandState.PROCESSING,
@@ -795,7 +798,8 @@ class TestDashboardWithData:
         response = standalone_client.get("/")
         assert response.status_code == 200
 
-    def test_state_dots_displayed(self, standalone_client, mock_db_session):
+    @patch("src.claude_headspace.routes.dashboard.get_channel_data_for_operator", return_value=[])
+    def test_state_dots_displayed(self, mock_channels, standalone_client, mock_db_session):
         """Test that state indicator dots are shown."""
         mock_agent = create_mock_agent(state=CommandState.AWAITING_INPUT)
         mock_project = self._make_mock_project("Needs Input Project", [mock_agent])

@@ -8,6 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from ..database import db
 from ..models import Agent, Project, Command, CommandState
+from ..models.channel import Channel
+from ..models.channel_membership import ChannelMembership
+from ..models.message import Message
+from ..models.persona import Persona
 from ..models.objective import Objective
 from ..models.turn import TurnActor
 from ..services.card_state import (
@@ -481,6 +485,106 @@ def _get_dashboard_activity_metrics() -> dict | None:
         return None
 
 
+def get_channel_data_for_operator() -> list[dict]:
+    """Get channel data for the operator's active channel memberships.
+
+    Queries the operator's Persona, finds active ChannelMemberships (excluding
+    archived channels), and returns a list of dicts with channel info and the
+    most recent message per channel.
+
+    Returns:
+        List of dicts, each containing: slug, name, channel_type, status,
+        description, members (list of persona names), and last_message
+        (dict with persona_name, content_preview, sent_at, or None).
+    """
+    operator = Persona.get_operator()
+    if not operator:
+        return []
+
+    # Find operator's active memberships with channel eagerly loaded
+    memberships = (
+        db.session.query(ChannelMembership)
+        .join(Channel, ChannelMembership.channel_id == Channel.id)
+        .filter(
+            ChannelMembership.persona_id == operator.id,
+            ChannelMembership.status.in_(["active", "muted"]),
+            Channel.archived_at.is_(None),
+        )
+        .options(
+            selectinload(ChannelMembership.channel)
+            .selectinload(Channel.memberships)
+            .selectinload(ChannelMembership.persona),
+        )
+        .all()
+    )
+
+    if not memberships:
+        return []
+
+    channel_ids = [m.channel_id for m in memberships]
+
+    # Get most recent message per channel using a subquery
+    latest_msg_subq = (
+        db.session.query(
+            Message.channel_id,
+            db.func.max(Message.sent_at).label("max_sent_at"),
+        )
+        .filter(Message.channel_id.in_(channel_ids))
+        .group_by(Message.channel_id)
+        .subquery()
+    )
+
+    latest_messages = (
+        db.session.query(Message)
+        .join(
+            latest_msg_subq,
+            db.and_(
+                Message.channel_id == latest_msg_subq.c.channel_id,
+                Message.sent_at == latest_msg_subq.c.max_sent_at,
+            ),
+        )
+        .options(selectinload(Message.persona))
+        .all()
+    )
+
+    # Index latest messages by channel_id
+    msg_by_channel = {m.channel_id: m for m in latest_messages}
+
+    result = []
+    for membership in memberships:
+        channel = membership.channel
+
+        # Build member list from channel's memberships
+        members = []
+        for cm in channel.memberships:
+            if cm.status in ("active", "muted") and cm.persona:
+                members.append(cm.persona.name)
+
+        # Build last_message dict
+        last_msg = msg_by_channel.get(channel.id)
+        last_message = None
+        if last_msg:
+            content = last_msg.content or ""
+            content_preview = content[:100] + "..." if len(content) > 100 else content
+            last_message = {
+                "persona_name": last_msg.persona.name if last_msg.persona else "System",
+                "content_preview": content_preview,
+                "sent_at": last_msg.sent_at.isoformat() if last_msg.sent_at else None,
+            }
+
+        result.append({
+            "slug": channel.slug,
+            "name": channel.name,
+            "channel_type": channel.channel_type.value,
+            "status": channel.status,
+            "description": channel.description,
+            "members": members,
+            "last_message": last_message,
+        })
+
+    return result
+
+
 @dashboard_bp.route("/")
 @dashboard_bp.route("/dashboard")
 def dashboard():
@@ -667,6 +771,9 @@ def dashboard():
         "high": ctx_config.get("high_threshold", 75),
     }
 
+    # Get channel data for operator (empty list if no persona/memberships)
+    channel_data = get_channel_data_for_operator()
+
     return render_template(
         "dashboard.html",
         projects=projects_with_agents,
@@ -679,4 +786,5 @@ def dashboard():
         kanban_data=kanban_data,
         activity_metrics=None,
         context_thresholds=context_thresholds,
+        channel_data=channel_data,
     )
