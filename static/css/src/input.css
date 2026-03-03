@@ -2253,3 +2253,76 @@ body::after {
 .synthetic-turn-file:hover {
     background: var(--bg-surface);
 }
+
+/* ── Channel Cards ─────────────────────────────────────── */
+.channel-card {
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.channel-card:hover {
+    box-shadow: 0 0 12px rgba(86, 212, 221, 0.06);
+}
+
+.channel-card-status {
+    transition: background-color 0.2s ease;
+}
+
+/* ── Channel Chat Panel (slide-out) ────────────────────── */
+.channel-chat-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 440px;
+    z-index: 50;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.channel-chat-panel.open {
+    transform: translateX(0);
+}
+
+@media (max-width: 768px) {
+    .channel-chat-panel {
+        width: 100%;
+    }
+}
+
+/* Optimistic message styling */
+.channel-chat-msg-optimistic {
+    opacity: 0.7;
+}
+
+/* Error state for failed sends */
+.channel-chat-msg-error {
+    border-left: 2px solid var(--red);
+    padding-left: 8px;
+    opacity: 1;
+}
+
+/* System message in channel chat */
+.channel-chat-msg-system {
+    border-top: 1px dashed var(--border);
+    border-bottom: 1px dashed var(--border);
+    margin: 4px 0;
+    padding: 6px 0;
+}
+
+/* ── Channel Management Modal ──────────────────────────── */
+#channel-management-modal .modal-content {
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#channel-management-modal #channel-mgmt-list-view,
+#channel-management-modal #channel-mgmt-create-view {
+    max-height: 50vh;
+    overflow-y: auto;
+}

@@ -1,0 +1,128 @@
+<!-- Channel Management Modal -->
+<div id="channel-management-modal"
+     class="fixed inset-0 z-[200] hidden"
+     role="dialog"
+     aria-labelledby="channel-management-title"
+     aria-modal="true">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+         onclick="window.ChannelManagement && window.ChannelManagement.close()"></div>
+
+    <!-- Modal content -->
+    <div class="modal-content" style="max-width: 900px;">
+        <!-- Header -->
+        <div class="modal-header">
+            <h2 id="channel-management-title" class="text-lg font-semibold text-primary">Channel Management</h2>
+            <button class="modal-close-btn"
+                    onclick="window.ChannelManagement && window.ChannelManagement.close()"
+                    aria-label="Close channel management">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Tabs: List / Create -->
+        <div class="flex items-center gap-2 px-5 py-2 bg-surface border-b border-border">
+            <button type="button"
+                    id="channel-mgmt-tab-list"
+                    onclick="window.ChannelManagement && window.ChannelManagement.switchTab('list')"
+                    class="px-3 py-1 rounded text-sm font-medium bg-cyan text-void">
+                Channels
+            </button>
+            <button type="button"
+                    id="channel-mgmt-tab-create"
+                    onclick="window.ChannelManagement && window.ChannelManagement.switchTab('create')"
+                    class="px-3 py-1 rounded text-sm font-medium text-secondary hover:text-primary hover:bg-hover">
+                Create New
+            </button>
+        </div>
+
+        <!-- List View -->
+        <div id="channel-mgmt-list-view" class="flex-1 overflow-y-auto p-5">
+            <div id="channel-mgmt-loading" class="text-center py-8">
+                <span class="text-muted text-sm italic">Loading channels...</span>
+            </div>
+            <table id="channel-mgmt-table" class="w-full text-sm hidden">
+                <thead>
+                    <tr class="border-b border-border text-left text-muted text-xs uppercase tracking-wider">
+                        <th class="pb-2 pr-4">Name</th>
+                        <th class="pb-2 pr-4">Type</th>
+                        <th class="pb-2 pr-4">Status</th>
+                        <th class="pb-2 pr-4">Members</th>
+                        <th class="pb-2 pr-4">Created</th>
+                        <th class="pb-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="channel-mgmt-tbody">
+                    <!-- Rows populated by JS -->
+                </tbody>
+            </table>
+            <div id="channel-mgmt-empty" class="text-center py-8 hidden">
+                <span class="text-muted text-sm italic">No channels found</span>
+            </div>
+        </div>
+
+        <!-- Create View -->
+        <div id="channel-mgmt-create-view" class="flex-1 overflow-y-auto p-5 hidden">
+            <form id="channel-mgmt-create-form" onsubmit="event.preventDefault(); window.ChannelManagement && window.ChannelManagement.createChannel();">
+                <div class="space-y-4">
+                    <!-- Name -->
+                    <div>
+                        <label for="channel-create-name" class="block text-xs text-muted uppercase tracking-wider mb-1">Name *</label>
+                        <input type="text" id="channel-create-name"
+                               class="form-well w-full px-3 py-2 text-sm"
+                               placeholder="e.g. Auth Review"
+                               required>
+                    </div>
+
+                    <!-- Type -->
+                    <div>
+                        <label for="channel-create-type" class="block text-xs text-muted uppercase tracking-wider mb-1">Type *</label>
+                        <select id="channel-create-type" class="form-well w-full px-3 py-2 text-sm" required>
+                            <option value="">Select type...</option>
+                            <option value="workshop">Workshop</option>
+                            <option value="delegation">Delegation</option>
+                            <option value="review">Review</option>
+                            <option value="standup">Standup</option>
+                            <option value="broadcast">Broadcast</option>
+                        </select>
+                    </div>
+
+                    <!-- Description -->
+                    <div>
+                        <label for="channel-create-description" class="block text-xs text-muted uppercase tracking-wider mb-1">Description</label>
+                        <textarea id="channel-create-description"
+                                  class="form-well w-full px-3 py-2 text-sm resize-none"
+                                  rows="3"
+                                  placeholder="Optional description..."></textarea>
+                    </div>
+
+                    <!-- Members -->
+                    <div>
+                        <label for="channel-create-members" class="block text-xs text-muted uppercase tracking-wider mb-1">Members</label>
+                        <input type="text" id="channel-create-members"
+                               class="form-well w-full px-3 py-2 text-sm"
+                               placeholder="Comma-separated persona slugs (optional)">
+                        <span class="text-muted text-xs mt-1 block">e.g. developer-con-1, tester-robbo-2</span>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="flex items-center gap-2">
+                        <button type="submit"
+                                id="channel-create-submit-btn"
+                                class="px-4 py-2 bg-cyan text-void font-medium rounded hover:bg-cyan/90 transition-colors text-sm">
+                            Create Channel
+                        </button>
+                        <span id="channel-create-status" class="text-muted text-xs"></span>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer text-xs text-muted">
+            <span id="channel-mgmt-count"></span>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,41 @@
+<!-- Channel Cards Section -->
+<div id="channel-cards-section" class="mb-4">
+    <div class="flex items-center gap-2 mb-2">
+        <span class="text-muted text-xs font-medium uppercase tracking-wider">Channels</span>
+        <span class="text-muted text-xs">[{{ channel_data|length }}]</span>
+    </div>
+    <div class="flex flex-wrap gap-3" id="channel-cards-container">
+        {% for ch in channel_data %}
+        <div class="channel-card bg-elevated rounded-lg border border-border px-4 py-3 cursor-pointer transition-all hover:border-cyan/40 hover:bg-hover min-w-[220px] max-w-[320px] flex-1"
+             data-channel-slug="{{ ch.slug }}"
+             data-channel-name="{{ ch.name }}"
+             data-channel-type="{{ ch.channel_type }}"
+             data-channel-status="{{ ch.status }}"
+             data-channel-members="{{ ch.members|join(',') }}"
+             onclick="window.ChannelChat && window.ChannelChat.toggle('{{ ch.slug }}')">
+            <!-- Row 1: Name + Type Badge + Status -->
+            <div class="flex items-center justify-between gap-2 mb-1">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="channel-card-name text-primary text-sm font-medium truncate">{{ ch.name }}</span>
+                    <span class="channel-card-type px-1.5 py-0.5 text-[10px] uppercase tracking-wider rounded text-muted bg-surface border border-border">{{ ch.channel_type }}</span>
+                </div>
+                <span class="channel-card-status flex-shrink-0 w-2 h-2 rounded-full {% if ch.status == 'active' %}bg-green{% elif ch.status == 'pending' %}bg-amber{% else %}bg-muted{% endif %}"
+                      title="{{ ch.status }}"></span>
+            </div>
+            <!-- Row 2: Members -->
+            <div class="channel-card-members text-muted text-xs truncate mb-1">
+                {{ ch.members|join(', ') or 'No members' }}
+            </div>
+            <!-- Row 3: Last message preview -->
+            <div class="channel-card-last-message text-xs truncate">
+                {% if ch.last_message %}
+                    <span class="text-cyan">{{ ch.last_message.persona_name }}</span>
+                    <span class="text-secondary">{{ ch.last_message.content_preview }}</span>
+                {% else %}
+                    <span class="text-muted italic">No messages yet</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

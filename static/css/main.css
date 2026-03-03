@@ -723,12 +723,24 @@ select.form-well {
   inset: 1rem;
 }
 
+.bottom-\[72px\] {
+  bottom: 72px;
+}
+
+.left-0 {
+  left: 0px;
+}
+
 .left-1 {
   left: 0.25rem;
 }
 
 .left-7 {
   left: 1.75rem;
+}
+
+.right-0 {
+  right: 0px;
 }
 
 .right-2 {
@@ -1032,6 +1044,10 @@ select.form-well {
   min-width: 200px;
 }
 
+.min-w-\[220px\] {
+  min-width: 220px;
+}
+
 .min-w-\[300px\] {
   min-width: 300px;
 }
@@ -1046,6 +1062,10 @@ select.form-well {
 
 .max-w-\[200px\] {
   max-width: 200px;
+}
+
+.max-w-\[320px\] {
+  max-width: 320px;
 }
 
 .max-w-\[400px\] {
@@ -1278,6 +1298,10 @@ select.form-well {
   align-self: flex-start;
 }
 
+.self-end {
+  align-self: flex-end;
+}
+
 .overflow-auto {
   overflow: auto;
 }
@@ -1434,6 +1458,10 @@ select.form-well {
   border-color: rgb(115 224 160 / 0.4);
 }
 
+.border-magenta\/30 {
+  border-color: rgb(208 115 224 / 0.3);
+}
+
 .border-red {
   --tw-border-opacity: 1;
   border-color: rgb(224 115 115 / var(--tw-border-opacity, 1));
@@ -1545,6 +1573,15 @@ select.form-well {
   background-color: rgb(115 224 160 / 0.05);
 }
 
+.bg-magenta\/20 {
+  background-color: rgb(208 115 224 / 0.2);
+}
+
+.bg-muted {
+  --tw-bg-opacity: 1;
+  background-color: rgb(106 106 120 / var(--tw-bg-opacity, 1));
+}
+
 .bg-muted\/20 {
   background-color: rgb(106 106 120 / 0.2);
 }
@@ -1599,6 +1636,10 @@ select.form-well {
 
 .p-4 {
   padding: 1rem;
+}
+
+.p-5 {
+  padding: 1.25rem;
 }
 
 .p-6 {
@@ -4382,6 +4423,85 @@ body::after {
   background: var(--bg-surface);
 }
 
+/* ── Channel Cards ─────────────────────────────────────── */
+
+.channel-card {
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.channel-card:hover {
+  box-shadow: 0 0 12px rgba(86, 212, 221, 0.06);
+}
+
+.channel-card-status {
+  transition: background-color 0.2s ease;
+}
+
+/* ── Channel Chat Panel (slide-out) ────────────────────── */
+
+.channel-chat-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  z-index: 50;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.channel-chat-panel.open {
+  transform: translateX(0);
+}
+
+@media (max-width: 768px) {
+  .channel-chat-panel {
+    width: 100%;
+  }
+}
+
+/* Optimistic message styling */
+
+.channel-chat-msg-optimistic {
+  opacity: 0.7;
+}
+
+/* Error state for failed sends */
+
+.channel-chat-msg-error {
+  border-left: 2px solid var(--red);
+  padding-left: 8px;
+  opacity: 1;
+}
+
+/* System message in channel chat */
+
+.channel-chat-msg-system {
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  margin: 4px 0;
+  padding: 6px 0;
+}
+
+/* ── Channel Management Modal ──────────────────────────── */
+
+#channel-management-modal .modal-content {
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#channel-management-modal #channel-mgmt-list-view,
+#channel-management-modal #channel-mgmt-create-view {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
 .hover\:border-red:hover.form-well {
   border-color: var(--red);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5),
@@ -4418,6 +4538,10 @@ body::after {
 
 .hover\:border-cyan\/30:hover {
   border-color: rgb(86 212 221 / 0.3);
+}
+
+.hover\:border-cyan\/40:hover {
+  border-color: rgb(86 212 221 / 0.4);
 }
 
 .hover\:border-red:hover {
@@ -4476,6 +4600,10 @@ body::after {
 .hover\:bg-hover:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(30 30 36 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-magenta\/30:hover {
+  background-color: rgb(208 115 224 / 0.3);
 }
 
 .hover\:bg-red\/10:hover {

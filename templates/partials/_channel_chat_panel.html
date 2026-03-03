@@ -1,0 +1,66 @@
+<!-- Channel Chat Slide-Out Panel -->
+<div id="channel-chat-panel"
+     class="channel-chat-panel"
+     role="complementary"
+     aria-label="Channel chat"
+     aria-hidden="true">
+    <!-- Header -->
+    <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-border bg-elevated">
+        <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+                <h3 id="channel-chat-name" class="text-primary text-sm font-medium truncate"></h3>
+                <span id="channel-chat-type" class="px-1.5 py-0.5 text-[10px] uppercase tracking-wider rounded text-muted bg-surface border border-border"></span>
+            </div>
+            <span id="channel-chat-meta" class="text-muted text-xs"></span>
+        </div>
+        <button class="modal-close-btn flex-shrink-0"
+                onclick="window.ChannelChat && window.ChannelChat.close()"
+                aria-label="Close chat panel">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Message Feed -->
+    <div id="channel-chat-feed" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <!-- Load earlier messages button -->
+        <div id="channel-chat-load-earlier" class="text-center hidden">
+            <button class="text-xs text-cyan hover:text-primary transition-colors px-3 py-1 rounded border border-border hover:border-cyan/40"
+                    onclick="window.ChannelChat && window.ChannelChat.loadEarlier()">
+                Load earlier messages
+            </button>
+        </div>
+        <!-- Messages rendered here by JS -->
+        <div id="channel-chat-messages"></div>
+        <!-- Loading indicator -->
+        <div id="channel-chat-loading" class="text-center py-4 hidden">
+            <span class="text-muted text-sm italic">Loading messages...</span>
+        </div>
+    </div>
+
+    <!-- New messages indicator -->
+    <div id="channel-chat-new-indicator" class="hidden absolute bottom-[72px] left-0 right-0 text-center pointer-events-none">
+        <button class="pointer-events-auto inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full bg-cyan text-void shadow-lg hover:bg-cyan/90 transition-colors"
+                onclick="window.ChannelChat && window.ChannelChat.scrollToBottom()">
+            New messages below
+        </button>
+    </div>
+
+    <!-- Input Area -->
+    <div class="border-t border-border bg-elevated px-4 py-3">
+        <div class="flex gap-2">
+            <textarea id="channel-chat-input"
+                      class="form-well flex-1 px-3 py-2 text-sm resize-none"
+                      rows="2"
+                      placeholder="Type a message..."
+                      aria-label="Message input"
+                      onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); window.ChannelChat && window.ChannelChat.send();}"></textarea>
+            <button id="channel-chat-send-btn"
+                    class="flex-shrink-0 px-3 py-2 bg-cyan text-void text-sm font-medium rounded hover:bg-cyan/90 transition-colors self-end"
+                    onclick="window.ChannelChat && window.ChannelChat.send()">
+                Send
+            </button>
+        </div>
+    </div>
+</div>
