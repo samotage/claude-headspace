@@ -275,7 +275,9 @@
                     active_agents: null,
                     total_frustration: null,
                     frustration_turn_count: null,
-                    max_frustration: null
+                    max_frustration: null,
+                    min_frustration: null,
+                    sum_frustration_squared: null
                 });
             }
             cursor = new Date(cursor.getTime() + 3600000);
@@ -295,7 +297,13 @@
             var d = new Date(h.bucket_start);
             var key = d.toLocaleDateString('en-CA');
             if (!dayMap[key]) {
-                dayMap[key] = { date: d, turn_count: 0, total_frustration: 0, frustration_turn_count: 0, max_frustration: null, bucket_start: h.bucket_start };
+                dayMap[key] = {
+                    date: d, turn_count: 0, total_frustration: 0,
+                    frustration_turn_count: 0, max_frustration: null,
+                    min_frustration: null, sum_frustration_squared: 0,
+                    _has_frust_sq: false,
+                    bucket_start: h.bucket_start
+                };
             }
             dayMap[key].turn_count += h.turn_count;
             if (h.total_frustration != null) dayMap[key].total_frustration += h.total_frustration;
@@ -306,11 +314,22 @@
                     ? Math.max(dayMap[key].max_frustration, bucketMax)
                     : bucketMax;
             }
+            if (h.min_frustration != null) {
+                dayMap[key].min_frustration = dayMap[key].min_frustration != null
+                    ? Math.min(dayMap[key].min_frustration, h.min_frustration)
+                    : h.min_frustration;
+            }
+            if (h.sum_frustration_squared != null) {
+                dayMap[key].sum_frustration_squared += h.sum_frustration_squared;
+                dayMap[key]._has_frust_sq = true;
+            }
         });
         return Object.keys(dayMap).sort().map(function(k) {
             var entry = dayMap[k];
             if (entry.total_frustration === 0) entry.total_frustration = null;
             if (entry.frustration_turn_count === 0) entry.frustration_turn_count = null;
+            if (!entry._has_frust_sq) entry.sum_frustration_squared = null;
+            delete entry._has_frust_sq;
             return entry;
         });
     }

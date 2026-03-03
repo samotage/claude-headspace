@@ -64,6 +64,40 @@ class TestMetricToDict:
         result = _metric_to_dict(m)
         assert result["frustration_avg"] == 3.3
 
+    def test_candlestick_fields_included(self):
+        """min_frustration and sum_frustration_squared are included in output."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = 15
+        m.frustration_turn_count = 3
+        m.min_frustration = 2
+        m.sum_frustration_squared = 89
+        result = _metric_to_dict(m)
+        assert result["min_frustration"] == 2
+        assert result["sum_frustration_squared"] == 89
+
+    def test_candlestick_fields_null_when_none(self):
+        """min_frustration and sum_frustration_squared are None when no scored turns."""
+        m = MagicMock()
+        m.id = 1
+        m.bucket_start = MagicMock()
+        m.bucket_start.isoformat.return_value = "2026-02-04T10:00:00"
+        m.turn_count = 10
+        m.avg_turn_time_seconds = 5.0
+        m.active_agents = 2
+        m.total_frustration = None
+        m.frustration_turn_count = None
+        m.min_frustration = None
+        m.sum_frustration_squared = None
+        result = _metric_to_dict(m)
+        assert result["min_frustration"] is None
+        assert result["sum_frustration_squared"] is None
+
 
 class TestActivityPage:
     """Test GET /activity page route."""

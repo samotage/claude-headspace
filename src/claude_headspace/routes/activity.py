@@ -79,6 +79,8 @@ def _metric_to_dict(m: ActivityMetric) -> dict:
         "max_frustration_at": m.max_frustration_at.isoformat()
         if m.max_frustration_at
         else None,
+        "min_frustration": m.min_frustration,
+        "sum_frustration_squared": m.sum_frustration_squared,
     }
 
 

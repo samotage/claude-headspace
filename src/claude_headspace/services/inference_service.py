@@ -71,9 +71,11 @@ class InferenceService:
 
     def stop(self) -> None:
         """Dispose of the independent database engine, releasing connections."""
-        if self._independent_engine:
-            self._independent_engine.dispose()
-            logger.info("Inference service: independent engine disposed")
+        if not self._independent_engine:
+            return
+        self._independent_engine.dispose()
+        self._independent_engine = None
+        logger.info("Inference service: independent engine disposed")
 
     @property
     def is_available(self) -> bool:

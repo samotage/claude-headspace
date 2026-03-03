@@ -82,6 +82,14 @@ class ActivityMetric(db.Model):
         DateTime(timezone=True),
         nullable=True,
     )
+    min_frustration: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    sum_frustration_squared: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

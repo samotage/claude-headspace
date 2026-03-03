@@ -115,12 +115,11 @@
             if (currentWindow === 'day') {
                 return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
             } else if (currentWindow === 'week') {
-                var dow = now.getDay();
-                var diffToMon = (dow === 0 ? 6 : dow - 1);
-                var thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
-                return new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + (offset * 7));
+                // Rolling 7-day windows ending today (inclusive)
+                return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + (offset * 7));
             } else {
-                return new Date(now.getFullYear(), now.getMonth() + offset, 1);
+                // Rolling 30-day windows ending today (inclusive)
+                return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29 + (offset * 30));
             }
         },
 
@@ -131,16 +130,17 @@
                 if (windowOffset === -1) return 'Yesterday';
                 return start.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
             } else if (currentWindow === 'week') {
+                if (windowOffset === 0) return 'Last 7 Days';
                 var end = new Date(start);
                 end.setDate(end.getDate() + 6);
-                if (windowOffset === 0) {
-                    return 'This Week';
-                }
                 return start.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
                     ' \u2013 ' + end.toLocaleDateString([], { day: 'numeric', month: 'short' });
             } else {
-                if (windowOffset === 0) return 'This Month';
-                return start.toLocaleDateString([], { month: 'long', year: 'numeric' });
+                if (windowOffset === 0) return 'Last 30 Days';
+                var end = new Date(start);
+                end.setDate(end.getDate() + 29);
+                return start.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
+                    ' \u2013 ' + end.toLocaleDateString([], { day: 'numeric', month: 'short' });
             }
         },
 
@@ -385,6 +385,50 @@
             return h.total_frustration / h.frustration_turn_count;
         },
 
+        /**
+         * Compute candlestick stats from a history bucket.
+         * Returns { mean, sd, high, low, bodyTop, bodyBottom, turnCount } or null.
+         */
+        _candlestickFromBucket: function(h) {
+            if (!h.frustration_turn_count || h.frustration_turn_count === 0 || h.total_frustration == null) {
+                // Graceful fallback for old data: if we have max but no new columns
+                if (h.max_frustration != null && h.total_frustration != null && h.frustration_turn_count > 0) {
+                    var mean = h.total_frustration / h.frustration_turn_count;
+                    return {
+                        mean: mean, sd: 0,
+                        high: h.max_frustration,
+                        low: h.min_frustration != null ? h.min_frustration : mean,
+                        bodyTop: mean, bodyBottom: mean,
+                        turnCount: h.frustration_turn_count
+                    };
+                }
+                return null;
+            }
+
+            var n = h.frustration_turn_count;
+            var mean = h.total_frustration / n;
+            var high = h.max_frustration != null ? h.max_frustration : mean;
+            var low = h.min_frustration != null ? h.min_frustration : mean;
+
+            // Compute SD from sum of squares
+            var sd = 0;
+            if (n > 1 && h.sum_frustration_squared != null) {
+                var variance = (h.sum_frustration_squared / n) - (mean * mean);
+                if (variance < 0) variance = 0; // float precision guard
+                sd = Math.sqrt(variance);
+            }
+
+            var bodyTop = Math.min(mean + sd, 10);
+            var bodyBottom = Math.max(mean - sd, 0);
+
+            return {
+                mean: mean, sd: sd,
+                high: high, low: low,
+                bodyTop: bodyTop, bodyBottom: bodyBottom,
+                turnCount: n
+            };
+        },
+
         _renderChart: function(history) {
             var canvas = document.getElementById('activity-chart');
             var chartEmpty = document.getElementById('chart-empty');
@@ -430,15 +474,14 @@
                 return h.turn_count > 0 ? h.turn_count : null;
             });
 
-            // Chart frustration line: max frustration per bucket (peak score)
-            var frustrationData = history.map(function(h) {
-                return ActivityPage._bucketFrustration(h);
+            // Compute candlestick data for each bucket
+            var candleData = history.map(function(h) {
+                return ActivityPage._candlestickFromBucket(h);
             });
 
-            // Threshold-based point colors (using peak value)
-            var pointColors = frustrationData.map(function(val) {
-                var lvl = _levelFromAvg(val);
-                return 'rgba(' + FRUST_COLORS[lvl].rgb + ', 1)';
+            // Hidden dataset at mean values for tooltip interaction on y1 axis
+            var frustrationMeanData = candleData.map(function(c) {
+                return c ? c.mean : null;
             });
 
             var chartHistory = history;
@@ -456,21 +499,12 @@
             }, {
                 label: 'Frustration',
                 type: 'line',
-                data: frustrationData,
-                borderWidth: 2,
-                pointRadius: 3,
-                tension: 0.3,
-                fill: false,
-                spanGaps: false,
+                data: frustrationMeanData,
+                showLine: false,
+                pointRadius: 0,
+                pointHitRadius: 8,
                 yAxisID: 'y1',
-                segment: {
-                    borderColor: function(ctx) {
-                        return pointColors[ctx.p1DataIndex] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)';
-                    }
-                },
-                pointBackgroundColor: pointColors,
-                pointBorderColor: pointColors,
-                borderColor: pointColors[0] || 'rgba(' + FRUST_COLORS.green.rgb + ', 1)',
+                borderColor: 'rgba(255, 193, 7, 0)',
             }];
 
             var scales = {
@@ -494,6 +528,75 @@
                         stepSize: 2,
                     },
                     grid: { drawOnChartArea: false }
+                }
+            };
+
+            // Inline candlestick plugin
+            var candlestickPlugin = {
+                id: 'frustrationCandlestick',
+                afterDatasetsDraw: function(chartInstance) {
+                    var candles = chartInstance._frustrationCandles;
+                    if (!candles) return;
+
+                    var ctx = chartInstance.ctx;
+                    var y1Scale = chartInstance.scales.y1;
+                    if (!y1Scale) return;
+
+                    // Get bar dataset elements for x positions
+                    var barMeta = chartInstance.getDatasetMeta(0);
+                    if (!barMeta || !barMeta.data) return;
+
+                    for (var i = 0; i < candles.length; i++) {
+                        var c = candles[i];
+                        if (!c) continue;
+
+                        var barEl = barMeta.data[i];
+                        if (!barEl) continue;
+
+                        var x = barEl.x;
+                        var barWidth = barEl.width || 20;
+                        var candleWidth = Math.max(barWidth * 0.35, 6);
+                        var halfW = candleWidth / 2;
+
+                        var yHigh = y1Scale.getPixelForValue(c.high);
+                        var yLow = y1Scale.getPixelForValue(c.low);
+                        var yTop = y1Scale.getPixelForValue(c.bodyTop);
+                        var yBottom = y1Scale.getPixelForValue(c.bodyBottom);
+                        var yMean = y1Scale.getPixelForValue(c.mean);
+
+                        // Color based on mean
+                        var lvl = _levelFromAvg(c.mean);
+                        var color = FRUST_COLORS[lvl];
+
+                        // Wick (thin vertical line from low to high)
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(' + color.rgb + ', 0.4)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, yHigh);
+                        ctx.lineTo(x, yLow);
+                        ctx.stroke();
+
+                        // Body (filled rectangle from bodyBottom to bodyTop)
+                        var bodyHeight = Math.abs(yBottom - yTop);
+                        if (bodyHeight < 2) bodyHeight = 2; // min 2px for single-turn
+                        var bodyY = Math.min(yTop, yBottom);
+                        ctx.fillStyle = 'rgba(' + color.rgb + ', 0.8)';
+                        ctx.strokeStyle = 'rgba(' + color.rgb + ', 1)';
+                        ctx.lineWidth = 1;
+                        ctx.fillRect(x - halfW, bodyY, candleWidth, bodyHeight);
+                        ctx.strokeRect(x - halfW, bodyY, candleWidth, bodyHeight);
+
+                        // Mean marker (horizontal line extending slightly beyond body)
+                        ctx.strokeStyle = 'rgba(' + color.rgb + ', 1)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(x - halfW - 2, yMean);
+                        ctx.lineTo(x + halfW + 2, yMean);
+                        ctx.stroke();
+
+                        ctx.restore();
+                    }
                 }
             };
 
@@ -525,8 +628,15 @@
                                 },
                                 label: function(item) {
                                     if (item.dataset.label === 'Frustration') {
-                                        if (item.raw == null) return null;
-                                        return 'Frustration Peak: ' + item.raw.toFixed(1);
+                                        var c = candleData[item.dataIndex];
+                                        if (!c) return null;
+                                        var lines = [];
+                                        lines.push('Mean: ' + c.mean.toFixed(1));
+                                        lines.push('SD: \u00b1' + c.sd.toFixed(1));
+                                        lines.push('High: ' + c.high);
+                                        lines.push('Low: ' + c.low);
+                                        lines.push('Scored turns: ' + c.turnCount);
+                                        return lines;
                                     }
                                     var idx = item.dataIndex;
                                     var h = chartHistory[idx];
@@ -539,10 +649,6 @@
                                             lines.push('Active agents: ' + h.active_agents);
                                         }
                                     }
-                                    var avg = ActivityPage._bucketFrustrationAvg(h);
-                                    if (avg != null) {
-                                        lines.push('Frustration Avg: ' + avg.toFixed(1));
-                                    }
                                     return lines;
                                 }
                             }
@@ -550,8 +656,12 @@
                         legend: { labels: { color: 'rgba(255,255,255,0.6)' } }
                     },
                     scales: scales
-                }
+                },
+                plugins: [candlestickPlugin]
             });
+
+            // Attach candle data to chart instance for the plugin
+            chart._frustrationCandles = candleData;
         },
 
         _renderProjectPanels: function(results) {

@@ -340,3 +340,97 @@ class TestUpsertMetric:
         sql = str(compiled)
         assert "ON CONFLICT" in sql
         assert "DO UPDATE" in sql
+
+    def test_upsert_includes_candlestick_fields(self):
+        """_upsert_metric includes min_frustration and sum_frustration_squared."""
+        session = MagicMock()
+        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+        ActivityAggregator._upsert_metric(
+            session,
+            bucket_start=now,
+            agent_id=1,
+            project_id=None,
+            is_overall=False,
+            turn_count=10,
+            avg_turn_time_seconds=45.0,
+            active_agents=None,
+            total_frustration=15,
+            frustration_turn_count=3,
+            min_frustration=2,
+            sum_frustration_squared=89,
+        )
+
+        session.execute.assert_called_once()
+        stmt = session.execute.call_args[0][0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": False})
+        sql = str(compiled)
+        assert "min_frustration" in sql
+        assert "sum_frustration_squared" in sql
+
+
+class TestCandlestickComputation:
+    """Test candlestick field computation in aggregate_once."""
+
+    @patch("src.claude_headspace.services.activity_aggregator.db")
+    def test_candlestick_fields_computed_from_frustration_scores(
+        self, mock_db, aggregator
+    ):
+        """min_frustration and sum_frustration_squared are computed from user turn scores."""
+        now = datetime.now(timezone.utc)
+        bucket_start = now.replace(minute=0, second=0, microsecond=0)
+
+        mock_agent = MagicMock()
+        mock_agent.id = 1
+        mock_agent.project_id = 10
+        mock_agent.ended_at = None
+
+        agents_query = MagicMock()
+        agents_query.filter.return_value.all.return_value = [mock_agent]
+
+        # User turns with scores: 3, 6, 8
+        mock_turn1 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=5),
+            actor=TurnActor.USER,
+            frustration_score=3,
+        )
+        mock_turn2 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=15),
+            actor=TurnActor.USER,
+            frustration_score=6,
+        )
+        mock_turn3 = MagicMock(
+            timestamp=bucket_start + timedelta(minutes=25),
+            actor=TurnActor.USER,
+            frustration_score=8,
+        )
+        turns_query = MagicMock()
+        turns_query.join.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            (mock_turn1, 1),
+            (mock_turn2, 1),
+            (mock_turn3, 1),
+        ]
+
+        call_count = [0]
+
+        def query_side_effect(*args):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return agents_query
+            return turns_query
+
+        mock_db.session.query.side_effect = query_side_effect
+
+        stats = aggregator.aggregate_once()
+        assert stats["agents"] == 1
+
+        # Check the upsert call included the candlestick fields
+        # The execute calls include agent, project, and overall upserts
+        execute_calls = mock_db.session.execute.call_args_list
+        assert len(execute_calls) >= 1
+
+        # Verify via the SQL that min_frustration and sum_frustration_squared are present
+        first_stmt = execute_calls[0][0][0]
+        sql = str(first_stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "min_frustration" in sql
+        assert "sum_frustration_squared" in sql

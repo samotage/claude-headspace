@@ -131,6 +131,8 @@ class ActivityAggregator:
             project_frustration_turns: dict[int, int] = {}
             project_max_frustration: dict[int, int] = {}
             project_max_frustration_at: dict[int, datetime | None] = {}
+            project_min_frustration: dict[int, int] = {}
+            project_sum_frustration_squared: dict[int, int] = {}
 
             # Single bulk query: fetch all turns in this bucket for all relevant agents
             from ..models.command import Command
@@ -205,6 +207,15 @@ class ActivityAggregator:
                     max_frustration_turn.timestamp if max_frustration_turn else None
                 )
 
+                # Candlestick fields
+                scores = [
+                    int(t.frustration_score) for t in user_frustration_turns
+                ]
+                min_frustration = min(scores) if scores else None
+                sum_frustration_squared = (
+                    sum(s * s for s in scores) if scores else None
+                )
+
                 # Upsert agent metric
                 self._upsert_metric(
                     db.session,
@@ -219,6 +230,8 @@ class ActivityAggregator:
                     frustration_turn_count=frustration_turn_count,
                     max_frustration=max_frustration,
                     max_frustration_at=max_frustration_at,
+                    min_frustration=min_frustration,
+                    sum_frustration_squared=sum_frustration_squared,
                 )
                 stats["agents"] += 1
 
@@ -245,6 +258,18 @@ class ActivityAggregator:
                     if max_frustration > project_max_frustration.get(pid, 0):
                         project_max_frustration[pid] = max_frustration
                         project_max_frustration_at[pid] = max_frustration_at
+                if min_frustration is not None:
+                    if pid not in project_min_frustration:
+                        project_min_frustration[pid] = min_frustration
+                    else:
+                        project_min_frustration[pid] = min(
+                            project_min_frustration[pid], min_frustration
+                        )
+                if sum_frustration_squared is not None:
+                    project_sum_frustration_squared[pid] = (
+                        project_sum_frustration_squared.get(pid, 0)
+                        + sum_frustration_squared
+                    )
 
             # --- Project-level metrics ---
             total_turn_count = 0
@@ -255,6 +280,9 @@ class ActivityAggregator:
             total_frustration_turn_count = 0
             total_max_frustration = 0
             total_max_frustration_at: datetime | None = None
+            total_min_frustration: int | None = None
+            total_sum_frustration_squared = 0
+            has_any_frustration_squared = False
 
             for pid, turn_count in project_turn_counts.items():
                 active_count = project_agent_counts.get(pid, 0)
@@ -271,6 +299,8 @@ class ActivityAggregator:
                 pid_frustration_turns = project_frustration_turns.get(pid)
                 pid_max_frustration = project_max_frustration.get(pid)
                 pid_max_frustration_at = project_max_frustration_at.get(pid)
+                pid_min_frustration = project_min_frustration.get(pid)
+                pid_sum_frustration_squared = project_sum_frustration_squared.get(pid)
 
                 self._upsert_metric(
                     db.session,
@@ -285,6 +315,8 @@ class ActivityAggregator:
                     frustration_turn_count=pid_frustration_turns,
                     max_frustration=pid_max_frustration,
                     max_frustration_at=pid_max_frustration_at,
+                    min_frustration=pid_min_frustration,
+                    sum_frustration_squared=pid_sum_frustration_squared,
                 )
                 stats["projects"] += 1
 
@@ -302,6 +334,15 @@ class ActivityAggregator:
                     if pid_max_frustration > total_max_frustration:
                         total_max_frustration = pid_max_frustration
                         total_max_frustration_at = pid_max_frustration_at
+                if pid_min_frustration is not None:
+                    total_min_frustration = (
+                        min(total_min_frustration, pid_min_frustration)
+                        if total_min_frustration is not None
+                        else pid_min_frustration
+                    )
+                if pid_sum_frustration_squared is not None:
+                    total_sum_frustration_squared += pid_sum_frustration_squared
+                    has_any_frustration_squared = True
 
             # --- Overall-level metric ---
             if total_turn_count > 0:
@@ -329,6 +370,10 @@ class ActivityAggregator:
                     else None,
                     max_frustration_at=total_max_frustration_at
                     if total_max_frustration > 0
+                    else None,
+                    min_frustration=total_min_frustration,
+                    sum_frustration_squared=total_sum_frustration_squared
+                    if has_any_frustration_squared
                     else None,
                 )
                 stats["overall"] = 1
@@ -399,6 +444,8 @@ class ActivityAggregator:
         frustration_turn_count: int | None = None,
         max_frustration: int | None = None,
         max_frustration_at: datetime | None = None,
+        min_frustration: int | None = None,
+        sum_frustration_squared: int | None = None,
     ) -> None:
         """Upsert an ActivityMetric record using INSERT ON CONFLICT.
 
@@ -420,6 +467,8 @@ class ActivityAggregator:
             frustration_turn_count=frustration_turn_count,
             max_frustration=max_frustration,
             max_frustration_at=max_frustration_at,
+            min_frustration=min_frustration,
+            sum_frustration_squared=sum_frustration_squared,
         )
 
         stmt = stmt.on_conflict_do_update(
@@ -437,6 +486,8 @@ class ActivityAggregator:
                 "frustration_turn_count": stmt.excluded.frustration_turn_count,
                 "max_frustration": stmt.excluded.max_frustration,
                 "max_frustration_at": stmt.excluded.max_frustration_at,
+                "min_frustration": stmt.excluded.min_frustration,
+                "sum_frustration_squared": stmt.excluded.sum_frustration_squared,
             },
         )
 

@@ -69,6 +69,19 @@ def app():
 
     yield app
 
+    # Dispose all independent database engines to release connections.
+    # Without this, each function-scoped app leaks connection pools that
+    # only get cleaned up by GC (non-deterministic) or atexit (process end).
+    with app.app_context():
+        event_writer = app.extensions.get("event_writer")
+        if event_writer:
+            event_writer.stop()
+        inference_svc = app.extensions.get("inference_service")
+        if inference_svc:
+            inference_svc.stop()
+        from claude_headspace.database import db
+        db.engine.dispose()
+
     os.chdir(original_cwd)
 
 

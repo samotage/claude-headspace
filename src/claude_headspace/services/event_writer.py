@@ -196,6 +196,8 @@ class EventWriter:
             return WriteResult(success=False, error=str(e))
 
     def stop(self) -> None:
+        if not self._running:
+            return
         self._running = False
         if self._engine:
             self._engine.dispose()
