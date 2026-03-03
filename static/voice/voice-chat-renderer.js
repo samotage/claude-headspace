@@ -20,12 +20,23 @@ window.VoiceChatRenderer = (function () {
   // --- Markdown renderer for agent bubbles (delegates to marked.js via CHUtils) ---
 
   function renderMd(text) {
-    // Make only "COMMAND COMPLETE" bold, leaving the summary in normal weight
-    text = text.replace(
-      /^(COMMAND COMPLETE\s*[—–-])\s*(.*)$/m,
-      '**$1** $2'
+    // Extract the COMMAND COMPLETE footer before markdown rendering.
+    // marked treats "text\n---" as a setext heading (<h2>), making the
+    // entire line heavy. We strip it, render markdown, then append a
+    // styled footer where only the label is bold.
+    var ccMatch = text.match(
+      /\n---\n(COMMAND COMPLETE\s*[—–-])\s*(.*)(\n---\s*$|\s*$)/
     );
-    return CHUtils.renderMarkdown(text);
+    if (ccMatch) {
+      text = text.substring(0, ccMatch.index);
+    }
+    var html = CHUtils.renderMarkdown(text);
+    if (ccMatch) {
+      html += '<hr><p class="command-complete-footer"><strong>' + esc(ccMatch[1]) + '</strong> '
+            + esc(ccMatch[2]) + '</p>';
+      if (ccMatch[3] && ccMatch[3].trim()) html += '<hr>';
+    }
+    return html;
   }
 
   // --- Strip COMMAND COMPLETE footer from copied text ---

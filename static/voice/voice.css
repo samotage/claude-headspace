@@ -1615,6 +1615,13 @@ body.layout-split .channel-card:hover {
 .chat-bubble.agent strong {
   font-weight: 600;
 }
+/* COMMAND COMPLETE footer: bold label, normal-weight summary */
+.chat-bubble.agent .command-complete-footer {
+  font-weight: 400;
+}
+.chat-bubble.agent .command-complete-footer strong {
+  font-weight: 700;
+}
 
 /* Markdown tables in agent bubbles */
 .chat-bubble.agent .table-scroll-wrapper {
