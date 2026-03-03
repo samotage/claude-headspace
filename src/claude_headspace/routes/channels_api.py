@@ -17,6 +17,7 @@ from flask import Blueprint, current_app, jsonify, request
 from ..database import db
 from ..services.channel_service import (
     AgentChannelConflictError,
+    AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
     ChannelError,
@@ -68,6 +69,7 @@ _ERROR_MAP = {
     AgentChannelConflictError: (409, "agent_already_in_channel"),
     PersonaNotFoundError: (404, "persona_not_found"),
     ContentTooLongError: (413, "content_too_long"),
+    AgentNotFoundError: (404, "agent_not_found"),
 }
 
 
@@ -300,6 +302,18 @@ def create_channel(*, persona, agent, service):
             f"Invalid channel_type '{channel_type}'. Must be one of: {', '.join(valid_types)}",
         )
 
+    # Validate member_agents if provided
+    member_agents = data.get("member_agents")
+    if member_agents is not None:
+        if not isinstance(member_agents, list):
+            return _error_response(
+                400, "invalid_field", "member_agents must be a list of integers"
+            )
+        if not all(isinstance(a, int) for a in member_agents):
+            return _error_response(
+                400, "invalid_field", "member_agents must be a list of integers"
+            )
+
     channel = service.create_channel(
         creator_persona=persona,
         name=name,
@@ -307,6 +321,7 @@ def create_channel(*, persona, agent, service):
         description=data.get("description"),
         intent_override=data.get("intent_override"),
         member_slugs=data.get("members"),
+        member_agent_ids=member_agents,
     )
 
     return jsonify(_channel_to_dict(channel)), 201
@@ -336,6 +351,14 @@ def list_channels(*, persona, agent, service):
     )
 
     return jsonify([_channel_to_dict(ch) for ch in channels]), 200
+
+
+@channels_api_bp.route("/api/channels/available-members", methods=["GET"])
+@_channel_route
+def available_members(*, persona, agent, service):
+    """Return active agents grouped by project for autocomplete picker."""
+    groups = service.get_available_members()
+    return jsonify({"projects": groups}), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>", methods=["GET"])
@@ -407,6 +430,21 @@ def list_members(slug: str, *, persona, agent, service):
 def add_member(slug: str, *, persona, agent, service):
     """Add a member to a channel (FR7)."""
     data = request.get_json(silent=True) or {}
+
+    # agent_id takes precedence over persona_slug
+    agent_id = data.get("agent_id")
+    if agent_id is not None:
+        if not isinstance(agent_id, int):
+            return _error_response(
+                400, "invalid_field", "agent_id must be an integer"
+            )
+        membership = service.add_member_by_agent(
+            slug=slug,
+            agent_id=agent_id,
+            caller_persona=persona,
+        )
+        return jsonify(_membership_to_dict(membership)), 201
+
     persona_slug = (
         data.get("persona_slug", "").strip()
         if isinstance(data.get("persona_slug"), str)
@@ -415,7 +453,7 @@ def add_member(slug: str, *, persona, agent, service):
 
     if not persona_slug:
         return _error_response(
-            400, "missing_fields", "Missing required field: persona_slug"
+            400, "missing_fields", "Missing required field: persona_slug or agent_id"
         )
 
     membership = service.add_member(

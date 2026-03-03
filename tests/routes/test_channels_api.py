@@ -8,6 +8,7 @@ from flask import Flask
 from claude_headspace.routes.channels_api import channels_api_bp
 from claude_headspace.services.channel_service import (
     AgentChannelConflictError,
+    AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
     ChannelNotFoundError,
@@ -898,6 +899,7 @@ class TestErrorEnvelope:
             (NoCreationCapabilityError("No cap"), 403, "no_creation_capability"),
             (AgentChannelConflictError("Conflict"), 409, "agent_already_in_channel"),
             (ContentTooLongError("Too long"), 413, "content_too_long"),
+            (AgentNotFoundError("Not found"), 404, "agent_not_found"),
         ]
 
         for exc, expected_status, expected_code in error_test_cases:
@@ -913,3 +915,192 @@ class TestErrorEnvelope:
                     f"got '{data['error']['code']}'"
                 )
             mock_channel_service.get_channel.side_effect = None
+
+
+# ──────────────────────────────────────────────────────────────
+# Available Members Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestAvailableMembers:
+    """Tests for GET /api/channels/available-members."""
+
+    def test_success_with_grouped_data(
+        self, client, mock_operator, mock_channel_service
+    ):
+        mock_channel_service.get_available_members.return_value = [
+            {
+                "project_id": 1,
+                "project_name": "claude-headspace",
+                "agents": [
+                    {
+                        "agent_id": 7,
+                        "persona_name": "Al",
+                        "persona_slug": "frontend-al-3",
+                        "role": "frontend",
+                    }
+                ],
+            }
+        ]
+        with _patch_operator(mock_operator):
+            resp = client.get("/api/channels/available-members")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert "projects" in data
+            assert len(data["projects"]) == 1
+            assert data["projects"][0]["project_name"] == "claude-headspace"
+            assert data["projects"][0]["agents"][0]["agent_id"] == 7
+
+    def test_empty_list(self, client, mock_operator, mock_channel_service):
+        mock_channel_service.get_available_members.return_value = []
+        with _patch_operator(mock_operator):
+            resp = client.get("/api/channels/available-members")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["projects"] == []
+
+
+# ──────────────────────────────────────────────────────────────
+# Add Member by Agent ID Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestAddMemberByAgentId:
+    """Tests for POST /api/channels/<slug>/members with agent_id."""
+
+    def test_agent_id_success(self, client, mock_operator, mock_channel_service):
+        mock_membership = MagicMock()
+        mock_membership.id = 10
+        mock_membership.persona.slug = "frontend-al-3"
+        mock_membership.persona.name = "Al"
+        mock_membership.agent_id = 7
+        mock_membership.is_chair = False
+        mock_membership.status = "active"
+        mock_membership.joined_at.isoformat.return_value = "2026-03-04T10:00:00+00:00"
+        mock_membership.left_at = None
+        mock_channel_service.add_member_by_agent.return_value = mock_membership
+
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/members",
+                json={"agent_id": 7},
+            )
+            assert resp.status_code == 201
+            data = resp.get_json()
+            assert data["agent_id"] == 7
+            mock_channel_service.add_member_by_agent.assert_called_once_with(
+                slug="test-slug", agent_id=7, caller_persona=mock_operator
+            )
+
+    def test_agent_id_wins_over_persona_slug(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """When both agent_id and persona_slug are provided, agent_id wins."""
+        mock_membership = MagicMock()
+        mock_membership.id = 10
+        mock_membership.persona.slug = "frontend-al-3"
+        mock_membership.persona.name = "Al"
+        mock_membership.agent_id = 7
+        mock_membership.is_chair = False
+        mock_membership.status = "active"
+        mock_membership.joined_at.isoformat.return_value = "2026-03-04T10:00:00+00:00"
+        mock_membership.left_at = None
+        mock_channel_service.add_member_by_agent.return_value = mock_membership
+
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/members",
+                json={"agent_id": 7, "persona_slug": "frontend-al-3"},
+            )
+            assert resp.status_code == 201
+            mock_channel_service.add_member_by_agent.assert_called_once()
+            mock_channel_service.add_member.assert_not_called()
+
+    def test_invalid_agent_id_type_returns_400(self, client, mock_operator):
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/members",
+                json={"agent_id": "not-an-int"},
+            )
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert data["error"]["code"] == "invalid_field"
+
+    def test_agent_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        mock_channel_service.add_member_by_agent.side_effect = AgentNotFoundError(
+            "Error: Agent #999 not found or not active."
+        )
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels/test-slug/members",
+                json={"agent_id": 999},
+            )
+            assert resp.status_code == 404
+            data = resp.get_json()
+            assert data["error"]["code"] == "agent_not_found"
+
+    def test_missing_both_returns_400(self, client, mock_operator):
+        """Neither agent_id nor persona_slug provided."""
+        with _patch_operator(mock_operator):
+            resp = client.post("/api/channels/test-slug/members", json={})
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert "persona_slug or agent_id" in data["error"]["message"]
+
+
+# ──────────────────────────────────────────────────────────────
+# Create Channel with member_agents Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestCreateChannelWithMemberAgents:
+    """Tests for POST /api/channels with member_agents field."""
+
+    def test_member_agents_passed_to_service(
+        self, client, mock_operator, mock_channel_service
+    ):
+        mock_channel = _make_mock_channel()
+        mock_channel_service.create_channel.return_value = mock_channel
+
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels",
+                json={
+                    "name": "Test",
+                    "channel_type": "workshop",
+                    "member_agents": [7, 12],
+                },
+            )
+            assert resp.status_code == 201
+            call_kwargs = mock_channel_service.create_channel.call_args.kwargs
+            assert call_kwargs["member_agent_ids"] == [7, 12]
+
+    def test_invalid_member_agents_type_returns_400(self, client, mock_operator):
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels",
+                json={
+                    "name": "Test",
+                    "channel_type": "workshop",
+                    "member_agents": "not-a-list",
+                },
+            )
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert data["error"]["code"] == "invalid_field"
+
+    def test_non_int_list_returns_400(self, client, mock_operator):
+        with _patch_operator(mock_operator):
+            resp = client.post(
+                "/api/channels",
+                json={
+                    "name": "Test",
+                    "channel_type": "workshop",
+                    "member_agents": [7, "bad"],
+                },
+            )
+            assert resp.status_code == 400
+            data = resp.get_json()
+            assert data["error"]["code"] == "invalid_field"

@@ -17,6 +17,7 @@ from claude_headspace.models.project import Project
 from claude_headspace.models.role import Role
 from claude_headspace.services.channel_service import (
     AgentChannelConflictError,
+    AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
     ChannelNotFoundError,
@@ -573,3 +574,137 @@ class TestSSEBroadcasting:
             if c[0][0] == "channel_update"
         ]
         assert len(calls) >= 1
+
+
+class TestGetAvailableMembers:
+    def test_returns_grouped_by_project(self, channel_service, setup_data):
+        """Active agents with personas are returned grouped by project."""
+        result = channel_service.get_available_members()
+        assert len(result) >= 1
+        project_group = result[0]
+        assert "project_id" in project_group
+        assert "project_name" in project_group
+        assert "agents" in project_group
+        agent_entry = project_group["agents"][0]
+        assert "agent_id" in agent_entry
+        assert "persona_name" in agent_entry
+        assert "persona_slug" in agent_entry
+        assert "role" in agent_entry
+
+    def test_excludes_ended_agents(self, channel_service, setup_data):
+        """Agents with ended_at set are excluded."""
+        setup_data["agent_b"].ended_at = datetime.now(timezone.utc)
+        db.session.commit()
+        result = channel_service.get_available_members()
+        all_agent_ids = [
+            a["agent_id"] for group in result for a in group["agents"]
+        ]
+        assert setup_data["agent_b"].id not in all_agent_ids
+
+    def test_excludes_agents_without_persona(self, channel_service, setup_data):
+        """Agents with persona_id=NULL are excluded."""
+        no_persona_agent = Agent(
+            session_uuid=uuid4(),
+            project_id=setup_data["project"].id,
+            persona_id=None,
+        )
+        db.session.add(no_persona_agent)
+        db.session.commit()
+        result = channel_service.get_available_members()
+        all_agent_ids = [
+            a["agent_id"] for group in result for a in group["agents"]
+        ]
+        assert no_persona_agent.id not in all_agent_ids
+
+    def test_excludes_inactive_persona(self, channel_service, setup_data):
+        """Agents whose persona status != 'active' are excluded."""
+        setup_data["persona_b"].status = "inactive"
+        db.session.commit()
+        result = channel_service.get_available_members()
+        all_agent_ids = [
+            a["agent_id"] for group in result for a in group["agents"]
+        ]
+        assert setup_data["agent_b"].id not in all_agent_ids
+
+
+class TestAddMemberByAgent:
+    def test_success(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="agent-add-test",
+            channel_type="workshop",
+        )
+        membership = channel_service.add_member_by_agent(
+            ch.slug, setup_data["agent_b"].id, setup_data["persona_a"]
+        )
+        assert membership.persona_id == setup_data["persona_b"].id
+        assert membership.agent_id == setup_data["agent_b"].id
+        assert membership.status == "active"
+
+    def test_nonexistent_agent(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="agent-404-test",
+            channel_type="workshop",
+        )
+        with pytest.raises(AgentNotFoundError):
+            channel_service.add_member_by_agent(
+                ch.slug, 99999, setup_data["persona_a"]
+            )
+
+    def test_ended_agent(self, channel_service, setup_data):
+        setup_data["agent_b"].ended_at = datetime.now(timezone.utc)
+        db.session.commit()
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="agent-ended-test",
+            channel_type="workshop",
+        )
+        with pytest.raises(AgentNotFoundError):
+            channel_service.add_member_by_agent(
+                ch.slug, setup_data["agent_b"].id, setup_data["persona_a"]
+            )
+
+    def test_already_member(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="agent-dup-test",
+            channel_type="workshop",
+        )
+        channel_service.add_member_by_agent(
+            ch.slug, setup_data["agent_b"].id, setup_data["persona_a"]
+        )
+        with pytest.raises(AlreadyMemberError):
+            channel_service.add_member_by_agent(
+                ch.slug, setup_data["agent_b"].id, setup_data["persona_a"]
+            )
+
+
+class TestCreateChannelWithAgentIds:
+    def test_creates_with_agent_ids(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="agent-create-test",
+            channel_type="workshop",
+            member_agent_ids=[setup_data["agent_b"].id],
+        )
+        memberships = ChannelMembership.query.filter_by(channel_id=ch.id).all()
+        assert len(memberships) == 2  # chair + 1 member
+        agent_ids = [m.agent_id for m in memberships if m.agent_id]
+        assert setup_data["agent_b"].id in agent_ids
+
+    def test_agent_ids_take_precedence_over_slugs(self, channel_service, setup_data):
+        """When both member_agent_ids and member_slugs are provided, agent_ids win."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="precedence-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+            member_agent_ids=[setup_data["agent_b"].id],
+        )
+        memberships = ChannelMembership.query.filter_by(channel_id=ch.id).all()
+        # Should have 2 (chair + agent_b via agent_ids path)
+        assert len(memberships) == 2
+        non_chair = [m for m in memberships if not m.is_chair]
+        assert len(non_chair) == 1
+        assert non_chair[0].agent_id == setup_data["agent_b"].id

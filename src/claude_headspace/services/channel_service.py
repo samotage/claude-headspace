@@ -11,12 +11,16 @@ wrappers that delegate to this service.
 import logging
 from datetime import datetime, timezone
 
+from collections import defaultdict
+
 from ..database import db
 from ..models.agent import Agent
 from ..models.channel import Channel, ChannelType
 from ..models.channel_membership import ChannelMembership
 from ..models.message import Message, MessageType
 from ..models.persona import Persona
+from ..models.project import Project
+from ..models.role import Role
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,10 @@ class ContentTooLongError(ChannelError):
     """Message content exceeds the configured maximum length."""
 
 
+class AgentNotFoundError(ChannelError):
+    """Agent with the given ID does not exist or is not active."""
+
+
 # ── Service ──────────────────────────────────────────────────────────────
 
 
@@ -85,6 +93,7 @@ class ChannelService:
         organisation_id: int | None = None,
         project_id: int | None = None,
         member_slugs: list[str] | None = None,
+        member_agent_ids: list[int] | None = None,
     ) -> Channel:
         """Create a new channel with the creator as chair.
 
@@ -97,6 +106,8 @@ class ChannelService:
             organisation_id: Optional organisation FK.
             project_id: Optional project FK.
             member_slugs: Optional list of persona slugs to add as members.
+            member_agent_ids: Optional list of agent IDs to add as members.
+                Takes precedence over member_slugs if both provided.
 
         Returns:
             The created Channel with slug populated.
@@ -146,8 +157,16 @@ class ChannelService:
         # Re-read the slug after commit (after_insert event sets it)
         db.session.refresh(channel)
 
-        # Add additional members if specified
-        if member_slugs:
+        # Add additional members if specified (agent IDs take precedence)
+        if member_agent_ids:
+            for aid in member_agent_ids:
+                try:
+                    self.add_member_by_agent(channel.slug, aid, creator_persona)
+                except ChannelError as e:
+                    logger.warning(
+                        f"create_channel: failed to add member agent #{aid}: {e}"
+                    )
+        elif member_slugs:
             for slug in member_slugs:
                 try:
                     self.add_member(channel.slug, slug, creator_persona)
@@ -448,6 +467,137 @@ class ChannelService:
                 "slug": channel.slug,
                 "persona_slug": persona_slug,
                 "persona_name": target_persona.name,
+                "members": members,
+            },
+        )
+        return membership
+
+    def get_available_members(self) -> list[dict]:
+        """Return active agents grouped by project for the autocomplete picker.
+
+        An "available" agent is one where:
+        - ended_at IS NULL (session active)
+        - persona_id IS NOT NULL (has an assigned persona)
+        - persona.status == 'active'
+
+        Returns:
+            List of dicts grouped by project, per Al's spec.
+        """
+        agents = (
+            Agent.query.join(Persona, Agent.persona_id == Persona.id)
+            .join(Role, Persona.role_id == Role.id)
+            .join(Project, Agent.project_id == Project.id)
+            .filter(
+                Agent.ended_at.is_(None),
+                Agent.persona_id.isnot(None),
+                Persona.status == "active",
+            )
+            .order_by(Project.name, Persona.name)
+            .all()
+        )
+
+        grouped: dict[int, dict] = {}
+        for agent in agents:
+            pid = agent.project_id
+            if pid not in grouped:
+                grouped[pid] = {
+                    "project_id": pid,
+                    "project_name": agent.project.name,
+                    "agents": [],
+                }
+            grouped[pid]["agents"].append(
+                {
+                    "agent_id": agent.id,
+                    "persona_name": agent.persona.name,
+                    "persona_slug": agent.persona.slug,
+                    "role": agent.persona.role.name,
+                }
+            )
+
+        return list(grouped.values())
+
+    def add_member_by_agent(
+        self,
+        slug: str,
+        agent_id: int,
+        caller_persona: Persona,
+    ) -> ChannelMembership:
+        """Add a member to a channel by agent ID.
+
+        Args:
+            slug: Channel slug.
+            agent_id: ID of the agent to add.
+            caller_persona: The persona making the request.
+
+        Returns:
+            The created ChannelMembership.
+
+        Raises:
+            AgentNotFoundError: If agent doesn't exist or is inactive.
+            ChannelNotFoundError: If channel not found.
+            ChannelClosedError: If channel is complete/archived.
+            NotAMemberError: If caller is not an active member.
+            AlreadyMemberError: If target persona is already a member.
+            AgentChannelConflictError: If the agent is in another channel.
+        """
+        channel = self.get_channel(slug)
+        self._check_closed(channel)
+        self._check_membership(channel, caller_persona, require_active=True)
+
+        # Resolve agent
+        agent = db.session.get(Agent, agent_id)
+        if not agent or agent.ended_at is not None:
+            raise AgentNotFoundError(
+                f"Error: Agent #{agent_id} not found or not active."
+            )
+        if not agent.persona_id or not agent.persona:
+            raise AgentNotFoundError(
+                f"Error: Agent #{agent_id} has no assigned persona."
+            )
+        if agent.persona.status != "active":
+            raise AgentNotFoundError(
+                f"Error: Agent #{agent_id}'s persona is not active."
+            )
+
+        # Check not already a member (by persona)
+        existing = ChannelMembership.query.filter_by(
+            channel_id=channel.id, persona_id=agent.persona_id
+        ).first()
+        if existing:
+            raise AlreadyMemberError(
+                f"Error: Persona '{agent.persona.name}' is already a member "
+                f"of #{channel.slug}."
+            )
+
+        # Check one-agent-one-channel constraint
+        self._check_agent_channel_conflict(agent)
+
+        # Create membership with both persona_id and agent_id
+        membership = ChannelMembership(
+            channel_id=channel.id,
+            persona_id=agent.persona_id,
+            agent_id=agent.id,
+            is_chair=False,
+            status="active",
+        )
+        db.session.add(membership)
+
+        self._post_system_message(channel, f"{agent.persona.name} joined the channel")
+        db.session.commit()
+
+        # Deliver context briefing if tmux available
+        if agent.tmux_pane_id:
+            self._deliver_context_briefing(channel, agent)
+
+        members = self._get_member_names(channel)
+        self._broadcast_update(
+            channel,
+            "member_added",
+            {
+                "slug": channel.slug,
+                "persona_slug": agent.persona.slug,
+                "persona_name": agent.persona.name,
+                "agent_id": agent.id,
                 "members": members,
             },
         )
