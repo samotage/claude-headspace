@@ -504,7 +504,8 @@
                 pointRadius: 0,
                 pointHitRadius: 8,
                 yAxisID: 'y1',
-                borderColor: 'rgba(255, 193, 7, 0)',
+                borderColor: FRUST_COLORS.green.hex,
+                backgroundColor: FRUST_COLORS.green.hex,
             }];
 
             var scales = {
@@ -537,6 +538,10 @@
                 afterDatasetsDraw: function(chartInstance) {
                     var candles = chartInstance._frustrationCandles;
                     if (!candles) return;
+
+                    // Skip drawing if frustration dataset is toggled off
+                    var frustMeta = chartInstance.getDatasetMeta(1);
+                    if (frustMeta && frustMeta.hidden) return;
 
                     var ctx = chartInstance.ctx;
                     var y1Scale = chartInstance.scales.y1;
@@ -679,7 +684,15 @@
                                 }
                             }
                         },
-                        legend: { labels: { color: 'rgba(255,255,255,0.6)' } }
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: 'rgba(255,255,255,0.6)',
+                                padding: 20,
+                                usePointStyle: true,
+                                pointStyle: 'rect',
+                            }
+                        }
                     },
                     scales: scales
                 },
