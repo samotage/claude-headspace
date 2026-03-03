@@ -122,6 +122,7 @@ The following voice patterns shall be recognised and routed:
 | "what's happening in [channel]" | Channel message history retrieval | "what's happening in the workshop?" |
 | "what's going on in [channel]" | Channel message history retrieval | "what's going on in persona alignment?" |
 | "show [channel] messages" | Channel message history retrieval | "show workshop messages" |
+| "list channels" / "show channels" / "my channels" | `ChannelService.list_channels()` | "list channels" |
 | "create a [type] channel [name]" | `ChannelService.create_channel()` | "create a delegation channel for auth refactor" |
 | "create [type] channel [name] with [members]" | `ChannelService.create_channel()` with members | "create a workshop channel called persona alignment with Robbo and Paula" |
 | "add [persona] to [channel]" | `ChannelService.add_member()` | "add Con to the workshop" |
@@ -278,7 +279,7 @@ def _detect_channel_intent(text: str) -> dict | None:
     """Detect if a voice utterance targets a channel operation.
 
     Returns a dict with:
-      - action: "send" | "history" | "create" | "add_member" | "complete"
+      - action: "send" | "history" | "list" | "create" | "add_member" | "complete"
       - channel_ref: extracted channel name/reference (may be "this channel")
       - content: message content (for send action)
       - channel_type: inferred type (for create action)
@@ -330,6 +331,12 @@ _ADD_MEMBER_PATTERNS = [
 # 5. Complete channel
 _COMPLETE_PATTERNS = [
     re.compile(r"(?:complete|finish|close|end)\s+(?:the\s+)?(.+?)(?:\s+channel)?$", re.I),
+]
+
+# 6. List channels
+_LIST_PATTERNS = [
+    re.compile(r"(?:list|show|my)\s+channels?$", re.I),
+    re.compile(r"what\s+channels?\s+(?:am\s+I\s+in|do\s+I\s+have|are\s+there)\s*\??$", re.I),
 ]
 ```
 
@@ -428,6 +435,18 @@ def _get_channel_context(auth_id: str) -> str | None:
     """Get the current channel context for this voice session."""
     return _channel_context.get(auth_id)
 
+def _get_auth_id() -> str:
+    """Extract an auth identifier from the current request for context tracking.
+
+    Returns the Bearer token string if present, or "localhost" for
+    localhost-bypass authenticated requests (no token).
+    """
+    from flask import request as flask_request
+    auth_header = flask_request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return "localhost"
+
 def _resolve_channel_ref(channel_ref: str, auth_id: str) -> str:
     """Resolve 'this channel' / 'the channel' to actual channel slug."""
     if channel_ref.strip().lower() in ("this channel", "the channel", "this", "current channel"):
@@ -515,6 +534,8 @@ def _handle_channel_intent(intent: dict, text: str, formatter) -> tuple:
         return _handle_channel_send(intent, channel_service, formatter, auth_id)
     elif action == "history":
         return _handle_channel_history(intent, channel_service, formatter, auth_id)
+    elif action == "list":
+        return _handle_channel_list(channel_service, operator_persona, formatter)
     elif action == "create":
         return _handle_channel_create(intent, channel_service, formatter, auth_id)
     elif action == "add_member":
@@ -578,6 +599,21 @@ def format_channel_completed(self, channel_slug: str) -> dict:
     return {
         "status_line": f"Channel #{channel_slug} completed.",
         "results": [],
+        "next_action": "none",
+    }
+
+def format_channel_list(self, channels: list[dict]) -> dict:
+    """Format channel list for voice consumption."""
+    if not channels:
+        return {
+            "status_line": "No active channels.",
+            "results": [],
+            "next_action": "Create a channel with 'create a workshop channel called [name]'.",
+        }
+    results = [f"#{ch['slug']} ({ch['channel_type']}, {ch['status']})" for ch in channels]
+    return {
+        "status_line": f"{len(channels)} active channel{'s' if len(channels) != 1 else ''}.",
+        "results": results,
         "next_action": "none",
     }
 
@@ -693,3 +729,5 @@ Each extracted name is then fuzzy-matched against active personas using `_match_
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 2.3, 4.1) |
 | 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added operator persona resolution via Persona.get_operator() in _handle_channel_intent (Finding #9) |
+| 1.2     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: added "list channels" / "show channels" / "my channels" voice command pattern to FR2 and Section 6.3 regex set — referenced in FR13 error response but previously undefined (Cycle 1 Finding #10) |
+| 1.3     | 2026-03-03 | Robbo  | v3 Cycle 2 remediation: added `_get_auth_id()` helper spec in Section 6.5 (Cycle 2 Finding #3); added `"list"` action to `_detect_channel_intent()` docstring, `_handle_channel_intent()` dispatch, and `format_channel_list()` VoiceFormatter method (Cycle 2 Finding #6) |

@@ -220,6 +220,7 @@ The existing flow where HandoffExecutor creates a successor and auto-injects the
 | `src/claude_headspace/services/handoff_executor.py` | Modify `generate_handoff_file_path()`: new format with `<insert-summary>` placeholder. Modify `compose_handoff_instruction()`: add filename format guidance. Modify `_poll_for_handoff_file()`: add glob fallback. |
 | `src/claude_headspace/services/broadcaster.py` | No code change — `broadcast()` already accepts arbitrary event types. `synthetic_turn` is just a new type string. |
 | `src/claude_headspace/services/session_correlator.py` | After persona assignment, call `HandoffDetectionService.detect_and_emit()`. **Note:** S4 also modifies session_correlator.py after persona assignment to update ChannelMembership `agent_id`. Both modifications target the same logical point — append sequentially. |
+| `src/claude_headspace/app.py` | Register `HandoffDetectionService` as `app.extensions["handoff_detection_service"]` during app factory setup (per NFR4). |
 
 ### 6.2 New Files
 
@@ -388,3 +389,4 @@ No unresolved dependencies. All prerequisites are shipped.
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Section 0A) |
 | 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added S4 cross-reference for session_correlator.py shared modification (Finding #7) |
+| 1.2     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: added `app.py` to Files to Modify for HandoffDetectionService registration (Finding #5) |

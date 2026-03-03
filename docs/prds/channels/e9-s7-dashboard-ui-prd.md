@@ -109,7 +109,7 @@ Sam opens the dashboard. Above all project columns, he sees two channel cards: "
 16. The management tab provides archive and complete actions for channels the operator can manage
 17. The channel cards and chat panel correctly display messages received via `channel_message` SSE events in real-time
 18. N/A — per-channel notification rate limiting is implemented and validated in S6
-19. Notifications are suppressed for the channel currently open in the chat panel (frontend focus flag via `window.ChannelChat._activeChannelSlug` — see FR19)
+19. N/A — active view suppression deferred to v2 (see FR19). V1 relies on 30-second per-channel rate limit from S6
 
 ### 3.2 Non-Functional Success Criteria
 
@@ -205,8 +205,8 @@ Channel message notifications are handled server-side by S6's delivery engine. N
 **FR18: Per-channel rate limiting**
 Per-channel rate limiting is implemented in S6.
 
-**FR19: Active view suppression**
-When the chat panel is open for a channel and the browser tab is visible (`document.visibilityState === 'visible'`), notifications for that channel are suppressed. The chat panel JS maintains a `window.ChannelChat._activeChannelSlug` variable. The SSE handler checks this flag before triggering a notification (see Section 6.5 code example).
+**FR19: Active view suppression (v2 — deferred)**
+Active view suppression (suppressing notifications when the operator has the channel's chat panel open) is deferred to v2. The 30-second per-channel rate limit (S6 FR, NotificationService extension) provides sufficient spam protection for v1. The chat panel JS maintains a `window.ChannelChat._activeChannelSlug` variable as infrastructure for v2 suppression — but v1 does not use it to gate notifications. Implementation in v2: the SSE handler checks this flag before triggering a notification (see Section 6.5 code example for the pattern).
 
 **FR20: Notification content**
 Channel notifications shall show:
@@ -405,10 +405,9 @@ sseClient.on('channel_message', function(data) {
     window.ChannelChat.appendMessage(data);
   }
 
-  // Trigger notification unless this channel is actively viewed
-  if (!window.ChannelChat || !window.ChannelChat.isActivelyViewing(data.channel_slug)) {
-    triggerChannelNotification(data);
-  }
+  // Notification handled server-side by S6 delivery engine.
+  // V2: active view suppression will check window.ChannelChat.isActivelyViewing()
+  // and call POST /api/channels/<slug>/viewing to suppress server-side notifications.
 });
 ```
 
@@ -725,3 +724,5 @@ All Sprint 5 API endpoints must be functional before this sprint can be built. T
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 1.1, 3.4, 4.1-4.3) |
 | 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: implemented active view suppression in v1 FR19 (Finding #3), updated NFR5 to frontend-only (Finding #4), added dashboard.py to Files to Modify (Finding #8), rephrased SC17-19 to S7 responsibilities (Finding #10), updated FR16/Section 6.10 archive endpoint to POST (Finding #5) |
+| 1.2     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: deferred active view suppression FR19 to v2 — v1 relies on 30-second per-channel rate limit from S6; resolved contradiction between FR19 and Section 2.1 scope note (Cycle 1 Finding #4) |
+| 1.3     | 2026-03-03 | Robbo  | v3 Cycle 2 remediation: updated SC19 to match FR19 v2 deferral (Cycle 2 Finding #1); removed client-side `triggerChannelNotification()` from Section 6.5 code example — notifications are server-side via S6 (Cycle 2 Finding #4) |

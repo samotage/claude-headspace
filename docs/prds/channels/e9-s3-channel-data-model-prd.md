@@ -143,7 +143,7 @@ The Message model shall have no `edited_at`, `deleted_at`, or similar lifecycle 
 ### Turn Model Extension
 
 **FR10: Turn.source_message_id FK**
-The system shall add a nullable `source_message_id` column to the existing `turns` table, referencing `messages.id` with `ondelete SET NULL`.
+The system shall add a nullable `source_message_id` column to the existing `turns` table, referencing `messages.id` with `ondelete SET NULL`. **Note:** This column is created in this sprint but its population mechanism (setting `source_message_id` when a Turn is created as a result of a channel message delivery) is a v2 concern. V1 delivery (S6) uses `Message.source_turn_id` for Turn→Message traceability; the reverse Message→Turn link via `Turn.source_message_id` will be populated when the delivery engine can correlate an agent's input Turn with the channel Message that triggered it.
 
 ### Relationships
 
@@ -517,3 +517,4 @@ The building agent should study these files for implementation patterns:
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Section 1, Decisions 1.1–1.5) |
+| 1.1     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: documented `Turn.source_message_id` population mechanism as v2 in FR10 — V1 uses `Message.source_turn_id` for Turn→Message traceability only (Finding #7) |

@@ -143,10 +143,16 @@ The `ChannelService` class shall be instantiated in the app factory and register
 **FR4: Channel details**
 `get_channel(slug)` shall return the Channel with its members and message count, or raise an error if not found.
 
+**FR4a: Channel update**
+`update_channel(slug, persona, description=None, intent_override=None)` shall validate the caller is the chair or operator, update the specified fields, and return the updated Channel. Only `description` and `intent_override` are mutable. Fail with `NotChairError` if the caller is neither the chair nor the operator.
+
 **FR5: Channel completion**
 `complete_channel(slug, persona)` shall validate the caller is the chair, transition status to `complete`, set `completed_at`, and post a system message. Fail with a clear error if the caller is not the chair.
 
 ### Membership Management
+
+**FR5b: List members**
+`list_members(slug)` shall return all ChannelMembership records for the channel, including persona name, agent_id, status (active/left/muted), `is_chair`, and `joined_at`/`left_at`. This provides a richer result than `get_channel().memberships` by including online/offline agent status.
 
 **FR6: Add member**
 `add_member(slug, persona_slug, caller_persona)` shall:
@@ -196,6 +202,9 @@ System messages shall be generated exclusively by the service for joins, leaves,
 **FR14: Agent-to-membership linking on agent registration**
 When the session correlator links a new agent to a persona (via `_create_or_update_agent()`), the system shall check for any ChannelMembership where `persona_id = agent.persona_id AND agent_id IS NULL AND status = 'active'` and update `agent_id` to the new agent's ID. This ensures agents spun up via `add_member` are linked to their channel membership when they register.
 
+**FR14a: Context briefing delivery on post-registration**
+After FR14 links an agent to a ChannelMembership, the system shall generate and deliver the context briefing (last 10 messages) to the agent via tmux. This is the delivery trigger for agents spun up asynchronously by `add_member` — the briefing is generated and delivered at registration time (when the agent is ready), not at add time (when the agent may not exist). If the channel has no messages, no briefing is delivered.
+
 **FR15: Archive channel**
 `archive_channel(slug, persona)` shall validate the caller is the chair or operator, transition status to `archived`, set `archived_at`, and post a system message. Fail with a clear error if the caller is not the chair or operator, or if the channel is not in `complete` state.
 
@@ -221,7 +230,7 @@ If neither resolves, fail with: `Error: Cannot identify calling agent. Are you r
 ChannelService shall have no dependency on CLI or HTTP layers. It operates on model objects and returns model objects or raises typed exceptions. CLI and API wrap it with I/O formatting.
 
 **NFR2: Error hierarchy**
-The service shall define a `ChannelError` base exception with subclasses for specific failure modes: `ChannelNotFoundError`, `NotAMemberError`, `NotChairError`, `ChannelClosedError`, `AlreadyMemberError`, `NoCreationCapabilityError`, `AgentChannelConflictError`, `CallerResolutionError`. Each carries a human-readable message suitable for direct display.
+The service shall define a `ChannelError` base exception with subclasses for specific failure modes: `ChannelNotFoundError`, `NotAMemberError`, `NotChairError`, `ChannelClosedError`, `AlreadyMemberError`, `NoCreationCapabilityError`, `AgentChannelConflictError`. Each carries a human-readable message suitable for direct display. Note: `CallerResolutionError` is defined separately in `services/caller_identity.py` as a standalone exception (not a `ChannelError` subclass) because caller identity resolution is shared infrastructure used by CLI commands, not channel-specific logic.
 
 **NFR3: Database safety**
 All state-modifying operations shall use explicit transactions. Advisory locks shall protect operations where concurrent access could violate business rules (e.g., chair transfer, last-member-leave auto-complete). Database constraints (unique indexes, foreign keys) serve as a backstop, not the primary enforcement mechanism.
@@ -265,9 +274,6 @@ class ChannelClosedError(ChannelError): ...
 class AlreadyMemberError(ChannelError): ...
 class NoCreationCapabilityError(ChannelError): ...
 class AgentChannelConflictError(ChannelError): ...
-class CallerResolutionError(ChannelError): ...
-
-
 class ChannelService:
     def __init__(self, app):
         self.app = app
@@ -276,10 +282,12 @@ class ChannelService:
     def create_channel(self, creator_persona, name, channel_type, ...) -> Channel: ...
     def list_channels(self, persona, status=None, channel_type=None, all_visible=False) -> list[Channel]: ...
     def get_channel(self, slug) -> Channel: ...
+    def update_channel(self, slug, persona, description=None, intent_override=None) -> Channel: ...
     def complete_channel(self, slug, persona) -> Channel: ...
     def archive_channel(self, slug: str, persona) -> Channel: ...
 
     # ── Membership ────────────────────────────────────────────
+    def list_members(self, slug) -> list[ChannelMembership]: ...
     def add_member(self, slug, persona_slug, caller_persona) -> ChannelMembership: ...
     def leave_channel(self, slug, persona) -> None: ...
     def transfer_chair(self, slug, target_persona_slug, caller_persona) -> None: ...
@@ -663,3 +671,4 @@ All common failure cases return clear, actionable messages (per Decision 2.2):
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 1 & 2) |
 | 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: removed SSE Out-of-Scope contradiction (Finding #1), aligned caller identity ordering to env var override first (Finding #2), updated Section 6.13 to reference FR14 (Finding #6), added S1 cross-reference for session_correlator.py (Finding #7) |
+| 1.2     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: added `update_channel()` and `list_members()` to class design (Findings #1, #2), removed CallerResolutionError from ChannelError hierarchy (Finding #6), added FR4a update_channel, FR5b list_members, FR14a context briefing delivery on post-registration (Findings #1, #2, #9) |

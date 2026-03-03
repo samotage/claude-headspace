@@ -420,10 +420,10 @@ hook_receiver.process_stop()
   ->   +-- Strip COMMAND COMPLETE footer from turn.text
   ->   |
   ->   +-- ChannelService.send_message(
-  ->   |     channel_id=membership.channel_id,
-  ->   |     persona_id=agent.persona_id,
-  ->   |     agent_id=agent.id,
-  ->   |     text=stripped_text,
+  ->   |     slug=membership.channel.slug,
+  ->   |     content=stripped_text,
+  ->   |     persona=agent.persona,
+  ->   |     agent=agent,
   ->   |     source_turn_id=turn.id,
   ->   |     source_command_id=turn.command_id,
   ->   |     message_type="message",
@@ -719,3 +719,4 @@ S3 and S4 are the critical path. S2 (PersonaType) provides the member type resol
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 0 and 3) |
+| 1.1     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: fixed `relay_agent_response()` Section 6.5 pseudocode to use S4's `send_message(slug, content, persona, agent)` interface instead of incorrect `(channel_id, persona_id, agent_id, text)` parameters (Finding #3) |

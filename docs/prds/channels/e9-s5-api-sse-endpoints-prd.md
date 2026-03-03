@@ -109,19 +109,19 @@ The operator opens the dashboard. A channel card shows its members and recent me
 ### Channel Endpoints
 
 **FR1: Create channel — `POST /api/channels`**
-Accept a JSON body with `{name, channel_type, description?, intent_override?, organisation_slug?, project_slug?, members?: [persona_slug, ...]}`. Delegate to `ChannelService.create()`. Creator becomes chair. Return 201 with the channel JSON.
+Accept a JSON body with `{name, channel_type, description?, intent_override?, organisation_slug?, project_slug?, members?: [persona_slug, ...]}`. Delegate to `ChannelService.create_channel()`. Creator becomes chair. Return 201 with the channel JSON.
 
 **FR2: List channels — `GET /api/channels`**
-Return channels for the calling persona. Support query parameters: `?status=<status>`, `?type=<type>`, `?all=true` (operator only — all visible channels). Delegate to `ChannelService.list()`. Return 200 with an array.
+Return channels for the calling persona. Support query parameters: `?status=<status>`, `?type=<type>`, `?all=true` (operator only — requires the calling persona to be the operator Persona from `Persona.get_operator()`; non-operator callers receive 403). Delegate to `ChannelService.list_channels()`. Return 200 with an array.
 
 **FR3: Get channel detail — `GET /api/channels/<slug>`**
-Return channel details: name, type, status, description, intent, member count, message count, timestamps. Delegate to `ChannelService.get_detail()`. Return 200.
+Return channel details: name, type, status, description, intent, member count, message count, timestamps. Delegate to `ChannelService.get_channel()`. Return 200.
 
 **FR4: Update channel — `PATCH /api/channels/<slug>`**
-Accept `{description?, intent_override?}`. Chair or operator only. Delegate to `ChannelService.update()`. Return 200 with updated channel JSON.
+Accept `{description?, intent_override?}`. Chair or operator only. Delegate to `ChannelService.update_channel()`. Return 200 with updated channel JSON.
 
 **FR5: Complete channel — `POST /api/channels/<slug>/complete`**
-Transition channel to `complete` state. Chair or operator only. Delegate to `ChannelService.complete()`. Return 200.
+Transition channel to `complete` state. Chair or operator only. Delegate to `ChannelService.complete_channel()`. Return 200.
 
 **FR5a: Archive channel — `POST /api/channels/<slug>/archive`**
 Transition channel to `archived` state. Chair or operator only. Channel must be in `complete` state. Delegate to `ChannelService.archive_channel()`. Return 200.
@@ -129,19 +129,19 @@ Transition channel to `archived` state. Chair or operator only. Channel must be 
 ### Membership Endpoints
 
 **FR6: List members — `GET /api/channels/<slug>/members`**
-Return channel members with status (active/left/muted), chair designation, and online/offline indicator. Delegate to `ChannelService.list_members()`. Return 200 with an array.
+Return channel members with status (active/left/muted), chair designation, and online/offline indicator. Delegate to `ChannelService.list_members()` (S4 FR5b). Return 200 with an array.
 
 **FR7: Add member — `POST /api/channels/<slug>/members`**
 Accept `{persona_slug}`. If the persona has no running agent, Headspace spins one up asynchronously (same pattern as remote agent creation). Delegate to `ChannelService.add_member()`. Return 201.
 
 **FR8: Leave channel — `POST /api/channels/<slug>/leave`**
-Calling persona leaves the channel. Auto-complete if last active member leaves. Delegate to `ChannelService.leave()`. Return 200.
+Calling persona leaves the channel. Auto-complete if last active member leaves. Delegate to `ChannelService.leave_channel()`. Return 200.
 
 **FR9: Mute channel — `POST /api/channels/<slug>/mute`**
-Pause delivery for the calling persona. Delegate to `ChannelService.mute()`. Return 200.
+Pause delivery for the calling persona. Delegate to `ChannelService.mute_channel()`. Return 200.
 
 **FR10: Unmute channel — `POST /api/channels/<slug>/unmute`**
-Resume delivery for the calling persona. Delegate to `ChannelService.unmute()`. Return 200.
+Resume delivery for the calling persona. Delegate to `ChannelService.unmute_channel()`. Return 200.
 
 **FR11: Transfer chair — `POST /api/channels/<slug>/transfer-chair`**
 Accept `{persona_slug}`. Current chair only. Delegate to `ChannelService.transfer_chair()`. Return 200.
@@ -149,7 +149,7 @@ Accept `{persona_slug}`. Current chair only. Delegate to `ChannelService.transfe
 ### Message Endpoints
 
 **FR12: Get message history — `GET /api/channels/<slug>/messages`**
-Return messages for the channel. Support query parameters: `?limit=50` (default), `?since=<ISO>`, `?before=<ISO>` (cursor pagination by `sent_at`). Delegate to `ChannelService.get_messages()`. Return 200 with an array.
+Return messages for the channel. Support query parameters: `?limit=50` (default), `?since=<ISO>`, `?before=<ISO>` (cursor pagination by `sent_at`). Delegate to `ChannelService.get_history()`. Return 200 with an array.
 
 **FR13: Send message — `POST /api/channels/<slug>/messages`**
 Accept `{content, message_type?: "delegation"|"escalation"}`. Default type: `message`. The `system` type is not API-callable — it is service-generated only. Optional: `attachment_path`. Delegate to `ChannelService.send_message()`. Return 201 with the message JSON.
@@ -290,6 +290,8 @@ def _resolve_caller():
 
 The `require_session_token` decorator from `remote_agents.py` can be reused for token-only endpoints if needed, but channel endpoints support both auth mechanisms, so they use the `_resolve_caller()` helper instead.
 
+**Operator check for `?all=true`:** The FR2 route handler must verify that the resolved persona is the operator before honouring the `?all=true` query parameter. Check: `persona == Persona.get_operator()`. If a non-operator caller passes `?all=true`, ignore the flag and return only their own channels (do not 403 — silent fallback to member-scoped listing).
+
 ### 6.4 Request/Response Format Examples
 
 #### Create Channel — `POST /api/channels`
@@ -311,7 +313,7 @@ Response (201):
 ```json
 {
   "id": 7,
-  "slug": "persona-alignment-workshop-7",
+  "slug": "workshop-persona-alignment-7",
   "name": "Persona Alignment Workshop",
   "channel_type": "workshop",
   "status": "pending",
@@ -589,3 +591,5 @@ S3 and S4 are hard dependencies. S2 is a soft dependency — the blueprint needs
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Section 2.3) |
 | 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added POST /api/channels/<slug>/archive endpoint FR5a (Finding #5), corrected endpoint count to 14 |
+| 1.2     | 2026-03-03 | Robbo  | v3 cross-PRD remediation: aligned FR1-FR6 service method names to S4 interface (`create_channel`, `list_channels`, `get_channel`, `update_channel`, `complete_channel`, `list_members`), added explicit operator auth check to FR2 `?all=true`, corrected Create Channel response slug to `workshop-persona-alignment-7` format, aligned FR8/FR9/FR10/FR12 method names (Cycle 1 Findings #1, #2, #8, #11) |
+| 1.3     | 2026-03-03 | Robbo  | v3 Cycle 2 remediation: added operator check implementation note for `?all=true` in Section 6.3 — silent fallback to member-scoped listing for non-operators (Cycle 2 Finding #2) |
