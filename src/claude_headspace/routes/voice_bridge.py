@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -9,7 +10,9 @@ from flask import Blueprint, current_app, jsonify, make_response, request, send_
 
 from ..database import db
 from ..models.agent import Agent
+from ..models.channel import Channel
 from ..models.command import Command, CommandState
+from ..models.persona import Persona
 from ..models.turn import Turn, TurnActor, TurnIntent
 from ..services import tmux_bridge
 from ..services.agent_lifecycle import (
@@ -18,8 +21,607 @@ from ..services.agent_lifecycle import (
     shutdown_agent,
 )
 from ..services.card_state import broadcast_card_refresh
+from ..services.channel_service import ChannelError
 
 logger = logging.getLogger(__name__)
+
+
+# ── Channel intent detection patterns ────────────────────────────────
+# Checked in order; first match wins. Patterns use distinctive structural
+# markers (colon separators, question marks, "create ... channel") to avoid
+# false positives on regular agent commands.
+
+# 1. Send to channel
+_SEND_PATTERNS = [
+    re.compile(
+        r"(?:send|message|tell)\s+(?:to\s+)?(?:the\s+)?(.+?)\s+channel\s*:\s*(.+)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:send|message|tell)\s+(?:to\s+)?(?:the\s+)?(.+?):\s*(.+)",
+        re.I,
+    ),
+]
+
+# 2. Channel history
+_HISTORY_PATTERNS = [
+    re.compile(
+        r"what(?:'s|s)\s+(?:happening|going\s+on)\s+in\s+(?:the\s+)?(.+?)(?:\s+channel)?\s*\??$",
+        re.I,
+    ),
+    re.compile(
+        r"show\s+(?:the\s+)?(.+?)(?:\s+channel)?\s+messages",
+        re.I,
+    ),
+    re.compile(
+        r"(?:channel\s+)?history\s+(?:for\s+)?(?:the\s+)?(.+?)(?:\s+channel)?$",
+        re.I,
+    ),
+]
+
+# 3. List channels
+_LIST_PATTERNS = [
+    re.compile(r"(?:list|show|my)\s+channels?$", re.I),
+    re.compile(
+        r"what\s+channels?\s+(?:am\s+I\s+in|do\s+I\s+have|are\s+there)\s*\??$",
+        re.I,
+    ),
+]
+
+# 4. Create channel (with optional members)
+_CREATE_PATTERNS = [
+    re.compile(
+        r"create\s+(?:a\s+)?(\w+)\s+channel\s+(?:called\s+|named\s+)?(.+?)"
+        r"(?:\s+with\s+(.+))?$",
+        re.I,
+    ),
+    re.compile(
+        r"create\s+(?:a\s+)?channel\s+(?:called\s+|named\s+)?(.+?)"
+        r"(?:\s+(?:as|type)\s+(\w+))?"
+        r"(?:\s+with\s+(.+))?$",
+        re.I,
+    ),
+]
+
+# 5. Add member
+_ADD_MEMBER_PATTERNS = [
+    re.compile(r"add\s+(\w+)\s+to\s+this\s+channel$", re.I),
+    re.compile(r"add\s+(\w+)\s+to\s+(?:the\s+)?(.+?)(?:\s+channel)?$", re.I),
+]
+
+# 6. Complete channel
+_COMPLETE_PATTERNS = [
+    re.compile(
+        r"(?:complete|finish|close|end)\s+(?:the\s+)?(.+?)(?:\s+channel)?$",
+        re.I,
+    ),
+]
+
+# Channel type keyword mapping
+_CHANNEL_TYPE_KEYWORDS = {
+    "workshop": "workshop",
+    "delegation": "delegation",
+    "delegate": "delegation",
+    "review": "review",
+    "standup": "standup",
+    "stand up": "standup",
+    "broadcast": "broadcast",
+    "announce": "broadcast",
+    "announcement": "broadcast",
+}
+
+# Module-level channel context cache
+# Key: auth identifier (token or "localhost"), Value: channel slug
+_channel_context: dict[str, str] = {}
+
+
+def _detect_channel_intent(text: str) -> dict | None:
+    """Detect if a voice utterance targets a channel operation.
+
+    Returns a dict with:
+      - action: "send" | "history" | "list" | "create" | "add_member" | "complete"
+      - channel_ref: extracted channel name/reference (may be "this channel")
+      - content: message content (for send action)
+      - channel_type: inferred type (for create action)
+      - member_ref: persona name reference (for add_member action)
+      - member_refs: list of persona name references (for create with members)
+    Returns None if the utterance is not channel-targeted.
+    """
+    # 1. Send patterns
+    for pat in _SEND_PATTERNS:
+        m = pat.match(text)
+        if m:
+            return {
+                "action": "send",
+                "channel_ref": m.group(1).strip(),
+                "content": m.group(2).strip(),
+            }
+
+    # 2. History patterns
+    for pat in _HISTORY_PATTERNS:
+        m = pat.match(text)
+        if m:
+            return {
+                "action": "history",
+                "channel_ref": m.group(1).strip(),
+            }
+
+    # 3. List patterns
+    for pat in _LIST_PATTERNS:
+        m = pat.match(text)
+        if m:
+            return {"action": "list"}
+
+    # 4. Create patterns
+    for pat in _CREATE_PATTERNS:
+        m = pat.match(text)
+        if m:
+            groups = m.groups()
+            if pat == _CREATE_PATTERNS[0]:
+                # Pattern 1: "create a [type] channel [called name] [with members]"
+                channel_type = groups[0].strip()
+                name = groups[1].strip()
+                members_text = groups[2]
+            else:
+                # Pattern 2: "create channel [called name] [as type] [with members]"
+                name = groups[0].strip()
+                channel_type = groups[1].strip() if groups[1] else None
+                members_text = groups[2]
+
+            inferred_type = _infer_channel_type(channel_type or text)
+            return {
+                "action": "create",
+                "name": name,
+                "channel_type": inferred_type,
+                "member_refs": _extract_member_refs(members_text) if members_text else [],
+            }
+
+    # 5. Add member patterns
+    for pat in _ADD_MEMBER_PATTERNS:
+        m = pat.match(text)
+        if m:
+            groups = m.groups()
+            if len(groups) == 1:
+                # "add X to this channel"
+                return {
+                    "action": "add_member",
+                    "member_ref": groups[0].strip(),
+                    "channel_ref": "this channel",
+                }
+            else:
+                return {
+                    "action": "add_member",
+                    "member_ref": groups[0].strip(),
+                    "channel_ref": groups[1].strip(),
+                }
+
+    # 6. Complete patterns
+    for pat in _COMPLETE_PATTERNS:
+        m = pat.match(text)
+        if m:
+            return {
+                "action": "complete",
+                "channel_ref": m.group(1).strip(),
+            }
+
+    return None
+
+
+def _fuzzy_match(ref_text: str, items: list, get_names: callable) -> dict:
+    """Fuzzy match a reference string against a list of items.
+
+    Shared matching logic used by both channel and persona matchers.
+
+    Args:
+        ref_text: The user's voice reference text
+        items: List of objects to match against
+        get_names: Callable(item) -> list[str] returning lowercase name
+            variants to match (e.g. [name, slug])
+
+    Returns:
+        {"match": item, "confidence": float} for single match
+        {"ambiguous": [item, ...]} for multiple matches
+        {"no_match": True} for no matches
+    """
+    ref = ref_text.strip().lower()
+    ref = re.sub(r"^(the|a|an)\s+", "", ref)
+    ref = ref.rstrip("?!.")
+
+    candidates = []
+    for item in items:
+        names = get_names(item)
+
+        # 1. Exact match on any name variant
+        if ref in names:
+            return {"match": item, "confidence": 1.0}
+
+        # 2. Substring match
+        matched_substring = False
+        for n in names:
+            if ref in n or n in ref:
+                candidates.append((item, 0.8))
+                matched_substring = True
+                break
+        if matched_substring:
+            continue
+
+        # 3. Token overlap
+        ref_tokens = set(ref.split())
+        all_tokens = set()
+        for n in names:
+            all_tokens |= set(n.replace("-", " ").split())
+
+        overlap = ref_tokens & all_tokens
+        if overlap and len(overlap) >= len(ref_tokens) * 0.5:
+            score = len(overlap) / max(len(ref_tokens), len(all_tokens))
+            candidates.append((item, score))
+
+    if not candidates:
+        return {"no_match": True}
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+
+    if len(candidates) == 1:
+        return {"match": candidates[0][0], "confidence": candidates[0][1]}
+
+    if candidates[0][1] - candidates[1][1] > 0.2:
+        return {"match": candidates[0][0], "confidence": candidates[0][1]}
+
+    ambiguous = [c[0] for c in candidates if c[1] >= candidates[0][1] - 0.1]
+    return {"ambiguous": ambiguous}
+
+
+def _match_channel(channel_ref: str, channels: list) -> dict:
+    """Fuzzy match a channel reference against active channels."""
+    return _fuzzy_match(
+        channel_ref,
+        channels,
+        lambda ch: [ch.name.lower(), ch.slug.lower()],
+    )
+
+
+def _set_channel_context(auth_id: str, channel_slug: str) -> None:
+    """Set the current channel context for this voice session."""
+    _channel_context[auth_id] = channel_slug
+
+
+def _get_channel_context(auth_id: str) -> str | None:
+    """Get the current channel context for this voice session."""
+    return _channel_context.get(auth_id)
+
+
+def _get_auth_id() -> str:
+    """Extract an auth identifier from the current request for context tracking.
+
+    Returns the Bearer token string if present, or "localhost" for
+    localhost-bypass authenticated requests (no token).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return "localhost"
+
+
+def _resolve_channel_ref(channel_ref: str, auth_id: str) -> str:
+    """Resolve 'this channel' / 'the channel' to actual channel slug.
+
+    Raises ValueError if context reference used but no context is set.
+    """
+    if channel_ref.strip().lower() in (
+        "this channel", "the channel", "this", "current channel",
+    ):
+        ctx = _get_channel_context(auth_id)
+        if ctx:
+            return ctx
+        raise ValueError("No current channel context. Specify the channel name.")
+    return channel_ref
+
+
+def _infer_channel_type(text: str) -> str:
+    """Infer channel type from voice text. Default: workshop."""
+    text_lower = text.lower()
+    for keyword, channel_type in _CHANNEL_TYPE_KEYWORDS.items():
+        if keyword in text_lower:
+            return channel_type
+    return "workshop"
+
+
+def _extract_member_refs(members_text: str) -> list[str]:
+    """Extract persona name references from 'with X and Y' / 'with X, Y, Z'."""
+    if not members_text:
+        return []
+    # Normalize: split on "and", ",", "&"
+    parts = re.split(r"\s+and\s+|,\s*|&\s*", members_text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _match_persona_for_channel(name_ref: str) -> dict:
+    """Fuzzy match a persona name/slug reference against active personas."""
+    personas = Persona.query.filter_by(active=True).all()
+    return _fuzzy_match(
+        name_ref,
+        personas,
+        lambda p: [p.name.lower(), p.slug.lower()],
+    )
+
+
+def _resolve_and_match_channel(channel_ref: str, auth_id: str) -> tuple:
+    """Resolve a channel reference and fuzzy-match it against active channels.
+
+    Combines the common resolve -> query -> match pipeline used by most
+    channel handlers.
+
+    Returns:
+        (channel, None) on success
+        (None, (response, status_code)) on error (no_match / ambiguous / bad ref)
+    """
+    try:
+        resolved_ref = _resolve_channel_ref(channel_ref, auth_id)
+    except ValueError as e:
+        return None, _voice_error(str(e), "Specify the channel name.", 400)
+
+    channels = Channel.query.filter(Channel.status.in_(["pending", "active"])).all()
+    result = _match_channel(resolved_ref, channels)
+
+    if "no_match" in result:
+        return None, _voice_error(
+            f"No channel found matching '{channel_ref}'.",
+            "Check channel names or say 'list channels'.",
+            404,
+        )
+    if "ambiguous" in result:
+        slugs = [f"#{ch.slug}" for ch in result["ambiguous"]]
+        voice = {
+            "status_line": f"Multiple channels match '{channel_ref}'.",
+            "results": slugs,
+            "next_action": "Say the full channel name.",
+        }
+        return None, (jsonify({"voice": voice}), 409)
+
+    return result["match"], None
+
+
+def _handle_channel_intent(intent: dict, text: str, formatter) -> tuple:
+    """Route a channel-targeted voice command to ChannelService."""
+    channel_service = current_app.extensions.get("channel_service")
+    if not channel_service:
+        return _voice_error(
+            "Channels not available.", "Channel service not configured.", 503
+        )
+
+    # Resolve the operator's Persona
+    operator_persona = Persona.get_operator()
+    if not operator_persona:
+        return _voice_error(
+            "Operator identity not configured.",
+            "Register an operator persona first.",
+            503,
+        )
+
+    action = intent["action"]
+    auth_id = _get_auth_id()
+
+    if action == "send":
+        return _handle_channel_send(intent, channel_service, formatter, auth_id, operator_persona)
+    elif action == "history":
+        return _handle_channel_history(intent, channel_service, formatter, auth_id, operator_persona)
+    elif action == "list":
+        return _handle_channel_list(channel_service, operator_persona, formatter)
+    elif action == "create":
+        return _handle_channel_create(intent, channel_service, formatter, auth_id, operator_persona)
+    elif action == "add_member":
+        return _handle_channel_add_member(intent, channel_service, formatter, auth_id, operator_persona)
+    elif action == "complete":
+        return _handle_channel_complete(intent, channel_service, formatter, auth_id, operator_persona)
+    else:
+        return _voice_error(
+            "Unknown channel action.",
+            "Try 'send to [channel]: [message]'.",
+            400,
+        )
+
+
+def _handle_channel_send(intent, channel_service, formatter, auth_id, operator_persona):
+    """Handle sending a message to a channel."""
+    channel_ref = intent.get("channel_ref", "")
+    content = intent.get("content", "")
+
+    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
+    if err:
+        return err
+
+    try:
+        channel_service.send_message(
+            slug=channel.slug,
+            content=content,
+            persona=operator_persona,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check channel status.", 400)
+
+    _set_channel_context(auth_id, channel.slug)
+    voice = formatter.format_channel_message_sent(channel.slug)
+    return jsonify({"voice": voice}), 200
+
+
+def _handle_channel_history(intent, channel_service, formatter, auth_id, operator_persona):
+    """Handle channel history retrieval."""
+    channel_ref = intent.get("channel_ref", "")
+
+    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
+    if err:
+        return err
+
+    try:
+        messages = channel_service.get_history(
+            slug=channel.slug,
+            persona=operator_persona,
+            limit=10,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check channel membership.", 400)
+
+    message_dicts = [
+        {
+            "persona_name": msg.persona.name if msg.persona else "Unknown",
+            "content": msg.content or "",
+        }
+        for msg in messages
+    ]
+
+    _set_channel_context(auth_id, channel.slug)
+    voice = formatter.format_channel_history(channel.slug, message_dicts)
+    return jsonify({"voice": voice}), 200
+
+
+def _handle_channel_list(channel_service, operator_persona, formatter):
+    """Handle listing channels visible to the operator."""
+    try:
+        channels = channel_service.list_channels(
+            persona=operator_persona,
+            all_visible=True,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check operator persona.", 400)
+
+    # Filter to pending/active only
+    active_channels = [
+        ch for ch in channels if ch.status in ("pending", "active")
+    ]
+
+    channel_dicts = [
+        {
+            "slug": ch.slug,
+            "channel_type": ch.channel_type.value,
+            "status": ch.status,
+        }
+        for ch in active_channels
+    ]
+
+    voice = formatter.format_channel_list(channel_dicts)
+    return jsonify({"voice": voice}), 200
+
+
+def _handle_channel_create(intent, channel_service, formatter, auth_id, operator_persona):
+    """Handle channel creation via voice."""
+    name = intent.get("name", "")
+    channel_type = intent.get("channel_type", "workshop")
+    member_refs = intent.get("member_refs", [])
+
+    try:
+        channel = channel_service.create_channel(
+            creator_persona=operator_persona,
+            name=name,
+            channel_type=channel_type,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check channel creation permissions.", 400)
+
+    # Add members if specified
+    member_results = []
+    for ref in member_refs:
+        persona_result = _match_persona_for_channel(ref)
+        if "match" in persona_result:
+            persona = persona_result["match"]
+            try:
+                channel_service.add_member(
+                    slug=channel.slug,
+                    persona_slug=persona.slug,
+                    caller_persona=operator_persona,
+                )
+                # Check if agent is spinning up
+                agent = (
+                    db.session.query(Agent)
+                    .filter_by(persona_id=persona.id, ended_at=None)
+                    .first()
+                )
+                spinning_up = agent is None
+                if spinning_up:
+                    member_results.append(f"{persona.name} -- agent spinning up.")
+                else:
+                    member_results.append(f"{persona.name} joined.")
+            except ChannelError as e:
+                member_results.append(f"{persona.name}: {e}")
+        elif "ambiguous" in persona_result:
+            names = [p.name for p in persona_result["ambiguous"]]
+            member_results.append(f"'{ref}' is ambiguous: {', '.join(names)}")
+        else:
+            member_results.append(f"'{ref}' not found.")
+
+    _set_channel_context(auth_id, channel.slug)
+    voice = formatter.format_channel_created(channel.slug, channel_type, member_results)
+    return jsonify({"voice": voice}), 200
+
+
+def _handle_channel_add_member(intent, channel_service, formatter, auth_id, operator_persona):
+    """Handle adding a member to a channel."""
+    member_ref = intent.get("member_ref", "")
+    channel_ref = intent.get("channel_ref", "")
+
+    # Resolve persona
+    persona_result = _match_persona_for_channel(member_ref)
+    if "no_match" in persona_result:
+        return _voice_error(
+            f"No persona found matching '{member_ref}'.",
+            "Check persona names or say 'list personas'.",
+            404,
+        )
+    if "ambiguous" in persona_result:
+        names = [p.name for p in persona_result["ambiguous"]]
+        voice = {
+            "status_line": f"Multiple personas match '{member_ref}'.",
+            "results": names,
+            "next_action": "Say the full persona name.",
+        }
+        return jsonify({"voice": voice}), 409
+
+    persona = persona_result["match"]
+
+    # Resolve channel
+    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
+    if err:
+        return err
+    try:
+        channel_service.add_member(
+            slug=channel.slug,
+            persona_slug=persona.slug,
+            caller_persona=operator_persona,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check membership requirements.", 400)
+
+    # Check if agent is spinning up
+    agent = (
+        db.session.query(Agent)
+        .filter_by(persona_id=persona.id, ended_at=None)
+        .first()
+    )
+    spinning_up = agent is None
+
+    _set_channel_context(auth_id, channel.slug)
+    voice = formatter.format_channel_member_added(persona.name, channel.slug, spinning_up)
+    return jsonify({"voice": voice}), 200
+
+
+def _handle_channel_complete(intent, channel_service, formatter, auth_id, operator_persona):
+    """Handle channel completion."""
+    channel_ref = intent.get("channel_ref", "")
+
+    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
+    if err:
+        return err
+
+    try:
+        channel_service.complete_channel(
+            slug=channel.slug,
+            persona=operator_persona,
+        )
+    except ChannelError as e:
+        return _voice_error(str(e), "Check channel status.", 400)
+
+    _set_channel_context(auth_id, channel.slug)
+    voice = formatter.format_channel_completed(channel.slug)
+    return jsonify({"voice": voice}), 200
 
 # Affirmative patterns for matching voice text to "Yes" options
 _AFFIRMATIVE_PATTERNS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "approve", "go", "proceed", "do it", "go ahead", "absolutely", "confirmed", "confirm"}
@@ -326,6 +928,16 @@ def voice_command():
         return _voice_error("No command text provided.", "Say your command and try again.")
 
     formatter = _get_voice_formatter()
+
+    # ── Channel intent detection (before agent resolution) ───────────
+    # Channel commands don't need a target agent — they route to
+    # ChannelService directly. Detection runs after handoff-intent-like
+    # structural markers (colon, question marks) to avoid false positives
+    # on agent commands.
+    if text:
+        channel_intent = _detect_channel_intent(text)
+        if channel_intent:
+            return _handle_channel_intent(channel_intent, text, formatter)
 
     # Resolve target agent
     if agent_id:

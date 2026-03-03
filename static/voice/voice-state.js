@@ -70,6 +70,10 @@ window.VoiceState = (function () {
   var _newMessagesPillVisible = false;
   var _newMessagesFirstTurnId = null;
 
+  // ---- Channels ----
+  var _channels = [];
+  var _currentChannelSlug = null;
+
   // ---- File Upload ----
   var _pendingAttachment = null;
   var _pendingBlobUrl = null;
@@ -216,6 +220,12 @@ window.VoiceState = (function () {
     set newMessagesPillVisible(v) { _newMessagesPillVisible = v; },
     get newMessagesFirstTurnId() { return _newMessagesFirstTurnId; },
     set newMessagesFirstTurnId(v) { _newMessagesFirstTurnId = v; },
+
+    // Channels
+    get channels() { return _channels; },
+    set channels(v) { _channels = v; },
+    get currentChannelSlug() { return _currentChannelSlug; },
+    set currentChannelSlug(v) { _currentChannelSlug = v; },
 
     // File Upload
     get pendingAttachment() { return _pendingAttachment; },

@@ -225,6 +225,8 @@ window.VoiceApp = (function () {
     VoiceAPI.onTurnCreated(VoiceSSEHandler.handleTurnCreated);
     VoiceAPI.onTurnUpdated(VoiceSSEHandler.handleTurnUpdated);
     VoiceAPI.onGap(VoiceSSEHandler.handleGap);
+    VoiceAPI.onChannelMessage(VoiceSSEHandler.handleChannelMessage);
+    VoiceAPI.onChannelUpdate(VoiceSSEHandler.handleChannelUpdate);
     VoiceAPI.connectSSE();
 
     // iOS recovery: when the tab returns from background, SSE is dead and
