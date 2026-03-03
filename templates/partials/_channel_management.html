@@ -100,11 +100,10 @@
 
                     <!-- Members -->
                     <div>
-                        <label for="channel-create-members" class="block text-xs text-muted uppercase tracking-wider mb-1">Members</label>
-                        <input type="text" id="channel-create-members"
-                               class="form-well w-full px-3 py-2 text-sm"
-                               placeholder="Comma-separated persona slugs (optional)">
-                        <span class="text-muted text-xs mt-1 block">e.g. developer-con-1, tester-robbo-2</span>
+                        <label class="block text-xs text-muted uppercase tracking-wider mb-1">Members</label>
+                        <div id="channel-member-autocomplete" class="relative">
+                            <!-- JS populates: tags + input + dropdown -->
+                        </div>
                     </div>
 
                     <!-- Submit -->

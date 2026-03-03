@@ -11,8 +11,6 @@ wrappers that delegate to this service.
 import logging
 from datetime import datetime, timezone
 
-from collections import defaultdict
-
 from ..database import db
 from ..models.agent import Agent
 from ..models.channel import Channel, ChannelType

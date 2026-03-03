@@ -235,6 +235,8 @@
 <script src="{{ url_for('static', filename='js/channel-cards.js') }}?v={{ cache_bust }}"></script>
 <!-- Channel chat panel (slide-out message feed) -->
 <script src="{{ url_for('static', filename='js/channel-chat.js') }}?v={{ cache_bust }}"></script>
+<!-- Member autocomplete picker (must load before channel-management) -->
+<script src="{{ url_for('static', filename='js/member-autocomplete.js') }}?v={{ cache_bust }}"></script>
 <!-- Channel management modal -->
 <script src="{{ url_for('static', filename='js/channel-management.js') }}?v={{ cache_bust }}"></script>
 {% endblock %}

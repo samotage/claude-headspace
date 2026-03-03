@@ -70,6 +70,12 @@
             listTab.classList.add('text-secondary', 'hover:text-primary', 'hover:bg-hover');
             createView.classList.remove('hidden');
             listView.classList.add('hidden');
+
+            // Init member autocomplete when switching to create tab
+            var acEl = document.getElementById('channel-member-autocomplete');
+            if (acEl && global.MemberAutocomplete) {
+                global.MemberAutocomplete.init(acEl);
+            }
         }
     }
 
@@ -80,7 +86,6 @@
         var nameEl = document.getElementById('channel-create-name');
         var typeEl = document.getElementById('channel-create-type');
         var descEl = document.getElementById('channel-create-description');
-        var membersEl = document.getElementById('channel-create-members');
         var statusEl = document.getElementById('channel-create-status');
         var submitBtn = document.getElementById('channel-create-submit-btn');
 
@@ -104,9 +109,15 @@
         var desc = descEl ? descEl.value.trim() : '';
         if (desc) payload.description = desc;
 
-        var membersStr = membersEl ? membersEl.value.trim() : '';
-        if (membersStr) {
-            payload.members = membersStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        // Use autocomplete agent IDs, or fallback to slug text input
+        if (global.MemberAutocomplete) {
+            var agentIds = global.MemberAutocomplete.getSelectedAgentIds();
+            if (agentIds.length) {
+                payload.member_agents = agentIds;
+            } else {
+                var fallbackMembers = global.MemberAutocomplete.getFallbackMembers();
+                if (fallbackMembers) payload.members = fallbackMembers;
+            }
         }
 
         if (submitBtn) submitBtn.disabled = true;
@@ -133,7 +144,7 @@
             if (nameEl) nameEl.value = '';
             if (typeEl) typeEl.value = '';
             if (descEl) descEl.value = '';
-            if (membersEl) membersEl.value = '';
+            if (global.MemberAutocomplete) global.MemberAutocomplete.reset();
 
             // Add card to dashboard
             if (global.ChannelCards) {
