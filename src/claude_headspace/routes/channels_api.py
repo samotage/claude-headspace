@@ -10,8 +10,20 @@ Supports dual authentication:
 """
 
 import logging
+from functools import wraps
 
 from flask import Blueprint, current_app, jsonify, request
+
+from ..services.channel_service import (
+    AgentChannelConflictError,
+    AlreadyMemberError,
+    ChannelClosedError,
+    ChannelError,
+    ChannelNotFoundError,
+    NoCreationCapabilityError,
+    NotAMemberError,
+    NotChairError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +48,32 @@ def _error_response(status_code: int, error_code: str, message: str):
         }
     }
     return jsonify(body), status_code
+
+
+# ──────────────────────────────────────────────────────────────
+# Exception-to-HTTP mapping
+# ──────────────────────────────────────────────────────────────
+
+_ERROR_MAP = {
+    ChannelNotFoundError: (404, "channel_not_found"),
+    NotAMemberError: (403, "not_a_member"),
+    NotChairError: (403, "not_chair"),
+    ChannelClosedError: (409, "channel_not_active"),
+    AlreadyMemberError: (409, "already_a_member"),
+    NoCreationCapabilityError: (403, "no_creation_capability"),
+    AgentChannelConflictError: (409, "agent_already_in_channel"),
+}
+
+
+def _handle_service_error(e):
+    """Map ChannelService exceptions to HTTP error responses."""
+    for exc_type, (status, code) in _ERROR_MAP.items():
+        if isinstance(e, exc_type):
+            return _error_response(status, code, str(e))
+
+    # Unknown ChannelError -- treat as 500
+    logger.exception(f"Unexpected channel error: {e}")
+    return _error_response(500, "server_error", "Internal server error")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -94,6 +132,45 @@ def _resolve_caller():
 def _get_channel_service():
     """Get the ChannelService from app extensions, or None."""
     return current_app.extensions.get("channel_service")
+
+
+# ──────────────────────────────────────────────────────────────
+# Route decorator: auth + service resolution + error handling
+# ──────────────────────────────────────────────────────────────
+
+def _channel_route(f):
+    """Decorator that handles auth, service lookup, and exception mapping.
+
+    Injects ``persona``, ``agent``, and ``service`` as keyword arguments
+    into the wrapped view function.  Catches AuthError and ChannelError
+    and returns the appropriate JSON error envelope.
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            persona, agent = _resolve_caller()
+        except AuthError as e:
+            return _error_response(401, e.error_code, e.message)
+
+        service = _get_channel_service()
+        if not service:
+            return _error_response(503, "service_unavailable", "Channel service not available")
+
+        kwargs["persona"] = persona
+        kwargs["agent"] = agent
+        kwargs["service"] = service
+
+        try:
+            return f(*args, **kwargs)
+        except ChannelError as e:
+            return _handle_service_error(e)
+        except ValueError as e:
+            return _error_response(400, "invalid_field", str(e))
+        except Exception as e:
+            logger.exception(f"Unexpected error in {f.__name__}: {e}")
+            return _error_response(500, "server_error", "Internal server error")
+
+    return decorated
 
 
 # ──────────────────────────────────────────────────────────────
@@ -170,56 +247,13 @@ def _message_to_dict(message, channel_slug: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
-# Exception-to-HTTP mapping
-# ──────────────────────────────────────────────────────────────
-
-def _handle_service_error(e):
-    """Map ChannelService exceptions to HTTP error responses."""
-    from ..services.channel_service import (
-        AgentChannelConflictError,
-        AlreadyMemberError,
-        ChannelClosedError,
-        ChannelNotFoundError,
-        NoCreationCapabilityError,
-        NotAMemberError,
-        NotChairError,
-    )
-
-    error_map = {
-        ChannelNotFoundError: (404, "channel_not_found"),
-        NotAMemberError: (403, "not_a_member"),
-        NotChairError: (403, "not_chair"),
-        ChannelClosedError: (409, "channel_not_active"),
-        AlreadyMemberError: (409, "already_a_member"),
-        NoCreationCapabilityError: (403, "no_creation_capability"),
-        AgentChannelConflictError: (409, "agent_already_in_channel"),
-    }
-
-    for exc_type, (status, code) in error_map.items():
-        if isinstance(e, exc_type):
-            return _error_response(status, code, str(e))
-
-    # Unknown ChannelError -- treat as 500
-    logger.exception(f"Unexpected channel error: {e}")
-    return _error_response(500, "server_error", "Internal server error")
-
-
-# ──────────────────────────────────────────────────────────────
 # Channel Endpoints
 # ──────────────────────────────────────────────────────────────
 
 @channels_api_bp.route("/api/channels", methods=["POST"])
-def create_channel():
+@_channel_route
+def create_channel(*, persona, agent, service):
     """Create a new channel (FR1)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     data = request.get_json(silent=True) or {}
 
     name = data.get("name", "").strip() if isinstance(data.get("name"), str) else ""
@@ -245,41 +279,22 @@ def create_channel():
             f"Invalid channel_type '{channel_type}'. Must be one of: {', '.join(valid_types)}"
         )
 
-    description = data.get("description")
-    intent_override = data.get("intent_override")
-    member_slugs = data.get("members")
-
-    try:
-        channel = service.create_channel(
-            creator_persona=persona,
-            name=name,
-            channel_type=channel_type,
-            description=description,
-            intent_override=intent_override,
-            member_slugs=member_slugs,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel creation failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    channel = service.create_channel(
+        creator_persona=persona,
+        name=name,
+        channel_type=channel_type,
+        description=data.get("description"),
+        intent_override=data.get("intent_override"),
+        member_slugs=data.get("members"),
+    )
 
     return jsonify(_channel_to_dict(channel)), 201
 
 
 @channels_api_bp.route("/api/channels", methods=["GET"])
-def list_channels():
+@_channel_route
+def list_channels(*, persona, agent, service):
     """List channels for the calling persona (FR2)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     status_filter = request.args.get("status")
     type_filter = request.args.get("type")
     all_flag = request.args.get("all", "").lower() == "true"
@@ -291,125 +306,53 @@ def list_channels():
         if not operator or operator.id != persona.id:
             all_flag = False
 
-    try:
-        channels = service.list_channels(
-            persona=persona,
-            status=status_filter,
-            channel_type=type_filter,
-            all_visible=all_flag,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel listing failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    channels = service.list_channels(
+        persona=persona,
+        status=status_filter,
+        channel_type=type_filter,
+        all_visible=all_flag,
+    )
 
     return jsonify([_channel_to_dict(ch) for ch in channels]), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>", methods=["GET"])
-def get_channel(slug: str):
+@_channel_route
+def get_channel(slug: str, *, persona, agent, service):
     """Get channel detail (FR3)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        channel = service.get_channel(slug)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel detail failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    channel = service.get_channel(slug)
     return jsonify(_channel_to_dict(channel)), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>", methods=["PATCH"])
-def update_channel(slug: str):
+@_channel_route
+def update_channel(slug: str, *, persona, agent, service):
     """Update channel fields (FR4)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     data = request.get_json(silent=True) or {}
-    description = data.get("description")
-    intent_override = data.get("intent_override")
 
-    try:
-        channel = service.update_channel(
-            slug=slug,
-            persona=persona,
-            description=description,
-            intent_override=intent_override,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel update failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    channel = service.update_channel(
+        slug=slug,
+        persona=persona,
+        description=data.get("description"),
+        intent_override=data.get("intent_override"),
+    )
 
     return jsonify(_channel_to_dict(channel)), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/complete", methods=["POST"])
-def complete_channel(slug: str):
+@_channel_route
+def complete_channel(slug: str, *, persona, agent, service):
     """Complete a channel (FR5)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        channel = service.complete_channel(slug=slug, persona=persona)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel complete failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    channel = service.complete_channel(slug=slug, persona=persona)
     return jsonify(_channel_to_dict(channel)), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/archive", methods=["POST"])
-def archive_channel(slug: str):
+@_channel_route
+def archive_channel(slug: str, *, persona, agent, service):
     """Archive a channel (FR5a)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        channel = service.archive_channel(slug=slug, persona=persona)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Channel archive failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    channel = service.archive_channel(slug=slug, persona=persona)
     return jsonify(_channel_to_dict(channel)), 200
 
 
@@ -418,165 +361,71 @@ def archive_channel(slug: str):
 # ──────────────────────────────────────────────────────────────
 
 @channels_api_bp.route("/api/channels/<slug>/members", methods=["GET"])
-def list_members(slug: str):
+@_channel_route
+def list_members(slug: str, *, persona, agent, service):
     """List channel members (FR6)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        members = service.list_members(slug)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Member listing failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    members = service.list_members(slug)
     return jsonify([_membership_to_dict(m) for m in members]), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/members", methods=["POST"])
-def add_member(slug: str):
+@_channel_route
+def add_member(slug: str, *, persona, agent, service):
     """Add a member to a channel (FR7)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     data = request.get_json(silent=True) or {}
     persona_slug = data.get("persona_slug", "").strip() if isinstance(data.get("persona_slug"), str) else ""
 
     if not persona_slug:
         return _error_response(400, "missing_fields", "Missing required field: persona_slug")
 
-    try:
-        membership = service.add_member(
-            slug=slug,
-            persona_slug=persona_slug,
-            caller_persona=persona,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Add member failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    membership = service.add_member(
+        slug=slug,
+        persona_slug=persona_slug,
+        caller_persona=persona,
+    )
 
     return jsonify(_membership_to_dict(membership)), 201
 
 
 @channels_api_bp.route("/api/channels/<slug>/leave", methods=["POST"])
-def leave_channel(slug: str):
+@_channel_route
+def leave_channel(slug: str, *, persona, agent, service):
     """Leave a channel (FR8)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        service.leave_channel(slug=slug, persona=persona)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Leave channel failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    service.leave_channel(slug=slug, persona=persona)
     return jsonify({"status": "ok", "message": "Left channel"}), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/mute", methods=["POST"])
-def mute_channel(slug: str):
+@_channel_route
+def mute_channel(slug: str, *, persona, agent, service):
     """Mute a channel (FR9)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        service.mute_channel(slug=slug, persona=persona)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Mute channel failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    service.mute_channel(slug=slug, persona=persona)
     return jsonify({"status": "ok", "message": "Channel muted"}), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/unmute", methods=["POST"])
-def unmute_channel(slug: str):
+@_channel_route
+def unmute_channel(slug: str, *, persona, agent, service):
     """Unmute a channel (FR10)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
-    try:
-        service.unmute_channel(slug=slug, persona=persona)
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Unmute channel failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
-
+    service.unmute_channel(slug=slug, persona=persona)
     return jsonify({"status": "ok", "message": "Channel unmuted"}), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/transfer-chair", methods=["POST"])
-def transfer_chair(slug: str):
+@_channel_route
+def transfer_chair(slug: str, *, persona, agent, service):
     """Transfer chair role (FR11)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     data = request.get_json(silent=True) or {}
     target_slug = data.get("persona_slug", "").strip() if isinstance(data.get("persona_slug"), str) else ""
 
     if not target_slug:
         return _error_response(400, "missing_fields", "Missing required field: persona_slug")
 
-    try:
-        service.transfer_chair(
-            slug=slug,
-            target_persona_slug=target_slug,
-            caller_persona=persona,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Transfer chair failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    service.transfer_chair(
+        slug=slug,
+        target_persona_slug=target_slug,
+        caller_persona=persona,
+    )
 
     return jsonify({"status": "ok", "message": "Chair transferred"}), 200
 
@@ -586,17 +435,9 @@ def transfer_chair(slug: str):
 # ──────────────────────────────────────────────────────────────
 
 @channels_api_bp.route("/api/channels/<slug>/messages", methods=["GET"])
-def get_messages(slug: str):
+@_channel_route
+def get_messages(slug: str, *, persona, agent, service):
     """Get message history with cursor pagination (FR12)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     # Parse pagination params
     try:
         limit = min(int(request.args.get("limit", 50)), 200)
@@ -606,36 +447,21 @@ def get_messages(slug: str):
     since = request.args.get("since")
     before = request.args.get("before")
 
-    try:
-        messages = service.get_history(
-            slug=slug,
-            persona=persona,
-            limit=limit,
-            since=since,
-            before=before,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        logger.exception(f"Get messages failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    messages = service.get_history(
+        slug=slug,
+        persona=persona,
+        limit=limit,
+        since=since,
+        before=before,
+    )
 
     return jsonify([_message_to_dict(m, slug) for m in messages]), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/messages", methods=["POST"])
-def send_message(slug: str):
+@_channel_route
+def send_message(slug: str, *, persona, agent, service):
     """Send a message to a channel (FR13)."""
-    try:
-        persona, agent = _resolve_caller()
-    except AuthError as e:
-        return _error_response(401, e.error_code, e.message)
-
-    service = _get_channel_service()
-    if not service:
-        return _error_response(503, "service_unavailable", "Channel service not available")
-
     data = request.get_json(silent=True) or {}
 
     content = data.get("content", "").strip() if isinstance(data.get("content"), str) else ""
@@ -657,24 +483,13 @@ def send_message(slug: str):
             f"Invalid message_type '{message_type}'. Must be one of: {', '.join(valid_types)}"
         )
 
-    attachment_path = data.get("attachment_path")
-
-    try:
-        message = service.send_message(
-            slug=slug,
-            content=content,
-            persona=persona,
-            agent=agent,
-            message_type=message_type,
-            attachment_path=attachment_path,
-        )
-    except Exception as e:
-        from ..services.channel_service import ChannelError
-        if isinstance(e, ChannelError):
-            return _handle_service_error(e)
-        if isinstance(e, ValueError):
-            return _error_response(400, "invalid_message_type", str(e))
-        logger.exception(f"Send message failed: {e}")
-        return _error_response(500, "server_error", "Internal server error")
+    message = service.send_message(
+        slug=slug,
+        content=content,
+        persona=persona,
+        agent=agent,
+        message_type=message_type,
+        attachment_path=data.get("attachment_path"),
+    )
 
     return jsonify(_message_to_dict(message, slug)), 201
