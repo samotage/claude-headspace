@@ -503,6 +503,19 @@ window.VoiceSSEHandler = (function () {
         _onMarkQuestionsAnswered();
       }
 
+      // Render handoff listing from transcript API response
+      if (resp.handoff_files && resp.handoff_files.length > 0) {
+        if (messagesContainer && !messagesContainer.querySelector('.synthetic-handoff-container')) {
+          var syntheticTurns = [{
+            type: 'handoff_listing',
+            filenames: resp.handoff_files.map(function(f) { return f.filename; }),
+            file_paths: resp.handoff_files.map(function(f) { return f.path; })
+          }];
+          var handoffEl = VoiceChatRenderer.createHandoffListingEl(syntheticTurns);
+          if (handoffEl) messagesContainer.insertBefore(handoffEl, messagesContainer.firstChild);
+        }
+      }
+
       // Auto-scroll if user was near the bottom before new turns were appended
       if (wasNearBottom && _onScrollChat) _onScrollChat(false);
     }).catch(function () {
@@ -583,6 +596,28 @@ window.VoiceSSEHandler = (function () {
     }
   }
 
+  // --- Synthetic turn SSE event handler ---
+
+  function handleSyntheticTurn(data) {
+    if (VoiceState.currentScreen !== 'chat') return;
+    if (!data || !data.agent_id) return;
+    if (parseInt(data.agent_id, 10) !== parseInt(VoiceState.targetAgentId, 10)) return;
+
+    var turns = data.turns;
+    if (!turns || !turns.length) return;
+
+    var messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    // Avoid duplicates
+    if (messagesEl.querySelector('.synthetic-handoff-container')) return;
+
+    var el = VoiceChatRenderer.createHandoffListingEl(turns);
+    if (el) {
+      messagesEl.insertBefore(el, messagesEl.firstChild);
+      _scrollIfNear();
+    }
+  }
+
   // --- Channel SSE event handlers ---
 
   function handleChannelMessage(data) {
@@ -652,6 +687,7 @@ window.VoiceSSEHandler = (function () {
     handleTurnUpdated: handleTurnUpdated,
     handleTurnCreated: handleTurnCreated,
     handleAgentUpdate: handleAgentUpdate,
+    handleSyntheticTurn: handleSyntheticTurn,
     // Channel SSE event handlers
     handleChannelMessage: handleChannelMessage,
     handleChannelUpdate: handleChannelUpdate,

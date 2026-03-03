@@ -1925,6 +1925,27 @@ def agent_transcript(agent_id: int):
 
     truncated_uuid = str(agent.session_uuid)[:8] if agent.session_uuid else ""
 
+    # Collect recent handoff files for persona agents
+    handoff_files = []
+    if agent.persona:
+        from ..services.persona_assets import get_persona_dir
+
+        slug = agent.persona.slug
+        handoff_dir = get_persona_dir(slug) / "handoffs"
+        if handoff_dir.is_dir():
+            md_files = sorted(
+                (
+                    f
+                    for f in handoff_dir.iterdir()
+                    if f.suffix == ".md" and f.is_file()
+                ),
+                key=lambda f: f.name,
+                reverse=True,
+            )[:3]
+            handoff_files = [
+                {"filename": f.name, "path": str(f.resolve())} for f in md_files
+            ]
+
     return jsonify(
         {
             "turns": turn_list,
@@ -1940,6 +1961,7 @@ def agent_transcript(agent_id: int):
             "persona_role": agent.persona.role.name
             if agent.persona and agent.persona.role
             else None,
+            "handoff_files": handoff_files,
         }
     ), 200
 

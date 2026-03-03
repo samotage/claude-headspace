@@ -19,6 +19,7 @@ window.VoiceAPI = (function () {
   let _onGap = null;
   let _onChannelMessage = null;
   let _onChannelUpdate = null;
+  let _onSyntheticTurn = null;
 
   function init(baseUrl, token) {
     _baseUrl = baseUrl.replace(/\/+$/, '');
@@ -50,6 +51,7 @@ window.VoiceAPI = (function () {
   function onGap(fn) { _onGap = fn; }
   function onChannelMessage(fn) { _onChannelMessage = fn; }
   function onChannelUpdate(fn) { _onChannelUpdate = fn; }
+  function onSyntheticTurn(fn) { _onSyntheticTurn = fn; }
 
   // --- HTTP helpers ---
 
@@ -291,6 +293,13 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('synthetic_turn', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onSyntheticTurn) _onSyntheticTurn(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;
@@ -357,6 +366,7 @@ window.VoiceAPI = (function () {
     onGap: onGap,
     onChannelMessage: onChannelMessage,
     onChannelUpdate: onChannelUpdate,
+    onSyntheticTurn: onSyntheticTurn,
     getSessions: getSessions,
     sendCommand: sendCommand,
     sendSelect: sendSelect,

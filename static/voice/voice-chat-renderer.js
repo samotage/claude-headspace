@@ -811,6 +811,54 @@ window.VoiceChatRenderer = (function () {
     return true;
   }
 
+  // --- Handoff listing rendering ---
+
+  function createHandoffListingEl(turns) {
+    var container = document.createElement('div');
+    container.className = 'synthetic-handoff-container synthetic-turn-container';
+
+    for (var i = 0; i < turns.length; i++) {
+      var turn = turns[i];
+      if (turn.type !== 'handoff_listing') continue;
+      if (!turn.filenames || !turn.filenames.length) continue;
+
+      var bubble = document.createElement('div');
+      bubble.className = 'synthetic-turn-bubble';
+
+      var label = document.createElement('span');
+      label.className = 'synthetic-turn-label';
+      label.textContent = 'SYSTEM';
+      bubble.appendChild(label);
+
+      var heading = document.createElement('div');
+      heading.className = 'synthetic-turn-heading';
+      heading.textContent = 'Recent handoffs (' + turn.filenames.length + ')';
+      bubble.appendChild(heading);
+
+      var list = document.createElement('ul');
+      list.className = 'synthetic-turn-list';
+      for (var j = 0; j < turn.filenames.length; j++) {
+        var li = document.createElement('li');
+        li.className = 'synthetic-turn-file';
+        li.setAttribute('title', 'Click to copy path');
+        li.setAttribute('data-path', turn.file_paths[j]);
+        li.textContent = turn.filenames[j];
+        li.addEventListener('click', (function(path) {
+          return function() {
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(path);
+            }
+          };
+        })(turn.file_paths[j]));
+        list.appendChild(li);
+      }
+      bubble.appendChild(list);
+      container.appendChild(bubble);
+    }
+
+    return container.children.length ? container : null;
+  }
+
   // --- Public API ---
 
   return {
@@ -835,6 +883,7 @@ window.VoiceChatRenderer = (function () {
     renderTranscriptTurns: renderTranscriptTurns,
     prependTranscriptTurns: prependTranscriptTurns,
     renderAttentionBanners: renderAttentionBanners,
-    injectOptionsIntoBubble: injectOptionsIntoBubble
+    injectOptionsIntoBubble: injectOptionsIntoBubble,
+    createHandoffListingEl: createHandoffListingEl
   };
 })();

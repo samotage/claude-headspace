@@ -31,6 +31,14 @@ Run comprehensive vulnerability scanning across all projects using Claude Opus 4
 
 ## Research
 
+### Context continuity enhancements — pre-compact snapshots, progressive injection, context gating
+
+Ecosystem evaluation identified three mechanisms worth borrowing for our handoff/persona system. Pre-compact auto-snapshots capture structured state before context compaction (safety net). Progressive handoff injection reduces context budget consumed by successors (two-tier: compact summary always injected, full document on demand). Context-aware handoff gating auto-triggers handoffs at configurable thresholds (strongest case: unattended overnight runs). The context gate UI already exists (dashboard button at 80%) but no hook-level automation is built.
+
+**Outline:** [docs/ideas/context-continuity-enhancements.md](../ideas/context-continuity-enhancements.md)
+**Source:** Hawk's comparative evaluation of claude-mem, Continuous-Claude-v3, beads, and SuperClaude (2026-03-04)
+**Next step:** Robbo + Hawk workshop a PRD for enhancements 1 and 2. Verify enhancement 3 against existing designs first.
+
 ### Investigate PageIndex Vectors RAG framework for RagLue
 
 Research the PageIndex Vectors RAG framework as a potential replacement for LLM-driven embeddings in RagLue. This framework uses a hierarchy tree approach and claims 98.7% accuracy. Investigate: how it works, how it replaces traditional LLM-driven embeddings, what the hierarchy tree structure looks like, validation of the 98.7% accuracy claim, integration path for RagLue, and trade-offs vs current approach.
