@@ -343,6 +343,9 @@
             }
         });
 
+        // Handle synthetic_turn events (handoff listings for persona-backed agents)
+        client.on('synthetic_turn', handleSyntheticTurn);
+
         // Handle activity bar updates on turn events
         client.on('turn_detected', handleActivityBarUpdate);
         client.on('turn_created', handleActivityBarUpdate);
@@ -1612,6 +1615,81 @@
         }
 
         document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
+    }
+
+    /**
+     * Handle synthetic_turn events.
+     *
+     * Renders handoff listings as visually distinct system bubbles inside
+     * the agent card. These are dashboard-only — the agent never sees them.
+     */
+    function handleSyntheticTurn(data) {
+        var agentId = data.agent_id;
+        if (!agentId) return;
+
+        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
+        if (!card) return;
+
+        // Avoid duplicate rendering
+        if (card.querySelector('.synthetic-turn-container')) return;
+
+        var turns = data.turns;
+        if (!turns || !turns.length) return;
+
+        var container = document.createElement('div');
+        container.className = 'synthetic-turn-container';
+
+        turns.forEach(function(turn) {
+            if (turn.type !== 'handoff_listing') return;
+            if (!turn.filenames || !turn.filenames.length) return;
+
+            var bubble = document.createElement('div');
+            bubble.className = 'synthetic-turn-bubble';
+
+            var label = document.createElement('span');
+            label.className = 'synthetic-turn-label';
+            label.textContent = 'SYSTEM';
+            bubble.appendChild(label);
+
+            var heading = document.createElement('div');
+            heading.className = 'synthetic-turn-heading';
+            heading.textContent = 'Recent handoffs (' + turn.filenames.length + ')';
+            bubble.appendChild(heading);
+
+            var list = document.createElement('ul');
+            list.className = 'synthetic-turn-list';
+
+            for (var i = 0; i < turn.filenames.length; i++) {
+                var li = document.createElement('li');
+                li.className = 'synthetic-turn-file';
+                li.setAttribute('title', 'Click to copy path');
+                li.setAttribute('data-path', turn.file_paths[i]);
+                li.textContent = turn.filenames[i];
+                li.addEventListener('click', (function(path) {
+                    return function() {
+                        if (navigator.clipboard) {
+                            navigator.clipboard.writeText(path).then(function() {
+                                if (global.Toast) {
+                                    global.Toast.success('Copied', 'Path copied to clipboard');
+                                }
+                            });
+                        }
+                    };
+                })(turn.file_paths[i]));
+                list.appendChild(li);
+            }
+
+            bubble.appendChild(list);
+            container.appendChild(bubble);
+        });
+
+        // Insert before the card-editor content (position before first real turn)
+        var cardEditor = card.querySelector('.card-editor');
+        if (cardEditor) {
+            cardEditor.insertBefore(container, cardEditor.firstChild);
+        }
+
+        document.dispatchEvent(new CustomEvent('sse:synthetic_turn', { detail: data }));
     }
 
     // Export
