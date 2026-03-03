@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** **Section 3 fully resolved (4 decisions).** Sections 4–5 pending.
+**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** **Section 3 fully resolved (4 decisions).** **Section 4 fully resolved (3 decisions).** Section 5 is a living checklist. Core workshop complete — 19 decisions resolved across Sections 0–4.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -41,6 +41,7 @@ This is the **index document** for the workshop. Each section lives in its own f
 | 3 Mar 2026 | Sam + Robbo | 1.x (correction) | **Message.persona_id NULLABLE resolution.** PostgreSQL incompatibility (NOT NULL + SET NULL ondelete) resolved: Option A chosen — make persona_id nullable. Persona deletion sets message persona_id to NULL; agent record and audit trail remain intact. System messages naturally have NULL persona. Updated: Section 1.1, 1.2, 1.3, canonical ERD, migration checklist. |
 | 3 Mar 2026 | Sam + Robbo | 2.3 (resolved) | API Endpoints resolved. Single `/api/channels` blueprint — REST endpoints for channels, members, messages. Same `ChannelService` backs CLI, API, voice bridge, and dashboard. Auth: existing dashboard session + session tokens (no new mechanism). SSE: two new event types (`channel_message`, `channel_update`) on existing stream with type filtering — no per-channel streams. Voice bridge: extend semantic picker for channel-name matching. Slug-based URLs. No channel-specific rate limiting in v1. **Section 2 (Channel Operations & CLI) fully resolved.** |
 | 3 Mar 2026 | Sam + Robbo | 3.1–3.4 (resolved) | Message delivery & fan-out fully resolved. Async per-member fan-out, best-effort, no delivery tracking. Agent responses captured via completion-only relay (existing hook pipeline), implicit relay (one-agent-one-channel = no ambiguity). Feedback loop prevention via completion-only rule + IntentDetector gating. Delivery only in AWAITING_INPUT/IDLE states, in-memory queue for others. Envelope format from Decision 0.3. Operator receives via SSE, sends via dashboard chat panel / voice bridge / voice PWA. Channel cards above project sections on dashboard. **Section 3 fully resolved.** |
+| 3 Mar 2026 | Sam + Robbo | 4.1–4.3 (resolved) | End-to-end group workshop validation. Setup: voice bridge primary path, CLI/dashboard alternatives, agent spin-up on add, context briefing. Conversation flow: simultaneous responses via per-pane locks, best-effort chronological ordering, envelope attribution, context handoff on limit. Completion: explicit by operator, history via dashboard/CLI/API, no automated decision extraction (v2), archival doesn't affect agent state. **Section 4 fully resolved. Core workshop complete — 19 decisions across Sections 0–4.** |
 
 ---
 
@@ -94,9 +95,9 @@ Channel lifecycle (4-state: pending → active → complete → archived), creat
 The delivery engine. Async per-member fan-out (tmux for local agents, SSE for operator/remote, deferred for offline). Completion-only relay via existing hook pipeline — agents don't know they're in a channel. AWAITING_INPUT/IDLE delivery with in-memory queue for other states. Operator receives via SSE channel cards + chat panel, sends via dashboard/voice bridge/voice PWA.
 
 ### [Section 4: The Group Workshop Use Case](sections/section-4-group-workshop-use-case.md)
-**Status:** Pending (3 decisions: 4.1–4.3)
+**Status:** Fully resolved (3 decisions: 4.1–4.3)
 
-End-to-end validation. Workshop channel setup, multi-agent conversation flow, workshop completion & output.
+End-to-end validation walkthrough. Voice bridge as primary setup path, agent spin-up on member add, context briefing for new joiners. Simultaneous responses via per-pane locks, best-effort chronological ordering, envelope attribution. Explicit completion by operator, full history accessible via dashboard/CLI/API, archival doesn't affect agent state.
 
 ### [Section 5: Migration & Integration Checklist](sections/section-5-migration-checklist.md)
 **Status:** Living document — populated as decisions resolve
