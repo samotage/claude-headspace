@@ -17,6 +17,8 @@ window.VoiceAPI = (function () {
   let _onTurnCreated = null;
   let _onTurnUpdated = null;
   let _onGap = null;
+  let _onChannelMessage = null;
+  let _onChannelUpdate = null;
 
   function init(baseUrl, token) {
     _baseUrl = baseUrl.replace(/\/+$/, '');
@@ -46,6 +48,8 @@ window.VoiceAPI = (function () {
   function onTurnCreated(fn) { _onTurnCreated = fn; }
   function onTurnUpdated(fn) { _onTurnUpdated = fn; }
   function onGap(fn) { _onGap = fn; }
+  function onChannelMessage(fn) { _onChannelMessage = fn; }
+  function onChannelUpdate(fn) { _onChannelUpdate = fn; }
 
   // --- HTTP helpers ---
 
@@ -272,6 +276,21 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    // Channel SSE events
+    _sse.addEventListener('channel_message', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onChannelMessage) _onChannelMessage(data);
+      } catch (err) { /* ignore */ }
+    });
+
+    _sse.addEventListener('channel_update', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onChannelUpdate) _onChannelUpdate(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;
@@ -336,6 +355,8 @@ window.VoiceAPI = (function () {
     onTurnCreated: onTurnCreated,
     onTurnUpdated: onTurnUpdated,
     onGap: onGap,
+    onChannelMessage: onChannelMessage,
+    onChannelUpdate: onChannelUpdate,
     getSessions: getSessions,
     sendCommand: sendCommand,
     sendSelect: sendSelect,

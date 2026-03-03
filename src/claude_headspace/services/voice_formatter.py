@@ -158,3 +158,90 @@ class VoiceFormatter:
             "results": [],
             "next_action": suggestion,
         }
+
+    # ── Channel formatting methods ───────────────────────────────────
+
+    def format_channel_message_sent(self, channel_slug: str) -> dict:
+        """Format channel message send confirmation."""
+        return {
+            "status_line": f"Message sent to #{channel_slug}.",
+            "results": [],
+            "next_action": "none",
+        }
+
+    def format_channel_history(
+        self, channel_slug: str, messages: list[dict],
+        verbosity: str | None = None,
+    ) -> dict:
+        """Format channel message history for voice consumption."""
+        v = verbosity or self.default_verbosity
+        if not messages:
+            return {
+                "status_line": f"No messages in #{channel_slug}.",
+                "results": [],
+                "next_action": "none",
+            }
+        results = []
+        for msg in messages:
+            persona = msg.get("persona_name", "Unknown")
+            content = msg.get("content", "")
+            if v == "concise":
+                # Truncate to first 80 chars
+                preview = content[:80] + ("..." if len(content) > 80 else "")
+                results.append(f"{persona}: {preview}")
+            else:
+                results.append(f"{persona}: {content}")
+        return {
+            "status_line": f"Last {len(messages)} messages in #{channel_slug}.",
+            "results": results,
+            "next_action": "none",
+        }
+
+    def format_channel_created(
+        self, channel_slug: str, channel_type: str,
+        member_results: list[str],
+    ) -> dict:
+        """Format channel creation confirmation."""
+        return {
+            "status_line": f"Created channel #{channel_slug} ({channel_type}).",
+            "results": member_results,
+            "next_action": "none",
+        }
+
+    def format_channel_completed(self, channel_slug: str) -> dict:
+        """Format channel completion confirmation."""
+        return {
+            "status_line": f"Channel #{channel_slug} completed.",
+            "results": [],
+            "next_action": "none",
+        }
+
+    def format_channel_list(self, channels: list[dict]) -> dict:
+        """Format channel list for voice consumption."""
+        if not channels:
+            return {
+                "status_line": "No active channels.",
+                "results": [],
+                "next_action": "Create a channel with 'create a workshop channel called [name]'.",
+            }
+        results = [
+            f"#{ch['slug']} ({ch['channel_type']}, {ch['status']})"
+            for ch in channels
+        ]
+        return {
+            "status_line": f"{len(channels)} active channel{'s' if len(channels) != 1 else ''}.",
+            "results": results,
+            "next_action": "none",
+        }
+
+    def format_channel_member_added(
+        self, persona_name: str, channel_slug: str,
+        spinning_up: bool = False,
+    ) -> dict:
+        """Format member addition confirmation."""
+        suffix = " (agent spinning up)" if spinning_up else ""
+        return {
+            "status_line": f"{persona_name} added to #{channel_slug}{suffix}.",
+            "results": [],
+            "next_action": "none",
+        }

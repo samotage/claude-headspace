@@ -583,6 +583,59 @@ window.VoiceSSEHandler = (function () {
     }
   }
 
+  // --- Channel SSE event handlers ---
+
+  function handleChannelMessage(data) {
+    if (!data || !data.slug) return;
+
+    // Update or add channel in VoiceState.channels
+    var channels = VoiceState.channels;
+    var found = false;
+    for (var i = 0; i < channels.length; i++) {
+      if (channels[i].slug === data.slug) {
+        channels[i].last_sender = data.persona_name || 'Unknown';
+        channels[i].last_preview = (data.content || '').substring(0, 80);
+        channels[i].last_message_at = data.timestamp || new Date().toISOString();
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      channels.push({
+        slug: data.slug,
+        name: data.channel_name || data.slug,
+        status: 'active',
+        channel_type: data.channel_type || 'workshop',
+        last_sender: data.persona_name || 'Unknown',
+        last_preview: (data.content || '').substring(0, 80),
+        last_message_at: data.timestamp || new Date().toISOString()
+      });
+    }
+
+    // Re-render channel section in sidebar
+    if (typeof VoiceSidebar !== 'undefined' && VoiceSidebar.renderChannelList) {
+      VoiceSidebar.renderChannelList();
+    }
+  }
+
+  function handleChannelUpdate(data) {
+    if (!data || !data.slug) return;
+
+    var channels = VoiceState.channels;
+    for (var i = 0; i < channels.length; i++) {
+      if (channels[i].slug === data.slug) {
+        if (data.status) channels[i].status = data.status;
+        if (data.name) channels[i].name = data.name;
+        break;
+      }
+    }
+
+    // Re-render channel section in sidebar
+    if (typeof VoiceSidebar !== 'undefined' && VoiceSidebar.renderChannelList) {
+      VoiceSidebar.renderChannelList();
+    }
+  }
+
   // --- Public API ---
 
   return {
@@ -599,6 +652,9 @@ window.VoiceSSEHandler = (function () {
     handleTurnUpdated: handleTurnUpdated,
     handleTurnCreated: handleTurnCreated,
     handleAgentUpdate: handleAgentUpdate,
+    // Channel SSE event handlers
+    handleChannelMessage: handleChannelMessage,
+    handleChannelUpdate: handleChannelUpdate,
     // Connection
     updateConnectionIndicator: updateConnectionIndicator,
     catchUpAfterReconnect: catchUpAfterReconnect,

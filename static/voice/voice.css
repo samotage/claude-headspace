@@ -700,6 +700,90 @@ body.layout-split .agent-card.selected:hover {
   margin: 6px 0;
 }
 
+/* ── Channel section in sidebar ──────────────────────────── */
+.channel-list-section {
+  padding: 0 6px 8px;
+}
+.channel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 4px;
+}
+.channel-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.channel-card {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--info);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.channel-card:hover {
+  background: var(--surface-raised);
+}
+.channel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.channel-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--info);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.channel-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.channel-status-active {
+  color: var(--success);
+}
+.channel-status-pending {
+  color: var(--warning);
+}
+.channel-preview {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-sender {
+  color: var(--success);
+  font-weight: 500;
+}
+.channel-content-preview {
+  color: var(--text-muted);
+}
+.channel-ago {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+body.layout-split .channel-card {
+  background: var(--bg);
+}
+body.layout-split .channel-card:hover {
+  background: var(--surface);
+}
+
 /* Lightweight voice toast */
 .voice-toast {
   position: fixed;

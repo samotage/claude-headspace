@@ -803,12 +803,105 @@ window.VoiceSidebar = (function () {
     }).catch(function () { /* ignore */ });
   }
 
+  // --- Channel section rendering ---
+
+  function renderChannelList() {
+    var channels = VoiceState.channels || [];
+    var container = document.getElementById('channel-list');
+
+    // Create container if it doesn't exist yet
+    if (!container) {
+      var sidebar = document.getElementById('sidebar');
+      if (!sidebar) return;
+      container = document.createElement('div');
+      container.id = 'channel-list';
+      container.className = 'channel-list-section';
+      sidebar.appendChild(container);
+    }
+
+    // Filter to active/pending channels only
+    var active = [];
+    for (var i = 0; i < channels.length; i++) {
+      if (channels[i].status === 'active' || channels[i].status === 'pending') {
+        active.push(channels[i]);
+      }
+    }
+
+    if (active.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Sort by most recent message
+    active.sort(function (a, b) {
+      var aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      var bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    var html = '<div class="channel-section-header">'
+      + '<span class="channel-section-title">Channels (' + active.length + ')</span>'
+      + '</div>';
+
+    for (var ci = 0; ci < active.length; ci++) {
+      var ch = active[ci];
+      var statusClass = 'channel-status-' + (ch.status || 'pending');
+      var agoText = '';
+      if (ch.last_message_at) {
+        var elapsed = (Date.now() - new Date(ch.last_message_at).getTime()) / 1000;
+        if (elapsed < 60) agoText = Math.floor(elapsed) + 's ago';
+        else if (elapsed < 3600) agoText = Math.floor(elapsed / 60) + 'm ago';
+        else agoText = Math.floor(elapsed / 3600) + 'h ago';
+      }
+
+      var previewHtml = '';
+      if (ch.last_sender && ch.last_preview) {
+        previewHtml = '<div class="channel-preview">'
+          + '<span class="channel-sender">' + _esc(ch.last_sender) + ':</span> '
+          + '<span class="channel-content-preview">' + _esc(ch.last_preview) + '</span>'
+          + '</div>';
+      }
+
+      html += '<div class="channel-card" data-channel-slug="' + _esc(ch.slug) + '">'
+        + '<div class="channel-header">'
+        + '<span class="channel-name">#' + _esc(ch.slug) + '</span>'
+        + '<span class="channel-status ' + statusClass + '">' + _esc(ch.status || 'pending') + '</span>'
+        + '</div>'
+        + previewHtml
+        + (agoText ? '<div class="channel-ago">' + agoText + '</div>' : '')
+        + '</div>';
+    }
+
+    container.innerHTML = html;
+
+    // Bind click handlers for channel cards
+    var cards = container.querySelectorAll('.channel-card');
+    for (var k = 0; k < cards.length; k++) {
+      cards[k].addEventListener('click', function () {
+        var slug = this.getAttribute('data-channel-slug');
+        onChannelCardClick(slug);
+      });
+    }
+  }
+
+  function onChannelCardClick(slug) {
+    VoiceState.currentChannelSlug = slug;
+    showToast('Channel #' + slug + ' selected');
+    // Future: navigate to channel detail view
+  }
+
+  // Use VoiceChatRenderer.esc for HTML escaping (always available on voice page)
+  function _esc(str) {
+    return VoiceChatRenderer.esc(str);
+  }
+
   // --- Public API ---
 
   return {
     setAgentSelectedHandler: setAgentSelectedHandler,
     highlightSelectedAgent: highlightSelectedAgent,
     renderAgentList: renderAgentList,
+    renderChannelList: renderChannelList,
     closeAllKebabMenus: closeAllKebabMenus,
     selectAgent: selectAgent,
     autoTarget: autoTarget,
