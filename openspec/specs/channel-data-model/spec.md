@@ -1,7 +1,8 @@
-# Specification: e9-s3-channel-data-model
+# channel-data-model Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change e9-s3-channel-data-model. Update Purpose after archive.
+## Requirements
 ### Requirement: ChannelType Enum
 
 The system SHALL create a PostgreSQL enum `channeltype` with exactly 5 values: `workshop`, `delegation`, `review`, `standup`, `broadcast`.
@@ -210,16 +211,13 @@ The migration SHALL be reversible, with downgrade dropping all objects in revers
 
 ---
 
-## MODIFIED Requirements
+### Requirement: Turn Model Extension
 
-### Requirement: Turn Model
+The Turn model SHALL have a nullable `source_message_id` column (Integer FK to messages.id, SET NULL ondelete) for channel message traceability. This column is additive and transparent to existing Turn code.
 
-The existing Turn model SHALL be modified to add one nullable column: `source_message_id` (Integer FK to messages.id, SET NULL ondelete). No existing columns or relationships SHALL be changed. This modification is additive and transparent to existing code.
-
-#### Scenario: Turn Source Message Column Added
-- **WHEN** the Turn model is inspected after migration
+#### Scenario: Turn Source Message Column
+- **WHEN** the Turn model is inspected
 - **THEN** it contains a nullable `source_message_id` column referencing messages.id
-- **AND** all existing Turn columns and relationships remain unchanged
 
 #### Scenario: Source Message Deletion
 - **WHEN** a Message referenced by Turn.source_message_id is deleted
@@ -227,9 +225,9 @@ The existing Turn model SHALL be modified to add one nullable column: `source_me
 
 ---
 
-### Requirement: Models Package Registration
+### Requirement: Channel Models Package Registration
 
-The existing `models/__init__.py` SHALL be modified to add imports and `__all__` entries for Channel, ChannelMembership, Message, ChannelType, and MessageType. No existing imports or exports SHALL be removed or changed.
+Channel, ChannelMembership, Message models and ChannelType, MessageType enums SHALL be importable from the `claude_headspace.models` package.
 
 #### Scenario: New Models Importable
 - **WHEN** `from claude_headspace.models import Channel, ChannelMembership, Message` is executed
@@ -239,6 +237,3 @@ The existing `models/__init__.py` SHALL be modified to add imports and `__all__`
 - **WHEN** `from claude_headspace.models import ChannelType, MessageType` is executed
 - **THEN** both enum classes are available
 
-#### Scenario: Existing Imports Preserved
-- **WHEN** the models package is imported
-- **THEN** all previously existing models and enums remain importable

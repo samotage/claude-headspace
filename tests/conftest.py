@@ -98,6 +98,10 @@ def _seed_persona_types(app):
                 (4, 'person', 'external')
                 ON CONFLICT DO NOTHING
             """))
+            # Reset sequence so auto-generated ids start after seeded rows
+            db.session.execute(text(
+                "SELECT setval('persona_types_id_seq', 4, true)"
+            ))
             db.session.commit()
         except Exception:
             db.session.rollback()
