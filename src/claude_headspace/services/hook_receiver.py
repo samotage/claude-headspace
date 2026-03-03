@@ -696,6 +696,21 @@ def process_session_start(
         db.session.commit()
         broadcast_card_refresh(agent, "session_start")
 
+        # Emit synthetic turn listing recent handoffs for persona-backed agents.
+        # This runs after persona assignment is committed so the dashboard gets
+        # visibility into prior handoffs. The agent never sees this — it is
+        # dashboard-only via SSE.
+        if agent.persona_id:
+            try:
+                from flask import current_app as _app
+                detection_svc = _app.extensions.get("handoff_detection_service")
+                if detection_svc:
+                    detection_svc.detect_and_emit(agent)
+            except Exception as e:
+                logger.debug(
+                    f"session_start: handoff detection failed for agent_id={agent.id}: {e}"
+                )
+
         # Inject persona skill files for persona-backed agents with a tmux pane
         if agent.persona_id and agent.tmux_pane_id:
             try:

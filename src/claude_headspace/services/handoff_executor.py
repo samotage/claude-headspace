@@ -16,6 +16,7 @@ Two completion paths exist:
 Both paths call complete_handoff(), which is idempotent.
 """
 
+import glob as glob_module
 import logging
 import os
 import threading
@@ -107,18 +108,22 @@ class HandoffExecutor:
         Returns an absolute path so the agent writes to the correct location
         regardless of its working directory.
 
-        Format: <project_root>/data/personas/{slug}/handoffs/{YYYYMMDDTHHmmss}-{agent-8digit}.md
+        Format: <project_root>/data/personas/{slug}/handoffs/{YYYY-MM-DDTHH:MM:SS}_<insert-summary>_agent-id:{N}.md
+
+        The ``<insert-summary>`` placeholder is for the departing agent to replace
+        with a kebab-case summary of their work. The polling thread uses glob
+        fallback to detect the renamed file.
         """
         # app.root_path points to the package dir (src/claude_headspace/)
         # parent.parent gets us to the project root (alongside data/, src/, etc.)
         project_root = Path(self.app.root_path).parent.parent
         persona = agent.persona
         slug = persona.slug
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-        agent_suffix = str(agent.id).zfill(8)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        agent_tag = f"agent-id:{agent.id}"
         return str(
             project_root / "data" / "personas" / slug / "handoffs"
-            / f"{timestamp}-{agent_suffix}.md"
+            / f"{timestamp}_<insert-summary>_{agent_tag}.md"
         )
 
     # ── Handoff instruction composition ──────────────────────────────
@@ -139,6 +144,13 @@ class HandoffExecutor:
         parts = [
             f"HANDOFF REQUESTED: Write a handoff document for your successor.\n\n"
             f"Write the document to: {file_path}\n\n"
+            f"IMPORTANT — FILENAME SUMMARY: The filename contains `<insert-summary>`. "
+            f"Before writing the file, replace `<insert-summary>` in the filename with "
+            f"a kebab-case summary of your work. Requirements:\n"
+            f"- Max 60 characters\n"
+            f"- Lowercase with hyphens (kebab-case), e.g. `refactored-auth-module`\n"
+            f"- No underscores (underscores are field separators in the filename)\n"
+            f"- Describe what you accomplished, not what you were assigned\n\n"
             f"The document MUST include:\n"
             f"1. Current work: What you are working on right now\n"
             f"2. Progress: What has been completed so far\n"
@@ -285,6 +297,11 @@ class HandoffExecutor:
 
         Runs with app context. When the file is detected (exists + non-empty),
         calls complete_handoff(). Times out after POLL_TIMEOUT_SECONDS.
+
+        Uses a two-step detection strategy:
+        1. Check for the exact generated path (with ``<insert-summary>`` placeholder).
+        2. Glob fallback: ``{timestamp}_*_{agent_tag}.md`` — matches when the agent
+           replaced the placeholder with a real summary.
         """
         metadata = self.get_handoff_metadata(agent_id)
         if not metadata:
@@ -292,6 +309,21 @@ class HandoffExecutor:
 
         file_path = metadata["file_path"]
         start_time = time.monotonic()
+
+        # Build the glob fallback pattern from the generated path.
+        # Path format: .../{timestamp}_<insert-summary>_{agent_tag}.md
+        # Glob pattern: .../{timestamp}_*_{agent_tag}.md
+        file_dir = os.path.dirname(file_path)
+        filename = os.path.basename(file_path)
+        parts = filename.split("_", 1)  # Split on first underscore
+        if len(parts) >= 2:
+            timestamp_part = parts[0]
+            # Extract agent tag from the end (after the last underscore)
+            last_underscore = filename.rfind("_")
+            agent_tag_part = filename[last_underscore + 1:]  # e.g. "agent-id:1137.md"
+            glob_pattern = os.path.join(file_dir, f"{timestamp_part}_*_{agent_tag_part}")
+        else:
+            glob_pattern = None
 
         logger.info(
             f"handoff_poll: started — agent_id={agent_id}, file_path={file_path}"
@@ -306,11 +338,32 @@ class HandoffExecutor:
                 )
                 return
 
-            # Check for the file
+            # Step 1: Check for exact path (agent kept the placeholder filename)
+            detected_path = None
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                detected_path = file_path
+            elif glob_pattern:
+                # Step 2: Glob fallback (agent replaced <insert-summary>)
+                matches = sorted(glob_module.glob(glob_pattern))
+                # Filter to non-empty files only
+                matches = [m for m in matches if os.path.getsize(m) > 0]
+                if matches:
+                    if len(matches) > 1:
+                        logger.warning(
+                            f"handoff_poll: glob matched {len(matches)} files "
+                            f"for agent_id={agent_id}, using first: {matches[0]}"
+                        )
+                    detected_path = matches[0]
+                    # Update metadata so complete_handoff uses the actual path
+                    with _handoff_in_progress_lock:
+                        meta = _handoff_in_progress.get(agent_id)
+                        if meta:
+                            meta["file_path"] = detected_path
+
+            if detected_path:
                 logger.info(
                     f"handoff_poll: file detected — agent_id={agent_id}, "
-                    f"file_path={file_path}"
+                    f"file_path={detected_path}"
                 )
                 # Complete the handoff within app context
                 with self.app.app_context():

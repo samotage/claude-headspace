@@ -146,32 +146,45 @@ class TestValidatePreconditions:
 
 
 class TestGenerateHandoffFilePath:
-    """Tests for handoff file path generation (task 3.2)."""
+    """Tests for handoff file path generation — new ISO 8601 format."""
 
-    def test_path_format(self, app):
+    def test_path_format_new(self, app):
+        """New format: {YYYY-MM-DDTHH:MM:SS}_<insert-summary>_agent-id:{N}.md"""
         executor = HandoffExecutor(app=app)
         agent = _make_agent(agent_id=42)
 
         path = executor.generate_handoff_file_path(agent)
 
-        # Path must be absolute so agents write to the correct location
-        # regardless of their working directory
+        # Path must be absolute
         assert os.path.isabs(path), f"Expected absolute path, got: {path}"
         assert "data/personas/developer-con-1/handoffs/" in path
-        assert path.endswith("-00000042.md")
-        # Check timestamp format (YYYYMMDDTHHmmss)
-        filename = path.split("/")[-1]
-        timestamp_part = filename.split("-")[0]
-        assert len(timestamp_part) == 15  # YYYYMMDDTHHmmss
-        assert "T" in timestamp_part
 
-    def test_path_zero_padded_agent_id(self, app):
+        filename = os.path.basename(path)
+        # Three sections separated by underscores
+        parts = filename.split("_", 2)
+        assert len(parts) == 3, f"Expected 3 underscore-separated parts, got: {filename}"
+
+        # Section 1: ISO 8601 timestamp with separators
+        timestamp = parts[0]
+        assert "T" in timestamp
+        assert "-" in timestamp.split("T")[0]  # Date has hyphens
+        assert ":" in timestamp.split("T")[1]  # Time has colons
+
+        # Section 2: <insert-summary> placeholder
+        assert parts[1] == "<insert-summary>"
+
+        # Section 3: agent-id:{N}.md
+        assert parts[2] == "agent-id:42.md"
+
+    def test_path_agent_id_no_padding(self, app):
+        """Agent ID should NOT be zero-padded in new format."""
         executor = HandoffExecutor(app=app)
         agent = _make_agent(agent_id=7)
 
         path = executor.generate_handoff_file_path(agent)
 
-        assert "-00000007.md" in path
+        assert "agent-id:7.md" in path
+        assert "00000007" not in path
 
     def test_path_large_agent_id(self, app):
         executor = HandoffExecutor(app=app)
@@ -179,15 +192,28 @@ class TestGenerateHandoffFilePath:
 
         path = executor.generate_handoff_file_path(agent)
 
-        assert "-12345678.md" in path
+        assert "agent-id:12345678.md" in path
+
+    def test_path_iso_timestamp_format(self, app):
+        """Timestamp portion uses ISO 8601 with separators."""
+        executor = HandoffExecutor(app=app)
+        agent = _make_agent(agent_id=1137)
+
+        path = executor.generate_handoff_file_path(agent)
+        filename = os.path.basename(path)
+        timestamp = filename.split("_")[0]
+
+        # Should match YYYY-MM-DDTHH:MM:SS
+        import re
+        assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", timestamp)
 
 
 class TestComposeHandoffInstruction:
-    """Tests for handoff instruction composition (task 3.3)."""
+    """Tests for handoff instruction composition."""
 
     def test_instruction_contains_file_path(self, app):
         executor = HandoffExecutor(app=app)
-        file_path = "data/personas/dev/handoffs/20260101T120000-00000001.md"
+        file_path = "data/personas/dev/handoffs/2026-01-01T12:00:00_<insert-summary>_agent-id:1.md"
 
         instruction = executor.compose_handoff_instruction(file_path)
 
@@ -205,14 +231,31 @@ class TestComposeHandoffInstruction:
         assert "Next steps" in instruction
 
     def test_instruction_does_not_mention_exit(self, app):
-        """Handoff instruction should NOT tell the agent to /exit.
-
-        The outgoing agent stays alive; the successor is created alongside it.
-        """
+        """Handoff instruction should NOT tell the agent to /exit."""
         executor = HandoffExecutor(app=app)
         instruction = executor.compose_handoff_instruction("test.md")
 
         assert "/exit" not in instruction
+
+    def test_instruction_contains_kebab_case_guidance(self, app):
+        """Instruction must tell the agent to replace <insert-summary> with kebab-case."""
+        executor = HandoffExecutor(app=app)
+        instruction = executor.compose_handoff_instruction("test.md")
+
+        assert "<insert-summary>" in instruction
+        assert "kebab-case" in instruction
+        assert "60" in instruction  # max 60 characters
+        assert "underscore" in instruction.lower()  # no underscores
+
+    def test_instruction_with_context(self, app):
+        """Operator context is appended when provided."""
+        executor = HandoffExecutor(app=app)
+        instruction = executor.compose_handoff_instruction(
+            "test.md", context="Focus on the auth module"
+        )
+
+        assert "Focus on the auth module" in instruction
+        assert "ADDITIONAL CONTEXT" in instruction
 
 
 class TestVerifyHandoffFile:
@@ -600,3 +643,145 @@ class TestDeliverInjectionPrompt:
             pane_id="%5",
             text="Read the handoff doc at handoff.md",
         )
+
+
+class TestPollingGlobFallback:
+    """Tests for _poll_for_handoff_file glob fallback (FR3)."""
+
+    def test_glob_fallback_detects_renamed_file(self, app, tmp_path):
+        """When exact path not found, glob matches renamed file."""
+        executor = HandoffExecutor(app=app)
+        agent = _make_agent(agent_id=42)
+
+        # Create the handoff directory
+        handoff_dir = tmp_path / "handoffs"
+        handoff_dir.mkdir()
+
+        # Generate the exact path (with placeholder)
+        exact_path = str(
+            handoff_dir / "2026-01-01T12:00:00_<insert-summary>_agent-id:42.md"
+        )
+
+        # The agent renamed the file (replaced the placeholder)
+        renamed = handoff_dir / "2026-01-01T12:00:00_refactored-auth-module_agent-id:42.md"
+        renamed.write_text("# Handoff\nContent here")
+
+        # Set up handoff metadata
+        from claude_headspace.services.handoff_executor import (
+            _handoff_in_progress,
+            _handoff_in_progress_lock,
+        )
+
+        with _handoff_in_progress_lock:
+            _handoff_in_progress[42] = {
+                "file_path": exact_path,
+                "reason": "test",
+                "triggered_at": "2026-01-01T00:00:00",
+            }
+
+        # Mock complete_handoff to verify it's called
+        with patch.object(executor, "complete_handoff") as mock_complete:
+            mock_complete.return_value = HandoffResult(
+                success=True, message="OK"
+            )
+
+            # Run poll (with very short timeout)
+            with patch(
+                "claude_headspace.services.handoff_executor.POLL_TIMEOUT_SECONDS", 1
+            ):
+                executor._poll_for_handoff_file(42)
+
+        mock_complete.assert_called_once_with(42)
+
+        # Verify metadata was updated with the actual path
+        metadata = executor.get_handoff_metadata(42)
+        if metadata:
+            assert "refactored-auth-module" in metadata["file_path"]
+
+    def test_glob_fallback_logs_warning_multiple_matches(self, app, tmp_path, caplog):
+        """Multiple glob matches log a warning."""
+        executor = HandoffExecutor(app=app)
+
+        handoff_dir = tmp_path / "handoffs"
+        handoff_dir.mkdir()
+
+        exact_path = str(
+            handoff_dir / "2026-01-01T12:00:00_<insert-summary>_agent-id:42.md"
+        )
+
+        # Create two matching files
+        (handoff_dir / "2026-01-01T12:00:00_first-summary_agent-id:42.md").write_text(
+            "# First"
+        )
+        (handoff_dir / "2026-01-01T12:00:00_second-summary_agent-id:42.md").write_text(
+            "# Second"
+        )
+
+        from claude_headspace.services.handoff_executor import (
+            _handoff_in_progress,
+            _handoff_in_progress_lock,
+        )
+
+        with _handoff_in_progress_lock:
+            _handoff_in_progress[42] = {
+                "file_path": exact_path,
+                "reason": "test",
+                "triggered_at": "2026-01-01T00:00:00",
+            }
+
+        with patch.object(executor, "complete_handoff") as mock_complete:
+            mock_complete.return_value = HandoffResult(
+                success=True, message="OK"
+            )
+            with patch(
+                "claude_headspace.services.handoff_executor.POLL_TIMEOUT_SECONDS", 1
+            ):
+                import logging
+                with caplog.at_level(logging.WARNING):
+                    executor._poll_for_handoff_file(42)
+
+        # Should still complete (uses first match)
+        mock_complete.assert_called_once()
+        # Should have logged a warning
+        assert any("glob matched 2 files" in r.message for r in caplog.records)
+
+    def test_exact_path_takes_precedence(self, app, tmp_path):
+        """If exact path exists, glob fallback is not used."""
+        executor = HandoffExecutor(app=app)
+
+        handoff_dir = tmp_path / "handoffs"
+        handoff_dir.mkdir()
+
+        # Create the exact file (with placeholder name)
+        exact_file = (
+            handoff_dir / "2026-01-01T12:00:00_<insert-summary>_agent-id:42.md"
+        )
+        exact_file.write_text("# Handoff with placeholder name")
+        exact_path = str(exact_file)
+
+        from claude_headspace.services.handoff_executor import (
+            _handoff_in_progress,
+            _handoff_in_progress_lock,
+        )
+
+        with _handoff_in_progress_lock:
+            _handoff_in_progress[42] = {
+                "file_path": exact_path,
+                "reason": "test",
+                "triggered_at": "2026-01-01T00:00:00",
+            }
+
+        with patch.object(executor, "complete_handoff") as mock_complete:
+            mock_complete.return_value = HandoffResult(
+                success=True, message="OK"
+            )
+            with patch(
+                "claude_headspace.services.handoff_executor.POLL_TIMEOUT_SECONDS", 1
+            ):
+                executor._poll_for_handoff_file(42)
+
+        mock_complete.assert_called_once()
+        # Metadata should still use the exact path
+        metadata = executor.get_handoff_metadata(42)
+        if metadata:
+            assert "<insert-summary>" in metadata["file_path"]

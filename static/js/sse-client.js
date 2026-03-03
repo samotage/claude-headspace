@@ -263,6 +263,7 @@
         "commander_availability",
         "agent_state_changed",
         "agent_activity",
+        "synthetic_turn",
       ];
 
       commonTypes.forEach((type) => {

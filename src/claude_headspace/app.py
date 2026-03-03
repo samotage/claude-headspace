@@ -371,6 +371,12 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     app.extensions["handoff_executor"] = handoff_executor
     logger.info("Handoff executor initialized")
 
+    # Initialize handoff detection service (lightweight, no background threads)
+    from .services.handoff_detection import HandoffDetectionService
+    handoff_detection_service = HandoffDetectionService(app=app)
+    app.extensions["handoff_detection_service"] = handoff_detection_service
+    logger.info("Handoff detection service initialized")
+
     # Initialize file upload service
     from .services.file_upload import FileUploadService
     file_upload_service = FileUploadService(config=config, app_root=str(app_root))
