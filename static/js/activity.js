@@ -546,17 +546,20 @@
                     var barMeta = chartInstance.getDatasetMeta(0);
                     if (!barMeta || !barMeta.data) return;
 
+                    // First pass: draw candlesticks and collect mean points for connecting line
+                    var meanPoints = [];
                     for (var i = 0; i < candles.length; i++) {
                         var c = candles[i];
-                        if (!c) continue;
-
                         var barEl = barMeta.data[i];
                         if (!barEl) continue;
 
-                        var x = barEl.x;
                         var barWidth = barEl.width || 20;
                         var candleWidth = Math.max(barWidth * 0.35, 6);
                         var halfW = candleWidth / 2;
+                        // Position candlestick to the right of the turn bar
+                        var x = barEl.x + (barWidth / 2) + halfW + 2;
+
+                        if (!c) { meanPoints.push(null); continue; }
 
                         var yHigh = y1Scale.getPixelForValue(c.high);
                         var yLow = y1Scale.getPixelForValue(c.low);
@@ -564,9 +567,11 @@
                         var yBottom = y1Scale.getPixelForValue(c.bodyBottom);
                         var yMean = y1Scale.getPixelForValue(c.mean);
 
-                        // Color based on mean
+                        // Color based on mean threshold
                         var lvl = _levelFromAvg(c.mean);
                         var color = FRUST_COLORS[lvl];
+
+                        meanPoints.push({ x: x, y: yMean, mean: c.mean });
 
                         // Wick (thin vertical line from low to high)
                         ctx.save();
@@ -597,6 +602,27 @@
 
                         ctx.restore();
                     }
+
+                    // Second pass: draw connecting line between mean points
+                    // Each segment colored by the average of the two endpoints
+                    ctx.save();
+                    ctx.lineWidth = 1.5;
+                    var prev = null;
+                    for (var i = 0; i < meanPoints.length; i++) {
+                        var pt = meanPoints[i];
+                        if (!pt) { prev = null; continue; }
+                        if (prev) {
+                            var segMean = (prev.mean + pt.mean) / 2;
+                            var segColor = FRUST_COLORS[_levelFromAvg(segMean)];
+                            ctx.strokeStyle = 'rgba(' + segColor.rgb + ', 0.6)';
+                            ctx.beginPath();
+                            ctx.moveTo(prev.x, prev.y);
+                            ctx.lineTo(pt.x, pt.y);
+                            ctx.stroke();
+                        }
+                        prev = pt;
+                    }
+                    ctx.restore();
                 }
             };
 
