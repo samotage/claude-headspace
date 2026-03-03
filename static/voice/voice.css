@@ -1660,7 +1660,7 @@ body.layout-split .channel-card:hover {
   background: rgba(255,255,255,0.06);
 }
 
-/* Copy button on agent bubbles */
+/* Copy button on all bubbles */
 .bubble-copy-btn {
   position: absolute;
   top: 6px;
@@ -1675,13 +1675,19 @@ body.layout-split .channel-card:hover {
   background: var(--icon-btn-bg);
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.45;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
   z-index: 2;
   -webkit-tap-highlight-color: transparent;
 }
+.chat-bubble.user .bubble-copy-btn {
+  right: auto;
+  left: 6px;
+}
 .chat-bubble.agent:hover .bubble-copy-btn,
-.chat-bubble.agent:focus-within .bubble-copy-btn {
+.chat-bubble.agent:focus-within .bubble-copy-btn,
+.chat-bubble.user:hover .bubble-copy-btn,
+.chat-bubble.user:focus-within .bubble-copy-btn {
   opacity: 1;
 }
 .bubble-copy-btn:hover {

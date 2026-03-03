@@ -337,7 +337,7 @@ def _extract_member_refs(members_text: str) -> list[str]:
 
 def _match_persona_for_channel(name_ref: str) -> dict:
     """Fuzzy match a persona name/slug reference against active personas."""
-    personas = Persona.query.filter_by(active=True).all()
+    personas = Persona.query.filter_by(status="active").all()
     return _fuzzy_match(
         name_ref,
         personas,
@@ -665,7 +665,10 @@ def _match_picker_option(text: str, labels: list[str]) -> int:
         return min(1, len(labels) - 1)  # Default to second option for negative
 
     # Affirmative patterns (after negation check to prevent "don't do it" → "do it")
-    if any(p in normalized for p in _AFFIRMATIVE_PATTERNS):
+    # Use word-boundary matching to avoid false positives (e.g., "cargo" matching "go")
+    if words & _AFFIRMATIVE_PATTERNS or any(
+        p in normalized for p in _AFFIRMATIVE_PATTERNS if " " in p
+    ):
         for i, label in enumerate(labels):
             if label.lower() in ("yes", "approve", "ok", "proceed"):
                 return i

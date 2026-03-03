@@ -23,6 +23,12 @@ window.VoiceChatRenderer = (function () {
     return CHUtils.renderMarkdown(text);
   }
 
+  // --- Strip COMMAND COMPLETE footer from copied text ---
+
+  function stripCommandComplete(text) {
+    return text.replace(/\n---\nCOMMAND COMPLETE\s*[—–-].*$/s, '').trimEnd();
+  }
+
   // --- Time formatting ---
 
   function formatChatTime(isoStr) {
@@ -462,10 +468,11 @@ window.VoiceChatRenderer = (function () {
       }
     }
 
-    // Copy button for agent bubbles with text content
-    if (!isUser && displayText) {
-      bubble.setAttribute('data-raw-md', displayText);
-      html = '<button class="bubble-copy-btn" aria-label="Copy markdown" title="Copy">'
+    // Copy button for all bubbles with text content
+    if (displayText) {
+      bubble.setAttribute('data-raw-md', stripCommandComplete(displayText));
+      var copyLabel = isUser ? 'Copy text' : 'Copy markdown';
+      html = '<button class="bubble-copy-btn" aria-label="' + copyLabel + '" title="Copy">'
         + '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
         + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
         + '<path d="M10.5 5.5V3.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>'

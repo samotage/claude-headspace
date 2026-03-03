@@ -197,7 +197,7 @@
         if (!slug || !updateType) return;
 
         switch (updateType) {
-            case 'member_joined':
+            case 'member_added':
             case 'member_left':
                 if (data.members) {
                     _updateCardMembers(slug, data.members);

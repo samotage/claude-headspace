@@ -372,7 +372,7 @@ class ChannelService:
         # Resolve target persona
         target_persona = Persona.query.filter_by(slug=persona_slug).first()
         if not target_persona:
-            raise ChannelNotFoundError(
+            raise ChannelError(
                 f"Error: Persona '{persona_slug}' not found."
             )
 
@@ -478,7 +478,7 @@ class ChannelService:
             slug=target_persona_slug
         ).first()
         if not target_persona:
-            raise ChannelNotFoundError(
+            raise ChannelError(
                 f"Error: Persona '{target_persona_slug}' not found."
             )
 
