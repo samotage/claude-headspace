@@ -263,6 +263,56 @@ Voice Bridge and the [Input Bridge](input-bridge) (dashboard respond widget) ser
 
 Both ultimately use `tmux send-keys` to deliver text to the agent's terminal pane. Voice Bridge adds speech I/O and a mobile-optimised interface on top.
 
+## Channel commands
+
+Voice Bridge supports full channel operations. For detailed channel documentation, see [Channels](channels).
+
+### Sending to a channel
+
+Say "send to [channel name]: [your message]" to post a message. Variations like "message the [channel]:" and "tell [channel]:" also work.
+
+```
+"Send to auth review: can we simplify the token validation?"
+"Tell engineering: the deploy is ready"
+```
+
+### Viewing channel activity
+
+Ask what's happening in a channel to hear recent messages read back:
+
+```
+"What's happening in the engineering channel?"
+"Show auth review messages"
+```
+
+### Creating channels by voice
+
+```
+"Create a workshop channel called auth review"
+"Create a review channel called design system with Con and Robbo"
+```
+
+The channel type is inferred from your words. "Workshop" is the default if no type is specified. Member names are matched against active personas using fuzzy matching.
+
+### Other channel commands
+
+```
+"List channels"              — list your active channels
+"Add Con to auth review"     — add a member
+"Complete the auth review"   — complete the channel
+```
+
+### Channel context
+
+After any channel operation, the voice bridge remembers which channel you referenced. Subsequent commands can use "this channel" instead of repeating the name:
+
+1. "Send to auth review: what's the status?"
+2. "Add Robbo to this channel"
+
+### Name matching
+
+Channel names are matched using fuzzy logic: exact slug match, case-insensitive name match, substring match, and token overlap. If multiple channels match, you'll be asked to say the full channel name.
+
 ## Troubleshooting
 
 ### "No agents are waiting for input"

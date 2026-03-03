@@ -228,8 +228,32 @@ curl https://your-server:5055/api/personas/{slug}/validate
 
 Returns `{"valid": true, ...}` if active, or `{"valid": false, ...}` with guidance.
 
-## Related Topics
+## Persona types
 
+Every persona is classified by type, which determines how it participates in the system.
+
+| Type | Subtype | Who | Example |
+|------|---------|-----|---------|
+| Agent | Internal | AI agents on operator hardware | Con, Robbo (default for all registered personas) |
+| Agent | External | AI agents from external collaborators | Reserved for v2 |
+| Person | Internal | The operator | You (created automatically) |
+| Person | External | External human collaborators | Reserved for v2 |
+
+Persona type controls channel creation capability. Internal types (both agent and person) can create [channels](channels). External types cannot.
+
+The operator persona is created automatically during setup. It lets you participate in channels as a named identity with the same messaging and membership semantics as agent personas.
+
+## Personas and channels
+
+Personas are the building block for [channels](channels). When a persona joins a channel, the system assigns a running agent to handle message delivery. If the persona has no active agent, one spins up automatically.
+
+Each agent can only be active in one channel at a time; to join a different channel, the agent must leave the current one first.
+
+For full channel documentation, see [Channels](channels).
+
+## Related topics
+
+- [Channels](channels) — Inter-agent communication and collaboration
 - [Handoff](handoff) — Context transfer between persona agents
 - [Dashboard](dashboard) — How agent cards display persona identity
 - [Input Bridge](input-bridge) — Responding to persona agents from the dashboard

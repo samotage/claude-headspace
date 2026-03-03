@@ -229,7 +229,7 @@ class TestExternalApiTopic:
 
         topic = next(t for t in TOPICS if t["slug"] == "external-api")
         assert topic["title"] == "External API"
-        assert topic["order"] == 17
+        assert topic["order"] == 18
 
     @patch("src.claude_headspace.routes.help.get_help_dir")
     def test_external_api_topic_loads(self, mock_get_dir, client, temp_help_dir):
