@@ -442,12 +442,12 @@
         if (_newIndicatorEl) _newIndicatorEl.classList.add('hidden');
     }
 
-    function _escapeHtml(str) {
+    var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
-    }
+    };
 
     // Track scroll position for auto-scroll decisions
     function _initScrollTracking() {

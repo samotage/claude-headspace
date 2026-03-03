@@ -726,6 +726,7 @@ class TestDashboardWithData:
         from src.claude_headspace.routes.help import help_bp
         from src.claude_headspace.routes.logging import logging_bp
         from src.claude_headspace.routes.objective import objective_bp
+        from src.claude_headspace.routes.personas import personas_bp
         from src.claude_headspace.routes.projects import projects_bp
 
         project_root = Path(__file__).parent.parent.parent
@@ -740,6 +741,7 @@ class TestDashboardWithData:
         app.register_blueprint(help_bp)
         app.register_blueprint(logging_bp)
         app.register_blueprint(objective_bp)
+        app.register_blueprint(personas_bp)
         app.register_blueprint(projects_bp)
         app.config["TESTING"] = True
         app.config["APP_CONFIG"] = {

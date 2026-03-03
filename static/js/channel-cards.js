@@ -162,14 +162,14 @@
     }
 
     /**
-     * Escape HTML to prevent XSS.
+     * Escape HTML — delegates to shared utility.
      */
-    function _escapeHtml(str) {
+    var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
-    }
+    };
 
     /**
      * SSE handler for channel_message events.

@@ -325,16 +325,16 @@
         return tr;
     }
 
-    function _escapeHtml(str) {
+    var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
-    }
+    };
 
     function _escapeAttr(str) {
         if (!str) return '';
-        return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return str.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     // Public API
