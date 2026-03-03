@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:26:27+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Dashboard UI: Channel Cards, Chat Panel, Management
@@ -106,9 +107,9 @@ Sam opens the dashboard. Above all project columns, he sees two channel cards: "
 14. The management tab lists all channels visible to the operator with status, type, member count, and creation date
 15. The management tab provides a "Create Channel" form with: name, type (dropdown), description (optional), members (multi-select or comma-separated persona slugs)
 16. The management tab provides archive and complete actions for channels the operator can manage
-17. Channel messages trigger macOS notifications via `NotificationService` when the operator is not actively viewing the channel
-18. Per-channel notification rate limiting enforces one notification per channel per 30-second window
-19. Notifications are suppressed for the channel currently open in the chat panel
+17. The channel cards and chat panel correctly display messages received via `channel_message` SSE events in real-time
+18. N/A — per-channel notification rate limiting is implemented and validated in S6
+19. Notifications are suppressed for the channel currently open in the chat panel (frontend focus flag via `window.ChannelChat._activeChannelSlug` — see FR19)
 
 ### 3.2 Non-Functional Success Criteria
 
@@ -193,7 +194,7 @@ Submit calls `POST /api/channels` with the form data. On success, the new channe
 **FR16: Channel actions**
 The management view shall provide action buttons for:
 - **Complete** -- calls `POST /api/channels/<slug>/complete` (available when status is `active`)
-- **Archive** -- calls `PATCH /api/channels/<slug>` with archive transition (available when status is `complete`)
+- **Archive** -- calls `POST /api/channels/<slug>/archive` (available when status is `complete`)
 - View history -- opens the chat panel for the selected channel
 
 ### Notification Integration
@@ -205,7 +206,7 @@ Channel message notifications are handled server-side by S6's delivery engine. N
 Per-channel rate limiting is implemented in S6.
 
 **FR19: Active view suppression**
-Active view suppression is deferred to v2 — the 30-second rate limit provides a sufficient floor.
+When the chat panel is open for a channel and the browser tab is visible (`document.visibilityState === 'visible'`), notifications for that channel are suppressed. The chat panel JS maintains a `window.ChannelChat._activeChannelSlug` variable. The SSE handler checks this flag before triggering a notification (see Section 6.5 code example).
 
 **FR20: Notification content**
 Channel notifications shall show:
@@ -229,8 +230,8 @@ Channel cards, chat panel, and management tab shall use the existing dark theme:
 **NFR4: SSE handler registration**
 New SSE event type handlers (`channel_message`, `channel_update`) shall be registered in the existing `sse-client.js` `commonTypes` array and handled in a new JS module. The SSE client's `on()` method is the handler registration mechanism.
 
-**NFR5: No new backend routes**
-This sprint creates no new Flask routes or blueprints. All API calls go to endpoints defined in Sprint 5 (`/api/channels/*`). The only backend change is extending `NotificationService` with per-channel rate limiting.
+**NFR5: No new backend routes or services**
+No new backend routes, blueprints, or services. All backend channel logic (including notification rate limiting) is handled by S4-S6. This sprint is frontend-only: Jinja2 templates, vanilla JavaScript, and Tailwind CSS.
 
 **NFR6: Backward-compatible dashboard**
 If no channels exist or the operator has no active channel memberships, the channel cards section is hidden. The dashboard renders identically to pre-channel state.
@@ -247,6 +248,7 @@ If no channels exist or the operator has no active channel memberships, the chan
 | `static/js/sse-client.js` | Add `"channel_message"` and `"channel_update"` to the `commonTypes` array (lines 245-266) so typed SSE events are dispatched to handlers. |
 | `static/js/dashboard-sse.js` | Import/call channel card update functions when `channel_message` and `channel_update` events are received. Alternatively, the new channel JS module registers its own handlers directly on `window.sseClient`. |
 | `static/css/src/input.css` | Add custom CSS for channel cards, chat panel slide-out animation, and channel-specific styling not achievable with Tailwind utilities alone. |
+| `src/claude_headspace/routes/dashboard.py` | Add `get_channel_data_for_operator()` function. Call it in the dashboard route handler and pass result as `channel_data` template context variable (see Section 6.15). |
 
 ### 6.2 New Files
 
@@ -578,7 +580,7 @@ The management tab provides a simple CRUD interface for channels. It can be impl
 | View channel details | `GET /api/channels/<slug>` |
 | Create channel | `POST /api/channels` with `{name, channel_type, description?, members?}` |
 | Complete channel | `POST /api/channels/<slug>/complete` |
-| Archive channel | `PATCH /api/channels/<slug>` with archive data |
+| Archive channel | `POST /api/channels/<slug>/archive` |
 | View members | `GET /api/channels/<slug>/members` |
 
 ### 6.11 Operator Identity for Messages
@@ -722,3 +724,4 @@ All Sprint 5 API endpoints must be functional before this sprint can be built. T
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 1.1, 3.4, 4.1-4.3) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: implemented active view suppression in v1 FR19 (Finding #3), updated NFR5 to frontend-only (Finding #4), added dashboard.py to Files to Modify (Finding #8), rephrased SC17-19 to S7 responsibilities (Finding #10), updated FR16/Section 6.10 archive endpoint to POST (Finding #5) |

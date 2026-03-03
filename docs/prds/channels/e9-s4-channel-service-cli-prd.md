@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:26:25+11:00'
 ---
 
 ## Product Requirements Document (PRD) — ChannelService + CLI
@@ -64,7 +65,7 @@ Robbo needs to discuss a data model decision with Con. From the terminal, Robbo 
 - Context briefing on member add (last 10 messages)
 - `flask channel` CLI group: create, list, show, members, add, leave, complete, transfer-chair, mute, unmute
 - `flask msg` CLI group: send, history
-- Caller identity resolution: tmux pane detection with `HEADSPACE_AGENT_ID` env var fallback
+- Caller identity resolution: `HEADSPACE_AGENT_ID` env var override with tmux pane detection fallback
 - Conversational envelope format for message history display
 - Actionable error messages for all failure cases
 - Service and CLI registration in app factory
@@ -74,7 +75,7 @@ Robbo needs to discuss a data model decision with Con. From the terminal, Robbo 
 - Channel, ChannelMembership, Message DB models and migrations (S3 — already created)
 - PersonaType table and persona type assignment (S2)
 - REST API endpoints (S5)
-- SSE event broadcasting for channels (S5)
+- SSE event schema definitions (S5 — ChannelService broadcasts events, S5 defines the schemas)
 - Fan-out delivery, delivery queue, response capture (S6)
 - Dashboard UI for channels (S7)
 - Voice bridge channel routing and semantic matching (S8)
@@ -108,7 +109,7 @@ Robbo needs to discuss a data model decision with Con. From the terminal, Robbo 
 17. A persona without channel creation capability receives a clear error on `flask channel create`
 18. Non-chair personas receive a clear error on `flask channel complete` and `flask channel transfer-chair`
 19. Non-members receive a clear error on `flask msg send` and `flask msg history`
-20. Caller identity resolution works via tmux pane detection and falls back to `HEADSPACE_AGENT_ID` env var
+20. Caller identity resolution works via `HEADSPACE_AGENT_ID` env var override (takes precedence) with tmux pane detection as the primary fallback
 
 ### 3.2 Non-Functional Success Criteria
 
@@ -208,8 +209,8 @@ A Click AppGroup named `msg` registered in the app factory. Subcommands: `send` 
 
 **FR18: Caller identity resolution**
 All CLI commands that require caller identity shall use a two-strategy cascade:
-1. Primary: `tmux display-message -p '#{pane_id}'` -> look up Agent by `tmux_pane_id`
-2. Fallback: `HEADSPACE_AGENT_ID` env var -> look up Agent by ID
+1. Override: `HEADSPACE_AGENT_ID` env var — takes precedence when set
+2. Primary: `tmux display-message -p '#{pane_id}'` -> look up Agent by `tmux_pane_id`
 If neither resolves, fail with: `Error: Cannot identify calling agent. Are you running in a Headspace-managed session?`
 
 ---
@@ -249,7 +250,7 @@ CLI commands use `click.echo()` for output. Error messages go to stderr via `cli
 | File | Change |
 |------|--------|
 | `src/claude_headspace/app.py` | Import and register `ChannelService` in `app.extensions["channel_service"]`. Import and register `channel_cli` and `msg_cli` in `register_cli_commands()`. |
-| `src/claude_headspace/services/session_correlator.py` | After persona assignment, query and update ChannelMembership records with NULL agent_id for that persona. |
+| `src/claude_headspace/services/session_correlator.py` | After persona assignment, query and update ChannelMembership records with NULL agent_id for that persona. **Note:** S1 also modifies session_correlator.py after persona assignment to call `HandoffDetectionService.detect_and_emit()`. Both modifications target the same logical point — append sequentially. |
 
 ### 6.3 ChannelService Class Design
 
@@ -566,7 +567,7 @@ def _spin_up_agent_for_persona(self, persona: Persona) -> Agent | None:
     return None
 ```
 
-The CLI returns immediately: `Added {persona_name} to #{slug}. Agent spinning up...` The membership record is created with `agent_id=NULL`. When the agent starts and registers via the session-start hook, the session correlator links it to the persona, and a separate mechanism (outside this sprint's scope) updates the channel membership's `agent_id`.
+The CLI returns immediately: `Added {persona_name} to #{slug}. Agent spinning up...` The membership record is created with `agent_id=NULL`. When the agent starts and registers via the session-start hook, the session correlator links it to the persona and updates the ChannelMembership's `agent_id` (see FR14).
 
 ### 6.14 System Message Generation
 
@@ -606,7 +607,7 @@ All common failure cases return clear, actionable messages (per Decision 2.2):
 | Decision | Resolution | Source |
 |----------|-----------|--------|
 | CLI namespace | Standalone `flask channel` and `flask msg` — not under `flask org` | 2.2 |
-| Caller identity | tmux pane detection primary, `HEADSPACE_AGENT_ID` env var override | 2.2 |
+| Caller identity | `HEADSPACE_AGENT_ID` env var override (takes precedence), tmux pane detection fallback | 2.2 |
 | Capability checks | Service-layer method on persona, not DB column | 2.1, 2.2 |
 | Channel lifecycle | 4-state: pending -> active -> complete -> archived | 2.1 |
 | Creation mode | Explicit only — no implicit creation | 2.1 |
@@ -661,3 +662,4 @@ All common failure cases return clear, actionable messages (per Decision 2.2):
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 1 & 2) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: removed SSE Out-of-Scope contradiction (Finding #1), aligned caller identity ordering to env var override first (Finding #2), updated Section 6.13 to reference FR14 (Finding #6), added S1 cross-reference for session_correlator.py (Finding #7) |

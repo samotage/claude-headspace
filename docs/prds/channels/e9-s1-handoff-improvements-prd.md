@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:22:25+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Handoff Continuity Improvements
@@ -218,7 +219,7 @@ The existing flow where HandoffExecutor creates a successor and auto-injects the
 |------|--------|
 | `src/claude_headspace/services/handoff_executor.py` | Modify `generate_handoff_file_path()`: new format with `<insert-summary>` placeholder. Modify `compose_handoff_instruction()`: add filename format guidance. Modify `_poll_for_handoff_file()`: add glob fallback. |
 | `src/claude_headspace/services/broadcaster.py` | No code change — `broadcast()` already accepts arbitrary event types. `synthetic_turn` is just a new type string. |
-| `src/claude_headspace/services/session_correlator.py` | After persona assignment, call `HandoffDetectionService.detect_and_emit()`. |
+| `src/claude_headspace/services/session_correlator.py` | After persona assignment, call `HandoffDetectionService.detect_and_emit()`. **Note:** S4 also modifies session_correlator.py after persona assignment to update ChannelMembership `agent_id`. Both modifications target the same logical point — append sequentially. |
 
 ### 6.2 New Files
 
@@ -386,3 +387,4 @@ No unresolved dependencies. All prerequisites are shipped.
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Section 0A) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added S4 cross-reference for session_correlator.py shared modification (Finding #7) |

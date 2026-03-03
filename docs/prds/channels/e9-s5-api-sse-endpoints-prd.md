@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:26:25+11:00'
 ---
 
 ## Product Requirements Document (PRD) — API + SSE Endpoints
@@ -80,7 +81,7 @@ The operator opens the dashboard. A channel card shows its members and recent me
 
 ### 3.1 Functional Success Criteria
 
-1. All 12 endpoints (5 channel, 6 membership, 2 message — see FR table) return correct HTTP status codes and JSON response bodies
+1. All 14 endpoints (6 channel, 6 membership, 2 message — see FR table) return correct HTTP status codes and JSON response bodies
 2. POST endpoints that create resources return 201; all others return 200
 3. Invalid requests return the standard error envelope `{error: {code, message, status}}`
 4. Dashboard session cookie auth grants access to all endpoints (operator identity derived from session)
@@ -121,6 +122,9 @@ Accept `{description?, intent_override?}`. Chair or operator only. Delegate to `
 
 **FR5: Complete channel — `POST /api/channels/<slug>/complete`**
 Transition channel to `complete` state. Chair or operator only. Delegate to `ChannelService.complete()`. Return 200.
+
+**FR5a: Archive channel — `POST /api/channels/<slug>/archive`**
+Transition channel to `archived` state. Chair or operator only. Channel must be in `complete` state. Delegate to `ChannelService.archive_channel()`. Return 200.
 
 ### Membership Endpoints
 
@@ -225,6 +229,7 @@ app.register_blueprint(channels_api_bp)
 | `GET` | `/api/channels/<slug>` | Channel detail | 200 | Session / Token |
 | `PATCH` | `/api/channels/<slug>` | Update channel (chair/operator) | 200 | Session / Token |
 | `POST` | `/api/channels/<slug>/complete` | Complete channel (chair/operator) | 200 | Session / Token |
+| `POST` | `/api/channels/<slug>/archive` | Archive channel (chair/operator) | 200 | Session / Token |
 
 #### Membership Endpoints
 
@@ -515,7 +520,7 @@ Messages are returned in chronological order (oldest first), matching the displa
 
 | File | Purpose |
 |------|---------|
-| `src/claude_headspace/routes/channels_api.py` | `channels_api` Flask blueprint — all 13 endpoint handlers, `_resolve_caller()` helper, `_error_response()` helper. |
+| `src/claude_headspace/routes/channels_api.py` | `channels_api` Flask blueprint — all 14 endpoint handlers, `_resolve_caller()` helper, `_error_response()` helper. |
 
 ### 6.11 Files to Modify
 
@@ -583,3 +588,4 @@ S3 and S4 are hard dependencies. S2 is a soft dependency — the blueprint needs
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Section 2.3) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added POST /api/channels/<slug>/archive endpoint FR5a (Finding #5), corrected endpoint count to 14 |

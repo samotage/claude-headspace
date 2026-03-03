@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:22:46+11:00'
 ---
 
 ## Product Requirements Document (PRD) — PersonaType System
@@ -142,7 +143,7 @@ If a Persona named "Sam" with role "operator" already exists, skip creation (ide
 ### Channel Creation Capability
 
 **FR7: `can_create_channel` method**
-The Persona model shall expose a `can_create_channel` property (or method) that returns `True` if the persona is authorised to create channels. Initial logic:
+The Persona model shall expose a `can_create_channel` property that returns `True` if the persona is authorised to create channels. Initial logic:
 - person/internal: always `True` (operator can always create channels)
 - agent/internal: `True` (agents can create channels — configurable per-persona in future, but v1 allows all internal agents)
 - agent/external: `False` (not exercised in v1)
@@ -512,3 +513,4 @@ No unresolved dependencies. All prerequisites are shipped.
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Decision 1.1, Section 5 migration checklist) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: changed FR7 "property (or method)" to "property" (Finding #11) |

@@ -1,6 +1,7 @@
 ---
 validation:
-  status: pending
+  status: valid
+  validated_at: '2026-03-03T14:26:28+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Voice Bridge Channel Routing Extensions
@@ -500,6 +501,13 @@ def _handle_channel_intent(intent: dict, text: str, formatter) -> tuple:
     if not channel_service:
         return _voice_error("Channels not available.", "Channel service not configured.", 503)
 
+    # Resolve the operator's Persona via Persona.get_operator() (S2 FR8).
+    # The voice bridge is operator-only — all channel commands act as the operator.
+    from ..models import Persona
+    operator_persona = Persona.get_operator()
+    if not operator_persona:
+        return _voice_error("Operator identity not configured.", "Register an operator persona first.", 503)
+
     action = intent["action"]
     auth_id = _get_auth_id()
 
@@ -684,3 +692,4 @@ Each extracted name is then fuzzy-matched against active personas using `_match_
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-03 | Robbo  | Initial PRD from Epic 9 Workshop (Sections 2.3, 4.1) |
+| 1.1     | 2026-03-03 | Robbo  | v2 cross-PRD remediation: added operator persona resolution via Persona.get_operator() in _handle_channel_intent (Finding #9) |
