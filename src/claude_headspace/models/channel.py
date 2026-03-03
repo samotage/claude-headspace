@@ -45,7 +45,13 @@ class Channel(db.Model):
         String(128), nullable=False, unique=True, default=temp_slug
     )
     channel_type: Mapped[ChannelType] = mapped_column(
-        Enum(ChannelType, name="channeltype", create_constraint=True), nullable=False
+        Enum(
+            ChannelType,
+            name="channeltype",
+            create_constraint=True,
+            values_callable=lambda e: [ct.value for ct in e],
+        ),
+        nullable=False,
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     intent_override: Mapped[str | None] = mapped_column(Text, nullable=True)

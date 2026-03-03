@@ -23,6 +23,7 @@
     var _tagsEl = null;
     var _fallbackEl = null;     // text input fallback on API failure
     var _boundOnDocClick = null;
+    var _isOpen = false;
 
     var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
@@ -35,9 +36,15 @@
 
     function init(containerEl) {
         if (!containerEl) return;
+
+        // Don't re-init if already set up on this container
+        if (_container === containerEl && _inputEl) return;
+
+        destroy();
         _container = containerEl;
         _selected = [];
         _highlightIdx = -1;
+        _isOpen = false;
 
         // Build DOM skeleton
         _container.innerHTML = '';
@@ -51,12 +58,13 @@
         _inputEl.placeholder = 'Search agents...';
         _inputEl.setAttribute('autocomplete', 'off');
 
+        // Dropdown is appended to body (fixed position) to escape overflow clipping
         _dropdownEl = document.createElement('div');
         _dropdownEl.className = 'member-ac-dropdown';
+        document.body.appendChild(_dropdownEl);
 
         _container.appendChild(_tagsEl);
         _container.appendChild(_inputEl);
-        _container.appendChild(_dropdownEl);
 
         // Event listeners
         _inputEl.addEventListener('focus', _onFocus);
@@ -70,16 +78,10 @@
     }
 
     function getSelectedAgentIds() {
-        // If in fallback mode, parse comma-separated slugs — but return empty
-        // since fallback uses `members` field directly
         if (_fallbackEl) return [];
         return _selected.map(function(s) { return s.agent_id; });
     }
 
-    /**
-     * Return the fallback text value (comma-separated slugs) if in fallback mode.
-     * Returns null if autocomplete is working normally.
-     */
     function getFallbackMembers() {
         if (!_fallbackEl) return null;
         var val = _fallbackEl.value.trim();
@@ -97,8 +99,8 @@
             _dropdownEl.innerHTML = '';
             _dropdownEl.classList.remove('open');
         }
+        _isOpen = false;
         if (_fallbackEl) _fallbackEl.value = '';
-        // Re-fetch so dropdown is ready for next use
         _fetchData();
     }
 
@@ -111,6 +113,10 @@
         if (_boundOnDocClick) {
             document.removeEventListener('mousedown', _boundOnDocClick);
         }
+        // Remove dropdown from body
+        if (_dropdownEl && _dropdownEl.parentNode) {
+            _dropdownEl.parentNode.removeChild(_dropdownEl);
+        }
         _container = null;
         _data = null;
         _selected = [];
@@ -118,6 +124,7 @@
         _dropdownEl = null;
         _tagsEl = null;
         _fallbackEl = null;
+        _isOpen = false;
     }
 
     // ── Data Fetching ───────────────────────────────────────
@@ -139,6 +146,10 @@
 
     function _showFallback() {
         if (!_container) return;
+        // Remove body-appended dropdown
+        if (_dropdownEl && _dropdownEl.parentNode) {
+            _dropdownEl.parentNode.removeChild(_dropdownEl);
+        }
         _container.innerHTML = '';
 
         _fallbackEl = document.createElement('input');
@@ -173,7 +184,7 @@
     }
 
     function _onKeydown(e) {
-        if (!_dropdownEl || !_dropdownEl.classList.contains('open')) {
+        if (!_isOpen) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 _renderDropdown(_inputEl.value.trim());
                 _openDropdown();
@@ -206,20 +217,37 @@
     }
 
     function _onDocClick(e) {
-        if (_container && !_container.contains(e.target)) {
+        if (!_isOpen) return;
+        // Close if click is outside both the container and the dropdown
+        var inContainer = _container && _container.contains(e.target);
+        var inDropdown = _dropdownEl && _dropdownEl.contains(e.target);
+        if (!inContainer && !inDropdown) {
             _closeDropdown();
         }
     }
 
-    // ── Dropdown Rendering ──────────────────────────────────
+    // ── Dropdown Positioning & Rendering ─────────────────────
+
+    function _positionDropdown() {
+        if (!_inputEl || !_dropdownEl) return;
+        var rect = _inputEl.getBoundingClientRect();
+        _dropdownEl.style.position = 'fixed';
+        _dropdownEl.style.top = (rect.bottom + 4) + 'px';
+        _dropdownEl.style.left = rect.left + 'px';
+        _dropdownEl.style.width = rect.width + 'px';
+    }
 
     function _openDropdown() {
-        if (_dropdownEl) _dropdownEl.classList.add('open');
+        if (!_dropdownEl) return;
+        _positionDropdown();
+        _dropdownEl.classList.add('open');
+        _isOpen = true;
     }
 
     function _closeDropdown() {
         if (_dropdownEl) _dropdownEl.classList.remove('open');
         _highlightIdx = -1;
+        _isOpen = false;
     }
 
     function _renderDropdown(query) {
@@ -265,7 +293,7 @@
                 item.innerHTML = '<span class="member-ac-item-name">' + _escapeHtml(agent.persona_name) + '</span>' +
                                  '<span class="member-ac-item-role">' + _escapeHtml(agent.role || '') + '</span>';
 
-                item.addEventListener('click', function(e) {
+                item.addEventListener('mousedown', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
                     _selectAgent({
@@ -302,7 +330,6 @@
     // ── Selection Management ────────────────────────────────
 
     function _selectAgent(agentInfo) {
-        // Prevent duplicates
         for (var i = 0; i < _selected.length; i++) {
             if (_selected[i].agent_id === agentInfo.agent_id) return;
         }
@@ -310,7 +337,6 @@
         _renderTags();
         if (_inputEl) _inputEl.value = '';
         _closeDropdown();
-        if (_inputEl) _inputEl.focus();
     }
 
     function _removeAgent(agentId) {

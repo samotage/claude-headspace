@@ -50,7 +50,13 @@ class Message(db.Model):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_type: Mapped[MessageType] = mapped_column(
-        Enum(MessageType, name="messagetype", create_constraint=True), nullable=False
+        Enum(
+            MessageType,
+            name="messagetype",
+            create_constraint=True,
+            values_callable=lambda e: [mt.value for mt in e],
+        ),
+        nullable=False,
     )
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     attachment_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
