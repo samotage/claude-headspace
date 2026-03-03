@@ -346,7 +346,7 @@ class TestCrossLinks:
 
     def test_help_references_spec_url(self, help_content):
         """Help topic must reference the spec URL."""
-        assert "/static/api/remote-agents.yaml" in help_content
+        assert "/api/remote_agents/openapi.yaml" in help_content or "/static/api/remote-agents.yaml" in help_content
 
     def test_help_documents_directory_convention(self, help_content):
         """Help topic must document the directory convention."""

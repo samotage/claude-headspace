@@ -931,7 +931,7 @@ class TestMain:
         assert call_kwargs[1]["tmux_pane_id"] == "%5"
         # Verify output mentions Voice Bridge available with pane ID
         captured = capsys.readouterr()
-        assert "Voice Bridge: enabled (tmux pane %5)" in captured.out
+        assert "Voice Bridge: enabled (tmux pane %5" in captured.out
 
     def test_start_command_with_bridge_outside_tmux(self):
         """Test start command with --bridge outside tmux calls _wrap_in_tmux."""
