@@ -22,6 +22,11 @@
 | Create operator Persona | Persona (data) | Insert person/internal Persona for operator (Sam). Role: "operator" (create Role if needed). No Agent instances, no PositionAssignment. | Medium — needed for channel participation | [1.1](section-1-channel-data-model.md#11-channel-model) |
 | ~~Update `channels.status` enum~~ | ~~Channel~~ | ~~Folded into Create `channels` table migration above. Status column with 4-state lifecycle (pending/active/complete/archived) and default 'pending' is part of initial table creation, not a separate update.~~ | ~~N/A~~ | ~~[2.1](section-2-channel-operations.md#21-channel-lifecycle)~~ |
 | ~~Add `completed_at` to `channels`~~ | ~~Channel~~ | ~~Folded into Create `channels` table migration above. `completed_at` (nullable) is part of initial table creation.~~ | ~~N/A~~ | ~~[2.1](section-2-channel-operations.md#21-channel-lifecycle)~~ |
+| Update `generate_handoff_file_path()` | HandoffExecutor | New filename format: `{timestamp}_{<insert-summary>}_{agent-id:NNN}.md`. Software pre-fills timestamp + agent ID, agent fills summary. | Medium | [0A.1](section-0a-handoff-continuity.md#0a1-handoff-document-filename-format)/[0A.6](section-0a-handoff-continuity.md#0a6-handoff-instruction-changes) |
+| Update `compose_handoff_instruction()` | HandoffExecutor | Add filename format instructions: kebab-case summary, max 60 chars, no underscores. | Medium | [0A.6](section-0a-handoff-continuity.md#0a6-handoff-instruction-changes) |
+| Update polling thread glob fallback | HandoffExecutor | If exact path not found, glob `{timestamp}_*_{agent_tag}.md` in handoff directory. | Medium | [0A.6](section-0a-handoff-continuity.md#0a6-handoff-instruction-changes) |
+| Add `synthetic_turn` SSE event type | Broadcaster | New event type for dashboard-only synthetic context turns. | Medium | [0A.3](section-0a-handoff-continuity.md#0a3-synthetic-injection-mechanism) |
+| Add `flask org persona handoffs` CLI | CLI | List handoff files for a persona, filesystem-only, newest first. `--limit N` option. | Low | [0A.7](section-0a-handoff-continuity.md#0a7-cli--organisation-workshop-integration) |
 
 ### New Services
 
@@ -30,6 +35,7 @@
 | `ChannelService` | Core service layer for all channel operations (create, join, leave, complete, send message, etc.). CLI, API, voice bridge, and dashboard all delegate to this. Registered as `app.extensions["channel_service"]`. | DB models (Channel, ChannelMembership, Message), PersonaRegistration (capability checks), Broadcaster (SSE events) |
 | `channels_api` blueprint | REST endpoints at `/api/channels`. Thin HTTP wrapper around ChannelService. | ChannelService, session token auth (existing), Flask session auth (existing) |
 | `ChannelDeliveryService` | Fan-out delivery engine. Iterates channel members, dispatches per member type (tmux/SSE/deferred). In-memory delivery queue for agents not in safe state. Integrates with CommanderAvailability for pane health. | ChannelService, TmuxBridge (existing), Broadcaster (existing), CommanderAvailability (existing), CommandLifecycleManager (state transition hooks) |
+| `HandoffDetectionService` | Startup handoff detection. Scans persona handoff directory on agent creation, emits `synthetic_turn` SSE event with last 3 handoffs. | Broadcaster (existing), PersonaAssets (existing) |
 
 ### Integration Points
 

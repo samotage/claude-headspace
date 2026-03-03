@@ -1,7 +1,7 @@
 # Inter-Agent Communication — Design Workshop (Epic 9)
 
 **Date:** 1 March 2026
-**Status:** Active workshop. Section 0 resolved (4 decisions). **Section 1 fully resolved (5 decisions).** Section 0A seeded (7 decisions, pending workshop). **Section 2 fully resolved (3 decisions).** **Section 3 fully resolved (4 decisions).** **Section 4 fully resolved (3 decisions).** Section 5 is a living checklist. Core workshop complete — 19 decisions resolved across Sections 0–4.
+**Status:** **Workshop complete.** All sections fully resolved. 26 decisions across Sections 0, 0A, 1–4. Section 5 is a living migration checklist.
 **Epic:** 9 — Inter-Agent Communication
 **Inputs:**
 - Organisation Workshop Sections 0–1 (resolved decisions on org structure, serialization, CLI)
@@ -41,7 +41,8 @@ This is the **index document** for the workshop. Each section lives in its own f
 | 3 Mar 2026 | Sam + Robbo | 1.x (correction) | **Message.persona_id NULLABLE resolution.** PostgreSQL incompatibility (NOT NULL + SET NULL ondelete) resolved: Option A chosen — make persona_id nullable. Persona deletion sets message persona_id to NULL; agent record and audit trail remain intact. System messages naturally have NULL persona. Updated: Section 1.1, 1.2, 1.3, canonical ERD, migration checklist. |
 | 3 Mar 2026 | Sam + Robbo | 2.3 (resolved) | API Endpoints resolved. Single `/api/channels` blueprint — REST endpoints for channels, members, messages. Same `ChannelService` backs CLI, API, voice bridge, and dashboard. Auth: existing dashboard session + session tokens (no new mechanism). SSE: two new event types (`channel_message`, `channel_update`) on existing stream with type filtering — no per-channel streams. Voice bridge: extend semantic picker for channel-name matching. Slug-based URLs. No channel-specific rate limiting in v1. **Section 2 (Channel Operations & CLI) fully resolved.** |
 | 3 Mar 2026 | Sam + Robbo | 3.1–3.4 (resolved) | Message delivery & fan-out fully resolved. Async per-member fan-out, best-effort, no delivery tracking. Agent responses captured via completion-only relay (existing hook pipeline), implicit relay (one-agent-one-channel = no ambiguity). Feedback loop prevention via completion-only rule + IntentDetector gating. Delivery only in AWAITING_INPUT/IDLE states, in-memory queue for others. Envelope format from Decision 0.3. Operator receives via SSE, sends via dashboard chat panel / voice bridge / voice PWA. Channel cards above project sections on dashboard. **Section 3 fully resolved.** |
-| 3 Mar 2026 | Sam + Robbo | 4.1–4.3 (resolved) | End-to-end group workshop validation. Setup: voice bridge primary path, CLI/dashboard alternatives, agent spin-up on add, context briefing. Conversation flow: simultaneous responses via per-pane locks, best-effort chronological ordering, envelope attribution, context handoff on limit. Completion: explicit by operator, history via dashboard/CLI/API, no automated decision extraction (v2), archival doesn't affect agent state. **Section 4 fully resolved. Core workshop complete — 19 decisions across Sections 0–4.** |
+| 3 Mar 2026 | Sam + Robbo | 4.1–4.3 (resolved) | End-to-end group workshop validation. Setup: voice bridge primary path, CLI/dashboard alternatives, agent spin-up on add, context briefing. Conversation flow: simultaneous responses via per-pane locks, best-effort chronological ordering, envelope attribution, context handoff on limit. Completion: explicit by operator, history via dashboard/CLI/API, no automated decision extraction (v2), archival doesn't affect agent state. **Section 4 fully resolved.** |
+| 3 Mar 2026 | Sam + Robbo | 0A.1–0A.7 (resolved) | Handoff continuity fully resolved. Filename format: `{timestamp}_{summary-slug}_{agent-id:NNN}.md` (underscore separators, no braces). Startup detection: scan persona handoff dir, show last 3 as synthetic dashboard turns (SSE, not sent to agent). Operator selects and copies path, pastes into rehydration message — manual, simple. Handoff instruction template updated with summary placeholder + glob fallback for polling. CLI: `flask org persona handoffs <slug>`, filesystem-only. **Section 0A fully resolved. Workshop complete — 26 decisions across all sections.** |
 
 ---
 
@@ -75,9 +76,9 @@ Everything downstream — task delegation, escalation, reporting, org-aware rout
 Maps the 7 existing communication paths, confirms tmux bridge concurrent fan-out capacity (per-pane locks, no global lock), establishes the completion-only relay rule (only composed responses fan out — no PROGRESS turns), resolves envelope format (`[#channel-name] PersonaName (agent:ID):`), and designs the two-layer behavioral primer (base + channel intent). Incorporates Paula's AR Director guidance on persona-based membership, chair capabilities, and delivery priority deferral.
 
 ### [Section 0A: Handoff Continuity & Synthetic Injection](sections/section-0a-handoff-continuity.md)
-**Status:** Seeded (7 decisions: 0A.1–0A.7, pending workshop)
+**Status:** Fully resolved (7 decisions: 0A.1–0A.7)
 
-Independent of Sections 1–5. Designs startup handoff detection, scannable filename format with summary-in-filename, synthetic injection delivery primitive, operator-gated rehydration, and on-demand handoff history CLI. Can be workshopped at any time.
+Scannable filename format (`{timestamp}_{summary}_{agent-id:NNN}.md`). Startup detection scans last 3 handoffs, presents as synthetic dashboard turns (SSE only, agent doesn't see). Operator selects and copies path for manual rehydration. Handoff instruction template updated with placeholder + glob fallback. On-demand history via `flask org persona handoffs` (filesystem-only). CLI integration under `flask org persona`.
 
 ### [Section 1: Channel Data Model](sections/section-1-channel-data-model.md)
 **Status:** Fully resolved (5 decisions: 1.1–1.5)
