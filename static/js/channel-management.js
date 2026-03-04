@@ -109,12 +109,17 @@
         var desc = descEl ? descEl.value.trim() : '';
         if (desc) payload.description = desc;
 
-        // Use autocomplete agent IDs, or fallback to slug text input
+        // Use autocomplete agent IDs and persona slugs, or fallback to slug text input
         if (global.MemberAutocomplete) {
             var agentIds = global.MemberAutocomplete.getSelectedAgentIds();
+            var personaSlugs = global.MemberAutocomplete.getSelectedPersonaSlugs();
             if (agentIds.length) {
                 payload.member_agents = agentIds;
-            } else {
+            }
+            if (personaSlugs.length) {
+                payload.members = (payload.members || []).concat(personaSlugs);
+            }
+            if (!agentIds.length && !personaSlugs.length) {
                 var fallbackMembers = global.MemberAutocomplete.getFallbackMembers();
                 if (fallbackMembers) payload.members = fallbackMembers;
             }

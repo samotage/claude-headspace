@@ -240,6 +240,31 @@
         });
     }
 
+    function _addMemberBySlug(personaSlug) {
+        if (!_activeChannelSlug) return;
+        var slug = _activeChannelSlug;
+
+        fetch('/api/channels/' + encodeURIComponent(slug) + '/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ persona_slug: personaSlug }),
+        })
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function() {
+            _loadMembers(slug);
+            _loadChannelInfo(slug);
+            _collapseAddMember();
+            if (global.Toast) global.Toast.success('Member added');
+        })
+        .catch(function(err) {
+            console.error('Failed to add member:', err);
+            if (global.Toast) global.Toast.error('Error', 'Failed to add member');
+        });
+    }
+
     /**
      * Complete the channel (chair action) with confirmation.
      */
