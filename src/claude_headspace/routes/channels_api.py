@@ -357,8 +357,8 @@ def list_channels(*, persona, agent, service):
 @_channel_route
 def available_members(*, persona, agent, service):
     """Return active agents grouped by project for autocomplete picker."""
-    groups = service.get_available_members()
-    return jsonify({"projects": groups}), 200
+    result = service.get_available_members()
+    return jsonify(result), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>", methods=["GET"])

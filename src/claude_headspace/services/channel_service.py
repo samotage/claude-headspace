@@ -470,17 +470,22 @@ class ChannelService:
         )
         return membership
 
-    def get_available_members(self) -> list[dict]:
-        """Return active agents grouped by project for the autocomplete picker.
+    def get_available_members(self) -> dict:
+        """Return active agents grouped by project, plus agentless personas.
 
         An "available" agent is one where:
         - ended_at IS NULL (session active)
         - persona_id IS NOT NULL (has an assigned persona)
         - persona.status == 'active'
 
+        Additionally returns personas that have no active agent session
+        (e.g. the human operator) so they can be added to channels too.
+
         Returns:
-            List of dicts grouped by project, per Al's spec.
+            Dict with ``projects`` (agents grouped by project) and
+            ``personas`` (active personas without a live agent).
         """
+
         agents = (
             Agent.query.join(Persona, Agent.persona_id == Persona.id)
             .join(Role, Persona.role_id == Role.id)
@@ -495,8 +500,10 @@ class ChannelService:
         )
 
         grouped: dict[int, dict] = {}
+        persona_ids_with_agents: set[int] = set()
         for agent in agents:
             pid = agent.project_id
+            persona_ids_with_agents.add(agent.persona_id)
             if pid not in grouped:
                 grouped[pid] = {
                     "project_id": pid,
@@ -512,7 +519,32 @@ class ChannelService:
                 }
             )
 
-        return list(grouped.values())
+        # Personas without active agents (e.g. operator, idle personas)
+        agentless_personas = (
+            Persona.query.join(Role, Persona.role_id == Role.id)
+            .filter(
+                Persona.status == "active",
+                ~Persona.id.in_(persona_ids_with_agents)
+                if persona_ids_with_agents
+                else True,
+            )
+            .order_by(Persona.name)
+            .all()
+        )
+
+        personas_list = [
+            {
+                "persona_name": p.name,
+                "persona_slug": p.slug,
+                "role": p.role.name,
+            }
+            for p in agentless_personas
+        ]
+
+        return {
+            "projects": list(grouped.values()),
+            "personas": personas_list,
+        }
 
     def add_member_by_agent(
         self,

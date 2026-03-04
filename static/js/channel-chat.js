@@ -190,6 +190,13 @@
                     _addMemberById(ids[0]);
                     clearInterval(_selectionWatcher);
                     _selectionWatcher = null;
+                    return;
+                }
+                var slugs = global.MemberAutocomplete.getSelectedPersonaSlugs();
+                if (slugs.length > 0) {
+                    _addMemberBySlug(slugs[0]);
+                    clearInterval(_selectionWatcher);
+                    _selectionWatcher = null;
                 }
             }, 200);
         }
@@ -593,30 +600,10 @@
             var channel = results[0];
             var members = results[1];
 
-            // Render members
+            // Render members in info panel (pills handled by _loadMembers)
             if (members) {
                 var membersList = Array.isArray(members) ? members : (members.members || []);
 
-                // Render member pills in header
-                if (_memberPillsEl) {
-                    if (membersList.length === 0) {
-                        _memberPillsEl.innerHTML = '<span class="text-muted text-xs italic">No members</span>';
-                    } else {
-                        var pillsHtml = '';
-                        membersList.forEach(function(m) {
-                            var name = _escapeHtml(m.persona_name || m.persona_slug || '?');
-                            var dotColor = m.status === 'active' ? 'bg-green' : 'bg-muted';
-                            var chairTag = m.is_chair ? ' <span class="text-amber">&#9733;</span>' : '';
-                            pillsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-surface border border-border text-secondary whitespace-nowrap">' +
-                                '<span class="inline-block w-1.5 h-1.5 rounded-full ' + dotColor + '"></span>' +
-                                name + chairTag +
-                                '</span>';
-                        });
-                        _memberPillsEl.innerHTML = pillsHtml;
-                    }
-                }
-
-                // Render detailed member list in info panel
                 if (_membersEl) {
                     if (membersList.length === 0) {
                         _membersEl.innerHTML = '<span class="text-muted italic">No members</span>';

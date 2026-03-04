@@ -16,7 +16,7 @@
 
     var _container = null;
     var _data = null;           // cached API response { projects: [...] }
-    var _selected = [];         // [{ agent_id, persona_name, project_name, role }, ...]
+    var _selected = [];         // [{ agent_id?, persona_slug?, persona_name, project_name?, role }, ...]
     var _highlightIdx = -1;     // keyboard nav index within visible items
     var _inputEl = null;
     var _dropdownEl = null;
@@ -79,7 +79,17 @@
 
     function getSelectedAgentIds() {
         if (_fallbackEl) return [];
-        return _selected.map(function(s) { return s.agent_id; });
+        return _selected.filter(function(s) { return s.agent_id; }).map(function(s) { return s.agent_id; });
+    }
+
+    function getSelectedPersonaSlugs() {
+        if (_fallbackEl) return [];
+        return _selected.filter(function(s) { return !s.agent_id && s.persona_slug; }).map(function(s) { return s.persona_slug; });
+    }
+
+    function getSelected() {
+        if (_fallbackEl) return [];
+        return _selected.slice();
     }
 
     function getFallbackMembers() {
@@ -254,19 +264,24 @@
         if (!_dropdownEl) return;
         _dropdownEl.innerHTML = '';
 
-        if (!_data || !_data.projects) {
-            _dropdownEl.innerHTML = '<div class="member-ac-empty">No active agents available</div>';
+        if (!_data || (!_data.projects && !_data.personas)) {
+            _dropdownEl.innerHTML = '<div class="member-ac-empty">No members available</div>';
             return;
         }
 
         var selectedIds = {};
-        _selected.forEach(function(s) { selectedIds[s.agent_id] = true; });
+        var selectedSlugs = {};
+        _selected.forEach(function(s) {
+            if (s.agent_id) selectedIds[s.agent_id] = true;
+            if (s.persona_slug) selectedSlugs[s.persona_slug] = true;
+        });
 
         var q = (query || '').toLowerCase();
         var hasResults = false;
         var itemIndex = 0;
 
-        _data.projects.forEach(function(project) {
+        // Render agents grouped by project
+        (_data.projects || []).forEach(function(project) {
             var matchingAgents = project.agents.filter(function(agent) {
                 if (selectedIds[agent.agent_id]) return false;
                 if (!q) return true;
@@ -298,6 +313,7 @@
                     e.stopPropagation();
                     _selectAgent({
                         agent_id: agent.agent_id,
+                        persona_slug: agent.persona_slug,
                         persona_name: agent.persona_name,
                         project_name: project.project_name,
                         role: agent.role || ''
@@ -308,10 +324,49 @@
             });
         });
 
+        // Render personas without active agents (e.g. operator)
+        var matchingPersonas = (_data.personas || []).filter(function(p) {
+            if (selectedSlugs[p.persona_slug]) return false;
+            if (!q) return true;
+            return (p.persona_name || '').toLowerCase().indexOf(q) !== -1 ||
+                   (p.role || '').toLowerCase().indexOf(q) !== -1 ||
+                   (p.persona_slug || '').toLowerCase().indexOf(q) !== -1;
+        });
+
+        if (matchingPersonas.length > 0) {
+            hasResults = true;
+
+            var header = document.createElement('div');
+            header.className = 'member-ac-group-header';
+            header.textContent = 'People & Idle Personas';
+            _dropdownEl.appendChild(header);
+
+            matchingPersonas.forEach(function(p) {
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'member-ac-item';
+                item.setAttribute('data-index', itemIndex++);
+                item.innerHTML = '<span class="member-ac-item-name">' + _escapeHtml(p.persona_name) + '</span>' +
+                                 '<span class="member-ac-item-role">' + _escapeHtml(p.role || '') + '</span>';
+
+                item.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    _selectAgent({
+                        persona_slug: p.persona_slug,
+                        persona_name: p.persona_name,
+                        role: p.role || ''
+                    });
+                });
+
+                _dropdownEl.appendChild(item);
+            });
+        }
+
         if (!hasResults) {
             var empty = document.createElement('div');
             empty.className = 'member-ac-empty';
-            empty.textContent = q ? 'No matches' : 'No active agents available';
+            empty.textContent = q ? 'No matches' : 'No members available';
             _dropdownEl.appendChild(empty);
         }
     }
@@ -331,7 +386,9 @@
 
     function _selectAgent(agentInfo) {
         for (var i = 0; i < _selected.length; i++) {
-            if (_selected[i].agent_id === agentInfo.agent_id) return;
+            var s = _selected[i];
+            if (agentInfo.agent_id && s.agent_id === agentInfo.agent_id) return;
+            if (!agentInfo.agent_id && s.persona_slug === agentInfo.persona_slug) return;
         }
         _selected.push(agentInfo);
         _renderTags();
@@ -339,8 +396,11 @@
         _closeDropdown();
     }
 
-    function _removeAgent(agentId) {
-        _selected = _selected.filter(function(s) { return s.agent_id !== agentId; });
+    function _removeAgent(agentId, personaSlug) {
+        _selected = _selected.filter(function(s) {
+            if (agentId) return s.agent_id !== agentId;
+            return s.persona_slug !== personaSlug;
+        });
         _renderTags();
     }
 
@@ -348,21 +408,26 @@
         if (!_tagsEl) return;
         _tagsEl.innerHTML = '';
 
-        _selected.forEach(function(agent) {
+        _selected.forEach(function(member) {
             var tag = document.createElement('span');
             tag.className = 'member-ac-tag';
-            tag.innerHTML = _escapeHtml(agent.persona_name) +
-                            ' <span class="member-ac-tag-project">(' + _escapeHtml(agent.project_name) + ')</span>';
+            var label = _escapeHtml(member.persona_name);
+            if (member.project_name) {
+                label += ' <span class="member-ac-tag-project">(' + _escapeHtml(member.project_name) + ')</span>';
+            } else {
+                label += ' <span class="member-ac-tag-project">(' + _escapeHtml(member.role || 'persona') + ')</span>';
+            }
+            tag.innerHTML = label;
 
             var removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'member-ac-tag-remove';
             removeBtn.innerHTML = '&times;';
-            removeBtn.setAttribute('aria-label', 'Remove ' + agent.persona_name);
+            removeBtn.setAttribute('aria-label', 'Remove ' + member.persona_name);
             removeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                _removeAgent(agent.agent_id);
+                _removeAgent(member.agent_id, member.persona_slug);
             });
 
             tag.appendChild(removeBtn);
@@ -375,6 +440,8 @@
     global.MemberAutocomplete = {
         init: init,
         getSelectedAgentIds: getSelectedAgentIds,
+        getSelectedPersonaSlugs: getSelectedPersonaSlugs,
+        getSelected: getSelected,
         getFallbackMembers: getFallbackMembers,
         reset: reset,
         destroy: destroy,
