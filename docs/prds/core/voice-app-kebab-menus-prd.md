@@ -1,3 +1,9 @@
+---
+validation:
+  status: valid
+  validated_at: '2026-03-05T08:06:38+11:00'
+---
+
 ## Product Requirements Document (PRD) — Voice App Kebab Menus
 
 **Project:** Claude Headspace
