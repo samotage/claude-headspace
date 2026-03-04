@@ -452,8 +452,8 @@
         var slug = _activeChannelSlug;
         if (typeof ConfirmDialog === 'undefined') return;
 
-        ConfirmDialog.show('End Channel', 'Archive this channel? This cannot be undone.', {
-            confirmText: 'End Channel',
+        ConfirmDialog.show('Archive Channel', 'Archive this channel? This cannot be undone.', {
+            confirmText: 'Archive',
             confirmClass: 'bg-red hover:bg-red/90',
         }).then(function(ok) {
             if (!ok) return;
