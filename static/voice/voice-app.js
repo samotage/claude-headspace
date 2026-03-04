@@ -210,9 +210,10 @@ window.VoiceApp = (function () {
     if (channelPickerClose) channelPickerClose.addEventListener('click', function () { VoiceSidebar.closeChannelPicker(); });
     if (channelPickerBackdrop) channelPickerBackdrop.addEventListener('click', function () { VoiceSidebar.closeChannelPicker(); });
 
-    // Detect agent_id URL param (from dashboard "Chat" link)
+    // Detect URL params (from dashboard "Chat" link or channel deep-link)
     var urlParams = new URLSearchParams(window.location.search);
     var paramAgentId = urlParams.get('agent_id');
+    var paramChannelSlug = urlParams.get('channel');
 
     // Trusted network (localhost, LAN, Tailscale): skip setup, use current origin
     if (VoiceState.isTrustedNetwork && (!VoiceState.settings.serverUrl || !VoiceState.settings.token)) {
@@ -294,6 +295,13 @@ window.VoiceApp = (function () {
     // If agent_id param present, go directly to chat screen
     if (paramAgentId) {
       VoiceChatController.showChatScreen(parseInt(paramAgentId, 10));
+      return;
+    }
+
+    // If channel param present, go directly to channel chat screen
+    if (paramChannelSlug) {
+      VoiceSidebar.refreshAgents();
+      VoiceChannelChat.showChannelChatScreen(paramChannelSlug);
       return;
     }
 

@@ -944,6 +944,7 @@ window.VoiceSidebar = (function () {
       }
 
       html += '<div class="channel-card' + unreadClass + '" data-channel-slug="' + _esc(ch.slug) + '">'
+        + '<a class="channel-card-link" href="/voice?channel=' + encodeURIComponent(ch.slug) + '">'
         + '<div class="channel-header">'
         + '<span class="channel-name">#' + _esc(ch.slug) + '</span>'
         + '<span class="channel-status ' + statusClass + '">' + _esc(ch.status || 'pending') + '</span>'
@@ -951,6 +952,7 @@ window.VoiceSidebar = (function () {
         + membersHtml
         + previewHtml
         + (agoText ? '<div class="channel-ago">' + agoText + '</div>' : '')
+        + '</a>'
         + '</div>';
     }
 
@@ -962,6 +964,14 @@ window.VoiceSidebar = (function () {
       cards[k].addEventListener('click', function () {
         var slug = this.getAttribute('data-channel-slug');
         onChannelCardClick(slug);
+      });
+    }
+    // Prevent default on card links for regular clicks (SPA navigation),
+    // but allow right-click / cmd+click to open in new tab natively
+    var channelLinks = container.querySelectorAll('.channel-card-link');
+    for (var cl = 0; cl < channelLinks.length; cl++) {
+      channelLinks[cl].addEventListener('click', function (e) {
+        e.preventDefault();
       });
     }
 
