@@ -227,6 +227,116 @@ class TestAuth:
             data = resp.get_json()
             assert data["error"]["code"] == "service_unavailable"
 
+    def test_agent_id_header_resolves_to_agent_persona(
+        self,
+        client,
+        mock_channel_service,
+        mock_agent,
+        mock_agent_persona,
+    ):
+        """X-Headspace-Agent-ID header resolves agent -> persona."""
+        mock_channel_service.list_channels.return_value = []
+        mock_agent.ended_at = None
+
+        with patch(
+            "claude_headspace.routes.channels_api.db.session.get",
+            return_value=mock_agent,
+        ), _patch_no_operator():
+            resp = client.get(
+                "/api/channels",
+                headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
+            )
+            assert resp.status_code == 200
+            call_kwargs = mock_channel_service.list_channels.call_args
+            assert call_kwargs.kwargs["persona"] == mock_agent_persona
+
+    def test_agent_id_header_ended_agent_falls_through(
+        self,
+        client,
+        mock_channel_service,
+        mock_agent,
+        mock_operator,
+    ):
+        """X-Headspace-Agent-ID for ended agent falls through to operator."""
+        mock_channel_service.list_channels.return_value = []
+        mock_agent.ended_at = "2026-03-04T00:00:00"  # ended
+
+        with patch(
+            "claude_headspace.routes.channels_api.db.session.get",
+            return_value=mock_agent,
+        ), _patch_operator(mock_operator):
+            resp = client.get(
+                "/api/channels",
+                headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
+            )
+            assert resp.status_code == 200
+            call_kwargs = mock_channel_service.list_channels.call_args
+            assert call_kwargs.kwargs["persona"] == mock_operator
+
+    def test_agent_id_header_invalid_value_falls_through(
+        self,
+        client,
+        mock_channel_service,
+        mock_operator,
+    ):
+        """X-Headspace-Agent-ID with non-integer falls through to operator."""
+        mock_channel_service.list_channels.return_value = []
+
+        with _patch_operator(mock_operator):
+            resp = client.get(
+                "/api/channels",
+                headers={"X-Headspace-Agent-ID": "not-a-number"},
+            )
+            assert resp.status_code == 200
+            call_kwargs = mock_channel_service.list_channels.call_args
+            assert call_kwargs.kwargs["persona"] == mock_operator
+
+    def test_agent_id_header_no_persona_falls_through(
+        self,
+        client,
+        mock_channel_service,
+        mock_operator,
+    ):
+        """X-Headspace-Agent-ID for agent without persona falls through."""
+        mock_channel_service.list_channels.return_value = []
+        agent_no_persona = MagicMock()
+        agent_no_persona.id = 999
+        agent_no_persona.ended_at = None
+        agent_no_persona.persona = None
+
+        with patch(
+            "claude_headspace.routes.channels_api.db.session.get",
+            return_value=agent_no_persona,
+        ), _patch_operator(mock_operator):
+            resp = client.get(
+                "/api/channels",
+                headers={"X-Headspace-Agent-ID": "999"},
+            )
+            assert resp.status_code == 200
+            call_kwargs = mock_channel_service.list_channels.call_args
+            assert call_kwargs.kwargs["persona"] == mock_operator
+
+    def test_bearer_token_takes_precedence_over_agent_id_header(
+        self,
+        client,
+        mock_channel_service,
+        mock_agent,
+        mock_agent_persona,
+    ):
+        """Bearer token should take precedence over X-Headspace-Agent-ID."""
+        mock_channel_service.list_channels.return_value = []
+
+        # Use _patch_resolve_caller to simulate token auth winning
+        with _patch_resolve_caller(mock_agent_persona, mock_agent):
+            resp = client.get(
+                "/api/channels",
+                headers={
+                    "Authorization": "Bearer some-valid-token",
+                    "X-Headspace-Agent-ID": "999",
+                },
+            )
+            assert resp.status_code == 200
+
 
 # ──────────────────────────────────────────────────────────────
 # Create Channel Tests (Section 3.1.1)
@@ -924,20 +1034,23 @@ class TestAvailableMembers:
     def test_success_with_grouped_data(
         self, client, mock_operator, mock_channel_service
     ):
-        mock_channel_service.get_available_members.return_value = [
-            {
-                "project_id": 1,
-                "project_name": "claude-headspace",
-                "agents": [
-                    {
-                        "agent_id": 7,
-                        "persona_name": "Al",
-                        "persona_slug": "frontend-al-3",
-                        "role": "frontend",
-                    }
-                ],
-            }
-        ]
+        mock_channel_service.get_available_members.return_value = {
+            "projects": [
+                {
+                    "project_id": 1,
+                    "project_name": "claude-headspace",
+                    "agents": [
+                        {
+                            "agent_id": 7,
+                            "persona_name": "Al",
+                            "persona_slug": "frontend-al-3",
+                            "role": "frontend",
+                        }
+                    ],
+                }
+            ],
+            "personas": [],
+        }
         with _patch_operator(mock_operator):
             resp = client.get("/api/channels/available-members")
             assert resp.status_code == 200
@@ -948,7 +1061,10 @@ class TestAvailableMembers:
             assert data["projects"][0]["agents"][0]["agent_id"] == 7
 
     def test_empty_list(self, client, mock_operator, mock_channel_service):
-        mock_channel_service.get_available_members.return_value = []
+        mock_channel_service.get_available_members.return_value = {
+            "projects": [],
+            "personas": [],
+        }
         with _patch_operator(mock_operator):
             resp = client.get("/api/channels/available-members")
             assert resp.status_code == 200
@@ -1100,3 +1216,71 @@ class TestCreateChannelWithMemberAgents:
             assert resp.status_code == 400
             data = resp.get_json()
             assert data["error"]["code"] == "invalid_field"
+
+
+# ──────────────────────────────────────────────────────────────
+# Join Channel Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestJoinChannel:
+    """Tests for POST /api/channels/<slug>/join."""
+
+    def test_join_success_returns_201(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Successful join returns 201 with membership."""
+        mock_membership = MagicMock()
+        mock_membership.id = 10
+        mock_membership.persona.slug = "person-sam-1"
+        mock_membership.persona.name = "Sam"
+        mock_membership.agent_id = None
+        mock_membership.is_chair = False
+        mock_membership.status = "active"
+        mock_membership.joined_at.isoformat.return_value = "2026-03-04T10:00:00+00:00"
+        mock_membership.left_at = None
+
+        mock_channel_service.join_channel.return_value = mock_membership
+
+        with _patch_operator(mock_operator):
+            resp = client.post("/api/channels/test-channel/join")
+            assert resp.status_code == 201
+            data = resp.get_json()
+            assert data["persona_slug"] == "person-sam-1"
+            assert data["status"] == "active"
+            assert data["is_chair"] is False
+
+    def test_join_already_member_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Already a member -> 409."""
+        mock_channel_service.join_channel.side_effect = AlreadyMemberError(
+            "Already a member"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.post("/api/channels/test-channel/join")
+            assert resp.status_code == 409
+            assert resp.get_json()["error"]["code"] == "already_a_member"
+
+    def test_join_closed_channel_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Closed channel -> 409."""
+        mock_channel_service.join_channel.side_effect = ChannelClosedError(
+            "Channel is complete"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.post("/api/channels/test-channel/join")
+            assert resp.status_code == 409
+            assert resp.get_json()["error"]["code"] == "channel_not_active"
+
+    def test_join_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Channel not found -> 404."""
+        mock_channel_service.join_channel.side_effect = ChannelNotFoundError(
+            "Not found"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.post("/api/channels/nonexistent/join")
+            assert resp.status_code == 404

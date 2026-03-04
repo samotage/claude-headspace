@@ -41,9 +41,12 @@
     var _memberPillsEl = null;
     var _addMemberArea = null;
     var _addMemberPicker = null;
-    var _addBtn = null;
-    var _completeBtn = null;
-    var _endBtn = null;
+    var _kebabWrap = null;
+    var _kebabBtn = null;
+    var _kebabMenu = null;
+    var _kebabComplete = null;
+    var _kebabEnd = null;
+    var _kebabOpen = false;
 
     function _getElements() {
         if (_panel) return;
@@ -57,15 +60,28 @@
         _loadingEl = document.getElementById('channel-chat-loading');
         _newIndicatorEl = document.getElementById('channel-chat-new-indicator');
         _infoPanel = document.getElementById('channel-chat-info');
-        _infoToggle = document.getElementById('channel-chat-info-toggle');
+        // _infoToggle removed — info action is now in kebab menu
         _membersEl = document.getElementById('channel-chat-members');
         _detailsEl = document.getElementById('channel-chat-details');
         _memberPillsEl = document.getElementById('channel-chat-member-pills');
         _addMemberArea = document.getElementById('channel-chat-add-member');
         _addMemberPicker = document.getElementById('channel-chat-add-member-picker');
-        _addBtn = document.getElementById('channel-chat-add-btn');
-        _completeBtn = document.getElementById('channel-chat-complete-btn');
-        _endBtn = document.getElementById('channel-chat-end-btn');
+        _kebabWrap = document.getElementById('channel-chat-kebab-wrap');
+        _kebabBtn = document.getElementById('channel-chat-kebab-btn');
+        _kebabMenu = document.getElementById('channel-chat-kebab-menu');
+        _kebabComplete = document.getElementById('channel-chat-kebab-complete');
+        _kebabEnd = document.getElementById('channel-chat-kebab-end');
+
+        // Wire kebab menu items via event delegation
+        if (_kebabMenu) {
+            _kebabMenu.addEventListener('click', function(e) {
+                var item = e.target.closest('[data-action]');
+                if (item) {
+                    e.stopPropagation();
+                    _handleKebabAction(item.getAttribute('data-action'));
+                }
+            });
+        }
     }
 
     /**
@@ -133,10 +149,11 @@
 
         // Collapse add-member area
         _collapseAddMember();
+        _closeKebab();
 
-        // Hide chair controls
-        if (_completeBtn) _completeBtn.classList.add('hidden');
-        if (_endBtn) _endBtn.classList.add('hidden');
+        // Hide chair controls in kebab
+        if (_kebabComplete) _kebabComplete.classList.add('hidden');
+        if (_kebabEnd) _kebabEnd.classList.add('hidden');
 
         document.removeEventListener('keydown', _handleEscape);
     }
@@ -150,9 +167,6 @@
         if (_infoPanel) {
             _infoPanel.classList.toggle('hidden', !_infoOpen);
         }
-        if (_infoToggle) {
-            _infoToggle.classList.toggle('text-cyan', _infoOpen);
-        }
     }
 
     /**
@@ -160,6 +174,7 @@
      */
     function toggleAddMember() {
         _getElements();
+        _closeKebab();
         if (_addMemberOpen) {
             _collapseAddMember();
         } else {
@@ -167,12 +182,109 @@
         }
     }
 
+    /**
+     * Toggle the kebab dropdown menu.
+     */
+    function toggleKebab() {
+        _getElements();
+        if (_kebabOpen) {
+            _closeKebab();
+        } else {
+            _openKebab();
+        }
+    }
+
+    function _openKebab() {
+        _kebabOpen = true;
+        if (_kebabMenu) _kebabMenu.classList.remove('hidden');
+        if (_kebabBtn) _kebabBtn.setAttribute('aria-expanded', 'true');
+        // Close on outside click (use setTimeout to avoid triggering on the opening click)
+        setTimeout(function() {
+            document.addEventListener('click', _handleKebabOutsideClick);
+        }, 0);
+    }
+
+    function _closeKebab() {
+        _kebabOpen = false;
+        if (_kebabMenu) _kebabMenu.classList.add('hidden');
+        if (_kebabBtn) _kebabBtn.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('click', _handleKebabOutsideClick);
+    }
+
+    function _handleKebabOutsideClick(e) {
+        if (_kebabWrap && !_kebabWrap.contains(e.target)) {
+            _closeKebab();
+        }
+    }
+
+    function _handleKebabAction(action) {
+        _closeKebab();
+        switch (action) {
+            case 'add-member':
+                toggleAddMember();
+                break;
+            case 'info':
+                toggleInfo();
+                break;
+            case 'complete':
+                completeChannel();
+                break;
+            case 'end':
+                endChannel();
+                break;
+            case 'copy-slug':
+                _copySlug();
+                break;
+            case 'leave':
+                leaveChannel();
+                break;
+        }
+    }
+
+    function _copySlug() {
+        if (!_activeChannelSlug) return;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(_activeChannelSlug);
+        }
+        if (global.Toast) {
+            global.Toast.success('Copied', 'Channel slug copied to clipboard');
+        }
+    }
+
+    function leaveChannel() {
+        if (!_activeChannelSlug) return;
+        if (!confirm('Leave #' + _activeChannelSlug + '?')) return;
+
+        fetch('/api/channels/' + encodeURIComponent(_activeChannelSlug) + '/leave', {
+            method: 'POST',
+        })
+        .then(function(r) {
+            if (!r.ok) {
+                return r.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + r.status);
+                });
+            }
+            return r.json();
+        })
+        .then(function() {
+            if (global.Toast) {
+                global.Toast.success('Left Channel', 'You left #' + _activeChannelSlug);
+            }
+            close();
+        })
+        .catch(function(err) {
+            console.error('Failed to leave channel:', err);
+            if (global.Toast) {
+                global.Toast.error('Error', err.message || 'Failed to leave channel');
+            }
+        });
+    }
+
     var _selectionWatcher = null;
 
     function _expandAddMember() {
         _addMemberOpen = true;
         if (_addMemberArea) _addMemberArea.classList.add('open');
-        if (_addBtn) _addBtn.classList.add('text-cyan');
 
         // Fetch current members to exclude from picker, then init autocomplete
         if (_addMemberPicker && global.MemberAutocomplete && _activeChannelSlug) {
@@ -229,7 +341,6 @@
     function _collapseAddMember() {
         _addMemberOpen = false;
         if (_addMemberArea) _addMemberArea.classList.remove('open');
-        if (_addBtn) _addBtn.classList.remove('text-cyan');
         if (_selectionWatcher) {
             clearInterval(_selectionWatcher);
             _selectionWatcher = null;
@@ -616,11 +727,11 @@
                 var membersList = Array.isArray(members) ? members : (members.members || []);
                 _renderMemberPills(membersList);
 
-                // Show chair controls — operator always has access,
+                // Show chair controls in kebab — operator always has access,
                 // backend enforces actual permissions
                 var hasChair = membersList.some(function(m) { return m.is_chair; });
-                if (_completeBtn) _completeBtn.classList.toggle('hidden', !hasChair);
-                if (_endBtn) _endBtn.classList.toggle('hidden', !hasChair);
+                if (_kebabComplete) _kebabComplete.classList.toggle('hidden', !hasChair);
+                if (_kebabEnd) _kebabEnd.classList.toggle('hidden', !hasChair);
             })
             .catch(function(err) {
                 console.error('Failed to load members for pills:', err);
@@ -887,8 +998,10 @@
         loadEarlier: loadEarlier,
         toggleInfo: toggleInfo,
         toggleAddMember: toggleAddMember,
+        toggleKebab: toggleKebab,
         completeChannel: completeChannel,
         endChannel: endChannel,
+        leaveChannel: leaveChannel,
         get _activeChannelSlug() { return _activeChannelSlug; },
     };
 

@@ -130,6 +130,19 @@ def _resolve_caller():
                     return agent.persona, agent
         raise AuthError("invalid_session_token", "Invalid or expired session token")
 
+    # Check X-Headspace-Agent-ID header (agent curl without token)
+    agent_id_header = request.headers.get("X-Headspace-Agent-ID")
+    if agent_id_header:
+        try:
+            agent_id = int(agent_id_header)
+            agent = db.session.get(Agent, agent_id)
+            if agent and agent.ended_at is None and agent.persona:
+                return agent.persona, agent
+        except (ValueError, TypeError):
+            pass
+        # Invalid header — fall through to operator fallback rather than error,
+        # matching the lenient pattern of caller_identity.py
+
     # Fallback: dashboard session (operator)
     operator = Persona.get_operator()
     if operator:
@@ -350,7 +363,19 @@ def list_channels(*, persona, agent, service):
         all_visible=all_flag,
     )
 
-    return jsonify([_channel_to_dict(ch) for ch in channels]), 200
+    result = []
+    for ch in channels:
+        d = _channel_to_dict(ch)
+        # Include is_member flag when listing all channels
+        if all_flag:
+            memberships = getattr(ch, "memberships", None) or []
+            d["is_member"] = any(
+                m.persona_id == persona.id and m.status in ("active", "muted")
+                for m in memberships
+            )
+        result.append(d)
+
+    return jsonify(result), 200
 
 
 @channels_api_bp.route("/api/channels/available-members", methods=["GET"])
@@ -460,6 +485,14 @@ def add_member(slug: str, *, persona, agent, service):
         caller_persona=persona,
     )
 
+    return jsonify(_membership_to_dict(membership)), 201
+
+
+@channels_api_bp.route("/api/channels/<slug>/join", methods=["POST"])
+@_channel_route
+def join_channel(slug: str, *, persona, agent, service):
+    """Self-join a channel without requiring existing membership."""
+    membership = service.join_channel(slug=slug, persona=persona)
     return jsonify(_membership_to_dict(membership)), 201
 
 

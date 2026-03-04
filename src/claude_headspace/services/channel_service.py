@@ -665,6 +665,63 @@ class ChannelService:
         )
         return membership
 
+    def join_channel(self, slug: str, persona: Persona) -> ChannelMembership:
+        """Self-join a channel without requiring existing membership or chair.
+
+        This is a distinct action from add_member — it allows a persona to
+        join a channel they can see but are not yet a member of. No caller
+        membership check and no chair permission required.
+
+        Args:
+            slug: Channel slug.
+            persona: The persona joining.
+
+        Returns:
+            The created ChannelMembership.
+
+        Raises:
+            ChannelNotFoundError: If channel not found.
+            ChannelClosedError: If channel is complete/archived.
+            AlreadyMemberError: If persona is already a member.
+        """
+        channel = self.get_channel(slug)
+        self._check_closed(channel)
+
+        # Check not already a member
+        existing = ChannelMembership.query.filter_by(
+            channel_id=channel.id, persona_id=persona.id
+        ).first()
+        if existing:
+            raise AlreadyMemberError(
+                f"Error: You are already a member of #{channel.slug}."
+            )
+
+        membership = ChannelMembership(
+            channel_id=channel.id,
+            persona_id=persona.id,
+            agent_id=None,
+            is_chair=False,
+            status="active",
+        )
+        db.session.add(membership)
+
+        self._post_system_message(channel, f"{persona.name} joined the channel")
+        self._transition_to_active(channel)
+        db.session.commit()
+
+        members = self._get_member_names(channel)
+        self._broadcast_update(
+            channel,
+            "member_added",
+            {
+                "slug": channel.slug,
+                "persona_slug": persona.slug,
+                "persona_name": persona.name,
+                "members": members,
+            },
+        )
+        return membership
+
     def leave_channel(self, slug: str, persona: Persona) -> None:
         """Leave a channel.
 

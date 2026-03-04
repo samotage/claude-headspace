@@ -255,6 +255,35 @@
         });
     }
 
+    /**
+     * Join a channel (self-join without chair permission).
+     */
+    function joinChannel(slug) {
+        fetch('/api/channels/' + encodeURIComponent(slug) + '/join', {
+            method: 'POST',
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
+            }
+            return response.json();
+        })
+        .then(function() {
+            if (global.Toast) {
+                global.Toast.success('Joined Channel', 'You joined #' + slug);
+            }
+            _loadChannels();
+        })
+        .catch(function(err) {
+            console.error('Failed to join channel:', err);
+            if (global.Toast) {
+                global.Toast.error('Error', err.message || 'Failed to join channel');
+            }
+        });
+    }
+
     // ── Internal Helpers ──────────────────────────────────────
 
     function _handleEscape(e) {
@@ -327,6 +356,10 @@
 
         // Build action buttons
         var actions = '';
+        if (ch.is_member === false && (ch.status === 'active' || ch.status === 'pending')) {
+            actions += '<button class="text-xs text-green hover:text-primary transition-colors mr-2" ' +
+                       'onclick="event.stopPropagation(); window.ChannelManagement.joinChannel(\'' + _escapeAttr(ch.slug) + '\')">Join</button>';
+        }
         if (ch.status === 'active' || ch.status === 'pending') {
             actions += '<button class="text-xs text-amber hover:text-primary transition-colors mr-2" ' +
                        'onclick="event.stopPropagation(); window.ChannelManagement.completeChannel(\'' + _escapeAttr(ch.slug) + '\')">Complete</button>';
@@ -369,6 +402,7 @@
         createChannel: createChannel,
         completeChannel: completeChannel,
         archiveChannel: archiveChannel,
+        joinChannel: joinChannel,
     };
 
 })(window);

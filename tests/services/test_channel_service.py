@@ -856,3 +856,65 @@ class TestAgentChannelConflictScoping:
 
         with pytest.raises(AgentChannelConflictError):
             channel_service._check_agent_channel_conflict(setup_data["agent_b"])
+
+
+class TestJoinChannel:
+    """Tests for join_channel — self-join without membership/chair check."""
+
+    def test_join_success(self, channel_service, setup_data):
+        """Persona can self-join a channel they're not a member of."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="open-channel",
+            channel_type="workshop",
+        )
+        membership = channel_service.join_channel(ch.slug, setup_data["persona_b"])
+        assert membership.persona_id == setup_data["persona_b"].id
+        assert membership.status == "active"
+        assert membership.is_chair is False
+
+    def test_join_transitions_pending_to_active(self, channel_service, setup_data):
+        """Joining a pending channel transitions it to active."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="pending-channel",
+            channel_type="workshop",
+        )
+        assert ch.status == "pending"
+        channel_service.join_channel(ch.slug, setup_data["persona_b"])
+        assert ch.status == "active"
+
+    def test_join_already_member_raises(self, channel_service, setup_data):
+        """Cannot join a channel you're already a member of."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="member-channel",
+            channel_type="workshop",
+        )
+        with pytest.raises(AlreadyMemberError):
+            channel_service.join_channel(ch.slug, setup_data["persona_a"])
+
+    def test_join_closed_channel_raises(self, channel_service, setup_data):
+        """Cannot join a completed channel."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="closed-channel",
+            channel_type="workshop",
+        )
+        channel_service.complete_channel(ch.slug, setup_data["persona_a"])
+        with pytest.raises(ChannelClosedError):
+            channel_service.join_channel(ch.slug, setup_data["persona_b"])
+
+    def test_join_creates_system_message(self, channel_service, setup_data):
+        """Joining posts a system message."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="msg-channel",
+            channel_type="workshop",
+        )
+        channel_service.join_channel(ch.slug, setup_data["persona_b"])
+        messages = Message.query.filter_by(
+            channel_id=ch.id, message_type=MessageType.SYSTEM
+        ).all()
+        join_msgs = [m for m in messages if "Bob joined" in m.content]
+        assert len(join_msgs) == 1

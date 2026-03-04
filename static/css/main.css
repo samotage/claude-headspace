@@ -792,6 +792,11 @@ select.form-well {
   margin-right: auto;
 }
 
+.my-1 {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
 .my-2 {
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
@@ -4580,6 +4585,41 @@ body::after {
 
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* Kebab dropdown menu */
+
+.channel-chat-kebab-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  min-width: 180px;
+  margin-top: 4px;
+  padding: 4px 0;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.channel-chat-kebab-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+
+.channel-chat-kebab-item:hover {
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 /* Optimistic message styling */
