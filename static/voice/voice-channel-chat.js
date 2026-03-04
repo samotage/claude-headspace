@@ -346,12 +346,58 @@ window.VoiceChannelChat = (function () {
     return (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
   }
 
+  /**
+   * Display a voice bridge response as a system message in channel chat.
+   * @param {object} voice - Voice envelope {status_line, results, next_action}
+   */
+  function showVoiceResult(voice) {
+    if (!voice) return;
+    var slug = VoiceState.currentChannelSlug;
+    if (!slug) return;
+
+    // Build content from voice envelope
+    var parts = [];
+    if (voice.status_line) parts.push(voice.status_line);
+    if (voice.results && voice.results.length) {
+      parts = parts.concat(voice.results);
+    }
+    if (voice.next_action) parts.push(voice.next_action);
+    var content = parts.join('\n');
+    if (!content) return;
+
+    var msg = {
+      id: 'voice-' + Date.now(),
+      channel_slug: slug,
+      persona_slug: null,
+      persona_name: null,
+      agent_id: null,
+      content: content,
+      message_type: 'system',
+      sent_at: new Date().toISOString()
+    };
+
+    // Add to cache
+    if (!VoiceState.channelMessages[slug]) VoiceState.channelMessages[slug] = [];
+    VoiceState.channelMessages[slug].push(msg);
+
+    // Render
+    var messagesEl = document.getElementById('channel-chat-messages');
+    if (messagesEl) {
+      var cached = VoiceState.channelMessages[slug];
+      var prevMsg = cached.length > 1 ? cached[cached.length - 2] : null;
+      _maybeInsertTimeSeparator(messagesEl, msg, prevMsg);
+      messagesEl.appendChild(_createMessageEl(msg, prevMsg));
+      _scrollToBottom();
+    }
+  }
+
   // --- Public API ---
 
   return {
     showChannelChatScreen: showChannelChatScreen,
     appendMessage: appendMessage,
     loadOlderMessages: loadOlderMessages,
-    sendMessage: sendMessage
+    sendMessage: sendMessage,
+    showVoiceResult: showVoiceResult
   };
 })();

@@ -42,6 +42,26 @@ window.VoiceApp = (function () {
     VoiceInput.stop();
   }
 
+  /**
+   * Handle voice input on the channel chat screen.
+   * Routes through voice bridge first; if the bridge doesn't detect a channel
+   * command, falls back to sending as a plain channel message.
+   */
+  function _handleChannelVoice(text) {
+    VoiceAPI.sendCommand(text).then(function (data) {
+      if (data && data.voice) {
+        VoiceChannelChat.showVoiceResult(data.voice);
+        if (VoiceState.settings.tts) VoiceOutput.speakResponse(data.voice);
+      } else {
+        // Voice bridge didn't produce a voice envelope — send as plain message
+        VoiceChannelChat.sendMessage(text);
+      }
+    }).catch(function () {
+      // Voice bridge failed — fall back to plain message
+      VoiceChannelChat.sendMessage(text);
+    });
+  }
+
   // --- Question / Response mode ---
 
   function _loadQuestion(agentId) {
@@ -204,6 +224,8 @@ window.VoiceApp = (function () {
     VoiceInput.onResult(function (text) {
       if (VoiceState.currentScreen === 'chat') {
         VoiceChatController.sendChatCommand(text);
+      } else if (VoiceState.currentScreen === 'channel-chat') {
+        _handleChannelVoice(text);
       } else {
         VoiceChatController.sendCommand(text);
       }
@@ -212,11 +234,23 @@ window.VoiceApp = (function () {
     VoiceInput.onPartial(function (text) {
       var el = document.getElementById('live-transcript');
       if (el) el.textContent = text;
+      // Show partial transcript in channel chat input while listening
+      if (VoiceState.currentScreen === 'channel-chat') {
+        var channelInput = document.getElementById('channel-chat-input');
+        if (channelInput) channelInput.placeholder = text || 'Listening...';
+      }
     });
 
     VoiceInput.onStateChange(function (listening) {
       var chatMic = document.getElementById('chat-mic-btn');
+      var channelMic = document.getElementById('channel-chat-mic-btn');
       if (chatMic) chatMic.classList.toggle('active', listening);
+      if (channelMic) channelMic.classList.toggle('active', listening);
+      // Reset channel chat input placeholder when listening stops
+      if (!listening && VoiceState.currentScreen === 'channel-chat') {
+        var channelInput = document.getElementById('channel-chat-input');
+        if (channelInput) channelInput.placeholder = 'Message channel...';
+      }
     });
 
     // Wire up SSE
@@ -617,6 +651,19 @@ window.VoiceApp = (function () {
         var limit = parseInt(getComputedStyle(this).maxHeight, 10) || 240;
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, limit) + 'px';
+      });
+    }
+
+    // Channel chat mic button
+    var channelMicBtn = document.getElementById('channel-chat-mic-btn');
+    if (channelMicBtn) {
+      channelMicBtn.addEventListener('click', function () {
+        VoiceOutput.initAudio();
+        if (VoiceInput.isListening()) {
+          _stopListening();
+        } else {
+          _startListening();
+        }
       });
     }
 

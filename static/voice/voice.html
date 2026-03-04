@@ -249,6 +249,7 @@
             <button type="submit" class="chat-send-btn" aria-label="Send">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
             </button>
+            <button type="button" id="channel-chat-mic-btn" class="chat-mic-btn" aria-label="Voice input">&#127908;</button>
           </form>
         </div>
       </div>
@@ -370,8 +371,8 @@
   <script src="/static/voice/voice-sidebar.js?v=4"></script>
   <script src="/static/voice/voice-sse-handler.js?v=4"></script>
   <script src="/static/voice/voice-chat-controller.js?v=2"></script>
-  <script src="/static/voice/voice-channel-chat.js?v=1"></script>
-  <script src="/static/voice/voice-app.js?v=17"></script>
+  <script src="/static/voice/voice-channel-chat.js?v=2"></script>
+  <script src="/static/voice/voice-app.js?v=18"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,
