@@ -20,6 +20,14 @@
         activeAgentCount: 0
     };
 
+    // Accordion state for agent commands
+    var expandedAgents = {};
+    var expandedCommands = {};
+    var cache = {
+        agentCommands: {},
+        commandTurns: {}
+    };
+
     // Warn on navigation when skill editor has unsaved changes
     function _beforeUnloadHandler(e) {
         if (state.isDirty) {
@@ -313,10 +321,184 @@
 
         _renderAgentsList: function(container, agents) {
             AgentListing.renderAgentsList(container, agents, {
+                showAccordionArrow: true,
+                onRowClick: 'PersonaDetail.toggleAgentCommands(AGENT_ID)',
                 showProjectName: true,
+                showClaudeSessionId: true,
+                showChatLink: true,
                 showReviveButton: true,
+                showContext: true,
+                showContextProject: true,
+                thresholds: { yellow: 4, red: 7 },
                 emptyMessage: 'No agents linked to this persona.'
             });
+        },
+
+        // --- Agent Accordion ---
+
+        toggleAgentCommands: async function(agentId) {
+            var body = document.getElementById('agent-commands-' + agentId);
+            var arrow = document.getElementById('agent-arrow-' + agentId);
+            if (!body) return;
+
+            if (expandedAgents[agentId]) {
+                body.style.display = 'none';
+                if (arrow) arrow.style.transform = 'rotate(0deg)';
+                delete expandedAgents[agentId];
+                var commandKeys = Object.keys(expandedCommands);
+                commandKeys.forEach(function(key) {
+                    if (expandedCommands[key] === agentId) {
+                        delete expandedCommands[key];
+                    }
+                });
+            } else {
+                body.style.display = 'block';
+                if (arrow) arrow.style.transform = 'rotate(90deg)';
+                expandedAgents[agentId] = true;
+
+                if (cache.agentCommands[agentId]) {
+                    this._renderCommandsList(agentId, cache.agentCommands[agentId]);
+                } else {
+                    this._fetchAndRenderCommands(agentId);
+                }
+            }
+        },
+
+        _fetchAndRenderCommands: async function(agentId) {
+            var container = document.getElementById('agent-commands-' + agentId);
+            container.innerHTML = '<p class="text-muted italic text-sm"><span class="inline-block animate-pulse">Loading commands...</span></p>';
+
+            try {
+                var response = await fetch('/api/agents/' + agentId + '/commands');
+                if (!response.ok) throw new Error('Failed to fetch');
+                var commands = await response.json();
+                cache.agentCommands[agentId] = commands;
+                this._renderCommandsList(agentId, commands);
+            } catch (e) {
+                container.innerHTML = '<div class="text-red text-sm">Failed to load commands. <button type="button" onclick="PersonaDetail._fetchAndRenderCommands(' + agentId + ')" class="text-cyan hover:underline ml-1">Retry</button></div>';
+            }
+        },
+
+        _renderCommandsList: function(agentId, commands) {
+            var container = document.getElementById('agent-commands-' + agentId);
+            if (!commands || commands.length === 0) {
+                container.innerHTML = '<p class="text-muted italic text-sm">No commands.</p>';
+                return;
+            }
+
+            var html = '<div class="space-y-2">';
+            commands.forEach(function(command) {
+                var stateValue = command.state || 'idle';
+                var stateClass = AgentListing.stateColorClass(stateValue);
+                var instruction = command.instruction || '';
+                var summary = command.completion_summary || '';
+                var displayText = instruction.length > 60 ? instruction.substring(0, 60) + '...' : instruction;
+                var commandId = command.id;
+                var isComplete = stateValue.toLowerCase() === 'complete';
+                var borderColor = isComplete ? 'border-green/20' : 'border-border';
+
+                html += '<div class="accordion-command-row">';
+                html += '<div class="flex items-center gap-2 px-3 py-2 bg-elevated rounded-t-lg border ' + borderColor + ' cursor-pointer hover:border-border-bright transition-colors" onclick="PersonaDetail.toggleCommandTurns(' + commandId + ', ' + agentId + ')">';
+                html += '<span class="accordion-arrow text-muted text-xs transition-transform duration-150" id="command-arrow-' + commandId + '">&#9654;</span>';
+                html += '<span class="text-xs font-medium px-1.5 py-0.5 rounded ' + stateClass + '">' + CHUtils.escapeHtml(stateValue.toUpperCase()) + '</span>';
+                if (displayText) {
+                    html += '<span class="text-sm text-primary font-medium truncate flex-1">' + CHUtils.escapeHtml(displayText) + '</span>';
+                }
+                html += '</div>';
+
+                html += '<div class="card-editor border-t-0 rounded-t-none border ' + borderColor + ' border-t-0 rounded-b-lg">';
+                html += '<div class="card-line"><span class="line-num">01</span><div class="line-content">';
+                html += '<p class="command-instruction text-primary text-sm font-medium">' + CHUtils.escapeHtml(instruction || 'No instruction') + '</p>';
+                html += '</div></div>';
+                html += '<div class="card-line"><span class="line-num">02</span><div class="line-content">';
+                if (isComplete && summary) {
+                    html += '<p class="command-summary text-green text-sm italic">' + CHUtils.escapeHtml(summary) + '</p>';
+                } else if (isComplete) {
+                    html += '<p class="text-green text-sm italic">Completed</p>';
+                } else {
+                    html += '<p class="text-amber text-sm italic">In progress...</p>';
+                }
+                html += '</div></div>';
+                html += '<div class="card-line"><span class="line-num">03</span><div class="line-content flex items-baseline justify-between gap-2">';
+                var turnLabel = (command.turn_count || 0) + ' turn' + ((command.turn_count || 0) !== 1 ? 's' : '');
+                if (isComplete && command.started_at && command.completed_at) {
+                    turnLabel += ' \u00B7 ' + AgentListing.formatDuration(command.started_at, command.completed_at);
+                }
+                html += '<span class="text-muted text-xs">' + turnLabel + '</span>';
+                html += '<button type="button" class="full-text-btn text-muted hover:text-cyan text-xs whitespace-nowrap transition-colors" onclick="PersonaDetail.toggleCommandTurns(' + commandId + ', ' + agentId + ')" id="command-view-full-btn-' + commandId + '" title="View conversation">View full</button>';
+                html += '</div></div>';
+                html += '<div id="command-turns-' + commandId + '" class="card-line" style="display: none;"><span class="line-num">&nbsp;</span><div class="line-content"></div></div>';
+                html += '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        },
+
+        toggleCommandTurns: async function(commandId, agentId) {
+            var wrapper = document.getElementById('command-turns-' + commandId);
+            var arrow = document.getElementById('command-arrow-' + commandId);
+            var viewBtn = document.getElementById('command-view-full-btn-' + commandId);
+            if (!wrapper) return;
+
+            if (expandedCommands[commandId]) {
+                wrapper.style.display = 'none';
+                if (arrow) arrow.style.transform = 'rotate(0deg)';
+                if (viewBtn) viewBtn.textContent = 'View full';
+                delete expandedCommands[commandId];
+            } else {
+                wrapper.style.display = 'block';
+                if (arrow) arrow.style.transform = 'rotate(90deg)';
+                if (viewBtn) viewBtn.textContent = 'Collapse';
+                expandedCommands[commandId] = agentId;
+
+                if (cache.commandTurns[commandId]) {
+                    this._renderTurnsList(commandId, cache.commandTurns[commandId]);
+                } else {
+                    this._fetchAndRenderTurns(commandId);
+                }
+            }
+        },
+
+        _fetchAndRenderTurns: async function(commandId) {
+            var contentEl = document.querySelector('#command-turns-' + commandId + ' .line-content');
+            if (contentEl) contentEl.innerHTML = '<span class="text-muted italic text-sm inline-block animate-pulse">Loading turns...</span>';
+
+            try {
+                var response = await fetch('/api/commands/' + commandId + '/turns');
+                if (!response.ok) throw new Error('Failed to fetch');
+                var turns = await response.json();
+                cache.commandTurns[commandId] = turns;
+                this._renderTurnsList(commandId, turns);
+            } catch (e) {
+                if (contentEl) contentEl.innerHTML = '<span class="text-red text-sm">Failed to load turns. <button type="button" onclick="PersonaDetail._fetchAndRenderTurns(' + commandId + ')" class="text-cyan hover:underline ml-1">Retry</button></span>';
+            }
+        },
+
+        _renderTurnsList: function(commandId, turns) {
+            var contentEl = document.querySelector('#command-turns-' + commandId + ' .line-content');
+            if (!contentEl) return;
+
+            if (!turns || turns.length === 0) {
+                contentEl.innerHTML = '<span class="text-muted italic text-sm">No turns.</span>';
+                return;
+            }
+
+            var html = '<div class="space-y-1 py-1">';
+            turns.forEach(function(turn) {
+                var actorClass = turn.actor === 'USER' ? 'text-cyan' : 'text-green';
+                var actorLabel = turn.actor === 'USER' ? 'USER' : 'AGENT';
+                var text = turn.summary || turn.text || '';
+                if (text.length > 200) text = text.substring(0, 200) + '...';
+                html += '<div class="flex gap-2 text-xs leading-relaxed">';
+                html += '<span class="' + actorClass + ' font-medium shrink-0 w-12">' + actorLabel + '</span>';
+                html += '<span class="text-secondary">' + CHUtils.escapeHtml(text) + '</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+
+            contentEl.innerHTML = html;
         },
 
         // --- Delete ---

@@ -1129,6 +1129,10 @@ select.form-well {
   flex-shrink: 0;
 }
 
+.shrink-0 {
+  flex-shrink: 0;
+}
+
 .-translate-y-1\/2 {
   --tw-translate-y: -50%;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
@@ -1930,6 +1934,10 @@ select.form-well {
 
 .italic {
   font-style: italic;
+}
+
+.leading-relaxed {
+  line-height: 1.625;
 }
 
 .tracking-wider {
@@ -3306,6 +3314,43 @@ body::after {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+/* Context line (project + instruction) */
+
+.agent-listing-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 0;
+  min-height: 1rem;
+  overflow: hidden;
+}
+
+.accordion-agent-row .agent-listing-context {
+  padding-left: 1.375rem;
+}
+
+.agent-listing-context-project {
+  font-size: 0.6875rem;
+  color: var(--cyan);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.agent-listing-context-sep {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.agent-listing-context-instruction {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .agent-listing-bottom {
