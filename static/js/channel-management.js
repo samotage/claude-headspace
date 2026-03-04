@@ -195,7 +195,11 @@
             method: 'POST',
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
+            }
             return response.json();
         })
         .then(function(channel) {
@@ -210,7 +214,7 @@
         .catch(function(err) {
             console.error('Failed to complete channel:', err);
             if (global.Toast) {
-                global.Toast.error('Error', 'Failed to complete channel');
+                global.Toast.error('Error', err.message || 'Failed to complete channel');
             }
         });
     }
@@ -223,7 +227,11 @@
             method: 'POST',
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
+            }
             return response.json();
         })
         .then(function(channel) {
@@ -242,7 +250,7 @@
         .catch(function(err) {
             console.error('Failed to archive channel:', err);
             if (global.Toast) {
-                global.Toast.error('Error', 'Failed to archive channel');
+                global.Toast.error('Error', err.message || 'Failed to archive channel');
             }
         });
     }
@@ -323,7 +331,7 @@
             actions += '<button class="text-xs text-amber hover:text-primary transition-colors mr-2" ' +
                        'onclick="event.stopPropagation(); window.ChannelManagement.completeChannel(\'' + _escapeAttr(ch.slug) + '\')">Complete</button>';
         }
-        if (ch.status === 'completed') {
+        if (ch.status === 'complete' || ch.status === 'completed') {
             actions += '<button class="text-xs text-red hover:text-primary transition-colors mr-2" ' +
                        'onclick="event.stopPropagation(); window.ChannelManagement.archiveChannel(\'' + _escapeAttr(ch.slug) + '\')">Archive</button>';
         }

@@ -174,32 +174,56 @@
         if (_addMemberArea) _addMemberArea.classList.add('open');
         if (_addBtn) _addBtn.classList.add('text-cyan');
 
-        // Init MemberAutocomplete on the picker container
-        if (_addMemberPicker && global.MemberAutocomplete) {
-            global.MemberAutocomplete.init(_addMemberPicker);
-            // Watch for selections and auto-add (MemberAutocomplete has no event callback)
-            if (_selectionWatcher) clearInterval(_selectionWatcher);
-            _selectionWatcher = setInterval(function() {
-                if (!_addMemberOpen || !global.MemberAutocomplete) {
-                    clearInterval(_selectionWatcher);
-                    _selectionWatcher = null;
-                    return;
-                }
-                var ids = global.MemberAutocomplete.getSelectedAgentIds();
-                if (ids.length > 0) {
-                    _addMemberById(ids[0]);
-                    clearInterval(_selectionWatcher);
-                    _selectionWatcher = null;
-                    return;
-                }
-                var slugs = global.MemberAutocomplete.getSelectedPersonaSlugs();
-                if (slugs.length > 0) {
-                    _addMemberBySlug(slugs[0]);
-                    clearInterval(_selectionWatcher);
-                    _selectionWatcher = null;
-                }
-            }, 200);
+        // Fetch current members to exclude from picker, then init autocomplete
+        if (_addMemberPicker && global.MemberAutocomplete && _activeChannelSlug) {
+            var membersUrl = '/api/channels/' + encodeURIComponent(_activeChannelSlug) + '/members';
+            fetch(membersUrl)
+                .then(function(r) { return r.ok ? r.json() : []; })
+                .then(function(members) {
+                    var membersList = Array.isArray(members) ? members : (members.members || []);
+                    var excludeAgentIds = [];
+                    var excludePersonaSlugs = [];
+                    membersList.forEach(function(m) {
+                        if (m.agent_id) excludeAgentIds.push(m.agent_id);
+                        if (m.persona_slug) excludePersonaSlugs.push(m.persona_slug);
+                    });
+                    global.MemberAutocomplete.init(_addMemberPicker, {
+                        excludeAgentIds: excludeAgentIds,
+                        excludePersonaSlugs: excludePersonaSlugs,
+                    });
+                    _startSelectionWatcher();
+                })
+                .catch(function() {
+                    // Fallback: init without exclusion
+                    global.MemberAutocomplete.init(_addMemberPicker);
+                    _startSelectionWatcher();
+                });
         }
+    }
+
+    function _startSelectionWatcher() {
+        // Watch for selections and auto-add (MemberAutocomplete has no event callback)
+        if (_selectionWatcher) clearInterval(_selectionWatcher);
+        _selectionWatcher = setInterval(function() {
+            if (!_addMemberOpen || !global.MemberAutocomplete) {
+                clearInterval(_selectionWatcher);
+                _selectionWatcher = null;
+                return;
+            }
+            var ids = global.MemberAutocomplete.getSelectedAgentIds();
+            if (ids.length > 0) {
+                _addMemberById(ids[0]);
+                clearInterval(_selectionWatcher);
+                _selectionWatcher = null;
+                return;
+            }
+            var slugs = global.MemberAutocomplete.getSelectedPersonaSlugs();
+            if (slugs.length > 0) {
+                _addMemberBySlug(slugs[0]);
+                clearInterval(_selectionWatcher);
+                _selectionWatcher = null;
+            }
+        }, 200);
     }
 
     function _collapseAddMember() {
@@ -225,7 +249,11 @@
             body: JSON.stringify({ agent_id: agentId }),
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
+            }
             return response.json();
         })
         .then(function() {
@@ -236,7 +264,7 @@
         })
         .catch(function(err) {
             console.error('Failed to add member:', err);
-            if (global.Toast) global.Toast.error('Error', 'Failed to add member');
+            if (global.Toast) global.Toast.error('Error', err.message || 'Failed to add member');
         });
     }
 
@@ -250,7 +278,11 @@
             body: JSON.stringify({ persona_slug: personaSlug }),
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (!response.ok) {
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
+            }
             return response.json();
         })
         .then(function() {
@@ -261,7 +293,7 @@
         })
         .catch(function(err) {
             console.error('Failed to add member:', err);
-            if (global.Toast) global.Toast.error('Error', 'Failed to add member');
+            if (global.Toast) global.Toast.error('Error', err.message || 'Failed to add member');
         });
     }
 
@@ -283,7 +315,11 @@
                 headers: { 'Content-Type': 'application/json' },
             })
             .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (!r.ok) {
+                    return r.json().then(function(data) {
+                        throw new Error((data.error && data.error.message) || 'HTTP ' + r.status);
+                    });
+                }
                 return r.json();
             })
             .then(function() {
@@ -292,7 +328,7 @@
             })
             .catch(function(err) {
                 console.error('Failed to complete channel:', err);
-                if (global.Toast) global.Toast.error('Error', 'Failed to complete channel');
+                if (global.Toast) global.Toast.error('Error', err.message || 'Failed to complete channel');
             });
         });
     }
@@ -315,7 +351,11 @@
                 headers: { 'Content-Type': 'application/json' },
             })
             .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (!r.ok) {
+                    return r.json().then(function(data) {
+                        throw new Error((data.error && data.error.message) || 'HTTP ' + r.status);
+                    });
+                }
                 return r.json();
             })
             .then(function() {
@@ -324,7 +364,7 @@
             })
             .catch(function(err) {
                 console.error('Failed to archive channel:', err);
-                if (global.Toast) global.Toast.error('Error', 'Failed to archive channel');
+                if (global.Toast) global.Toast.error('Error', err.message || 'Failed to archive channel');
             });
         });
     }
@@ -366,7 +406,9 @@
         })
         .then(function(response) {
             if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
+                return response.json().then(function(data) {
+                    throw new Error((data.error && data.error.message) || 'HTTP ' + response.status);
+                });
             }
             return response.json();
         })
@@ -410,20 +452,24 @@
         if (!_isOpen) return;
 
         // Check if this message was already optimistically rendered
-        // by looking for a matching content from the operator
-        // (SSE messages from self should replace optimistic ones)
+        // by looking for a matching content from the operator.
+        // Only dedup messages from the operator (agent_id is null for
+        // dashboard-sent messages) to avoid dropping agent messages
+        // that happen to have the same content.
         var isDuplicate = false;
-        _pendingOptimistic.forEach(function(el, tempId) {
-            if (!isDuplicate) {
-                var msgContent = el.getAttribute('data-content');
-                if (msgContent === data.content) {
-                    // Replace optimistic with real
-                    el.classList.remove('channel-chat-msg-optimistic');
-                    _pendingOptimistic.delete(tempId);
-                    isDuplicate = true;
+        if (!data.agent_id && _pendingOptimistic.size > 0) {
+            _pendingOptimistic.forEach(function(el, tempId) {
+                if (!isDuplicate) {
+                    var msgContent = el.getAttribute('data-content');
+                    if (msgContent === data.content) {
+                        // Replace optimistic with real
+                        el.classList.remove('channel-chat-msg-optimistic');
+                        _pendingOptimistic.delete(tempId);
+                        isDuplicate = true;
+                    }
                 }
-            }
-        });
+            });
+        }
 
         if (!isDuplicate) {
             _renderMessage(data, false);

@@ -24,6 +24,8 @@
     var _fallbackEl = null;     // text input fallback on API failure
     var _boundOnDocClick = null;
     var _isOpen = false;
+    var _excludeAgentIds = {};  // { agentId: true } — agents to hide from dropdown
+    var _excludePersonaSlugs = {};  // { slug: true } — personas to hide from dropdown
 
     var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
@@ -34,7 +36,7 @@
 
     // ── Public API ──────────────────────────────────────────
 
-    function init(containerEl) {
+    function init(containerEl, options) {
         if (!containerEl) return;
 
         // Don't re-init if already set up on this container
@@ -45,6 +47,14 @@
         _selected = [];
         _highlightIdx = -1;
         _isOpen = false;
+
+        // Build exclude sets from options
+        _excludeAgentIds = {};
+        _excludePersonaSlugs = {};
+        if (options) {
+            (options.excludeAgentIds || []).forEach(function(id) { _excludeAgentIds[id] = true; });
+            (options.excludePersonaSlugs || []).forEach(function(s) { _excludePersonaSlugs[s] = true; });
+        }
 
         // Build DOM skeleton
         _container.innerHTML = '';
@@ -135,6 +145,8 @@
         _tagsEl = null;
         _fallbackEl = null;
         _isOpen = false;
+        _excludeAgentIds = {};
+        _excludePersonaSlugs = {};
     }
 
     // ── Data Fetching ───────────────────────────────────────
@@ -284,6 +296,8 @@
         (_data.projects || []).forEach(function(project) {
             var matchingAgents = project.agents.filter(function(agent) {
                 if (selectedIds[agent.agent_id]) return false;
+                if (_excludeAgentIds[agent.agent_id]) return false;
+                if (agent.persona_slug && _excludePersonaSlugs[agent.persona_slug]) return false;
                 if (!q) return true;
                 return (agent.persona_name || '').toLowerCase().indexOf(q) !== -1 ||
                        (agent.role || '').toLowerCase().indexOf(q) !== -1 ||
@@ -327,6 +341,7 @@
         // Render personas without active agents (e.g. operator)
         var matchingPersonas = (_data.personas || []).filter(function(p) {
             if (selectedSlugs[p.persona_slug]) return false;
+            if (_excludePersonaSlugs[p.persona_slug]) return false;
             if (!q) return true;
             return (p.persona_name || '').toLowerCase().indexOf(q) !== -1 ||
                    (p.role || '').toLowerCase().indexOf(q) !== -1 ||
@@ -338,7 +353,7 @@
 
             var header = document.createElement('div');
             header.className = 'member-ac-group-header';
-            header.textContent = 'People & Idle Personas';
+            header.textContent = 'People';
             _dropdownEl.appendChild(header);
 
             matchingPersonas.forEach(function(p) {

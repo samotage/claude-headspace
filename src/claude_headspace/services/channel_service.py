@@ -155,7 +155,7 @@ class ChannelService:
         # Re-read the slug after commit (after_insert event sets it)
         db.session.refresh(channel)
 
-        # Add additional members if specified (agent IDs take precedence)
+        # Add additional members — both agent IDs and persona slugs
         if member_agent_ids:
             for aid in member_agent_ids:
                 try:
@@ -164,7 +164,7 @@ class ChannelService:
                     logger.warning(
                         f"create_channel: failed to add member agent #{aid}: {e}"
                     )
-        elif member_slugs:
+        if member_slugs:
             for slug in member_slugs:
                 try:
                     self.add_member(channel.slug, slug, creator_persona)
@@ -172,6 +172,11 @@ class ChannelService:
                     logger.warning(
                         f"create_channel: failed to add member '{slug}': {e}"
                     )
+
+        # Transition to active if members were added alongside the chair
+        if channel.status == "pending" and (member_agent_ids or member_slugs):
+            self._transition_to_active(channel)
+            db.session.commit()
 
         # Build member name list for the JS card
         members = self._get_member_names(channel)
@@ -314,6 +319,14 @@ class ChannelService:
 
         channel.status = "complete"
         channel.completed_at = datetime.now(timezone.utc)
+
+        # Release all active memberships so agents can join new channels
+        now = datetime.now(timezone.utc)
+        for m in channel.memberships:
+            if m.status == "active":
+                m.status = "left"
+                m.left_at = now
+
         self._post_system_message(channel, f"Channel completed by {persona.name}")
         db.session.commit()
 
@@ -352,6 +365,14 @@ class ChannelService:
 
         channel.status = "archived"
         channel.archived_at = datetime.now(timezone.utc)
+
+        # Release any remaining active memberships
+        now = datetime.now(timezone.utc)
+        for m in channel.memberships:
+            if m.status in ("active", "muted"):
+                m.status = "left"
+                m.left_at = now
+
         self._post_system_message(channel, f"Channel archived by {persona.name}")
         db.session.commit()
 
@@ -495,15 +516,24 @@ class ChannelService:
                 Agent.persona_id.isnot(None),
                 Persona.status == "active",
             )
-            .order_by(Project.name, Persona.name)
+            .order_by(Project.name, Persona.name, Agent.last_seen_at.desc())
             .all()
         )
 
         grouped: dict[int, dict] = {}
         persona_ids_with_agents: set[int] = set()
+        seen_persona_project: set[tuple[int, int]] = set()
         for agent in agents:
             pid = agent.project_id
+            key = (agent.persona_id, pid)
             persona_ids_with_agents.add(agent.persona_id)
+
+            # Deduplicate: keep only the most recently seen agent per
+            # persona per project (query is ordered by last_seen_at desc)
+            if key in seen_persona_project:
+                continue
+            seen_persona_project.add(key)
+
             if pid not in grouped:
                 grouped[pid] = {
                     "project_id": pid,
@@ -519,14 +549,16 @@ class ChannelService:
                 }
             )
 
-        # Personas without active agents (e.g. operator, idle personas)
+        # Human personas only (person-type) — agent personas should only
+        # appear when they have active agent sessions in the projects list
+        from ..models.persona_type import PersonaType
+
         agentless_personas = (
             Persona.query.join(Role, Persona.role_id == Role.id)
+            .join(PersonaType, Persona.persona_type_id == PersonaType.id)
             .filter(
                 Persona.status == "active",
-                ~Persona.id.in_(persona_ids_with_agents)
-                if persona_ids_with_agents
-                else True,
+                PersonaType.type_key == "person",
             )
             .order_by(Persona.name)
             .all()
@@ -1080,19 +1112,30 @@ class ChannelService:
             )
 
     def _check_agent_channel_conflict(self, agent: Agent) -> None:
-        """Check if the agent is already active in another channel.
+        """Check if the agent is already active in an open channel.
+
+        Only blocks if the agent has an active membership in a channel
+        that is still pending or active.  Completed/archived channels
+        do not block.
 
         Args:
             agent: The agent to check.
 
         Raises:
-            AgentChannelConflictError: If the agent is already active.
+            AgentChannelConflictError: If the agent is already active
+                in an open channel.
         """
         if agent is None:
             return
-        existing = ChannelMembership.query.filter_by(
-            agent_id=agent.id, status="active"
-        ).first()
+        existing = (
+            ChannelMembership.query.join(Channel)
+            .filter(
+                ChannelMembership.agent_id == agent.id,
+                ChannelMembership.status == "active",
+                Channel.status.in_(["pending", "active"]),
+            )
+            .first()
+        )
         if existing:
             ch = existing.channel
             raise AgentChannelConflictError(
