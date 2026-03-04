@@ -121,6 +121,10 @@ window.VoiceApp = (function () {
     VoiceSettings.setRefreshAgentsHandler(VoiceSidebar.refreshAgents);
     VoiceLayout.setScreenChangeHandler(function (name) {
       if (name !== 'chat') { document.title = 'Claude Chat'; }
+      // Close any open kebab menu on screen transition
+      if (typeof PortalKebabMenu !== 'undefined' && PortalKebabMenu.isOpen()) {
+        PortalKebabMenu.close();
+      }
       VoiceSSEHandler.updateConnectionIndicator();
     });
     VoiceLayout.setHighlightHandler(VoiceSidebar.highlightSelectedAgent);
@@ -629,6 +633,24 @@ window.VoiceApp = (function () {
             });
           }
         }
+      });
+    }
+
+    // --- Agent Chat Kebab Menu ---
+    var agentChatKebabBtn = document.getElementById('agent-chat-kebab-btn');
+    if (agentChatKebabBtn) {
+      agentChatKebabBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        VoiceChatController.openAgentChatKebab();
+      });
+    }
+
+    // --- Channel Chat Kebab Menu ---
+    var channelChatKebabBtn = document.getElementById('channel-chat-kebab-btn');
+    if (channelChatKebabBtn) {
+      channelChatKebabBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        VoiceChannelChat.openChannelChatKebab();
       });
     }
 

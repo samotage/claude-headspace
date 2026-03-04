@@ -579,25 +579,24 @@ def api_persona_linked_agents(slug: str):
                 else None
             )
 
+    # Batch-fetch command instructions for all agents
+    from ..services.card_state import (
+        batch_get_command_instructions,
+        build_agent_listing_dict,
+    )
+
+    command_instructions = batch_get_command_instructions(agent_ids)
+
     agents_data = []
     for a in agents_list:
         metrics = agent_metrics.get(a.id, {})
-        state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
-        if a.ended_at is not None:
-            state_value = "ended"
         agents_data.append(
-            {
-                "id": a.id,
-                "session_uuid": str(a.session_uuid) if a.session_uuid else None,
-                "project_name": a.project.name if a.project else None,
-                "state": state_value,
-                "started_at": a.started_at.isoformat() if a.started_at else None,
-                "ended_at": a.ended_at.isoformat() if a.ended_at else None,
-                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
-                "turn_count": metrics.get("turn_count", 0),
-                "frustration_avg": metrics.get("frustration_avg"),
-                "avg_turn_time": metrics.get("avg_turn_time"),
-            }
+            build_agent_listing_dict(
+                a,
+                metrics,
+                command_instructions.get(a.id),
+                include_project=True,
+            )
         )
 
     return jsonify(

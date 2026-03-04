@@ -27,7 +27,7 @@
   <!-- Apple Touch Icons -->
   <link rel="apple-touch-icon" sizes="180x180" href="/static/voice/icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-title" content="Claude Chat">
-  <link rel="stylesheet" href="/static/voice/voice.css?v=5">
+  <link rel="stylesheet" href="/static/voice/voice.css?v=6">
 </head>
 <body>
 
@@ -137,6 +137,7 @@
         </div>
         <span id="chat-state-pill" class="chat-state-pill"></span>
         <div class="header-actions">
+          <button id="agent-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Actions" aria-expanded="false">&#8942;</button>
           <span id="connection-status" class="connection-dot disconnected"></span>
           <button id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -239,6 +240,7 @@
             </div>
             <span id="channel-chat-member-count" class="channel-chat-member-count"></span>
           </div>
+          <button id="channel-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Channel actions" aria-expanded="false">&#8942;</button>
         </div>
         <div id="channel-chat-messages" class="chat-messages">
           <div id="channel-chat-load-more" class="chat-load-more" style="display:none"></div>
@@ -359,7 +361,7 @@
   <script src="/static/vendor/purify.min.js"></script>
   <script src="/static/js/utils.js?v=5"></script>
   <script src="/static/js/confirm-dialog.js?v=6"></script>
-  <script src="/static/js/portal-kebab-menu.js?v=1"></script>
+  <script src="/static/js/portal-kebab-menu.js?v=2"></script>
   <script src="/static/voice/voice-state.js?v=2"></script>
   <script src="/static/voice/voice-api.js?v=7"></script>
   <script src="/static/voice/voice-input.js?v=5"></script>
@@ -368,11 +370,11 @@
   <script src="/static/voice/voice-settings.js?v=1"></script>
   <script src="/static/voice/voice-layout.js?v=1"></script>
   <script src="/static/voice/voice-chat-renderer.js?v=3"></script>
-  <script src="/static/voice/voice-sidebar.js?v=5"></script>
+  <script src="/static/voice/voice-sidebar.js?v=6"></script>
   <script src="/static/voice/voice-sse-handler.js?v=4"></script>
-  <script src="/static/voice/voice-chat-controller.js?v=2"></script>
-  <script src="/static/voice/voice-channel-chat.js?v=2"></script>
-  <script src="/static/voice/voice-app.js?v=19"></script>
+  <script src="/static/voice/voice-chat-controller.js?v=3"></script>
+  <script src="/static/voice/voice-channel-chat.js?v=3"></script>
+  <script src="/static/voice/voice-app.js?v=20"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.
     // This is cache-proof — even if voice-app.js is served from browser cache,

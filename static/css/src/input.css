@@ -1122,6 +1122,42 @@ body::after {
     flex-shrink: 0;
 }
 
+/* Context line (project + instruction) */
+.agent-listing-context {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 0;
+    min-height: 1rem;
+    overflow: hidden;
+}
+
+.accordion-agent-row .agent-listing-context {
+    padding-left: 1.375rem;
+}
+
+.agent-listing-context-project {
+    font-size: 0.6875rem;
+    color: var(--cyan);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.agent-listing-context-sep {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.agent-listing-context-instruction {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
 .agent-listing-bottom {
     display: flex;
     align-items: center;

@@ -101,6 +101,8 @@
          *   showProjectName     - show project name column (persona_detail: true)
          *   showChatLink        - show Chat link (project_show: true)
          *   showReviveButton    - show Revive button for dead agents (both: true)
+         *   showContext         - show context line (project + instruction)
+         *   showContextProject  - include project name in context line
          *   thresholds          - { yellow, red } frustration thresholds
          */
         renderAgentRow: function(agent, options) {
@@ -184,11 +186,28 @@
 
             // Chat link
             if (options.showChatLink) {
-                html += '<a href="/voice?agent_id=' + agentId + '" class="agent-listing-chat" title="Chat" onclick="event.stopPropagation()">Chat</a>';
+                html += '<a href="/voice?agent_id=' + agentId + '" target="_blank" class="agent-listing-chat" title="Chat" onclick="event.stopPropagation()">Chat</a>';
             }
 
             html += '</div>'; // close top-right
             html += '</div>'; // close agent-listing-top
+
+            // === CONTEXT LINE: Project + Instruction ===
+            if (options.showContext && (agent.command_instruction || (options.showContextProject && agent.project_name))) {
+                html += '<div class="agent-listing-context">';
+                if (options.showContextProject && agent.project_name) {
+                    html += '<span class="agent-listing-context-project">' + CHUtils.escapeHtml(agent.project_name) + '</span>';
+                    if (agent.command_instruction) {
+                        html += '<span class="agent-listing-context-sep">\u00b7</span>';
+                    }
+                }
+                if (agent.command_instruction) {
+                    var instr = agent.command_instruction;
+                    if (instr.length > 80) instr = instr.substring(0, 77) + '...';
+                    html += '<span class="agent-listing-context-instruction">' + CHUtils.escapeHtml(instr) + '</span>';
+                }
+                html += '</div>';
+            }
 
             // === LINE 2: Temporal + Metrics ===
             html += '<div class="agent-listing-bottom">';

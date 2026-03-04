@@ -855,14 +855,48 @@ body.layout-split .channel-card:hover {
   background: var(--accent-subtle-active);
 }
 
+/* Chat header kebab button (agent chat + channel chat) */
+.chat-header-kebab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 6px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim, #aaa);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: color 0.15s, border-color 0.2s, background 0.15s;
+}
+.chat-header-kebab-btn:hover {
+  color: var(--accent);
+  border-color: var(--border-emphasis);
+  background: var(--accent-subtle);
+}
+.chat-header-kebab-btn:active {
+  color: var(--accent);
+  border-color: var(--accent-subtle-border);
+  background: var(--accent-subtle-active);
+}
+
 /* Larger kebab touch targets on touch devices (iPhone, iPad) */
 @media (pointer: coarse) {
   .project-kebab-btn,
-  .agent-kebab-btn {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
+  .agent-kebab-btn,
+  .chat-header-kebab-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     font-size: 24px;
   }
 }
@@ -3410,6 +3444,7 @@ body.layout-split .hamburger-btn { display: none; }
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .channel-chat-header-top {

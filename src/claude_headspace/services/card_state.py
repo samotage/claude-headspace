@@ -732,6 +732,129 @@ def build_card_state(agent: Agent) -> dict:
     return card
 
 
+def batch_get_command_instructions(agent_ids: list[int]) -> dict[int, str | None]:
+    """Get the most recent command instruction for each agent in a single query.
+
+    Uses a ROW_NUMBER() window function to find the most recent command per agent.
+    Fallback chain: instruction → full_command (truncated to 80 chars) → None.
+
+    Args:
+        agent_ids: List of agent IDs to query
+
+    Returns:
+        Dict mapping agent_id → instruction string (or None)
+    """
+    from sqlalchemy import func as sa_func
+
+    from ..database import db
+    from ..models.command import Command
+
+    if not agent_ids:
+        return {}
+
+    # Use ROW_NUMBER() to get the most recent command per agent
+    row_num = (
+        sa_func.row_number()
+        .over(partition_by=Command.agent_id, order_by=Command.started_at.desc())
+        .label("rn")
+    )
+
+    subq = (
+        db.session.query(
+            Command.agent_id,
+            Command.instruction,
+            Command.full_command,
+            row_num,
+        )
+        .filter(Command.agent_id.in_(agent_ids))
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(
+            subq.c.agent_id,
+            subq.c.instruction,
+            subq.c.full_command,
+        )
+        .filter(subq.c.rn == 1)
+        .all()
+    )
+
+    result: dict[int, str | None] = {}
+    for row in rows:
+        if row.instruction:
+            result[row.agent_id] = row.instruction
+        elif row.full_command:
+            text_val = row.full_command.strip()
+            if text_val:
+                result[row.agent_id] = (
+                    text_val[:77] + "..." if len(text_val) > 80 else text_val
+                )
+            else:
+                result[row.agent_id] = None
+        else:
+            result[row.agent_id] = None
+
+    return result
+
+
+def build_agent_listing_dict(
+    agent,
+    metrics: dict,
+    command_instruction: str | None,
+    *,
+    include_persona: bool = False,
+    include_project: bool = False,
+) -> dict:
+    """Build a standardized agent dict for listing endpoints.
+
+    Used by both project detail and persona detail routes to ensure
+    consistent field names and values.
+
+    Args:
+        agent: Agent model instance
+        metrics: Dict with turn_count, frustration_avg, avg_turn_time
+        command_instruction: Pre-fetched instruction string (or None)
+        include_persona: Include persona_name and persona_role fields
+        include_project: Include project_name field
+
+    Returns:
+        Dict suitable for JSON serialization
+    """
+    state_value = (
+        agent.state.value if hasattr(agent.state, "value") else str(agent.state)
+    )
+    if agent.ended_at is not None:
+        state_value = "ended"
+
+    d = {
+        "id": agent.id,
+        "session_uuid": str(agent.session_uuid) if agent.session_uuid else None,
+        "claude_session_id": agent.claude_session_id,
+        "state": state_value,
+        "started_at": agent.started_at.isoformat() if agent.started_at else None,
+        "ended_at": agent.ended_at.isoformat() if agent.ended_at else None,
+        "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else None,
+        "priority_score": agent.priority_score,
+        "turn_count": metrics.get("turn_count", 0),
+        "frustration_avg": metrics.get("frustration_avg"),
+        "avg_turn_time": metrics.get("avg_turn_time"),
+        "command_instruction": command_instruction,
+    }
+
+    if include_persona and getattr(agent, "persona_id", None) is not None:
+        persona = agent.persona
+        if persona is not None:
+            role = getattr(persona, "role", None)
+            d["persona_name"] = persona.name
+            d["persona_role"] = role.name if role else None
+
+    if include_project:
+        d["project_name"] = agent.project.name if agent.project else None
+
+    return d
+
+
 def broadcast_card_refresh(agent: Agent, reason: str) -> None:
     """Broadcast a card_refresh SSE event with the full card state.
 

@@ -57,6 +57,7 @@ def mock_project_with_agents(mock_project):
     active_agent = MagicMock()
     active_agent.id = 1
     active_agent.session_uuid = "uuid-1"
+    active_agent.claude_session_id = "cs-abc123"
     active_agent.state.value = "idle"
     active_agent.started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     active_agent.ended_at = None
@@ -67,6 +68,7 @@ def mock_project_with_agents(mock_project):
     ended_agent = MagicMock()
     ended_agent.id = 2
     ended_agent.session_uuid = "uuid-2"
+    ended_agent.claude_session_id = None
     ended_agent.state.value = "idle"
     ended_agent.started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     ended_agent.ended_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
@@ -291,7 +293,11 @@ class TestGetProject:
             avg_time_outer_query,  # Avg turn time outer query
         ]
 
-        response = client.get("/api/projects/1")
+        with patch(
+            "src.claude_headspace.services.card_state.batch_get_command_instructions",
+            return_value={1: "Test instruction"},
+        ):
+            response = client.get("/api/projects/1")
         assert response.status_code == 200
         data = response.get_json()
         assert data["id"] == 1
@@ -310,6 +316,7 @@ class TestGetProject:
         assert agent1["turn_count"] == 5
         assert agent1["frustration_avg"] == 3.2
         assert agent1["avg_turn_time"] == 45.3
+        assert "command_instruction" in agent1
 
     def test_get_includes_inference_fields(self, client, mock_db, mock_project):
         """Test that get response includes inference fields."""
@@ -855,7 +862,11 @@ class TestGetAgentCommands:
             avg_time_outer_query,
         ]
 
-        response = client.get("/api/projects/1")
+        with patch(
+            "src.claude_headspace.services.card_state.batch_get_command_instructions",
+            return_value={},
+        ):
+            response = client.get("/api/projects/1")
         assert response.status_code == 200
         data = response.get_json()
 
@@ -867,3 +878,4 @@ class TestGetAgentCommands:
             assert agent_data["turn_count"] == 0
             assert agent_data["frustration_avg"] is None
             assert agent_data["avg_turn_time"] is None
+            assert "command_instruction" in agent_data

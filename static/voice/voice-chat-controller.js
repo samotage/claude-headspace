@@ -396,6 +396,143 @@ window.VoiceChatController = (function () {
   }
 
   // =====================================================================
+  //  Agent chat kebab menu
+  // =====================================================================
+
+  /** Build actions for the agent chat header kebab menu. */
+  function buildAgentChatActions() {
+    var I = (typeof PortalKebabMenu !== 'undefined') ? PortalKebabMenu.ICONS : {};
+    var isEnded = VoiceState.chatAgentEnded;
+
+    if (isEnded) {
+      return [
+        { id: 'context', label: 'Fetch context', icon: I.context || '' },
+        { id: 'info', label: 'Agent info', icon: I.info || '' },
+        'divider',
+        { id: 'revive', label: 'Revive', icon: I.revive || '' }
+      ];
+    }
+
+    var actions = [
+      { id: 'context', label: 'Fetch context', icon: I.context || '' },
+      { id: 'attach', label: 'Attach to terminal', icon: I.attach || '' },
+      { id: 'info', label: 'Agent info', icon: I.info || '' },
+      { id: 'reconcile', label: 'Reconcile', icon: I.reconcile || '' }
+    ];
+    // Handoff is only available when agent has a persona
+    if (_agentHasPersona()) {
+      actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
+    }
+    actions.push('divider');
+    actions.push({ id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' });
+    return actions;
+  }
+
+  /** Check if the currently viewed agent has a persona. */
+  function _agentHasPersona() {
+    var badge = document.getElementById('chat-persona-badge');
+    return badge && badge.style.display !== 'none' && badge.textContent.trim() !== '';
+  }
+
+  /** Handle agent chat kebab action. */
+  function handleAgentChatAction(actionId, agentId) {
+    switch (actionId) {
+      case 'context':
+        VoiceAPI.getAgentContext(agentId).catch(function () {});
+        break;
+      case 'attach':
+        var focusLink = document.getElementById('chat-focus-link');
+        var tmuxSession = focusLink ? focusLink.getAttribute('data-tmux-session') : '';
+        if (tmuxSession) {
+          VoiceAPI.attachAgent(agentId).catch(function () {});
+        } else {
+          VoiceAPI.focusAgent(agentId).catch(function () {});
+        }
+        break;
+      case 'info':
+        // Open agent info page in new tab
+        window.open('/agents/' + agentId, '_blank');
+        break;
+      case 'reconcile':
+        CHUtils.apiFetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) showChatSystemMessage('Reconcile failed: ' + data.error);
+            else showChatSystemMessage('Reconciliation started');
+          })
+          .catch(function () { showChatSystemMessage('Reconcile failed'); });
+        break;
+      case 'handoff':
+        if (typeof ConfirmDialog !== 'undefined') {
+          ConfirmDialog.show(
+            'Handoff agent?',
+            'The agent will write a handoff document and a successor agent will be created with the same persona.',
+            { confirmText: 'Handoff', cancelText: 'Cancel' }
+          ).then(function (confirmed) {
+            if (!confirmed) return;
+            CHUtils.apiFetch('/api/agents/' + agentId + '/handoff', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason: 'manual' })
+            }).then(function (res) {
+              return res.json().then(function (data) {
+                if (res.ok) showChatSystemMessage(data.message || 'Handoff initiated');
+                else showChatSystemMessage('Handoff failed: ' + (data.error || 'unknown'));
+              });
+            }).catch(function () { showChatSystemMessage('Handoff failed'); });
+          });
+        }
+        break;
+      case 'dismiss':
+        if (typeof ConfirmDialog !== 'undefined') {
+          ConfirmDialog.show(
+            'Shut down agent?',
+            'This will send /exit to the agent.',
+            { confirmText: 'Shut down', cancelText: 'Cancel' }
+          ).then(function (confirmed) {
+            if (!confirmed) return;
+            VoiceAPI.shutdownAgent(agentId).then(function () {
+              VoiceSidebar.deselectIfTarget(agentId);
+              VoiceSidebar.refreshAgents();
+            }).catch(function (err) {
+              showChatSystemMessage('Shutdown failed: ' + (err.error || 'unknown'));
+            });
+          });
+        }
+        break;
+      case 'revive':
+        CHUtils.apiFetch('/api/agents/' + agentId + '/revive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }).then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) showChatSystemMessage('Revival failed: ' + data.error);
+            else showChatSystemMessage('Revival initiated');
+          })
+          .catch(function () { showChatSystemMessage('Revival failed'); });
+        break;
+    }
+  }
+
+  /** Open the agent chat kebab menu from the header trigger button. */
+  function openAgentChatKebab() {
+    var btn = document.getElementById('agent-chat-kebab-btn');
+    if (!btn || !VoiceState.targetAgentId) return;
+    if (typeof PortalKebabMenu !== 'undefined') {
+      if (PortalKebabMenu.isOpen()) {
+        PortalKebabMenu.close();
+        return;
+      }
+      PortalKebabMenu.open(btn, {
+        agentId: VoiceState.targetAgentId,
+        actions: buildAgentChatActions(),
+        onAction: handleAgentChatAction
+      });
+    }
+  }
+
+  // =====================================================================
   //  Chat sending
   // =====================================================================
 
@@ -667,6 +804,7 @@ window.VoiceChatController = (function () {
     sendChatSelect: sendChatSelect,
     sendChatWithAttachment: sendChatWithAttachment,
     sendCommand: sendCommand,
-    sendSelect: sendSelect
+    sendSelect: sendSelect,
+    openAgentChatKebab: openAgentChatKebab
   };
 })();

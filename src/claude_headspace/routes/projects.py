@@ -289,31 +289,23 @@ def get_project(project_id: int):
                         else None,
                     }
 
+        # Batch-fetch command instructions for all agents on this page
+        from ..services.card_state import (
+            batch_get_command_instructions,
+            build_agent_listing_dict,
+        )
+
+        command_instructions = batch_get_command_instructions(agent_ids)
+
         agents_data = []
         for a in agents_page:
             metrics = agent_metrics.get(a.id, {})
-            state_value = a.state.value if hasattr(a.state, "value") else str(a.state)
-            if a.ended_at is not None:
-                state_value = "ended"
-            agent_dict = {
-                "id": a.id,
-                "session_uuid": str(a.session_uuid) if a.session_uuid else None,
-                "claude_session_id": a.claude_session_id,
-                "state": state_value,
-                "started_at": a.started_at.isoformat() if a.started_at else None,
-                "ended_at": a.ended_at.isoformat() if a.ended_at else None,
-                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
-                "priority_score": a.priority_score,
-                "turn_count": metrics.get("turn_count", 0),
-                "frustration_avg": metrics.get("frustration_avg"),
-                "avg_turn_time": metrics.get("avg_turn_time"),
-            }
-            if getattr(a, "persona_id", None) is not None:
-                persona = a.persona
-                if persona is not None:
-                    role = getattr(persona, "role", None)
-                    agent_dict["persona_name"] = persona.name
-                    agent_dict["persona_role"] = role.name if role else None
+            agent_dict = build_agent_listing_dict(
+                a,
+                metrics,
+                command_instructions.get(a.id),
+                include_persona=True,
+            )
             agents_data.append(agent_dict)
 
         return jsonify(

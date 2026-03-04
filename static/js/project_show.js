@@ -297,6 +297,7 @@
                 showClaudeSessionId: true,
                 showChatLink: true,
                 showReviveButton: true,
+                showContext: true,
                 thresholds: THRESHOLDS
             };
 

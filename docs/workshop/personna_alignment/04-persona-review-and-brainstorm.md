@@ -807,3 +807,29 @@ This persona has the highest stakes around external communication. The autonomy 
 2. **Rainmaker tooling:** What external communication channels would the Rainmaker use? Email? LinkedIn? Is there an existing CRM?
 3. **Wave 1 urgency:** Is Robbo's spec upgrade urgent enough to do this week, or can it wait for the next planning cycle?
 4. **Verner activation timeline:** Is QA activation planned for the near term? If so, Wave 2 should be pulled forward.
+
+---
+
+## Part 5: Operator Decisions & Execution (2026-03-05)
+
+**Decisions made by Sam:**
+
+1. **Wave 1 approved** — Robbo, Gavin, Verner (Paula's recommendation to include Verner in Wave 1 accepted)
+2. **Entrepreneur approved** — scoped across all Otagelabs products and offerings, named **Clive** (slug: `entrepreneur-clive-19`)
+3. **Rainmaker shelved** — deferred until Entrepreneur has been active for at least one planning cycle
+4. **Alignment Signals baked into all upgrades** — per Paula's recommendation, not deferred to Wave 5
+
+**Execution by Paula:**
+
+| Persona | Action | File | Key Changes |
+|---------|--------|------|-------------|
+| **Robbo** | Upgraded | `architect-robbo-3/skill.md` | Added: Domain Intent, structured Decision Boundaries (4-tier), Design Principles (separated from Skills), Quality Definitions (6-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
+| **Gavin** | Upgraded | `pm-gavin-4/skill.md` | Added: Domain Intent ("Unblock the team"), structured Decision Boundaries, Design Principles (separated from Skills), Quality Definitions (6-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
+| **Verner** | Upgraded | `qa-verner-7/skill.md` | Added: Domain Intent ("real bugs over test count"), structured Decision Boundaries (4-tier), Design Principles (separated from Skills), Working Method, Quality Definitions (7-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
+| **Clive** | Created | `entrepreneur-clive-19/skill.md` | New persona. Full template compliance: Core Identity, Domain Intent, Skills, Decision Boundaries, Design Principles, Quality Definitions, Tradeoff Hierarchies, Workflow Discipline, Communication Style, Anti-Patterns, Alignment Signals. Experience file created (empty). |
+
+**Intent encoding scores (estimated post-upgrade):**
+- Robbo: 1.0 → **5.0** (all 5 elements present)
+- Gavin: 1.0 → **5.0** (all 5 elements present)
+- Verner: 1.0 → **5.0** (all 5 elements present)
+- Clive: N/A → **5.0** (new, built to template)
