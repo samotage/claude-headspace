@@ -238,10 +238,13 @@ class TestAuth:
         mock_channel_service.list_channels.return_value = []
         mock_agent.ended_at = None
 
-        with patch(
-            "claude_headspace.routes.channels_api.db.session.get",
-            return_value=mock_agent,
-        ), _patch_no_operator():
+        with (
+            patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ),
+            _patch_no_operator(),
+        ):
             resp = client.get(
                 "/api/channels",
                 headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
@@ -261,10 +264,13 @@ class TestAuth:
         mock_channel_service.list_channels.return_value = []
         mock_agent.ended_at = "2026-03-04T00:00:00"  # ended
 
-        with patch(
-            "claude_headspace.routes.channels_api.db.session.get",
-            return_value=mock_agent,
-        ), _patch_operator(mock_operator):
+        with (
+            patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ),
+            _patch_operator(mock_operator),
+        ):
             resp = client.get(
                 "/api/channels",
                 headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
@@ -304,10 +310,13 @@ class TestAuth:
         agent_no_persona.ended_at = None
         agent_no_persona.persona = None
 
-        with patch(
-            "claude_headspace.routes.channels_api.db.session.get",
-            return_value=agent_no_persona,
-        ), _patch_operator(mock_operator):
+        with (
+            patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=agent_no_persona,
+            ),
+            _patch_operator(mock_operator),
+        ):
             resp = client.get(
                 "/api/channels",
                 headers={"X-Headspace-Agent-ID": "999"},

@@ -352,8 +352,6 @@ window.VoiceChannelChat = (function () {
    */
   function showVoiceResult(voice) {
     if (!voice) return;
-    var slug = VoiceState.currentChannelSlug;
-    if (!slug) return;
 
     // Build content from voice envelope
     var parts = [];
@@ -365,22 +363,150 @@ window.VoiceChannelChat = (function () {
     var content = parts.join('\n');
     if (!content) return;
 
+    _showChannelSystemMessage(content);
+  }
+
+  // =====================================================================
+  //  Channel chat kebab menu
+  // =====================================================================
+
+  /** Determine if the current user is the chair of this channel. */
+  function _isCurrentUserChair() {
+    // channelMembers comes from VoiceAPI.getChannelMembers(slug)
+    // Operator (non-agent) entries have agent_id = null and is_chair flag
+    var members = VoiceState.channelMembers || [];
+    for (var i = 0; i < members.length; i++) {
+      var m = members[i];
+      if (!m.agent_id && m.is_chair) return true;
+    }
+    // Fallback: if no operator member found with is_chair, check if the operator
+    // is first member (legacy channels without explicit is_chair)
+    return false;
+  }
+
+  /** Build actions for the channel chat header kebab menu. */
+  function buildChannelChatActions() {
+    var I = (typeof PortalKebabMenu !== 'undefined') ? PortalKebabMenu.ICONS : {};
+    var isChair = _isCurrentUserChair();
+
+    var actions = [
+      { id: 'add-member', label: 'Add member', icon: I.addMember || '' },
+      { id: 'info', label: 'Channel info', icon: I.info || '' },
+      { id: 'copy-slug', label: 'Copy slug', icon: I.copySlug || '' }
+    ];
+
+    if (isChair) {
+      actions.push('divider');
+      actions.push({ id: 'complete', label: 'Complete channel', icon: I.complete || '' });
+      actions.push({ id: 'archive', label: 'Archive channel', icon: I.archive || '', className: 'kill-action' });
+    }
+
+    actions.push('divider');
+    actions.push({ id: 'leave', label: 'Leave channel', icon: I.leave || '', className: 'kill-action' });
+
+    return actions;
+  }
+
+  /** Handle channel chat kebab action. */
+  function handleChannelChatAction(actionId, slug) {
+    switch (actionId) {
+      case 'add-member':
+        // Open member autocomplete - for now show a system message
+        // In the voice app we don't have the full autocomplete widget yet
+        _showChannelSystemMessage('Member picker not yet available in voice app. Use the dashboard to add members.');
+        break;
+      case 'info':
+        // Show channel info (navigate to dashboard channel view)
+        window.open('/?channel=' + encodeURIComponent(slug), '_blank');
+        break;
+      case 'copy-slug':
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(slug).then(function () {
+            _showChannelSystemMessage('Channel slug copied to clipboard');
+          }).catch(function () {
+            _showChannelSystemMessage('Failed to copy slug');
+          });
+        }
+        break;
+      case 'complete':
+        if (typeof ConfirmDialog !== 'undefined') {
+          ConfirmDialog.show(
+            'Complete Channel',
+            'Mark this channel as complete? Members will be notified.',
+            { confirmText: 'Complete', cancelText: 'Cancel' }
+          ).then(function (confirmed) {
+            if (!confirmed) return;
+            _channelAction(slug, '/api/channels/' + encodeURIComponent(slug) + '/complete', 'Channel completed', 'Failed to complete channel');
+          });
+        }
+        break;
+      case 'archive':
+        if (typeof ConfirmDialog !== 'undefined') {
+          ConfirmDialog.show(
+            'Archive Channel',
+            'Archive this channel? This cannot be undone.',
+            { confirmText: 'Archive', cancelText: 'Cancel', destructive: true }
+          ).then(function (confirmed) {
+            if (!confirmed) return;
+            _channelAction(slug, '/api/channels/' + encodeURIComponent(slug) + '/archive', 'Channel archived', 'Failed to archive channel');
+          });
+        }
+        break;
+      case 'leave':
+        if (typeof ConfirmDialog !== 'undefined') {
+          ConfirmDialog.show(
+            'Leave Channel',
+            'Leave #' + slug + '? You will no longer receive messages.',
+            { confirmText: 'Leave', cancelText: 'Cancel' }
+          ).then(function (confirmed) {
+            if (!confirmed) return;
+            _channelAction(slug, '/api/channels/' + encodeURIComponent(slug) + '/leave', 'Left channel', 'Failed to leave channel', function () {
+              VoiceState.currentChannelSlug = null;
+              VoiceSidebar.refreshAgents();
+              VoiceLayout.showScreen('agents');
+            });
+          });
+        }
+        break;
+    }
+  }
+
+  /** Execute a channel POST action with success/error messages. */
+  function _channelAction(slug, url, successMsg, errorMsg, onSuccess) {
+    CHUtils.apiFetch(url, { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          _showChannelSystemMessage(errorMsg + ': ' + data.error);
+        } else {
+          _showChannelSystemMessage(successMsg);
+          if (onSuccess) onSuccess();
+          else {
+            VoiceSidebar.refreshAgents();
+          }
+        }
+      })
+      .catch(function () {
+        _showChannelSystemMessage(errorMsg);
+      });
+  }
+
+  /** Show a system message in the channel chat. */
+  function _showChannelSystemMessage(text) {
+    var slug = VoiceState.currentChannelSlug;
+    if (!slug) return;
     var msg = {
-      id: 'voice-' + Date.now(),
+      id: 'sys-' + Date.now(),
       channel_slug: slug,
       persona_slug: null,
       persona_name: null,
       agent_id: null,
-      content: content,
+      content: text,
       message_type: 'system',
       sent_at: new Date().toISOString()
     };
-
-    // Add to cache
     if (!VoiceState.channelMessages[slug]) VoiceState.channelMessages[slug] = [];
     VoiceState.channelMessages[slug].push(msg);
-
-    // Render
     var messagesEl = document.getElementById('channel-chat-messages');
     if (messagesEl) {
       var cached = VoiceState.channelMessages[slug];
@@ -391,6 +517,24 @@ window.VoiceChannelChat = (function () {
     }
   }
 
+  /** Open the channel chat kebab menu from the header trigger button. */
+  function openChannelChatKebab() {
+    var btn = document.getElementById('channel-chat-kebab-btn');
+    var slug = VoiceState.currentChannelSlug;
+    if (!btn || !slug) return;
+    if (typeof PortalKebabMenu !== 'undefined') {
+      if (PortalKebabMenu.isOpen()) {
+        PortalKebabMenu.close();
+        return;
+      }
+      PortalKebabMenu.open(btn, {
+        agentId: slug,
+        actions: buildChannelChatActions(),
+        onAction: handleChannelChatAction
+      });
+    }
+  }
+
   // --- Public API ---
 
   return {
@@ -398,6 +542,7 @@ window.VoiceChannelChat = (function () {
     appendMessage: appendMessage,
     loadOlderMessages: loadOlderMessages,
     sendMessage: sendMessage,
-    showVoiceResult: showVoiceResult
+    showVoiceResult: showVoiceResult,
+    openChannelChatKebab: openChannelChatKebab
   };
 })();

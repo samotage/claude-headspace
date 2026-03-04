@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from claude_headspace.models.inference_call import InferenceCall, InferenceLevel
+from claude_headspace.models.project import Project
 
 
 @pytest.fixture(autouse=True)
@@ -13,10 +14,23 @@ def _set_factory_session(db_session):
     pass
 
 
+@pytest.fixture
+def parent_project(db_session):
+    """Create a parent project to satisfy ck_inference_calls_has_parent."""
+    project = Project(
+        name="Test Project",
+        slug="test-project-inference",
+        path="/tmp/test-inference-project",
+    )
+    db_session.add(project)
+    db_session.flush()
+    return project
+
+
 class TestInferenceCallPersistence:
     """Test InferenceCall model persists correctly in PostgreSQL."""
 
-    def test_create_successful_call(self, db_session):
+    def test_create_successful_call(self, db_session, parent_project):
         """Test creating a successful inference call record."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
@@ -30,6 +44,7 @@ class TestInferenceCallPersistence:
             latency_ms=320,
             cost=0.0004,
             cached=False,
+            project_id=parent_project.id,
         )
         db_session.add(call)
         db_session.commit()
@@ -44,7 +59,7 @@ class TestInferenceCallPersistence:
         assert fetched.latency_ms == 320
         assert fetched.cached is False
 
-    def test_create_failed_call(self, db_session):
+    def test_create_failed_call(self, db_session, parent_project):
         """Test creating a failed inference call with error message."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
@@ -54,6 +69,7 @@ class TestInferenceCallPersistence:
             input_hash="aaa111bbb222" * 4 + "abcdef1234567890",
             error_message="API error 429: Rate limited",
             cached=False,
+            project_id=parent_project.id,
         )
         db_session.add(call)
         db_session.commit()
@@ -63,7 +79,7 @@ class TestInferenceCallPersistence:
         assert fetched.input_tokens is None
         assert fetched.error_message == "API error 429: Rate limited"
 
-    def test_create_cached_call(self, db_session):
+    def test_create_cached_call(self, db_session, parent_project):
         """Test creating a cached inference call."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
@@ -77,6 +93,7 @@ class TestInferenceCallPersistence:
             latency_ms=0,
             cost=0.0,
             cached=True,
+            project_id=parent_project.id,
         )
         db_session.add(call)
         db_session.commit()
@@ -85,7 +102,7 @@ class TestInferenceCallPersistence:
         assert fetched.cached is True
         assert fetched.latency_ms == 0
 
-    def test_all_inference_levels(self, db_session):
+    def test_all_inference_levels(self, db_session, parent_project):
         """Test all InferenceLevel enum values persist correctly."""
         for level in InferenceLevel:
             call = InferenceCall(
@@ -94,6 +111,7 @@ class TestInferenceCallPersistence:
                 purpose=f"Test {level.value}",
                 model="anthropic/claude-3-haiku",
                 cached=False,
+                project_id=parent_project.id,
             )
             db_session.add(call)
         db_session.commit()
@@ -101,15 +119,15 @@ class TestInferenceCallPersistence:
         count = db_session.query(InferenceCall).count()
         assert count == 4
 
-    def test_optional_fk_associations(self, db_session):
-        """Test that optional FK fields can be null."""
+    def test_optional_fk_associations(self, db_session, parent_project):
+        """Test that non-required FK fields can be null when project_id is set."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
             level="turn",
             purpose="FK test",
             model="test-model",
             cached=False,
-            project_id=None,
+            project_id=parent_project.id,
             agent_id=None,
             command_id=None,
             turn_id=None,
@@ -118,12 +136,12 @@ class TestInferenceCallPersistence:
         db_session.commit()
 
         fetched = db_session.query(InferenceCall).filter_by(id=call.id).one()
-        assert fetched.project_id is None
+        assert fetched.project_id == parent_project.id
         assert fetched.agent_id is None
         assert fetched.command_id is None
         assert fetched.turn_id is None
 
-    def test_query_by_level(self, db_session):
+    def test_query_by_level(self, db_session, parent_project):
         """Test querying calls by level."""
         for i in range(3):
             db_session.add(
@@ -133,6 +151,7 @@ class TestInferenceCallPersistence:
                     purpose=f"Turn call {i}",
                     model="haiku",
                     cached=False,
+                    project_id=parent_project.id,
                 )
             )
         for i in range(2):
@@ -143,6 +162,7 @@ class TestInferenceCallPersistence:
                     purpose=f"Project call {i}",
                     model="sonnet",
                     cached=False,
+                    project_id=parent_project.id,
                 )
             )
         db_session.commit()
@@ -152,7 +172,7 @@ class TestInferenceCallPersistence:
         assert len(turn_calls) == 3
         assert len(project_calls) == 2
 
-    def test_query_by_input_hash(self, db_session):
+    def test_query_by_input_hash(self, db_session, parent_project):
         """Test querying by input_hash for cache lookups."""
         hash_value = "abcdef" * 10 + "abcd"
         call = InferenceCall(
@@ -162,6 +182,7 @@ class TestInferenceCallPersistence:
             model="haiku",
             input_hash=hash_value,
             cached=False,
+            project_id=parent_project.id,
         )
         db_session.add(call)
         db_session.commit()
@@ -170,7 +191,7 @@ class TestInferenceCallPersistence:
         assert found is not None
         assert found.purpose == "Hash test"
 
-    def test_repr(self, db_session):
+    def test_repr(self, db_session, parent_project):
         """Test model __repr__."""
         call = InferenceCall(
             timestamp=datetime.now(timezone.utc),
@@ -178,6 +199,7 @@ class TestInferenceCallPersistence:
             purpose="Repr test",
             model="haiku",
             cached=False,
+            project_id=parent_project.id,
         )
         db_session.add(call)
         db_session.commit()

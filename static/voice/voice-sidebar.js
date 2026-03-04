@@ -1109,6 +1109,7 @@ window.VoiceSidebar = (function () {
     filterProjectList: filterProjectList,
     openChannelPicker: openChannelPicker,
     closeChannelPicker: closeChannelPicker,
-    showToast: showToast
+    showToast: showToast,
+    deselectIfTarget: deselectIfTarget
   };
 })();
