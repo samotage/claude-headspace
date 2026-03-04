@@ -586,30 +586,35 @@ window.VoiceSSEHandler = (function () {
   // --- Channel SSE event handlers ---
 
   function handleChannelMessage(data) {
-    if (!data || !data.slug) return;
+    if (!data || !data.channel_slug) return;
 
     // Update or add channel in VoiceState.channels
     var channels = VoiceState.channels;
     var found = false;
     for (var i = 0; i < channels.length; i++) {
-      if (channels[i].slug === data.slug) {
+      if (channels[i].slug === data.channel_slug) {
         channels[i].last_sender = data.persona_name || 'Unknown';
         channels[i].last_preview = (data.content || '').substring(0, 80);
-        channels[i].last_message_at = data.timestamp || new Date().toISOString();
+        channels[i].last_message_at = data.sent_at || new Date().toISOString();
         found = true;
         break;
       }
     }
     if (!found) {
       channels.push({
-        slug: data.slug,
-        name: data.channel_name || data.slug,
+        slug: data.channel_slug,
+        name: data.channel_name || data.channel_slug,
         status: 'active',
         channel_type: data.channel_type || 'workshop',
         last_sender: data.persona_name || 'Unknown',
         last_preview: (data.content || '').substring(0, 80),
-        last_message_at: data.timestamp || new Date().toISOString()
+        last_message_at: data.sent_at || new Date().toISOString()
       });
+    }
+
+    // Inject live message into channel chat view if open
+    if (typeof VoiceChannelChat !== 'undefined' && VoiceChannelChat.appendMessage) {
+      VoiceChannelChat.appendMessage(data);
     }
 
     // Re-render channel section in sidebar
@@ -619,11 +624,11 @@ window.VoiceSSEHandler = (function () {
   }
 
   function handleChannelUpdate(data) {
-    if (!data || !data.slug) return;
+    if (!data || !data.channel_slug) return;
 
     var channels = VoiceState.channels;
     for (var i = 0; i < channels.length; i++) {
-      if (channels[i].slug === data.slug) {
+      if (channels[i].slug === data.channel_slug) {
         if (data.status) channels[i].status = data.status;
         if (data.name) channels[i].name = data.name;
         break;

@@ -82,6 +82,13 @@ window.VoiceLayout = (function () {
     var showingChat = chatScreen && chatScreen.classList.contains('active');
     if (focusLink) focusLink.style.display = showingChat ? '' : 'none';
     if (statePill) statePill.style.display = showingChat ? '' : 'none';
+
+    // Hide main header agent back button when channel chat is active (it has its own)
+    var mainHeader = document.getElementById('main-header');
+    if (mainHeader) {
+      var mainBackBtn = mainHeader.querySelector('.chat-back-btn');
+      if (mainBackBtn) mainBackBtn.style.display = (name === 'channel-chat') ? 'none' : '';
+    }
   }
 
   function applyScreenVisibility(name) {

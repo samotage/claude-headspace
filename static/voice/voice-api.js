@@ -332,6 +332,51 @@ window.VoiceAPI = (function () {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
+  // --- Channel API (uses cookie auth, not Bearer token) ---
+
+  function _fetchCookie(path, opts) {
+    opts = opts || {};
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.credentials = 'same-origin';
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT_MS);
+    opts.signal = controller.signal;
+    return fetch(_baseUrl + path, opts).then(function (r) {
+      clearTimeout(timeoutId);
+      if (!r.ok) return r.json().then(function (b) { return Promise.reject(b); });
+      return r.json();
+    }).catch(function (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') return Promise.reject({ error: 'Request timed out' });
+      return Promise.reject(err);
+    });
+  }
+
+  function getChannels() {
+    return _fetchCookie('/api/channels');
+  }
+
+  function getChannelMessages(slug, options) {
+    var params = [];
+    if (options) {
+      if (options.before) params.push('before=' + encodeURIComponent(options.before));
+      if (options.limit) params.push('limit=' + options.limit);
+    }
+    var q = params.length ? '?' + params.join('&') : '';
+    return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/messages' + q);
+  }
+
+  function sendChannelMessage(slug, content) {
+    return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/messages', {
+      method: 'POST',
+      body: JSON.stringify({ content: content })
+    });
+  }
+
+  function getChannelMembers(slug) {
+    return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/members');
+  }
+
   function getProjects() {
     return _fetch('/api/projects');
   }
@@ -372,6 +417,10 @@ window.VoiceAPI = (function () {
     disconnectSSE: disconnectSSE,
     focusAgent: focusAgent,
     attachAgent: attachAgent,
-    getActivePersonas: getActivePersonas
+    getActivePersonas: getActivePersonas,
+    getChannels: getChannels,
+    getChannelMessages: getChannelMessages,
+    sendChannelMessage: sendChannelMessage,
+    getChannelMembers: getChannelMembers
   };
 })();

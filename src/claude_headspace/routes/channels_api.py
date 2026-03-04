@@ -435,9 +435,7 @@ def add_member(slug: str, *, persona, agent, service):
     agent_id = data.get("agent_id")
     if agent_id is not None:
         if not isinstance(agent_id, int):
-            return _error_response(
-                400, "invalid_field", "agent_id must be an integer"
-            )
+            return _error_response(400, "invalid_field", "agent_id must be an integer")
         membership = service.add_member_by_agent(
             slug=slug,
             agent_id=agent_id,

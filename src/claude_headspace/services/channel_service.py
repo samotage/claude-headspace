@@ -926,9 +926,7 @@ class ChannelService:
                 "Invalid attachment_path: path traversal ('..') is not allowed."
             )
         if path.startswith("/") or path.startswith("\\"):
-            raise ValueError(
-                "Invalid attachment_path: absolute paths are not allowed."
-            )
+            raise ValueError("Invalid attachment_path: absolute paths are not allowed.")
         # Reject control characters (0x00–0x1F, 0x7F)
         if any(c < " " or c == "\x7f" for c in path):
             raise ValueError(

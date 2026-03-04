@@ -3380,3 +3380,192 @@ body.layout-split .hamburger-btn { display: none; }
 .chat-persona-badge::before {
   content: '\2713 ';
 }
+
+/* ─── Channel Chat Screen ─── */
+
+#screen-channel-chat {
+  display: none;
+  padding: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+#screen-channel-chat.active {
+  display: flex;
+}
+
+.channel-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.channel-chat-header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.channel-chat-header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-chat-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-chat-type-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--state-bg);
+  color: var(--text-dim);
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.channel-chat-member-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.channel-chat-loading,
+.channel-chat-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+/* Channel message bubbles */
+
+.ch-msg {
+  padding: 2px 16px;
+  max-width: 100%;
+}
+
+.ch-msg-operator {
+  text-align: right;
+}
+
+.ch-msg-operator .ch-msg-content {
+  display: inline-block;
+  text-align: left;
+  background: var(--user-bubble);
+  color: #fff;
+  border-radius: var(--radius) var(--radius) 4px var(--radius);
+  padding: 8px 12px;
+  max-width: 85%;
+  word-wrap: break-word;
+}
+
+.ch-msg-agent .ch-msg-content {
+  display: inline-block;
+  background: var(--agent-bubble);
+  color: var(--text);
+  border-radius: var(--radius) var(--radius) var(--radius) 4px;
+  padding: 8px 12px;
+  max-width: 85%;
+  word-wrap: break-word;
+}
+
+.ch-msg-system {
+  text-align: center;
+  padding: 6px 16px;
+}
+
+.ch-msg-system-text {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Sender name */
+.ch-msg-sender {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  padding-top: 6px;
+}
+
+.ch-sender-operator {
+  color: var(--accent);
+  text-align: right;
+}
+
+.ch-sender-agent {
+  color: var(--success);
+}
+
+/* Message time */
+.ch-msg-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ch-msg:hover .ch-msg-time {
+  opacity: 1;
+}
+
+.ch-msg-operator .ch-msg-time {
+  text-align: right;
+}
+
+/* Time separator */
+.ch-time-separator {
+  text-align: center;
+  padding: 12px 0 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Send states */
+.ch-msg.send-pending .ch-msg-content {
+  opacity: 0.6;
+}
+
+.ch-msg.send-failed .ch-msg-content {
+  opacity: 0.5;
+  border: 1px dashed var(--error);
+}
+
+/* Markdown inside channel messages */
+.ch-msg-content p { margin: 0; }
+.ch-msg-content p + p { margin-top: 4px; }
+.ch-msg-content code {
+  background: var(--inline-code-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.ch-msg-content pre {
+  background: var(--code-block-bg);
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 4px 0;
+}
+
+.channel-chat-input-bar {
+  flex-shrink: 0;
+}

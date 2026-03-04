@@ -226,6 +226,33 @@
         </div>
       </div>
 
+      <!-- Screen: Channel Chat -->
+      <div id="screen-channel-chat" class="screen">
+        <div class="channel-chat-header">
+          <button class="chat-back-btn channel-chat-back-btn" aria-label="Back">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="channel-chat-header-info">
+            <div class="channel-chat-header-top">
+              <span id="channel-chat-name" class="channel-chat-name">#channel</span>
+              <span id="channel-chat-type-badge" class="channel-chat-type-badge">workshop</span>
+            </div>
+            <span id="channel-chat-member-count" class="channel-chat-member-count"></span>
+          </div>
+        </div>
+        <div id="channel-chat-messages" class="chat-messages">
+          <div id="channel-chat-load-more" class="chat-load-more" style="display:none"></div>
+        </div>
+        <div class="chat-input-bar channel-chat-input-bar">
+          <form id="channel-chat-form" class="chat-input-form">
+            <textarea id="channel-chat-input" class="chat-text-field" placeholder="Message channel..." autocomplete="off" rows="1"></textarea>
+            <button type="submit" class="chat-send-btn" aria-label="Send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
+            </button>
+          </form>
+        </div>
+      </div>
+
       <!-- Empty state: shown in split mode when no agent selected -->
       <div id="main-panel-empty" class="main-panel-empty">
         <div class="empty-state">Select an agent to start chatting</div>
@@ -343,6 +370,7 @@
   <script src="/static/voice/voice-sidebar.js?v=4"></script>
   <script src="/static/voice/voice-sse-handler.js?v=4"></script>
   <script src="/static/voice/voice-chat-controller.js?v=2"></script>
+  <script src="/static/voice/voice-channel-chat.js?v=1"></script>
   <script src="/static/voice/voice-app.js?v=17"></script>
   <script>
     // Trusted network: inject credentials into localStorage before init() runs.

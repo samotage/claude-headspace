@@ -80,6 +80,7 @@ def app():
         if inference_svc:
             inference_svc.stop()
         from claude_headspace.database import db
+
         db.engine.dispose()
 
     os.chdir(original_cwd)

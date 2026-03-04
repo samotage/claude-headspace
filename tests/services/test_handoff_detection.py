@@ -109,7 +109,9 @@ class TestDetectAndEmit:
             from claude_headspace.models.project import Project
 
             project = Project(
-                name="test-project", slug=f"test-hd-{uuid.uuid4().hex[:8]}", path=str(tmp_path / "proj")
+                name="test-project",
+                slug=f"test-hd-{uuid.uuid4().hex[:8]}",
+                path=str(tmp_path / "proj"),
             )
             db.session.add(project)
             db.session.flush()
@@ -126,7 +128,10 @@ class TestDetectAndEmit:
 
             with (
                 patch.object(
-                    type(agent), "persona", new_callable=PropertyMock, return_value=mock_persona
+                    type(agent),
+                    "persona",
+                    new_callable=PropertyMock,
+                    return_value=mock_persona,
                 ),
                 patch(
                     "claude_headspace.services.handoff_detection.get_persona_dir",
@@ -169,7 +174,9 @@ class TestDetectAndEmit:
             from claude_headspace.models.project import Project
 
             project = Project(
-                name="test-project", slug=f"test-hd-{uuid.uuid4().hex[:8]}", path=str(tmp_path / "proj")
+                name="test-project",
+                slug=f"test-hd-{uuid.uuid4().hex[:8]}",
+                path=str(tmp_path / "proj"),
             )
             db.session.add(project)
             db.session.flush()
@@ -185,7 +192,10 @@ class TestDetectAndEmit:
 
             with (
                 patch.object(
-                    type(agent), "persona", new_callable=PropertyMock, return_value=mock_persona
+                    type(agent),
+                    "persona",
+                    new_callable=PropertyMock,
+                    return_value=mock_persona,
                 ),
                 patch(
                     "claude_headspace.services.handoff_detection.get_persona_dir",
@@ -227,7 +237,9 @@ class TestDetectAndEmit:
             from claude_headspace.models.project import Project
 
             project = Project(
-                name="test-project", slug=f"test-hd-{uuid.uuid4().hex[:8]}", path=str(tmp_path / "proj")
+                name="test-project",
+                slug=f"test-hd-{uuid.uuid4().hex[:8]}",
+                path=str(tmp_path / "proj"),
             )
             db.session.add(project)
             db.session.flush()
@@ -243,7 +255,10 @@ class TestDetectAndEmit:
 
             with (
                 patch.object(
-                    type(agent), "persona", new_callable=PropertyMock, return_value=mock_persona
+                    type(agent),
+                    "persona",
+                    new_callable=PropertyMock,
+                    return_value=mock_persona,
                 ),
                 patch(
                     "claude_headspace.services.handoff_detection.get_persona_dir",
@@ -276,7 +291,9 @@ class TestDetectAndEmit:
             from claude_headspace.models.project import Project
 
             project = Project(
-                name="test-project", slug=f"test-hd-{uuid.uuid4().hex[:8]}", path=str(tmp_path / "proj")
+                name="test-project",
+                slug=f"test-hd-{uuid.uuid4().hex[:8]}",
+                path=str(tmp_path / "proj"),
             )
             db.session.add(project)
             db.session.flush()
@@ -292,7 +309,10 @@ class TestDetectAndEmit:
 
             with (
                 patch.object(
-                    type(agent), "persona", new_callable=PropertyMock, return_value=mock_persona
+                    type(agent),
+                    "persona",
+                    new_callable=PropertyMock,
+                    return_value=mock_persona,
                 ),
                 patch(
                     "claude_headspace.services.handoff_detection.get_persona_dir",
@@ -333,7 +353,9 @@ class TestDetectAndEmit:
             from claude_headspace.models.project import Project
 
             project = Project(
-                name="test-project", slug=f"test-hd-{uuid.uuid4().hex[:8]}", path=str(tmp_path / "proj")
+                name="test-project",
+                slug=f"test-hd-{uuid.uuid4().hex[:8]}",
+                path=str(tmp_path / "proj"),
             )
             db.session.add(project)
             db.session.flush()
@@ -349,7 +371,10 @@ class TestDetectAndEmit:
 
             with (
                 patch.object(
-                    type(agent), "persona", new_callable=PropertyMock, return_value=mock_persona
+                    type(agent),
+                    "persona",
+                    new_callable=PropertyMock,
+                    return_value=mock_persona,
                 ),
                 patch(
                     "claude_headspace.services.handoff_detection.get_persona_dir",

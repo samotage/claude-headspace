@@ -596,9 +596,7 @@ class TestGetAvailableMembers:
         setup_data["agent_b"].ended_at = datetime.now(timezone.utc)
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [
-            a["agent_id"] for group in result for a in group["agents"]
-        ]
+        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
         assert setup_data["agent_b"].id not in all_agent_ids
 
     def test_excludes_agents_without_persona(self, channel_service, setup_data):
@@ -611,9 +609,7 @@ class TestGetAvailableMembers:
         db.session.add(no_persona_agent)
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [
-            a["agent_id"] for group in result for a in group["agents"]
-        ]
+        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
         assert no_persona_agent.id not in all_agent_ids
 
     def test_excludes_inactive_persona(self, channel_service, setup_data):
@@ -621,9 +617,7 @@ class TestGetAvailableMembers:
         setup_data["persona_b"].status = "inactive"
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [
-            a["agent_id"] for group in result for a in group["agents"]
-        ]
+        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
         assert setup_data["agent_b"].id not in all_agent_ids
 
 
@@ -648,9 +642,7 @@ class TestAddMemberByAgent:
             channel_type="workshop",
         )
         with pytest.raises(AgentNotFoundError):
-            channel_service.add_member_by_agent(
-                ch.slug, 99999, setup_data["persona_a"]
-            )
+            channel_service.add_member_by_agent(ch.slug, 99999, setup_data["persona_a"])
 
     def test_ended_agent(self, channel_service, setup_data):
         setup_data["agent_b"].ended_at = datetime.now(timezone.utc)

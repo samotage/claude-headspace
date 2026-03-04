@@ -766,6 +766,43 @@ window.VoiceSidebar = (function () {
   // --- Refresh agents ---
 
   function refreshAgents() {
+    // Fetch channels in parallel (non-blocking — failure is fine)
+    VoiceAPI.getChannels().then(function (channels) {
+      channels = Array.isArray(channels) ? channels : [];
+      // Only keep active/pending channels
+      var active = [];
+      for (var ci = 0; ci < channels.length; ci++) {
+        if (channels[ci].status === 'active' || channels[ci].status === 'pending') {
+          // Merge into VoiceState.channels preserving SSE-updated last_sender/last_preview
+          var existing = null;
+          for (var ei = 0; ei < VoiceState.channels.length; ei++) {
+            if (VoiceState.channels[ei].slug === channels[ci].slug) {
+              existing = VoiceState.channels[ei];
+              break;
+            }
+          }
+          if (existing) {
+            existing.name = channels[ci].name || existing.name;
+            existing.status = channels[ci].status || existing.status;
+            existing.channel_type = channels[ci].channel_type || existing.channel_type;
+            active.push(existing);
+          } else {
+            active.push({
+              slug: channels[ci].slug,
+              name: channels[ci].name || channels[ci].slug,
+              status: channels[ci].status,
+              channel_type: channels[ci].channel_type || 'workshop',
+              last_sender: null,
+              last_preview: null,
+              last_message_at: channels[ci].created_at || null
+            });
+          }
+        }
+      }
+      VoiceState.channels = active;
+      renderChannelList();
+    }).catch(function () { /* ignore */ });
+
     VoiceAPI.getSessions(VoiceState.settings.verbosity, VoiceState.settings.showEndedAgents).then(function (data) {
       VoiceState.endedAgents = data.ended_agents || [];
       renderAgentList(data.agents || [], VoiceState.endedAgents);
@@ -816,7 +853,13 @@ window.VoiceSidebar = (function () {
       container = document.createElement('div');
       container.id = 'channel-list';
       container.className = 'channel-list-section';
-      sidebar.appendChild(container);
+      // Insert channels at the top of the sidebar (before agent-list)
+      var agentList = document.getElementById('agent-list');
+      if (agentList) {
+        sidebar.insertBefore(container, agentList);
+      } else {
+        sidebar.appendChild(container);
+      }
     }
 
     // Filter to active/pending channels only
@@ -885,9 +928,7 @@ window.VoiceSidebar = (function () {
   }
 
   function onChannelCardClick(slug) {
-    VoiceState.currentChannelSlug = slug;
-    showToast('Channel #' + slug + ' selected');
-    // Future: navigate to channel detail view
+    VoiceChannelChat.showChannelChatScreen(slug);
   }
 
   // Use VoiceChatRenderer.esc for HTML escaping (always available on voice page)

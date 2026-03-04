@@ -591,8 +591,57 @@ window.VoiceApp = (function () {
       });
     }
 
+    // --- Channel Chat ---
+    var channelChatForm = document.getElementById('channel-chat-form');
+    var channelChatInput = document.getElementById('channel-chat-input');
+    if (channelChatForm) {
+      channelChatForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (channelChatInput && channelChatInput.value.trim()) {
+          VoiceChannelChat.sendMessage(channelChatInput.value);
+          channelChatInput.value = '';
+          channelChatInput.style.height = 'auto';
+        }
+      });
+    }
+    if (channelChatInput) {
+      var isMobileCh = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      channelChatInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey && !isMobileCh) {
+          e.preventDefault();
+          channelChatForm.requestSubmit();
+        }
+      });
+      channelChatInput.addEventListener('input', function () {
+        var limit = parseInt(getComputedStyle(this).maxHeight, 10) || 240;
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, limit) + 'px';
+      });
+    }
+
+    // Channel chat back button
+    var channelBackBtn = document.querySelector('.channel-chat-back-btn');
+    if (channelBackBtn) {
+      channelBackBtn.addEventListener('click', function () {
+        VoiceState.currentChannelSlug = null;
+        VoiceSidebar.refreshAgents();
+        VoiceLayout.showScreen('agents');
+      });
+    }
+
+    // Channel chat scroll-up pagination
+    var channelMessages = document.getElementById('channel-chat-messages');
+    if (channelMessages) {
+      channelMessages.addEventListener('scroll', function () {
+        if (channelMessages.scrollTop < 50) {
+          VoiceChannelChat.loadOlderMessages();
+        }
+      });
+    }
+
     // Chat back button — pop nav stack or go to agent list
-    var chatBackBtn = document.querySelector('.chat-back-btn');
+    var chatBackBtn = document.querySelector('.chat-back-btn:not(.channel-chat-back-btn)');
     if (chatBackBtn) {
       chatBackBtn.addEventListener('click', function () {
         if (VoiceState.navStack.length > 0) {

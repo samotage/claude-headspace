@@ -208,13 +208,9 @@ class ActivityAggregator:
                 )
 
                 # Candlestick fields
-                scores = [
-                    int(t.frustration_score) for t in user_frustration_turns
-                ]
+                scores = [int(t.frustration_score) for t in user_frustration_turns]
                 min_frustration = min(scores) if scores else None
-                sum_frustration_squared = (
-                    sum(s * s for s in scores) if scores else None
-                )
+                sum_frustration_squared = sum(s * s for s in scores) if scores else None
 
                 # Upsert agent metric
                 self._upsert_metric(

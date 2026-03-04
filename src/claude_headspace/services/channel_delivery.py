@@ -195,9 +195,7 @@ class ChannelDeliveryService:
             q = self._queue.pop(agent_id, None)
             count = len(q) if q else 0
         if count:
-            logger.info(
-                f"Cleared {count} queued message(s) for agent {agent_id}"
-            )
+            logger.info(f"Cleared {count} queued message(s) for agent {agent_id}")
         return count
 
     # ── Single-agent delivery ────────────────────────────────────────

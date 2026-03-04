@@ -778,9 +778,7 @@ class TestSendMessage:
 
     def test_content_too_long_returns_413(self, client, app, mock_operator):
         """Content exceeding max_message_content_length returns 413."""
-        app.config["APP_CONFIG"] = {
-            "channels": {"max_message_content_length": 100}
-        }
+        app.config["APP_CONFIG"] = {"channels": {"max_message_content_length": 100}}
         with _patch_operator(mock_operator):
             resp = client.post(
                 "/api/channels/test-slug/messages",
@@ -794,9 +792,7 @@ class TestSendMessage:
         self, client, app, mock_operator, mock_channel_service
     ):
         """Content exactly at max length is accepted."""
-        app.config["APP_CONFIG"] = {
-            "channels": {"max_message_content_length": 100}
-        }
+        app.config["APP_CONFIG"] = {"channels": {"max_message_content_length": 100}}
         mock_msg = MagicMock()
         mock_msg.id = 50
         mock_msg.persona.slug = "person-sam-1"

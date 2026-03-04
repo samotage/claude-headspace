@@ -73,6 +73,11 @@ window.VoiceState = (function () {
   // ---- Channels ----
   var _channels = [];
   var _currentChannelSlug = null;
+  var _channelMessages = {};      // keyed by slug, arrays of message objects
+  var _channelMembers = [];       // members of current channel
+  var _channelHasMore = false;    // pagination flag
+  var _channelLoadingMore = false; // loading guard
+  var _channelOldestMessageTime = null; // ISO cursor for ?before=
 
   // ---- File Upload ----
   var _pendingAttachment = null;
@@ -226,6 +231,16 @@ window.VoiceState = (function () {
     set channels(v) { _channels = v; },
     get currentChannelSlug() { return _currentChannelSlug; },
     set currentChannelSlug(v) { _currentChannelSlug = v; },
+    get channelMessages() { return _channelMessages; },
+    set channelMessages(v) { _channelMessages = v; },
+    get channelMembers() { return _channelMembers; },
+    set channelMembers(v) { _channelMembers = v; },
+    get channelHasMore() { return _channelHasMore; },
+    set channelHasMore(v) { _channelHasMore = v; },
+    get channelLoadingMore() { return _channelLoadingMore; },
+    set channelLoadingMore(v) { _channelLoadingMore = v; },
+    get channelOldestMessageTime() { return _channelOldestMessageTime; },
+    set channelOldestMessageTime(v) { _channelOldestMessageTime = v; },
 
     // File Upload
     get pendingAttachment() { return _pendingAttachment; },
