@@ -377,9 +377,9 @@ window.VoiceAPI = (function () {
     return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/members');
   }
 
-  function createChannel(name, channelType, members) {
+  function createChannel(name, channelType, memberAgentIds) {
     var body = { name: name, channel_type: channelType };
-    if (members && members.length > 0) body.members = members;
+    if (memberAgentIds && memberAgentIds.length > 0) body.member_agents = memberAgentIds;
     return _fetchCookie('/api/channels', { method: 'POST', body: JSON.stringify(body) });
   }
 

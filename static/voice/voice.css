@@ -723,7 +723,7 @@ body.layout-split .agent-card.selected:hover {
   border-radius: 8px;
   padding: 8px 10px;
   margin-bottom: 4px;
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--info);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
