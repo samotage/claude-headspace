@@ -377,6 +377,16 @@ window.VoiceAPI = (function () {
     return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/members');
   }
 
+  function createChannel(name, channelType, members) {
+    var body = { name: name, channel_type: channelType };
+    if (members && members.length > 0) body.members = members;
+    return _fetchCookie('/api/channels', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  function getAvailableMembers() {
+    return _fetchCookie('/api/channels/available-members');
+  }
+
   function getProjects() {
     return _fetch('/api/projects');
   }
@@ -421,6 +431,8 @@ window.VoiceAPI = (function () {
     getChannels: getChannels,
     getChannelMessages: getChannelMessages,
     sendChannelMessage: sendChannelMessage,
-    getChannelMembers: getChannelMembers
+    getChannelMembers: getChannelMembers,
+    createChannel: createChannel,
+    getAvailableMembers: getAvailableMembers
   };
 })();

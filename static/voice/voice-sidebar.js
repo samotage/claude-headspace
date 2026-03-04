@@ -800,6 +800,17 @@ window.VoiceSidebar = (function () {
         }
       }
       VoiceState.channels = active;
+      // Fetch members for uncached channels (non-blocking)
+      for (var mi = 0; mi < active.length; mi++) {
+        (function (slug) {
+          if (!VoiceState.channelMembersBySlug[slug]) {
+            VoiceAPI.getChannelMembers(slug).then(function (data) {
+              VoiceState.channelMembersBySlug[slug] = Array.isArray(data) ? data : (data.members || []);
+              renderChannelList(); // re-render with initials
+            }).catch(function () { /* ignore */ });
+          }
+        })(active[mi].slug);
+      }
       renderChannelList();
     }).catch(function () { /* ignore */ });
 
@@ -870,11 +881,6 @@ window.VoiceSidebar = (function () {
       }
     }
 
-    if (active.length === 0) {
-      container.innerHTML = '';
-      return;
-    }
-
     // Sort by most recent message
     active.sort(function (a, b) {
       var aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
@@ -884,17 +890,37 @@ window.VoiceSidebar = (function () {
 
     var html = '<div class="channel-section-header">'
       + '<span class="channel-section-title">Channels (' + active.length + ')</span>'
+      + '<button class="channel-create-btn" title="Create channel">+</button>'
       + '</div>';
 
     for (var ci = 0; ci < active.length; ci++) {
       var ch = active[ci];
       var statusClass = 'channel-status-' + (ch.status || 'pending');
+      var isUnread = VoiceState.unreadChannelSlugs[ch.slug];
+      var unreadClass = isUnread ? ' channel-card-unread' : '';
       var agoText = '';
       if (ch.last_message_at) {
         var elapsed = (Date.now() - new Date(ch.last_message_at).getTime()) / 1000;
         if (elapsed < 60) agoText = Math.floor(elapsed) + 's ago';
         else if (elapsed < 3600) agoText = Math.floor(elapsed / 60) + 'm ago';
         else agoText = Math.floor(elapsed / 3600) + 'h ago';
+      }
+
+      // Member initials
+      var membersHtml = '';
+      var members = VoiceState.channelMembersBySlug[ch.slug];
+      if (members && members.length > 0) {
+        membersHtml = '<div class="channel-members">';
+        var maxShow = 4;
+        for (var mi = 0; mi < Math.min(members.length, maxShow); mi++) {
+          var name = members[mi].persona_name || members[mi].name || '?';
+          var initial = name.charAt(0).toUpperCase();
+          membersHtml += '<span class="channel-member-initial" title="' + _esc(name) + '">' + initial + '</span>';
+        }
+        if (members.length > maxShow) {
+          membersHtml += '<span class="channel-member-more">+' + (members.length - maxShow) + '</span>';
+        }
+        membersHtml += '</div>';
       }
 
       var previewHtml = '';
@@ -905,11 +931,12 @@ window.VoiceSidebar = (function () {
           + '</div>';
       }
 
-      html += '<div class="channel-card" data-channel-slug="' + _esc(ch.slug) + '">'
+      html += '<div class="channel-card' + unreadClass + '" data-channel-slug="' + _esc(ch.slug) + '">'
         + '<div class="channel-header">'
         + '<span class="channel-name">#' + _esc(ch.slug) + '</span>'
         + '<span class="channel-status ' + statusClass + '">' + _esc(ch.status || 'pending') + '</span>'
         + '</div>'
+        + membersHtml
         + previewHtml
         + (agoText ? '<div class="channel-ago">' + agoText + '</div>' : '')
         + '</div>';
@@ -925,10 +952,138 @@ window.VoiceSidebar = (function () {
         onChannelCardClick(slug);
       });
     }
+
+    // Bind create channel button
+    var createBtn = container.querySelector('.channel-create-btn');
+    if (createBtn) {
+      createBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openChannelPicker();
+      });
+    }
   }
 
   function onChannelCardClick(slug) {
+    delete VoiceState.unreadChannelSlugs[slug];
     VoiceChannelChat.showChannelChatScreen(slug);
+  }
+
+  // --- Create Channel Bottom Sheet ---
+
+  function openChannelPicker() {
+    VoiceState.channelPickerOpen = true;
+    var bd = document.getElementById('channel-picker-backdrop');
+    var pk = document.getElementById('channel-picker');
+    if (bd) bd.classList.add('open');
+    if (pk) pk.classList.add('open');
+    // Reset form
+    var nameInput = document.getElementById('channel-name-input');
+    var typeSelect = document.getElementById('channel-type-select');
+    if (nameInput) { nameInput.value = ''; nameInput.focus(); }
+    if (typeSelect) typeSelect.selectedIndex = 0;
+    // Clone-replace submit button to prevent stale listeners
+    var submitBtn = document.getElementById('channel-create-submit');
+    if (submitBtn) {
+      var newBtn = submitBtn.cloneNode(true);
+      submitBtn.parentNode.replaceChild(newBtn, submitBtn);
+      newBtn.addEventListener('click', function () { _submitCreateChannel(); });
+    }
+    // Enter key on name input submits
+    if (nameInput) {
+      nameInput.onkeydown = function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); _submitCreateChannel(); }
+      };
+    }
+    // Fetch available members
+    VoiceAPI.getAvailableMembers().then(function (data) {
+      _renderMemberCheckboxes(data.projects || data);
+    }).catch(function () {
+      var list = document.getElementById('channel-member-list');
+      if (list) list.innerHTML = '<div class="channel-picker-empty">Could not load members</div>';
+    });
+  }
+
+  function closeChannelPicker() {
+    VoiceState.channelPickerOpen = false;
+    var bd = document.getElementById('channel-picker-backdrop');
+    var pk = document.getElementById('channel-picker');
+    if (bd) bd.classList.remove('open');
+    if (pk) pk.classList.remove('open');
+  }
+
+  function _renderMemberCheckboxes(projects) {
+    var list = document.getElementById('channel-member-list');
+    if (!list) return;
+
+    // projects can be an array of { project_name, agents: [{agent_id, persona_name, persona_slug}] }
+    // or a flat array of agents
+    if (!projects || (Array.isArray(projects) && projects.length === 0)) {
+      list.innerHTML = '<div class="channel-picker-empty">No agents available</div>';
+      return;
+    }
+
+    var html = '';
+    if (Array.isArray(projects) && projects[0] && projects[0].project_name) {
+      // Grouped by project
+      for (var pi = 0; pi < projects.length; pi++) {
+        var proj = projects[pi];
+        var agents = proj.agents || [];
+        if (agents.length === 0) continue;
+        html += '<div class="channel-member-project">' + _esc(proj.project_name) + '</div>';
+        for (var ai = 0; ai < agents.length; ai++) {
+          var a = agents[ai];
+          var label = a.persona_name || ('Agent #' + a.agent_id);
+          var role = a.persona_role || '';
+          html += '<label class="channel-member-option">'
+            + '<input type="checkbox" value="' + a.agent_id + '">'
+            + '<span class="channel-member-label">' + _esc(label)
+            + (role ? ' <span class="channel-member-role">' + _esc(role) + '</span>' : '')
+            + '</span></label>';
+        }
+      }
+    } else if (Array.isArray(projects)) {
+      // Flat array
+      for (var fi = 0; fi < projects.length; fi++) {
+        var f = projects[fi];
+        var fLabel = f.persona_name || f.name || ('Agent #' + f.agent_id);
+        html += '<label class="channel-member-option">'
+          + '<input type="checkbox" value="' + (f.agent_id || f.id) + '">'
+          + '<span class="channel-member-label">' + _esc(fLabel) + '</span></label>';
+      }
+    }
+
+    list.innerHTML = html || '<div class="channel-picker-empty">No agents available</div>';
+  }
+
+  function _submitCreateChannel() {
+    var nameInput = document.getElementById('channel-name-input');
+    var typeSelect = document.getElementById('channel-type-select');
+    var name = nameInput ? nameInput.value.trim() : '';
+    var channelType = typeSelect ? typeSelect.value : 'workshop';
+
+    if (!name) {
+      if (nameInput) nameInput.focus();
+      return;
+    }
+
+    // Collect checked members
+    var checkboxes = document.querySelectorAll('#channel-member-list input[type="checkbox"]:checked');
+    var members = [];
+    for (var i = 0; i < checkboxes.length; i++) {
+      members.push(parseInt(checkboxes[i].value, 10));
+    }
+
+    var submitBtn = document.getElementById('channel-create-submit');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Creating...'; }
+
+    VoiceAPI.createChannel(name, channelType, members).then(function () {
+      closeChannelPicker();
+      showToast('Channel created');
+      refreshAgents();
+    }).catch(function (err) {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create'; }
+      showToast('Failed: ' + (err.error || 'unknown error'));
+    });
   }
 
   // Use VoiceChatRenderer.esc for HTML escaping (always available on voice page)
@@ -952,6 +1107,8 @@ window.VoiceSidebar = (function () {
     closeProjectPicker: closeProjectPicker,
     closePersonaPicker: closePersonaPicker,
     filterProjectList: filterProjectList,
+    openChannelPicker: openChannelPicker,
+    closeChannelPicker: closeChannelPicker,
     showToast: showToast
   };
 })();

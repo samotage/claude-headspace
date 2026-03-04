@@ -78,6 +78,9 @@ window.VoiceState = (function () {
   var _channelHasMore = false;    // pagination flag
   var _channelLoadingMore = false; // loading guard
   var _channelOldestMessageTime = null; // ISO cursor for ?before=
+  var _channelMembersBySlug = {};       // { slug: [{persona_name, persona_slug}, ...] }
+  var _unreadChannelSlugs = {};         // { slug: true } for channels with unseen messages
+  var _channelPickerOpen = false;       // create channel bottom sheet
 
   // ---- File Upload ----
   var _pendingAttachment = null;
@@ -241,6 +244,12 @@ window.VoiceState = (function () {
     set channelLoadingMore(v) { _channelLoadingMore = v; },
     get channelOldestMessageTime() { return _channelOldestMessageTime; },
     set channelOldestMessageTime(v) { _channelOldestMessageTime = v; },
+    get channelMembersBySlug() { return _channelMembersBySlug; },
+    set channelMembersBySlug(v) { _channelMembersBySlug = v; },
+    get unreadChannelSlugs() { return _unreadChannelSlugs; },
+    set unreadChannelSlugs(v) { _unreadChannelSlugs = v; },
+    get channelPickerOpen() { return _channelPickerOpen; },
+    set channelPickerOpen(v) { _channelPickerOpen = v; },
 
     // File Upload
     get pendingAttachment() { return _pendingAttachment; },

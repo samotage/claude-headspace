@@ -200,6 +200,12 @@ window.VoiceApp = (function () {
     if (personaPickerClose) personaPickerClose.addEventListener('click', function () { VoiceSidebar.closePersonaPicker(); });
     if (personaPickerBackdrop) personaPickerBackdrop.addEventListener('click', function () { VoiceSidebar.closePersonaPicker(); });
 
+    // Channel picker (create channel) close handlers
+    var channelPickerClose = document.getElementById('channel-picker-close');
+    var channelPickerBackdrop = document.getElementById('channel-picker-backdrop');
+    if (channelPickerClose) channelPickerClose.addEventListener('click', function () { VoiceSidebar.closeChannelPicker(); });
+    if (channelPickerBackdrop) channelPickerBackdrop.addEventListener('click', function () { VoiceSidebar.closeChannelPicker(); });
+
     // Detect agent_id URL param (from dashboard "Chat" link)
     var urlParams = new URLSearchParams(window.location.search);
     var paramAgentId = urlParams.get('agent_id');
@@ -415,6 +421,7 @@ window.VoiceApp = (function () {
     // --- Escape key handler ---
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
+        if (VoiceState.channelPickerOpen) { VoiceSidebar.closeChannelPicker(); e.preventDefault(); return; }
         if (VoiceState.projectPickerOpen) { VoiceSidebar.closeProjectPicker(); e.preventDefault(); return; }
         if (VoiceState.fabOpen) { VoiceLayout.closeFab(); e.preventDefault(); return; }
         if (VoiceState.hamburgerOpen) { VoiceLayout.closeHamburger(); e.preventDefault(); return; }

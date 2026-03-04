@@ -612,6 +612,13 @@ window.VoiceSSEHandler = (function () {
       });
     }
 
+    // Track unread if not currently viewing this channel
+    var isViewingThisChannel = (VoiceState.currentChannelSlug === data.channel_slug
+        && VoiceState.currentScreen === 'channel-chat');
+    if (!isViewingThisChannel) {
+      VoiceState.unreadChannelSlugs[data.channel_slug] = true;
+    }
+
     // Inject live message into channel chat view if open
     if (typeof VoiceChannelChat !== 'undefined' && VoiceChannelChat.appendMessage) {
       VoiceChannelChat.appendMessage(data);
@@ -625,6 +632,11 @@ window.VoiceSSEHandler = (function () {
 
   function handleChannelUpdate(data) {
     if (!data || !data.channel_slug) return;
+
+    // Invalidate member cache on membership changes
+    if (data.update_type === 'member_added' || data.update_type === 'member_removed') {
+      delete VoiceState.channelMembersBySlug[data.channel_slug];
+    }
 
     var channels = VoiceState.channels;
     for (var i = 0; i < channels.length; i++) {
