@@ -580,8 +580,9 @@ class TestGetAvailableMembers:
     def test_returns_grouped_by_project(self, channel_service, setup_data):
         """Active agents with personas are returned grouped by project."""
         result = channel_service.get_available_members()
-        assert len(result) >= 1
-        project_group = result[0]
+        projects = result["projects"]
+        assert len(projects) >= 1
+        project_group = projects[0]
         assert "project_id" in project_group
         assert "project_name" in project_group
         assert "agents" in project_group
@@ -596,7 +597,7 @@ class TestGetAvailableMembers:
         setup_data["agent_b"].ended_at = datetime.now(timezone.utc)
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
+        all_agent_ids = [a["agent_id"] for group in result["projects"] for a in group["agents"]]
         assert setup_data["agent_b"].id not in all_agent_ids
 
     def test_excludes_agents_without_persona(self, channel_service, setup_data):
@@ -609,7 +610,7 @@ class TestGetAvailableMembers:
         db.session.add(no_persona_agent)
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
+        all_agent_ids = [a["agent_id"] for group in result["projects"] for a in group["agents"]]
         assert no_persona_agent.id not in all_agent_ids
 
     def test_excludes_inactive_persona(self, channel_service, setup_data):
@@ -617,7 +618,7 @@ class TestGetAvailableMembers:
         setup_data["persona_b"].status = "inactive"
         db.session.commit()
         result = channel_service.get_available_members()
-        all_agent_ids = [a["agent_id"] for group in result for a in group["agents"]]
+        all_agent_ids = [a["agent_id"] for group in result["projects"] for a in group["agents"]]
         assert setup_data["agent_b"].id not in all_agent_ids
 
 
@@ -700,3 +701,158 @@ class TestCreateChannelWithAgentIds:
         non_chair = [m for m in memberships if not m.is_chair]
         assert len(non_chair) == 1
         assert non_chair[0].agent_id == setup_data["agent_b"].id
+
+    def test_create_with_members_auto_activates(self, channel_service, setup_data):
+        """Bug #4: Channel transitions to active when members are added at creation."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="auto-active-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+        )
+        assert ch.status == "active"
+
+    def test_create_without_members_stays_pending(self, channel_service, setup_data):
+        """Channel without additional members stays pending after creation."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="stays-pending-test",
+            channel_type="workshop",
+        )
+        assert ch.status == "pending"
+
+
+class TestCompleteChannelReleasesMembers:
+    """Bug #2: complete_channel releases active memberships."""
+
+    def test_active_memberships_set_to_left(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="release-complete-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+        )
+        channel_service.complete_channel(ch.slug, setup_data["persona_a"])
+        memberships = ChannelMembership.query.filter_by(channel_id=ch.id).all()
+        for m in memberships:
+            assert m.status == "left"
+            assert m.left_at is not None
+
+
+class TestArchiveChannelReleasesMembers:
+    """Bug #2: archive_channel releases remaining memberships."""
+
+    def test_remaining_memberships_released(self, channel_service, setup_data):
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="release-archive-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+        )
+        channel_service.complete_channel(ch.slug, setup_data["persona_a"])
+        channel_service.archive_channel(ch.slug, setup_data["persona_a"])
+        memberships = ChannelMembership.query.filter_by(channel_id=ch.id).all()
+        for m in memberships:
+            assert m.status == "left"
+            assert m.left_at is not None
+
+
+class TestGetAvailableMembersPersonas:
+    """Bug #1: get_available_members includes person-type personas."""
+
+    def test_returns_personas_section(self, channel_service, setup_data):
+        """Response includes a 'personas' key."""
+        result = channel_service.get_available_members()
+        assert "personas" in result
+
+    def test_person_type_personas_included(self, channel_service, setup_data):
+        """Person-type personas appear in the personas list."""
+        # Create a person-type persona (id=3 = person/internal)
+        pt_person = db.session.get(PersonaType, 3)
+        role = setup_data["role"]
+        operator = Persona(
+            name="Operator Sam",
+            role_id=role.id,
+            role=role,
+            persona_type_id=pt_person.id,
+            status="active",
+        )
+        db.session.add(operator)
+        db.session.commit()
+        db.session.refresh(operator)
+
+        result = channel_service.get_available_members()
+        persona_slugs = [p["persona_slug"] for p in result["personas"]]
+        assert operator.slug in persona_slugs
+
+    def test_agent_type_personas_excluded_from_personas_list(
+        self, channel_service, setup_data
+    ):
+        """Agent-type personas without active agents do NOT appear in personas list."""
+        # Make agent_b ended so persona_b has no active agent
+        setup_data["agent_b"].ended_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        result = channel_service.get_available_members()
+        persona_slugs = [p["persona_slug"] for p in result["personas"]]
+        # persona_b is agent/internal type, should NOT be in personas list
+        assert setup_data["persona_b"].slug not in persona_slugs
+
+    def test_deduplicates_agents_by_persona_and_project(
+        self, channel_service, setup_data
+    ):
+        """Bug #3: Duplicate agents for the same persona in the same project are deduplicated."""
+        # Create a second agent for persona_a on the same project
+        dupe_agent = Agent(
+            session_uuid=uuid4(),
+            project_id=setup_data["project"].id,
+            persona_id=setup_data["persona_a"].id,
+        )
+        db.session.add(dupe_agent)
+        db.session.commit()
+
+        result = channel_service.get_available_members()
+        # Count how many times persona_a appears in the test-project group
+        for group in result["projects"]:
+            if group["project_id"] == setup_data["project"].id:
+                persona_a_entries = [
+                    a
+                    for a in group["agents"]
+                    if a["persona_slug"] == setup_data["persona_a"].slug
+                ]
+                assert len(persona_a_entries) == 1
+
+
+class TestAgentChannelConflictScoping:
+    """Bug fix: _check_agent_channel_conflict only blocks for open channels."""
+
+    def test_no_conflict_after_channel_completed(self, channel_service, setup_data):
+        """Agent can join a new channel after their previous channel was completed."""
+        ch1 = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="old-channel",
+            channel_type="workshop",
+        )
+        channel_service.add_member(
+            ch1.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
+        )
+        channel_service.complete_channel(ch1.slug, setup_data["persona_a"])
+
+        # Should NOT raise — the completed channel doesn't block
+        channel_service._check_agent_channel_conflict(setup_data["agent_b"])
+
+    def test_conflict_still_raised_for_active_channel(
+        self, channel_service, setup_data
+    ):
+        """Agent in an active channel still triggers conflict."""
+        ch1 = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="active-channel",
+            channel_type="workshop",
+        )
+        channel_service.add_member(
+            ch1.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
+        )
+
+        with pytest.raises(AgentChannelConflictError):
+            channel_service._check_agent_channel_conflict(setup_data["agent_b"])
