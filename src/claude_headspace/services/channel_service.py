@@ -839,6 +839,12 @@ class ChannelService:
         db.session.commit()
 
         self._broadcast_message(message, channel)
+
+        # Deliver to agent members via tmux (post-commit side effect)
+        delivery_service = self.app.extensions.get("channel_delivery_service")
+        if delivery_service:
+            delivery_service.deliver_message(message, channel)
+
         return message
 
     def get_history(
