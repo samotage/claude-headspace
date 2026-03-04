@@ -343,9 +343,6 @@
             }
         });
 
-        // Handle synthetic_turn events (handoff listings for persona-backed agents)
-        client.on('synthetic_turn', handleSyntheticTurn);
-
         // Handle activity bar updates on turn events
         client.on('turn_detected', handleActivityBarUpdate);
         client.on('turn_created', handleActivityBarUpdate);
@@ -1615,82 +1612,6 @@
         }
 
         document.dispatchEvent(new CustomEvent('sse:commander_availability', { detail: data }));
-    }
-
-    /**
-     * Handle synthetic_turn events.
-     *
-     * Renders handoff file paths as an agent-style card line inside
-     * the agent card. These are dashboard-only — the agent never sees them.
-     */
-    function handleSyntheticTurn(data) {
-        var agentId = data.agent_id;
-        if (!agentId) return;
-
-        var card = document.querySelector('article[data-agent-id="' + agentId + '"]');
-        if (!card) return;
-
-        // Avoid duplicate rendering
-        if (card.querySelector('.handoff-listing-line')) return;
-
-        var turns = data.turns;
-        if (!turns || !turns.length) return;
-
-        // Collect all file paths from all handoff_listing turns
-        var paths = [];
-        turns.forEach(function(turn) {
-            if (turn.type !== 'handoff_listing') return;
-            if (!turn.file_paths || !turn.file_paths.length) return;
-            for (var i = 0; i < turn.file_paths.length; i++) {
-                paths.push(turn.file_paths[i]);
-            }
-        });
-        if (!paths.length) return;
-
-        // Build card line matching the agent card structure
-        var line = document.createElement('div');
-        line.className = 'card-line handoff-listing-line';
-
-        var lineNum = document.createElement('span');
-        lineNum.className = 'line-num';
-        lineNum.textContent = '··';
-        line.appendChild(lineNum);
-
-        var lineContent = document.createElement('div');
-        lineContent.className = 'line-content';
-
-        var text = document.createElement('p');
-        text.className = 'command-summary text-secondary text-sm italic';
-        var pathLinks = paths.map(function(p) {
-            return '<code class="handoff-path-code" title="Click to copy" style="cursor:pointer;font-size:0.75rem;">' + p.replace(/</g, '&lt;') + '</code>';
-        });
-        text.innerHTML = 'Handoff: ' + pathLinks.join(', ');
-        lineContent.appendChild(text);
-        line.appendChild(lineContent);
-
-        // Bind click-to-copy on each code element
-        var codeEls = line.querySelectorAll('.handoff-path-code');
-        for (var j = 0; j < codeEls.length; j++) {
-            (function(codeEl, path) {
-                codeEl.addEventListener('click', function() {
-                    if (navigator.clipboard) {
-                        navigator.clipboard.writeText(path).then(function() {
-                            if (global.Toast) {
-                                global.Toast.success('Copied', 'Path copied to clipboard');
-                            }
-                        });
-                    }
-                });
-            })(codeEls[j], paths[j]);
-        }
-
-        // Insert after line 04 (or at end of card-editor)
-        var cardEditor = card.querySelector('.card-editor');
-        if (cardEditor) {
-            cardEditor.appendChild(line);
-        }
-
-        document.dispatchEvent(new CustomEvent('sse:synthetic_turn', { detail: data }));
     }
 
     // Export

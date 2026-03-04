@@ -811,60 +811,6 @@ window.VoiceChatRenderer = (function () {
     return true;
   }
 
-  // --- Handoff listing rendering ---
-
-  /**
-   * Render handoff files as an agent-style chat bubble.
-   * Accepts an array of {filename, path} objects (from transcript API)
-   * or synthetic_turn data with turns[].filenames/file_paths arrays.
-   * Returns a bubble element or null if no files to show.
-   */
-  function createHandoffListingEl(handoffFiles) {
-    if (!handoffFiles || !handoffFiles.length) return null;
-
-    // Build markdown-style content with full paths
-    var lines = ['**Recent handoff documents:**\n'];
-    var paths = [];
-    for (var i = 0; i < handoffFiles.length; i++) {
-      var f = handoffFiles[i];
-      var fullPath = f.path || f.file_paths && f.file_paths[i] || '';
-      var displayName = f.filename || (fullPath ? fullPath.split('/').pop() : 'unknown');
-      lines.push('`' + fullPath + '`');
-      paths.push(fullPath);
-    }
-    var mdText = lines.join('\n\n');
-
-    // Create a standard agent-style bubble
-    var bubble = document.createElement('div');
-    bubble.className = 'chat-bubble agent';
-    bubble.setAttribute('data-turn-id', 'handoff-listing');
-    bubble.setAttribute('data-timestamp', new Date().toISOString());
-
-    var html = '<div class="bubble-intent progress-intent">Handoff</div>';
-    html += '<div class="bubble-text">' + renderMd(mdText) + '</div>';
-    bubble.innerHTML = html;
-
-    // Bind click-to-copy on each code element containing a path
-    var codeEls = bubble.querySelectorAll('code');
-    for (var j = 0; j < codeEls.length; j++) {
-      (function(codeEl, path) {
-        codeEl.style.cursor = 'pointer';
-        codeEl.title = 'Click to copy path';
-        codeEl.addEventListener('click', function() {
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(path).then(function() {
-              var original = codeEl.textContent;
-              codeEl.textContent = 'Copied!';
-              setTimeout(function() { codeEl.textContent = original; }, 1200);
-            });
-          }
-        });
-      })(codeEls[j], paths[j]);
-    }
-
-    return bubble;
-  }
-
   // --- Public API ---
 
   return {
@@ -889,7 +835,6 @@ window.VoiceChatRenderer = (function () {
     renderTranscriptTurns: renderTranscriptTurns,
     prependTranscriptTurns: prependTranscriptTurns,
     renderAttentionBanners: renderAttentionBanners,
-    injectOptionsIntoBubble: injectOptionsIntoBubble,
-    createHandoffListingEl: createHandoffListingEl
+    injectOptionsIntoBubble: injectOptionsIntoBubble
   };
 })();

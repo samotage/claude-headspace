@@ -503,14 +503,6 @@ window.VoiceSSEHandler = (function () {
         _onMarkQuestionsAnswered();
       }
 
-      // Render handoff listing from transcript API response
-      if (resp.handoff_files && resp.handoff_files.length > 0) {
-        if (messagesContainer && !messagesContainer.querySelector('[data-turn-id="handoff-listing"]')) {
-          var handoffEl = VoiceChatRenderer.createHandoffListingEl(resp.handoff_files);
-          if (handoffEl) messagesContainer.insertBefore(handoffEl, messagesContainer.firstChild);
-        }
-      }
-
       // Auto-scroll if user was near the bottom before new turns were appended
       if (wasNearBottom && _onScrollChat) _onScrollChat(false);
     }).catch(function () {
@@ -591,42 +583,6 @@ window.VoiceSSEHandler = (function () {
     }
   }
 
-  // --- Synthetic turn SSE event handler ---
-
-  function handleSyntheticTurn(data) {
-    if (VoiceState.currentScreen !== 'chat') return;
-    if (!data || !data.agent_id) return;
-    if (parseInt(data.agent_id, 10) !== parseInt(VoiceState.targetAgentId, 10)) return;
-
-    var turns = data.turns;
-    if (!turns || !turns.length) return;
-
-    var messagesEl = document.getElementById('chat-messages');
-    if (!messagesEl) return;
-    // Avoid duplicates
-    if (messagesEl.querySelector('[data-turn-id="handoff-listing"]')) return;
-
-    // Convert SSE turns format to handoffFiles format
-    var handoffFiles = [];
-    for (var i = 0; i < turns.length; i++) {
-      var turn = turns[i];
-      if (turn.type !== 'handoff_listing') continue;
-      if (!turn.filenames || !turn.filenames.length) continue;
-      for (var j = 0; j < turn.filenames.length; j++) {
-        handoffFiles.push({
-          filename: turn.filenames[j],
-          path: turn.file_paths[j]
-        });
-      }
-    }
-
-    var el = VoiceChatRenderer.createHandoffListingEl(handoffFiles);
-    if (el) {
-      messagesEl.insertBefore(el, messagesEl.firstChild);
-      _scrollIfNear();
-    }
-  }
-
   // --- Channel SSE event handlers ---
 
   function handleChannelMessage(data) {
@@ -696,7 +652,6 @@ window.VoiceSSEHandler = (function () {
     handleTurnUpdated: handleTurnUpdated,
     handleTurnCreated: handleTurnCreated,
     handleAgentUpdate: handleAgentUpdate,
-    handleSyntheticTurn: handleSyntheticTurn,
     // Channel SSE event handlers
     handleChannelMessage: handleChannelMessage,
     handleChannelUpdate: handleChannelUpdate,

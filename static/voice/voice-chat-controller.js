@@ -130,14 +130,6 @@ window.VoiceChatController = (function () {
         focusLink.title = data.tmux_session ? 'Attach to tmux session' : 'Focus iTerm window';
       }
       VoiceChatRenderer.renderTranscriptTurns(data);
-      // Render handoff listing at top of chat if persona has handoff files
-      if (data.handoff_files && data.handoff_files.length > 0) {
-        var messagesEl2 = document.getElementById('chat-messages');
-        if (messagesEl2 && !messagesEl2.querySelector('[data-turn-id="handoff-listing"]')) {
-          var handoffEl = VoiceChatRenderer.createHandoffListingEl(data.handoff_files);
-          if (handoffEl) messagesEl2.insertBefore(handoffEl, messagesEl2.firstChild);
-        }
-      }
       // Restore scroll position if returning to a previously-viewed agent
       var saved = VoiceState.agentScrollState[agentId];
       if (saved) {
