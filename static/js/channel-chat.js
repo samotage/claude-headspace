@@ -21,6 +21,9 @@
     var _isNearBottom = true;
     var _pendingOptimistic = new Map(); // tempId -> element
 
+    var _infoOpen = false;
+    var _addMemberOpen = false;
+
     // DOM references (cached on first use)
     var _panel = null;
     var _feed = null;
@@ -28,10 +31,19 @@
     var _input = null;
     var _nameEl = null;
     var _typeEl = null;
-    var _metaEl = null;
     var _loadEarlierEl = null;
     var _loadingEl = null;
     var _newIndicatorEl = null;
+    var _infoPanel = null;
+    var _infoToggle = null;
+    var _membersEl = null;
+    var _detailsEl = null;
+    var _memberPillsEl = null;
+    var _addMemberArea = null;
+    var _addMemberPicker = null;
+    var _addBtn = null;
+    var _completeBtn = null;
+    var _endBtn = null;
 
     function _getElements() {
         if (_panel) return;
@@ -41,10 +53,19 @@
         _input = document.getElementById('channel-chat-input');
         _nameEl = document.getElementById('channel-chat-name');
         _typeEl = document.getElementById('channel-chat-type');
-        _metaEl = document.getElementById('channel-chat-meta');
         _loadEarlierEl = document.getElementById('channel-chat-load-earlier');
         _loadingEl = document.getElementById('channel-chat-loading');
         _newIndicatorEl = document.getElementById('channel-chat-new-indicator');
+        _infoPanel = document.getElementById('channel-chat-info');
+        _infoToggle = document.getElementById('channel-chat-info-toggle');
+        _membersEl = document.getElementById('channel-chat-members');
+        _detailsEl = document.getElementById('channel-chat-details');
+        _memberPillsEl = document.getElementById('channel-chat-member-pills');
+        _addMemberArea = document.getElementById('channel-chat-add-member');
+        _addMemberPicker = document.getElementById('channel-chat-add-member-picker');
+        _addBtn = document.getElementById('channel-chat-add-btn');
+        _completeBtn = document.getElementById('channel-chat-complete-btn');
+        _endBtn = document.getElementById('channel-chat-end-btn');
     }
 
     /**
@@ -64,7 +85,9 @@
             _activeChannelSlug = slug;
             _clearMessages();
             _updateHeader(slug);
+            _loadMembers(slug);
             _loadMessages(slug);
+            _collapseAddMember();
             return;
         }
 
@@ -72,6 +95,7 @@
         _activeChannelSlug = slug;
         _isOpen = true;
         _updateHeader(slug);
+        _loadMembers(slug);
         _clearMessages();
         _loadMessages(slug);
 
@@ -97,12 +121,180 @@
         _isOpen = false;
         _activeChannelSlug = null;
         _oldestSentAt = null;
+        _infoOpen = false;
         _pendingOptimistic.clear();
 
         _panel.classList.remove('open');
         _panel.setAttribute('aria-hidden', 'true');
 
+        // Collapse info panel
+        if (_infoPanel) _infoPanel.classList.add('hidden');
+        if (_infoToggle) _infoToggle.classList.remove('text-cyan');
+
+        // Collapse add-member area
+        _collapseAddMember();
+
+        // Hide chair controls
+        if (_completeBtn) _completeBtn.classList.add('hidden');
+        if (_endBtn) _endBtn.classList.add('hidden');
+
         document.removeEventListener('keydown', _handleEscape);
+    }
+
+    /**
+     * Toggle the info panel (members + technical details).
+     */
+    function toggleInfo() {
+        _getElements();
+        _infoOpen = !_infoOpen;
+        if (_infoPanel) {
+            _infoPanel.classList.toggle('hidden', !_infoOpen);
+        }
+        if (_infoToggle) {
+            _infoToggle.classList.toggle('text-cyan', _infoOpen);
+        }
+    }
+
+    /**
+     * Toggle the add-member area below the header.
+     */
+    function toggleAddMember() {
+        _getElements();
+        if (_addMemberOpen) {
+            _collapseAddMember();
+        } else {
+            _expandAddMember();
+        }
+    }
+
+    var _selectionWatcher = null;
+
+    function _expandAddMember() {
+        _addMemberOpen = true;
+        if (_addMemberArea) _addMemberArea.classList.add('open');
+        if (_addBtn) _addBtn.classList.add('text-cyan');
+
+        // Init MemberAutocomplete on the picker container
+        if (_addMemberPicker && global.MemberAutocomplete) {
+            global.MemberAutocomplete.init(_addMemberPicker);
+            // Watch for selections and auto-add (MemberAutocomplete has no event callback)
+            if (_selectionWatcher) clearInterval(_selectionWatcher);
+            _selectionWatcher = setInterval(function() {
+                if (!_addMemberOpen || !global.MemberAutocomplete) {
+                    clearInterval(_selectionWatcher);
+                    _selectionWatcher = null;
+                    return;
+                }
+                var ids = global.MemberAutocomplete.getSelectedAgentIds();
+                if (ids.length > 0) {
+                    _addMemberById(ids[0]);
+                    clearInterval(_selectionWatcher);
+                    _selectionWatcher = null;
+                }
+            }, 200);
+        }
+    }
+
+    function _collapseAddMember() {
+        _addMemberOpen = false;
+        if (_addMemberArea) _addMemberArea.classList.remove('open');
+        if (_addBtn) _addBtn.classList.remove('text-cyan');
+        if (_selectionWatcher) {
+            clearInterval(_selectionWatcher);
+            _selectionWatcher = null;
+        }
+        if (global.MemberAutocomplete) {
+            global.MemberAutocomplete.destroy();
+        }
+    }
+
+    function _addMemberById(agentId) {
+        if (!_activeChannelSlug) return;
+        var slug = _activeChannelSlug;
+
+        fetch('/api/channels/' + encodeURIComponent(slug) + '/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: agentId }),
+        })
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function() {
+            _loadMembers(slug);
+            _loadChannelInfo(slug);
+            _collapseAddMember();
+            if (global.Toast) global.Toast.success('Member added');
+        })
+        .catch(function(err) {
+            console.error('Failed to add member:', err);
+            if (global.Toast) global.Toast.error('Error', 'Failed to add member');
+        });
+    }
+
+    /**
+     * Complete the channel (chair action) with confirmation.
+     */
+    function completeChannel() {
+        if (!_activeChannelSlug) return;
+        var slug = _activeChannelSlug;
+        if (typeof ConfirmDialog === 'undefined') return;
+
+        ConfirmDialog.show('Complete Channel', 'Mark this channel as complete? Members will be notified.', {
+            confirmText: 'Complete',
+            confirmClass: 'bg-green hover:bg-green/90',
+        }).then(function(ok) {
+            if (!ok) return;
+            fetch('/api/channels/' + encodeURIComponent(slug) + '/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function() {
+                if (global.Toast) global.Toast.success('Channel completed');
+                close();
+            })
+            .catch(function(err) {
+                console.error('Failed to complete channel:', err);
+                if (global.Toast) global.Toast.error('Error', 'Failed to complete channel');
+            });
+        });
+    }
+
+    /**
+     * End/archive the channel (chair action) with confirmation.
+     */
+    function endChannel() {
+        if (!_activeChannelSlug) return;
+        var slug = _activeChannelSlug;
+        if (typeof ConfirmDialog === 'undefined') return;
+
+        ConfirmDialog.show('End Channel', 'Archive this channel? This cannot be undone.', {
+            confirmText: 'End Channel',
+            confirmClass: 'bg-red hover:bg-red/90',
+        }).then(function(ok) {
+            if (!ok) return;
+            fetch('/api/channels/' + encodeURIComponent(slug) + '/archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function() {
+                if (global.Toast) global.Toast.success('Channel archived');
+                close();
+            })
+            .catch(function(err) {
+                console.error('Failed to archive channel:', err);
+                if (global.Toast) global.Toast.error('Error', 'Failed to archive channel');
+            });
+        });
     }
 
     /**
@@ -307,24 +499,179 @@
             if (typeof ConfirmDialog !== 'undefined' && ConfirmDialog.isOpen()) return;
             var mgmtModal = document.getElementById('channel-management-modal');
             if (mgmtModal && !mgmtModal.classList.contains('hidden')) return;
+            // Close add-member first if open
+            if (_addMemberOpen) {
+                _collapseAddMember();
+                return;
+            }
             close();
         }
     }
 
     function _updateHeader(slug) {
-        // Pull info from the channel card data attributes
+        _getElements();
+        // Pull info from the channel card data attributes for instant display
         var card = document.querySelector('.channel-card[data-channel-slug="' + slug + '"]');
         if (card) {
             if (_nameEl) _nameEl.textContent = card.getAttribute('data-channel-name') || slug;
             if (_typeEl) _typeEl.textContent = card.getAttribute('data-channel-type') || '';
-            var members = card.getAttribute('data-channel-members') || '';
-            var memberCount = members ? members.split(',').length : 0;
-            if (_metaEl) _metaEl.textContent = memberCount + ' member' + (memberCount !== 1 ? 's' : '');
         } else {
             if (_nameEl) _nameEl.textContent = slug;
             if (_typeEl) _typeEl.textContent = '';
-            if (_metaEl) _metaEl.textContent = '';
         }
+
+        // Fetch full channel info + members for the info panel
+        _loadChannelInfo(slug);
+    }
+
+    /**
+     * Fetch members and render pills in the header + show/hide chair controls.
+     */
+    function _loadMembers(slug) {
+        _getElements();
+        var membersUrl = '/api/channels/' + encodeURIComponent(slug) + '/members';
+
+        fetch(membersUrl)
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(members) {
+                if (!members) return;
+                var membersList = Array.isArray(members) ? members : (members.members || []);
+                _renderMemberPills(membersList);
+
+                // Show chair controls — operator always has access,
+                // backend enforces actual permissions
+                var hasChair = membersList.some(function(m) { return m.is_chair; });
+                if (_completeBtn) _completeBtn.classList.toggle('hidden', !hasChair);
+                if (_endBtn) _endBtn.classList.toggle('hidden', !hasChair);
+            })
+            .catch(function(err) {
+                console.error('Failed to load members for pills:', err);
+            });
+    }
+
+    /**
+     * Render member name pills in the header row.
+     */
+    function _renderMemberPills(members) {
+        if (!_memberPillsEl) return;
+        _memberPillsEl.innerHTML = '';
+
+        if (!members || members.length === 0) {
+            _memberPillsEl.innerHTML = '<span class="text-muted text-xs italic">No members</span>';
+            return;
+        }
+
+        members.forEach(function(m) {
+            var pill = document.createElement('span');
+            var name = _escapeHtml(m.persona_name || m.persona_slug || 'Unknown');
+
+            if (m.is_chair) {
+                pill.className = 'channel-chat-member-pill channel-chat-member-pill-chair';
+                pill.innerHTML = name + ' <span class="text-amber">&#9733;</span>';
+            } else {
+                pill.className = 'channel-chat-member-pill';
+                pill.textContent = m.persona_name || m.persona_slug || 'Unknown';
+            }
+
+            if (m.status !== 'active') {
+                pill.style.opacity = '0.5';
+            }
+
+            _memberPillsEl.appendChild(pill);
+        });
+    }
+
+    function _loadChannelInfo(slug) {
+        // Fetch channel detail and members in parallel
+        var channelUrl = '/api/channels/' + encodeURIComponent(slug);
+        var membersUrl = '/api/channels/' + encodeURIComponent(slug) + '/members';
+
+        Promise.all([
+            fetch(channelUrl).then(function(r) { return r.ok ? r.json() : null; }),
+            fetch(membersUrl).then(function(r) { return r.ok ? r.json() : null; }),
+        ]).then(function(results) {
+            var channel = results[0];
+            var members = results[1];
+
+            // Render members
+            if (members) {
+                var membersList = Array.isArray(members) ? members : (members.members || []);
+
+                // Render member pills in header
+                if (_memberPillsEl) {
+                    if (membersList.length === 0) {
+                        _memberPillsEl.innerHTML = '<span class="text-muted text-xs italic">No members</span>';
+                    } else {
+                        var pillsHtml = '';
+                        membersList.forEach(function(m) {
+                            var name = _escapeHtml(m.persona_name || m.persona_slug || '?');
+                            var dotColor = m.status === 'active' ? 'bg-green' : 'bg-muted';
+                            var chairTag = m.is_chair ? ' <span class="text-amber">&#9733;</span>' : '';
+                            pillsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-surface border border-border text-secondary whitespace-nowrap">' +
+                                '<span class="inline-block w-1.5 h-1.5 rounded-full ' + dotColor + '"></span>' +
+                                name + chairTag +
+                                '</span>';
+                        });
+                        _memberPillsEl.innerHTML = pillsHtml;
+                    }
+                }
+
+                // Render detailed member list in info panel
+                if (_membersEl) {
+                    if (membersList.length === 0) {
+                        _membersEl.innerHTML = '<span class="text-muted italic">No members</span>';
+                    } else {
+                        var html = '';
+                        membersList.forEach(function(m) {
+                            var name = _escapeHtml(m.persona_name || m.persona_slug || 'Unknown');
+                            var statusDot = m.status === 'active'
+                                ? '<span class="inline-block w-1.5 h-1.5 rounded-full bg-green mr-1.5"></span>'
+                                : '<span class="inline-block w-1.5 h-1.5 rounded-full bg-muted mr-1.5"></span>';
+                            var chairBadge = m.is_chair
+                                ? ' <span class="text-amber text-[9px]">chair</span>'
+                                : '';
+                            var agentInfo = m.agent_id
+                                ? ' <span class="text-muted">agent:' + m.agent_id + '</span>'
+                                : ' <span class="text-muted/50">no agent</span>';
+                            html += '<div class="flex items-center gap-1">' +
+                                statusDot +
+                                '<span class="text-secondary">' + name + '</span>' +
+                                chairBadge + agentInfo +
+                                '</div>';
+                        });
+                        _membersEl.innerHTML = html;
+                    }
+                }
+            }
+
+            // Render technical details
+            if (_detailsEl && channel) {
+                var lines = [];
+                lines.push('<div class="flex justify-between"><span class="text-muted">slug</span><span class="text-secondary">' + _escapeHtml(channel.slug) + '</span></div>');
+                lines.push('<div class="flex justify-between"><span class="text-muted">id</span><span class="text-secondary">' + channel.id + '</span></div>');
+                lines.push('<div class="flex justify-between"><span class="text-muted">type</span><span class="text-secondary">' + _escapeHtml(channel.channel_type) + '</span></div>');
+                lines.push('<div class="flex justify-between"><span class="text-muted">status</span><span class="text-secondary">' + _escapeHtml(channel.status) + '</span></div>');
+                if (channel.chair_persona_slug) {
+                    lines.push('<div class="flex justify-between"><span class="text-muted">chair</span><span class="text-secondary">' + _escapeHtml(channel.chair_persona_slug) + '</span></div>');
+                }
+                if (channel.project_id) {
+                    lines.push('<div class="flex justify-between"><span class="text-muted">project_id</span><span class="text-secondary">' + channel.project_id + '</span></div>');
+                }
+                if (channel.organisation_id) {
+                    lines.push('<div class="flex justify-between"><span class="text-muted">org_id</span><span class="text-secondary">' + channel.organisation_id + '</span></div>');
+                }
+                if (channel.created_at) {
+                    var created = new Date(channel.created_at);
+                    lines.push('<div class="flex justify-between"><span class="text-muted">created</span><span class="text-secondary">' + created.toLocaleString() + '</span></div>');
+                }
+                if (channel.description) {
+                    lines.push('<div class="mt-1.5"><span class="text-muted">description</span><div class="text-secondary mt-0.5">' + _escapeHtml(channel.description) + '</div></div>');
+                }
+                _detailsEl.innerHTML = lines.join('');
+            }
+        }).catch(function(err) {
+            console.error('Failed to load channel info:', err);
+        });
     }
 
     function _clearMessages() {
@@ -480,6 +827,10 @@
         isOpenFor: isOpenFor,
         isActivelyViewing: isActivelyViewing,
         loadEarlier: loadEarlier,
+        toggleInfo: toggleInfo,
+        toggleAddMember: toggleAddMember,
+        completeChannel: completeChannel,
+        endChannel: endChannel,
         get _activeChannelSlug() { return _activeChannelSlug; },
     };
 

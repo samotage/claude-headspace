@@ -813,6 +813,10 @@ select.form-well {
   margin-bottom: 0.25rem;
 }
 
+.mb-1\.5 {
+  margin-bottom: 0.375rem;
+}
+
 .mb-2 {
   margin-bottom: 0.5rem;
 }
@@ -853,6 +857,10 @@ select.form-well {
   margin-left: auto;
 }
 
+.mr-1\.5 {
+  margin-right: 0.375rem;
+}
+
 .mr-2 {
   margin-right: 0.5rem;
 }
@@ -867,6 +875,10 @@ select.form-well {
 
 .mt-1 {
   margin-top: 0.25rem;
+}
+
+.mt-1\.5 {
+  margin-top: 0.375rem;
 }
 
 .mt-2 {
@@ -928,12 +940,20 @@ select.form-well {
   display: none;
 }
 
+.h-1\.5 {
+  height: 0.375rem;
+}
+
 .h-2 {
   height: 0.5rem;
 }
 
 .h-3 {
   height: 0.75rem;
+}
+
+.h-3\.5 {
+  height: 0.875rem;
 }
 
 .h-4 {
@@ -988,6 +1008,10 @@ select.form-well {
   min-height: 100vh;
 }
 
+.w-1\.5 {
+  width: 0.375rem;
+}
+
 .w-12 {
   width: 3rem;
 }
@@ -1002,6 +1026,10 @@ select.form-well {
 
 .w-3 {
   width: 0.75rem;
+}
+
+.w-3\.5 {
+  width: 0.875rem;
 }
 
 .w-4 {
@@ -1251,6 +1279,12 @@ select.form-well {
 
 .gap-y-2 {
   row-gap: 0.5rem;
+}
+
+.space-y-0\.5 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));
 }
 
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
@@ -1613,6 +1647,10 @@ select.form-well {
   background-color: rgb(17 17 20 / var(--tw-bg-opacity, 1));
 }
 
+.bg-surface\/50 {
+  background-color: rgb(17 17 20 / 0.5);
+}
+
 .bg-void {
   --tw-bg-opacity: 1;
   background-color: rgb(8 8 10 / var(--tw-bg-opacity, 1));
@@ -1741,12 +1779,20 @@ select.form-well {
   padding-bottom: 2rem;
 }
 
+.pb-1 {
+  padding-bottom: 0.25rem;
+}
+
 .pb-12 {
   padding-bottom: 3rem;
 }
 
 .pb-2 {
   padding-bottom: 0.5rem;
+}
+
+.pb-2\.5 {
+  padding-bottom: 0.625rem;
 }
 
 .pb-3 {
@@ -1767,6 +1813,10 @@ select.form-well {
 
 .pt-0 {
   padding-top: 0px;
+}
+
+.pt-1 {
+  padding-top: 0.25rem;
 }
 
 .pt-16 {
@@ -1909,6 +1959,10 @@ select.form-well {
 .text-muted {
   --tw-text-opacity: 1;
   color: rgb(106 106 120 / var(--tw-text-opacity, 1));
+}
+
+.text-muted\/50 {
+  color: rgb(106 106 120 / 0.5);
 }
 
 .text-muted\/60 {
@@ -4445,7 +4499,7 @@ body::after {
   right: 0;
   bottom: 0;
   width: 440px;
-  z-index: 50;
+  z-index: 110;
   background: var(--bg-surface);
   border-left: 1px solid var(--border);
   display: flex;
@@ -4463,6 +4517,69 @@ body::after {
   .channel-chat-panel {
     width: 100%;
   }
+}
+
+/* Action buttons in chat header */
+
+.channel-chat-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  background: transparent;
+  border: none;
+}
+
+.channel-chat-action-btn:hover {
+  color: var(--cyan);
+  background: var(--bg-surface);
+}
+
+/* Add member collapsible area */
+
+.channel-chat-add-member {
+  display: none;
+}
+
+.channel-chat-add-member.open {
+  display: block;
+}
+
+/* Member pills in header */
+
+.channel-chat-member-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.channel-chat-member-pill-chair {
+  border-color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 40%, transparent);
+}
+
+/* Hide scrollbar on pills row */
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Optimistic message styling */
@@ -4738,6 +4855,10 @@ body::after {
   background-color: rgb(115 224 160 / 0.3);
 }
 
+.hover\:bg-green\/90:hover {
+  background-color: rgb(115 224 160 / 0.9);
+}
+
 .hover\:bg-hover:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(30 30 36 / var(--tw-bg-opacity, 1));
@@ -4765,6 +4886,11 @@ body::after {
 
 .hover\:bg-red\/90:hover {
   background-color: rgb(224 115 115 / 0.9);
+}
+
+.hover\:\!text-red:hover {
+  --tw-text-opacity: 1 !important;
+  color: rgb(224 115 115 / var(--tw-text-opacity, 1)) !important;
 }
 
 .hover\:text-amber:hover {

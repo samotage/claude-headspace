@@ -2274,7 +2274,7 @@ body::after {
     right: 0;
     bottom: 0;
     width: 440px;
-    z-index: 50;
+    z-index: 110;
     background: var(--bg-surface);
     border-left: 1px solid var(--border);
     display: flex;
@@ -2292,6 +2292,64 @@ body::after {
     .channel-chat-panel {
         width: 100%;
     }
+}
+
+/* Action buttons in chat header */
+.channel-chat-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+    background: transparent;
+    border: none;
+}
+
+.channel-chat-action-btn:hover {
+    color: var(--cyan);
+    background: var(--bg-surface);
+}
+
+/* Add member collapsible area */
+.channel-chat-add-member {
+    display: none;
+}
+
+.channel-chat-add-member.open {
+    display: block;
+}
+
+/* Member pills in header */
+.channel-chat-member-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 9999px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.channel-chat-member-pill-chair {
+    border-color: var(--cyan);
+    border-color: color-mix(in srgb, var(--cyan) 40%, transparent);
+}
+
+/* Hide scrollbar on pills row */
+.scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
 }
 
 /* Optimistic message styling */
