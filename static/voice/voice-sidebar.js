@@ -451,6 +451,13 @@ window.VoiceSidebar = (function () {
     }
   }
 
+  // --- Download transcript (private) ---
+
+  function _downloadAgentTranscript(agentId) {
+    showToast('Preparing transcript\u2026');
+    window.open('/api/agents/' + agentId + '/transcript', '_blank');
+  }
+
   // --- Portal kebab menu action builders ---
 
   function _buildVoiceActions(btn) {
@@ -459,6 +466,7 @@ window.VoiceSidebar = (function () {
 
     if (isEnded) {
       return [
+        { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
         { id: 'context', label: 'Fetch context', icon: I.context || '' },
         'divider',
         { id: 'revive', label: 'Revive', icon: I.revive || '' }
@@ -466,6 +474,7 @@ window.VoiceSidebar = (function () {
     }
 
     var actions = [
+      { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
       { id: 'context', label: 'Fetch context', icon: I.context || '' }
     ];
     if (btn.getAttribute('data-persona-name')) {
@@ -478,6 +487,9 @@ window.VoiceSidebar = (function () {
 
   function _handleVoiceAction(actionId, agentId) {
     switch (actionId) {
+      case 'download-transcript':
+        _downloadAgentTranscript(agentId);
+        break;
       case 'context':
         checkAgentContext(agentId);
         break;

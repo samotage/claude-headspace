@@ -423,6 +423,13 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         app.extensions["channel_delivery_service"] = None
         logger.debug("Channel delivery service disabled (no database connection)")
 
+    # Initialize transcript export service (lightweight, no background threads)
+    from .services.transcript_export import TranscriptExportService
+
+    transcript_export_service = TranscriptExportService(app=app)
+    app.extensions["transcript_export_service"] = transcript_export_service
+    logger.info("Transcript export service initialized")
+
     # Initialize handoff detection service (lightweight, no background threads)
     from .services.handoff_detection import HandoffDetectionService
 
@@ -713,6 +720,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.sessions import sessions_bp
     from .routes.sse import sse_bp
     from .routes.summarisation import summarisation_bp
+    from .routes.transcript_download import transcript_download_bp
     from .routes.voice_bridge import voice_bridge_bp
     from .routes.waypoint import waypoint_bp
 
@@ -740,6 +748,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sessions_bp)
     app.register_blueprint(sse_bp)
     app.register_blueprint(summarisation_bp)
+    app.register_blueprint(transcript_download_bp)
     app.register_blueprint(channels_api_bp)
     app.register_blueprint(remote_agents_bp)
     app.register_blueprint(voice_bridge_bp)

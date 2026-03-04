@@ -166,6 +166,7 @@
             { id: 'chat', label: 'Chat', icon: I.chat || '' },
             { id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' },
             'divider',
+            { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
         ];
         if (btn.getAttribute('data-tmux-session')) {
             actions.push({ id: 'attach', label: 'Attach', icon: I.attach || '' });
@@ -189,6 +190,10 @@
                 break;
             case 'dismiss':
                 _confirmAndDismiss(agentId);
+                break;
+            case 'download-transcript':
+                if (global.Toast) global.Toast.success('Transcript', 'Preparing transcript\u2026');
+                window.open('/api/agents/' + agentId + '/transcript', '_blank');
                 break;
             case 'attach':
                 if (window.FocusAPI) window.FocusAPI.attachAgent(agentId);
