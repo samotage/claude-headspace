@@ -220,6 +220,12 @@
     function _handleKebabAction(action) {
         _closeKebab();
         switch (action) {
+            case 'download-transcript':
+                if (_activeChannelSlug) {
+                    if (global.Toast) global.Toast.success('Transcript', 'Preparing transcript\u2026');
+                    window.open('/api/channels/' + encodeURIComponent(_activeChannelSlug) + '/transcript', '_blank');
+                }
+                break;
             case 'add-member':
                 toggleAddMember();
                 break;

@@ -390,6 +390,7 @@ window.VoiceChannelChat = (function () {
     var isChair = _isCurrentUserChair();
 
     var actions = [
+      { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
       { id: 'add-member', label: 'Add member', icon: I.addMember || '' },
       { id: 'info', label: 'Channel info', icon: I.info || '' },
       { id: 'copy-slug', label: 'Copy slug', icon: I.copySlug || '' }
@@ -410,6 +411,10 @@ window.VoiceChannelChat = (function () {
   /** Handle channel chat kebab action. */
   function handleChannelChatAction(actionId, slug) {
     switch (actionId) {
+      case 'download-transcript':
+        _showChannelSystemMessage('Preparing transcript\u2026');
+        window.open('/api/channels/' + encodeURIComponent(slug) + '/transcript', '_blank');
+        break;
       case 'add-member':
         // Open member autocomplete - for now show a system message
         // In the voice app we don't have the full autocomplete widget yet
