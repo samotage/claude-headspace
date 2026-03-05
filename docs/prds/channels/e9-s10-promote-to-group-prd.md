@@ -8,7 +8,7 @@ validation:
 
 **Project:** Claude Headspace v3.2
 **Scope:** Epic 9, Sprint 10 — Spawn-and-merge: promote a 1:1 agent chat to a group channel via the agent card kebab menu
-**Author:** Melanie (workshopped with Sam and Robbo)
+**Author:** Mel (workshopped with Sam and Robbo)
 **Status:** Draft
 
 ---
@@ -281,5 +281,5 @@ This sprint requires new backend work beyond pure frontend:
 
 | Version | Date       | Author  | Changes |
 |---------|------------|---------|---------|
-| 1.0     | 2026-03-06 | Melanie | Initial PRD from workshop with Sam and Robbo |
-| 1.1     | 2026-03-06 | Melanie | Robbo review fixes: FR10 context seeding changed to private tmux briefing from full conversation history, removed invented 3-channel limit from FR2, updated open decisions with FR8 reuse logic and column naming |
+| 1.0     | 2026-03-06 | Mel | Initial PRD from workshop with Sam and Robbo |
+| 1.1     | 2026-03-06 | Mel | Robbo review fixes: FR10 context seeding changed to private tmux briefing from full conversation history, removed invented 3-channel limit from FR2, updated open decisions with FR8 reuse logic and column naming |

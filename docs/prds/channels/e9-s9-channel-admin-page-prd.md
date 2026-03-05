@@ -8,7 +8,7 @@ validation:
 
 **Project:** Claude Headspace v3.2
 **Scope:** Epic 9, Sprint 9 — Dedicated channel admin page with filters, attention signals, lifecycle management, and member management
-**Author:** Melanie (workshopped with Sam and Robbo)
+**Author:** Mel (workshopped with Sam and Robbo)
 **Status:** Draft
 
 ---
@@ -268,5 +268,5 @@ If these endpoints do not exist, they must be added as pre-requisite tasks in th
 
 | Version | Date       | Author  | Changes |
 |---------|------------|---------|---------|
-| 1.0     | 2026-03-06 | Melanie | Initial PRD from workshop with Sam and Robbo |
-| 1.1     | 2026-03-06 | Melanie | Robbo review fixes: default filter to Active (not misleading "All"), restrict delete to archived/empty channels, flag attention threshold config drift, explicit no-pagination v1 statement, fix NFR3 contradiction with API gaps, add modal deprecation |
+| 1.0     | 2026-03-06 | Mel | Initial PRD from workshop with Sam and Robbo |
+| 1.1     | 2026-03-06 | Mel | Robbo review fixes: default filter to Active (not misleading "All"), restrict delete to archived/empty channels, flag attention threshold config drift, explicit no-pagination v1 statement, fix NFR3 contradiction with API gaps, add modal deprecation |

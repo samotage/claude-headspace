@@ -703,4 +703,4 @@ S1 and S2 can be built in parallel. S5 and S6 could theoretically be built in pa
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-03 | Robbo | Initial roadmap synthesised from 8 validated PRDs (E9-S1 through E9-S8) |
-| 1.1 | 2026-03-06 | Robbo | Added Sprint 9 (Channel Admin Page) — PRD workshopped with Sam and Melanie |
+| 1.1 | 2026-03-06 | Robbo | Added Sprint 9 (Channel Admin Page) — PRD workshopped with Sam and Mel |
