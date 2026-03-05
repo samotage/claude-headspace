@@ -24,6 +24,7 @@ from ..services.channel_service import (
     AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
+    ChannelDeletePreconditionError,
     ChannelError,
     ChannelNotFoundError,
     ContentTooLongError,
@@ -31,6 +32,7 @@ from ..services.channel_service import (
     NotAMemberError,
     NotChairError,
     PersonaNotFoundError,
+    SoleChairError,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,8 @@ _ERROR_MAP = {
     PersonaNotFoundError: (404, "persona_not_found"),
     ContentTooLongError: (413, "content_too_long"),
     AgentNotFoundError: (404, "agent_not_found"),
+    ChannelDeletePreconditionError: (409, "delete_precondition_failed"),
+    SoleChairError: (409, "sole_chair"),
 }
 
 

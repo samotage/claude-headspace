@@ -108,7 +108,6 @@ The agent card kebab menu includes a "Create Group Channel" action. The action i
 **FR2: Menu item disabled states**
 The "Create Group Channel" action is disabled (greyed out with tooltip) when:
 - The agent has no persona assigned (no identity to base the channel on)
-- The agent is already a member of 3 or more active channels (prevent channel sprawl — configurable threshold)
 
 ### Persona Picker Dialog
 
@@ -273,7 +272,8 @@ This sprint requires new backend work beyond pure frontend:
 | Decision | Options | Status |
 |----------|---------|--------|
 | Channel name generation | Auto-generated from personas vs operator-provided | Auto-generated for v1. Operator can rename via channel admin (S9) if needed. |
-| Max channels per agent | Configurable threshold for FR2 disabled state | Default 3, configurable in JS config for v1. |
+| FR8: Reuse existing agent | If persona already has a running agent, reuse it vs always spin up new | Current PRD says reuse. Needs Sam's confirmation — "pull in" (reuse) vs "spin up" (new) has different implications for agent state. |
+| Column naming | `spawned_from_agent_id` vs `originated_from_agent_id` | Using `spawned_from_agent_id` for v1. Consistent with "spawn-and-merge" terminology. |
 
 ---
 
@@ -282,3 +282,4 @@ This sprint requires new backend work beyond pure frontend:
 | Version | Date       | Author  | Changes |
 |---------|------------|---------|---------|
 | 1.0     | 2026-03-06 | Melanie | Initial PRD from workshop with Sam and Robbo |
+| 1.1     | 2026-03-06 | Melanie | Robbo review fixes: FR10 context seeding changed to private tmux briefing from full conversation history, removed invented 3-channel limit from FR2, updated open decisions with FR8 reuse logic and column naming |
