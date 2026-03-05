@@ -1,8 +1,11 @@
 """Caller identity resolution for CLI commands.
 
-Resolves the calling agent's identity via a two-strategy cascade:
-1. Override: HEADSPACE_AGENT_ID env var (takes precedence when set)
-2. Primary: tmux pane detection (tmux display-message pane ID -> Agent lookup)
+Resolves the calling agent's identity via tmux pane detection only:
+tmux display-message pane ID -> Agent lookup.
+
+The HEADSPACE_AGENT_ID env var override was removed as a security hardening
+measure — it was a spoofable identity assertion that allowed agents to
+impersonate other agents or bypass operator-only restrictions.
 
 This module is shared infrastructure used by CLI commands and potentially API
 routes. CallerResolutionError is NOT a ChannelError subclass — caller identity
@@ -10,12 +13,10 @@ resolution is not channel-specific logic.
 """
 
 import logging
-import os
 import subprocess
 
 import click
 
-from ..database import db
 from ..models.agent import Agent
 
 logger = logging.getLogger(__name__)
@@ -26,61 +27,66 @@ class CallerResolutionError(Exception):
 
 
 def resolve_caller_persona():
-    """Resolve the calling agent and return (agent, persona).
+    """Resolve the caller and return (agent, persona).
 
-    Convenience wrapper for CLI commands that need both the agent and
-    its persona. Prints errors to stderr and raises SystemExit(1) on
-    failure.
+    Resolution cascade:
+    1. tmux pane detection — if caller is in an agent's tmux pane, return
+       (agent, agent.persona).
+    2. Operator fallback — if tmux resolution fails (CallerResolutionError),
+       try Persona.get_operator(). Returns (None, operator_persona) so CLI
+       commands work for human operators outside of agent tmux sessions.
+
+    Prints errors to stderr and raises SystemExit(1) on failure.
 
     Returns:
-        tuple: (agent, persona)
+        tuple: (agent | None, persona) — agent is None for operator callers.
 
     Raises:
-        SystemExit: If caller cannot be resolved or has no persona.
+        SystemExit: If neither strategy resolves a persona.
     """
     try:
         agent = resolve_caller()
-    except CallerResolutionError as e:
-        click.echo(str(e), err=True)
-        raise SystemExit(1) from None
+        if not agent.persona:
+            click.echo(
+                "Error: Your agent has no persona assigned. "
+                "Cannot perform this operation.",
+                err=True,
+            )
+            raise SystemExit(1)
+        return agent, agent.persona
+    except CallerResolutionError:
+        pass
 
-    if not agent.persona:
-        click.echo(
-            "Error: Your agent has no persona assigned. Cannot perform this operation.",
-            err=True,
-        )
-        raise SystemExit(1)
+    # Operator fallback — caller is not in an agent tmux pane
+    from ..models.persona import Persona
 
-    return agent, agent.persona
+    operator = Persona.get_operator()
+    if operator:
+        logger.debug("Caller resolved as operator (no agent tmux context)")
+        return None, operator
+
+    click.echo(
+        "Error: Cannot identify caller. No agent tmux context and no operator "
+        "persona configured.",
+        err=True,
+    )
+    raise SystemExit(1)
 
 
 def resolve_caller() -> Agent:
-    """Resolve the calling agent via env var override or tmux pane detection.
+    """Resolve the calling agent via tmux pane detection.
 
-    Strategy 1 (override): HEADSPACE_AGENT_ID env var — takes precedence when set.
-    Strategy 2 (primary): tmux display-message pane detection.
+    Uses tmux display-message to detect the current pane ID, then looks up
+    the active Agent bound to that pane. This is the sole resolution strategy
+    — infrastructure-verified identity that cannot be spoofed by agents.
 
     Returns:
         The resolved Agent instance.
 
     Raises:
-        CallerResolutionError: If neither strategy resolves to an active agent.
+        CallerResolutionError: If tmux pane detection fails to resolve an active agent.
     """
-    # Strategy 1: env var override (takes precedence when set)
-    agent_id_str = os.environ.get("HEADSPACE_AGENT_ID")
-    if agent_id_str:
-        try:
-            agent_id = int(agent_id_str)
-            agent = db.session.get(Agent, agent_id)
-            if agent and agent.ended_at is None:
-                logger.debug(
-                    f"Caller resolved via HEADSPACE_AGENT_ID: agent_id={agent_id}"
-                )
-                return agent
-        except (ValueError, TypeError):
-            pass
-
-    # Strategy 2: tmux pane detection
+    # tmux pane detection
     try:
         result = subprocess.run(
             ["tmux", "display-message", "-p", "#{pane_id}"],

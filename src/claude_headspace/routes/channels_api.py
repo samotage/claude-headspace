@@ -4,9 +4,13 @@ Provides REST endpoints for channel CRUD, membership management, and messaging.
 All business logic is delegated to ChannelService -- route handlers are thin
 wrappers that handle request parsing, auth resolution, and response formatting.
 
-Supports dual authentication:
-- Flask session cookie (dashboard/operator)
-- Authorization: Bearer <token> (remote agents/embed widgets)
+Authentication uses two validated mechanisms only:
+- Authorization: Bearer <token> (remote agents/embed widgets — validated via SessionTokenService)
+- Flask session cookie (dashboard/operator — resolved via Persona.get_operator())
+
+Internal agents cannot directly call these endpoints to post messages.
+Their output reaches channels only via system-mediated relay
+(ChannelDeliveryService.relay_agent_response on COMPLETION/END_OF_COMMAND intents).
 """
 
 import logging
@@ -118,7 +122,7 @@ def _resolve_caller():
     from ..models.agent import Agent
     from ..models.persona import Persona
 
-    # Check Bearer token first
+    # Check Bearer token first (remote agents / embed widgets)
     token = _get_token_from_request()
     if token:
         token_service = current_app.extensions.get("session_token_service")
@@ -129,19 +133,6 @@ def _resolve_caller():
                 if agent and agent.persona:
                     return agent.persona, agent
         raise AuthError("invalid_session_token", "Invalid or expired session token")
-
-    # Check X-Headspace-Agent-ID header (agent curl without token)
-    agent_id_header = request.headers.get("X-Headspace-Agent-ID")
-    if agent_id_header:
-        try:
-            agent_id = int(agent_id_header)
-            agent = db.session.get(Agent, agent_id)
-            if agent and agent.ended_at is None and agent.persona:
-                return agent.persona, agent
-        except (ValueError, TypeError):
-            pass
-        # Invalid header — fall through to operator fallback rather than error,
-        # matching the lenient pattern of caller_identity.py
 
     # Fallback: dashboard session (operator)
     operator = Persona.get_operator()

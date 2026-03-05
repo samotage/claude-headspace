@@ -127,18 +127,32 @@
     <main id="main-panel">
       <header id="main-header" class="main-header">
         <button class="chat-back-btn" aria-label="Back">&larr;</button>
-        <div id="chat-focus-link" class="chat-focus-link" role="button" tabindex="0" title="Attach to tmux session">
-          <span id="chat-hero" class="chat-hero-badge"></span>
-          <span id="chat-persona-badge" class="chat-persona-badge" style="display:none"></span>
-          <div class="chat-header-info">
-            <span id="chat-agent-name" class="chat-agent-name"></span>
-            <span id="chat-project-name" class="chat-project-name"></span>
-            <span id="chat-command-instruction" class="chat-command-instruction"></span>
+        <!-- Agent chat slot -->
+        <div id="header-agent-slot" class="header-slot" style="display:none">
+          <div id="chat-focus-link" class="chat-focus-link" role="button" tabindex="0" title="Attach to tmux session">
+            <span id="chat-hero" class="chat-hero-badge"></span>
+            <span id="chat-persona-badge" class="chat-persona-badge" style="display:none"></span>
+            <div class="chat-header-info">
+              <span id="chat-agent-name" class="chat-agent-name"></span>
+              <span id="chat-project-name" class="chat-project-name"></span>
+              <span id="chat-command-instruction" class="chat-command-instruction"></span>
+            </div>
           </div>
-        </div>
-        <span id="chat-state-pill" class="chat-state-pill"></span>
-        <div class="header-actions">
+          <span id="chat-state-pill" class="chat-state-pill"></span>
           <button id="agent-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Actions" aria-expanded="false">&#8942;</button>
+        </div>
+        <!-- Channel chat slot -->
+        <div id="header-channel-slot" class="header-slot" style="display:none">
+          <div class="channel-chat-header-info">
+            <div class="channel-chat-header-top">
+              <span id="channel-chat-name" class="channel-chat-name">#channel</span>
+              <span id="channel-chat-type-badge" class="channel-chat-type-badge">workshop</span>
+            </div>
+            <span id="channel-chat-member-count" class="channel-chat-member-count"></span>
+          </div>
+          <button id="channel-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Channel actions" aria-expanded="false">&#8942;</button>
+        </div>
+        <div class="header-actions">
           <span id="connection-status" class="connection-dot disconnected"></span>
           <button id="hamburger-btn" class="hamburger-btn" aria-label="Menu">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -230,19 +244,6 @@
 
       <!-- Screen: Channel Chat -->
       <div id="screen-channel-chat" class="screen">
-        <div class="channel-chat-header">
-          <button class="chat-back-btn channel-chat-back-btn" aria-label="Back">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-          </button>
-          <div class="channel-chat-header-info">
-            <div class="channel-chat-header-top">
-              <span id="channel-chat-name" class="channel-chat-name">#channel</span>
-              <span id="channel-chat-type-badge" class="channel-chat-type-badge">workshop</span>
-            </div>
-            <span id="channel-chat-member-count" class="channel-chat-member-count"></span>
-          </div>
-          <button id="channel-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Channel actions" aria-expanded="false">&#8942;</button>
-        </div>
         <div id="channel-chat-messages" class="chat-messages">
           <div id="channel-chat-load-more" class="chat-load-more" style="display:none"></div>
         </div>

@@ -704,16 +704,6 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Channel chat back button
-    var channelBackBtn = document.querySelector('.channel-chat-back-btn');
-    if (channelBackBtn) {
-      channelBackBtn.addEventListener('click', function () {
-        VoiceState.currentChannelSlug = null;
-        VoiceSidebar.refreshAgents();
-        VoiceLayout.showScreen('agents');
-      });
-    }
-
     // Channel chat scroll-up pagination
     var channelMessages = document.getElementById('channel-chat-messages');
     if (channelMessages) {
@@ -724,11 +714,15 @@ window.VoiceApp = (function () {
       });
     }
 
-    // Chat back button — pop nav stack or go to agent list
-    var chatBackBtn = document.querySelector('.chat-back-btn:not(.channel-chat-back-btn)');
+    // Unified back button — handles both agent chat and channel chat
+    var chatBackBtn = document.querySelector('#main-header .chat-back-btn');
     if (chatBackBtn) {
       chatBackBtn.addEventListener('click', function () {
-        if (VoiceState.navStack.length > 0) {
+        if (VoiceState.currentScreen === 'channel-chat') {
+          VoiceState.currentChannelSlug = null;
+          VoiceSidebar.refreshAgents();
+          VoiceLayout.showScreen('agents');
+        } else if (VoiceState.navStack.length > 0) {
           var prevId = VoiceState.navStack.pop();
           VoiceChatController.showChatScreen(prevId);
         } else {
