@@ -273,7 +273,7 @@ This sprint requires new backend work beyond pure frontend:
 |----------|---------|--------|
 | Channel name generation | Auto-generated from personas vs operator-provided | Auto-generated for v1. Operator can rename via channel admin (S9) if needed. |
 | FR8: Reuse existing agent | If persona already has a running agent, reuse it vs always spin up new | **Resolved**: Always spin up a fresh agent. Existing agent may be mid-task on unrelated work. |
-| Column naming | `spawned_from_agent_id` vs `originated_from_agent_id` | Using `spawned_from_agent_id` for v1. Consistent with "spawn-and-merge" terminology. |
+| Column naming | `spawned_from_agent_id` vs `originated_from_agent_id` | **Resolved**: `spawned_from_agent_id`. Consistent with "spawn-and-merge" terminology. Sam confirmed. |
 
 ---
 
