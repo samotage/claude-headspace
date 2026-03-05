@@ -135,7 +135,7 @@ def api_list_active_personas():
     try:
         personas = (
             db.session.query(Persona)
-            .options(selectinload(Persona.role))
+            .options(selectinload(Persona.role), selectinload(Persona.persona_type))
             .filter(Persona.status == "active")
             .join(Persona.role)
             .order_by(Role.name.asc(), Persona.name.asc())
@@ -151,6 +151,7 @@ def api_list_active_personas():
                     "name": p.name,
                     "role": p.role.name if p.role else None,
                     "description": p.description,
+                    "type_key": p.persona_type.type_key if p.persona_type else None,
                 }
             )
 

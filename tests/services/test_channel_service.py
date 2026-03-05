@@ -25,6 +25,8 @@ from claude_headspace.services.channel_service import (
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
+    PersonaNotFoundError,
+    PromoteToGroupError,
     SoleChairError,
 )
 
@@ -1030,3 +1032,267 @@ class TestRemoveMember:
             channel_service.remove_member(
                 ch.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
             )
+
+
+# ── Conversation History Retrieval ───────────────────────────────
+
+
+class TestGetAgentConversationHistory:
+    """Tests for get_agent_conversation_history method."""
+
+    def _create_turns(self, agent, n, db_session):
+        """Helper: create n turns for an agent across a single command."""
+        from datetime import timedelta
+
+        from claude_headspace.models.command import Command, CommandState
+        from claude_headspace.models.turn import Turn, TurnActor, TurnIntent
+
+        cmd = Command(agent_id=agent.id, state=CommandState.PROCESSING)
+        db.session.add(cmd)
+        db.session.flush()
+        base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        turns = []
+        for i in range(n):
+            actor = TurnActor.USER if i % 2 == 0 else TurnActor.AGENT
+            intent = TurnIntent.COMMAND if i % 2 == 0 else TurnIntent.PROGRESS
+            t = Turn(
+                command_id=cmd.id,
+                actor=actor,
+                intent=intent,
+                text=f"Turn {i + 1} text",
+                timestamp=base_time + timedelta(minutes=i),
+            )
+            db.session.add(t)
+            turns.append(t)
+        db.session.commit()
+        return turns
+
+    def test_empty_history(self, channel_service, setup_data):
+        """Agent with no turns returns empty list."""
+        result = channel_service.get_agent_conversation_history(setup_data["agent_a"])
+        assert result == []
+
+    def test_fewer_than_limit(self, channel_service, setup_data, db_session):
+        """Agent with 5 turns returns all 5."""
+        self._create_turns(setup_data["agent_a"], 5, db_session)
+        result = channel_service.get_agent_conversation_history(
+            setup_data["agent_a"], limit=20
+        )
+        assert len(result) == 5
+        # Should be in chronological order
+        assert result[0].text == "Turn 1 text"
+        assert result[4].text == "Turn 5 text"
+
+    def test_exactly_at_limit(self, channel_service, setup_data, db_session):
+        """Agent with exactly 20 turns returns 20."""
+        self._create_turns(setup_data["agent_a"], 20, db_session)
+        result = channel_service.get_agent_conversation_history(
+            setup_data["agent_a"], limit=20
+        )
+        assert len(result) == 20
+
+    def test_more_than_limit(self, channel_service, setup_data, db_session):
+        """Agent with 30 turns returns only the last 20."""
+        self._create_turns(setup_data["agent_a"], 30, db_session)
+        result = channel_service.get_agent_conversation_history(
+            setup_data["agent_a"], limit=20
+        )
+        assert len(result) == 20
+        # Should be the most recent 20 (turns 11-30)
+        assert result[0].text == "Turn 11 text"
+        assert result[19].text == "Turn 30 text"
+
+
+# ── Promote to Group ─────────────────────────────────────────────
+
+
+class TestPromoteToGroup:
+    """Tests for promote_to_group orchestration."""
+
+    @pytest.fixture
+    def promote_personas(self, db_session):
+        """Create a dedicated set of personas for promote-to-group tests.
+
+        Creates:
+        - operator_persona: the operator (person/internal)
+        - original_persona: persona for the original agent
+        - target_persona: the persona to add to the group channel
+        - original_agent: agent with original_persona
+        """
+        role = Role(name="promote-dev")
+        db.session.add(role)
+        db.session.flush()
+
+        pt_internal = db.session.get(PersonaType, 1)
+
+        operator_persona = Persona(
+            name="OpPerson",
+            role_id=role.id,
+            role=role,
+            persona_type_id=pt_internal.id,
+            status="active",
+        )
+        original_persona = Persona(
+            name="OrigAgent",
+            role_id=role.id,
+            role=role,
+            persona_type_id=pt_internal.id,
+            status="active",
+        )
+        target_persona = Persona(
+            name="TargetAgent",
+            role_id=role.id,
+            role=role,
+            persona_type_id=pt_internal.id,
+            status="active",
+        )
+        db.session.add_all([operator_persona, original_persona, target_persona])
+        db.session.flush()
+
+        project = Project(
+            name="promote-project", slug="promote-project", path="/tmp/promote-project"
+        )
+        db.session.add(project)
+        db.session.flush()
+
+        original_agent = Agent(
+            session_uuid=uuid4(),
+            project_id=project.id,
+            persona_id=original_persona.id,
+        )
+        db.session.add(original_agent)
+        db.session.commit()
+
+        db.session.refresh(operator_persona)
+        db.session.refresh(original_persona)
+        db.session.refresh(target_persona)
+
+        return {
+            "operator": operator_persona,
+            "original_persona": original_persona,
+            "target_persona": target_persona,
+            "original_agent": original_agent,
+            "project": project,
+        }
+
+    def test_happy_path(self, channel_service, promote_personas, db_session):
+        """Successful promote-to-group creates channel with correct members."""
+        from claude_headspace.models.channel_membership import ChannelMembership
+
+        d = promote_personas
+
+        with patch(
+            "claude_headspace.services.agent_lifecycle.create_agent",
+            return_value=MagicMock(success=True, message="ok"),
+        ):
+            with patch.object(Persona, "get_operator", return_value=d["operator"]):
+                channel = channel_service.promote_to_group(
+                    agent=d["original_agent"],
+                    persona_slug=d["target_persona"].slug,
+                )
+
+        assert channel is not None
+        assert channel.channel_type.value == "workshop"
+        assert channel.status == "active"
+        assert channel.spawned_from_agent_id == d["original_agent"].id
+
+        # Check memberships: operator + original persona + target persona = 3
+        memberships = ChannelMembership.query.filter_by(channel_id=channel.id).all()
+        assert len(memberships) == 3
+
+        # Check system message was posted
+        messages = Message.query.filter_by(
+            channel_id=channel.id,
+            message_type=MessageType.SYSTEM,
+        ).all()
+        assert len(messages) == 1
+        assert "Channel created from conversation" in messages[0].content
+
+    def test_agent_no_persona_raises(self, channel_service, setup_data, db_session):
+        """Agent without persona raises AgentNotFoundError."""
+        # Create agent with no persona
+        agent_no_persona = Agent(
+            session_uuid=uuid4(),
+            project_id=setup_data["project"].id,
+            persona_id=None,
+        )
+        db.session.add(agent_no_persona)
+        db.session.commit()
+
+        with pytest.raises(AgentNotFoundError, match="no persona"):
+            channel_service.promote_to_group(
+                agent=agent_no_persona,
+                persona_slug="some-slug",
+            )
+
+    def test_persona_not_found_raises(self, channel_service, setup_data, db_session):
+        """Non-existent persona slug raises PersonaNotFoundError."""
+        with pytest.raises(PersonaNotFoundError, match="not found"):
+            channel_service.promote_to_group(
+                agent=setup_data["agent_a"],
+                persona_slug="nonexistent-persona",
+            )
+
+    def test_cleanup_on_agent_spinup_failure(
+        self, channel_service, promote_personas, db_session
+    ):
+        """Channel is cleaned up if agent spin-up fails."""
+        from claude_headspace.models.channel import Channel
+
+        d = promote_personas
+        initial_count = Channel.query.count()
+
+        with patch(
+            "claude_headspace.services.agent_lifecycle.create_agent",
+            return_value=MagicMock(success=False, message="tmux error"),
+        ):
+            with patch.object(Persona, "get_operator", return_value=d["operator"]):
+                with pytest.raises(PromoteToGroupError, match="Failed to create"):
+                    channel_service.promote_to_group(
+                        agent=d["original_agent"],
+                        persona_slug=d["target_persona"].slug,
+                    )
+
+        # Channel should have been cleaned up
+        assert Channel.query.count() == initial_count
+
+
+# ── Persona Filtering ────────────────────────────────────────────
+
+
+class TestPromoteToGroupPersonaFiltering:
+    """Tests for persona filtering in promote-to-group."""
+
+    def test_persona_filtering_is_client_side(
+        self, channel_service, setup_data, db_session
+    ):
+        """Persona filtering (excluding original + operator) is done client-side.
+
+        The service accepts any valid persona slug. If duplicate membership
+        would result, it raises a DB error. This test verifies the service
+        works with distinct personas.
+        """
+        # Use persona_b as operator, agent_a as original (has persona_a),
+        # and persona_ext as target — all three are distinct
+        with patch.object(
+            Persona, "get_operator", return_value=setup_data["persona_b"]
+        ):
+            with patch(
+                "claude_headspace.services.agent_lifecycle.create_agent",
+                return_value=MagicMock(success=True, message="ok"),
+            ):
+                channel = channel_service.promote_to_group(
+                    agent=setup_data["agent_a"],
+                    persona_slug=setup_data["persona_ext"].slug,
+                )
+                assert channel is not None
+                assert channel.status == "active"
+
+    def test_operator_not_found_raises(self, channel_service, setup_data, db_session):
+        """Missing operator persona raises PromoteToGroupError."""
+        with patch.object(Persona, "get_operator", return_value=None):
+            with pytest.raises(PromoteToGroupError, match="No operator"):
+                channel_service.promote_to_group(
+                    agent=setup_data["agent_a"],
+                    persona_slug=setup_data["persona_b"].slug,
+                )

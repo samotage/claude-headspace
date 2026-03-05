@@ -32,6 +32,7 @@ from ..services.channel_service import (
     NotAMemberError,
     NotChairError,
     PersonaNotFoundError,
+    PromoteToGroupError,
     SoleChairError,
 )
 
@@ -78,6 +79,7 @@ _ERROR_MAP = {
     AgentNotFoundError: (404, "agent_not_found"),
     ChannelDeletePreconditionError: (409, "delete_precondition_failed"),
     SoleChairError: (409, "sole_chair"),
+    PromoteToGroupError: (500, "promote_to_group_failed"),
 }
 
 
@@ -686,3 +688,48 @@ def send_message(slug: str, *, persona, agent, service):
     )
 
     return jsonify(_message_to_dict(message, slug)), 201
+
+
+# ──────────────────────────────────────────────────────────────
+# Promote to Group Endpoint
+# ──────────────────────────────────────────────────────────────
+
+
+@channels_api_bp.route("/api/agents/<int:agent_id>/promote-to-group", methods=["POST"])
+@_channel_route
+def promote_to_group(agent_id: int, *, persona, agent, service):
+    """Promote a 1:1 agent conversation to a group channel.
+
+    Creates a new workshop channel with the operator, original agent's
+    persona, and a new agent for the selected persona.
+
+    Expects JSON body: ``{"persona_slug": "..."}``
+
+    Returns 201 with channel details on success.
+    """
+    from ..models.agent import Agent as AgentModel
+
+    target_agent = db.session.get(AgentModel, agent_id)
+    if not target_agent or target_agent.ended_at is not None:
+        return _error_response(404, "agent_not_found", "Agent not found or inactive")
+
+    if not target_agent.persona:
+        return _error_response(400, "no_persona", "Agent has no persona assigned")
+
+    data = request.get_json(silent=True) or {}
+    persona_slug = (
+        data.get("persona_slug", "").strip()
+        if isinstance(data.get("persona_slug"), str)
+        else ""
+    )
+    if not persona_slug:
+        return _error_response(
+            400, "missing_fields", "Missing required field: persona_slug"
+        )
+
+    channel = service.promote_to_group(
+        agent=target_agent,
+        persona_slug=persona_slug,
+    )
+
+    return jsonify(_channel_to_dict(channel)), 201
