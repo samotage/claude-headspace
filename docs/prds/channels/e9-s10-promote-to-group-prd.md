@@ -143,7 +143,7 @@ The system creates a new channel with:
 The original agent's persona is added to the new channel as a member. The agent's existing tmux connection is used for channel delivery (existing S6 delivery engine pattern).
 
 **FR8: New agent spin-up**
-A new agent is created for the selected persona, associated with the same project as the original agent. The agent spin-up follows the existing agent lifecycle pattern. If the persona already has a running agent in the same project, that existing agent is used instead of spinning up a new one.
+A new agent is always created for the selected persona, associated with the same project as the original agent. The agent spin-up follows the existing agent lifecycle pattern. Even if the persona already has a running agent in the same project, a fresh instance is spun up — the existing agent may be mid-task on unrelated work and should not be pulled into the group channel.
 
 **FR9: New agent membership**
 The new agent's persona is added to the channel as a member.
@@ -272,7 +272,7 @@ This sprint requires new backend work beyond pure frontend:
 | Decision | Options | Status |
 |----------|---------|--------|
 | Channel name generation | Auto-generated from personas vs operator-provided | Auto-generated for v1. Operator can rename via channel admin (S9) if needed. |
-| FR8: Reuse existing agent | If persona already has a running agent, reuse it vs always spin up new | Current PRD says reuse. Needs Sam's confirmation — "pull in" (reuse) vs "spin up" (new) has different implications for agent state. |
+| FR8: Reuse existing agent | If persona already has a running agent, reuse it vs always spin up new | **Resolved**: Always spin up a fresh agent. Existing agent may be mid-task on unrelated work. |
 | Column naming | `spawned_from_agent_id` vs `originated_from_agent_id` | Using `spawned_from_agent_id` for v1. Consistent with "spawn-and-merge" terminology. |
 
 ---

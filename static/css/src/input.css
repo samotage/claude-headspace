@@ -2610,3 +2610,76 @@ body::after {
     font-size: 12px;
     font-style: italic;
 }
+
+/* ── Channel Admin Page ─────────────────────────────────── */
+
+/* Filter tabs */
+.channel-filter-tab {
+    padding: 4px 12px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.channel-filter-tab:hover {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+}
+.channel-filter-tab.active {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: rgba(86, 212, 221, 0.08);
+}
+
+/* Type badges */
+.channel-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+}
+.channel-type-workshop { color: var(--cyan); background: rgba(86, 212, 221, 0.12); }
+.channel-type-delegation { color: var(--magenta); background: rgba(208, 115, 224, 0.12); }
+.channel-type-review { color: var(--blue); background: rgba(115, 153, 224, 0.12); }
+.channel-type-standup { color: var(--green); background: rgba(115, 224, 160, 0.12); }
+.channel-type-broadcast { color: var(--amber); background: rgba(224, 176, 115, 0.12); }
+
+/* Status labels */
+.channel-status-label {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+}
+.channel-status-active { color: var(--green); background: rgba(115, 224, 160, 0.12); }
+.channel-status-pending { color: var(--amber); background: rgba(224, 176, 115, 0.12); }
+.channel-status-complete { color: var(--blue); background: rgba(115, 153, 224, 0.12); }
+.channel-status-archived { color: var(--text-muted); background: rgba(106, 106, 120, 0.12); }
+
+/* Attention signal — amber pulse for stale active channels */
+.channel-attention-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: channel-attention-pulse 2s ease-in-out infinite;
+    vertical-align: middle;
+}
+@keyframes channel-attention-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(224, 176, 115, 0.4); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(224, 176, 115, 0); }
+}
+.channel-attention {
+    border-left: 3px solid var(--amber);
+}

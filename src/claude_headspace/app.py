@@ -699,6 +699,7 @@ def register_blueprints(app: Flask) -> None:
     from .routes.archive import archive_bp
     from .routes.brain_reboot import brain_reboot_bp
     from .routes.channels_api import channels_api_bp
+    from .routes.channels_page import channels_page_bp
     from .routes.config import config_bp
     from .routes.dashboard import dashboard_bp
     from .routes.debug import debug_bp
@@ -750,6 +751,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(summarisation_bp)
     app.register_blueprint(transcript_download_bp)
     app.register_blueprint(channels_api_bp)
+    app.register_blueprint(channels_page_bp)
     app.register_blueprint(remote_agents_bp)
     app.register_blueprint(voice_bridge_bp)
     app.register_blueprint(waypoint_bp)

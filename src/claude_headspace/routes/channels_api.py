@@ -427,6 +427,17 @@ def archive_channel(slug: str, *, persona, agent, service):
     return jsonify(_channel_to_dict(channel)), 200
 
 
+@channels_api_bp.route("/api/channels/<slug>", methods=["DELETE"])
+@_channel_route
+def delete_channel(slug: str, *, persona, agent, service):
+    """Delete a channel permanently.
+
+    Precondition: channel must be archived or have no active members.
+    """
+    service.delete_channel(slug=slug, persona=persona)
+    return jsonify({"status": "ok", "message": f"Channel {slug} deleted"}), 200
+
+
 # ──────────────────────────────────────────────────────────────
 # Membership Endpoints
 # ──────────────────────────────────────────────────────────────
@@ -481,6 +492,19 @@ def add_member(slug: str, *, persona, agent, service):
     )
 
     return jsonify(_membership_to_dict(membership)), 201
+
+
+@channels_api_bp.route(
+    "/api/channels/<slug>/members/<persona_slug>", methods=["DELETE"]
+)
+@_channel_route
+def remove_member(slug: str, persona_slug: str, *, persona, agent, service):
+    """Remove a member from a channel (admin action).
+
+    Enforces sole-chair prevention.
+    """
+    service.remove_member(slug=slug, persona_slug=persona_slug, caller_persona=persona)
+    return jsonify({"status": "ok", "message": "Member removed"}), 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/join", methods=["POST"])
@@ -569,7 +593,11 @@ def get_messages(slug: str, *, persona, agent, service):
     logger.info(
         "get_messages: slug=%s limit=%d since=%s before=%s returned=%d"
         " first_id=%s last_id=%s",
-        slug, limit, since, before, len(messages),
+        slug,
+        limit,
+        since,
+        before,
+        len(messages),
         messages[0].id if messages else None,
         messages[-1].id if messages else None,
     )
