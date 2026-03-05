@@ -114,7 +114,9 @@ class TestPersonaListCommand:
         assert result.exit_code == 0
         lines = result.output.strip().split("\n")
         # Skip header (2 lines: header + separator), exclude summary line (last)
-        data_lines = [l for l in lines[2:] if l.strip() and not l.strip()[0].isdigit()]
+        data_lines = [
+            line for line in lines[2:] if line.strip() and not line.strip()[0].isdigit()
+        ]
         names = [line.split()[0] for line in data_lines]
         assert names == ["Alice", "Zara", "Bob"]
 

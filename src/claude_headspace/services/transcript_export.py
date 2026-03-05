@@ -117,7 +117,7 @@ class TranscriptExportService:
             actor_name = "Operator" if turn.actor == TurnActor.USER else persona_name
             ts = _format_timestamp(turn.timestamp)
             body_lines.append(f"### {actor_name} — {ts}\n")
-            body_lines.append(turn.text.strip() + "\n")
+            body_lines.append((turn.text or "").strip() + "\n")
 
         content = frontmatter + "\n" + "\n".join(body_lines)
 
@@ -203,10 +203,10 @@ class TranscriptExportService:
         # Build message body
         body_lines = []
         for msg in messages:
-            actor_name = msg.persona.name if msg.persona else "Unknown"
+            actor_name = msg.persona.name if msg.persona else "System"
             ts = _format_timestamp(msg.sent_at)
             body_lines.append(f"### {actor_name} — {ts}\n")
-            body_lines.append(msg.content.strip() + "\n")
+            body_lines.append((msg.content or "").strip() + "\n")
 
         content = frontmatter + "\n" + "\n".join(body_lines)
 
@@ -233,6 +233,38 @@ class TranscriptExportService:
         return filepath
 
 
+def _yaml_quote(value: str) -> str:
+    """Quote a YAML scalar value if it contains special characters."""
+    if not value:
+        return '""'
+    # Quote if it contains YAML-special chars that could break parsing
+    if any(
+        c in value
+        for c in (
+            ":",
+            "#",
+            "'",
+            '"',
+            "{",
+            "}",
+            "[",
+            "]",
+            ",",
+            "&",
+            "*",
+            "!",
+            "|",
+            ">",
+            "%",
+            "@",
+            "`",
+        )
+    ):
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
+    return value
+
+
 def _build_frontmatter(
     type_: str,
     identifier: str,
@@ -247,16 +279,16 @@ def _build_frontmatter(
 ) -> str:
     """Build YAML frontmatter for a transcript."""
     lines = ["---"]
-    lines.append(f"type: {type_}")
-    lines.append(f"identifier: {identifier}")
-    lines.append(f"project: {project}")
-    lines.append(f"persona: {persona}")
+    lines.append(f"type: {_yaml_quote(type_)}")
+    lines.append(f"identifier: {_yaml_quote(identifier)}")
+    lines.append(f"project: {_yaml_quote(project)}")
+    lines.append(f"persona: {_yaml_quote(persona)}")
     if agent_id is not None:
         lines.append(f"agent_id: {agent_id}")
     lines.append("participants:")
     for p in participants:
-        lines.append(f"  - name: {p['name']}")
-        lines.append(f"    role: {p['role']}")
+        lines.append(f"  - name: {_yaml_quote(p['name'])}")
+        lines.append(f"    role: {_yaml_quote(p['role'])}")
     lines.append(f"start_time: {start_time or 'null'}")
     lines.append(f"end_time: {end_time or 'null'}")
     lines.append(f"message_count: {message_count}")

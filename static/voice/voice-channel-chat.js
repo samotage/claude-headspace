@@ -32,7 +32,7 @@ window.VoiceChannelChat = (function () {
         break;
       }
     }
-    if (nameEl) nameEl.textContent = '#' + channelName;
+    if (nameEl) nameEl.textContent = channelName;
 
     var messagesEl = document.getElementById('channel-chat-messages');
     if (messagesEl) {

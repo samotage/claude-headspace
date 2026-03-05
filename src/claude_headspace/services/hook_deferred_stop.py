@@ -17,12 +17,6 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 from .advisory_lock import LockNamespace, advisory_lock
-
-logger = logging.getLogger(__name__)
-
-
-# ── Shared helpers imported from hook_receiver ───────────────────────
-# These were formerly inlined copies. Now imported to eliminate duplication.
 from .hook_receiver import (
     _broadcast_turn_created,
     _execute_pending_summarisations,
@@ -31,6 +25,8 @@ from .hook_receiver import (
     _send_completion_notification,
     _trigger_priority_scoring,
 )
+
+logger = logging.getLogger(__name__)
 
 # ── Public API ───────────────────────────────────────────────────────
 
