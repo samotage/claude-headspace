@@ -636,7 +636,9 @@ class TestRelayAgentResponse:
         # Remove all memberships for this agent AND its persona
         # (persona fallback would otherwise find memberships by persona_id)
         ChannelMembership.query.filter_by(agent_id=agent_d.id).delete()
-        ChannelMembership.query.filter_by(persona_id=setup_data["persona_a"].id).delete()
+        ChannelMembership.query.filter_by(
+            persona_id=setup_data["persona_a"].id
+        ).delete()
         db.session.commit()
 
         result = delivery_service.relay_agent_response(
@@ -703,6 +705,62 @@ class TestRelayAgentResponse:
         )
 
         assert result is False
+
+    def test_dedup_skips_already_relayed_turn(
+        self,
+        app,
+        delivery_service,
+        db_session,
+        setup_data,
+    ):
+        """A turn already relayed (matching source_turn_id) is not sent again."""
+        agent = setup_data["agent_b"]
+
+        # Create a real Turn so source_turn_id FK is valid
+        cmd = Command(
+            agent_id=agent.id,
+            state=CommandState.PROCESSING,
+        )
+        db.session.add(cmd)
+        db.session.flush()
+
+        from claude_headspace.models.turn import Turn, TurnActor
+
+        turn = Turn(
+            command_id=cmd.id,
+            actor=TurnActor.AGENT,
+            intent=TurnIntent.COMPLETION,
+            text="Already relayed",
+        )
+        db.session.add(turn)
+        db.session.flush()
+
+        # Pre-create a message with this turn's source_turn_id
+        existing_msg = Message(
+            channel_id=setup_data["channel"].id,
+            persona_id=setup_data["persona_b"].id,
+            agent_id=agent.id,
+            content="Already relayed",
+            message_type=MessageType.MESSAGE,
+            source_turn_id=turn.id,
+        )
+        db.session.add(existing_msg)
+        db.session.commit()
+
+        with patch.object(
+            app.extensions["channel_service"],
+            "send_message",
+        ) as mock_send:
+            result = delivery_service.relay_agent_response(
+                agent=agent,
+                turn_text="Same turn again",
+                turn_intent=TurnIntent.COMPLETION,
+                turn_id=turn.id,
+                command_id=cmd.id,
+            )
+
+            assert result is False
+            mock_send.assert_not_called()
 
 
 # ── drain_queue() tests ──────────────────────────────────────────────
@@ -919,7 +977,7 @@ class TestHookReceiverIntegration:
 
         with (
             patch.object(delivery, "relay_agent_response") as mock_relay,
-            patch.object(delivery, "drain_queue") as mock_drain,
+            patch.object(delivery, "drain_queue"),
             patch(
                 "claude_headspace.services.hook_receiver._extract_transcript_content",
                 return_value="Done with the task.\n\n---\nCOMMAND COMPLETE — Done.\n---",

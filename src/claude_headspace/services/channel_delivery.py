@@ -427,17 +427,28 @@ class ChannelDeliveryService:
 
         # Fallback: if agent_id doesn't match (stale after handoff/new session),
         # try by persona_id and self-heal the agent_id (Finding F10 defense in depth).
-        if not membership and agent.persona_id:
+        # agent.persona_id is guaranteed truthy here (checked above).
+        if not membership:
             membership = ChannelMembership.query.filter_by(
                 persona_id=agent.persona_id, status="active"
             ).first()
             if membership:
-                membership.agent_id = agent.id
-                db.session.commit()
-                logger.info(
-                    f"Self-healed channel membership {membership.id}: "
-                    f"agent_id updated to {agent.id} (persona fallback)"
-                )
+                try:
+                    membership.agent_id = agent.id
+                    db.session.commit()
+                    logger.info(
+                        f"Self-healed channel membership {membership.id}: "
+                        f"agent_id updated to {agent.id} (persona fallback)"
+                    )
+                except Exception as e:
+                    db.session.rollback()
+                    logger.warning(
+                        f"Self-heal commit failed for membership {membership.id}: {e}"
+                    )
+                    # Re-query after rollback to avoid DetachedInstanceError
+                    membership = ChannelMembership.query.filter_by(
+                        persona_id=agent.persona_id, status="active"
+                    ).first()
 
         if not membership:
             return False
@@ -449,6 +460,19 @@ class ChannelDeliveryService:
                 f"{channel.status} — skipping relay"
             )
             return False
+
+        # Dedup: if this turn was already relayed (e.g., hook_receiver relayed it
+        # and reconciler also tries), skip to prevent duplicate channel messages.
+        if turn_id:
+            existing = Message.query.filter_by(
+                channel_id=channel.id, source_turn_id=turn_id
+            ).first()
+            if existing:
+                logger.debug(
+                    f"Agent {agent.id} turn {turn_id} already relayed to "
+                    f"channel #{channel.slug} — skipping duplicate"
+                )
+                return False
 
         # Strip COMMAND COMPLETE footer from the response
         cleaned_text = self._strip_command_complete(turn_text)

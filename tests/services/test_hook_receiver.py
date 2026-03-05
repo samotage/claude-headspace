@@ -194,9 +194,7 @@ class TestProcessSessionStart:
         assert result.success is True
         # Verify ChannelMembership was queried with persona_id and status="active"
         # (F10 fix — update stale agent_id on persona assignment)
-        MockMembership.query.filter_by.assert_any_call(
-            persona_id=5, status="active"
-        )
+        MockMembership.query.filter_by.assert_any_call(persona_id=5, status="active")
         # Verify agent_id was updated via .filter().update()
         mock_query.filter.return_value.update.assert_called_once_with(
             {"agent_id": mock_agent.id}
@@ -2106,8 +2104,7 @@ class TestDeferredStopPolling:
                 # Thread was spawned
                 assert mock_thread.call_count == 1
 
-                # Get the target function and run it
-                target_fn = mock_thread.call_args[1]["target"]
+                # Target function available via mock_thread.call_args[1]["target"]
 
         _deferred_stop_pending.clear()
 

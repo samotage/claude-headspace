@@ -1995,16 +1995,12 @@ class TestChannelConversationPatterns:
 
     def test_fixed_now(self):
         """'Fixed now.' at end of text should be completion."""
-        result = detect_agent_intent(
-            "Found the bug. It was in the config. Fixed now."
-        )
+        result = detect_agent_intent("Found the bug. It was in the config. Fixed now.")
         assert result.intent == TurnIntent.COMPLETION
 
     def test_ive_updated(self):
         """'I've updated X' should be completion."""
-        result = detect_agent_intent(
-            "I've updated the config to use the correct port."
-        )
+        result = detect_agent_intent("I've updated the config to use the correct port.")
         assert result.intent == TurnIntent.COMPLETION
 
     def test_ive_fixed(self):
@@ -2033,9 +2029,7 @@ class TestChannelConversationPatterns:
 
     def test_updated_opener_with_detail(self):
         """'Updated.' followed by detail should be completion opener."""
-        result = detect_agent_intent(
-            "Updated. New endpoint is at /api/v2/users."
-        )
+        result = detect_agent_intent("Updated. New endpoint is at /api/v2/users.")
         assert result.intent == TurnIntent.COMPLETION
 
     def test_resolved_opener_with_detail(self):

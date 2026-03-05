@@ -571,6 +571,25 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
             f"[RECONCILER] Recovered turn {turn.id} state transition failed: "
             f"{e} — turn preserved"
         )
+        # Still attempt channel relay — the transition may have failed because
+        # hook_receiver already completed the command, but hook relay may have
+        # missed due to stale membership. The dedup check in relay_agent_response
+        # prevents duplicate messages.
+        if turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+            try:
+                ch_delivery = current_app.extensions.get("channel_delivery_service")
+                if ch_delivery and agent.persona_id:
+                    ch_delivery.relay_agent_response(
+                        agent=agent,
+                        turn_text=turn.text,
+                        turn_intent=turn.intent,
+                        turn_id=turn.id,
+                        command_id=command.id,
+                    )
+            except Exception as relay_err:
+                logger.debug(
+                    f"[RECONCILER] Channel relay after failed transition: {relay_err}"
+                )
     except Exception as e:
         db.session.rollback()
         logger.warning(
