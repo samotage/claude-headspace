@@ -70,6 +70,14 @@ class AgentNotFoundError(ChannelError):
     """Agent with the given ID does not exist or is not active."""
 
 
+class ChannelDeletePreconditionError(ChannelError):
+    """Channel cannot be deleted — must be archived or have no active members."""
+
+
+class SoleChairError(ChannelError):
+    """Cannot remove the last chair from a channel."""
+
+
 # ── Service ──────────────────────────────────────────────────────────────
 
 
@@ -384,6 +392,139 @@ class ChannelService:
             },
         )
         return channel
+
+    def delete_channel(self, slug: str, persona: Persona) -> None:
+        """Permanently delete a channel.
+
+        Precondition: channel must be archived OR have zero active members.
+
+        Args:
+            slug: Channel slug.
+            persona: Calling persona (must be chair or operator).
+
+        Raises:
+            ChannelNotFoundError: If channel not found.
+            NotChairError: If caller is not chair or operator.
+            ChannelDeletePreconditionError: If precondition not met.
+        """
+        channel = self.get_channel(slug)
+        self._check_chair_or_operator(channel, persona)
+
+        # Check precondition: archived or no active members
+        active_members = [
+            m for m in channel.memberships if m.status in ("active", "muted")
+        ]
+        if channel.status != "archived" and len(active_members) > 0:
+            raise ChannelDeletePreconditionError(
+                f"Error: Channel #{slug} must be archived or have no active members "
+                f"before it can be deleted. Current status: {channel.status}, "
+                f"active members: {len(active_members)}."
+            )
+
+        channel_slug = channel.slug
+        channel_status = channel.status
+        db.session.delete(channel)
+        db.session.commit()
+
+        logger.info("Deleted channel %s", channel_slug)
+
+        # Broadcast directly — the channel object is detached after delete+commit,
+        # so we cannot pass it to _broadcast_update (which accesses channel.slug/status).
+        try:
+            broadcaster = self.app.extensions.get("broadcaster")
+            if broadcaster:
+                broadcaster.broadcast(
+                    "channel_update",
+                    {
+                        "channel_slug": channel_slug,
+                        "update_type": "channel_deleted",
+                        "status": channel_status,
+                        "slug": channel_slug,
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"SSE broadcast failed for channel delete: {e}")
+
+    def remove_member(
+        self, slug: str, persona_slug: str, caller_persona: Persona
+    ) -> None:
+        """Remove a member from a channel (admin action).
+
+        Enforces sole-chair prevention: cannot remove the last chair.
+
+        Args:
+            slug: Channel slug.
+            persona_slug: Slug of the persona to remove.
+            caller_persona: The persona making the request (must be chair or operator).
+
+        Raises:
+            ChannelNotFoundError: If channel not found.
+            NotChairError: If caller is not chair or operator.
+            ChannelClosedError: If channel is complete/archived.
+            PersonaNotFoundError: If persona not found.
+            NotAMemberError: If persona is not an active member.
+            SoleChairError: If removing would leave no chair.
+        """
+        channel = self.get_channel(slug)
+        self._check_chair_or_operator(channel, caller_persona)
+        self._check_closed(channel)
+
+        # Resolve target persona
+        target_persona = Persona.query.filter_by(slug=persona_slug).first()
+        if not target_persona:
+            raise PersonaNotFoundError(f"Error: Persona '{persona_slug}' not found.")
+
+        # Find active membership
+        membership = (
+            ChannelMembership.query.filter_by(
+                channel_id=channel.id,
+                persona_id=target_persona.id,
+            )
+            .filter(ChannelMembership.status.in_(("active", "muted")))
+            .first()
+        )
+
+        if not membership:
+            raise NotAMemberError(
+                f"Error: Persona '{target_persona.name}' is not an active member "
+                f"of #{channel.slug}."
+            )
+
+        # Sole chair prevention
+        if membership.is_chair:
+            chair_count = (
+                ChannelMembership.query.filter_by(channel_id=channel.id, is_chair=True)
+                .filter(ChannelMembership.status.in_(("active", "muted")))
+                .count()
+            )
+            if chair_count <= 1:
+                raise SoleChairError(
+                    f"Error: Cannot remove '{target_persona.name}' — they are the "
+                    f"sole chair of #{channel.slug}. Transfer chair first."
+                )
+
+        membership.status = "left"
+        membership.left_at = datetime.now(timezone.utc)
+
+        self._post_system_message(
+            channel, f"{target_persona.name} was removed by {caller_persona.name}"
+        )
+        db.session.commit()
+
+        # Check if this was the last active member
+        self._auto_complete_if_empty(channel)
+
+        members = self._get_member_names(channel)
+        self._broadcast_update(
+            channel,
+            "member_removed",
+            {
+                "slug": channel.slug,
+                "persona_slug": persona_slug,
+                "persona_name": target_persona.name,
+                "members": members,
+            },
+        )
 
     # ── Membership ───────────────────────────────────────────────────
 

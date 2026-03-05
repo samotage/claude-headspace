@@ -18,6 +18,9 @@
         <a href="{{ url_for('projects.projects_page') }}" data-nav-key="projects"
            class="tab-link {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}"
            {% if request.endpoint and request.endpoint.startswith('projects.') %}aria-current="page"{% endif %}>projects</a>
+        <a href="{{ url_for('channels_page.channels_page') }}" data-nav-key="channels"
+           class="tab-link {% if request.endpoint == 'channels_page.channels_page' %}active{% endif %}"
+           {% if request.endpoint == 'channels_page.channels_page' %}aria-current="page"{% endif %}>channels</a>
         <a href="{{ url_for('activity.activity_page') }}" data-nav-key="activity"
            class="tab-link {% if request.endpoint == 'activity.activity_page' %}active{% endif %}"
            {% if request.endpoint == 'activity.activity_page' %}aria-current="page"{% endif %}>activity</a>
@@ -64,6 +67,11 @@
            class="mobile-menu-item {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}">
             <span class="mobile-menu-icon">&#9783;</span>
             <span>projects</span>
+        </a>
+        <a href="{{ url_for('channels_page.channels_page') }}" data-nav-key="channels"
+           class="mobile-menu-item {% if request.endpoint == 'channels_page.channels_page' %}active{% endif %}">
+            <span class="mobile-menu-icon">&#9776;</span>
+            <span>channels</span>
         </a>
         <a href="{{ url_for('activity.activity_page') }}" data-nav-key="activity"
            class="mobile-menu-item {% if request.endpoint == 'activity.activity_page' %}active{% endif %}">

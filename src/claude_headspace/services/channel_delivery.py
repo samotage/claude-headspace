@@ -502,9 +502,7 @@ class ChannelDeliveryService:
                 return False
 
         if not agent.persona_id:
-            logger.info(
-                f"[RELAY_FORENSIC] SKIP: no persona_id (agent={agent.id})"
-            )
+            logger.info(f"[RELAY_FORENSIC] SKIP: no persona_id (agent={agent.id})")
             return False
 
         # Only relay if this agent was prompted by a channel message delivery.

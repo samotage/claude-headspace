@@ -52,11 +52,11 @@
                         </div>
                     </div>
                 </div>
-                <button onclick="window.ChannelManagement && window.ChannelManagement.open()"
-                        class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-magenta/20 text-magenta border-magenta/30 hover:bg-magenta/30 min-h-[36px] inline-flex items-center"
-                        title="Manage channels">
+                <a href="/channels"
+                   class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-magenta/20 text-magenta border-magenta/30 hover:bg-magenta/30 min-h-[36px] inline-flex items-center no-underline"
+                   title="Manage channels">
                     Channels
-                </button>
+                </a>
                 <a href="/voice" class="px-3 py-1 text-sm font-medium rounded border transition-colors bg-blue/20 text-blue border-blue/30 hover:bg-blue/30 min-h-[36px] inline-flex items-center no-underline" title="Open chat view">
                     Chat
                 </a>
@@ -209,8 +209,7 @@
 <!-- Channel Chat Panel -->
 {% include "partials/_channel_chat_panel.html" %}
 
-<!-- Channel Management Modal -->
-{% include "partials/_channel_management.html" %}
+<!-- Channel Management: superseded by /channels page (e9-s9) -->
 {% endblock %}
 
 {% block scripts %}
@@ -237,8 +236,7 @@
 <script src="{{ url_for('static', filename='js/chat-bubbles.js') }}?v={{ cache_bust }}"></script>
 <!-- Channel chat panel (slide-out message feed) -->
 <script src="{{ url_for('static', filename='js/channel-chat.js') }}?v={{ cache_bust }}"></script>
-<!-- Member autocomplete picker (must load before channel-management) -->
+<!-- Member autocomplete picker -->
 <script src="{{ url_for('static', filename='js/member-autocomplete.js') }}?v={{ cache_bust }}"></script>
-<!-- Channel management modal -->
-<script src="{{ url_for('static', filename='js/channel-management.js') }}?v={{ cache_bust }}"></script>
+<!-- Channel management modal deprecated — superseded by /channels page (e9-s9) -->
 {% endblock %}

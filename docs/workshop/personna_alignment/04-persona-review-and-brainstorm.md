@@ -537,9 +537,9 @@ Same pattern as Con and Al:
 
 ---
 
-### 13. Melanie — Business Analyst (Coordination)
+### 13. Mel — Business Analyst (Coordination)
 
-**Slug:** `business-analyst-melanie-18` | **Agents spawned:** ~2 | **Word count:** ~500
+**Slug:** `business-analyst-mel-18` | **Agents spawned:** ~2 | **Word count:** ~500
 
 #### Template Compliance
 
@@ -569,10 +569,10 @@ Same pattern as Con and Al:
 
 #### Proposed Actions
 
-1. **Add Alignment Signals** — What does Melanie-drift look like? Template-filling, generating from assumptions instead of eliciting, losing the warmth that makes her effective
+1. **Add Alignment Signals** — What does Mel-drift look like? Template-filling, generating from assumptions instead of eliciting, losing the warmth that makes her effective
 2. Otherwise — this is the template's poster child. Second-strongest intent encoding in the portfolio after Paula.
 
-**Priority:** Very Low. Melanie's spec is excellent. Only missing alignment signals.
+**Priority:** Very Low. Mel's spec is excellent. Only missing alignment signals.
 
 ---
 
@@ -620,7 +620,7 @@ Same pattern as Con and Al:
 
 | Rank | Persona | Type | Intent Score | Template Gaps | Priority |
 |------|---------|------|-------------|---------------|----------|
-| 1 | **Melanie** | Coordination | 4.5 / 5 | Alignment Signals only | Very Low |
+| 1 | **Mel** | Coordination | 4.5 / 5 | Alignment Signals only | Very Low |
 | 2 | **Paula** | Governance | 4.0 / 5 | Quality defs (self), tradeoffs, alignment signals | Low |
 | 3= | **Hawk** | Support | 4.0 / 5 | Tradeoffs (standalone), alignment signals | Very Low |
 | 3= | **Mark** | Execution | 3.5 / 5 | Quality defs, debugging protocol | Low |
@@ -637,13 +637,13 @@ Same pattern as Con and Al:
 
 ### Observations
 
-1. **The newer personas are better.** Melanie (18), Hawk (15), Mark (16), and Kent (13) all score significantly higher than the original team (Con 5, Al 6, Gavin 4, Robbo 3). This is the template taking effect — personas designed after Paula created the template encode intent better.
+1. **The newer personas are better.** Mel (18), Hawk (15), Mark (16), and Kent (13) all score significantly higher than the original team (Con 5, Al 6, Gavin 4, Robbo 3). This is the template taking effect — personas designed after Paula created the template encode intent better.
 
 2. **The three founding coordination personas are the weakest.** Robbo, Gavin, and Verner were created earliest and have barely been updated. They are the most critical to upgrade because they gate execution quality.
 
 3. **The execution trio (Con, Al, Shorty) have identical gaps.** All three are missing Domain Intent, Debugging Protocol (as a named section), Quality Definitions, and structured Tradeoff Hierarchies. This is a batch upgrade — write one, template the pattern for the other two.
 
-4. **The pattern that works:** Domain Intent as a standalone section with explicit priority ordering (Mark, Melanie, Hawk, Kent all do this well). Structured Decision Boundaries with clear autonomous/escalate/forbidden tiers. Quality Definitions as a checklist.
+4. **The pattern that works:** Domain Intent as a standalone section with explicit priority ordering (Mark, Mel, Hawk, Kent all do this well). Structured Decision Boundaries with clear autonomous/escalate/forbidden tiers. Quality Definitions as a checklist.
 
 5. **Nobody has Alignment Signals.** This is an across-the-board gap. It's optional per the template, but for a maturing portfolio it should be present on all high-usage personas.
 
@@ -655,7 +655,7 @@ Same pattern as Con and Al:
 | **Wave 2** | Verner | Must be done before activation. Can be batched with Wave 1 if activation is planned. |
 | **Wave 3** | Con, Al, Shorty | Batch upgrade — identical gaps, template the pattern. |
 | **Wave 4** | Ferret, Judy | Support persona upgrades. Important but not blocking. |
-| **Wave 5** | Polish pass on Paula, Jen, Kent, Mark, Melanie, Hawk | Add Alignment Signals, formalise remaining partial elements. |
+| **Wave 5** | Polish pass on Paula, Jen, Kent, Mark, Mel, Hawk | Add Alignment Signals, formalise remaining partial elements. |
 
 ---
 
@@ -665,7 +665,7 @@ Same pattern as Con and Al:
 
 **Working name:** TBD (needs a name that fits the team's personality)
 
-**The gap this fills:** The current team is entirely build-focused. Nobody thinks about what to build *as a business*. Robbo thinks in architecture, Kent thinks in economic flows, Melanie thinks in requirements. But nobody asks: "Is this the right product for this market? Who pays for it? What's the go-to-market? What's the competitive position?" The team can build anything — but nobody is asking whether it should be built from a business viability standpoint.
+**The gap this fills:** The current team is entirely build-focused. Nobody thinks about what to build *as a business*. Robbo thinks in architecture, Kent thinks in economic flows, Mel thinks in requirements. But nobody asks: "Is this the right product for this market? Who pays for it? What's the go-to-market? What's the competitive position?" The team can build anything — but nobody is asking whether it should be built from a business viability standpoint.
 
 **Persona type:** Coordination (strategy, not execution)
 
@@ -693,7 +693,7 @@ Same pattern as Con and Al:
 - **Robbo:** The Entrepreneur says "build this product for this market." Robbo says "here's how to build it." They collaborate on feasibility — the Entrepreneur brings the market view, Robbo brings the technical view. Neither overrides the other; Sam arbitrates.
 - **Kent Voss:** The Entrepreneur designs the business model; Kent designs the economic infrastructure (agent commerce, payment rails, yield). They are complementary — one thinks in customers and markets, the other thinks in protocols and flows.
 - **Ferret:** Dispatches Ferret for market research, competitor analysis, customer data.
-- **Melanie:** The Entrepreneur defines what the product should do (business requirements); Melanie translates that into machine-consumable specs.
+- **Mel:** The Entrepreneur defines what the product should do (business requirements); Mel translates that into machine-consumable specs.
 - **The Rainmaker:** The Entrepreneur designs the go-to-market; the Rainmaker executes it.
 
 **Decision boundaries:**
@@ -815,7 +815,7 @@ This persona has the highest stakes around external communication. The autonomy 
 **Decisions made by Sam:**
 
 1. **Wave 1 approved** — Robbo, Gavin, Verner (Paula's recommendation to include Verner in Wave 1 accepted)
-2. **Entrepreneur approved** — scoped across all Otagelabs products and offerings, named **Clive** (slug: `entrepreneur-clive-19`)
+2. **Entrepreneur approved** — scoped across all Otagelabs products and offerings, named **Mick** (slug: `entrepreneur-mick-19`)
 3. **Rainmaker shelved** — deferred until Entrepreneur has been active for at least one planning cycle
 4. **Alignment Signals baked into all upgrades** — per Paula's recommendation, not deferred to Wave 5
 
@@ -826,7 +826,7 @@ This persona has the highest stakes around external communication. The autonomy 
 | **Robbo** | Upgraded | `architect-robbo-3/skill.md` | Added: Domain Intent, structured Decision Boundaries (4-tier), Design Principles (separated from Skills), Quality Definitions (6-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
 | **Gavin** | Upgraded | `pm-gavin-4/skill.md` | Added: Domain Intent ("Unblock the team"), structured Decision Boundaries, Design Principles (separated from Skills), Quality Definitions (6-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
 | **Verner** | Upgraded | `qa-verner-7/skill.md` | Added: Domain Intent ("real bugs over test count"), structured Decision Boundaries (4-tier), Design Principles (separated from Skills), Working Method, Quality Definitions (7-gate checklist), Tradeoff Hierarchies, Alignment Signals. Preserved: Core Identity, Communication Style, Workflow Discipline. |
-| **Clive** | Created | `entrepreneur-clive-19/skill.md` | New persona. Full template compliance: Core Identity, Domain Intent, Skills, Decision Boundaries, Design Principles, Quality Definitions, Tradeoff Hierarchies, Workflow Discipline, Communication Style, Anti-Patterns, Alignment Signals. Experience file created (empty). |
+| **Clive** | Created | `entrepreneur-mick-19/skill.md` | New persona. Full template compliance: Core Identity, Domain Intent, Skills, Decision Boundaries, Design Principles, Quality Definitions, Tradeoff Hierarchies, Workflow Discipline, Communication Style, Anti-Patterns, Alignment Signals. Experience file created (empty). |
 
 **Intent encoding scores (estimated post-upgrade):**
 - Robbo: 1.0 → **5.0** (all 5 elements present)

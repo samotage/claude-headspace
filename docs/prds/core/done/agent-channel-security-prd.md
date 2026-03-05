@@ -39,7 +39,7 @@ Agents are not black-box clients. They can read source code, inspect configurati
 
 ### 1.2 Target User
 
-System operators who manage multi-agent teams and need to trust that channel message attribution is accurate — that a message from "Melanie" genuinely originated from Melanie's agent session, not from another agent claiming her identity.
+System operators who manage multi-agent teams and need to trust that channel message attribution is accurate — that a message from "Mel" genuinely originated from Mel's agent session, not from another agent claiming her identity.
 
 ### 1.3 Success Moment
 

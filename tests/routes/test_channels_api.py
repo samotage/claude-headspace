@@ -11,11 +11,14 @@ from claude_headspace.services.channel_service import (
     AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
+    ChannelDeletePreconditionError,
     ChannelNotFoundError,
     ContentTooLongError,
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
+    PersonaNotFoundError,
+    SoleChairError,
 )
 from claude_headspace.services.session_token import SessionTokenService
 
@@ -1220,3 +1223,120 @@ class TestJoinChannel:
         with _patch_operator(mock_operator):
             resp = client.post("/api/channels/nonexistent/join")
             assert resp.status_code == 404
+
+
+# ──────────────────────────────────────────────────────────────
+# DELETE Channel Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestDeleteChannel:
+    """Test DELETE /api/channels/<slug>."""
+
+    def test_delete_success(self, client, mock_operator, mock_channel_service):
+        """Successful delete returns 200."""
+        mock_channel_service.delete_channel.return_value = None
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["status"] == "ok"
+            mock_channel_service.delete_channel.assert_called_once_with(
+                slug="workshop-test-1", persona=mock_operator
+            )
+
+    def test_delete_precondition_failed_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Not archived / has active members -> 409."""
+        mock_channel_service.delete_channel.side_effect = (
+            ChannelDeletePreconditionError("Must be archived")
+        )
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1")
+            assert resp.status_code == 409
+            assert resp.get_json()["error"]["code"] == "delete_precondition_failed"
+
+    def test_delete_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Channel not found -> 404."""
+        mock_channel_service.delete_channel.side_effect = ChannelNotFoundError(
+            "Not found"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/nonexistent")
+            assert resp.status_code == 404
+
+    def test_delete_no_auth_returns_401(self, client):
+        """No auth -> 401."""
+        with _patch_no_operator():
+            resp = client.delete("/api/channels/workshop-test-1")
+            assert resp.status_code == 401
+
+
+# ──────────────────────────────────────────────────────────────
+# DELETE Member (Remove) Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestRemoveMember:
+    """Test DELETE /api/channels/<slug>/members/<persona_slug>."""
+
+    def test_remove_member_success(self, client, mock_operator, mock_channel_service):
+        """Successful remove returns 200."""
+        mock_channel_service.remove_member.return_value = None
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1/members/persona-bob-2")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["status"] == "ok"
+            mock_channel_service.remove_member.assert_called_once_with(
+                slug="workshop-test-1",
+                persona_slug="persona-bob-2",
+                caller_persona=mock_operator,
+            )
+
+    def test_remove_not_a_member_returns_403(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Persona not a member -> 403."""
+        mock_channel_service.remove_member.side_effect = NotAMemberError("Not a member")
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1/members/persona-bob-2")
+            assert resp.status_code == 403
+            assert resp.get_json()["error"]["code"] == "not_a_member"
+
+    def test_remove_sole_chair_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Sole chair removal -> 409."""
+        mock_channel_service.remove_member.side_effect = SoleChairError(
+            "Cannot remove sole chair"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1/members/persona-bob-2")
+            assert resp.status_code == 409
+            assert resp.get_json()["error"]["code"] == "sole_chair"
+
+    def test_remove_persona_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Persona not found -> 404."""
+        mock_channel_service.remove_member.side_effect = PersonaNotFoundError(
+            "Not found"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1/members/nonexistent")
+            assert resp.status_code == 404
+
+    def test_remove_channel_closed_returns_409(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Closed channel -> 409."""
+        mock_channel_service.remove_member.side_effect = ChannelClosedError(
+            "Channel is archived"
+        )
+        with _patch_operator(mock_operator):
+            resp = client.delete("/api/channels/workshop-test-1/members/persona-bob-2")
+            assert resp.status_code == 409

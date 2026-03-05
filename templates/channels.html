@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Channels - Claude Headspace{% endblock %}
+
+{% block content %}
+<div class="min-h-screen">
+    {% include "partials/_header.html" %}
+
+    <main class="page-content container mx-auto px-4 py-6" role="main">
+        <section aria-labelledby="channels-heading">
+            <div class="bg-elevated rounded-lg border border-border p-6">
+                <!-- Header row -->
+                <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                    <h2 id="channels-heading" class="text-lg font-bold text-primary">Channels</h2>
+                    <div class="flex items-center gap-3">
+                        <!-- Search input -->
+                        <input type="text" id="channel-search-input"
+                               class="form-well px-3 py-2 text-sm rounded w-48"
+                               placeholder="Search channels..."
+                               autocomplete="off">
+                        <button type="button"
+                                id="new-channel-btn"
+                                onclick="ChannelAdmin.openCreateForm()"
+                                class="px-4 py-2 bg-magenta/20 border border-magenta/30 rounded text-magenta font-medium text-sm hover:bg-magenta/30 hover:border-magenta transition-colors min-h-[44px]">
+                            + New Channel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status filter tabs -->
+                <div class="mb-4 flex gap-1 border-b border-border pb-2" id="channel-filter-tabs" role="tablist">
+                    <button class="channel-filter-tab active" data-status="active" role="tab" aria-selected="true">Active</button>
+                    <button class="channel-filter-tab" data-status="pending" role="tab" aria-selected="false">Pending</button>
+                    <button class="channel-filter-tab" data-status="complete" role="tab" aria-selected="false">Complete</button>
+                    <button class="channel-filter-tab" data-status="archived" role="tab" aria-selected="false">Archived</button>
+                    <button class="channel-filter-tab" data-status="all" role="tab" aria-selected="false">All</button>
+                </div>
+
+                <!-- Channel list table -->
+                <div id="channels-table-container">
+                    <table class="w-full text-base" id="channels-table">
+                        <thead>
+                            <tr class="border-b border-border text-left text-muted text-sm uppercase tracking-wider">
+                                <th class="pb-3 pr-4">Name</th>
+                                <th class="pb-3 pr-4">Type</th>
+                                <th class="pb-3 pr-4">Status</th>
+                                <th class="pb-3 pr-4 text-center">Members</th>
+                                <th class="pb-3 pr-4">Last Activity</th>
+                                <th class="pb-3 pr-4">Created</th>
+                                <th class="pb-3 pr-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="channels-tbody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty state -->
+                <div id="channels-empty" class="hidden text-center py-8">
+                    <p class="text-secondary">No channels match the current filter.</p>
+                    <p class="text-muted text-sm mt-1">Try a different filter or create a new channel.</p>
+                </div>
+
+                <!-- Loading state -->
+                <div id="channels-loading" class="text-center py-8">
+                    <p class="text-muted">Loading channels...</p>
+                </div>
+            </div>
+
+            <!-- Channel detail panel (expandable, rendered below table) -->
+            <div id="channel-detail-panel" class="hidden mt-4 bg-elevated rounded-lg border border-border p-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h3 id="detail-channel-name" class="text-lg font-bold text-primary"></h3>
+                        <p id="detail-channel-slug" class="text-muted text-sm font-mono"></p>
+                    </div>
+                    <button onclick="ChannelAdmin.closeDetail()" class="text-muted hover:text-primary text-xl">&times;</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <span class="text-muted text-sm">Type:</span>
+                        <span id="detail-channel-type" class="text-secondary ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-muted text-sm">Status:</span>
+                        <span id="detail-channel-status" class="ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-muted text-sm">Created:</span>
+                        <span id="detail-channel-created" class="text-secondary ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-muted text-sm">Chair:</span>
+                        <span id="detail-channel-chair" class="text-secondary ml-1"></span>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <span class="text-muted text-sm">Description:</span>
+                    <p id="detail-channel-description" class="text-secondary mt-1"></p>
+                </div>
+
+                <!-- Members list -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-bold text-primary uppercase tracking-wider">Members</h4>
+                        <button id="detail-add-member-btn"
+                                onclick="ChannelAdmin.showAddMember()"
+                                class="px-3 py-1 text-xs bg-cyan/20 border border-cyan/30 rounded text-cyan hover:bg-cyan/30 transition-colors hidden">
+                            + Add Member
+                        </button>
+                    </div>
+                    <!-- Add member inline form -->
+                    <div id="detail-add-member-form" class="hidden mb-3 p-3 border border-border rounded bg-surface">
+                        <div id="detail-member-picker" class="mb-2"></div>
+                        <div class="flex gap-2">
+                            <button onclick="ChannelAdmin.confirmAddMember()"
+                                    class="px-3 py-1 text-xs bg-cyan/20 border border-cyan/30 rounded text-cyan hover:bg-cyan/30 transition-colors">Add</button>
+                            <button onclick="ChannelAdmin.hideAddMember()"
+                                    class="px-3 py-1 text-xs bg-surface border border-border rounded text-muted hover:text-primary transition-colors">Cancel</button>
+                        </div>
+                    </div>
+                    <div id="detail-members-list" class="space-y-1">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Lifecycle actions -->
+                <div id="detail-actions" class="flex gap-2 pt-4 border-t border-border">
+                    <!-- Populated by JS based on channel status -->
+                </div>
+            </div>
+
+            <!-- Create channel form (hidden by default) -->
+            <div id="channel-create-form" class="hidden mt-4 bg-elevated rounded-lg border border-border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-primary">Create Channel</h3>
+                    <button onclick="ChannelAdmin.closeCreateForm()" class="text-muted hover:text-primary text-xl">&times;</button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label for="create-channel-name" class="block text-sm text-muted mb-1">Name</label>
+                        <input type="text" id="create-channel-name"
+                               class="form-well w-full px-3 py-2 text-sm rounded"
+                               placeholder="Channel name" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="create-channel-type" class="block text-sm text-muted mb-1">Type</label>
+                        <select id="create-channel-type" class="form-well w-full px-3 py-2 text-sm rounded">
+                            <option value="workshop">Workshop</option>
+                            <option value="delegation">Delegation</option>
+                            <option value="review">Review</option>
+                            <option value="standup">Standup</option>
+                            <option value="broadcast">Broadcast</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="create-channel-desc" class="block text-sm text-muted mb-1">Description (optional)</label>
+                        <textarea id="create-channel-desc"
+                                  class="form-well w-full px-3 py-2 text-sm rounded"
+                                  rows="2" placeholder="Brief description"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-muted mb-1">Members (optional)</label>
+                        <div id="create-member-picker"></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="ChannelAdmin.submitCreate()"
+                                class="px-4 py-2 bg-magenta/20 border border-magenta/30 rounded text-magenta font-medium text-sm hover:bg-magenta/30 transition-colors min-h-[44px]">
+                            Create
+                        </button>
+                        <button onclick="ChannelAdmin.closeCreateForm()"
+                                class="px-4 py-2 bg-surface border border-border rounded text-muted font-medium text-sm hover:text-primary transition-colors min-h-[44px]">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+{% include "partials/_toast.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/member-autocomplete.js') }}?v={{ cache_bust }}"></script>
+<script src="{{ url_for('static', filename='js/channel-admin.js') }}?v={{ cache_bust }}"></script>
+{% endblock %}
