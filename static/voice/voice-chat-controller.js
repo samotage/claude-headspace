@@ -156,12 +156,13 @@ window.VoiceChatController = (function () {
         }
         newTurnIds.sort(function (a, b) { return a - b; });
         var messagesEl = document.getElementById('chat-messages');
+        var savedTop = saved.scrollTop;
         if (newTurnIds.length === 0) {
           // No new turns -- restore exact position
-          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+          if (messagesEl) requestAnimationFrame(function () { messagesEl.scrollTop = savedTop; });
         } else {
           // New turns arrived -- restore position + show pill
-          if (messagesEl) messagesEl.scrollTop = saved.scrollTop;
+          if (messagesEl) requestAnimationFrame(function () { messagesEl.scrollTop = savedTop; });
           showNewMessagesPill(newTurnIds.length, newTurnIds[0]);
         }
       } else {
@@ -275,7 +276,7 @@ window.VoiceChatController = (function () {
   function scrollChatToBottom() {
     var messagesEl = document.getElementById('chat-messages');
     if (messagesEl) {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      requestAnimationFrame(function () { messagesEl.scrollTop = messagesEl.scrollHeight; });
     }
   }
 
@@ -291,7 +292,7 @@ window.VoiceChatController = (function () {
   function saveScrollState(agentId) {
     if (!agentId) return;
     var el = document.getElementById('chat-messages');
-    if (!el) return;
+    if (!el || el.scrollHeight === 0) return; // Skip when chat screen is hidden (display: none)
     VoiceState.agentScrollState[agentId] = {
       scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,

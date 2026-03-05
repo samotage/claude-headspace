@@ -41,9 +41,13 @@ window.VoiceChannelChat = (function () {
   // --- Public methods ---
 
   function showChannelChatScreen(slug) {
-    // Save current agent chat draft before switching
-    var agentInput = document.getElementById('chat-text-input');
+    // Save current agent chat scroll state + draft before switching
+    // (must happen while screen-chat is still visible / display:block)
     var currentAgentId = VoiceState.targetAgentId;
+    if (currentAgentId && VoiceState.currentScreen === 'chat') {
+      VoiceChatController.saveScrollState(currentAgentId);
+    }
+    var agentInput = document.getElementById('chat-text-input');
     if (agentInput && currentAgentId) {
       var agentDraft = agentInput.value;
       if (agentDraft) {
