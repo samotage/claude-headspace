@@ -15,10 +15,12 @@ from ..database import db
 from ..models.agent import Agent
 from ..models.channel import Channel, ChannelType
 from ..models.channel_membership import ChannelMembership
+from ..models.command import Command
 from ..models.message import Message, MessageType
 from ..models.persona import Persona
 from ..models.project import Project
 from ..models.role import Role
+from ..models.turn import Turn
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,10 @@ class ChannelDeletePreconditionError(ChannelError):
 
 class SoleChairError(ChannelError):
     """Cannot remove the last chair from a channel."""
+
+
+class PromoteToGroupError(ChannelError):
+    """Error during promote-to-group orchestration."""
 
 
 # ── Service ──────────────────────────────────────────────────────────────
@@ -186,25 +192,7 @@ class ChannelService:
             self._transition_to_active(channel)
             db.session.commit()
 
-        # Build member name list for the JS card
-        members = self._get_member_names(channel)
-        self._broadcast_update(
-            channel,
-            "channel_created",
-            {
-                "slug": channel.slug,
-                "name": channel.name,
-                "channel_type": channel.channel_type.value,
-                # Nested channel object for channel-cards.js _addCard()
-                "channel": {
-                    "slug": channel.slug,
-                    "name": channel.name,
-                    "channel_type": channel.channel_type.value,
-                    "status": channel.status,
-                    "members": members,
-                },
-            },
-        )
+        self._broadcast_channel_created(channel)
 
         return channel
 
@@ -1155,7 +1143,279 @@ class ChannelService:
         rows.reverse()
         return rows
 
+    # ── Promote to Group ───────────────────────────────────────────────
+
+    def get_agent_conversation_history(
+        self, agent: Agent, limit: int = 20
+    ) -> list[Turn]:
+        """Retrieve the last N turns from an agent's conversation history.
+
+        Fetches turns across all commands for the agent, ordered
+        chronologically (oldest first), capped at `limit`.
+
+        Args:
+            agent: The agent to retrieve history for.
+            limit: Maximum number of turns to return (default 20).
+
+        Returns:
+            List of Turn instances in chronological order.
+        """
+        # Get the most recent `limit` turns across all agent commands,
+        # then reverse to chronological order.
+        rows = (
+            Turn.query.join(Command, Turn.command_id == Command.id)
+            .filter(Command.agent_id == agent.id)
+            .order_by(Turn.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        rows.reverse()
+        return rows
+
+    def _format_agent_turns_briefing(self, turns: list[Turn], agent: Agent) -> str:
+        """Format agent turns as a context briefing for tmux injection.
+
+        Args:
+            turns: List of Turn instances in chronological order.
+            agent: The originating agent.
+
+        Returns:
+            Formatted briefing text, or empty string if no turns.
+        """
+        if not turns:
+            return ""
+
+        persona_name = agent.persona.name if agent.persona else f"Agent #{agent.id}"
+        lines = [
+            f"=== Context briefing: conversation with {persona_name} "
+            f"(last {len(turns)} turns) ===\n"
+        ]
+        for turn in turns:
+            actor = turn.actor.value.upper()
+            timestamp = turn.timestamp.strftime("%d %b %Y, %H:%M")
+            # Truncate long turn text for briefing
+            text = turn.text
+            if len(text) > 500:
+                text = text[:497] + "..."
+            lines.append(f"[{actor}] ({timestamp}): {text}\n")
+        lines.append("=== End of context briefing ===")
+        return "\n".join(lines)
+
+    def promote_to_group(
+        self,
+        agent: Agent,
+        persona_slug: str,
+    ) -> Channel:
+        """Orchestrate the promote-to-group flow.
+
+        Creates a new group channel from an existing agent's 1:1 conversation,
+        adds the operator, original agent's persona, and a new agent for the
+        selected persona. Seeds the new agent with context from the original
+        conversation.
+
+        Args:
+            agent: The originating agent (must have a persona).
+            persona_slug: Slug of the persona for the new agent.
+
+        Returns:
+            The created Channel.
+
+        Raises:
+            AgentNotFoundError: If the agent has no persona.
+            PersonaNotFoundError: If persona_slug not found.
+            PromoteToGroupError: If orchestration fails.
+        """
+        if not agent.persona:
+            raise AgentNotFoundError("Agent has no persona assigned")
+
+        # Resolve the target persona
+        target_persona = Persona.query.filter_by(
+            slug=persona_slug, status="active"
+        ).first()
+        if not target_persona:
+            raise PersonaNotFoundError(
+                f"Persona '{persona_slug}' not found or not active"
+            )
+
+        # Resolve operator persona
+        operator = Persona.get_operator()
+        if not operator:
+            raise PromoteToGroupError("No operator persona found")
+
+        original_persona = agent.persona
+
+        # Auto-generate channel name
+        channel_name = f"{original_persona.name} + {target_persona.name}"
+
+        # Step 1: Create the channel
+        channel = Channel(
+            name=channel_name,
+            channel_type=ChannelType.WORKSHOP,
+            description=(
+                f"Group channel spawned from conversation with {original_persona.name}"
+            ),
+            spawned_from_agent_id=agent.id,
+            created_by_persona_id=operator.id,
+            status="active",
+        )
+        db.session.add(channel)
+        db.session.flush()  # Get ID + trigger slug generation
+
+        try:
+            # Step 2: Add operator as chair
+            chair = ChannelMembership(
+                channel_id=channel.id,
+                persona_id=operator.id,
+                is_chair=True,
+                status="active",
+            )
+            db.session.add(chair)
+
+            # Step 3: Add original agent's persona as member
+            original_membership = ChannelMembership(
+                channel_id=channel.id,
+                persona_id=original_persona.id,
+                agent_id=agent.id,
+                is_chair=False,
+                status="active",
+            )
+            db.session.add(original_membership)
+
+            # Step 4: Spin up a new agent for the selected persona
+            from .agent_lifecycle import create_agent as create_agent_fn
+
+            create_result = create_agent_fn(
+                project_id=agent.project_id,
+                persona_slug=persona_slug,
+            )
+            if not create_result.success:
+                raise PromoteToGroupError(
+                    f"Failed to create agent for persona "
+                    f"'{persona_slug}': {create_result.message}"
+                )
+
+            # Step 5: Add target persona as member
+            # Agent creation is async — the agent_id will be linked
+            # when the agent registers via session-start hook.
+            target_membership = ChannelMembership(
+                channel_id=channel.id,
+                persona_id=target_persona.id,
+                agent_id=None,  # Linked asynchronously
+                is_chair=False,
+                status="active",
+            )
+            db.session.add(target_membership)
+
+            # Step 6: Retrieve conversation history and prepare briefing
+            turns = self.get_agent_conversation_history(agent, limit=20)
+            briefing = self._format_agent_turns_briefing(turns, agent)
+
+            # Step 7: Post system origin message
+            turn_count = len(turns)
+            origin_msg = (
+                f"Channel created from conversation with {original_persona.name}."
+            )
+            if turn_count > 0:
+                origin_msg += f" Context: last {turn_count} messages shared."
+            self._post_system_message(channel, origin_msg)
+
+            db.session.commit()
+            db.session.refresh(channel)
+
+            # Step 8: Deliver context briefing to new agent via tmux
+            # This happens post-commit since the agent may not have a
+            # tmux pane yet (async spin-up). Best-effort delivery.
+            if briefing:
+                # Try to find the newly created agent by persona
+                new_agent = (
+                    Agent.query.filter_by(persona_id=target_persona.id, ended_at=None)
+                    .order_by(Agent.started_at.desc())
+                    .first()
+                )
+                if new_agent and new_agent.tmux_pane_id:
+                    try:
+                        tmux_bridge = self.app.extensions.get("tmux_bridge")
+                        if tmux_bridge:
+                            tmux_bridge.send_text(new_agent.tmux_pane_id, briefing)
+                            logger.info(
+                                f"Context briefing delivered to new agent "
+                                f"{new_agent.id} for promote-to-group "
+                                f"channel #{channel.slug}"
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Context briefing delivery failed for "
+                            f"promote-to-group: {e}"
+                        )
+
+            # Step 9: Broadcast channel_update SSE event
+            self._broadcast_channel_created(channel)
+
+            logger.info(
+                f"Promote-to-group complete: channel #{channel.slug} "
+                f"with {original_persona.name} + {target_persona.name}"
+            )
+            return channel
+
+        except PromoteToGroupError:
+            self._cleanup_channel_after_failure(channel.id)
+            raise
+        except Exception as e:
+            self._cleanup_channel_after_failure(channel.id)
+            raise PromoteToGroupError(f"Promote-to-group failed: {e}") from e
+
     # ── Internal helpers ─────────────────────────────────────────────
+
+    def _broadcast_channel_created(self, channel: Channel) -> None:
+        """Broadcast a ``channel_created`` SSE event with nested card data.
+
+        Used by both ``create_channel`` and ``promote_to_group`` to notify
+        the dashboard that a new channel card should be rendered.
+
+        Args:
+            channel: The newly created channel.
+        """
+        members = self._get_member_names(channel)
+        self._broadcast_update(
+            channel,
+            "channel_created",
+            {
+                "slug": channel.slug,
+                "name": channel.name,
+                "channel_type": channel.channel_type.value,
+                # Nested channel object for channel-cards.js _addCard()
+                "channel": {
+                    "slug": channel.slug,
+                    "name": channel.name,
+                    "channel_type": channel.channel_type.value,
+                    "status": channel.status,
+                    "members": members,
+                },
+            },
+        )
+
+    def _cleanup_channel_after_failure(self, channel_id: int) -> None:
+        """Rollback and delete a channel after a failed orchestration.
+
+        Used by promote_to_group to clean up partially-created channels
+        when agent creation or other steps fail.
+
+        Args:
+            channel_id: The ID of the channel to clean up.
+        """
+        db.session.rollback()
+        try:
+            ch = db.session.get(Channel, channel_id)
+            if ch:
+                db.session.delete(ch)
+                db.session.commit()
+                logger.info(
+                    f"Cleaned up channel #{channel_id} after promote-to-group failure"
+                )
+        except Exception as cleanup_err:
+            logger.warning(
+                f"Cleanup failed after promote-to-group error: {cleanup_err}"
+            )
 
     def _get_member_names(self, channel: Channel) -> list[str]:
         """Get display names of active/muted members for SSE payloads.

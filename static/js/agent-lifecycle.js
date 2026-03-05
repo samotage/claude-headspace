@@ -176,6 +176,12 @@
         actions.push({ id: 'reconcile', label: 'Reconcile', icon: I.reconcile || '' });
         if (btn.getAttribute('data-persona-name')) {
             actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
+            if (btn.getAttribute('data-tmux-session')) {
+                actions.push({ id: 'promote-to-group', label: 'Create Group Channel', icon: I.channel || '' });
+            }
+        } else {
+            // No persona — show disabled item with tooltip
+            actions.push({ id: 'promote-to-group', label: 'Create Group Channel', icon: I.channel || '', disabled: true, title: 'Agent must have a persona assigned' });
         }
         return actions;
     }
@@ -209,6 +215,9 @@
                 break;
             case 'handoff':
                 _confirmAndHandoff(agentId);
+                break;
+            case 'promote-to-group':
+                _showPromoteToGroupPicker(agentId);
                 break;
         }
     }
@@ -306,6 +315,193 @@
             .catch(function() {
                 if (global.Toast) global.Toast.error('Reconcile failed', 'Could not reach server');
             });
+    }
+
+    /**
+     * Show promote-to-group persona picker modal.
+     * @param {number} agentId - The agent to promote
+     */
+    function _showPromoteToGroupPicker(agentId) {
+        // Read agent data from the kebab button
+        var btn = document.querySelector('.card-kebab-btn[data-agent-id="' + agentId + '"]');
+        var agentPersonaName = btn ? btn.getAttribute('data-persona-name') || '' : '';
+
+        fetchActivePersonas().then(function(personas) {
+            // Filter out the original agent's persona and operator persona
+            var filtered = personas.filter(function(p) {
+                // Exclude the original agent's persona (by name match)
+                if (p.name === agentPersonaName) return false;
+                // Exclude operator persona (person type)
+                if (p.type_key === 'person') return false;
+                return true;
+            });
+
+            _renderPromoteToGroupModal(agentId, agentPersonaName, filtered);
+        });
+    }
+
+    /**
+     * Render and show the promote-to-group modal dialog.
+     */
+    function _renderPromoteToGroupModal(agentId, agentPersonaName, personas) {
+        // Remove any existing modal
+        var existing = document.getElementById('promote-to-group-modal');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'promote-to-group-modal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;display:flex;align-items:center;justify-content:center;';
+
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--bg-elevated,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;padding:24px;max-width:440px;width:90%;max-height:80vh;display:flex;flex-direction:column;';
+
+        // Title
+        var title = document.createElement('h3');
+        title.style.cssText = 'margin:0 0 4px;font-size:16px;color:var(--text-primary,#fff);';
+        title.textContent = 'Add Agent to Group Channel';
+        modal.appendChild(title);
+
+        // Subtitle
+        var subtitle = document.createElement('p');
+        subtitle.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted,#888);';
+        subtitle.textContent = 'Select a persona to join ' + agentPersonaName + ' in a new group channel.';
+        modal.appendChild(subtitle);
+
+        // Search input
+        var searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search personas...';
+        searchInput.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 12px;margin-bottom:12px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-base,#11111b);color:var(--text-primary,#fff);font-size:14px;outline:none;';
+        modal.appendChild(searchInput);
+
+        // Persona list
+        var listContainer = document.createElement('div');
+        listContainer.style.cssText = 'overflow-y:auto;flex:1;min-height:100px;max-height:300px;';
+        modal.appendChild(listContainer);
+
+        var selectedSlug = null;
+
+        function renderList(filter) {
+            listContainer.innerHTML = '';
+            var shown = personas.filter(function(p) {
+                if (!filter) return true;
+                var lf = filter.toLowerCase();
+                return (p.name || '').toLowerCase().indexOf(lf) >= 0 ||
+                       (p.role || '').toLowerCase().indexOf(lf) >= 0;
+            });
+
+            if (shown.length === 0) {
+                var empty = document.createElement('p');
+                empty.style.cssText = 'color:var(--text-muted,#888);font-size:13px;text-align:center;padding:20px 0;';
+                empty.textContent = filter ? 'No matching personas' : 'No personas available';
+                listContainer.appendChild(empty);
+                return;
+            }
+
+            for (var i = 0; i < shown.length; i++) {
+                var p = shown[i];
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.setAttribute('data-slug', p.slug);
+                item.style.cssText = 'display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:4px;border-radius:6px;border:2px solid transparent;background:var(--bg-base,#11111b);color:var(--text-primary,#fff);cursor:pointer;font-size:14px;transition:border-color 0.15s;';
+                if (p.slug === selectedSlug) {
+                    item.style.borderColor = 'var(--accent,#89b4fa)';
+                }
+
+                var nameEl = document.createElement('span');
+                nameEl.style.fontWeight = '500';
+                nameEl.textContent = p.name;
+                item.appendChild(nameEl);
+
+                if (p.role) {
+                    var roleEl = document.createElement('span');
+                    roleEl.style.cssText = 'margin-left:8px;color:var(--text-muted,#888);font-size:12px;';
+                    roleEl.textContent = p.role;
+                    item.appendChild(roleEl);
+                }
+
+                item.addEventListener('click', (function(slug) {
+                    return function() {
+                        selectedSlug = slug;
+                        confirmBtn.disabled = false;
+                        confirmBtn.style.opacity = '1';
+                        renderList(searchInput.value);
+                    };
+                })(p.slug));
+
+                listContainer.appendChild(item);
+            }
+        }
+
+        searchInput.addEventListener('input', function() {
+            renderList(searchInput.value);
+        });
+
+        // Buttons
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = 'padding:8px 16px;border-radius:6px;border:1px solid var(--border,#333);background:transparent;color:var(--text-primary,#fff);cursor:pointer;font-size:14px;';
+        cancelBtn.addEventListener('click', function() { overlay.remove(); });
+
+        var confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.textContent = 'Create Channel';
+        confirmBtn.disabled = true;
+        confirmBtn.style.cssText = 'padding:8px 16px;border-radius:6px;border:none;background:var(--accent,#89b4fa);color:#000;cursor:pointer;font-size:14px;font-weight:500;opacity:0.5;transition:opacity 0.15s;';
+        confirmBtn.addEventListener('click', function() {
+            if (!selectedSlug) return;
+            overlay.remove();
+            _executePromoteToGroup(agentId, selectedSlug);
+        });
+
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(confirmBtn);
+        modal.appendChild(btnRow);
+
+        overlay.appendChild(modal);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.remove();
+        });
+
+        document.body.appendChild(overlay);
+        renderList('');
+        searchInput.focus();
+    }
+
+    /**
+     * Execute the promote-to-group API call.
+     */
+    function _executePromoteToGroup(agentId, personaSlug) {
+        if (global.Toast) {
+            global.Toast.info('Creating channel', 'Setting up group channel\u2026');
+        }
+        CHUtils.apiFetch('/api/agents/' + agentId + '/promote-to-group', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ persona_slug: personaSlug })
+        }).then(function(res) {
+            return res.json().then(function(data) {
+                if (res.ok) {
+                    if (global.Toast) {
+                        global.Toast.success('Channel created', 'Group channel "' + (data.name || '') + '" is ready');
+                    }
+                } else {
+                    var errMsg = (data.error && data.error.message) || data.error || 'Unknown error';
+                    if (global.Toast) {
+                        global.Toast.error('Channel creation failed', errMsg);
+                    }
+                }
+                return data;
+            });
+        }).catch(function() {
+            if (global.Toast) {
+                global.Toast.error('Channel creation failed', 'Could not reach server');
+            }
+        });
     }
 
     /**

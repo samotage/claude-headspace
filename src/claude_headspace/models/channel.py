@@ -4,13 +4,14 @@ import enum
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, event
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import db
 from ._slug import slugify, temp_slug
 
 if TYPE_CHECKING:
+    from .agent import Agent
     from .channel_membership import ChannelMembership
     from .message import Message
     from .organisation import Organisation
@@ -64,6 +65,9 @@ class Channel(db.Model):
     created_by_persona_id: Mapped[int | None] = mapped_column(
         ForeignKey("personas.id", ondelete="SET NULL"), nullable=True
     )
+    spawned_from_agent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -81,6 +85,9 @@ class Channel(db.Model):
     organisation: Mapped["Organisation | None"] = relationship("Organisation")
     project: Mapped["Project | None"] = relationship("Project")
     created_by_persona: Mapped["Persona | None"] = relationship("Persona")
+    spawned_from_agent: Mapped["Agent | None"] = relationship(
+        "Agent", foreign_keys=[spawned_from_agent_id]
+    )
 
     # Children
     memberships: Mapped[list["ChannelMembership"]] = relationship(

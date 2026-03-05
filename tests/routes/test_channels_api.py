@@ -1340,3 +1340,137 @@ class TestRemoveMember:
         with _patch_operator(mock_operator):
             resp = client.delete("/api/channels/workshop-test-1/members/persona-bob-2")
             assert resp.status_code == 409
+
+
+# ──────────────────────────────────────────────────────────────
+# Promote to Group Endpoint
+# ──────────────────────────────────────────────────────────────
+
+
+class TestPromoteToGroup:
+    """Tests for POST /api/agents/<agent_id>/promote-to-group."""
+
+    def test_success_returns_201(self, client, mock_operator, mock_channel_service):
+        """Successful promote returns 201 with channel data."""
+        mock_channel = _make_mock_channel(
+            slug="workshop-alice-bob-1",
+            name="Alice + Bob",
+            status="active",
+        )
+        mock_channel_service.promote_to_group.return_value = mock_channel
+
+        # Mock Agent lookup via db.session.get
+        mock_agent = MagicMock()
+        mock_agent.id = 100
+        mock_agent.ended_at = None
+        mock_agent.persona = MagicMock()
+        mock_agent.persona.slug = "alice"
+
+        with _patch_operator(mock_operator):
+            with patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ):
+                resp = client.post(
+                    "/api/agents/100/promote-to-group",
+                    json={"persona_slug": "bob"},
+                    content_type="application/json",
+                )
+
+        assert resp.status_code == 201
+        data = resp.get_json()
+        assert data["slug"] == "workshop-alice-bob-1"
+        assert data["status"] == "active"
+
+    def test_agent_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Agent not found -> 404."""
+        with _patch_operator(mock_operator):
+            with patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=None,
+            ):
+                resp = client.post(
+                    "/api/agents/999/promote-to-group",
+                    json={"persona_slug": "bob"},
+                    content_type="application/json",
+                )
+
+        assert resp.status_code == 404
+        data = resp.get_json()
+        assert data["error"]["code"] == "agent_not_found"
+
+    def test_agent_no_persona_returns_400(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Agent without persona -> 400."""
+        mock_agent = MagicMock()
+        mock_agent.id = 100
+        mock_agent.ended_at = None
+        mock_agent.persona = None
+
+        with _patch_operator(mock_operator):
+            with patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ):
+                resp = client.post(
+                    "/api/agents/100/promote-to-group",
+                    json={"persona_slug": "bob"},
+                    content_type="application/json",
+                )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"]["code"] == "no_persona"
+
+    def test_missing_persona_slug_returns_400(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Missing persona_slug -> 400."""
+        mock_agent = MagicMock()
+        mock_agent.id = 100
+        mock_agent.ended_at = None
+        mock_agent.persona = MagicMock()
+
+        with _patch_operator(mock_operator):
+            with patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ):
+                resp = client.post(
+                    "/api/agents/100/promote-to-group",
+                    json={},
+                    content_type="application/json",
+                )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"]["code"] == "missing_fields"
+
+    def test_persona_not_found_returns_404(
+        self, client, mock_operator, mock_channel_service
+    ):
+        """Unknown persona slug -> 404 from service."""
+        mock_agent = MagicMock()
+        mock_agent.id = 100
+        mock_agent.ended_at = None
+        mock_agent.persona = MagicMock()
+
+        mock_channel_service.promote_to_group.side_effect = PersonaNotFoundError(
+            "Persona 'nonexistent' not found"
+        )
+
+        with _patch_operator(mock_operator):
+            with patch(
+                "claude_headspace.routes.channels_api.db.session.get",
+                return_value=mock_agent,
+            ):
+                resp = client.post(
+                    "/api/agents/100/promote-to-group",
+                    json={"persona_slug": "nonexistent"},
+                    content_type="application/json",
+                )
+
+        assert resp.status_code == 404
