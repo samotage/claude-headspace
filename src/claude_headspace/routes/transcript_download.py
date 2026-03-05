@@ -38,7 +38,7 @@ def download_agent_transcript(agent_id: int):
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         logger.error("Agent transcript generation failed for agent %s: %s", agent_id, e)
-        return jsonify({"error": f"Transcript generation failed: {str(e)}"}), 500
+        return jsonify({"error": "Transcript generation failed"}), 500
 
     return Response(
         content,
@@ -66,7 +66,7 @@ def download_channel_transcript(slug: str):
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         logger.error("Channel transcript generation failed for '%s': %s", slug, e)
-        return jsonify({"error": f"Transcript generation failed: {str(e)}"}), 500
+        return jsonify({"error": "Transcript generation failed"}), 500
 
     return Response(
         content,

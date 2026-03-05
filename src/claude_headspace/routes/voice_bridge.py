@@ -1621,7 +1621,7 @@ def agent_output(agent_id: int):
     """Get recent agent output (FR6)."""
     start_time = time.time()
     verbosity = request.args.get("verbosity")
-    limit = request.args.get("limit", 5, type=int)
+    limit = max(1, min(request.args.get("limit", 5, type=int), 50))
     formatter = _get_voice_formatter()
 
     agent = db.session.get(Agent, agent_id)
@@ -1784,7 +1784,7 @@ def agent_transcript(agent_id: int):
 
     # Parse pagination params
     before = request.args.get("before", type=int)
-    limit = min(request.args.get("limit", 50, type=int), 200)
+    limit = max(1, min(request.args.get("limit", 50, type=int), 200))
 
     # Query turns across ALL commands for this agent (excluding team-internal turns)
     query = (

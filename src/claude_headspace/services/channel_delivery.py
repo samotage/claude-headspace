@@ -492,7 +492,13 @@ class ChannelDeliveryService:
         # Look up the message
         try:
             message = db.session.get(Message, message_id)
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "DB error looking up queued message %s for agent %s: %s",
+                message_id,
+                agent.id,
+                exc,
+            )
             message = None
 
         if not message:

@@ -89,7 +89,27 @@ window.VoiceChannelChat = (function () {
     }
     var existing = VoiceState.channelMessages[slug];
     for (var i = 0; i < existing.length; i++) {
+      // Exact ID match — already have this message
       if (existing[i].id === msg.id) return;
+      // Match optimistic message: same content from same sender type (operator)
+      if (existing[i]._optimistic && !msg.agent_id && !existing[i].agent_id
+          && existing[i].content === msg.content) {
+        // Capture old optimistic ID before overwriting
+        var oldId = existing[i].id;
+        existing[i].id = msg.id;
+        existing[i].sent_at = msg.sent_at;
+        existing[i].persona_name = msg.persona_name;
+        delete existing[i]._optimistic;
+        // Update the rendered bubble
+        var bubble = document.querySelector('[data-turn-id="' + oldId + '"]');
+        if (bubble) {
+          bubble.setAttribute('data-turn-id', msg.id);
+          bubble.classList.remove('send-pending');
+          var senderEl = bubble.querySelector('.chat-bubble-sender');
+          if (senderEl && msg.persona_name) senderEl.textContent = msg.persona_name;
+        }
+        return;
+      }
     }
     existing.push(msg);
 
