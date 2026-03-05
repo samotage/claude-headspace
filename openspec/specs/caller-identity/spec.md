@@ -1,28 +1,26 @@
 # caller-identity Specification
 
 ## Purpose
-TBD - created by archiving change e9-s4-channel-service-cli. Update Purpose after archive.
+Provides infrastructure-verified agent identity resolution for CLI commands, using tmux pane detection as the sole resolution strategy. This ensures agent identity cannot be spoofed via environment variables or other user-controllable inputs.
+
 ## Requirements
 ### Requirement: Caller Identity Resolution (FR18)
-A `resolve_caller()` function SHALL resolve the calling agent using a two-strategy cascade: (1) `HEADSPACE_AGENT_ID` env var override (takes precedence when set), (2) tmux `display-message` pane detection. If neither resolves, raise `CallerResolutionError`.
+A `resolve_caller()` function SHALL resolve the calling agent using tmux pane detection only: tmux `display-message` pane ID -> Agent lookup. If resolution fails, raise `CallerResolutionError`.
 
-#### Scenario: Env var override
-- **WHEN** `HEADSPACE_AGENT_ID` is set to a valid agent ID
-- **THEN** the corresponding active Agent is returned
-
-#### Scenario: Invalid env var
-- **WHEN** `HEADSPACE_AGENT_ID` is set to an invalid or non-existent ID
-- **THEN** fallback to tmux detection is attempted
+The `HEADSPACE_AGENT_ID` env var override was **removed** in the `agent-channel-security` change as a security hardening measure — it was a spoofable identity assertion.
 
 #### Scenario: Tmux pane detection
-- **WHEN** `HEADSPACE_AGENT_ID` is not set
-- **AND** tmux `display-message -p '#{pane_id}'` returns a valid pane ID
+- **WHEN** tmux `display-message -p '#{pane_id}'` returns a valid pane ID
 - **AND** an active Agent has that `tmux_pane_id`
 - **THEN** the Agent is returned
 
 #### Scenario: No resolution
-- **WHEN** neither strategy resolves an agent
+- **WHEN** tmux pane detection fails to resolve an agent
 - **THEN** `CallerResolutionError` is raised with message: "Error: Cannot identify calling agent. Are you running in a Headspace-managed session?"
+
+#### Scenario: Env var ignored
+- **WHEN** `HEADSPACE_AGENT_ID` env var is set
+- **THEN** it is ignored — only tmux pane detection is used
 
 ---
 

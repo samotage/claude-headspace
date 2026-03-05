@@ -10,13 +10,9 @@ from flask.cli import AppGroup
 
 from ..services.caller_identity import resolve_caller_persona
 from ..services.channel_service import ChannelError
+from .cli_utils import get_channel_service, reject_if_agent_context
 
 msg_cli = AppGroup("msg", help="Channel messaging commands.")
-
-
-def _get_channel_service():
-    """Get the ChannelService from app extensions."""
-    return current_app.extensions["channel_service"]
 
 
 @msg_cli.command("send")
@@ -32,6 +28,7 @@ def _get_channel_service():
 @click.option("--attachment", default=None, help="File path to attach.")
 def send_command(slug, content, message_type, attachment):
     """Send a message to a channel."""
+    reject_if_agent_context()
     # Content length check (fail fast before service call)
     max_len = (
         current_app.config.get("APP_CONFIG", {})
@@ -48,7 +45,7 @@ def send_command(slug, content, message_type, attachment):
 
     agent, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         message = svc.send_message(
             slug=slug,
@@ -82,7 +79,7 @@ def history_command(slug, output_format, limit, since):
     """Show message history for a channel."""
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         messages = svc.get_history(
             slug=slug,

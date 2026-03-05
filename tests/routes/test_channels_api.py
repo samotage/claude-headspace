@@ -227,124 +227,51 @@ class TestAuth:
             data = resp.get_json()
             assert data["error"]["code"] == "service_unavailable"
 
-    def test_agent_id_header_resolves_to_agent_persona(
+    def test_agent_id_header_is_ignored(
         self,
         client,
         mock_channel_service,
         mock_agent,
-        mock_agent_persona,
     ):
-        """X-Headspace-Agent-ID header resolves agent -> persona."""
-        mock_channel_service.list_channels.return_value = []
+        """X-Headspace-Agent-ID header is ignored (security hardening).
+
+        After the agent-channel-security change, the header path was removed.
+        The header should be silently ignored — without token or operator
+        session, the request should fail with 401.
+        """
         mock_agent.ended_at = None
 
-        with (
-            patch(
-                "claude_headspace.routes.channels_api.db.session.get",
-                return_value=mock_agent,
-            ),
-            _patch_no_operator(),
-        ):
+        with _patch_no_operator():
             resp = client.get(
                 "/api/channels",
                 headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
             )
-            assert resp.status_code == 200
-            call_kwargs = mock_channel_service.list_channels.call_args
-            assert call_kwargs.kwargs["persona"] == mock_agent_persona
+            # No token, no operator -> 401 (header is ignored)
+            assert resp.status_code == 401
+            data = resp.get_json()
+            assert data["error"]["code"] == "unauthorized"
 
-    def test_agent_id_header_ended_agent_falls_through(
-        self,
-        client,
-        mock_channel_service,
-        mock_agent,
-        mock_operator,
-    ):
-        """X-Headspace-Agent-ID for ended agent falls through to operator."""
-        mock_channel_service.list_channels.return_value = []
-        mock_agent.ended_at = "2026-03-04T00:00:00"  # ended
-
-        with (
-            patch(
-                "claude_headspace.routes.channels_api.db.session.get",
-                return_value=mock_agent,
-            ),
-            _patch_operator(mock_operator),
-        ):
-            resp = client.get(
-                "/api/channels",
-                headers={"X-Headspace-Agent-ID": str(mock_agent.id)},
-            )
-            assert resp.status_code == 200
-            call_kwargs = mock_channel_service.list_channels.call_args
-            assert call_kwargs.kwargs["persona"] == mock_operator
-
-    def test_agent_id_header_invalid_value_falls_through(
+    def test_agent_id_header_with_operator_resolves_to_operator(
         self,
         client,
         mock_channel_service,
         mock_operator,
     ):
-        """X-Headspace-Agent-ID with non-integer falls through to operator."""
+        """X-Headspace-Agent-ID header present but operator cookie used instead.
+
+        The header is ignored; the operator session cookie takes effect.
+        """
         mock_channel_service.list_channels.return_value = []
 
         with _patch_operator(mock_operator):
-            resp = client.get(
-                "/api/channels",
-                headers={"X-Headspace-Agent-ID": "not-a-number"},
-            )
-            assert resp.status_code == 200
-            call_kwargs = mock_channel_service.list_channels.call_args
-            assert call_kwargs.kwargs["persona"] == mock_operator
-
-    def test_agent_id_header_no_persona_falls_through(
-        self,
-        client,
-        mock_channel_service,
-        mock_operator,
-    ):
-        """X-Headspace-Agent-ID for agent without persona falls through."""
-        mock_channel_service.list_channels.return_value = []
-        agent_no_persona = MagicMock()
-        agent_no_persona.id = 999
-        agent_no_persona.ended_at = None
-        agent_no_persona.persona = None
-
-        with (
-            patch(
-                "claude_headspace.routes.channels_api.db.session.get",
-                return_value=agent_no_persona,
-            ),
-            _patch_operator(mock_operator),
-        ):
             resp = client.get(
                 "/api/channels",
                 headers={"X-Headspace-Agent-ID": "999"},
             )
             assert resp.status_code == 200
             call_kwargs = mock_channel_service.list_channels.call_args
+            # Should resolve to operator, NOT to agent 999
             assert call_kwargs.kwargs["persona"] == mock_operator
-
-    def test_bearer_token_takes_precedence_over_agent_id_header(
-        self,
-        client,
-        mock_channel_service,
-        mock_agent,
-        mock_agent_persona,
-    ):
-        """Bearer token should take precedence over X-Headspace-Agent-ID."""
-        mock_channel_service.list_channels.return_value = []
-
-        # Use _patch_resolve_caller to simulate token auth winning
-        with _patch_resolve_caller(mock_agent_persona, mock_agent):
-            resp = client.get(
-                "/api/channels",
-                headers={
-                    "Authorization": "Bearer some-valid-token",
-                    "X-Headspace-Agent-ID": "999",
-                },
-            )
-            assert resp.status_code == 200
 
 
 # ──────────────────────────────────────────────────────────────

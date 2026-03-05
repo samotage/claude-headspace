@@ -7,19 +7,13 @@ All commands resolve caller identity before delegating to ChannelService.
 """
 
 import click
-from flask import current_app
 from flask.cli import AppGroup
 
 from ..services.caller_identity import resolve_caller_persona
 from ..services.channel_service import ChannelError
-from .cli_utils import print_table
+from .cli_utils import get_channel_service, print_table, reject_if_agent_context
 
 channel_cli = AppGroup("channel", help="Channel management commands.")
-
-
-def _get_channel_service():
-    """Get the ChannelService from app extensions."""
-    return current_app.extensions["channel_service"]
 
 
 @channel_cli.command("create")
@@ -40,13 +34,14 @@ def create_command(
     name, channel_type, description, intent, org_id, project_id, members
 ):
     """Create a new channel."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
     member_slugs = None
     if members:
         member_slugs = [s.strip() for s in members.split(",") if s.strip()]
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         channel = svc.create_channel(
             creator_persona=persona,
@@ -91,7 +86,7 @@ def list_command(all_visible, status, channel_type):
     """List channels."""
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         channels = svc.list_channels(
             persona=persona,
@@ -128,7 +123,7 @@ def list_command(all_visible, status, channel_type):
 @click.argument("slug")
 def show_command(slug):
     """Show channel details."""
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         channel = svc.get_channel(slug)
     except ChannelError as e:
@@ -166,7 +161,7 @@ def show_command(slug):
 @click.argument("slug")
 def members_command(slug):
     """List channel members."""
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         members = svc.list_members(slug)
     except ChannelError as e:
@@ -205,9 +200,10 @@ def members_command(slug):
 @click.option("--persona", required=True, help="Persona slug to add.")
 def add_command(slug, persona):
     """Add a persona to a channel."""
+    reject_if_agent_context()
     _, caller_persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         membership = svc.add_member(slug, persona, caller_persona)
     except ChannelError as e:
@@ -225,9 +221,10 @@ def add_command(slug, persona):
 @click.argument("slug")
 def leave_command(slug):
     """Leave a channel."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         svc.leave_channel(slug, persona)
     except ChannelError as e:
@@ -241,9 +238,10 @@ def leave_command(slug):
 @click.argument("slug")
 def complete_command(slug):
     """Complete a channel (chair only)."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         svc.complete_channel(slug, persona)
     except ChannelError as e:
@@ -260,9 +258,10 @@ def complete_command(slug):
 )
 def transfer_chair_command(slug, target_slug):
     """Transfer chair role to another member."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         svc.transfer_chair(slug, target_slug, persona)
     except ChannelError as e:
@@ -276,9 +275,10 @@ def transfer_chair_command(slug, target_slug):
 @click.argument("slug")
 def mute_command(slug):
     """Mute a channel."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         svc.mute_channel(slug, persona)
     except ChannelError as e:
@@ -292,9 +292,10 @@ def mute_command(slug):
 @click.argument("slug")
 def unmute_command(slug):
     """Unmute a channel."""
+    reject_if_agent_context()
     _, persona = resolve_caller_persona()
 
-    svc = _get_channel_service()
+    svc = get_channel_service()
     try:
         svc.unmute_channel(slug, persona)
     except ChannelError as e:

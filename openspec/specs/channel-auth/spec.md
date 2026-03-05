@@ -1,5 +1,8 @@
-## MODIFIED Requirements
+# channel-auth Specification
 
+## Purpose
+TBD - created by archiving change agent-channel-security. Update Purpose after archive.
+## Requirements
 ### Requirement: HTTP Channel Authentication (FR1)
 
 The channels API `_resolve_caller()` function SHALL accept agent identity only via validated Bearer tokens (SessionTokenService) or dashboard session cookies (Persona.get_operator()). Unauthenticated identity headers (e.g., `X-Headspace-Agent-ID`) SHALL NOT be accepted.
@@ -36,7 +39,7 @@ The channels API `_resolve_caller()` function SHALL accept agent identity only v
 
 ---
 
-### Requirement: CLI Caller Identity Resolution (FR2) — MODIFIED from caller-identity spec
+### Requirement: CLI Caller Identity Resolution (FR2)
 
 The `resolve_caller()` function SHALL resolve the calling agent using tmux pane detection only. The `HEADSPACE_AGENT_ID` environment variable override SHALL NOT be accepted.
 
@@ -132,3 +135,4 @@ Dashboard operators SHALL continue to authenticate via session cookies. The `Per
 - **AND** no Bearer token is present
 - **AND** `Persona.get_operator()` returns a valid operator persona
 - **THEN** the message is accepted and posted to the channel
+

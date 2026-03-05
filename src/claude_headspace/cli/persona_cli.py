@@ -17,7 +17,7 @@ from ..models.persona import Persona
 from ..models.role import Role
 from ..services.persona_assets import get_persona_dir
 from ..services.persona_registration import RegistrationError, register_persona
-from .cli_utils import print_table
+from .cli_utils import print_table, reject_if_agent_context
 
 persona_cli = AppGroup("persona", help="Persona management commands.")
 
@@ -30,6 +30,7 @@ persona_cli = AppGroup("persona", help="Persona management commands.")
 @click.option("--description", default=None, help="Optional persona description.")
 def register_command(name: str, role: str, description: str | None) -> None:
     """Register a new persona (DB record + filesystem assets)."""
+    reject_if_agent_context()
     try:
         result = register_persona(name=name, role_name=role, description=description)
     except RegistrationError as e:
