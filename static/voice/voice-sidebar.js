@@ -946,7 +946,7 @@ window.VoiceSidebar = (function () {
       html += '<div class="channel-card' + unreadClass + '" data-channel-slug="' + _esc(ch.slug) + '">'
         + '<a class="channel-card-link" href="/voice?channel=' + encodeURIComponent(ch.slug) + '">'
         + '<div class="channel-header">'
-        + '<span class="channel-name">#' + _esc(ch.slug) + '</span>'
+        + '<span class="channel-name">#' + _esc(ch.name || ch.slug) + '</span>'
         + '<span class="channel-status ' + statusClass + '">' + _esc(ch.status || 'pending') + '</span>'
         + '</div>'
         + membersHtml

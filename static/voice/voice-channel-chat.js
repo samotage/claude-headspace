@@ -20,17 +20,19 @@ window.VoiceChannelChat = (function () {
     VoiceState.channelOldestMessageTime = null;
 
     var nameEl = document.getElementById('channel-chat-name');
-    if (nameEl) nameEl.textContent = '#' + slug;
     var badgeEl = document.getElementById('channel-chat-type-badge');
     var memberCountEl = document.getElementById('channel-chat-member-count');
 
+    var channelName = slug;
     var channels = VoiceState.channels;
     for (var i = 0; i < channels.length; i++) {
       if (channels[i].slug === slug) {
+        channelName = channels[i].name || slug;
         if (badgeEl) badgeEl.textContent = channels[i].channel_type || 'channel';
         break;
       }
     }
+    if (nameEl) nameEl.textContent = '#' + channelName;
 
     var messagesEl = document.getElementById('channel-chat-messages');
     if (messagesEl) {
