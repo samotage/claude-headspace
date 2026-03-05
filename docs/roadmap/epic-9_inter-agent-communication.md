@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This document serves as the **high-level roadmap and baseline** for Epic 9 implementation. It breaks Epic 9 into 8 sprints (1 sprint = 1 PRD = 1 OpenSpec change), maps the dependency chain, and provides the foundation for orchestrating the build sequence. All design decisions are resolved — every sprint has a validated PRD.
+This document serves as the **high-level roadmap and baseline** for Epic 9 implementation. It breaks Epic 9 into 9 sprints (1 sprint = 1 PRD = 1 OpenSpec change), maps the dependency chain, and provides the foundation for orchestrating the build sequence. All design decisions are resolved — every sprint has a validated PRD.
 
 **Epic 9 Goal:** Give personas the ability to communicate with each other through structured channels — named conversation containers that carry messages between agents, the operator, and future external participants.
 
@@ -20,6 +20,7 @@ This document serves as the **high-level roadmap and baseline** for Epic 9 imple
 - **Operator as Participant** — The operator (Sam) is modelled as a first-class person/internal Persona who participates in channels alongside agents, sending and receiving messages through the dashboard, CLI, and voice bridge
 - **Delivery Engine** — Messages fan out to channel members automatically: tmux injection for online agents (state-safe, respecting agent lifecycle), SSE for the operator and remote agents, deferred storage for offline personas
 - **Agent Response Capture** — When an agent composes a response (COMPLETION/END_OF_COMMAND turn), the delivery engine detects channel membership and relays the response back to the channel — enabling genuine group conversations without manual relay
+- **Operator Admin Page** — A dedicated `/channels` page gives the operator at-a-glance visibility, lifecycle management (complete, archive, delete), member management, attention signals, and filtering — replacing the basic management modal with a proper control surface
 - **Voice-First Channel Management** — The operator creates, manages, and participates in channels via natural voice commands through the existing voice bridge
 - **Handoff Continuity** — Independent of the channel system, the handoff pipeline gains scannable filenames, startup detection, and operator-gated rehydration
 
@@ -62,13 +63,14 @@ E9-S1 (Handoff Improvements)     ← standalone, no channel dependency
    |   E9-S6 (Delivery Engine) ← fan-out, response capture, queue
    |     |
    |     v
-   |   E9-S7 (Dashboard UI) ← channel cards, chat panel, management
+   |   E9-S7 (Dashboard UI) ← channel cards, chat panel, management modal
    |     |
-   |     v
-   |   E9-S8 (Voice Bridge Channels) ← voice routing, fuzzy matching
+   |     ├──> E9-S8 (Voice Bridge Channels) ← voice routing, fuzzy matching
+   |     |
+   |     └──> E9-S9 (Channel Admin Page) ← /channels page, replaces modal
 ```
 
-Sprint 1 can be built at any time — it modifies the existing handoff pipeline with no channel dependencies. Sprints 2-8 are strictly sequential: each layer depends on the one below it.
+Sprint 1 can be built at any time — it modifies the existing handoff pipeline with no channel dependencies. Sprints 2-7 are strictly sequential: each layer depends on the one below it. Sprints 8 and 9 both depend on S7 and can be built in parallel.
 
 ---
 
@@ -84,6 +86,7 @@ Sprint 1 can be built at any time — it modifies the existing handoff pipeline 
 | E9-S6 | Channel Delivery Engine | `channels` | channels/ | 6 | P1 |
 | E9-S7 | Dashboard UI: Channel Cards, Chat Panel, Management | `ui` | channels/ | 7 | P1 |
 | E9-S8 | Voice Bridge Channel Routing Extensions | `voice` | channels/ | 8 | P1 |
+| E9-S9 | Channel Admin Page | `ui` | channels/ | 9 | P1 |
 
 ---
 
@@ -569,6 +572,75 @@ Channel ──< ChannelMembership >── Persona
 
 ---
 
+### Sprint 9: Channel Admin Page (E9-S9)
+
+**Goal:** Replace the basic channel management modal (S7) with a dedicated `/channels` admin page — a proper operator control surface for channel oversight, lifecycle management, member management, and attention signals.
+
+**Dependencies:** E9-S5 (API endpoints), E9-S7 (existing dashboard UI — modal being replaced). Frontend-heavy sprint — consumes existing API endpoints, adds one page-serving route, and may add missing API endpoints (DELETE channel, DELETE member).
+
+**Deliverables:**
+
+**Channel Admin Page (`/channels`):**
+
+- New route and template, linked from dashboard header navigation alongside Dashboard, Personas, Projects, Activity
+- Channel list table: name, type (badge), status (colour-coded), members (count with tooltip), last activity (relative time), created date, actions
+- Default sort: active channels first, then by last activity descending
+
+**Filters & Search:**
+
+- Status filter tabs: Active (default), Pending, Complete, Archived, All
+- Text search by channel name or slug (client-side filtering for v1, expected channel counts under 100)
+- No server-side pagination in v1
+
+**Attention Signals:**
+
+- Active channels with no message activity in configurable time window (default: 2 hours) display amber visual indicator
+- Threshold in JS config for v1, flagged for future migration to `config.yaml`
+
+**Channel Detail View:**
+
+- Inline expandable panel: name, slug, type, status, description, chair persona, full member list, message count, timestamps
+- Member management: add persona (autocomplete picker), remove persona
+- Lifecycle actions: Complete (active → complete), Archive (complete → archived), Delete (archived/empty channels only, with confirmation dialog)
+
+**Create Channel Form:**
+
+- Name (required), type dropdown (workshop/delegation/review/standup/broadcast), description (optional), initial members (persona autocomplete picker)
+
+**Real-Time Updates:**
+
+- SSE-driven list updates via existing `channel_message` and `channel_update` events
+
+**Modal Deprecation:**
+
+- Existing `_channel_management.html` modal superseded — dashboard "Channel Management" button replaced with link to `/channels`
+
+**PRD Location:** `docs/prds/channels/e9-s9-channel-admin-page-prd.md`
+
+**Key Technical Decisions:**
+
+- Full page (not patched modal) — operator needs a proper admin surface, not a buried overlay — decided (workshop)
+- Default filter is "Active" (not "All") — operator's primary concern is active channels — decided (Robbo review)
+- Delete restricted to archived or empty channels — prevents accidental destruction of active conversations — decided (Robbo review)
+- Client-side filtering for v1 — expected channel counts under 100 make server-side pagination unnecessary — decided (workshop)
+- No new npm or Python dependencies — vanilla JS IIFE pattern, Tailwind CSS — decided (NFR1, NFR2)
+
+**Potential API Gaps:**
+
+- `DELETE /api/channels/<slug>` — channel deletion (verify if exists in S5)
+- `DELETE /api/channels/<slug>/members/<persona_slug>` — member removal (verify if exists in S5)
+- `GET /api/personas?active=true` — persona list for autocomplete picker (verify if exists)
+
+**Files Created:** `templates/channels.html` (or `templates/partials/_channel_admin.html`), `static/js/channel-admin.js`, page-serving route
+**Files Modified:** `templates/base.html` (navigation link), `templates/dashboard.html` (modal deprecation), `routes/` (new or existing blueprint)
+
+**Risks:**
+
+- API gaps delay frontend work — mitigated: gaps are thin route handlers delegating to existing ChannelService methods
+- Modal removal breaks existing users — mitigated: redirect modal trigger to `/channels` page
+
+---
+
 ## Cross-Cutting Concerns
 
 ### Shared Modification Points
@@ -620,8 +692,9 @@ The recommended orchestration order:
 6. **E9-S6** (Delivery Engine) — blocked by S4 (calls ChannelService)
 7. **E9-S7** (Dashboard UI) — blocked by S5 (calls API endpoints)
 8. **E9-S8** (Voice Bridge Channels) — blocked by S4 (calls ChannelService), S5 (SSE events for PWA)
+9. **E9-S9** (Channel Admin Page) — blocked by S5 (API endpoints), S7 (supersedes modal built in S7)
 
-S1 and S2 can be built in parallel. S5 and S6 could theoretically be built in parallel (both depend on S4, not on each other), but S7 depends on S5 and S8 depends on both S4 and S5.
+S1 and S2 can be built in parallel. S5 and S6 could theoretically be built in parallel (both depend on S4, not on each other), but S7 depends on S5 and S8 depends on both S4 and S5. S8 and S9 can be built in parallel after S7 — they modify different UI surfaces (voice PWA vs dashboard admin page).
 
 ---
 
@@ -630,3 +703,4 @@ S1 and S2 can be built in parallel. S5 and S6 could theoretically be built in pa
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-03 | Robbo | Initial roadmap synthesised from 8 validated PRDs (E9-S1 through E9-S8) |
+| 1.1 | 2026-03-06 | Robbo | Added Sprint 9 (Channel Admin Page) — PRD workshopped with Sam and Melanie |
