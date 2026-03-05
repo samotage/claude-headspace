@@ -1,5 +1,5 @@
 /* Service worker for Claude Headspace Voice PWA */
-const CACHE_NAME = 'voice-bridge-v5';
+const CACHE_NAME = 'voice-bridge-v6';
 const APP_SHELL = [
   '/voice',
   '/static/voice/voice.css',
@@ -33,10 +33,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Network-only for API and hook calls
+  // Network-only for API and hook calls — bypass HTTP cache
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/hook/')) {
     e.respondWith(
-      fetch(e.request).catch(() =>
+      fetch(e.request, { cache: 'no-store' }).catch(() =>
         new Response(JSON.stringify({ error: 'offline' }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' }

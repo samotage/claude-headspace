@@ -9,6 +9,34 @@ window.VoiceChannelChat = (function () {
   var MESSAGE_LIMIT = 50;
   var TIMESTAMP_GAP_MS = 5 * 60 * 1000; // 5 minutes between timestamp separators
   var _optimisticIdCounter = 0;
+  var MAX_FETCH_RETRIES = 2;
+
+  function _fetchMessagesWithRetry(slug, attempt) {
+    return VoiceAPI.getChannelMessages(slug, { limit: MESSAGE_LIMIT }).then(function (messages) {
+      messages = messages || [];
+      VoiceState.channelMessages[slug] = messages;
+      VoiceState.channelHasMore = messages.length >= MESSAGE_LIMIT;
+      if (messages.length > 0) {
+        VoiceState.channelOldestMessageTime = messages[0].sent_at;
+      }
+    }).catch(function (err) {
+      console.error('[ChannelChat] fetch failed for', slug, err);
+      if (attempt < MAX_FETCH_RETRIES) {
+        return new Promise(function (resolve) {
+          setTimeout(resolve, 500 * (attempt + 1));
+        }).then(function () {
+          return _fetchMessagesWithRetry(slug, attempt + 1);
+        });
+      }
+      VoiceState.channelMessages[slug] = [];
+      var messagesEl = document.getElementById('channel-chat-messages');
+      if (messagesEl) {
+        var errMsg = (err && err.error) || (err && err.message) || 'unknown error';
+        messagesEl.innerHTML = '<div class="channel-chat-empty" style="color:#f87171">'
+          + 'Failed to load messages: ' + errMsg + '</div>';
+      }
+    });
+  }
 
   // --- Public methods ---
 
@@ -46,20 +74,12 @@ window.VoiceChannelChat = (function () {
         var count = VoiceState.channelMembers.length;
         memberCountEl.textContent = count + ' member' + (count !== 1 ? 's' : '');
       }
-    }).catch(function () {
+    }).catch(function (err) {
+      console.error('[ChannelChat] Failed to fetch members for', slug, err);
       VoiceState.channelMembers = [];
     });
 
-    var messagesPromise = VoiceAPI.getChannelMessages(slug, { limit: MESSAGE_LIMIT }).then(function (messages) {
-      messages = messages || [];
-      VoiceState.channelMessages[slug] = messages;
-      VoiceState.channelHasMore = messages.length >= MESSAGE_LIMIT;
-      if (messages.length > 0) {
-        VoiceState.channelOldestMessageTime = messages[0].sent_at;
-      }
-    }).catch(function () {
-      VoiceState.channelMessages[slug] = [];
-    });
+    var messagesPromise = _fetchMessagesWithRetry(slug, 0);
 
     Promise.all([membersPromise, messagesPromise]).then(function () {
       _renderAllMessages(slug);
@@ -165,7 +185,8 @@ window.VoiceChannelChat = (function () {
         var newScrollHeight = messagesEl.scrollHeight;
         messagesEl.scrollTop = newScrollHeight - prevScrollHeight;
       }
-    }).catch(function () {
+    }).catch(function (err) {
+      console.error('[ChannelChat] Failed to load older messages', err);
       VoiceState.channelLoadingMore = false;
       if (loadMoreEl) loadMoreEl.style.display = 'none';
     });

@@ -562,7 +562,17 @@ def get_messages(slug: str, *, persona, agent, service):
         before=before,
     )
 
-    return jsonify([_message_to_dict(m, slug) for m in messages]), 200
+    logger.info(
+        "get_messages: slug=%s limit=%d since=%s before=%s returned=%d"
+        " first_id=%s last_id=%s",
+        slug, limit, since, before, len(messages),
+        messages[0].id if messages else None,
+        messages[-1].id if messages else None,
+    )
+
+    resp = jsonify([_message_to_dict(m, slug) for m in messages])
+    resp.headers["Cache-Control"] = "no-store"
+    return resp, 200
 
 
 @channels_api_bp.route("/api/channels/<slug>/messages", methods=["POST"])

@@ -1006,7 +1006,13 @@ class ChannelService:
             before_dt = datetime.fromisoformat(before)
             query = query.filter(Message.sent_at < before_dt)
 
-        return query.order_by(Message.sent_at.asc()).limit(limit).all()
+        # Fetch the *newest* messages up to `limit`, then reverse so the
+        # caller receives them in chronological (oldest-first) order.
+        # Without this, limit=50 on a 200-message channel returns the
+        # oldest 50 — hiding all recent conversation.
+        rows = query.order_by(Message.sent_at.desc()).limit(limit).all()
+        rows.reverse()
+        return rows
 
     # ── Internal helpers ─────────────────────────────────────────────
 

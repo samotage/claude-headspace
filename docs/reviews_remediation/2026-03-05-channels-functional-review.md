@@ -220,6 +220,8 @@ All 26 workshop decisions across Sections 0-4 have corresponding implementations
 | Chat bubble alignment (all messages right-aligned) | Sam | Frontend rendering bug in channel chat view. Not a spec gap — standard chat convention places other speakers' messages on the left. | Reported, not yet investigated |
 | Operator messages from mobile not reaching channel | Sam (via Verner) | API submission path (`POST /api/channels/<slug>/messages`) failing from iPhone. Different pipeline from Bug 2 (hooks/reconciler). May be caused by SSE flood preventing POST completion. | Reported, not yet investigated |
 | Excessive SSE events causing mobile screen instability | Sam (via Verner) | iPhone screen "flipping madly" on channel view. Possible broadcast loop, redundant events, or rapid reconnection cycling on mobile. May be related to Bug 3. | Reported, not yet investigated |
+| Tmux pane identification bug | Sam | Sam observed incorrect tmux pane identification during the review session. If pane IDs are wrong, the delivery engine sends messages to the wrong pane (or nowhere), and response capture fails. Could be a contributing cause to Bugs 1, 3, and the relay pipeline failure. Needs code-level investigation. | Reported, not yet investigated |
+| Messages disappearing from channel chat UI | Sam | Messages appear briefly in the voice channel chat view, then vanish. DB contains all messages (200 confirmed via API), so this is a frontend rendering issue — not data loss. May be related to SSE reconnection causing re-render, or the dedup logic in `appendMessage()` incorrectly filtering. | Reported, not yet investigated |
 
 ---
 
@@ -229,7 +231,7 @@ All 26 workshop decisions across Sections 0-4 have corresponding implementations
 
 Three related fixes that together restore the core group chat loop:
 
-1. **Diagnose why stop hooks aren't firing** for channel member agents. This is the root cause — if hooks fire correctly, the existing relay path works.
+1. **Investigate tmux pane identification bug** (Bug 5). Sam observed incorrect pane IDs during the review. If pane mapping is wrong, it breaks both message delivery TO agents and response capture FROM agents. This may be a contributing root cause to the relay failure — not just stop hooks.
 
 2. **Add channel relay to transcript reconciler** as defense in depth. When the reconciler creates a COMPLETION/END_OF_COMMAND Turn for an agent with a channel membership, call `relay_agent_response()`. Same conditions, second integration point. The delivery engine shouldn't depend on *how* the Turn was detected — only *that* it was detected with the right intent.
 

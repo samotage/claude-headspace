@@ -338,15 +338,21 @@ window.VoiceAPI = (function () {
     opts = opts || {};
     opts.headers = { 'Content-Type': 'application/json' };
     opts.credentials = 'same-origin';
+    opts.cache = 'no-store';  // Bypass HTTP cache for fresh data
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT_MS);
     opts.signal = controller.signal;
-    return fetch(_baseUrl + path, opts).then(function (r) {
+    var url = _baseUrl + path;
+    return fetch(url, opts).then(function (r) {
       clearTimeout(timeoutId);
+      console.log('[VoiceAPI] _fetchCookie', path, 'status=' + r.status,
+        'size=' + r.headers.get('content-length'),
+        'cache-control=' + r.headers.get('cache-control'));
       if (!r.ok) return r.json().then(function (b) { return Promise.reject(b); });
       return r.json();
     }).catch(function (err) {
       clearTimeout(timeoutId);
+      console.error('[VoiceAPI] _fetchCookie FAILED', path, err);
       if (err.name === 'AbortError') return Promise.reject({ error: 'Request timed out' });
       return Promise.reject(err);
     });
